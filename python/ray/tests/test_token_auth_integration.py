@@ -595,11 +595,12 @@ def test_missing_token_file_raises_authentication_error():
 )
 def test_empty_token_file_raises_authentication_error(tmp_path):
     """Test that RAY_AUTH_TOKEN_PATH pointing to empty file raises AuthenticationError."""
+    token_file = tmp_path / "empty_token_file.txt"
     with authentication_env_guard():
         # Clear first, then set up the specific test scenario
         clear_auth_token_sources(remove_default=True)
         set_auth_mode("token")
-        set_auth_token_path("", "empty_token_file.txt")
+        set_auth_token_path("", token_file)
         reset_auth_token_state()
 
         token_loader = AuthenticationTokenLoader.instance()
@@ -607,9 +608,8 @@ def test_empty_token_file_raises_authentication_error(tmp_path):
         with pytest.raises(ray.exceptions.AuthenticationError) as exc_info:
             token_loader.has_token()
 
-        assert "empty" in str(exc_info.value).lower() or "empty_token_file.txt" in str(
-            exc_info.value
-        )
+        assert "cannot be opened or is empty" in str(exc_info.value)
+        assert str(token_file) in str(exc_info.value)
 
 
 @pytest.mark.skipif(
