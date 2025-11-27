@@ -89,13 +89,13 @@ def _isOwnCode(location: str) -> bool:
         return location.startswith(os.getcwd())
 
 
-def _isCppCode(label: str) -> bool:
+def _isCppCode(location: str) -> bool:
     """
     Check if the label is C/C++ code.
     """
     # list of C/C++ file extensions
-    cExternsions = [".c", ".cc", ".cpp", ".cxx", ".c++", ".h", ".hpp", ".hxx"]
-    return any(path in label for path in cExternsions)
+    cExtensions = [".c", ".cc", ".cpp", ".cxx", ".c++", ".h", ".hpp", ".hxx"]
+    return any(location.endswith(ext) for ext in cExtensions)
 
 
 def _get_dependency_info(line_json: Dict) -> Tuple[str, str, str, str]:
@@ -112,14 +112,14 @@ def _get_dependency_info(line_json: Dict) -> Tuple[str, str, str, str]:
                 type,
                 type,
                 line_json["sourceFile"]["name"],
-                line_json["sourceFile"]["location"],
+                _clean_path(line_json["sourceFile"]["location"]),
             )
         case "GENERATED_FILE":
             return (
                 type,
                 type,
                 line_json["generatedFile"]["name"],
-                line_json["generatedFile"]["location"],
+                _clean_path(line_json["generatedFile"]["location"]),
             )
         case "PACKAGE_GROUP":
             return type, type, line_json["packageGroup"]["name"], None
@@ -188,8 +188,8 @@ def _get_bazel_dependencies(
         if _isBuildTool(label) or _isOwnCode(location):
             logger.debug(f"Skipping dependency: {line} because it is a bad kind")
             continue
-        elif _isCppCode(label):
-            file_paths.add(_clean_path(location))
+        elif _isCppCode(location):
+            file_paths.add(location)
             package_name = _get_package_name(label)
             if package_name is not None:
                 package_names.add(package_name)
