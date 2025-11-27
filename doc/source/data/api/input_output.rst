@@ -427,7 +427,6 @@ MetadataProvider API
    datasource.FileMetadataProvider
    datasource.BaseFileMetadataProvider
    datasource.DefaultFileMetadataProvider
-   datasource.FastFileMetadataProvider
 
 Shuffling API
 -------------
