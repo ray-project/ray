@@ -10,7 +10,7 @@ import os
 import random
 import time
 import uuid
-from typing import Any, Dict, Iterable, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -19,6 +19,9 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink
+
+if TYPE_CHECKING:
+    import turbopuffer
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +123,7 @@ class TurbopufferDatasink(Datasink):
         distance_metric: str = "cosine_distance",
         concurrency: Optional[int] = None,
     ):
-        # Import validation
+
         _check_import(self, module="turbopuffer", package="turbopuffer")
 
         import turbopuffer
@@ -248,7 +251,6 @@ class TurbopufferDatasink(Datasink):
         2. Rename vector column to "vector" if needed
         3. Filter out rows with null IDs
         """
-        # Rename ID column if needed.
         if self.id_column != "id":
             if self.id_column not in table.column_names:
                 raise ValueError(f"ID column '{self.id_column}' not found in table")
@@ -260,7 +262,6 @@ class TurbopufferDatasink(Datasink):
 
             table = self._rename_single_column(table, self.id_column, "id")
 
-        # Rename vector column if needed.
         if self.vector_column != "vector":
             if self.vector_column not in table.column_names:
                 raise ValueError(
@@ -439,7 +440,7 @@ class TurbopufferDatasink(Datasink):
 
     def _write_batch_with_retry(
         self,
-        namespace,
+        namespace: "turbopuffer.Namespace",
         batch_data: list,
         namespace_name: str,
     ):
