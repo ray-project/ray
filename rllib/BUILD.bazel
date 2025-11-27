@@ -161,15 +161,16 @@ py_test(
 #   - multi GPU = 7 CPUs, 2 GPUs, 5 Env Runners
 # --------------------------------------------------------------------
 
-# | APPO (12 total tests)      |                Number of Learners (Device)                 |
-# | Environment                | Local (CPU) | Single (CPU)    | Single (GPU) | Multi (GPU) |
-# |----------------------------|-------------|-----------------|--------------|-------------|
-# | (SA/D) Cartpole            | ✅          | ✅              | ❌           | ❌         |
-# | (MA/D) Connect4            | ✅          | ❌              | ✅           | ✅         |
-# | (SA/D) Atari (Breakout)    | ❌          | ❌              | ✅           | ✅         |
-# | (SA/C) MuJoCo (Humanoid)   | ❌          | ✅              | ❌           | ✅         |
-# | (MA/D) Footsies            | ❌          | ❌              | ✅           | ✅         |
-# | (SA/C) IsaacLab (Humanoid) | ❌          | ✅ (with 1 GPU) | ⚠️           | ❌         |
+# | APPO (12 total tests)          |                Number of Learners (Device)                 |
+# | Environment                    | Local (CPU) | Single (CPU)    | Single (GPU) | Multi (GPU) |
+# |--------------------------------|-------------|-----------------|--------------|-------------|
+# | (SA/D) Cartpole                | ✅          | ✅              | ❌           | ❌         |
+# | (SA/D/LSTM) Stateless Cartpole | ✅          | ❌              | ✅           | ❌         |
+# | (MA/D) Connect4                | ✅          | ❌              | ✅           | ✅         |
+# | (SA/D) Atari (Breakout)        | ❌          | ❌              | ✅           | ✅         |
+# | (SA/C) MuJoCo (Humanoid)       | ❌          | ✅              | ❌           | ✅         |
+# | (MA/D) Footsies                | ❌          | ❌              | ✅           | ✅         |
+# | (SA/C) IsaacLab (Humanoid)     | ❌          | ✅ (with 1 GPU) | ⚠️           | ❌         |
 
 py_test(
     name = "learning_test_appo_cartpole_local",
@@ -208,6 +209,46 @@ py_test(
         "torch_only",
     ],
 )
+
+py_test(
+    name = "learning_test_appo_stateless_cartpole_local",
+    size = "large",
+    srcs = ["examples/algorithms/appo/stateless_cartpole_appo_with_lstm.py"],
+    args = [
+        "--as-test",
+        "--num-cpus=7",
+        "--num-env-runners=5",
+        "--num-learners=0",
+    ],
+    main = "examples/algorithms/appo/stateless_cartpole_appo_with_lstm.py",
+    tags = [
+        "learning_tests",
+        "learning_tests_discrete",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
+py_test(
+    name = "learning_test_appo_stateless_cartpole_single_gpu",
+    size = "large",
+    srcs = ["examples/algorithms/appo/stateless_cartpole_appo_with_lstm.py"],
+    args = [
+        "--as-test",
+        "--num-cpus=7",
+        "--num-env-runners=5",
+        "--num-learners=1",
+        "--num-gpus-per-learner=1",
+    ],
+    main = "examples/algorithms/appo/stateless_cartpole_appo_with_lstm.py",
+    tags = [
+        "learning_tests",
+        "learning_tests_discrete",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
 
 py_test(
     name = "learning_test_appo_connect4_local",
