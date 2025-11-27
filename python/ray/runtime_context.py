@@ -550,7 +550,7 @@ class RuntimeContext(object):
 
         return worker.current_node_labels
 
-    def is_canceled(self) -> Optional[bool]:
+    def is_canceled(self) -> bool:
         """Check if the current task has been canceled.
 
         This can be used to periodically check if ray.cancel() has been
@@ -584,14 +584,19 @@ class RuntimeContext(object):
 
         Returns:
             True if the task has been canceled, False otherwise.
-            None if called outside of a worker context.
+
+        Raises:
+            RuntimeError: If called from a driver or async actor context.
         """
         if self.worker.mode != ray._private.worker.WORKER_MODE:
-            logger.debug(
-                "This method is only available when the process is a "
-                f"worker. Current mode: {self.worker.mode}"
+            raise RuntimeError(
+                "This method is only available when the process is a worker. "
+                f"Current mode: {self.worker.mode}"
             )
-            return None
+
+        if self.worker.core_worker.current_actor_is_asyncio():
+            raise RuntimeError("This method is not supported in an async actor.")
+
         return self.worker.is_canceled
 
 
