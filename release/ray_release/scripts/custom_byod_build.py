@@ -1,6 +1,8 @@
-import click
-from ray_release.byod.build import build_anyscale_custom_byod_image
 from typing import Optional
+
+import click
+
+from ray_release.byod.build import build_anyscale_custom_byod_image
 
 
 @click.command()

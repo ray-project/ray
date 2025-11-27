@@ -189,8 +189,23 @@ def download_bytes_threaded(
         def load_uri_bytes(uri_path_iterator):
             """Function that takes an iterator of URI paths and yields downloaded bytes for each."""
             for uri_path in uri_path_iterator:
-                with fs.open_input_file(uri_path) as f:
-                    yield f.read()
+                read_bytes = None
+                try:
+                    # Use open_input_stream to handle the rare scenario where the data source is not seekable.
+                    with fs.open_input_stream(uri_path) as f:
+                        read_bytes = f.read()
+                except OSError as e:
+                    logger.debug(
+                        f"OSError reading uri '{uri_path}' for column '{uri_column_name}': {e}"
+                    )
+                except Exception as e:
+                    # Catch unexpected errors like pyarrow.lib.ArrowInvalid caused by an invalid uri like
+                    # `foo://bar` to avoid failing because of one invalid uri.
+                    logger.warning(
+                        f"Unexpected error reading uri '{uri_path}' for column '{uri_column_name}': {e}"
+                    )
+                finally:
+                    yield read_bytes
 
         # Use make_async_gen to download URI bytes concurrently
         # This preserves the order of results to match the input URIs
@@ -311,20 +326,25 @@ class PartitionActor:
         )
 
         # Use ThreadPoolExecutor for concurrent size fetching
-        file_sizes = []
+        file_sizes = [None] * len(paths)
         with ThreadPoolExecutor(max_workers=URI_DOWNLOAD_MAX_WORKERS) as executor:
             # Submit all size fetch tasks
-            futures = [
-                executor.submit(get_file_size, uri_path, fs) for uri_path in paths
-            ]
+            future_to_file_index = {
+                executor.submit(get_file_size, uri_path, fs): file_index
+                for file_index, uri_path in enumerate(paths)
+            }
 
             # Collect results as they complete (order doesn't matter)
-            for future in as_completed(futures):
+            for future in as_completed(future_to_file_index):
+                file_index = future_to_file_index[future]
                 try:
                     size = future.result()
-                    if size is not None:
-                        file_sizes.append(size)
+                    file_sizes[file_index] = size if size is not None else 0
                 except Exception as e:
                     logger.warning(f"Error fetching file size for download: {e}")
+                    file_sizes[file_index] = 0
 
+        assert all(
+            fs is not None for fs in file_sizes
+        ), "File size sampling did not complete for all paths"
         return file_sizes

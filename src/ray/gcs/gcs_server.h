@@ -19,7 +19,6 @@
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/postable.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_function_manager.h"
@@ -31,6 +30,7 @@
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/gcs/gcs_task_manager.h"
 #include "ray/gcs/metrics.h"
+#include "ray/gcs/postable/postable.h"
 #include "ray/gcs/pubsub_handler.h"
 #include "ray/gcs/runtime_env_handler.h"
 #include "ray/gcs/usage_stats_client.h"
@@ -272,7 +272,7 @@ class GcsServer {
   /// The gcs placement group manager.
   std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
   /// The gcs actor manager.
-  std::unique_ptr<GcsActorManager> gcs_actor_manager_;
+  std::shared_ptr<GcsActorManager> gcs_actor_manager_;
   /// The gcs placement group scheduler.
   /// [gcs_placement_group_scheduler_] depends on [raylet_client_pool_].
   std::unique_ptr<GcsPlacementGroupScheduler> gcs_placement_group_scheduler_;

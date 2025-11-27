@@ -43,6 +43,7 @@ class ControllerError(TrainingFailedError):
             "Training failed due to controller error:\n" + str(controller_failure)
         )
         self.controller_failure = controller_failure
+        self.with_traceback(controller_failure.__traceback__)
 
     def __reduce__(self):
         return (self.__class__, (self.controller_failure,))

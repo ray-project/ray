@@ -1,8 +1,8 @@
 import itertools
 import unittest
-import ray
-
 from pathlib import Path
+
+import ray
 
 
 class TestMARWIL(unittest.TestCase):
@@ -21,7 +21,7 @@ class TestMARWIL(unittest.TestCase):
         config_combinations = [frameworks, envs, fwd_fns]
         rllib_dir = Path(__file__).parents[3]
         print(f"rllib_dir={rllib_dir.as_posix()}")
-        data_file = rllib_dir.joinpath("tests/data/cartpole/large.json")
+        data_file = rllib_dir.joinpath("offline/tests/data/cartpole/large.json")
         print(f"data_file={data_file.as_posix()}")
 
         for config in itertools.product(*config_combinations):
@@ -31,7 +31,8 @@ class TestMARWIL(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

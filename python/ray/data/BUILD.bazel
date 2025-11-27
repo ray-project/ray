@@ -28,6 +28,19 @@ py_library(
 )
 
 py_test_module_list(
+    size = "small",
+    files = glob(["tests/unit/**/test_*.py"]),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
     size = "medium",
     files = glob(["tests/block_batching/test_*.py"]),
     tags = [
@@ -97,9 +110,9 @@ py_test(
 )
 
 py_test(
-    name = "test_numpy_support",
+    name = "test_issue_detection",
     size = "small",
-    srcs = ["tests/test_numpy_support.py"],
+    srcs = ["tests/test_issue_detection.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -111,12 +124,16 @@ py_test(
 )
 
 py_test(
-    name = "test_datatype",
+    name = "test_numpy_support",
     size = "small",
-    srcs = ["tests/test_datatype.py"],
+    srcs = ["tests/test_numpy_support.py"],
     tags = [
         "exclusive",
         "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
     ],
 )
 
@@ -183,22 +200,6 @@ py_test(
     name = "test_actor_pool_map_operator",
     size = "medium",
     srcs = ["tests/test_actor_pool_map_operator.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_arrow_type_conversion",
-    size = "small",
-    srcs = [
-        "tests/test_arrow_type_conversion.py",
-    ],
     tags = [
         "exclusive",
         "team:data",
@@ -282,20 +283,6 @@ py_test(
 )
 
 py_test(
-    name = "test_block",
-    size = "small",
-    srcs = ["tests/test_block.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
     name = "test_block_batching",
     size = "medium",
     srcs = ["tests/block_batching/test_block_batching.py"],
@@ -341,20 +328,6 @@ py_test(
     name = "test_audio",
     size = "small",
     srcs = ["tests/test_audio.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_expressions",
-    size = "small",
-    srcs = ["tests/test_expressions.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -592,31 +565,6 @@ py_test(
 )
 
 py_test(
-    name = "test_data_batch_conversion",
-    size = "small",
-    srcs = ["tests/test_data_batch_conversion.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_deduping_schema",
-    size = "small",
-    srcs = ["tests/test_deduping_schema.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [],
-)
-
-py_test(
     name = "test_ecosystem_modin",
     size = "small",
     srcs = ["tests/test_ecosystem_modin.py"],
@@ -664,20 +612,6 @@ py_test(
     name = "test_file_datasink",
     size = "small",
     srcs = ["tests/test_file_datasink.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_filename_provider",
-    size = "small",
-    srcs = ["tests/test_filename_provider.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -914,9 +848,9 @@ py_test(
 )
 
 py_test(
-    name = "test_path_util",
+    name = "test_predicate_pushdown",
     size = "small",
-    srcs = ["tests/test_path_util.py"],
+    srcs = ["tests/test_predicate_pushdown.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1196,9 +1130,9 @@ py_test(
 )
 
 py_test(
-    name = "test_metadata_provider",
-    size = "small",
-    srcs = ["tests/test_metadata_provider.py"],
+    name = "test_kafka",
+    size = "medium",
+    srcs = ["tests/test_kafka.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1210,9 +1144,9 @@ py_test(
 )
 
 py_test(
-    name = "test_object_extension",
+    name = "test_metadata_provider",
     size = "small",
-    srcs = ["tests/test_object_extension.py"],
+    srcs = ["tests/test_metadata_provider.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1336,11 +1270,10 @@ py_test(
 )
 
 py_test(
-    name = "test_raydp",
-    size = "medium",
-    srcs = ["tests/test_raydp.py"],
+    name = "test_ranker",
+    size = "small",
+    srcs = ["tests/test_ranker.py"],
     tags = [
-        "data_integration",
         "exclusive",
         "team:data",
     ],
@@ -1351,10 +1284,11 @@ py_test(
 )
 
 py_test(
-    name = "test_ruleset",
-    size = "small",
-    srcs = ["tests/test_ruleset.py"],
+    name = "test_raydp",
+    size = "medium",
+    srcs = ["tests/test_raydp.py"],
     tags = [
+        "data_integration",
         "exclusive",
         "team:data",
     ],
@@ -1688,20 +1622,6 @@ py_test(
 )
 
 py_test(
-    name = "test_logical_plan",
-    size = "small",
-    srcs = ["tests/test_logical_plan.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
     name = "test_mcap",
     size = "medium",
     srcs = ["tests/test_mcap.py"],
@@ -1744,37 +1664,23 @@ py_test(
 )
 
 py_test(
+    name = "test_namespace_expressions",
+    size = "medium",
+    srcs = ["tests/test_namespace_expressions.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_context",
     size = "small",
     srcs = ["tests/test_context.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_expression_evaluator",
-    size = "small",
-    srcs = ["tests/test_expression_evaluator.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_block_boundaries",
-    size = "small",
-    srcs = ["tests/test_block_boundaries.py"],
     tags = [
         "exclusive",
         "team:data",

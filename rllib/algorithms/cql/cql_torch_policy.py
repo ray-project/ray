@@ -1,11 +1,12 @@
 """
 PyTorch policy class used for CQL.
 """
-import numpy as np
-import gymnasium as gym
 import logging
-import tree
 from typing import Dict, List, Tuple, Type, Union
+
+import gymnasium as gym
+import numpy as np
+import tree
 
 import ray
 from ray.rllib.algorithms.sac.sac_tf_policy import (
@@ -13,28 +14,28 @@ from ray.rllib.algorithms.sac.sac_tf_policy import (
     validate_spaces,
 )
 from ray.rllib.algorithms.sac.sac_torch_policy import (
+    ComputeTDErrorMixin,
     _get_dist_class,
-    stats,
+    action_distribution_fn,
     build_sac_model_and_action_dist,
     optimizer_fn,
-    ComputeTDErrorMixin,
     setup_late_mixins,
-    action_distribution_fn,
+    stats,
 )
-from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.policy_template import build_policy_class
+from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.torch_mixins import TargetNetworkMixin
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.torch_mixins import TargetNetworkMixin
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.typing import LocalOptimizer, TensorType, AlgorithmConfigDict
 from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,
-    convert_to_torch_tensor,
     concat_multi_gpu_td_errors,
+    convert_to_torch_tensor,
 )
+from ray.rllib.utils.typing import AlgorithmConfigDict, LocalOptimizer, TensorType
 
 torch, nn = try_import_torch()
 F = nn.functional

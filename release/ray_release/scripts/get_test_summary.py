@@ -6,8 +6,8 @@ import click
 
 from ray_release.buildkite.concurrency import get_test_resources
 from ray_release.config import (
-    read_and_validate_release_test_collection,
     RELEASE_TEST_CONFIG_FILES,
+    read_and_validate_release_test_collection,
 )
 
 

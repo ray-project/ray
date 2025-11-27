@@ -23,7 +23,10 @@ from ray.train.v2._internal.util import (
     invoke_context_managers,
 )
 from ray.train.v2.api.config import RunConfig, ScalingConfig
-from ray.train.v2.api.report_config import CheckpointUploadMode
+from ray.train.v2.api.report_config import (
+    CheckpointConsistencyMode,
+    CheckpointUploadMode,
+)
 
 if TYPE_CHECKING:
     from ray.train import BackendConfig, Checkpoint, DataConfig
@@ -156,10 +159,14 @@ class TrainContext:
         with self.report_order_condition:
             return self.checkpoint
 
-    def get_all_reported_checkpoints(self) -> List["ReportedCheckpoint"]:
+    def get_all_reported_checkpoints(
+        self,
+        consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
+    ) -> List["ReportedCheckpoint"]:
         return ray.get(
             self.controller_actor.get_all_reported_checkpoints.remote(
-                self.current_report_index
+                self.report_call_index,
+                consistency_mode,
             )
         )
 
@@ -251,6 +258,12 @@ class TrainContext:
                 persisted_checkpoint = checkpoint_upload_fn(
                     checkpoint, checkpoint_dir_name
                 )
+                if persisted_checkpoint is None or not isinstance(
+                    persisted_checkpoint, ray.train.Checkpoint
+                ):
+                    raise ValueError(
+                        "checkpoint_upload_fn must return a `ray.train.Checkpoint`."
+                    )
             else:
                 persisted_checkpoint = self.storage_context.persist_current_checkpoint(
                     checkpoint, checkpoint_dir_name

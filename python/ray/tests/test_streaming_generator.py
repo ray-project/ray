@@ -52,6 +52,10 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
             generator_ref = ray.ObjectRef.from_random()
             generator = ObjectRefGenerator(generator_ref, mocked_worker)
 
+            # Make sure we cannot serialize the generator.
+            with pytest.raises(TypeError):
+                dumps(generator)
+
             # Test when there's no new ref, it returns a nil.
             new_ref = ray.ObjectRef.from_random()
             c.peek_object_ref_stream.return_value = (new_ref, False)
@@ -87,14 +91,9 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
                 ObjectRefStreamEndOfStreamError("")
             )  # noqa
             mocked_ray_get.return_value = None
-            with pytest.raises(StopIteration):
-                ref = generator._next_sync(timeout_s=0)
-            # Make sure we cannot serialize the generator.
-            with pytest.raises(TypeError):
-                dumps(generator)
 
-            del generator
-            c.async_delete_object_ref_stream.assert_called()
+            with pytest.raises(StopIteration):
+                generator._next_sync(timeout_s=0)
 
 
 def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):

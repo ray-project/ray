@@ -123,6 +123,7 @@ class FileBasedDatasource(Datasource):
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
+        super().__init__()
         _check_pyarrow_version()
 
         self._supports_distributed_reads = not _is_local_scheme(paths)

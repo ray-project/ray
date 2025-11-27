@@ -1,9 +1,8 @@
 import socket
-from contextlib import closing
 from typing import TYPE_CHECKING, Tuple
 
 import ray
-from ray._common.network_utils import is_ipv6
+from ray._common.network_utils import find_free_port, is_ipv6
 from ray.experimental.collective.collective_tensor_transport import (
     CollectiveTensorTransport,
 )
@@ -65,13 +64,5 @@ def device_match_transport(device: "torch.device", tensor_transport: Backend) ->
 def get_address_and_port() -> Tuple[str, int]:
     """Returns the IP address and a free port on this node."""
     addr = ray.util.get_node_ip_address()
-    with closing(
-        socket.socket(
-            socket.AF_INET6 if is_ipv6(addr) else socket.AF_INET, socket.SOCK_STREAM
-        )
-    ) as s:
-        s.bind(("", 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        port = s.getsockname()[1]
-
+    port = find_free_port(socket.AF_INET6 if is_ipv6(addr) else socket.AF_INET)
     return addr, port

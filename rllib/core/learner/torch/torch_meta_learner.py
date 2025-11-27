@@ -1,10 +1,9 @@
 import contextlib
 import logging
-import ray
-
 from itertools import cycle
 from typing import Any, Dict, List, Optional, Tuple
 
+import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import ALL_MODULES
 from ray.rllib.core.learner.learner import Learner
@@ -16,9 +15,9 @@ from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (

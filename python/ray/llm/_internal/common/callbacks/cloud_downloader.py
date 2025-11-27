@@ -79,9 +79,7 @@ class CloudDownloader(CallbackBase):
         paths = self.kwargs["paths"]
         start_time = time.monotonic()
         for cloud_uri, local_path in paths:
-            CloudFileSystem.download_files_parallel(
-                path=local_path, bucket_uri=cloud_uri
-            )
+            CloudFileSystem.download_files(path=local_path, bucket_uri=cloud_uri)
         end_time = time.monotonic()
         logger.info(
             f"CloudDownloader: Files downloaded in {end_time - start_time} seconds"

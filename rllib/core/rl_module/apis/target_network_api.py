@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Tuple
 from ray.rllib.utils.typing import NetworkType
 from ray.util.annotations import PublicAPI
 
-
 TARGET_NETWORK_ACTION_DIST_INPUTS = "target_network_action_dist_inputs"
 
 

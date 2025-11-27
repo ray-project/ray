@@ -53,33 +53,15 @@ EOF
   source "$TEMP/refreshenv.sh"
 }
 
-install_ray() {
-  # TODO(mehrdadn): This function should be unified with the one in ci/ci.sh.
-  (
-    pip install wheel delvewheel
-
-
-    pushd python/ray/dashboard/client
-      choco install nodejs --version=22.4.1 -y
-      refreshenv
-      # https://stackoverflow.com/questions/69692842/error-message-error0308010cdigital-envelope-routinesunsupported
-      export NODE_OPTIONS=--openssl-legacy-provider
-      npm install
-      npm run build
-    popd
-
-    cd "${WORKSPACE_DIR}"/python
-    pip install -v -e .
-  )
-}
-
-uninstall_ray() {
-  pip uninstall -y ray
-
-  # Cleanup generated thirdparty files.
-  python -c $'import shutil; import sys; \nfor d in sys.argv[1:]: shutil.rmtree(d, ignore_errors=True);' \
-    "${ROOT_DIR}/ray/thirdparty_files" \
-    "${ROOT_DIR}/ray/_private/runtime_env/agent/thirdparty_files"
+build_dashboard() {
+  pushd python/ray/dashboard/client
+    choco install nodejs --version=22.4.1 -y
+    refreshenv
+    # https://stackoverflow.com/questions/69692842/error-message-error0308010cdigital-envelope-routinesunsupported
+    export NODE_OPTIONS=--openssl-legacy-provider
+    npm install
+    npm run build
+  popd
 }
 
 build_wheel_windows() {
@@ -87,9 +69,6 @@ build_wheel_windows() {
     echo "Please set BUILD_ONE_PYTHON_ONLY . Building all python versions is no longer supported."
     exit 1
   fi
-
-  local ray_uninstall_status=0
-  uninstall_ray || ray_uninstall_status=1
 
   local local_dir="python/dist"
   {
@@ -119,28 +98,27 @@ build_wheel_windows() {
     fi
 
     unset PYTHON2_BIN_PATH PYTHON3_BIN_PATH  # make sure these aren't set by some chance
-    install_ray
+    build_dashboard
+
+    python -m pip install pip==25.2
+    python -m pip install wheel==0.45.1 delvewheel==1.11.2 setuptools==80.9.0
+
     cd "${WORKSPACE_DIR}"/python
     # Set the commit SHA in _version.py.
-    if [ -n "$BUILDKITE_COMMIT" ]; then
+    if [[ -n "${BUILDKITE_COMMIT:-}" ]]; then
       sed -i.bak "s/{{RAY_COMMIT_SHA}}/$BUILDKITE_COMMIT/g" ray/_version.py && rm ray/_version.py.bak
     else
       echo "BUILDKITE_COMMIT variable not set - required to populated ray.__commit__."
       exit 1
     fi
+
     # build ray wheel
-    python -m pip wheel -v -w dist . --no-deps
+    python -m pip wheel -v -w dist . --no-deps --use-pep517
     # Pack any needed system dlls like msvcp140.dll
     delvewheel repair dist/ray-*.whl
     # build ray-cpp wheel
-    RAY_INSTALL_CPP=1 python -m pip wheel -v -w dist . --no-deps
-    # No extra dlls are needed, do not call delvewheel
-    uninstall_ray
+    RAY_INSTALL_CPP=1 python -m pip wheel -v -w dist . --no-deps --use-pep517
   )
-
-  if [ 0 -eq "${ray_uninstall_status}" ]; then  # If Ray was previously installed, restore it
-    install_ray
-  fi
 }
 
 build_wheel_windows "$@"

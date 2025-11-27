@@ -1,15 +1,15 @@
 import unittest
-import gymnasium as gym
-
 from pathlib import Path
-from typing import Any, Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict
+
+import gymnasium as gym
 
 from ray.rllib.algorithms.bc.bc import BCConfig
 from ray.rllib.core import ALL_MODULES, DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.offline.offline_evaluation_runner import (
-    OfflineEvaluationRunner,
     TOTAL_EVAL_LOSS_KEY,
+    OfflineEvaluationRunner,
 )
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED
 from ray.rllib.utils.typing import ModuleID, ResultDict, TensorType
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 class TestOfflineEvaluationRunner(unittest.TestCase):
     def setUp(self) -> None:
-        data_path = "tests/data/cartpole/cartpole-v1_large"
+        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
         self.base_path = Path(__file__).parents[2]
         self.data_path = "local://" + self.base_path.joinpath(data_path).as_posix()
         # Assign the observation and action spaces.
@@ -198,6 +198,7 @@ class TestOfflineEvaluationRunner(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

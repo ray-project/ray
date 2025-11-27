@@ -1,7 +1,7 @@
+from ray._common.deprecation import Deprecated
 from ray.rllib.offline.estimators.weighted_importance_sampling import (
     WeightedImportanceSampling,
 )
-from ray._common.deprecation import Deprecated
 
 
 @Deprecated(

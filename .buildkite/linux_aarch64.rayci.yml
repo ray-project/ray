@@ -32,7 +32,6 @@ steps:
       - docker
     wanda: docker/base-deps/cpu.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -40,12 +39,12 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: "-aarch64"
+      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix}}.lock"
 
   - name: raycpubaseextra-aarch64
     label: "wanda: ray.py{{matrix}}.cpu.base-extra (aarch64)"
     wanda: docker/base-extra/cpu.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -54,6 +53,7 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: "-aarch64"
+      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix}}.lock"
     depends_on: raycpubase-aarch64
 
   - name: raycudabase-aarch64
@@ -65,7 +65,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
@@ -83,6 +82,7 @@ steps:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       ARCH_SUFFIX: "-aarch64"
+      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix.python}}.lock"
 
   - name: raycudabaseextra-aarch64
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra (aarch64)"
@@ -90,7 +90,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
@@ -109,6 +108,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: "-aarch64"
+      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix.python}}.lock"
     depends_on: raycudabase-aarch64
 
   - name: ray-core-build-aarch64
@@ -136,7 +136,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture aarch64 --upload
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -168,7 +167,6 @@ steps:
       - raycpubaseextra-aarch64
     job_env: forge-aarch64
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -195,7 +193,6 @@ steps:
       - raycpubase-aarch64
     job_env: forge-aarch64
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"

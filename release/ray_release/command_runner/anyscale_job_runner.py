@@ -1,37 +1,39 @@
 import json
 import os
 import re
-import tempfile
 import shlex
-from typing import TYPE_CHECKING, Any, Dict, Optional, List
+import shutil
+import tempfile
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cloud_util import (
     convert_abfss_uri_to_https,
     generate_tmp_cloud_storage_path,
     upload_working_dir_to_azure,
 )
-from ray_release.command_runner.job_runner import JobRunner
+from ray_release.cluster_manager.cluster_manager import ClusterManager
+from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.exception import (
-    TestCommandTimeout,
-    TestCommandError,
+    FetchResultError,
+    JobBrokenError,
+    JobNoLogsError,
     JobOutOfRetriesError,
+    JobTerminatedBeforeStartError,
+    JobTerminatedError,
+    LogsError,
     PrepareCommandError,
     PrepareCommandTimeout,
-    JobBrokenError,
-    FetchResultError,
-    JobTerminatedBeforeStartError,
-    JobNoLogsError,
-    JobTerminatedError,
+    TestCommandError,
+    TestCommandTimeout,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
 from ray_release.job_manager import AnyscaleJobManager
 from ray_release.logger import logger
 from ray_release.util import (
-    get_anyscale_sdk,
-    S3_CLOUD_STORAGE,
     AZURE_CLOUD_STORAGE,
     AZURE_STORAGE_CONTAINER,
+    S3_CLOUD_STORAGE,
+    get_anyscale_sdk,
 )
 
 if TYPE_CHECKING:
@@ -60,7 +62,7 @@ def _get_env_str(env: Dict[str, str]) -> str:
     return env_str
 
 
-class AnyscaleJobRunner(JobRunner):
+class AnyscaleJobRunner(CommandRunner):
     def __init__(
         self,
         cluster_manager: ClusterManager,
@@ -114,9 +116,14 @@ class AnyscaleJobRunner(JobRunner):
         self._artifact_path = artifact_path
         self._artifact_uploaded = artifact_path is not None
 
+    def _copy_script_to_working_dir(self, script_name):
+        script = os.path.join(os.path.dirname(__file__), f"_{script_name}")
+        shutil.copy(script, script_name)
+
     def prepare_remote_env(self):
         self._copy_script_to_working_dir("anyscale_job_wrapper.py")
-        super().prepare_remote_env()
+        self._copy_script_to_working_dir("wait_cluster.py")
+        self._copy_script_to_working_dir("prometheus_metrics.py")
 
     def run_prepare_command(
         self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
@@ -126,7 +133,11 @@ class AnyscaleJobRunner(JobRunner):
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         self._wait_for_nodes_timeout = timeout
         self.job_manager.cluster_startup_timeout += timeout
-        super().wait_for_nodes(num_nodes, timeout)
+
+        # Give 30 seconds more to account for communication
+        self.run_prepare_command(
+            f"python wait_cluster.py {num_nodes} {timeout}", timeout=timeout + 30
+        )
 
     def save_metrics(self, start_time: float, timeout: float = 900):
         # Handled in run_command
@@ -336,6 +347,12 @@ class AnyscaleJobRunner(JobRunner):
         )
 
         return time_taken
+
+    def get_last_logs_ex(self) -> Optional[str]:
+        try:
+            return self.job_manager.get_last_logs()
+        except Exception as e:
+            raise LogsError(f"Could not get last logs: {e}") from e
 
     def _fetch_json(self, path: str) -> Dict[str, Any]:
         try:

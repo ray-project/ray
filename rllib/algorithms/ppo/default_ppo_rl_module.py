@@ -5,8 +5,8 @@ from ray.rllib.core.models.configs import RecurrentEncoderConfig
 from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
 from ray.util.annotations import DeveloperAPI
 

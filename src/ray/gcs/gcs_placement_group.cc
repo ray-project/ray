@@ -29,13 +29,12 @@ void GcsPlacementGroup::UpdateState(
     placement_group_table_data_.set_placement_group_final_bundle_placement_timestamp_ms(
         current_sys_time_ms());
 
-    double duration_s =
-        (placement_group_table_data_
-             .placement_group_final_bundle_placement_timestamp_ms() -
-         placement_group_table_data_.placement_group_creation_timestamp_ms()) /
-        1000;
-    scheduler_placement_time_s_histogram_.Record(duration_s,
-                                                 {{"WorkloadType", "PlacementGroup"}});
+    double duration_ms =
+        placement_group_table_data_
+            .placement_group_final_bundle_placement_timestamp_ms() -
+        placement_group_table_data_.placement_group_creation_timestamp_ms();
+    scheduler_placement_time_ms_histogram_.Record(duration_ms,
+                                                  {{"WorkloadType", "PlacementGroup"}});
   }
   placement_group_table_data_.set_state(state);
   RefreshMetrics();

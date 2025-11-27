@@ -2,7 +2,7 @@ import logging
 from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, root_validator
 
 import ray
 from ray.data import Dataset
@@ -155,28 +155,93 @@ class OfflineProcessorConfig(ProcessorConfig):
         "enough for batch size >= 32.",
     )
 
-    # Processor stage configurations.
+    # Processor stage configurations (legacy booleans, will be deprecated).
     apply_chat_template: bool = Field(
-        default=True, description="Whether to apply chat template."
+        default=True,
+        description="[DEPRECATED] Prefer `chat_template_stage`. Whether to apply chat template.",
     )
     chat_template: Optional[str] = Field(
         default=None,
-        description="The chat template to use. This is usually not needed if the "
-        "model checkpoint already contains the chat template.",
+        description="[DEPRECATED] Prefer `chat_template_stage.chat_template`. The chat template to use.",
     )
     tokenize: bool = Field(
         default=True,
-        description="Whether to tokenize the input before passing it to the "
-        "backend engine. If not, the backend engine will tokenize the prompt.",
+        description="[DEPRECATED] Prefer `tokenize_stage`. Whether to tokenize input before engine.",
     )
     detokenize: bool = Field(
         default=True,
-        description="Whether to detokenize the output.",
+        description="[DEPRECATED] Prefer `detokenize_stage`. Whether to detokenize the output.",
     )
     has_image: bool = Field(
         default=False,
-        description="Whether the input messages have images.",
+        description="[DEPRECATED] Prefer `prepare_image_stage`. Whether the input messages have images.",
     )
+
+    # New nested stage configuration (bool | dict | typed config).
+    chat_template_stage: Any = Field(
+        default=True,
+        description="Chat templating stage config (bool | dict | ChatTemplateStageConfig).",
+    )
+    tokenize_stage: Any = Field(
+        default=True,
+        description="Tokenizer stage config (bool | dict | TokenizerStageConfig).",
+    )
+    detokenize_stage: Any = Field(
+        default=True,
+        description="Detokenizer stage config (bool | dict | DetokenizeStageConfig).",
+    )
+    prepare_image_stage: Any = Field(
+        default=False,
+        description="Prepare image stage config (bool | dict | PrepareImageStageConfig).",
+    )
+
+    @root_validator(pre=True)
+    def _coerce_legacy_to_stage_config(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        # Only set stage fields if not explicitly provided.
+        # Emit deprecation warnings when legacy boolean flags are used.
+
+        # Chat template stage: special case (handles both apply_chat_template and chat_template fields)
+        if "chat_template_stage" not in values:
+            if "apply_chat_template" in values or "chat_template" in values:
+                logger.warning(
+                    "The `apply_chat_template` and `chat_template` fields are deprecated. "
+                    "Use `chat_template_stage` instead. For example: "
+                    "`chat_template_stage=ChatTemplateStageConfig(enabled=True, chat_template='...')` "
+                    "or `chat_template_stage={'enabled': True, 'chat_template': '...'}`. "
+                    "This will raise an error in a future version."
+                )
+                enabled_value = values.get("apply_chat_template")
+                enabled = enabled_value if enabled_value is not None else True
+                stage: Dict[str, Any] = {"enabled": enabled}
+                if values.get("chat_template") is not None:
+                    stage["chat_template"] = values["chat_template"]
+                values["chat_template_stage"] = stage
+
+        # Other stages: simple boolean-to-stage mapping
+        stage_mappings = [
+            ("tokenize_stage", "tokenize", True, "TokenizerStageConfig"),
+            ("detokenize_stage", "detokenize", True, "DetokenizeStageConfig"),
+            ("prepare_image_stage", "has_image", False, "PrepareImageStageConfig"),
+        ]
+        for (
+            stage_field,
+            legacy_field,
+            default_enabled,
+            config_class_name,
+        ) in stage_mappings:
+            if stage_field not in values and legacy_field in values:
+                logger.warning(
+                    f"The `{legacy_field}` field is deprecated. "
+                    f"Use `{stage_field}` instead. For example: "
+                    f"`{stage_field}={config_class_name}(enabled=True)` "
+                    f"or `{stage_field}={{'enabled': True}}`. "
+                    "This will raise an error in a future version."
+                )
+                legacy_value = values.get(legacy_field)
+                enabled = default_enabled if legacy_value is None else legacy_value
+                values[stage_field] = {"enabled": enabled}
+
+        return values
 
 
 @PublicAPI(stability="alpha")

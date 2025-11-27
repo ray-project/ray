@@ -16,15 +16,24 @@ def pad_array(arr, dtype=np.int32):
     return padded_arr
 
 
-def collate_fn(batch):
+def collate_fn(batch, device=None):
     dtypes = {"embedding": torch.float32, "label": torch.int64}
     tensor_batch = {}
+    
+    # If no device is provided, try to get it from Ray Train context
+    if device is None:
+        try:
+            device = get_device()
+        except RuntimeError:
+            # When not in Ray Train context, use CPU for testing/serving
+            device = "cpu"
+    
     for key in dtypes.keys():
         if key in batch:
             tensor_batch[key] = torch.as_tensor(
                 batch[key],
                 dtype=dtypes[key],
-                device=get_device(),
+                device=device,
             )
     return tensor_batch
 

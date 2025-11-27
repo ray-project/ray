@@ -1,5 +1,6 @@
 import logging
 import os
+import pathlib
 from typing import Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
@@ -435,6 +436,22 @@ class RayParams:
 
         if self.temp_dir is not None and not os.path.isabs(self.temp_dir):
             raise ValueError("temp_dir must be absolute path or None.")
+
+        if self.temp_dir is not None and os.getenv("VIRTUAL_ENV"):
+            is_relative = True
+            try:
+                (
+                    pathlib.Path(self.temp_dir)
+                    .resolve()
+                    .relative_to(pathlib.Path(os.getenv("VIRTUAL_ENV")).resolve())
+                )
+            except ValueError:
+                is_relative = False
+
+            if is_relative:
+                raise ValueError(
+                    "temp_dir must not be child directory of virtualenv root"
+                )
 
     def _format_ports(self, pre_selected_ports):
         """Format the pre-selected ports information to be more human-readable."""

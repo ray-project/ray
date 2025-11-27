@@ -1,5 +1,5 @@
-name: "datanbuild"
-froms: ["cr.ray.io/rayproject/oss-ci-base_ml"]
+name: "datanbuild-py$PYTHON"
+froms: ["cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON"]
 dockerfile: ci/docker/data.build.Dockerfile
 srcs:
   - ci/env/install-dependencies.sh
@@ -10,6 +10,7 @@ srcs:
   - python/requirements/ml/data-requirements.txt
   - python/requirements/ml/data-test-requirements.txt
 build_args:
+  - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON
   - ARROW_VERSION=nightly
 tags:
-  - cr.ray.io/rayproject/datanbuild
+  - cr.ray.io/rayproject/datanbuild-py$PYTHON

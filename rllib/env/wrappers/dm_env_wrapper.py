@@ -1,7 +1,6 @@
 import gymnasium as gym
-from gymnasium import spaces
-
 import numpy as np
+from gymnasium import spaces
 
 try:
     from dm_env import specs

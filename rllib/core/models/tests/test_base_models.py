@@ -3,13 +3,13 @@ from dataclasses import dataclass
 
 import gymnasium as gym
 
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
-from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import _dynamo_is_available
 
 torch, nn = try_import_torch()
@@ -102,7 +102,8 @@ class TestModelBase(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

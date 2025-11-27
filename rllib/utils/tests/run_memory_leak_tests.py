@@ -11,9 +11,9 @@
 #     tags = ["memory_leak_tests"],
 #     size = "medium",  # 5min timeout
 #     srcs = ["tests/test_memory_leak.py"],
-#     data = glob(["tuned_examples/ppo/*.yaml"]),
+#     data = glob(["examples/algorithms/ppo/*.yaml"]),
 #     # Pass `BAZEL` option and the path to look for yaml files.
-#     args = ["BAZEL", "tuned_examples/ppo/memory-leak-test-ppo.yaml"]
+#     args = ["BAZEL", "examples/algorithms/ppo/memory-leak-test-ppo.yaml"]
 # )
 
 import argparse

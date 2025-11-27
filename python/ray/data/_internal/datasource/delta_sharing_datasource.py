@@ -49,8 +49,12 @@ class DeltaSharingDatasource(Datasource):
         """
         Set up delta sharing connections based on the url.
 
-        :param url: a url under the format "<profile>#<share>.<schema>.<table>"
-        :
+        Args:
+            url: A URL under the format "<profile>#<share>.<schema>.<table>"
+
+        Returns:
+            A tuple of (table, rest_client) where table is a delta_sharing Table
+            object and rest_client is a DataSharingRestClient instance.
         """
         from delta_sharing.protocol import DeltaSharingProfile, Table
         from delta_sharing.rest_client import DataSharingRestClient

@@ -14,12 +14,12 @@ from ray.exceptions import GetTimeoutError, RayActorError
 from ray.runtime_env import RuntimeEnv
 from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train.v2._internal.constants import (
-    DEFAULT_REPORT_BARRIER_TIMEOUT_S,
-    DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
+    COLLECTIVE_TIMEOUT_S_ENV_VAR,
+    COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
+    DEFAULT_COLLECTIVE_TIMEOUT_S,
+    DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
     DEFAULT_WORKER_GROUP_START_TIMEOUT_S,
     DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S,
-    REPORT_BARRIER_TIMEOUT_S_ENV_VAR,
-    REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
     WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR,
     get_env_vars_to_propagate,
@@ -177,12 +177,12 @@ class WorkerGroup(BaseWorkerGroup):
                 DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S,
             )
         )
-        self._report_barrier_timeout_s = env_float(
-            REPORT_BARRIER_TIMEOUT_S_ENV_VAR, DEFAULT_REPORT_BARRIER_TIMEOUT_S
+        self._collective_timeout_s = env_float(
+            COLLECTIVE_TIMEOUT_S_ENV_VAR, DEFAULT_COLLECTIVE_TIMEOUT_S
         )
-        self._report_barrier_warn_interval_s = env_float(
-            REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
-            DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
+        self._collective_warn_interval_s = env_float(
+            COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
+            DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
         )
 
     ################################################################################
@@ -309,8 +309,8 @@ class WorkerGroup(BaseWorkerGroup):
                     soft=False,
                 )
             ).remote(
-                timeout_s=self._report_barrier_timeout_s,
-                warn_interval_s=self._report_barrier_warn_interval_s,
+                timeout_s=self._collective_timeout_s,
+                warn_interval_s=self._collective_warn_interval_s,
             )
             worker_group_state_builder.with_sync_actor(sync_actor)
 
@@ -466,6 +466,9 @@ class WorkerGroup(BaseWorkerGroup):
 
             logger.debug("Worker group shutdown successful.")
 
+            for callback in self._callbacks:
+                callback.after_worker_group_shutdown(self._worker_group_context)
+
     def _clear_state(self):
         self._worker_group_state = None
         self._world_rank_to_ongoing_poll = {}
@@ -480,6 +483,9 @@ class WorkerGroup(BaseWorkerGroup):
 
         self._worker_group_state.shutdown()
         self._clear_state()
+
+        for callback in self._callbacks:
+            callback.after_worker_group_abort(self._worker_group_context)
 
     #####################################################################################
     # Polling Worker Group

@@ -30,7 +30,7 @@ from ray.dashboard.state_api_utils import (
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.utils import ResponseType
-from ray.dashboard.utils import RateLimitedModule
+from ray.dashboard.utils import HTTPStatusCode, RateLimitedModule
 from ray.util.state.common import (
     DEFAULT_DOWNLOAD_FILENAME,
     DEFAULT_LOG_LIMIT,
@@ -86,7 +86,7 @@ class StateHead(SubprocessModule, RateLimitedModule):
 
     async def limit_handler_(self):
         return do_reply(
-            success=False,
+            status_code=HTTPStatusCode.TOO_MANY_REQUESTS,
             error_message=(
                 "Max number of in-progress requests="
                 f"{self.max_num_call_} reached. "
@@ -110,12 +110,16 @@ class StateHead(SubprocessModule, RateLimitedModule):
         try:
             result = await self._state_api.list_jobs(option=options_from_req(req))
             return do_reply(
-                success=True,
+                status_code=HTTPStatusCode.OK,
                 error_message="",
                 result=asdict(result),
             )
         except DataSourceUnavailable as e:
-            return do_reply(success=False, error_message=str(e), result=None)
+            return do_reply(
+                status_code=HTTPStatusCode.INTERNAL_ERROR,
+                error_message=str(e),
+                result=None,
+            )
 
     @routes.get("/api/v0/nodes")
     @RateLimitedModule.enforce_max_concurrent_calls
@@ -171,7 +175,7 @@ class StateHead(SubprocessModule, RateLimitedModule):
 
         if not node_id and not node_ip:
             return do_reply(
-                success=False,
+                status_code=HTTPStatusCode.BAD_REQUEST,
                 error_message=(
                     "Both node id and node ip are not provided. "
                     "Please provide at least one of them."
@@ -182,7 +186,7 @@ class StateHead(SubprocessModule, RateLimitedModule):
             node_id = await self._log_api.ip_to_node_id(node_ip)
         if not node_id:
             return do_reply(
-                success=False,
+                status_code=HTTPStatusCode.NOT_FOUND,
                 error_message=(
                     f"Cannot find matching node_id for a given node ip {node_ip}"
                 ),
@@ -195,12 +199,16 @@ class StateHead(SubprocessModule, RateLimitedModule):
             )
         except DataSourceUnavailable as e:
             return do_reply(
-                success=False,
+                status_code=HTTPStatusCode.INTERNAL_ERROR,
                 error_message=str(e),
                 result=None,
             )
 
-        return do_reply(success=True, error_message="", result=result)
+        return do_reply(
+            status_code=HTTPStatusCode.OK,
+            error_message="",
+            result=result,
+        )
 
     @routes.get("/api/v0/logs/{media_type}", resp_type=ResponseType.STREAM)
     @RateLimitedModule.enforce_max_concurrent_calls
@@ -330,7 +338,7 @@ class StateHead(SubprocessModule, RateLimitedModule):
         delay = int(req.match_info.get("delay_s", 10))
         await asyncio.sleep(delay)
         return do_reply(
-            success=True,
+            status_code=HTTPStatusCode.OK,
             error_message="",
             result={},
             partial_failure_warning=None,

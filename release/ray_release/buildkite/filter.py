@@ -1,12 +1,12 @@
-import re
 import copy
+import re
 from collections import defaultdict
-from typing import List, Optional, Tuple, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from ray_release.buildkite.settings import Frequency, get_frequency
+from ray_release.configs.global_config import get_global_config
 from ray_release.test import Test
 from ray_release.test_automation.state_machine import TestStateMachine
-from ray_release.configs.global_config import get_global_config
 
 
 def _unflattened_lookup(lookup: Dict, flat_key: str, delimiter: str = "/") -> Any:

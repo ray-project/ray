@@ -1,8 +1,6 @@
 import os
 import subprocess
 
-from ray_release.configs.global_config import get_global_config
-
 from ci.ray_ci.container import (
     _AZURE_REGISTRY_NAME,
     _DOCKER_AZURE_REGISTRY,
@@ -10,6 +8,8 @@ from ci.ray_ci.container import (
     _DOCKER_GCP_REGISTRY,
 )
 from ci.ray_ci.docker_container import DockerContainer
+
+from ray_release.configs.global_config import get_global_config
 
 
 class AnyscaleDockerContainer(DockerContainer):

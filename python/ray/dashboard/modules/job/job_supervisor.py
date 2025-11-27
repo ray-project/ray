@@ -173,6 +173,9 @@ class JobSupervisor:
         # Open in append mode to avoid overwriting runtime_env setup logs for the
         # supervisor actor, which are also written to the same file.
         with open(logs_path, "a") as logs_file:
+            logs_file.write(
+                f"Running entrypoint for job {self._job_id}: {self._entrypoint}\n"
+            )
             child_process = subprocess.Popen(
                 self._entrypoint,
                 shell=True,

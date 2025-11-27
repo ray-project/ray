@@ -8,6 +8,7 @@ from starlette.types import Scope
 import ray
 from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.thirdparty.get_asgi_route_name import RoutePattern
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatus as DeploymentStatusProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
@@ -124,8 +125,11 @@ class EndpointInfo:
         app_is_cross_language: Whether the deployment uses a different language
             than the proxy (e.g., Java deployment with Python proxy). This affects
             how the proxy serializes/deserializes requests.
-        route_patterns: List of all ASGI route patterns for this deployment
-            (e.g., ["/", "/users/{user_id}", "/items/{item_id}/details"]).
+        route_patterns: List of RoutePattern objects for ASGI route patterns.
+            Each RoutePattern has methods (list of HTTP methods or None) and path.
+            Examples: [RoutePattern(methods=["GET", "POST"], path="/"),
+                      RoutePattern(methods=["PUT"], path="/users/{id}"),
+                      RoutePattern(methods=None, path="/websocket")]
             Used by proxies to match incoming requests to specific route patterns
             for accurate metrics tagging. This avoids high cardinality by using
             parameterized patterns instead of individual request paths.
@@ -134,7 +138,7 @@ class EndpointInfo:
 
     route: str
     app_is_cross_language: bool = False
-    route_patterns: Optional[List[str]] = None
+    route_patterns: Optional[List["RoutePattern"]] = None
 
 
 # Keep in sync with ServeReplicaState in dashboard/client/src/type/serve.ts

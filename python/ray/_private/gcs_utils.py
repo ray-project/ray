@@ -79,7 +79,7 @@ def create_gcs_channel(address: str, aio=False):
     Returns:
         grpc.Channel or grpc.aio.Channel to GCS
     """
-    from ray._private.utils import init_grpc_channel
+    from ray._private.grpc_utils import init_grpc_channel
 
     return init_grpc_channel(address, options=_GRPC_OPTIONS, asynchronous=aio)
 

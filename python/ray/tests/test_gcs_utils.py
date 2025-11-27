@@ -11,11 +11,10 @@ import redis
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants as ray_constants
-from ray._common.network_utils import parse_address
+from ray._common.network_utils import find_free_port, parse_address
 from ray._common.test_utils import async_wait_for_condition
 from ray._private.test_utils import (
     external_redis_test_enabled,
-    find_free_port,
     generate_system_config_map,
 )
 from ray._raylet import GcsClient, NodeID
@@ -110,8 +109,8 @@ def test_kv_timeout(ray_start_regular):
 def test_kv_transient_network_error(shutdown_only, monkeypatch):
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=5:25:25,"
-        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVPut=5:25:25",
+        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=5:25:25:25,"
+        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVPut=5:25:25:25",
     )
     ray.init()
     gcs_address = ray._private.worker.global_worker.gcs_client.address

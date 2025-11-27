@@ -1,5 +1,5 @@
-from ray.rllib.offline.estimators.importance_sampling import ImportanceSampling
 from ray._common.deprecation import Deprecated
+from ray.rllib.offline.estimators.importance_sampling import ImportanceSampling
 
 
 @Deprecated(

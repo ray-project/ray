@@ -35,6 +35,34 @@ class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
         """Returns Operator's internal output queue size (in bytes)"""
         ...
 
+    @abc.abstractmethod
+    def clear_internal_input_queue(self) -> None:
+        """Clear internal input queue(s).
+
+        This should drain all buffered input bundles and update metrics appropriately
+        by calling on_input_dequeued().
+        """
+        ...
+
+    @abc.abstractmethod
+    def clear_internal_output_queue(self) -> None:
+        """Clear internal output queue(s).
+
+        This should drain all buffered output bundles and update metrics appropriately
+        by calling on_output_dequeued().
+        """
+        ...
+
+    def mark_execution_finished(self) -> None:
+        """Mark execution as finished and clear internal queues.
+
+        This default implementation calls the parent's mark_execution_finished()
+        and then clears internal input and output queues.
+        """
+        super().mark_execution_finished()
+        self.clear_internal_input_queue()
+        self.clear_internal_output_queue()
+
 
 class OneToOneOperator(PhysicalOperator):
     """An operator that has one input and one output dependency.
@@ -136,6 +164,18 @@ class AllToAllOperator(
 
     def internal_output_queue_num_bytes(self) -> int:
         return sum(bundle.size_bytes() for bundle in self._output_buffer)
+
+    def clear_internal_input_queue(self) -> None:
+        """Clear internal input queue."""
+        while self._input_buffer:
+            bundle = self._input_buffer.pop()
+            self._metrics.on_input_dequeued(bundle)
+
+    def clear_internal_output_queue(self) -> None:
+        """Clear internal output queue."""
+        while self._output_buffer:
+            bundle = self._output_buffer.pop()
+            self._metrics.on_output_dequeued(bundle)
 
     def all_inputs_done(self) -> None:
         ctx = TaskContext(

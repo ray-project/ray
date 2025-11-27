@@ -1,46 +1,44 @@
 import os
-import pytest
 import shutil
 import sys
 import tempfile
 import time
-from typing import Type, Callable, Optional
 import unittest
+from typing import Callable, Optional, Type
 from unittest.mock import patch
+
+import pytest
 
 from ray_release.alerts.handle import result_to_handle_map
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.command_runner.command_runner import CommandRunner
-from ray_release.test import Test
 from ray_release.exception import (
-    ReleaseTestConfigError,
-    ClusterCreationError,
-    ClusterStartupError,
-    ClusterStartupTimeout,
-    ExitCode,
-    RemoteEnvSetupError,
+    ClusterNodesWaitTimeout,
     CommandError,
-    PrepareCommandError,
     CommandTimeout,
-    PrepareCommandTimeout,
-    TestCommandError,
-    TestCommandTimeout,
+    ExitCode,
     FetchResultError,
     LogsError,
+    PrepareCommandError,
+    PrepareCommandTimeout,
+    ReleaseTestConfigError,
+    RemoteEnvSetupError,
     ResultsAlert,
-    ClusterNodesWaitTimeout,
+    TestCommandError,
+    TestCommandTimeout,
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.glue import (
+    command_runner_to_cluster_manager,
     run_release_test,
     type_str_to_command_runner,
-    command_runner_to_cluster_manager,
 )
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result
-from ray_release.tests.utils import MockSDK, APIDict
+from ray_release.test import Test
+from ray_release.tests.utils import APIDict, MockSDK
 
 
 def _fail_on_call(error_type: Type[Exception] = RuntimeError, message: str = "Fail"):
@@ -319,40 +317,6 @@ class GlueTest(unittest.TestCase):
         with self.assertRaisesRegex(ReleaseTestConfigError, "quoted scalar"):
             self._run(result, True)
         self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
-
-    def testStartClusterFails(self):
-        result = Result()
-
-        self._succeed_until("cluster_env")
-
-        # Fails because API response faulty
-        with self.assertRaises(ClusterCreationError):
-            self._run(result)
-        self.assertEqual(result.return_code, ExitCode.CLUSTER_RESOURCE_ERROR.value)
-
-        self.cluster_manager_return["cluster_id"] = "valid"
-
-        # Fail for random cluster startup reason
-        self.cluster_manager_return["start_cluster"] = _fail_on_call(
-            ClusterStartupError
-        )
-        with self.assertRaises(ClusterStartupError):
-            self._run(result)
-        self.assertEqual(result.return_code, ExitCode.CLUSTER_STARTUP_ERROR.value)
-
-        # Ensure cluster was terminated
-        self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
-
-        # Fail for cluster startup timeout
-        self.cluster_manager_return["start_cluster"] = _fail_on_call(
-            ClusterStartupTimeout
-        )
-        with self.assertRaises(ClusterStartupTimeout):
-            self._run(result)
-        self.assertEqual(result.return_code, ExitCode.CLUSTER_STARTUP_TIMEOUT.value)
-
-        # Ensure cluster was terminated
-        self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
 
     def testPrepareRemoteEnvFails(self):
         result = Result()

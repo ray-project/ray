@@ -3,8 +3,6 @@ import sys
 from typing import List
 
 import pytest
-from ray_release.result import ResultStatus
-from ray_release.test import Test, TestResult
 
 from ci.ray_ci.automation.determine_microcheck_tests import (
     _get_failed_commits,
@@ -14,6 +12,9 @@ from ci.ray_ci.automation.determine_microcheck_tests import (
     _update_high_impact_tests,
 )
 from ci.ray_ci.utils import ci_init
+
+from ray_release.result import ResultStatus
+from ray_release.test import Test, TestResult
 
 ci_init()
 

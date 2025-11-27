@@ -28,6 +28,7 @@
 #include "absl/strings/str_format.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
 #include "ray/util/time.h"
@@ -128,6 +129,11 @@ class Session : public std::enable_shared_from_this<Session> {
     req_.set(http::field::content_type, "application/octet-stream");
     // Sets Content-Length header.
     req_.prepare_payload();
+
+    auto auth_token = rpc::AuthenticationTokenLoader::instance().GetToken();
+    if (auth_token.has_value() && !auth_token->empty()) {
+      req_.set(http::field::authorization, auth_token->ToAuthorizationHeaderValue());
+    }
   }
 
   void Failed(ray::Status status) {

@@ -1,9 +1,8 @@
-from ray_release.test_automation.state_machine import (
-    TestStateMachine,
-    WEEKLY_RELEASE_BLOCKER_TAG,
-)
 from ray_release.test import Test, TestState
-
+from ray_release.test_automation.state_machine import (
+    WEEKLY_RELEASE_BLOCKER_TAG,
+    TestStateMachine,
+)
 
 CONTINUOUS_FAILURE_TO_JAIL = 3  # Number of continuous failures before jailing
 UNSTABLE_RELEASE_TEST_TAG = "unstable-release-test"

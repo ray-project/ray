@@ -1,15 +1,15 @@
-import time
 import json
 import os
+import time
 
 import boto3
 from botocore.config import Config
 
+from ray_release.log_aggregator import LogAggregator
+from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result
 from ray_release.test import Test
-from ray_release.logger import logger
-from ray_release.log_aggregator import LogAggregator
 
 
 class DBReporter(Reporter):

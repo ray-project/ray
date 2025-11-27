@@ -1,10 +1,13 @@
-from typing import Callable, Dict, Iterable, List, Optional
+import copy
+from typing import Callable, Dict, Generator, Iterable, List, Optional
 
 import numpy as np
+import pyarrow as pa
 
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.datasource.util import _iter_sliced_blocks
+from ray.data.expressions import Expr
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 
@@ -16,24 +19,215 @@ class _DatasourceProjectionPushdownMixin:
         being pushed down into the reading layer"""
         return False
 
-    def get_current_projection(self) -> Optional[List[str]]:
-        """Retrurns current projection"""
-        return None
+    def get_projection_map(self) -> Optional[Dict[str, str]]:
+        """Return the projection map (original column names -> final column names).
+
+        Returns:
+            Dict mapping original column names (in storage) to final column names
+            (after optional renames). Keys indicate which columns are selected.
+            None means all columns are selected with no renames.
+            Empty dict {} means no columns are selected.
+        """
+        return self._projection_map
+
+    def get_column_renames(self) -> Optional[Dict[str, str]]:
+        """Return the column renames from the projection map.
+
+        This is used by predicate pushdown to rewrite filter expressions
+        from renamed column names back to original column names.
+
+        Returns:
+            Dict mapping original column names to renamed names,
+            or None if no renaming has been applied.
+        """
+        if self._projection_map is None:
+            return None
+        # Only include actual renames (where key != value)
+        renames = {k: v for k, v in self._projection_map.items() if k != v}
+        return renames if renames else None
+
+    def _get_data_columns(self) -> Optional[List[str]]:
+        """Extract data columns from projection map.
+
+        Helper method for datasources that need to pass columns to legacy
+        read functions expecting separate columns and rename_map parameters.
+
+        Returns:
+            List of column names, or None if all columns should be read.
+            Empty list [] means no columns.
+        """
+        return (
+            list(self._projection_map.keys())
+            if self._projection_map is not None
+            else None
+        )
+
+    @staticmethod
+    def _combine_projection_map(
+        prev_projection_map: Optional[Dict[str, str]],
+        new_projection_map: Optional[Dict[str, str]],
+    ) -> Optional[Dict[str, str]]:
+        """Combine two projection maps via transitive composition.
+
+        Args:
+            prev_projection_map: Previous projection (original -> intermediate names)
+            new_projection_map: New projection to apply (intermediate -> final names)
+
+        Returns:
+            Combined projection map (original -> final names)
+
+        Examples:
+            >>> # Select columns a, b with no renames
+            >>> prev = {"a": "a", "b": "b"}
+            >>> # Select only 'a', rename to 'x'
+            >>> new = {"a": "x"}
+            >>> _DatasourceProjectionPushdownMixin._combine_projection_map(prev, new)
+            {'a': 'x'}
+
+            >>> # First rename a->temp
+            >>> prev = {"a": "temp"}
+            >>> # Then rename temp->final
+            >>> new = {"temp": "final"}
+            >>> _DatasourceProjectionPushdownMixin._combine_projection_map(prev, new)
+            {'a': 'final'}
+        """
+        # Handle None cases (None means "all columns, no renames")
+        if prev_projection_map is None:
+            return new_projection_map
+        elif new_projection_map is None:
+            return prev_projection_map
+
+        # Compose projections: for each original->intermediate mapping in prev,
+        # check if intermediate is selected by new projection
+        composed = {}
+        for orig_col, intermediate_name in prev_projection_map.items():
+            # If intermediate name is in new projection, follow the chain
+            if intermediate_name in new_projection_map:
+                final_name = new_projection_map[intermediate_name]
+                composed[orig_col] = final_name
+
+        # The composition already handles transitive chains correctly:
+        # prev {a: temp}, new {temp: final} -> composed {a: final}
+        # No need for collapse_transitive_map which would incorrectly remove
+        # identity mappings like {b: b}
+        return composed
 
     def apply_projection(
         self,
-        columns: Optional[List[str]],
-        column_rename_map: Optional[Dict[str, str]],
+        projection_map: Optional[Dict[str, str]],
     ) -> "Datasource":
-        return self
+        """Apply a projection to this datasource.
+
+        Args:
+            projection_map: Dict mapping original column names (in storage)
+                to final column names (after optional renames). Keys indicate
+                which columns to select. None means select all columns with no renames.
+
+        Returns:
+            A new datasource instance with the projection applied.
+        """
+        clone = copy.copy(self)
+
+        # Combine projections via transitive map composition
+        clone._projection_map = self._combine_projection_map(
+            self._projection_map, projection_map
+        )
+
+        return clone
+
+    @staticmethod
+    def _apply_rename(
+        table: "pa.Table",
+        column_rename_map: Optional[Dict[str, str]],
+    ) -> "pa.Table":
+        """Apply column renaming to a PyArrow table.
+
+        Args:
+            table: PyArrow table to rename
+            column_rename_map: Mapping from old column names to new names
+
+        Returns:
+            Table with renamed columns
+        """
+        if not column_rename_map:
+            return table
+
+        new_names = [column_rename_map.get(col, col) for col in table.schema.names]
+        return table.rename_columns(new_names)
+
+    @staticmethod
+    def _apply_rename_to_tables(
+        tables: Iterable["pa.Table"],
+        column_rename_map: Optional[Dict[str, str]],
+    ) -> Generator["pa.Table", None, None]:
+        """Wrap a table generator to apply column renaming to each table.
+
+        This helper eliminates duplication across datasources that need to apply
+        column renames to tables yielded from generators.
+
+        Args:
+            tables: Iterator/generator yielding PyArrow tables
+            column_rename_map: Mapping from old column names to new names
+
+        Yields:
+            pa.Table: Tables with renamed columns
+        """
+        for table in tables:
+            yield _DatasourceProjectionPushdownMixin._apply_rename(
+                table, column_rename_map
+            )
+
+
+class _DatasourcePredicatePushdownMixin:
+    """Mixin for reading operators supporting predicate pushdown"""
+
+    def __init__(self):
+        self._predicate_expr: Optional[Expr] = None
+
+    def supports_predicate_pushdown(self) -> bool:
+        return False
+
+    def get_current_predicate(self) -> Optional[Expr]:
+        return self._predicate_expr
+
+    def apply_predicate(
+        self,
+        predicate_expr: Expr,
+    ) -> "Datasource":
+        """Apply a predicate to this datasource.
+
+        Default implementation that combines predicates using AND.
+        Subclasses that support predicate pushdown should have a _predicate_expr
+        attribute to store the predicate.
+
+        Note: Column rebinding is handled by the PredicatePushdown rule
+        before this method is called, so the predicate_expr should already
+        reference the correct column names.
+        """
+        import copy
+
+        clone = copy.copy(self)
+
+        # Combine with existing predicate using AND
+        clone._predicate_expr = (
+            predicate_expr
+            if clone._predicate_expr is None
+            else clone._predicate_expr & predicate_expr
+        )
+
+        return clone
 
 
 @PublicAPI
-class Datasource(_DatasourceProjectionPushdownMixin):
+class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdownMixin):
     """Interface for defining a custom :class:`~ray.data.Dataset` datasource.
 
     To read a datasource into a dataset, use :meth:`~ray.data.read_datasource`.
     """  # noqa: E501
+
+    def __init__(self):
+        """Initialize the datasource and its mixins."""
+        _DatasourcePredicatePushdownMixin.__init__(self)
 
     @Deprecated
     def create_reader(self, **read_args) -> "Reader":

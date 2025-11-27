@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type
 
 import numpy as np
 import pandas as pd
@@ -8,6 +8,8 @@ from typing_extensions import Hashable
 
 import ray
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.util import (
     _op_name_white_list,
@@ -45,6 +47,79 @@ def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] =
     if clear_after_check:
         with _recorded_operators_lock:
             _recorded_operators.clear()
+
+
+# Utilities for structural logical plan inspection
+# These provide type-safe alternatives to string-based plan matching
+
+
+def plan_has_operator(plan: LogicalPlan, op_type: Type[LogicalOperator]) -> bool:
+    """Check if plan contains at least one operator of given type.
+
+    Args:
+        plan: The logical plan to inspect
+        op_type: The operator type to search for
+
+    Returns:
+        True if at least one operator of the given type exists in the plan
+    """
+    return any(isinstance(op, op_type) for op in plan.dag.post_order_iter())
+
+
+def plan_operator_comes_before(
+    plan: LogicalPlan,
+    first_type: Type[LogicalOperator],
+    second_type: Type[LogicalOperator],
+) -> bool:
+    """Check if any operator of first_type comes before any operator of second_type.
+
+    Args:
+        plan: The logical plan to inspect
+        first_type: The operator type that should come first
+        second_type: The operator type that should come second
+
+    Returns:
+        True if at least one operator of first_type appears before at least one
+        operator of second_type in post-order traversal, False otherwise.
+    """
+    operators = list(plan.dag.post_order_iter())
+    first_indices = [i for i, op in enumerate(operators) if isinstance(op, first_type)]
+    second_indices = [
+        i for i, op in enumerate(operators) if isinstance(op, second_type)
+    ]
+
+    if not first_indices or not second_indices:
+        return False
+
+    # Check if the earliest first_type comes before the earliest second_type
+    return min(first_indices) < min(second_indices)
+
+
+def get_operators_of_type(
+    plan: LogicalPlan, op_type: Type[LogicalOperator]
+) -> List[LogicalOperator]:
+    """Get all operators of a specific type from the plan.
+
+    Args:
+        plan: The logical plan to inspect
+        op_type: The operator type to search for
+
+    Returns:
+        List of all operators of the given type in post-order traversal
+    """
+    return [op for op in plan.dag.post_order_iter() if isinstance(op, op_type)]
+
+
+def get_operator_types(plan: LogicalPlan) -> List[str]:
+    """Get list of operator type names in post-order traversal.
+
+    Args:
+        plan: The logical plan to inspect
+
+    Returns:
+        List of operator class names in the order they appear in post-order traversal
+    """
+    return [type(op).__name__ for op in plan.dag.post_order_iter()]
 
 
 def test_cached_remote_fn():

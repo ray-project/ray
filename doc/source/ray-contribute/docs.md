@@ -50,10 +50,10 @@ conda activate docs
 Install the documentation dependencies with the following command:
 
 ```shell
-pip install -r requirements-doc.txt
+pip install -r requirements-doc.lock.txt
 ```
 
-Don't use `-U` in this step. You don't want to upgrade dependencies because `requirements-doc.txt` pins exact versions you need to build the docs.
+Don't use `-U` in this step; `requirements-doc.lock.txt` is a lock file that pins the exact versions of all the required dependencies.
 
 ### Build documentation
 Before building, clean your environment first by running:

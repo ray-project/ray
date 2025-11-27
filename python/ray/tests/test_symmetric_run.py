@@ -52,7 +52,7 @@ def test_symmetric_run_basic_interface(monkeypatch, cleanup_ray):
         with _setup_mock_network_utils("127.0.0.1", "127.0.0.1"):
             args = ["--address", "127.0.0.1:6379", "--", "echo", "test"]
 
-            with patch("sys.argv", ["ray.scripts.symmetric_run", *args]):
+            with patch("sys.argv", ["/bin/ray", "symmetric-run", *args]):
                 # Test basic symmetric_run call using CliRunner
                 result = runner.invoke(symmetric_run, args)
                 assert result.exit_code == 0
@@ -92,7 +92,7 @@ def test_symmetric_run_worker_node_behavior(monkeypatch, cleanup_ray):
 
                 # Test worker node behavior
                 args = ["--address", "192.168.1.100:6379", "--", "echo", "test"]
-                with patch("sys.argv", ["ray.scripts.symmetric_run", *args]):
+                with patch("sys.argv", ["/bin/ray", "symmetric-run", *args]):
                     with patch(
                         "ray.scripts.symmetric_run.check_head_node_ready"
                     ) as mock_check_head_node_ready:
@@ -134,7 +134,7 @@ def test_symmetric_run_arg_validation(monkeypatch, cleanup_ray):
             mock_run.return_value.returncode = 0
             args = ["--address", "127.0.0.1:6379", "--", "echo", "test"]
 
-            with patch("sys.argv", ["ray.scripts.symmetric_run", *args]):
+            with patch("sys.argv", ["/bin/ray", "symmetric-run", *args]):
                 # Test basic symmetric_run call using CliRunner
                 result = runner.invoke(symmetric_run, args)
                 assert result.exit_code == 0
@@ -144,7 +144,7 @@ def test_symmetric_run_arg_validation(monkeypatch, cleanup_ray):
             mock_run.return_value.returncode = 0
 
             args = ["--address", "127.0.0.1:6379", "echo", "test"]
-            with patch("sys.argv", ["ray.scripts.symmetric_run", *args]):
+            with patch("sys.argv", ["/bin/ray", "symmetric-run", *args]):
                 result = runner.invoke(symmetric_run, args)
                 assert result.exit_code == 1
                 assert "No separator" in result.output
@@ -154,7 +154,7 @@ def test_symmetric_run_arg_validation(monkeypatch, cleanup_ray):
             mock_run.return_value.returncode = 0
 
             args = ["--address", "127.0.0.1:6379", "--head", "--", "echo", "test"]
-            with patch("sys.argv", ["ray.scripts.symmetric_run", *args]):
+            with patch("sys.argv", ["/bin/ray", "symmetric-run", *args]):
                 result = runner.invoke(symmetric_run, args)
                 assert result.exit_code == 1
                 assert "Cannot use --head option in symmetric_run." in result.output
@@ -164,7 +164,7 @@ def test_symmetric_run_arg_validation(monkeypatch, cleanup_ray):
 
             # Test args with "=" are passed to ray start
             args = ["--address", "127.0.0.1:6379", "--num-cpus=4", "--", "echo", "test"]
-            with patch("sys.argv", ["ray.scripts.symmetric_run", *args]):
+            with patch("sys.argv", ["/bin/ray", "symmetric-run", *args]):
                 result = runner.invoke(symmetric_run, args)
                 assert result.exit_code == 0
 

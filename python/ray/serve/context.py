@@ -13,7 +13,7 @@ from typing import Callable, Dict, List, Optional
 import ray
 from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import ReplicaID
+from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
@@ -23,6 +23,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve.exceptions import RayServeException
 from ray.serve.grpc_util import RayServegRPCContext
+from ray.serve.schema import ReplicaRank
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -48,8 +49,9 @@ class ReplicaContext:
     replica_id: ReplicaID
     servable_object: Callable
     _deployment_config: DeploymentConfig
-    rank: int
+    rank: ReplicaRank
     world_size: int
+    _handle_registration_callback: Optional[Callable[[DeploymentID], None]] = None
 
     @property
     def app_name(self) -> str:
@@ -112,8 +114,9 @@ def _set_internal_replica_context(
     replica_id: ReplicaID,
     servable_object: Callable,
     _deployment_config: DeploymentConfig,
-    rank: int,
+    rank: ReplicaRank,
     world_size: int,
+    handle_registration_callback: Optional[Callable[[str, str], None]] = None,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
@@ -122,6 +125,7 @@ def _set_internal_replica_context(
         _deployment_config=_deployment_config,
         rank=rank,
         world_size=world_size,
+        _handle_registration_callback=handle_registration_callback,
     )
 
 

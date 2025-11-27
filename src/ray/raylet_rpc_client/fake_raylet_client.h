@@ -281,6 +281,11 @@ class FakeRayletClient : public RayletClientInterface {
   void GetNodeStats(const GetNodeStatsRequest &request,
                     const ClientCallback<GetNodeStatsReply> &callback) override {}
 
+  void KillLocalActor(const KillLocalActorRequest &request,
+                      const ClientCallback<KillLocalActorReply> &callback) override {
+    killed_actors.push_back(ActorID::FromBinary(request.intended_actor_id()));
+  }
+
   void GlobalGC(const ClientCallback<GlobalGCReply> &callback) override {}
 
   int64_t GetPinsInFlight() const override { return 0; }
@@ -292,6 +297,7 @@ class FakeRayletClient : public RayletClientInterface {
   int num_release_unused_workers = 0;
   int num_get_task_failure_causes = 0;
   NodeID node_id_ = NodeID::FromRandom();
+  std::vector<ActorID> killed_actors;
   std::list<ClientCallback<DrainRayletReply>> drain_raylet_callbacks = {};
   std::list<ClientCallback<RequestWorkerLeaseReply>> callbacks = {};
   std::list<ClientCallback<CancelWorkerLeaseReply>> cancel_callbacks = {};

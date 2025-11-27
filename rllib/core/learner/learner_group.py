@@ -3,6 +3,7 @@ import itertools
 import pathlib
 from functools import partial
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Collection,
@@ -11,7 +12,6 @@ from typing import (
     Optional,
     Set,
     Type,
-    TYPE_CHECKING,
     Union,
 )
 
@@ -36,8 +36,8 @@ from ray.rllib.utils.actor_manager import (
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.metrics.ray_metrics import (
-    TimerAndPrometheusLogger,
     DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+    TimerAndPrometheusLogger,
 )
 from ray.rllib.utils.typing import (
     EpisodeType,

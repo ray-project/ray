@@ -19,6 +19,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 import ray
+from ray import tune
 from ray.rllib.algorithms.dreamerv3 import dreamerv3
 from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.core import DEFAULT_MODULE_ID
@@ -27,7 +28,6 @@ from ray.rllib.env.wrappers.dm_control_wrapper import ActionClip, DMCEnv
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import check
-from ray import tune
 
 torch, nn = try_import_torch()
 
@@ -317,7 +317,8 @@ class TestDreamerV3(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -2,39 +2,39 @@ import os
 import sys
 import tempfile
 import unittest
-from typing import Dict, Callable
+from typing import Callable, Dict
 from unittest.mock import patch
 
 import yaml
 from github import Repository
 
+from ray_release.bazel import bazel_runfile
 from ray_release.buildkite.concurrency import (
-    get_test_resources_from_cluster_compute,
     get_concurrency_group,
+    get_test_resources_from_cluster_compute,
 )
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import (
-    split_ray_repo_str,
-    get_default_settings,
-    update_settings_from_environment,
     Frequency,
-    update_settings_from_buildkite,
     Priority,
+    get_default_settings,
     get_test_filters,
+    split_ray_repo_str,
+    update_settings_from_buildkite,
+    update_settings_from_environment,
 )
 from ray_release.buildkite.step import (
-    get_step,
-    RELEASE_QUEUE_DEFAULT,
-    RELEASE_QUEUE_CLIENT,
     DOCKER_PLUGIN_KEY,
+    RELEASE_QUEUE_CLIENT,
+    RELEASE_QUEUE_DEFAULT,
+    get_step,
 )
-from ray_release.test import Test
+from ray_release.configs.global_config import init_global_config
 from ray_release.exception import ReleaseTestConfigError
+from ray_release.test import Test
 from ray_release.wheels import (
     DEFAULT_BRANCH,
 )
-from ray_release.configs.global_config import init_global_config
-from ray_release.bazel import bazel_runfile
 
 init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 

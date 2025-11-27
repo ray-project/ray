@@ -231,7 +231,6 @@ java_test(
     args = ["java/testng.xml"],
     data = [
         "testng.xml",
-        ":ray_java_pkg",
         "//:ray_pkg_zip",
     ],
     main_class = "org.testng.TestNG",
@@ -254,7 +253,6 @@ java_test(
     args = ["java/testng_custom.xml"],
     data = [
         "testng_custom.xml",
-        ":ray_java_pkg",
         "//:ray_pkg_zip",
     ],
     main_class = "org.testng.TestNG",
@@ -494,24 +492,6 @@ pkg_zip(
         ":ray_java_pkg_files",
     ],
     out = "ray_java_pkg.zip",
-    visibility = ["//visibility:private"],
-)
-
-genrule(
-    name = "ray_java_pkg",
-    srcs = [
-        "ray_java_pkg.zip",
-        ":gen_maven_deps",
-    ],
-    outs = ["ray_java_pkg.out"],
-    cmd = """
-        WORK_DIR="$$(pwd)" &&
-        rm -rf "$$WORK_DIR/python/ray/jars" && mkdir -p "$$WORK_DIR/python/ray/jars" &&
-        unzip -q $(location ray_java_pkg.zip) -d "$$WORK_DIR/python" &&
-        if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum $(SRCS) > $@ ; else sha1sum $(SRCS) > $@ ; fi
-    """,
-    local = 1,
-    tags = ["no-cache"],
     visibility = ["//visibility:private"],
 )
 

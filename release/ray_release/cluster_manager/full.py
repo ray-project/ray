@@ -1,17 +1,17 @@
 import time
 
+from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.exception import (
     ClusterCreationError,
     ClusterStartupError,
-    ClusterStartupTimeout,
     ClusterStartupFailed,
+    ClusterStartupTimeout,
 )
 from ray_release.logger import logger
-from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.util import (
-    format_link,
     anyscale_cluster_url,
     exponential_backoff_retry,
+    format_link,
 )
 
 REPORT_S = 30.0

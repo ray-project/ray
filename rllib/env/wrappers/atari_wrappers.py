@@ -1,11 +1,12 @@
 from collections import deque
-import gymnasium as gym
-from gymnasium import spaces
-import numpy as np
 from typing import Optional, Union
 
+import gymnasium as gym
+import numpy as np
+from gymnasium import spaces
+
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.images import rgb2gray, resize
+from ray.rllib.utils.images import resize, rgb2gray
 
 
 @PublicAPI

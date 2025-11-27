@@ -4,6 +4,12 @@ import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import {
+  authenticateWithToken,
+  getAuthenticationMode,
+} from "./authentication/authentication";
+import { AUTHENTICATION_ERROR_EVENT } from "./authentication/constants";
+import TokenAuthenticationDialog from "./authentication/TokenAuthenticationDialog";
 import ActorDetailPage, { ActorDetailLayout } from "./pages/actor/ActorDetail";
 import { ActorLayout } from "./pages/actor/ActorLayout";
 import Loading from "./pages/exception/Loading";
@@ -147,6 +153,14 @@ const App = () => {
     dashboardDatasource: undefined,
     serverTimeZone: undefined,
   });
+
+  // Authentication state
+  const [authenticationDialogOpen, setAuthenticationDialogOpen] =
+    useState(false);
+  const [hasAttemptedAuthentication, setHasAttemptedAuthentication] =
+    useState(false);
+  const [authenticationError, setAuthenticationError] =
+    useState<string | undefined>();
   useEffect(() => {
     getNodeList().then((res) => {
       if (res?.data?.data?.summary) {
@@ -218,12 +232,93 @@ const App = () => {
     updateTimezone();
   }, []);
 
+  // Check authentication mode on mount
+  useEffect(() => {
+    const checkAuthentication = async () => {
+      try {
+        const { authentication_mode } = await getAuthenticationMode();
+
+        if (authentication_mode === "token") {
+          // Token authentication is enabled
+          // The HttpOnly cookie will be sent automatically with requests
+          // If no valid cookie exists, the first request will trigger 401/403
+          // and the response interceptor will show the authentication dialog
+        } else {
+          // Auth mode is disabled
+        }
+      } catch (error) {
+        console.error("Failed to check authentication mode:", error);
+      }
+    };
+
+    checkAuthentication();
+  }, []);
+
+  // Listen for authentication errors from axios interceptor
+  useEffect(() => {
+    const handleAuthenticationError = (event: Event) => {
+      const customEvent = event as CustomEvent<{ hadToken: boolean }>;
+      const hadToken = customEvent.detail?.hadToken ?? false;
+
+      setHasAttemptedAuthentication(hadToken);
+      setAuthenticationDialogOpen(true);
+    };
+
+    window.addEventListener(
+      AUTHENTICATION_ERROR_EVENT,
+      handleAuthenticationError,
+    );
+
+    return () => {
+      window.removeEventListener(
+        AUTHENTICATION_ERROR_EVENT,
+        handleAuthenticationError,
+      );
+    };
+  }, []);
+
+  // Handle token submission from dialog
+  const handleTokenSubmit = async (token: string) => {
+    try {
+      // Authenticate with the server - this will validate the token
+      // and set an HttpOnly cookie if valid
+      const isValid = await authenticateWithToken(token);
+
+      if (isValid) {
+        // Token is valid and server has set HttpOnly cookie
+        setHasAttemptedAuthentication(true);
+        setAuthenticationDialogOpen(false);
+        setAuthenticationError(undefined);
+
+        // Reload the page to refetch all data with the new token
+        window.location.reload();
+      } else {
+        // Token is invalid
+        setHasAttemptedAuthentication(true);
+        setAuthenticationError(
+          "Invalid authentication token. Please check and try again.",
+        );
+      }
+    } catch (error) {
+      console.error("Failed to authenticate:", error);
+      setAuthenticationError(
+        "Failed to authenticate. Please check your connection and try again.",
+      );
+    }
+  };
+
   return (
     <StyledEngineProvider injectFirst>
       <ThemeProvider theme={lightTheme}>
         <Suspense fallback={Loading}>
           <GlobalContext.Provider value={{ ...context, currentTimeZone }}>
             <CssBaseline />
+            <TokenAuthenticationDialog
+              open={authenticationDialogOpen}
+              hasExistingToken={hasAttemptedAuthentication}
+              onSubmit={handleTokenSubmit}
+              error={authenticationError}
+            />
             <HashRouter>
               <Routes>
                 {/* Redirect people hitting the /new path to root. TODO(aguo): Delete this redirect in ray 2.5 */}

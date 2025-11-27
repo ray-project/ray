@@ -22,6 +22,7 @@ from ray.serve._private.test_utils import (
     check_deployment_status,
     check_num_replicas_eq,
 )
+from ray.serve.schema import ReplicaRank
 
 
 def get_controller() -> ServeController:
@@ -97,7 +98,7 @@ def test_basic_rank_assignment(serve_instance, num_replicas):
 
         def __call__(self):
             context = serve.get_replica_context()
-            self.replica_rank = context.rank
+            self.replica_rank = context.rank.rank if context.rank else None
             self.world_size = context.world_size
             return {
                 "rank": self.replica_rank,
@@ -156,7 +157,7 @@ def test_rank_assignment_with_autoscaling(serve_instance):
             await signal_actor.wait.remote()
             context = serve.get_replica_context()
             return {
-                "rank": context.rank,
+                "rank": context.rank.rank if context.rank else None,
                 "world_size": context.world_size,
             }
 
@@ -214,7 +215,7 @@ def test_rank_persistence_across_controller_restart(serve_instance):
         def __call__(self):
             context = serve.get_replica_context()
             return {
-                "rank": context.rank,
+                "rank": context.rank.rank if context.rank else None,
                 "world_size": context.world_size,
             }
 
@@ -265,7 +266,7 @@ def test_single_replica_deployment(serve_instance):
         def __call__(self):
             context = serve.get_replica_context()
             return {
-                "rank": context.rank,
+                "rank": context.rank.rank if context.rank else None,
                 "world_size": context.world_size,
             }
 
@@ -296,7 +297,7 @@ def test_multiple_deployments_independent_ranks(serve_instance):
             context = serve.get_replica_context()
             return {
                 "deployment": "deployment1",
-                "rank": context.rank,
+                "rank": context.rank.rank if context.rank else None,
                 "world_size": context.world_size,
             }
 
@@ -309,7 +310,7 @@ def test_multiple_deployments_independent_ranks(serve_instance):
             context = serve.get_replica_context()
             return {
                 "deployment": "deployment2",
-                "rank": context.rank,
+                "rank": context.rank.rank if context.rank else None,
                 "world_size": context.world_size,
             }
 
@@ -410,8 +411,9 @@ def test_user_reconfigure_rank(serve_instance):
             await signal_actor.wait.remote()
             return self.my_rank
 
-        async def reconfigure(self, user_config: Any, rank: int):
-            self.my_rank = rank
+        async def reconfigure(self, user_config: Any, rank: ReplicaRank):
+            # rank parameter is actually a ReplicaRank object, extract the integer value
+            self.my_rank = rank.rank
 
     handle = serve.run(ReconfigureRankTracker.bind())
     wait_for_condition(

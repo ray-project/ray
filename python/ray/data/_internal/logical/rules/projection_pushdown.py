@@ -9,7 +9,7 @@ from ray.data._internal.logical.interfaces import (
 from ray.data._internal.logical.operators.map_operator import Project
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnReferenceCollector,
-    _ColumnRefRebindingVisitor,
+    _ColumnSubstitutionVisitor,
     _is_col_expr,
 )
 from ray.data.expressions import (
@@ -40,27 +40,6 @@ def _collect_referenced_columns(exprs: List[Expr]) -> Optional[List[str]]:
         collector.visit(expr)
 
     return collector.get_column_refs()
-
-
-def _extract_simple_rename(expr: Expr) -> Optional[Tuple[str, str]]:
-    """
-    Check if an expression is a simple column rename.
-
-    Returns (source_name, target_name) if the expression is of form:
-        col("source").alias("dest")
-
-    Returns None for other expression types.
-    """
-    if (
-        isinstance(expr, AliasExpr)
-        and isinstance(expr.expr, ColumnExpr)
-        and expr._is_rename
-    ):
-        target_name = expr.name
-        source_name = expr.expr.name
-        return source_name, target_name
-
-    return None
 
 
 def _analyze_upstream_project(
@@ -203,7 +182,7 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
     # Upstream output column refs inside downstream expressions need to be bound
     # to upstream output column definitions to satisfy invariant #1 (common for both
     # composition/projection cases)
-    v = _ColumnRefRebindingVisitor(upstream_column_defs)
+    v = _ColumnSubstitutionVisitor(upstream_column_defs)
 
     rebound_downstream_exprs = [
         v.visit(e) for e in _filter_out_star(downstream_project.exprs)
@@ -345,13 +324,55 @@ class ProjectionPushdown(Rule):
                     current_project.exprs
                 )
 
-                # Apply projection of columns to the read op
-                return input_op.apply_projection(
-                    required_columns, output_column_rename_map
-                )
+                # Determine columns to project
+                if required_columns is None:
+                    # All columns case - need to determine available columns
+                    if not output_column_rename_map:
+                        # No renames and all columns - pass through as None
+                        projection_map = None
+                    else:
+                        # Has renames - get the list of columns to apply renames to
+                        current_projection = input_op.get_projection_map()
+
+                        if current_projection is not None:
+                            # Use output column names from existing projection (for chained renames)
+                            columns = list(current_projection.values())
+                        else:
+                            # No existing projection - get all columns from schema
+                            schema = input_op.infer_schema()
+                            if schema is not None:
+                                columns = schema.names
+                            else:
+                                # Cannot determine available columns - this shouldn't happen in practice
+                                # for properly implemented datasources. Rather than guessing, raise an error.
+                                raise RuntimeError(
+                                    f"Cannot apply rename operation: schema unavailable for input operator "
+                                    f"{input_op}. This may indicate a legacy datasource that doesn't properly "
+                                    f"expose schema information."
+                                )
+
+                        # Build projection_map: apply renames to all columns
+                        projection_map = {
+                            col: output_column_rename_map.get(col, col)
+                            for col in columns
+                        }
+                else:
+                    # Specific columns selected - build projection_map with renames applied
+                    projection_map = {
+                        col: output_column_rename_map.get(col, col)
+                        for col in required_columns
+                    }
+
+                # Apply projection to the read op
+                return input_op.apply_projection(projection_map)
             else:
-                # Otherwise just apply projection without renaming
-                projected_input_op = input_op.apply_projection(required_columns, None)
+                # Complex expressions - apply projection without full rename
+                projection_map = (
+                    None
+                    if required_columns is None
+                    else {col: col for col in required_columns}
+                )
+                projected_input_op = input_op.apply_projection(projection_map)
 
                 # Has transformations: Keep Project on top of optimized Read
                 return Project(

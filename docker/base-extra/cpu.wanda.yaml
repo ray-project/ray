@@ -1,7 +1,10 @@
 name: "$IMAGE_TYPE-py$PYTHON_VERSION-cpu-base-extra$ARCH_SUFFIX"
 froms: ["cr.ray.io/rayproject/$IMAGE_TYPE-py$PYTHON_VERSION-cpu-base$ARCH_SUFFIX"]
 dockerfile: docker/base-extra/Dockerfile
+srcs:
+  - python/deplocks/base_extra/$REQUIREMENTS_FILE
 build_args:
   - BASE_IMAGE=cr.ray.io/rayproject/$IMAGE_TYPE-py$PYTHON_VERSION-cpu-base$ARCH_SUFFIX
+  - PYTHON_DEPSET=python/deplocks/base_extra/$REQUIREMENTS_FILE
 tags:
   - cr.ray.io/rayproject/$IMAGE_TYPE-py$PYTHON_VERSION-cpu-base-extra$ARCH_SUFFIX

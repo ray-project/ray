@@ -68,9 +68,9 @@ class DataHead(SubprocessModule):
         job_id = req.match_info["job_id"]
 
         try:
-            from ray.data._internal.stats import _get_or_create_stats_actor
+            from ray.data._internal.stats import get_or_create_stats_actor
 
-            _stats_actor = _get_or_create_stats_actor()
+            _stats_actor = get_or_create_stats_actor()
             datasets = await _stats_actor.get_datasets.remote(job_id)
             # Initializes dataset metric values
             for dataset in datasets:

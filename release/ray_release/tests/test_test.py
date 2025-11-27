@@ -1,38 +1,36 @@
 import asyncio
 import json
-import sys
 import os
 import platform
-from unittest import mock
+import sys
 from typing import List
-
+from unittest import mock
+from unittest.mock import AsyncMock, patch
 
 import aioboto3
 import boto3
 import pytest
-from unittest.mock import patch, AsyncMock
 
 from ray_release.bazel import bazel_runfile
 from ray_release.configs.global_config import (
-    init_global_config,
     get_global_config,
+    init_global_config,
 )
 from ray_release.test import (
+    DATAPLANE_ECR_ML_REPO,
+    DATAPLANE_ECR_REPO,
+    LINUX_TEST_PREFIX,
+    MACOS_BISECT_DAILY_RATE_LIMIT,
+    MACOS_TEST_PREFIX,
+    WINDOWS_TEST_PREFIX,
+    ResultStatus,
     Test,
     TestResult,
     TestState,
     TestType,
-    ResultStatus,
     _convert_env_list_to_dict,
-    DATAPLANE_ECR_REPO,
-    DATAPLANE_ECR_ML_REPO,
-    MACOS_TEST_PREFIX,
-    LINUX_TEST_PREFIX,
-    WINDOWS_TEST_PREFIX,
-    MACOS_BISECT_DAILY_RATE_LIMIT,
 )
 from ray_release.util import ANYSCALE_RAY_IMAGE_PREFIX, dict_hash
-
 
 init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 

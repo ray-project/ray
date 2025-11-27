@@ -1,7 +1,7 @@
-from ray_release.test import Test
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result
+from ray_release.test import Test
 from ray_release.util import format_link
 
 

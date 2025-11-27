@@ -11,11 +11,13 @@ from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, MAX_SAFE_ROWS_PER_BLOCK
 class OutputBlockSizeOption:
     target_max_block_size: Optional[int] = None
     target_num_rows_per_block: Optional[int] = None
+    disable_block_shaping: bool = False
 
     def __post_init__(self):
         if (
             self.target_max_block_size is None
             and self.target_num_rows_per_block is None
+            and not self.disable_block_shaping
         ):
             raise ValueError(
                 "Either `target_max_block_size` or `target_num_rows_per_block` "
@@ -27,13 +29,24 @@ class OutputBlockSizeOption:
         cls,
         target_max_block_size: Optional[int] = None,
         target_num_rows_per_block: Optional[int] = None,
+        disable_block_shaping: bool = False,
     ) -> Optional["OutputBlockSizeOption"]:
-        if target_max_block_size is None and target_num_rows_per_block is None:
+        if (
+            target_max_block_size is None
+            and target_num_rows_per_block is None
+            and not disable_block_shaping
+        ):
+            # In case
+            #   - Both target_max_block_size and target_num_rows_per_block are None and
+            #   - disable_block_shaping is False
+            #
+            # Buffer won't be yielding incrementally, instead producing just a single block.
             return None
         else:
             return OutputBlockSizeOption(
                 target_max_block_size=target_max_block_size,
                 target_num_rows_per_block=target_num_rows_per_block,
+                disable_block_shaping=disable_block_shaping,
             )
 
 
@@ -93,30 +106,40 @@ class BlockOutputBuffer:
         self._finalized = True
 
     def _exceeded_buffer_row_limit(self) -> bool:
+        if self._output_block_size_option.disable_block_shaping:
+            return False
+
         return (
             self._max_num_rows_per_block() is not None
             and self._buffer.num_rows() > self._max_num_rows_per_block()
         )
 
     def _exceeded_buffer_size_limit(self) -> bool:
+        if self._output_block_size_option.disable_block_shaping:
+            return False
+
         return (
             self._max_bytes_per_block() is not None
             and self._buffer.get_estimated_memory_usage() > self._max_bytes_per_block()
         )
 
     def _max_num_rows_per_block(self) -> Optional[int]:
-        return (
-            self._output_block_size_option.target_num_rows_per_block
-            if self._output_block_size_option is not None
-            else None
-        )
+        if self._output_block_size_option is None:
+            return None
+
+        if self._output_block_size_option.disable_block_shaping:
+            return None
+
+        return self._output_block_size_option.target_num_rows_per_block
 
     def _max_bytes_per_block(self) -> Optional[int]:
-        return (
-            self._output_block_size_option.target_max_block_size
-            if self._output_block_size_option is not None
-            else None
-        )
+        if self._output_block_size_option is None:
+            return None
+
+        if self._output_block_size_option.disable_block_shaping:
+            return None
+
+        return self._output_block_size_option.target_max_block_size
 
     def has_next(self) -> bool:
         """Returns true when a complete output block is produced."""
@@ -130,6 +153,9 @@ class BlockOutputBuffer:
             #       is required to align it with semantic of producing 1 block
             #       from 1 block of the input
             return False
+        elif self._output_block_size_option.disable_block_shaping:
+            # When block shaping is disabled, produce blocks immediately
+            return self._buffer.num_rows() > 0
 
         return self._exceeded_buffer_row_limit() or self._exceeded_buffer_size_limit()
 

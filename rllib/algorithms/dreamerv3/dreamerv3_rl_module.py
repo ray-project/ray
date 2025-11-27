@@ -5,20 +5,19 @@ This file holds framework-agnostic components for DreamerV3's RLModule.
 import abc
 from typing import Dict
 
+from ray.rllib.algorithms.dreamerv3.torch.models.actor_network import ActorNetwork
+from ray.rllib.algorithms.dreamerv3.torch.models.critic_network import CriticNetwork
+from ray.rllib.algorithms.dreamerv3.torch.models.dreamer_model import DreamerModel
+from ray.rllib.algorithms.dreamerv3.torch.models.world_model import WorldModel
 from ray.rllib.algorithms.dreamerv3.utils import (
     do_symlog_obs,
     get_gru_units,
     get_num_z_categoricals,
     get_num_z_classes,
 )
-from ray.rllib.algorithms.dreamerv3.torch.models.actor_network import ActorNetwork
-from ray.rllib.algorithms.dreamerv3.torch.models.critic_network import CriticNetwork
-from ray.rllib.algorithms.dreamerv3.torch.models.dreamer_model import DreamerModel
-from ray.rllib.algorithms.dreamerv3.torch.models.world_model import WorldModel
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.util.annotations import DeveloperAPI
-
 
 ACTIONS_ONE_HOT = "actions_one_hot"
 

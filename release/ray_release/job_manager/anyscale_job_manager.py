@@ -1,7 +1,6 @@
 import time
 from contextlib import contextmanager
-from typing import Any, Dict, Optional, Tuple, List
-
+from typing import Any, Dict, List, Optional, Tuple
 
 import anyscale
 from anyscale.sdk.anyscale_client.models import (
@@ -9,18 +8,19 @@ from anyscale.sdk.anyscale_client.models import (
     CreateProductionJobConfig,
     HaJobStates,
 )
+
 from ray_release.anyscale_util import get_cluster_name
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import (
     CommandTimeout,
-    JobStartupTimeout,
     JobStartupFailed,
+    JobStartupTimeout,
 )
 from ray_release.logger import logger
 from ray_release.signal_handling import register_handler, unregister_handler
 from ray_release.util import (
-    exponential_backoff_retry,
     anyscale_job_url,
+    exponential_backoff_retry,
     format_link,
 )
 

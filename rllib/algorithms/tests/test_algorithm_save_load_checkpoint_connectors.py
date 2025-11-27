@@ -1,7 +1,6 @@
 import tempfile
 import unittest
 
-
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPOConfig
@@ -9,7 +8,6 @@ from ray.rllib.connectors.env_to_module.mean_std_filter import MeanStdFilter
 from ray.rllib.core import COMPONENT_ENV_TO_MODULE_CONNECTOR
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.test_utils import check
-
 
 algorithms_and_configs = {
     "PPO": (PPOConfig().training(train_batch_size=2, minibatch_size=2))
@@ -228,6 +226,7 @@ class TestAlgorithmWithConnectorsSaveAndRestore(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

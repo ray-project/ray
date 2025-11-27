@@ -79,6 +79,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         dashboard_http_address = await self._get_dashboard_http_address()
         data = await self._cached_events.get()
         self.total_event_reported += len(data)
+        last_exception = None
         for _ in range(event_consts.EVENT_AGENT_RETRY_TIMES):
             try:
                 logger.debug("Report %s events.", len(data))
@@ -91,12 +92,14 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 break
             except Exception as e:
                 logger.warning(f"Report event failed, retrying... {e}")
+                last_exception = e
         else:
             data_str = str(data)
             limit = event_consts.LOG_ERROR_EVENT_STRING_LENGTH_LIMIT
             logger.error(
                 "Report event failed: %s",
                 data_str[:limit] + (data_str[limit:] and "..."),
+                exc_info=last_exception,
             )
 
     async def get_internal_states(self):

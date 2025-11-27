@@ -15,7 +15,7 @@ class BCConfig(MARWILConfig):
         # Run this from the ray directory root.
         config = BCConfig().training(lr=0.00001, gamma=0.99)
         config = config.offline_data(
-            input_="./rllib/tests/data/cartpole/large.json")
+            input_="./rllib/offline/tests/data/cartpole/large.json")
 
         # Build an Algorithm object from the config and run 1 training iteration.
         algo = config.build()
@@ -36,7 +36,7 @@ class BCConfig(MARWILConfig):
         # Set the config object's data path.
         # Run this from the ray directory root.
         config.offline_data(
-            input_="./rllib/tests/data/cartpole/large.json"
+            input_="./rllib/offline/tests/data/cartpole/large.json"
         )
         # Set the config object's env, used for evaluation.
         config.environment(env="CartPole-v1")

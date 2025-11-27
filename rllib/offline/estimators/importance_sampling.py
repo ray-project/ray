@@ -1,16 +1,15 @@
-from typing import Dict, List, Any
 import math
+from typing import Any, Dict, List
 
 from ray.data import Dataset
-
-from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.offline.offline_evaluator import OfflineEvaluator
-from ray.rllib.offline.offline_evaluation_utils import (
-    remove_time_dim,
-    compute_is_weights,
-)
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
+from ray.rllib.offline.offline_evaluation_utils import (
+    compute_is_weights,
+    remove_time_dim,
+)
+from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import DeveloperAPI, override
 
 
 @DeveloperAPI

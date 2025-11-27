@@ -20,7 +20,7 @@ if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
   echo "build --remote_upload_local_results=false" >> "$HOME/.bazelrc"
 fi
 
-bazelisk build --config=ci //java:ray_java_pkg
+bazelisk run --config=ci //java:gen_ray_java_pkg
 
 cp bazel-bin/java/ray_java_pkg.zip /home/forge/ray_java_pkg.zip
 

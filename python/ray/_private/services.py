@@ -1313,7 +1313,10 @@ def start_api_server(
         ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
         dashboard_url = None
         dashboard_returncode = None
-        for _ in range(200):
+        start_time_s = time.time()
+        while (
+            time.time() - start_time_s < ray_constants.RAY_DASHBOARD_STARTUP_TIMEOUT_S
+        ):
             dashboard_url = ray.experimental.internal_kv._internal_kv_get(
                 ray_constants.DASHBOARD_ADDRESS,
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
@@ -1324,6 +1327,7 @@ def start_api_server(
             dashboard_returncode = process_info.process.poll()
             if dashboard_returncode is not None:
                 break
+
             # This is often on the critical path of ray.init() and ray start,
             # so we need to poll often.
             time.sleep(0.1)

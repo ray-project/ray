@@ -1,7 +1,10 @@
+from abc import ABC, abstractmethod
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
 
 from .operator import Operator
 from ray.data.block import BlockMetadata
+from ray.data.expressions import Expr
 
 if TYPE_CHECKING:
     from ray.data.block import Schema
@@ -95,12 +98,74 @@ class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
     def supports_projection_pushdown(self) -> bool:
         return False
 
-    def get_current_projection(self) -> Optional[List[str]]:
+    def get_projection_map(self) -> Optional[Dict[str, str]]:
         return None
 
     def apply_projection(
         self,
-        columns: Optional[List[str]],
-        column_rename_map: Optional[Dict[str, str]],
+        projection_map: Optional[Dict[str, str]],
     ) -> LogicalOperator:
         return self
+
+
+class LogicalOperatorSupportsPredicatePushdown(LogicalOperator):
+    """Mixin for reading operators supporting predicate pushdown"""
+
+    def supports_predicate_pushdown(self) -> bool:
+        return False
+
+    def get_current_predicate(self) -> Optional[Expr]:
+        return None
+
+    def apply_predicate(
+        self,
+        predicate_expr: Expr,
+    ) -> LogicalOperator:
+        return self
+
+    def get_column_renames(self) -> Optional[Dict[str, str]]:
+        """Return the column renames applied by projection pushdown, if any.
+
+        Returns:
+            A dictionary mapping old column names to new column names,
+            or None if no renaming has been applied.
+        """
+        return None
+
+
+class PredicatePassThroughBehavior(Enum):
+    """Defines how predicates can be passed through through an operator."""
+
+    # Predicate can be pushed through as-is (e.g., Sort, Repartition, RandomShuffle, Limit)
+    PASSTHROUGH = "passthrough"
+
+    # Predicate can be pushed through but needs column rebinding (e.g., Project)
+    PASSTHROUGH_WITH_SUBSTITUTION = "passthrough_with_substitution"
+
+    # Predicate can be pushed into each branch (e.g., Union)
+    PUSH_INTO_BRANCHES = "push_into_branches"
+
+    # Predicate can be conditionally pushed based on columns (e.g., Join)
+    CONDITIONAL = "conditional"
+
+
+class LogicalOperatorSupportsPredicatePassThrough(ABC):
+    """Mixin for operators that allow predicates to be pushed through them.
+
+    This is distinct from LogicalOperatorSupportsPredicatePushdown, which is for
+    operators that can *accept* predicates (like Read). This trait is for operators
+    that allow predicates to *pass through* them.
+    """
+
+    @abstractmethod
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        """Returns the predicate passthrough behavior for this operator."""
+        pass
+
+    def get_column_substitutions(self) -> Optional[Dict[str, str]]:
+        """Returns column renames needed when pushing through (for PASSTHROUGH_WITH_SUBSTITUTION).
+
+        Returns:
+            Dict mapping from old_name -> new_name, or None if no rebinding needed
+        """
+        return None

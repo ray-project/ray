@@ -24,7 +24,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server.h"
-#include "ray/gcs_rpc_client/accessor.h"
+#include "ray/gcs_rpc_client/accessors/actor_info_accessor.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/util/network_util.h"
@@ -105,7 +105,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         /*storage_operation_latency_in_ms_histogram=*/
         storage_operation_latency_in_ms_histogram_,
         /*storage_operation_count_counter=*/storage_operation_count_counter_,
-        scheduler_placement_time_s_histogram_,
+        scheduler_placement_time_ms_histogram_,
     };
 
     gcs_server_ = std::make_unique<gcs::GcsServer>(
@@ -193,7 +193,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         /*storage_operation_latency_in_ms_histogram=*/
         storage_operation_latency_in_ms_histogram_,
         /*storage_operation_count_counter=*/storage_operation_count_counter_,
-        scheduler_placement_time_s_histogram_,
+        scheduler_placement_time_ms_histogram_,
     };
 
     gcs_server_.reset(
@@ -235,8 +235,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   bool SubscribeToAllJobs(
       const gcs::SubscribeCallback<JobID, rpc::JobTableData> &subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Jobs().AsyncSubscribeAll(
-        subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Jobs().AsyncSubscribeAll(
+        subscribe, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -271,15 +271,14 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       const ActorID &actor_id,
       const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
-        actor_id, subscribe, [&promise](Status status) {
-          promise.set_value(status.ok());
-        }));
+    gcs_client_->Actors().AsyncSubscribe(actor_id, subscribe, [&promise](Status status) {
+      promise.set_value(status.ok());
+    });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   void UnsubscribeActor(const ActorID &actor_id) {
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(actor_id));
+    gcs_client_->Actors().AsyncUnsubscribe(actor_id);
   }
 
   void WaitForActorUnsubscribed(const ActorID &actor_id) {
@@ -369,10 +368,10 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return actors;
   }
 
-  bool SubscribeToNodeChange(
-      std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe) {
+  bool SubscribeToNodeAddressAndLivenessChange(
+      std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe) {
     std::promise<bool> promise;
-    gcs_client_->Nodes().AsyncSubscribeToNodeChange(
+    gcs_client_->Nodes().AsyncSubscribeToNodeAddressAndLivenessChange(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
@@ -404,7 +403,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
           nodes = std::move(result);
           promise.set_value(status.ok());
         },
-        gcs::GetGcsTimeoutMs());
+        rpc::GetGcsTimeoutMs());
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return nodes;
   }
@@ -426,8 +425,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   bool SubscribeToWorkerFailures(
       const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
-        subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
+    gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
+        subscribe, [&promise](Status status) { promise.set_value(status.ok()); });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -485,7 +484,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   observability::FakeHistogram storage_operation_latency_in_ms_histogram_;
   observability::FakeCounter storage_operation_count_counter_;
   observability::FakeCounter fake_dropped_events_counter_;
-  observability::FakeHistogram scheduler_placement_time_s_histogram_;
+  observability::FakeHistogram scheduler_placement_time_ms_histogram_;
 };
 
 INSTANTIATE_TEST_SUITE_P(RedisMigration, GcsClientTest, testing::Bool());
@@ -609,15 +608,16 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   // Subscribe to node addition and removal events from GCS.
   std::atomic<int> register_count(0);
   std::atomic<int> unregister_count(0);
-  auto on_subscribe = [&register_count, &unregister_count](const NodeID &node_id,
-                                                           const rpc::GcsNodeInfo &data) {
+  auto on_subscribe = [&register_count, &unregister_count](
+                          const NodeID &node_id,
+                          const rpc::GcsNodeAddressAndLiveness &data) {
     if (data.state() == rpc::GcsNodeInfo::ALIVE) {
       ++register_count;
     } else if (data.state() == rpc::GcsNodeInfo::DEAD) {
       ++unregister_count;
     }
   };
-  ASSERT_TRUE(SubscribeToNodeChange(on_subscribe));
+  ASSERT_TRUE(SubscribeToNodeAddressAndLivenessChange(on_subscribe));
 
   // Register local node to GCS.
   RegisterSelf(*gcs_node1_info);
@@ -632,9 +632,9 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   // Get information of all nodes from GCS.
   std::vector<rpc::GcsNodeInfo> node_list = GetNodeInfoList();
   EXPECT_EQ(node_list.size(), 2);
-  ASSERT_TRUE(gcs_client_->Nodes().Get(node1_id));
-  ASSERT_TRUE(gcs_client_->Nodes().Get(node2_id));
-  EXPECT_EQ(gcs_client_->Nodes().GetAll().size(), 2);
+  ASSERT_TRUE(gcs_client_->Nodes().GetNodeAddressAndLiveness(node1_id).has_value());
+  ASSERT_TRUE(gcs_client_->Nodes().GetNodeAddressAndLiveness(node2_id).has_value());
+  EXPECT_EQ(gcs_client_->Nodes().GetAllNodeAddressAndLiveness().size(), 2);
 }
 
 TEST_P(GcsClientTest, TestUnregisterNode) {
@@ -802,11 +802,12 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   // Test that subscription of the node table can still work when GCS server restarts.
   // Subscribe to node addition and removal events from GCS and cache those information.
   std::atomic<int> node_change_count(0);
-  auto node_subscribe = [&node_change_count](const NodeID &id,
-                                             const rpc::GcsNodeInfo &result) {
+  auto node_subscribe = [&node_change_count](
+                            const NodeID &id,
+                            const rpc::GcsNodeAddressAndLiveness &result) {
     ++node_change_count;
   };
-  ASSERT_TRUE(SubscribeToNodeChange(node_subscribe));
+  ASSERT_TRUE(SubscribeToNodeAddressAndLivenessChange(node_subscribe));
 
   auto node_info = GenNodeInfo(1);
   ASSERT_TRUE(RegisterNode(*node_info));

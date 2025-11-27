@@ -1686,7 +1686,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
     def find_free_port(self) -> int:
         """Finds a free port on the node that this worker runs on."""
-        from ray.air._internal.util import find_free_port
+        from ray._common.network_utils import find_free_port
 
         return find_free_port(socket.AF_INET)
 

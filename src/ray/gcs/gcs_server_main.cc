@@ -188,8 +188,8 @@ int main(int argc, char *argv[]) {
       ray::gcs::GetGcsStorageOperationLatencyInMsHistogramMetric();
   auto storage_operation_count_counter =
       ray::gcs::GetGcsStorageOperationCountCounterMetric();
-  auto scheduler_placement_time_s_histogram =
-      ray::GetSchedulerPlacementTimeSHistogramMetric();
+  auto scheduler_placement_time_ms_histogram =
+      ray::GetSchedulerPlacementTimeMsHistogramMetric();
 
   // Create the metrics struct
   ray::gcs::GcsServerMetrics gcs_server_metrics{
@@ -211,7 +211,7 @@ int main(int argc, char *argv[]) {
       /*storage_operation_latency_in_ms_histogram=*/
       storage_operation_latency_in_ms_histogram,
       /*storage_operation_count_counter=*/storage_operation_count_counter,
-      scheduler_placement_time_s_histogram,
+      scheduler_placement_time_ms_histogram,
   };
 
   ray::gcs::GcsServer gcs_server(gcs_server_config, gcs_server_metrics, main_service);

@@ -25,6 +25,8 @@ ENV LD_LIBRARY_PATH "$LD_LIBRARY_PATH:/usr/local/nvidia/lib64"
 ARG DEBIAN_FRONTEND=noninteractive
 ARG PYTHON_VERSION=3.9
 
+ARG PYTHON_DEPSET
+
 ARG RAY_UID=1000
 ARG RAY_GID=100
 
@@ -65,8 +67,10 @@ EOF
 
 USER $RAY_UID
 ENV HOME=/home/ray
+WORKDIR /home/ray
 
 COPY python/requirements_compiled.txt /home/ray/requirements_compiled.txt
+COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 SHELL ["/bin/bash", "-c"]
 
@@ -99,29 +103,8 @@ $HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION
 $HOME/anaconda3/bin/conda install -y -c conda-forge libffi=3.4.2
 $HOME/anaconda3/bin/conda clean -y --all
 
-PIP_PKGS=(
-    # Required a recent version of setuptools to be compatible with python 3.12+.
-    setuptools==80.9.0
-
-    flatbuffers
-    cython
-    numpy  # Necessary for Dataset to work properly.
-    psutil
-
-    # For the ease to submit jobs on various cloud providers.
-    "smart_open[s3,gcs,azure,http]"
-
-    six
-    boto3
-    pyopenssl
-    cryptography
-    google-api-python-client
-    google-oauth
-    "adlfs[abfs]"
-)
-
 # Install uv
-wget -qO- https://astral.sh/uv/install.sh | sudo env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+wget -qO- https://astral.sh/uv/install.sh | sudo -E env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 # Set up Conda as system Python
 export PATH=$HOME/anaconda3/bin:$PATH
@@ -129,9 +112,8 @@ export PATH=$HOME/anaconda3/bin:$PATH
 # Some packages are on PyPI as well as other indices, but the latter
 # (unhelpfully) take precedence. We use `--index-strategy unsafe-best-match`
 # to ensure that the best match is chosen from the available indices.
-uv pip install --system --no-cache-dir --index-strategy unsafe-best-match \
-    -c $HOME/requirements_compiled.txt \
-    "${PIP_PKGS[@]}"
+uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
+    -r $HOME/python_depset.lock
 
 # We install cmake temporarily to get psutil
 sudo apt-get autoremove -y cmake zlib1g-dev

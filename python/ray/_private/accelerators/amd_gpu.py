@@ -53,7 +53,7 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
                 env_var = CUDA_VISIBLE_DEVICES_ENV_VAR
             elif hip_val != cuda_val:
                 raise ValueError(
-                    f"Inconsistant values found. Please use either {HIP_VISIBLE_DEVICES_ENV_VAR} or {CUDA_VISIBLE_DEVICES_ENV_VAR}."
+                    f"Inconsistent values found. Please use either {HIP_VISIBLE_DEVICES_ENV_VAR} or {CUDA_VISIBLE_DEVICES_ENV_VAR}."
                 )
 
         return env_var

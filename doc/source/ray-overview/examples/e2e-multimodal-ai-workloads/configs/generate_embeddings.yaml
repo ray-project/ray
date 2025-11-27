@@ -6,7 +6,7 @@ name: image-batch-embeddings
 # like anyscale/ray:2.43.0-slim-py312-cu125, a user-provided base image (provided
 # that it meets certain specs), or you can build new images using the Anyscale
 # image builder at https://console.anyscale-staging.com/v2/container-images.
-image_uri:  anyscale/ray:2.48.0-slim-py312-cu128
+image_uri:  anyscale/ray:2.51.0-slim-py312-cu128
 # containerfile: /home/ray/default/containerfile
 
 # When empty, Anyscale will auto-select the instance types. You can also specify

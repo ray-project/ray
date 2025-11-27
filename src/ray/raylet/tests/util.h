@@ -107,7 +107,7 @@ class MockWorker : public WorkerInterface {
   void Connect(int port) override { RAY_CHECK(false) << "Method unused"; }
 
   void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) override {
-    RAY_CHECK(false) << "Method unused";
+    rpc_client_ = rpc_client;
   }
 
   int AssignedPort() const override {
@@ -163,10 +163,7 @@ class MockWorker : public WorkerInterface {
     return false;
   }
 
-  rpc::CoreWorkerClientInterface *rpc_client() override {
-    RAY_CHECK(false) << "Method unused";
-    return nullptr;
-  }
+  rpc::CoreWorkerClientInterface *rpc_client() override { return rpc_client_.get(); }
 
   bool IsAvailableForScheduling() const override {
     RAY_CHECK(false) << "Method unused";
@@ -203,6 +200,7 @@ class MockWorker : public WorkerInterface {
   ActorID root_detached_actor_id_;
   Process proc_;
   std::atomic<bool> killing_ = false;
+  std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_;
 };
 
 }  // namespace raylet

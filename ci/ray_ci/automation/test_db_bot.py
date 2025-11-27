@@ -1,10 +1,11 @@
 import os
 
 import click
-from ray_release.configs.global_config import get_global_config
 
 from ci.ray_ci.tester_container import TesterContainer
 from ci.ray_ci.utils import ci_init, logger
+
+from ray_release.configs.global_config import get_global_config
 
 
 @click.command()

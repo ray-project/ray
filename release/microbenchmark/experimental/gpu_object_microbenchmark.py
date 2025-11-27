@@ -1,17 +1,18 @@
 import argparse
+import json
 import os
-from typing import Tuple, Optional
+from dataclasses import dataclass
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
+
 import ray
-import json
 from ray._private.ray_microbenchmark_helpers import timeit
-from ray.experimental.collective import create_collective_group
 from ray._private.test_utils import (
     kill_actor_and_wait_for_failure,
 )
-from dataclasses import dataclass
+from ray.experimental.collective import create_collective_group
 
 DTYPE = torch.float16
 SHAPE = [(1,), (1_000,), (1_000_000,), (100_000_000,)]

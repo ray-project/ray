@@ -843,11 +843,12 @@ def _setup_ray_cluster_internal(
     if not (
         spark_master.startswith("spark://")
         or spark_master.startswith("local-cluster[")
+        or spark_master == "yarn"
         or is_spark_local_mode
     ):
         raise RuntimeError(
             "Ray on Spark only supports spark cluster in standalone mode, "
-            "local-cluster mode or spark local mode."
+            "local-cluster mode, spark on yarn mode or spark local mode."
         )
 
     if is_spark_local_mode:

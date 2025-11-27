@@ -1,6 +1,6 @@
-import numpy as np
-
 from typing import Dict
+
+import numpy as np
 
 from ray.rllib.algorithms.dqn.dqn_learner import DQNLearner
 from ray.rllib.core.learner.learner import Learner

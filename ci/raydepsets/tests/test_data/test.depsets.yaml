@@ -60,3 +60,4 @@ depsets:
     constraints:
       - requirement_constraints_expand.txt
     output: requirements_compiled_nested_expand.txt
+    include_setuptools: true

@@ -1,7 +1,8 @@
-from collections import defaultdict
 import contextlib
 import logging
+from collections import defaultdict
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -9,7 +10,6 @@ from typing import (
     Optional,
     Sequence,
     Tuple,
-    TYPE_CHECKING,
 )
 
 from ray.rllib.algorithms.algorithm_config import (
@@ -17,7 +17,7 @@ from ray.rllib.algorithms.algorithm_config import (
     TorchCompileWhatToCompile,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.learner.learner import Learner, LR_KEY
+from ray.rllib.core.learner.learner import LR_KEY, Learner
 from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModule,
     MultiRLModuleSpec,
@@ -33,16 +33,16 @@ from ray.rllib.core.rl_module.torch.torch_rl_module import (
 )
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
 from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
-    NUM_TRAINABLE_PARAMETERS,
     NUM_NON_TRAINABLE_PARAMETERS,
+    NUM_TRAINABLE_PARAMETERS,
     WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.numpy import convert_to_numpy

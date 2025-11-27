@@ -1,15 +1,17 @@
 import os
 import sys
-from typing import Optional, Tuple
 from pathlib import Path
+from typing import Optional, Tuple
 
 import click
+
+from ray_release.anyscale_util import LAST_LOGS_LENGTH
 from ray_release.aws import maybe_fetch_api_token
 from ray_release.config import (
+    RELEASE_TEST_CONFIG_FILES,
     as_smoke_test,
     find_test,
     read_and_validate_release_test_collection,
-    RELEASE_TEST_CONFIG_FILES,
 )
 from ray_release.configs.global_config import init_global_config
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment, populate_os_env
@@ -18,10 +20,9 @@ from ray_release.glue import run_release_test
 from ray_release.logger import logger
 from ray_release.reporter.artifacts import ArtifactsReporter
 from ray_release.reporter.db import DBReporter
-from ray_release.reporter.ray_test_db import RayTestDBReporter
 from ray_release.reporter.log import LogReporter
+from ray_release.reporter.ray_test_db import RayTestDBReporter
 from ray_release.result import Result
-from ray_release.anyscale_util import LAST_LOGS_LENGTH
 
 
 @click.command()

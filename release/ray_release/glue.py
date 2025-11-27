@@ -1,67 +1,62 @@
-import os
 import hashlib
-import time
-import traceback
+import os
 import random
 import string
-from typing import Optional, List, Tuple
+import time
+import traceback
+from typing import List, Optional, Tuple
 
 from google.cloud import storage as gcs_storage
 
 from ray_release.alerts.handle import handle_result, require_result
 from ray_release.anyscale_util import (
+    LAST_LOGS_LENGTH,
     create_cluster_env_from_image,
     get_cluster_name,
     get_custom_cluster_env_name,
-    LAST_LOGS_LENGTH,
 )
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
 from ray_release.cloud_util import archive_directory
 from ray_release.cluster_manager.cluster_manager import ClusterManager
-from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.cluster_manager.minimal import MinimalClusterManager
-from ray_release.command_runner.job_runner import JobRunner
-from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
-from ray_release.job_manager.kuberay_job_manager import KubeRayJobManager
-from ray_release.test import Test
+from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.config import (
+    DEFAULT_AUTOSUSPEND_MINS,
     DEFAULT_BUILD_TIMEOUT,
     DEFAULT_CLUSTER_TIMEOUT,
     DEFAULT_COMMAND_TIMEOUT,
     DEFAULT_WAIT_FOR_NODES_TIMEOUT,
-    DEFAULT_AUTOSUSPEND_MINS,
 )
-from ray_release.template import load_test_cluster_compute, get_working_dir
 from ray_release.exception import (
+    ClusterEnvCreateError,
+    CommandError,
+    CommandTimeout,
+    PrepareCommandError,
+    PrepareCommandTimeout,
     ReleaseTestConfigError,
     ReleaseTestSetupError,
-    CommandError,
-    PrepareCommandError,
-    CommandTimeout,
-    PrepareCommandTimeout,
     TestCommandError,
     TestCommandTimeout,
-    ClusterEnvCreateError,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
+from ray_release.job_manager.kuberay_job_manager import KubeRayJobManager
+from ray_release.kuberay_util import convert_cluster_compute_to_kuberay_compute_config
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result, ResultStatus, handle_exception
 from ray_release.signal_handling import (
-    setup_signal_handling,
     reset_signal_handling,
-    register_handler,
+    setup_signal_handling,
 )
-from ray_release.kuberay_util import convert_cluster_compute_to_kuberay_compute_config
+from ray_release.template import get_working_dir, load_test_cluster_compute
+from ray_release.test import Test
 
 type_str_to_command_runner = {
-    "job": JobRunner,
     "anyscale_job": AnyscaleJobRunner,
 }
 
 command_runner_to_cluster_manager = {
-    JobRunner: FullClusterManager,
     AnyscaleJobRunner: MinimalClusterManager,
 }
 
@@ -238,12 +233,6 @@ def _local_environment_information(
     cluster_id: Optional[str],
     cluster_env_id: Optional[str],
 ) -> None:
-    if isinstance(cluster_manager, FullClusterManager):
-        if not no_terminate:
-            register_handler(
-                lambda sig, frame: cluster_manager.terminate_cluster(wait=True)
-            )
-
     # Start cluster
     if cluster_id:
         buildkite_group(":rocket: Using existing cluster")
@@ -258,10 +247,7 @@ def _local_environment_information(
 
         cluster_manager.build_configs(timeout=build_timeout)
 
-        if isinstance(cluster_manager, FullClusterManager):
-            buildkite_group(":rocket: Starting up cluster")
-            cluster_manager.start_cluster(timeout=cluster_timeout)
-        elif isinstance(command_runner, AnyscaleJobRunner):
+        if isinstance(command_runner, AnyscaleJobRunner):
             command_runner.job_manager.cluster_startup_timeout = cluster_timeout
 
     result.cluster_url = cluster_manager.get_cluster_url()

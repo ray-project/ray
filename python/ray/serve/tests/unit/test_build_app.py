@@ -480,5 +480,46 @@ def test_default_runtime_env():
     )
 
 
+def test_external_scaler_enabled():
+    """Test that external_scaler_enabled is correctly set in BuiltApplication.
+
+    This test verifies that when build_app is called with external_scaler_enabled=True
+    or external_scaler_enabled=False, the resulting BuiltApplication object correctly
+    stores the external_scaler_enabled value.
+    """
+
+    @serve.deployment
+    class D:
+        pass
+
+    app = D.bind()
+
+    # Test with external_scaler_enabled=True
+    built_app_with_scaler: BuiltApplication = build_app(
+        app,
+        name="app-with-scaler",
+        external_scaler_enabled=True,
+    )
+    assert built_app_with_scaler.external_scaler_enabled is True
+    assert built_app_with_scaler.name == "app-with-scaler"
+
+    # Test with external_scaler_enabled=False (explicit)
+    built_app_without_scaler: BuiltApplication = build_app(
+        app,
+        name="app-without-scaler",
+        external_scaler_enabled=False,
+    )
+    assert built_app_without_scaler.external_scaler_enabled is False
+    assert built_app_without_scaler.name == "app-without-scaler"
+
+    # Test with default value (should be False)
+    built_app_default: BuiltApplication = build_app(
+        app,
+        name="app-default",
+    )
+    assert built_app_default.external_scaler_enabled is False
+    assert built_app_default.name == "app-default"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

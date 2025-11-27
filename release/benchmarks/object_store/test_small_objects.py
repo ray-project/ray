@@ -1,8 +1,10 @@
-import ray
-import numpy as np
-import time
-import os
 import json
+import os
+import time
+
+import numpy as np
+
+import ray
 
 
 def test_small_objects_many_to_one():

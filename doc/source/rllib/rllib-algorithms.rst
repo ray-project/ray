@@ -173,9 +173,9 @@ Asynchronous Proximal Policy Optimization (APPO)
 
 .. tip::
 
-    APPO was originally `published under the name "IMPACT" <https://arxiv.org/abs/1707.06347>`__. RLlib's APPO exactly matches the algorithm described in the paper.
+    APPO was originally `published under the name "IMPACT" <https://arxiv.org/abs/1912.00167>`__. RLlib's APPO exactly matches the algorithm described in the paper.
 
-`[paper] <https://arxiv.org/abs/1707.06347>`__
+`[paper] <https://arxiv.org/abs/1912.00167>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/appo/appo.py>`__
 
 .. figure:: images/algos/appo-architecture.svg

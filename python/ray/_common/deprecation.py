@@ -19,6 +19,7 @@ def deprecation_warning(
     *,
     help: Optional[str] = None,
     error: Optional[Union[bool, Exception]] = None,
+    stacklevel: int = 2,
 ) -> None:
     """Warns (via the `logger` object) or throws a deprecation warning/error.
 
@@ -30,6 +31,9 @@ def deprecation_warning(
         error: Whether or which exception to raise. If True, raise ValueError.
             If False, just warn. If `error` is-a subclass of Exception,
             raise that Exception.
+        stacklevel: The stacklevel to use for the warning message.
+            Use 2 to point to where this function is called, 3+ to point
+            further up the stack.
 
     Raises:
         ValueError: If `error=True`.
@@ -48,7 +52,8 @@ def deprecation_warning(
             raise ValueError(msg)
     else:
         logger.warning(
-            "DeprecationWarning: " + msg + " This will raise an error in the future!"
+            "DeprecationWarning: " + msg + " This will raise an error in the future!",
+            stacklevel=stacklevel,
         )
 
 
@@ -105,6 +110,7 @@ def Deprecated(old=None, *, new=None, help=None, error):
                         new=new,
                         help=help,
                         error=error,
+                        stacklevel=3,
                     )
                 return obj_init(*args, **kwargs)
 
@@ -123,6 +129,7 @@ def Deprecated(old=None, *, new=None, help=None, error):
                     new=new,
                     help=help,
                     error=error,
+                    stacklevel=3,
                 )
             # Call the deprecated method/function.
             return obj(*args, **kwargs)
