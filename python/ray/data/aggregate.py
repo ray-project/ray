@@ -943,15 +943,24 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
 
     def aggregate_block(self, block: Block) -> List[Any]:
         col = BlockAccessor.for_block(block).to_arrow().column(self._target_col_name)
-        if pa.types.is_list(col.type) and self._encode_lists:
-            col = pc.list_flatten(col)
+        if pa.types.is_list(col.type):
+            if self._encode_lists:
+                col = pc.list_flatten(col)
+            else:
+                # pyarrow doesn't natively support calculating unique over
+                # list-like objects (ie: lists, tuples). Using pandas seem to be
+                # much more efficient than doing something like json dump/load or
+                # pickle dump/load.
+                series = BlockAccessor.for_block(block).to_pandas()[
+                    self._target_col_name
+                ]
+                series = series.map(lambda x: None if x is None else tuple(x))
+                if self._ignore_nulls:
+                    series = series.dropna()
+                return list(series.unique())
         if self._ignore_nulls:
             col = pc.drop_null(col)
-        pickled = [pickle.dumps(v.as_py()).hex() for v in col]
-        return pc.unique(pa.array(pickled)).to_pylist()
-
-    def finalize(self, accumulator: Set[Any]) -> List[Any]:
-        return [pickle.loads(bytes.fromhex(v)) for v in accumulator]
+        return pc.unique(col).to_pylist()
 
     @staticmethod
     def _to_set(x):
