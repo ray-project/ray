@@ -3327,6 +3327,7 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
+    @AllToAllAPI
     @PublicAPI(api_group=SMJ_API_GROUP)
     def zip(self, *other: List["Dataset"]) -> "Dataset":
         """Zip the columns of this dataset with the columns of another.
