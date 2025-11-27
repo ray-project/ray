@@ -379,10 +379,8 @@ class TurbopufferDatasink(Datasink):
         ns = client.namespace(namespace_name)
 
         # Split into batches
-        num_rows = len(table)
-        for batch_start in range(0, num_rows, self.batch_size):
-            batch_end = min(batch_start + self.batch_size, num_rows)
-            batch_table = table.slice(batch_start, batch_end - batch_start)
+        for batch in table.to_batches(max_chunksize=self.batch_size):
+            batch_table = pa.Table.from_batches([batch])
 
             # Transform to Turbopuffer format
             batch_data = self._transform_to_turbopuffer_format(batch_table)
