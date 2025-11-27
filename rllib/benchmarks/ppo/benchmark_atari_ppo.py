@@ -96,7 +96,7 @@ if __name__ == "__main__":
     # Compile the base command running the actual `tuned_example` script.
     base_commands = [
         "python",
-        "../../tuned_examples/ppo/atari_ppo.py",
+        "../../examples/algorithms/ppo/atari_ppo.py",
         f"--num-env-runners={args.num_env_runners}" if args.num_env_runners else "",
         f"--num-learners={args.num_learners}",
         f"--num-gpus-per-learner={args.num_gpus_per_learner}",

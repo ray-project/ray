@@ -2,7 +2,11 @@ import os
 import unittest
 from unittest.mock import patch
 
-from ci.ray_ci.configs import DEFAULT_PYTHON_VERSION, PYTHON_VERSIONS
+from ci.ray_ci.configs import (
+    DEFAULT_PYTHON_TAG_VERSION,
+    DEFAULT_PYTHON_VERSION,
+    PYTHON_VERSIONS,
+)
 from ci.ray_ci.utils import ci_init
 
 
@@ -27,8 +31,11 @@ class RayCITestBase(unittest.TestCase):
 
     def get_non_default_python(self) -> str:
         for version in PYTHON_VERSIONS.keys():
-            if version != DEFAULT_PYTHON_VERSION:
+            if version not in [DEFAULT_PYTHON_VERSION, DEFAULT_PYTHON_TAG_VERSION]:
                 return version
+        raise ValueError(
+            f"No non-default python version found in {PYTHON_VERSIONS.keys()}"
+        )
 
     def get_python_version(self, version: str) -> str:
         return f"py{version.replace('.', '')}"  # 3.x -> py3x

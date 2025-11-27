@@ -28,9 +28,15 @@ RayClientBidiReactor::RayClientBidiReactor(
     instrumented_io_context &io_context,
     std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
     std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
-    std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub)
+    std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub,
+    size_t max_batch_size,
+    uint64_t max_batch_delay_ms)
     : RaySyncerBidiReactorBase<ClientBidiReactor>(
-          io_context, remote_node_id, std::move(message_processor)),
+          io_context,
+          remote_node_id,
+          std::move(message_processor),
+          /* max_batch_size */ max_batch_size,
+          /* max_batch_delay_ms */ max_batch_delay_ms),
       cleanup_cb_(std::move(cleanup_cb)),
       stub_(std::move(stub)) {
   client_context_.AddMetadata("node_id", NodeID::FromBinary(local_node_id).Hex());
@@ -51,7 +57,7 @@ void RayClientBidiReactor::OnDone(const grpc::Status &status) {
   io_context_.dispatch(
       [this, status]() {
         cleanup_cb_(this, !status.ok());
-        delete this;
+        self_ref_.reset();
       },
       "");
 }

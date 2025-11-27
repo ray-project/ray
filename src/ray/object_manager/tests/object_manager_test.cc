@@ -128,10 +128,10 @@ TEST_F(ObjectManagerTest, TestFreeObjectsLocalOnlyFalse) {
   node_info_map_[remote_node_id_] = remote_node_info;
 
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, GetAllNodeAddressAndLiveness())
-      .WillOnce(::testing::ReturnRef(node_info_map_));
+      .WillOnce(::testing::Return(node_info_map_));
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
               GetNodeAddressAndLiveness(remote_node_id_, _))
-      .WillOnce(::testing::Return(&remote_node_info));
+      .WillOnce(::testing::Return(remote_node_info));
 
   fake_plasma_client_->objects_in_plasma_[object_id] =
       std::make_pair(std::vector<uint8_t>(1), std::vector<uint8_t>(1));

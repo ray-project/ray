@@ -11,7 +11,7 @@ import runfiles
 from dateutil import parser
 
 import docker
-from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
+from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_TAG_VERSION
 from ci.ray_ci.docker_container import (
     ARCHITECTURES_RAY,
     ARCHITECTURES_RAY_ML,
@@ -82,7 +82,7 @@ def list_image_tag_suffixes(
     platform_tags = [_get_platform_tag(platform)]
     architecture_tags = [_get_architecture_tag(architecture)]
 
-    if python_version == DEFAULT_PYTHON_VERSION:
+    if python_version == DEFAULT_PYTHON_TAG_VERSION:
         python_version_tags.append("")
     if platform == "cpu" and ray_type == RayType.RAY:
         platform_tags.append("")  # no tag is alias to cpu for ray image

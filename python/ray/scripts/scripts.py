@@ -1,4 +1,3 @@
-import copy
 import json
 import logging
 import os
@@ -2633,8 +2632,8 @@ def install_nightly(verbose, dryrun):
 def cpp(show_library_path, generate_bazel_project_template_to):
     """Show the cpp library path and generate the bazel project template."""
     if sys.platform == "win32":
-        cli_logger.error("Ray C++ API is not supported on Windows currently.")
-        sys.exit(1)
+        raise click.ClickException("Ray C++ API is not supported on Windows currently.")
+
     if not show_library_path and not generate_bazel_project_template_to:
         raise ValueError(
             "Please input at least one option of '--show-library-path'"
@@ -2719,7 +2718,7 @@ def shutdown_prometheus():
     help="Generate a new token if none exists",
 )
 def get_auth_token(generate):
-    """Prints the Ray authentication token to stdout when RAY_AUTH_MODE=token.
+    """Prints the Ray authentication token to stdout.
 
     If --generate is specified, a new token is created and saved to ~/.ray/auth_token if one does not exist.
     """
@@ -2727,53 +2726,29 @@ def get_auth_token(generate):
         generate_and_save_token,
     )
     from ray._raylet import (
-        AuthenticationMode,
         AuthenticationTokenLoader,
-        get_authentication_mode,
     )
-
-    # Check if token auth mode is enabled and provide guidance if not
-    if get_authentication_mode() != AuthenticationMode.TOKEN:
-        click.echo(
-            "Note: Token authentication is not currently enabled.",
-            err=True,
-        )
-        click.echo(
-            "To enable token authentication, set: export RAY_AUTH_MODE=token",
-            err=True,
-        )
-        click.echo("", err=True)
 
     # Try to load existing token
     loader = AuthenticationTokenLoader.instance()
 
-    if not loader.has_token():
+    if not loader.has_token(ignore_auth_mode=True):
         if generate:
             click.echo("Generating new authentication token...", err=True)
             generate_and_save_token()
             loader.reset_cache()
         else:
-            click.echo(
-                "Error: No authentication token found. Use --generate to create one.",
-                err=True,
+            raise click.ClickException(
+                "No authentication token found. Use ray `get-auth-token --generate` to create one.",
             )
-            sys.exit(1)
 
-    # Get raw token value
-    token = loader.get_raw_token()
-
-    if not token:
-        click.echo("Error: Failed to load authentication token.", err=True)
-        sys.exit(1)
+    # Get raw token value (ignore auth mode - explicitly loading token)
+    token = loader.get_raw_token(ignore_auth_mode=True)
 
     # Print token to stdout (for piping) without newline
     click.echo(token, nl=False)
-
-
-def add_command_alias(command, name, hidden):
-    new_command = copy.deepcopy(command)
-    new_command.hidden = hidden
-    cli.add_command(new_command, name=name)
+    # Print newline to stderr for clean terminal display (doesn't affect piping)
+    click.echo("", err=True)
 
 
 cli.add_command(dashboard)
@@ -2781,17 +2756,11 @@ cli.add_command(debug)
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(up)
-add_command_alias(up, name="create_or_update", hidden=True)
 cli.add_command(attach)
 cli.add_command(exec)
-add_command_alias(exec, name="exec_cmd", hidden=True)
-add_command_alias(rsync_down, name="rsync_down", hidden=True)
-add_command_alias(rsync_up, name="rsync_up", hidden=True)
 cli.add_command(submit)
 cli.add_command(down)
-add_command_alias(down, name="teardown", hidden=True)
 cli.add_command(kill_random_node)
-add_command_alias(get_head_ip, name="get_head_ip", hidden=True)
 cli.add_command(get_worker_ips)
 cli.add_command(microbenchmark)
 cli.add_command(stack)
@@ -2822,8 +2791,8 @@ try:
 
     cli.add_command(ray_list, name="list")
     cli.add_command(ray_get, name="get")
-    add_command_alias(summary_state_cli_group, name="summary", hidden=False)
-    add_command_alias(logs_state_cli_group, name="logs", hidden=False)
+    cli.add_command(summary_state_cli_group, name="summary")
+    cli.add_command(logs_state_cli_group, name="logs")
 except ImportError as e:
     logger.debug(f"Integrating ray state command line tool failed: {e}")
 
@@ -2831,7 +2800,7 @@ except ImportError as e:
 try:
     from ray.dashboard.modules.job.cli import job_cli_group
 
-    add_command_alias(job_cli_group, name="job", hidden=False)
+    cli.add_command(job_cli_group, name="job")
 except Exception as e:
     logger.debug(f"Integrating ray jobs command line tool failed with {e}")
 

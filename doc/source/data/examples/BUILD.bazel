@@ -17,3 +17,12 @@ py_test_run_all_notebooks(
         data = ["//doc/source/data/examples:data_examples"],
     tags = ["exclusive", "team:data", "gpu"],
 )
+
+filegroup(
+    name = "data_example_configs",
+    srcs = glob([
+        "**/ci/aws.yaml",
+        "**/ci/gce.yaml"
+    ]),
+    visibility = ["//release:__pkg__"],
+)

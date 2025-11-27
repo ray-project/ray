@@ -459,6 +459,42 @@ class TestApproximateTopK:
             assert result["approx_topk(id)"][0] == {"id": "frequent", "count": 100}
             assert result["approx_topk(id)"][1] == {"id": "common", "count": 50}
 
+    @pytest.mark.parametrize(
+        ("data", "expected1", "expected2"),
+        [
+            (
+                [{"id": 1}, {"id": 1}, {"id": 2}],
+                {"id": 1, "count": 2},
+                {"id": 2, "count": 1},
+            ),
+            (
+                [{"id": [1, 2, 3]}, {"id": [1, 2, 3]}, {"id": [1, 2]}],
+                {"id": [1, 2, 3], "count": 2},
+                {"id": [1, 2], "count": 1},
+            ),
+        ],
+    )
+    def test_approximate_topk_non_string_datatype(
+        self, data, expected1, expected2, ray_start_regular_shared_2_cpus
+    ):
+        """Test that ApproximateTopK works with non-string type elements."""
+        ds = ray.data.from_items(data)
+
+        result = ds.aggregate(ApproximateTopK(on="id", k=2, log_capacity=3))
+        assert result["approx_topk(id)"][0] == expected1
+        assert result["approx_topk(id)"][1] == expected2
+
+    def test_approximate_topk_encode_lists(self, ray_start_regular_shared_2_cpus):
+        """Test ApproximateTopK list encode feature."""
+        data = [{"id": [1, 1, 1]}, {"id": [2, 2]}, {"id": [3]}]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(
+            ApproximateTopK(on="id", k=4, log_capacity=10, encode_lists=True)
+        )
+        assert result["approx_topk(id)"][0] == {"id": 1, "count": 3}
+        assert result["approx_topk(id)"][1] == {"id": 2, "count": 2}
+        assert result["approx_topk(id)"][2] == {"id": 3, "count": 1}
+
 
 if __name__ == "__main__":
     import sys

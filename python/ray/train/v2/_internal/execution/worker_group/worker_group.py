@@ -466,6 +466,9 @@ class WorkerGroup(BaseWorkerGroup):
 
             logger.debug("Worker group shutdown successful.")
 
+            for callback in self._callbacks:
+                callback.after_worker_group_shutdown(self._worker_group_context)
+
     def _clear_state(self):
         self._worker_group_state = None
         self._world_rank_to_ongoing_poll = {}
@@ -480,6 +483,9 @@ class WorkerGroup(BaseWorkerGroup):
 
         self._worker_group_state.shutdown()
         self._clear_state()
+
+        for callback in self._callbacks:
+            callback.after_worker_group_abort(self._worker_group_context)
 
     #####################################################################################
     # Polling Worker Group

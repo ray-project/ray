@@ -1,0 +1,22 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "postable_test",
+    size = "small",
+    srcs = ["postable_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/gcs/postable",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "function_traits_test",
+    srcs = ["function_traits_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/gcs/postable:function_traits",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

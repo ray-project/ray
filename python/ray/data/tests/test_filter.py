@@ -429,6 +429,28 @@ def test_filter_predicate_with_different_block_formats(ray_start_regular_shared)
     )
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="predicate expressions require PyArrow >= 20.0.0",
+)
+def test_filter_expression_display_names(ray_start_regular_shared):
+    """Test that filter operations display meaningful expression names in plans."""
+    import pyarrow.compute as pc
+
+    from ray.data.datatype import DataType
+    from ray.data.expressions import udf
+
+    @udf(return_dtype=DataType.from_arrow(pa.bool_()))
+    def _str_len(array):
+        return pc.greater(pc.binary_length(array), 0)
+
+    plan_str = str(ray.data.from_items(["a", ""]).filter(expr=_str_len(col("item"))))
+    assert plan_str == (
+        "Filter(_str_len(col('item')))\n"
+        "+- Dataset(num_rows=2, schema={item: string})"
+    )
+
+
 if __name__ == "__main__":
     import sys
 

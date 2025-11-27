@@ -1,0 +1,61 @@
+# cpt_deepspeed.yaml
+
+### model
+model_name_or_path: google/gemma-3-4b-pt
+trust_remote_code: true
+
+### method
+stage: pt
+do_train: true
+finetuning_type: full
+
+### deepspeed
+deepspeed: /mnt/cluster_storage/ds_z3_config.json # path to the DeepSpeed config
+
+### dataset
+dataset: my_cpt_c4
+dataset_dir: /mnt/cluster_storage
+
+template: gemma
+cutoff_len: 512
+max_samples: 1000
+overwrite_cache: true
+preprocessing_num_workers: 16
+
+### output
+output_dir: gemma3_4b_full_cpt
+logging_steps: 2
+save_steps: 50
+plot_loss: true
+report_to: mlflow   # or none
+
+### train
+per_device_train_batch_size: 1 # Adjust this depending on your GPU memory and sequence length
+gradient_accumulation_steps: 2
+num_train_epochs: 2.0
+learning_rate: 1.0e-4
+bf16: true
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+ddp_timeout: 180000000
+
+### ray
+ray_run_name: gemma3_4b_full_cpt
+ray_storage_path: /mnt/cluster_storage/
+ray_num_workers: 4  # Number of GPUs to use
+resources_per_worker:
+  GPU: 1
+  # accelerator_type:L40S: 0.001            # Use this to simply specify a GPU type (may place GPUs on separate nodes).
+  anyscale/accelerator_shape:4xL40S: 0.001  # Prefer this for DeepSpeed so all 4 GPUs are on the same node.
+  # See https://docs.ray.io/en/master/ray-core/accelerator-types.html#accelerator-types for a full list of accelerator types.
+ray_init_kwargs:
+  runtime_env:
+    env_vars:
+      # If using gated models like google/gemma-3-4b-pt
+      HF_TOKEN: <your_huggingface_token>
+      # If hf_transfer is installed
+      HF_HUB_ENABLE_HF_TRANSFER: '1'
+      # If using MLflow for experiments tracking
+      MLFLOW_TRACKING_URI: "https://<your_cloud_id>.cloud.databricks.com"
+      MLFLOW_TRACKING_TOKEN: "<mlflow_tracking_token>"
+      MLFLOW_EXPERIMENT_NAME: "/Users/<your_user_id>/experiment_name"

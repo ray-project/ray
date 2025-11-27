@@ -106,14 +106,12 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
     // policy.
     gcs_client_ = std::make_unique<gcs::MockGcsClient>();
     is_node_available_fn_ = [this](scheduling::NodeID node_id) {
-      return gcs_client_->Nodes().GetNodeAddressAndLiveness(
-                 NodeID::FromBinary(node_id.Binary())) != nullptr;
+      return gcs_client_->Nodes().IsNodeAlive(NodeID::FromBinary(node_id.Binary()));
     };
     node_name = NodeID::FromRandom().Binary();
     node_info.set_node_id(node_name);
-    ON_CALL(*gcs_client_->mock_node_accessor,
-            GetNodeAddressAndLiveness(::testing::_, ::testing::_))
-        .WillByDefault(::testing::Return(&node_info));
+    ON_CALL(*gcs_client_->mock_node_accessor, IsNodeAlive(::testing::_))
+        .WillByDefault(::testing::Return(true));
   }
 
   void Shutdown() {}
@@ -1092,10 +1090,9 @@ TEST_F(ClusterResourceSchedulerTest, DeadNodeTest) {
                                                       std::string(),
                                                       &violations,
                                                       &is_infeasible));
-  EXPECT_CALL(*gcs_client_->mock_node_accessor,
-              GetNodeAddressAndLiveness(node_id, ::testing::_))
-      .WillOnce(::testing::Return(nullptr))
-      .WillOnce(::testing::Return(nullptr));
+  EXPECT_CALL(*gcs_client_->mock_node_accessor, IsNodeAlive(node_id))
+      .WillOnce(::testing::Return(false))
+      .WillOnce(::testing::Return(false));
   ASSERT_TRUE(resource_scheduler
                   .GetBestSchedulableNode(resource,
                                           LabelSelector(),

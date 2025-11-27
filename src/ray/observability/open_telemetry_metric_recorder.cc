@@ -48,6 +48,25 @@ static void _DoubleGaugeCallback(opentelemetry::metrics::ObserverResult observer
   recorder.CollectGaugeMetricValues(name, obs);
 }
 
+class OpenTelemetryMetricExporter
+    : public opentelemetry::exporter::otlp::OtlpGrpcMetricExporter {
+ public:
+  explicit OpenTelemetryMetricExporter(
+      const opentelemetry::exporter::otlp::OtlpGrpcMetricExporterOptions &options)
+      : opentelemetry::exporter::otlp::OtlpGrpcMetricExporter(options) {}
+
+  opentelemetry::sdk::common::ExportResult Export(
+      const opentelemetry::sdk::metrics::ResourceMetrics &data) noexcept override {
+    const opentelemetry::sdk::common::ExportResult result =
+        opentelemetry::exporter::otlp::OtlpGrpcMetricExporter::Export(data);
+    if (result != opentelemetry::sdk::common::ExportResult::kSuccess) {
+      RAY_LOG(WARNING) << "Failed to export metrics to the metrics agent. Result: "
+                       << static_cast<int>(result);
+    }
+    return result;
+  }
+};
+
 }  // anonymous namespace
 
 namespace ray {
@@ -75,8 +94,7 @@ void OpenTelemetryMetricRecorder::RegisterGrpcExporter(
   // counting.
   exporter_options.aggregation_temporality =
       opentelemetry::exporter::otlp::PreferredAggregationTemporality::kDelta;
-  auto exporter = std::make_unique<opentelemetry::exporter::otlp::OtlpGrpcMetricExporter>(
-      exporter_options);
+  auto exporter = std::make_unique<OpenTelemetryMetricExporter>(exporter_options);
 
   // Initialize the OpenTelemetry SDK and create a Meter
   opentelemetry::sdk::metrics::PeriodicExportingMetricReaderOptions reader_options;

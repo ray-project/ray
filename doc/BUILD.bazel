@@ -700,9 +700,15 @@ doctest(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
 )
 
+# --------------------------------------------------------------------
+# Discover the Anyscale Jobs compute configs .yaml for release tests in CI
+# --------------------------------------------------------------------
+
 filegroup(
     name = "example_configs",
-    srcs = glob(["source/ray-overview/examples/**/*.yaml"]),
+    srcs = glob([
+        "source/ray-overview/examples/**/*.yaml"
+    ]),
     visibility = ["//release:__pkg__"],
 )
 

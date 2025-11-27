@@ -258,7 +258,7 @@ def test_update_operator_states_drains_upstream(ray_start_regular_shared):
 
     # Manually mark o2 as execution finished (simulating limit operator behavior)
     o2.mark_execution_finished()
-    assert o2.execution_finished(), "o2 should be execution finished"
+    assert o2.has_execution_finished(), "o2 should be execution finished"
 
     # Call update_operator_states - this should drain o1's output queue
     update_operator_states(topo)

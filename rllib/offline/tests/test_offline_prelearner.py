@@ -37,7 +37,7 @@ class TestOfflinePreLearner(unittest.TestCase):
         ray.shutdown()
 
     def setUp(self) -> None:
-        data_path = "tests/data/cartpole/cartpole-v1_large"
+        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
         self.base_path = Path(__file__).parents[2]
         self.data_path = "local://" + self.base_path.joinpath(data_path).as_posix()
         # Get the observation and action spaces.
@@ -71,7 +71,9 @@ class TestOfflinePreLearner(unittest.TestCase):
             PrioritizedEpisodeReplayBuffer,
         )
 
-        sample_batch_data_path = self.base_path / "tests/data/cartpole/large.json"
+        sample_batch_data_path = (
+            self.base_path / "offline/tests/data/cartpole/large.json"
+        )
 
         self.config.offline_data(
             input_=["local://" + sample_batch_data_path.as_posix()],
@@ -157,7 +159,9 @@ class TestOfflinePreLearner(unittest.TestCase):
         """Tests conversion from `SampleBatch` data to episodes."""
 
         # Use the old records storing `SampleBatch`es.
-        sample_batch_data_path = self.base_path / "tests/data/cartpole/large.json"
+        sample_batch_data_path = (
+            self.base_path / "offline/tests/data/cartpole/large.json"
+        )
 
         # Create the dataset.
         data = ray.data.read_json(sample_batch_data_path.as_posix())
@@ -201,7 +205,7 @@ class TestOfflinePreLearner(unittest.TestCase):
     def test_offline_prelearner_sample_from_old_sample_batch_data(self):
         """Tests sampling from a `SampleBatch` dataset."""
 
-        data_path = self.base_path / "tests/data/cartpole/large.json"
+        data_path = self.base_path / "offline/tests/data/cartpole/large.json"
 
         self.config.offline_data(
             input_=["local://" + data_path.as_posix()],

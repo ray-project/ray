@@ -254,6 +254,7 @@ class ActorReplicaWrapper:
         self._docs_path: Optional[str] = None
         self._route_patterns: Optional[List[str]] = None
         # Rank assigned to the replica.
+        self._assign_rank_callback: Optional[Callable[[ReplicaID], ReplicaRank]] = None
         self._rank: Optional[ReplicaRank] = None
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
@@ -445,14 +446,16 @@ class ActorReplicaWrapper:
         return self._initialization_latency_s
 
     def start(
-        self, deployment_info: DeploymentInfo, rank: ReplicaRank
+        self,
+        deployment_info: DeploymentInfo,
+        assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
     ) -> ReplicaSchedulingRequest:
         """Start the current DeploymentReplica instance.
 
         The replica will be in the STARTING and PENDING_ALLOCATION states
         until the deployment scheduler schedules the underlying actor.
         """
-        self._rank = rank  # Store the rank assigned to this replica
+        self._assign_rank_callback = assign_rank_callback
         self._actor_resources = deployment_info.replica_config.resource_dict
         self._ingress = deployment_info.ingress
         # it is currently not possible to create a placement group
@@ -496,7 +499,6 @@ class ActorReplicaWrapper:
                 self._version,
                 deployment_info.ingress,
                 deployment_info.route_prefix,
-                rank,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
@@ -577,31 +579,11 @@ class ActorReplicaWrapper:
         self._actor_handle = actor_handle
         self._placement_group = placement_group
 
-        # Perform auto method name translation for java handles.
-        # See https://github.com/ray-project/ray/issues/21474
-        deployment_config = copy(self._version.deployment_config)
-        deployment_config.user_config = self._format_user_config(
-            deployment_config.user_config
-        )
         if self._is_cross_language:
             self._actor_handle = JavaActorHandleProxy(self._actor_handle)
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            self._ready_obj_ref = self._actor_handle.is_initialized.remote(
-                deployment_config.to_proto_bytes()
-            )
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            replica_ready_check_func = self._actor_handle.initialize_and_get_metadata
-            self._ready_obj_ref = replica_ready_check_func.remote(
-                deployment_config,
-                # Ensure that `is_allocated` will execute
-                # before `initialize_and_get_metadata`,
-                # because `initialize_and_get_metadata` runs
-                # user code that could block the replica
-                # asyncio loop. If that happens before `is_allocated` is executed,
-                # the `is_allocated` call won't be able to run.
-                self._allocated_obj_ref,
-            )
 
     def _format_user_config(self, user_config: Any):
         temp = copy(user_config)
@@ -745,6 +727,28 @@ class ActorReplicaWrapper:
                 )
                 logger.exception(msg)
                 return ReplicaStartupStatus.FAILED, msg
+
+        if self._ready_obj_ref is None:
+            # Perform auto method name translation for java handles.
+            # See https://github.com/ray-project/ray/issues/21474
+            deployment_config = copy(self._version.deployment_config)
+            deployment_config.user_config = self._format_user_config(
+                deployment_config.user_config
+            )
+            if self._is_cross_language:
+                self._ready_obj_ref = self._actor_handle.is_initialized.remote(
+                    deployment_config.to_proto_bytes()
+                )
+            else:
+                replica_ready_check_func = (
+                    self._actor_handle.initialize_and_get_metadata
+                )
+                self._rank = self._assign_rank_callback(self._replica_id.unique_id)
+                self._ready_obj_ref = replica_ready_check_func.remote(
+                    deployment_config, self._rank
+                )
+
+            return ReplicaStartupStatus.PENDING_INITIALIZATION, None
 
         # Check whether replica initialization has completed.
         replica_ready = check_obj_ref_ready_nowait(self._ready_obj_ref)
@@ -1173,12 +1177,16 @@ class DeploymentReplica:
         return self._actor.initialization_latency_s
 
     def start(
-        self, deployment_info: DeploymentInfo, rank: ReplicaRank
+        self,
+        deployment_info: DeploymentInfo,
+        assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
     ) -> ReplicaSchedulingRequest:
         """
         Start a new actor for current DeploymentReplica instance.
         """
-        replica_scheduling_request = self._actor.start(deployment_info, rank=rank)
+        replica_scheduling_request = self._actor.start(
+            deployment_info, assign_rank_callback=assign_rank_callback
+        )
         self._start_time = time.time()
         self._logged_shutdown_message = False
         self.update_actor_details(start_time_s=self._start_time)
@@ -2544,18 +2552,13 @@ class DeploymentState:
                 for _ in range(to_add):
                     replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
 
-                    # Assign rank during replica creation (startup process)
-                    assigned_rank = self._rank_manager.assign_rank(replica_id.unique_id)
-
-                    logger.debug(
-                        f"Assigned rank {assigned_rank.rank} to new replica {replica_id.unique_id} during startup"
-                    )
                     new_deployment_replica = DeploymentReplica(
                         replica_id,
                         self._target_state.version,
                     )
                     scheduling_request = new_deployment_replica.start(
-                        self._target_state.info, rank=assigned_rank
+                        self._target_state.info,
+                        assign_rank_callback=self._rank_manager.assign_rank,
                     )
 
                     upscale.append(scheduling_request)

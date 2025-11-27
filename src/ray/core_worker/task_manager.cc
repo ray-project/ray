@@ -1162,7 +1162,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
         const auto node_info =
             gcs_client_->Nodes().GetNodeAddressAndLiveness(task_entry.GetNodeId(),
                                                            /*filter_dead_nodes=*/false);
-        is_preempted = node_info != nullptr && node_info->has_death_info() &&
+        is_preempted = node_info && node_info->has_death_info() &&
                        node_info->death_info().reason() ==
                            rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED;
       }

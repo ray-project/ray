@@ -20,7 +20,6 @@
 #include "ray/common/asio/asio_chaos.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/stats/metric.h"
-#include "ray/stats/metric_defs.h"
 
 namespace {
 
@@ -35,7 +34,7 @@ void LagProbeLoop(instrumented_io_context &io_context,
         auto end = std::chrono::steady_clock::now();
         auto duration =
             std::chrono::duration_cast<std::chrono::milliseconds>(end - begin);
-        ray::stats::STATS_io_context_event_loop_lag_ms.Record(
+        io_context.io_context_event_loop_lag_ms_gauge_metric.Record(
             duration.count(),
             {
                 {"Name", context_name.value_or(GetThreadName())},
@@ -106,8 +105,9 @@ void instrumented_io_context::post(std::function<void()> handler,
     auto stats_handle =
         event_stats_->RecordStart(std::move(name), emit_metrics_, 0, context_name_);
     handler = [handler = std::move(handler),
+               event_stats = event_stats_,
                stats_handle = std::move(stats_handle)]() mutable {
-      EventTracker::RecordExecution(handler, std::move(stats_handle));
+      event_stats->RecordExecution(handler, std::move(stats_handle));
     };
   }
 
@@ -129,9 +129,10 @@ void instrumented_io_context::dispatch(std::function<void()> handler, std::strin
   // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
   // handler stats it->second from multiple threads without acquiring a table-level
   // readers lock in the callback.
-  boost::asio::dispatch(
-      *this,
-      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() mutable {
-        EventTracker::RecordExecution(handler, std::move(stats_handle));
-      });
+  boost::asio::dispatch(*this,
+                        [event_stats = event_stats_,
+                         handler = std::move(handler),
+                         stats_handle = std::move(stats_handle)]() mutable {
+                          event_stats->RecordExecution(handler, std::move(stats_handle));
+                        });
 }

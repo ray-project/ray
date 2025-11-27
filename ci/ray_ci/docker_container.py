@@ -3,7 +3,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Dict, List
 
-from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
+from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_TAG_VERSION
 from ci.ray_ci.linux_container import LinuxContainer
 
 PLATFORMS_RAY = [
@@ -176,7 +176,7 @@ class DockerContainer(LinuxContainer):
                 platforms.append("")
 
         py_versions = [self._get_python_version_tag()]
-        if self.python_version == DEFAULT_PYTHON_VERSION:
+        if self.python_version == DEFAULT_PYTHON_TAG_VERSION:
             py_versions.append("")
 
         variation = ""

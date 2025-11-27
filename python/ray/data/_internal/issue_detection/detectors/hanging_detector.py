@@ -13,8 +13,10 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.op_runtime_metrics import (
         TaskDurationStats,
     )
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        PhysicalOperator,
+    )
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
-    from ray.data.context import DataContext
 
 # Default minimum count of tasks before using adaptive thresholds
 DEFAULT_OP_TASK_STATS_MIN_COUNT = 10
@@ -40,11 +42,16 @@ class HangingExecutionIssueDetectorConfig:
 
 
 class HangingExecutionIssueDetector(IssueDetector):
-    def __init__(self, executor: "StreamingExecutor", ctx: "DataContext"):
-        super().__init__(executor, ctx)
-        self._detector_cfg: HangingExecutionIssueDetectorConfig = (
-            ctx.issue_detectors_config.hanging_detector_config
-        )
+    def __init__(
+        self,
+        dataset_id: str,
+        operators: List["PhysicalOperator"],
+        config: HangingExecutionIssueDetectorConfig,
+    ):
+        self._dataset_id = dataset_id
+        self._operators = operators
+        self._detector_cfg = config
+
         self._op_task_stats_min_count = self._detector_cfg.op_task_stats_min_count
         self._op_task_stats_std_factor_threshold = (
             self._detector_cfg.op_task_stats_std_factor
@@ -57,6 +64,26 @@ class HangingExecutionIssueDetector(IssueDetector):
         self._hanging_op_tasks: Dict[str, Set[int]] = defaultdict(set)
         # Map of operator id to operator name
         self._op_id_to_name: Dict[str, str] = {}
+
+    @classmethod
+    def from_executor(
+        cls, executor: "StreamingExecutor"
+    ) -> "HangingExecutionIssueDetector":
+        """Factory method to create a HangingExecutionIssueDetector from a StreamingExecutor.
+
+        Args:
+            executor: The StreamingExecutor instance to extract dependencies from.
+
+        Returns:
+            An instance of HangingExecutionIssueDetector.
+        """
+        operators = list(executor._topology.keys()) if executor._topology else []
+        ctx = executor._data_context
+        return cls(
+            dataset_id=executor._dataset_id,
+            operators=operators,
+            config=ctx.issue_detectors_config.hanging_detector_config,
+        )
 
     def _create_issues(
         self,
@@ -78,7 +105,7 @@ class HangingExecutionIssueDetector(IssueDetector):
                 )
                 issues.append(
                     Issue(
-                        dataset_name=self._executor._dataset_id,
+                        dataset_name=self._dataset_id,
                         operator_id=state.operator_id,
                         issue_type=IssueType.HANGING,
                         message=message,
@@ -90,11 +117,11 @@ class HangingExecutionIssueDetector(IssueDetector):
 
     def detect(self) -> List[Issue]:
         op_task_stats_map: Dict[str, "TaskDurationStats"] = {}
-        for operator, op_state in self._executor._topology.items():
+        for operator in self._operators:
             op_metrics = operator.metrics
             op_task_stats_map[operator.id] = op_metrics._op_task_duration_stats
             self._op_id_to_name[operator.id] = operator.name
-            if op_state._finished:
+            if operator.has_execution_finished():
                 # Remove finished operators / tasks from the state map
                 if operator.id in self._state_map:
                     del self._state_map[operator.id]
@@ -102,31 +129,19 @@ class HangingExecutionIssueDetector(IssueDetector):
                     del self._hanging_op_tasks[operator.id]
             else:
                 active_tasks_idx = set()
-                for task in operator.get_active_tasks():
-                    task_info = op_metrics._running_tasks.get(task.task_index(), None)
-                    if task_info is None:
-                        # if the task is not in the running tasks map, it has finished
-                        # remove it from the state map and hanging op tasks, if present
-                        self._state_map[operator.id].pop(task.task_index(), None)
-                        self._hanging_op_tasks[operator.id].discard(task.task_index())
-                        continue
-
-                    active_tasks_idx.add(task.task_index())
+                # Iterate directly over running tasks tracked in metrics
+                for task_idx, task_info in op_metrics._running_tasks.items():
+                    active_tasks_idx.add(task_idx)
                     bytes_output = task_info.bytes_outputs
-
-                    prev_state_value = self._state_map[operator.id].get(
-                        task.task_index(), None
-                    )
+                    prev_state_value = self._state_map[operator.id].get(task_idx, None)
 
                     if (
                         prev_state_value is None
                         or bytes_output != prev_state_value.bytes_output
                     ):
-                        self._state_map[operator.id][
-                            task.task_index()
-                        ] = HangingExecutionState(
+                        self._state_map[operator.id][task_idx] = HangingExecutionState(
                             operator_id=operator.id,
-                            task_idx=task.task_index(),
+                            task_idx=task_idx,
                             bytes_output=bytes_output,
                             start_time_hanging=time.perf_counter(),
                         )
@@ -137,13 +152,14 @@ class HangingExecutionIssueDetector(IssueDetector):
                 )
                 for task_idx in task_idxs_to_remove:
                     del self._state_map[operator.id][task_idx]
+                    self._hanging_op_tasks[operator.id].discard(task_idx)
 
         hanging_op_tasks = []
         for op_id, op_state_values in self._state_map.items():
             op_task_stats = op_task_stats_map[op_id]
             for task_idx, state_value in op_state_values.items():
                 curr_time = time.perf_counter() - state_value.start_time_hanging
-                if op_task_stats.count() > self._op_task_stats_min_count:
+                if op_task_stats.count() >= self._op_task_stats_min_count:
                     mean = op_task_stats.mean()
                     stddev = op_task_stats.stddev()
                     threshold = mean + self._op_task_stats_std_factor_threshold * stddev

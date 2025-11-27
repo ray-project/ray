@@ -1,9 +1,10 @@
-import uuid
-
 import grpc
 import pytest
 from grpc import aio as aiogrpc
 
+from ray._private.authentication.authentication_token_generator import (
+    generate_new_authentication_token,
+)
 from ray._private.authentication_test_utils import (
     authentication_env_guard,
     reset_auth_token_state,
@@ -109,14 +110,9 @@ def create_async_test_server():
 
 
 @pytest.fixture
-def test_token():
-    """Generate a test authentication token."""
-    return uuid.uuid4().hex
-
-
-@pytest.fixture
-def setup_auth_environment(test_token):
+def setup_auth_environment():
     """Set up authentication environment with test token."""
+    test_token = generate_new_authentication_token()
     with authentication_env_guard():
         set_auth_mode("token")
         set_env_auth_token(test_token)

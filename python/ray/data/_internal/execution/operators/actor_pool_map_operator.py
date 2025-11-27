@@ -401,6 +401,18 @@ class ActorPoolMapOperator(MapOperator):
                 "configuring `override_num_blocks` earlier in the pipeline."
             )
 
+    def clear_internal_input_queue(self) -> None:
+        """Clear internal input queues for the actor-pool map operator.
+
+        In addition to clearing the base class' internal queues, this method clears
+        the local bundle queue used to stage input bundles for actors.
+        """
+        super().clear_internal_input_queue()
+
+        while self._bundle_queue.has_next():
+            bundle = self._bundle_queue.get_next()
+            self._metrics.on_input_dequeued(bundle)
+
     def _do_shutdown(self, force: bool = False):
         self._actor_pool.shutdown(force=force)
         # NOTE: It's critical for Actor Pool to release actors before calling into
@@ -593,7 +605,9 @@ class _MapWorker:
         )
 
     def __repr__(self):
-        return f"MapWorker({self.src_fn_name})"
+        # Use getattr to handle case where __init__ failed before src_fn_name was set.
+        # This can happen during actor restarts or initialization failures.
+        return f"MapWorker({getattr(self, 'src_fn_name', '<initializing>')})"
 
     def on_exit(self):
         """Called when the actor is about to exist.

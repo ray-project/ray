@@ -613,24 +613,16 @@ def test_map_operator_min_rows_per_bundle(ray_start_regular_shared, use_actors):
     assert op.completed()
 
 
-@pytest.mark.parametrize("use_actors", [False, True])
-@pytest.mark.parametrize("preserve_order", [False, True])
-@pytest.mark.parametrize(
-    "target_max_block_size,num_expected_blocks", [(1, 10), (2**20, 1), (None, 1)]
-)
-def test_map_operator_output_unbundling(
+def _run_map_operator_test(
     ray_start_regular_shared,
     use_actors,
     preserve_order,
-    target_max_block_size,
-    num_expected_blocks,
+    transform_fn,
+    output_block_size_option,
+    expected_blocks,
+    test_name="TestMapper",
 ):
-    # Tests that the MapOperator's output queue unbundles the bundles returned from
-    # tasks; this facilitates features such as dynamic block splitting.
-    def noop(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
-        for block in block_iter:
-            yield block
-
+    """Shared test function for MapOperator output unbundling tests."""
     # Create with inputs.
     input_op = InputDataBuffer(
         DataContext.get_current(), make_ref_bundles([[i] for i in range(10)])
@@ -638,19 +630,17 @@ def test_map_operator_output_unbundling(
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
 
     transformer = create_map_transformer_from_block_fn(
-        noop,
-        output_block_size_option=OutputBlockSizeOption.of(
-            target_max_block_size=target_max_block_size,
-        ),
+        transform_fn,
+        output_block_size_option=output_block_size_option,
     )
 
     op = MapOperator.create(
         transformer,
         input_op=input_op,
         data_context=DataContext.get_current(),
-        name="TestMapper",
+        name=test_name,
         compute_strategy=compute_strategy,
-        # Send the everything in a single bundle of 10 blocks.
+        # Send everything in a single bundle of 10 blocks.
         min_rows_per_bundle=10,
     )
 
@@ -670,8 +660,123 @@ def test_map_operator_output_unbundling(
     outputs = []
     while op.has_next():
         outputs.append(op.get_next())
-    assert len(outputs) == num_expected_blocks
+    assert len(outputs) == expected_blocks
     assert op.completed()
+
+
+@pytest.mark.parametrize("use_actors", [False, True])
+@pytest.mark.parametrize("preserve_order", [False, True])
+@pytest.mark.parametrize(
+    "target_max_block_size,num_expected_blocks", [(1, 10), (2**20, 1), (None, 1)]
+)
+def test_map_operator_output_unbundling(
+    ray_start_regular_shared,
+    use_actors,
+    preserve_order,
+    target_max_block_size,
+    num_expected_blocks,
+):
+    """Test that MapOperator's output queue unbundles bundles from tasks."""
+
+    def noop(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
+        for block in block_iter:
+            yield block
+
+    _run_map_operator_test(
+        ray_start_regular_shared,
+        use_actors,
+        preserve_order,
+        noop,
+        OutputBlockSizeOption.of(target_max_block_size=target_max_block_size),
+        num_expected_blocks,
+    )
+
+
+@pytest.mark.parametrize("preserve_order", [False, True])
+@pytest.mark.parametrize(
+    "output_block_size_option,expected_blocks",
+    [
+        # Test target_max_block_size
+        (OutputBlockSizeOption.of(target_max_block_size=1), 10),
+        (OutputBlockSizeOption.of(target_max_block_size=2**20), 1),
+        (OutputBlockSizeOption.of(target_max_block_size=None), 1),
+        # Test target_num_rows_per_block
+        (OutputBlockSizeOption.of(target_num_rows_per_block=1), 10),
+        (OutputBlockSizeOption.of(target_num_rows_per_block=5), 2),
+        (OutputBlockSizeOption.of(target_num_rows_per_block=10), 1),
+        (OutputBlockSizeOption.of(target_num_rows_per_block=None), 1),
+        # Test disable_block_shaping
+        (OutputBlockSizeOption.of(disable_block_shaping=True), 10),
+        (OutputBlockSizeOption.of(disable_block_shaping=False), 1),
+        # Test combinations
+        (
+            OutputBlockSizeOption.of(
+                target_max_block_size=1, target_num_rows_per_block=5
+            ),
+            10,
+        ),
+        (
+            OutputBlockSizeOption.of(
+                target_max_block_size=2**20, disable_block_shaping=True
+            ),
+            10,
+        ),
+        (
+            OutputBlockSizeOption.of(
+                target_num_rows_per_block=5, disable_block_shaping=True
+            ),
+            10,
+        ),
+    ],
+)
+def test_map_operator_output_block_size_options(
+    ray_start_regular_shared,
+    preserve_order,
+    output_block_size_option,
+    expected_blocks,
+):
+    """Test MapOperator with various OutputBlockSizeOption configurations."""
+
+    def noop(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
+        for block in block_iter:
+            yield block
+
+    _run_map_operator_test(
+        ray_start_regular_shared,
+        use_actors=False,
+        preserve_order=preserve_order,
+        transform_fn=noop,
+        output_block_size_option=output_block_size_option,
+        expected_blocks=expected_blocks,
+    )
+
+
+@pytest.mark.parametrize("preserve_order", [False, True])
+def test_map_operator_disable_block_shaping_with_batches(
+    ray_start_regular_shared,
+    preserve_order,
+):
+    """Test MapOperator with disable_block_shaping=True using batch operations."""
+
+    def batch_transform(batch_iter, ctx):
+        for batch in batch_iter:
+            # Simple transformation: add 1 to each value
+            if hasattr(batch, "to_pandas"):
+                df = batch.to_pandas()
+                df = df + 1
+                yield df
+            else:
+                yield batch
+
+    _run_map_operator_test(
+        ray_start_regular_shared,
+        use_actors=False,
+        preserve_order=preserve_order,
+        transform_fn=batch_transform,
+        output_block_size_option=OutputBlockSizeOption.of(disable_block_shaping=True),
+        expected_blocks=10,  # With disable_block_shaping=True, we expect 10 blocks
+        test_name="TestBatchMapper",
+    )
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
@@ -950,7 +1055,7 @@ def test_limit_operator(ray_start_regular_shared):
         while input_op.has_next() and not limit_op._limit_reached():
             loop_count += 1
             assert not limit_op.completed(), limit
-            assert not limit_op._execution_finished, limit
+            assert not limit_op.has_execution_finished(), limit
             limit_op.add_input(input_op.get_next(), 0)
             while limit_op.has_next():
                 # Drain the outputs. So the limit operator
@@ -961,12 +1066,12 @@ def test_limit_operator(ray_start_regular_shared):
                 assert limit_op.mark_execution_finished.call_count == 1, limit
                 assert limit_op.completed(), limit
                 assert limit_op._limit_reached(), limit
-                assert limit_op._execution_finished, limit
+                assert limit_op.has_execution_finished(), limit
             else:
                 assert limit_op.mark_execution_finished.call_count == 0, limit
                 assert not limit_op.completed(), limit
                 assert not limit_op._limit_reached(), limit
-                assert not limit_op._execution_finished, limit
+                assert not limit_op.has_execution_finished(), limit
         limit_op.mark_execution_finished()
         # After inputs done, the number of output bundles
         # should be the same as the number of `add_input`s.

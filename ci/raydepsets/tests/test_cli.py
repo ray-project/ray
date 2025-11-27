@@ -112,7 +112,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
@@ -137,7 +137,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
@@ -147,7 +147,8 @@ class TestCli(unittest.TestCase):
             output_text_valid = output_file_valid.read_text()
             assert output_text == output_text_valid
 
-    def test_compile_with_append_and_override_flags(self):
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_compile_with_append_and_override_flags(self, mock_stdout):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
@@ -161,16 +162,11 @@ class TestCli(unittest.TestCase):
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
-            output_file = Path(tmpdir) / "requirements_compiled.txt"
-            output_text = output_file.read_text()
-            assert "--python-version 3.10" in output_text
+            stdout = mock_stdout.getvalue()
+            assert "--python-version 3.10" in stdout
+            assert "--extra-index-url https://download.pytorch.org/whl/cu124" in stdout
             assert (
-                "--extra-index-url https://download.pytorch.org/whl/cu124"
-                in output_text
-            )
-            assert (
-                "--extra-index-url https://download.pytorch.org/whl/cu128"
-                not in output_text
+                "--extra-index-url https://download.pytorch.org/whl/cu128" not in stdout
             )
 
     def test_compile_by_depset_name(self):
@@ -199,7 +195,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt", "requirements_test_subset.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="general_depset__py311_cpu",
                 output="requirements_compiled_general.txt",
             )
@@ -207,7 +203,7 @@ class TestCli(unittest.TestCase):
             manager.subset(
                 source_depset="general_depset__py311_cpu",
                 requirements=["requirements_test.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="subset_general_depset__py311_cpu",
                 output="requirements_compiled_subset_general.txt",
             )
@@ -230,7 +226,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt", "requirements_test_subset.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="general_depset__py311_cpu",
                 output="requirements_compiled_general.txt",
             )
@@ -239,7 +235,7 @@ class TestCli(unittest.TestCase):
                 manager.subset(
                     source_depset="general_depset__py311_cpu",
                     requirements=["requirements_compiled_test.txt"],
-                    append_flags=["--no-annotate", "--no-header"],
+                    append_flags=["--no-annotate"],
                     name="subset_general_depset__py311_cpu",
                     output="requirements_compiled_subset_general.txt",
                 )
@@ -328,7 +324,8 @@ class TestCli(unittest.TestCase):
                 == Path(tmpdir) / "requirements_test.txt"
             )
 
-    def test_append_uv_flags_exist_in_output(self):
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_append_uv_flags_exist_in_output(self, mock_stdout):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
@@ -339,11 +336,11 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_general.txt",
                 append_flags=["--python-version=3.10"],
             )
-            output_file = Path(tmpdir) / "requirements_compiled_general.txt"
-            output_text = output_file.read_text()
-            assert "--python-version=3.10" in output_text
+            stdout = mock_stdout.getvalue()
+            assert "--python-version=3.10" in stdout
 
-    def test_append_uv_flags_with_space_in_flag(self):
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_append_uv_flags_with_space_in_flag(self, mock_stdout):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
@@ -354,9 +351,8 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_general.txt",
                 append_flags=["--python-version 3.10"],
             )
-            output_file = Path(tmpdir) / "requirements_compiled_general.txt"
-            output_text = output_file.read_text()
-            assert "--python-version 3.10" in output_text
+            stdout = mock_stdout.getvalue()
+            assert "--python-version 3.10" in stdout
 
     def test_include_setuptools(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -373,7 +369,8 @@ class TestCli(unittest.TestCase):
             output_text = output_file.read_text()
             assert "--unsafe-package setuptools" not in output_text
 
-    def test_ignore_setuptools(self):
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_ignore_setuptools(self, mock_stdout):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
@@ -384,9 +381,8 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_general.txt",
                 include_setuptools=False,
             )
-            output_file = Path(tmpdir) / "requirements_compiled_general.txt"
-            output_text = output_file.read_text()
-            assert "--unsafe-package setuptools" in output_text
+            stdout = mock_stdout.getvalue()
+            assert "--unsafe-package setuptools" in stdout
 
     def test_override_uv_flag_single_flag(self):
         expected_flags = DEFAULT_UV_FLAGS.copy()
@@ -403,12 +399,12 @@ class TestCli(unittest.TestCase):
 
     def test_override_uv_flag_multiple_flags(self):
         expected_flags = DEFAULT_UV_FLAGS.copy()
-        expected_flags.remove("--index-url")
-        expected_flags.remove("https://pypi.org/simple")
-        expected_flags.extend(["--index-url", "https://dummyurl.com"])
+        expected_flags.remove("--index-strategy")
+        expected_flags.remove("unsafe-best-match")
+        expected_flags.extend(["--index-strategy", "first-index"])
         assert (
             _override_uv_flags(
-                ["--index-url https://dummyurl.com"],
+                ["--index-strategy first-index"],
                 DEFAULT_UV_FLAGS.copy(),
             )
             == expected_flags
@@ -546,21 +542,21 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="general_depset__py311_cpu",
                 output="requirements_compiled_general.txt",
             )
             manager.compile(
                 constraints=[],
                 requirements=["requirements_expanded.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="expanded_depset__py311_cpu",
                 output="requirements_compiled_expanded.txt",
             )
             manager.expand(
                 depsets=["general_depset__py311_cpu", "expanded_depset__py311_cpu"],
                 constraints=["requirement_constraints_expand.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 requirements=[],
                 name="expand_general_depset__py311_cpu",
                 output="requirements_compiled_expand_general.txt",
@@ -590,7 +586,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="general_depset__py311_cpu",
                 output="requirements_compiled_general.txt",
             )
@@ -598,7 +594,7 @@ class TestCli(unittest.TestCase):
                 depsets=["general_depset__py311_cpu"],
                 requirements=["requirements_expanded.txt"],
                 constraints=["requirement_constraints_expand.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="expand_general_depset__py311_cpu",
                 output="requirements_compiled_expand_general.txt",
             )
@@ -672,7 +668,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="check_depset",
                 output="requirements_compiled_test.txt",
             )
@@ -697,7 +693,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="check_depset",
                 output="requirements_compiled_test.txt",
             )
@@ -732,7 +728,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="check_depset",
                 output="requirements_compiled_test.txt",
             )
@@ -749,7 +745,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 packages=["emoji==2.9.0", "pyperclip==1.6.0"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="packages_test_depset",
                 output="requirements_compiled_test_packages.txt",
             )
@@ -771,7 +767,7 @@ class TestCli(unittest.TestCase):
                 constraints=["requirement_constraints_test.txt"],
                 packages=["emoji==2.9.0", "pyperclip==1.6.0"],
                 requirements=["requirements_test.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="packages_test_depset",
                 output="requirements_compiled_test_packages.txt",
             )
@@ -801,7 +797,7 @@ class TestCli(unittest.TestCase):
                     "requirements_expanded.txt",
                     "requirements_compiled_test_expand.txt",
                 ],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="requirements_ordering_test_depset",
                 output="requirements_compiled_requirements_ordering.txt",
             )
@@ -831,7 +827,7 @@ class TestCli(unittest.TestCase):
                     "requirements_expanded.txt",
                     "requirements_compiled_test_expand.txt",
                 ],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="constraints_ordering_test_depset",
                 output="requirements_compiled_constraints_ordering.txt",
             )
