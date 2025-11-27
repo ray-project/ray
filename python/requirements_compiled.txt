@@ -1001,7 +1001,7 @@ jupytext==1.16.3
     # via -r python/requirements/test-requirements.txt
 kafka-python==2.2.15
     # via -r python/requirements/ml/data-test-requirements.txt
-keras==2.15.0 ; python_version < "3.12"
+keras==2.15.0 ; python_version < "3.13"
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   tensorflow
