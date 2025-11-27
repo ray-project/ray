@@ -767,7 +767,7 @@ def test_groupby_aggregations_are_associative(
         {
             "B": [
                 ("count", lambda s: s.count() if ignore_nulls else len(s)),
-                ("count_distinct", lambda s: s.nunique(skipna=False)),
+                ("count_distinct", lambda s: s.nunique(dropna=False)),
                 ("sum", lambda s: s.sum(skipna=ignore_nulls, min_count=1)),
                 ("min", lambda s: s.min(skipna=ignore_nulls)),
                 ("max", lambda s: s.max(skipna=ignore_nulls)),
