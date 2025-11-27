@@ -27,4 +27,7 @@ py_test(
     deps = [
         ":ray_oss_analysis_lib",
     ],
+    tags = [
+        "team:ci"
+    ]
 )
