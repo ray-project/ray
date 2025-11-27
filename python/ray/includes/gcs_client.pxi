@@ -421,28 +421,6 @@ cdef class InnerGcsClient:
                 timeout_ms)
         return asyncio.wrap_future(fut)
 
-    def async_kill_actor(
-        self, actor_id: ActorID, c_bool force_kill, c_bool no_restart,
-        timeout: Optional[int | float] = None
-    ) -> ConcurrentFuture[None]:
-        """
-        On success: returns None.
-        On failure: raises an exception.
-        """
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            fut = incremented_fut()
-            CActorID c_actor_id = actor_id.native()
-
-        with nogil:
-            self.inner.get().Actors().AsyncKillActor(
-                c_actor_id,
-                force_kill,
-                no_restart,
-                StatusPyCallback(convert_status, assign_and_decrement_fut, fut),
-                timeout_ms
-            )
-        return asyncio.wrap_future(fut)
     #############################################################
     # Job methods
     #############################################################
@@ -691,17 +669,33 @@ cdef class InnerGcsClient:
     #############################################################
     # TaskInfo methods
     #############################################################
-    async def async_add_events(self, serialized_request: bytes, timeout_s=None):
+    async def async_add_events(self, serialized_request: bytes, timeout_s=None, executor=None):
         """Send async AddEvents request to GCS."""
         cdef:
-            c_string c_req = serialized_request
+            CAddEventsRequest c_req
             int64_t timeout_ms
             fut = incremented_fut()
         timeout_ms = round(1000 * timeout_s) if timeout_s else -1
 
+        # Parse the protobuf payload
+        cdef c_string payload = serialized_request
+        cdef bint parsed = False
+        if executor is not None:
+            parsed = await get_or_create_event_loop().run_in_executor(
+                executor,
+                lambda: c_req.ParseFromString(payload),
+            )
+        else:
+            parsed = c_req.ParseFromString(payload)
+
+        if not parsed:
+            # Fail fast on parse error
+            assign_and_decrement_fut((None, ValueError("Invalid AddEventsRequest payload")), fut)
+            return await asyncio.wrap_future(fut)
+
         with nogil:
             self.inner.get().Tasks().AsyncAddEvents(
-                c_req,
+                move(c_req),
                 StatusPyCallback(convert_status, assign_and_decrement_fut, fut),
                 timeout_ms)
         return await asyncio.wrap_future(fut)

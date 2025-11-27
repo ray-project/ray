@@ -239,7 +239,7 @@ class AsyncGCSTaskEventsPublisherClient(PublisherClientInterface):
                 lambda: request.SerializeToString(),
             )
             status_code = await self._gcs_client.async_add_events(
-                serialized_request, self._timeout_s
+                serialized_request, self._timeout_s, self._executor
             )
 
             if status_code != dashboard_utils.HTTPStatusCode.OK:

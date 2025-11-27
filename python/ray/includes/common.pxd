@@ -433,12 +433,6 @@ cdef extern from "ray/gcs_rpc_client/accessors/actor_info_accessor_interface.h" 
             const MultiItemPyCallback[CActorTableData] &callback,
             int64_t timeout_ms)
 
-        void AsyncKillActor(const CActorID &actor_id,
-                                  c_bool force_kill,
-                                  c_bool no_restart,
-                                  const StatusPyCallback &callback,
-                                  int64_t timeout_ms)
-
 cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
     cdef cppclass CJobInfoAccessor "ray::gcs::JobInfoAccessor":
         CRayStatus GetAll(
@@ -634,11 +628,6 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
     cdef cppclass CTaskInfoAccessor "ray::gcs::TaskInfoAccessor":
         void AsyncAddEvents(
             CAddEventsRequest &&request,
-            const StatusPyCallback &callback,
-            int64_t timeout_ms)
-
-        void AsyncAddEvents(
-            const c_string &serialized_request,
             const StatusPyCallback &callback,
             int64_t timeout_ms)
 
