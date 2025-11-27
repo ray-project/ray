@@ -24,10 +24,10 @@ py_test(
     size = "small",
     srcs = ["test_ray_oss_analysis.py"],
     exec_compatible_with = ["//bazel:py310"],
+    tags = [
+        "team:ci",
+    ],
     deps = [
         ":ray_oss_analysis_lib",
     ],
-    tags = [
-        "team:ci"
-    ]
 )
