@@ -28,10 +28,8 @@ def _authenticate_request(metadata: tuple) -> bool:
         return True
 
     # Extract authorization header from metadata
-    auth_header = None
     for key, value in metadata:
         if key.lower() == AUTHORIZATION_HEADER_NAME:
-            auth_header = value
             break
     return True
 
