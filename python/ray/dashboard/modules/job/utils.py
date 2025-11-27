@@ -332,58 +332,37 @@ def fast_tail_last_n_lines(
         logger.debug(f"Log file {path} does not exist.")
         return ""
 
-    lines: List[str] = []
-    buffer = ""
-    at_eof = True
-
-    logger.info(
+    logger.debug(
         f"Start reading log file {path} with num_lines={num_lines} max_chars={max_chars} block_size={block_size}"
     )
     try:
-        with open(path, "r") as f:
-
-            # Start from EOF
+        with open(path, "rb") as f:
             f.seek(0, os.SEEK_END)
-            position = f.tell()
+            file_size = f.tell()
+            if file_size == 0:
+                return ""
 
-            logger.debug(f"Start reading log file {path} from position {position}")
-            while position > 0 and len(lines) < num_lines:
-                logger.debug(f"Read log file {path} position {position}")
+            chunks = []
+            position = file_size
+            newlines_found = 0
 
+            # We read backwards in chunks until we have enough newlines for num_lines.
+            # We may need one more newline to capture the content before the first newline.
+            while position > 0 and newlines_found < num_lines + 1:
                 read_size = min(block_size, position)
                 position -= read_size
                 f.seek(position)
 
                 chunk = f.read(read_size)
-                buffer = chunk + buffer
+                newlines_found += chunk.count(b"\n")
+                chunks.insert(0, chunk)
 
-                # Split into lines
-                parts = buffer.split("\n")
-                buffer = parts[0]  # incomplete head part
-                new_lines = parts[1:]
+        buffer = b"".join(chunks)
+        lines = buffer.decode("utf-8", errors="replace").splitlines(keepends=True)
 
-                # Add reversed, because we read backward
-                for line in reversed(new_lines):
-                    if len(lines) >= num_lines:
-                        break
-                    # If the very last element is a lone newline at EOF, skip it
-                    if at_eof and line == "":
-                        continue
-                    lines.append(line + "\n")
+        result = "".join(lines[-num_lines:])
 
-                # After handling the first block (at EOF), blank lines should be counted normally
-                at_eof = False
-
-            # Add leftover first partial line
-            if buffer and len(lines) < num_lines:
-                lines.append(buffer + "\n")
-
+        return result[-max_chars:]
     except Exception as e:
         logger.exception(f"Failed to read log file {path}: {e}")
         return ""
-
-    # Restore original order
-    result = "".join(reversed(lines))
-
-    # Truncate to last max_chars characters
-    return result[-max_chars:]

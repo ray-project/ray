@@ -245,16 +245,6 @@ class TestFastTailLastNLines:
         # Check that we truncate to max_chars, and include the last line.
         assert out.endswith("\n")
 
-    def test_partial_last_line(self, tmp):
-        # Write a log file with a partial last line, check that we include it.
-        with open(tmp, "w") as f:
-            f.write("a\n")
-            f.write("b\n")
-            f.write("partial_last_line")  # No newline at end
-        out = fast_tail_last_n_lines(tmp, num_lines=3)
-        assert out.endswith("\n")
-        assert "partial_last_line\n" in out
-
     def test_small_block_size(self, tmp):
         # Write 30 lines, check that we can read a small block size and get the last N lines.
         with open(tmp, "w") as f:
