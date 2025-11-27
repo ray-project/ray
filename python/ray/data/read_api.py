@@ -2311,6 +2311,7 @@ def read_webdataset(
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
     expand_json: bool = False,
 ) -> Dataset:
@@ -2354,6 +2355,9 @@ def read_webdataset(
             input data size and available resources. You shouldn't manually set this
             value in most cases.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
         expand_json: If ``True``, expand JSON objects into individual samples.
             Defaults to ``False``.
@@ -2391,6 +2395,7 @@ def read_webdataset(
         datasource,
         parallelism=parallelism,
         num_cpus=num_cpus,
+        num_gpus=num_gpus,
         memory=memory,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,

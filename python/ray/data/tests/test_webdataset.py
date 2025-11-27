@@ -272,6 +272,73 @@ def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_pe
         assert len(list(dataset)) == min_rows_per_file
 
 
+@pytest.mark.parametrize("num_cpus", [None, 1, 2])
+@pytest.mark.parametrize("memory", [None, 1024 * 1024 * 1024])  # 1GB
+def test_read_webdataset_resource_args(
+    ray_start_2_cpus, tmp_path, mocker, num_cpus, memory
+):
+    """Test that num_cpus and memory parameters are correctly passed to read_datasource."""
+    # Create a simple webdataset file
+    path = os.path.join(tmp_path, "test_000000.tar")
+    with TarWriter(path) as tf:
+        tf.write("0.txt", b"test data")
+
+    # Mock read_datasource to capture the arguments
+    mock_read_datasource = mocker.patch("ray.data.read_api.read_datasource")
+    mock_read_datasource.return_value = ray.data.from_items(
+        [{"__key__": "0", "txt": b"test data"}]
+    )
+
+    # Call read_webdataset with resource parameters
+    kwargs = {"paths": [str(tmp_path)]}
+    if num_cpus is not None:
+        kwargs["num_cpus"] = num_cpus
+    if memory is not None:
+        kwargs["memory"] = memory
+
+    ray.data.read_webdataset(**kwargs)
+
+    # Verify read_datasource was called
+    assert mock_read_datasource.called
+    _, call_kwargs = mock_read_datasource.call_args
+
+    # Verify resource parameters were passed correctly
+    if num_cpus is not None:
+        assert call_kwargs["num_cpus"] == num_cpus
+    else:
+        assert call_kwargs["num_cpus"] is None
+
+    if memory is not None:
+        assert call_kwargs["memory"] == memory
+    else:
+        assert call_kwargs["memory"] is None
+
+
+def test_read_webdataset_resource_integration(ray_start_2_cpus, tmp_path):
+    """Integration test to verify num_cpus and memory parameters work end-to-end."""
+    # Create a simple webdataset file
+    path = os.path.join(tmp_path, "integration_000000.tar")
+    with TarWriter(path) as tf:
+        for i in range(5):
+            tf.write(f"{i}.txt", f"sample {i}".encode("utf-8"))
+
+    # Test with resource parameters - should not raise errors
+    ds = ray.data.read_webdataset(
+        paths=[str(tmp_path)],
+        num_cpus=1,
+        memory=512 * 1024 * 1024,  # 512MB
+        override_num_blocks=1,
+    )
+
+    samples = ds.take_all()
+    assert len(samples) == 5
+
+    # Verify the data is correct
+    for i, sample in enumerate(samples):
+        assert sample["__key__"] == str(i)
+        assert sample["txt"].decode("utf-8") == f"sample {i}"
+
+
 if __name__ == "__main__":
     import sys
 
