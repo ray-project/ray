@@ -843,7 +843,7 @@
 - name: long_running_impala
   python: "3.10"
   group: Long running tests
-  working_dir: long_running_tests
+  working_dir: long_running_tests`
 
   frequency: weekly
   team: rllib
@@ -2023,6 +2023,8 @@
 
   cluster:
     byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: 1gpu_16cpus.yaml
@@ -2041,6 +2043,8 @@
 
   cluster:
     byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: 1gpu_16cpus.yaml
