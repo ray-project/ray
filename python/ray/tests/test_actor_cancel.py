@@ -559,7 +559,7 @@ def test_is_canceled_concurrent_actor_task(shutdown_only):
 
     # Verify that task 1 is marked canceled
     canceled_tasks = ray.get(actor.get_canceled_tasks.remote())
-    assert canceled_tasks == set([1])
+    assert canceled_tasks == {1}
 
 
 def test_is_canceled_not_supported_in_async_actor(shutdown_only):
@@ -589,7 +589,9 @@ def test_is_canceled_not_supported_in_async_actor(shutdown_only):
     ref = actor.async_task.remote()
 
     # is_canceled() is not supported for async actors
-    with pytest.raises(RuntimeError, match="This method is not supported in an async actor."):
+    with pytest.raises(
+        RuntimeError, match="This method is not supported in an async actor."
+    ):
         ray.get(ref)
 
     # Verify the state for async actor does NOT change as there's no graceful

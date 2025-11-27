@@ -670,12 +670,13 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
     // status.ok() means the worker completed the reply, either succeeded or with a
     // retryable failure (e.g. user exceptions). We complete only on non-retryable case.
 
-    // Handle tasks marked as canceled but completed without application error (sync actors).
-    // For async actors, cancellation raises an asyncio.CancelledError exception
+    // Handle tasks marked as canceled but completed without application error (sync
+    // actors). For async actors, cancellation raises an asyncio.CancelledError exception
     // during task execution, which is treated as an application error
     // (with is_application_error=true) and will be handled by CompletePendingTask.
-    // For sync actors, no exception is raised during cancellation, so is_application_error=false
-    // and we must explicitly fail the task here with TASK_CANCELLED.
+    // For sync actors, no exception is raised during cancellation, so
+    // is_application_error=false and we must explicitly fail the task here with
+    // TASK_CANCELLED.
     if (task_manager_.IsTaskCanceled(task_id) && !reply.is_application_error()) {
       RAY_LOG(INFO) << "Task " << task_id << " completed but was cancelled, failing it";
       rpc::RayErrorInfo error_info;
