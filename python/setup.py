@@ -378,6 +378,8 @@ if setup_spec.type == SetupType.RAY:
             [
                 "vllm[audio]>=0.11.0",
                 "nixl>=0.6.1",
+                # TODO(llm): remove after next vLLM version bump
+                "transformers>=4.57.3",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
