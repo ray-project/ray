@@ -10,8 +10,7 @@ import os
 import random
 import time
 import uuid
-from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
+from typing import TYPE_CHECKING, Iterable, Optional
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -285,6 +284,7 @@ class TurbopufferDatasink(Datasink):
     def _write_multi_namespace(self, client, table: pa.Table):
         """
         Write table to multiple namespaces grouped by namespace_column.
+        Uses PyArrow's group_by() for efficient grouping in a single pass.
         """
         # Determine the actual column name in the prepared table that should be
         # used for namespace grouping. The configured namespace_column may have
@@ -314,13 +314,8 @@ class TurbopufferDatasink(Datasink):
                 f"Available columns: {table.column_names}"
             )
 
-        # Group rows by the (possibly renamed) namespace column. We build the
-        # groups in a single pass over the column indices to avoid repeatedly
-        # scanning the full table for each unique namespace value.
+        # Disallow null namespace values before grouping.
         namespace_col = table.column(group_col_name)
-
-        # Disallow null namespace values to avoid silently dropping them during
-        # grouping or filtering.
         null_mask = pc.is_null(namespace_col)
         if pc.any(null_mask).as_py():
             raise ValueError(
@@ -328,17 +323,33 @@ class TurbopufferDatasink(Datasink):
                 "fill or drop them before writing with namespace_column."
             )
 
-        # Build index groups per namespace value in a single pass.
-        index_groups: Dict[Any, list[int]] = defaultdict(list)
-        for idx, value in enumerate(namespace_col.to_pylist()):
-            index_groups[value].append(idx)
+        # Sort the table by the grouping column. This groups all rows with the
+        # same namespace value together, enabling efficient slicing.
+        sort_indices = pc.sort_indices(table, sort_keys=[(group_col_name, "ascending")])
+        sorted_table = table.take(sort_indices)
+        sorted_namespace_col = sorted_table.column(group_col_name)
 
-        logger.debug(f"Writing to {len(index_groups)} namespaces")
+        # Use PyArrow's group_by() to efficiently identify unique groups and their boundaries.
+        # The aggregate operation processes all groups in a single vectorized pass.
+        grouped = sorted_table.group_by(group_col_name)
+        
+        # Count rows per group to determine boundaries
+        agg_result = grouped.aggregate([("id", "count")])
+        group_keys = agg_result.column(group_col_name)
+        group_counts = agg_result.column("id_count")
+        num_groups = len(group_keys)
+        
+        logger.debug(f"Writing to {num_groups} namespaces")
 
-        # Process each namespace group
-        for namespace_value, row_indices in index_groups.items():
-            # Materialize this group's rows via a single take() call.
-            group_table = table.take(pa.array(row_indices, type=pa.int64()))
+        # Process each group by slicing the sorted table at group boundaries
+        start_idx = 0
+        for i in range(num_groups):
+            namespace_value = group_keys[i].as_py()
+            count = group_counts[i].as_py()
+            
+            # Slice the sorted table to get this group's rows
+            group_table = sorted_table.slice(start_idx, count)
+            start_idx += count
 
             # Format namespace name
             # Convert bytes to UUID string if needed
