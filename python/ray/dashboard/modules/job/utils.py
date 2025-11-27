@@ -303,3 +303,87 @@ async def find_jobs_by_job_ids(
             for job_info, submission_id in zip(job_infos, job_submission_ids)
         },
     }
+
+
+def fast_tail_last_n_lines(
+    path: str,
+    num_lines: int,
+    max_chars: int = 20000,
+    block_size: int = 8192,
+) -> str:
+    """Return the last ``num_lines`` lines from a large log file efficiently.
+
+    This function avoids scanning the entire file. It seeks to the end of
+    the file and reads backwards in fixed-size blocks until enough lines are
+    collected. This is much faster for large files compared to using
+    ``file_tail_iterator()``, which performs a full sequential scan.
+
+    Args:
+        path: The file path to read.
+        num_lines: Number of lines to return.
+        max_chars: Maximum number of characters in the returned string.
+        block_size: Read size for each backward block.
+
+    Returns:
+        A string containing at most ``num_lines`` of the last lines in the file,
+        truncated to ``max_chars`` characters.
+    """
+    if not os.path.exists(path):
+        logger.debug(f"Log file {path} does not exist.")
+        return ""
+
+    lines: List[str] = []
+    buffer = ""
+    at_eof = True
+
+    logger.info(
+        f"Start reading log file {path} with num_lines={num_lines} max_chars={max_chars} block_size={block_size}"
+    )
+    try:
+        with open(path, "r") as f:
+
+            # Start from EOF
+            f.seek(0, os.SEEK_END)
+            position = f.tell()
+
+            logger.debug(f"Start reading log file {path} from position {position}")
+            while position > 0 and len(lines) < num_lines:
+                logger.debug(f"Read log file {path} position {position}")
+
+                read_size = min(block_size, position)
+                position -= read_size
+                f.seek(position)
+
+                chunk = f.read(read_size)
+                buffer = chunk + buffer
+
+                # Split into lines
+                parts = buffer.split("\n")
+                buffer = parts[0]  # incomplete head part
+                new_lines = parts[1:]
+
+                # Add reversed, because we read backward
+                for line in reversed(new_lines):
+                    if len(lines) >= num_lines:
+                        break
+                    # If the very last element is a lone newline at EOF, skip it
+                    if at_eof and line == "":
+                        continue
+                    lines.append(line + "\n")
+
+                # After handling the first block (at EOF), blank lines should be counted normally
+                at_eof = False
+
+            # Add leftover first partial line
+            if buffer and len(lines) < num_lines:
+                lines.append(buffer + "\n")
+
+    except Exception as e:
+        logger.exception(f"Failed to read log file {path}: {e}")
+        return ""
+
+    # Restore original order
+    result = "".join(reversed(lines))
+
+    # Truncate to last max_chars characters
+    return result[-max_chars:]
