@@ -117,6 +117,9 @@ def shutdown():
             "Nothing to shut down. There's no Serve application "
             "running on this Ray cluster."
         )
+        # Clear the global client even if Ray is not initialized to avoid
+        # stale actor handles from a previous Ray instance.
+        _set_global_client(None)
         return
 
     try:
@@ -144,6 +147,9 @@ async def shutdown_async():
             "Nothing to shut down. There's no Serve application "
             "running on this Ray cluster."
         )
+        # Clear the global client even if Ray is not initialized to avoid
+        # stale actor handles from a previous Ray instance.
+        _set_global_client(None)
         return
 
     try:

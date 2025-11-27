@@ -141,6 +141,8 @@ def _shared_serve_instance():
     # os.environ["SERVE_DEBUG_LOG"] = "1" <- Do not uncomment this.
 
     # Overriding task_retry_delay_ms to relaunch actors more quickly
+    if ray.is_initialized():
+        ray.shutdown()
     ray.init(
         num_cpus=36,
         namespace="default_test_namespace",
@@ -263,6 +265,12 @@ def ray_instance(request):
     except AttributeError:
         requested_env_vars = {}
 
+    # Ensure Ray is shut down before initializing to avoid conflicts
+    # (especially on Windows where cleanup from previous tests might not complete)
+    serve.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
+
     os.environ.update(requested_env_vars)
     yield ray.init(
         _metrics_export_port=9999,
@@ -319,6 +327,10 @@ def metrics_start_shutdown(request):
     param = request.param if hasattr(request, "param") else None
     request_timeout_s = param if param else None
     """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
+    # Ensure Ray is shut down before initializing to avoid conflicts
+    serve.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
     ray.init(
         _metrics_export_port=TEST_METRICS_EXPORT_PORT,
         _system_config={
