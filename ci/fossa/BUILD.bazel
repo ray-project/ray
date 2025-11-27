@@ -1,5 +1,13 @@
-load("@rules_python//python:defs.bzl", "py_binary")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
+
+py_library(
+    name = "ray_oss_analysis_lib",
+    srcs = ["ray_oss_analysis.py"],
+    deps = [
+        ci_require("pyyaml"),
+    ],
+)
 
 py_binary(
     name = "ray_oss_analysis",
@@ -8,5 +16,15 @@ py_binary(
     visibility = ["//visibility:private"],
     deps = [
         ci_require("pyyaml"),
+    ],
+)
+
+py_test(
+    name = "test_ray_oss_analysis",
+    srcs = ["test_ray_oss_analysis.py"],
+    exec_compatible_with = ["//bazel:py310"],
+    size = "small",
+    deps = [
+        ":ray_oss_analysis_lib",
     ],
 )

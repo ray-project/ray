@@ -66,7 +66,7 @@ def _isBuildTool(label: str) -> bool:
     Check if the label is a build tool.
     """
     # list of build package labels that are present in dependencies but not part of the target code
-    build_package_labels = ["bazel_tools", "local_config_python", "cython"]
+    build_package_labels = ["bazel_tools", "local_config_python", "cython", "local_config_cc"]
     return any(
         build_package_label in label for build_package_label in build_package_labels
     )
