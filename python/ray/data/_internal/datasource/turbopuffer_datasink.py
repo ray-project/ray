@@ -261,7 +261,7 @@ class TurbopufferDatasink(Datasink):
                     f"'{self.id_column}' to 'id'. Please disambiguate your schema."
                 )
 
-            table = self._rename_single_column(table, self.id_column, "id")
+            table = table.rename_columns({self.id_column: "id"})
 
         if self.vector_column != "vector":
             if self.vector_column not in table.column_names:
@@ -274,28 +274,13 @@ class TurbopufferDatasink(Datasink):
                     f"'{self.vector_column}' to 'vector'. Please disambiguate your schema."
                 )
 
-            table = self._rename_single_column(table, self.vector_column, "vector")
+            table = table.rename_columns({self.vector_column: "vector"})
 
         # Filter out rows with null IDs
         if "id" in table.column_names:
             table = table.filter(pc.is_valid(table.column("id")))
 
         return table
-
-    def _rename_single_column(
-        self, table: pa.Table, src_name: str, dst_name: str
-    ) -> pa.Table:
-        """Return a new table with one column renamed.
-
-        This helper centralizes the rename logic used for both the id and vector
-        columns so that we don't duplicate the index and schema manipulation.
-        The caller is responsible for validating that src_name exists and that
-        dst_name doesn't already exist in the schema.
-        """
-        idx = table.column_names.index(src_name)
-        new_names = list(table.column_names)
-        new_names[idx] = dst_name
-        return table.rename_columns(new_names)
 
     def _write_multi_namespace(self, client, table: pa.Table):
         """
