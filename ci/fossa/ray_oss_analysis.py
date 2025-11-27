@@ -242,11 +242,10 @@ def _askalono_crawl(path: str) -> List[Dict]:
     """
     Crawl licenses using askalono.
     """
-    license_text = subprocess.run(
+    license_text = subprocess.check_output(
         ["askalono", "--format=json", "crawl", path],
-        capture_output=True,
         text=True,
-    ).stdout.strip()
+    ).strip()
     licenses = [json.loads(license_text) for license_text in license_text.splitlines()]
     cleaned_licenses = [license for license in licenses if "error" not in license]
     error_licenses = [license for license in licenses if "error" in license]
