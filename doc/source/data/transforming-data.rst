@@ -219,7 +219,7 @@ When choosing the appropriate batch format for your ``map_batches`` operation, t
     * Use ``pandas`` in ``map_batches`` when your batch function needs a DataFrame API, such as for tabular cleaning, joins, grouping, or row/column-wise transforms.
     * Use ``pyarrow`` in ``map_batches`` when your batch function benefits from columnar processing, high-performance I/O, or zero-copy conversion to other systems.
 
-You'll also want to take note of the current block type. If you choose an batch format that doesn't match the current block type, the operation will incur an extra copy between formats (for example, if you have one map_batches using the pandas format, then another using the numpy format).
+You should also take note of the current block type. If you choose a batch format that doesn't match the current block type, the operation incurs an extra copy between formats (for example, if you have one ``map_batches`` using the pandas format, then another using the ``numpy`` format).
 
 
 Configuring batch size
