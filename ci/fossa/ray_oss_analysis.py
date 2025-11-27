@@ -306,8 +306,6 @@ def _get_askalono_results(dependencies: Set[str], bazel_output_base: str) -> Lis
                     "dependency": dependency,
                     "path": "unknown",
                     "license": "unknown",
-                    "score": "0.0",
-                    "content": "unknown",
                 }
             )
             continue
@@ -317,7 +315,6 @@ def _get_askalono_results(dependencies: Set[str], bazel_output_base: str) -> Lis
                     "dependency": dependency,
                     "path": license["path"].split("external/")[-1],
                     "license": license["result"]["license"]["name"],
-                    "score": license["result"]["score"],
                 }
             )
     return license_info
