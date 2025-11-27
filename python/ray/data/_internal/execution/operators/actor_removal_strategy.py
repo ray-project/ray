@@ -34,25 +34,25 @@ class DefaultActorRemovalStrategy(ActorRemovalStrategy):
 
 
 class NodeAwareActorRemovalStrategy(ActorRemovalStrategy):
-    """优先从空闲 actor 最多的节点上移除 actor 的策略"""
+    """Select an idle actor to remove, preferring nodes with the most idle actors."""
 
     def select_actor_to_remove(
         self,
         running_actors: Dict["ActorHandle", "_ActorState"]
     ) -> Optional["ActorHandle"]:
-        """选择一个空闲 actor 进行移除,优先选择空闲 actor 最多的节点"""
-        # 统计每个节点上的空闲 actor 数量
+        """Select an idle actor to remove, preferring nodes with the most idle actors."""
+        
+        # Count idle actors per node
         idle_counts_per_node = self._count_idle_actors_per_node(running_actors)
 
         if not idle_counts_per_node:
-            # 没有空闲 actor
             return None
 
-            # 找到空闲 actor 最多的节点
+        # Find the node with the most idle actors
         target_node = max(idle_counts_per_node.keys(),
                           key=lambda n: idle_counts_per_node[n])
 
-        # 从该节点上选择一个空闲 actor
+        # Select an idle actor from the target node
         for actor, state in running_actors.items():
             if state.num_tasks_in_flight == 0 and state.actor_location == target_node:
                 return actor
@@ -63,13 +63,10 @@ class NodeAwareActorRemovalStrategy(ActorRemovalStrategy):
         self,
         running_actors: Dict["ActorHandle", "_ActorState"]
     ) -> Dict[str, int]:
-        """统计每个节点上的空闲 actor 数量
-
-        使用 actor_location 字段而不是 node_id
-        """
+        """Count idle actors per node"""
         idle_counts = {}
         for actor, state in running_actors.items():
             if state.num_tasks_in_flight == 0:
-                node_id = state.actor_location  # 使用现有的 actor_location 字段
+                node_id = state.actor_location
                 idle_counts[node_id] = idle_counts.get(node_id, 0) + 1
         return idle_counts

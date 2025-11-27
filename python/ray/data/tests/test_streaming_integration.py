@@ -585,7 +585,7 @@ def test_e2e_liveness_with_output_backpressure_edge_case(
 
 def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared,
                                         restore_data_context):
-    """端到端测试基于资源的 autoscaling - 验证资源限制对actor pool size的影响"""
+    """E2E test for resource-based autoscaling - validates the effect of resource limits on actor pool size."""
     ctx = ray.data.DataContext.get_current()
     ctx.enable_resource_based_autoscaling = True
 
@@ -593,7 +593,7 @@ def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared,
         def __call__(self, batch):
             return batch
 
-    # 创建两个不同资源需求的map操作
+    # Create two map operations with different resource requirements
     ds1 = ray.data.range(100, override_num_blocks=10).map_batches(
         SimpleUDF,
         compute=ray.data.ActorPoolStrategy(min_size=1, max_size=10),
@@ -606,7 +606,7 @@ def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared,
         batch_size=10,
     )
 
-    # 开始执行并获取executor
+    # Start execution and get the executor
     iter1 = ds1._execute_to_iterator()
     iter2 = ds2._execute_to_iterator()
     
@@ -615,26 +615,26 @@ def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared,
     assert executor1 is not None
     assert executor2 is not None
 
-    # 测试场景1：严格资源限制
-    print("测试场景1：严格资源限制")
+    # Test case 1: Strict resource limits
+    print("Testing scenario 1: Strict resource limits")
     executor1.update_job_resource_limits(
         min_resources=ExecutionResources(cpu=2, gpu=0, memory=1e9),
         max_resources=ExecutionResources(cpu=4, gpu=0, memory=2e9)
     )
     
-    # 验证资源限制被正确应用
+    # Verify that resource limits are applied correctly
     min_res, max_res = executor1.get_job_resource_limits()
     assert min_res.cpu == 2
     assert max_res.cpu == 4
     
-    # 执行并获取结果
+    # Execute and get the results
     result1 = list(ds1.iter_batches())
-    # 验证数据完整性而不是批次数量
+    # Verify data integrity instead of the number of batches
     total_rows = sum(len(batch["id"]) for batch in result1)
-    assert total_rows == 100  # 总共100行数据
-    
-    # 测试场景2：宽松资源限制
-    print("测试场景2：宽松资源限制")
+    assert total_rows == 100  # 100 rows in total
+
+    # Test case 2: Loose resource limits
+    print("Testing scenario 2: Loose resource limits")
     executor2.update_job_resource_limits(
         min_resources=ExecutionResources(cpu=4, gpu=0, memory=4e9),
         max_resources=ExecutionResources(cpu=10, gpu=0, memory=10e9)
@@ -645,68 +645,68 @@ def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared,
     assert max_res.cpu == 10
     
     result2 = list(ds2.iter_batches())
-    # 验证数据完整性而不是批次数量
+    # Verify data integrity instead of the number of batches
     total_rows2 = sum(len(batch["id"]) for batch in result2)
-    assert total_rows2 == 100  # 总共100行数据
-    
-    # 测试场景3：验证资源竞争下的分配
-    print("测试场景3：验证资源竞争")
-    
-    # 创建两个并发执行的dataset
+    assert total_rows2 == 100  # 100 rows in total
+
+    # Test case 3: Verify allocation under resource contention
+    print("Testing scenario 3: Verifying resource contention")
+
+    # Create two concurrently executing datasets
     ds3 = ray.data.range(50, override_num_blocks=5).map_batches(
         SimpleUDF,
         compute=ray.data.ActorPoolStrategy(min_size=1, max_size=5),
         batch_size=10,
     )
-    
+
     ds4 = ray.data.range(50, override_num_blocks=5).map_batches(
         SimpleUDF,
         compute=ray.data.ActorPoolStrategy(min_size=1, max_size=5),
         batch_size=10,
     )
-    
-    # 先初始化executor
+
+    # Initialize executors
     iter3 = ds3._execute_to_iterator()
     iter4 = ds4._execute_to_iterator()
-    
-    # 设置共享资源池
+
+    # Set up a shared resource pool
     shared_executor3 = ds3._current_executor
     shared_executor4 = ds4._current_executor
     assert shared_executor3 is not None
     assert shared_executor4 is not None
-    
-    # 为两个executor设置相同的资源限制
+
+    # Set the same resource limits for both executors
     for executor in [shared_executor3, shared_executor4]:
         executor.update_job_resource_limits(
             min_resources=ExecutionResources(cpu=3, gpu=0, memory=3e9),
-            max_resources=ExecutionResources(cpu=6, gpu=0, memory=6e9)
+            max_resources=ExecutionResources(cpu=6, gpu=0, memory=6e9),
         )
-    
-    # 并发执行
+
+    # Concurrent execution
     import concurrent.futures
-    
+
     def run_dataset(ds):
         return list(ds.iter_batches())
-    
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
         future3 = executor.submit(run_dataset, ds3)
         future4 = executor.submit(run_dataset, ds4)
-        
+
         result3 = future3.result()
         result4 = future4.result()
-    
-    # 验证数据完整性
+
+    # Verify data integrity
     total_rows3 = sum(len(batch["id"]) for batch in result3)
     total_rows4 = sum(len(batch["id"]) for batch in result4)
-    assert total_rows3 == 50  # ds3有50行数据
-    assert total_rows4 == 50  # ds4有50行数据
-    
-    print("所有测试场景通过！")
+    assert total_rows3 == 50  # ds3 has 50 rows
+    assert total_rows4 == 50  # ds4 has 50 rows
+
+    print("All test scenarios passed!")
 
 
 def test_e2e_node_aware_actor_removal(ray_start_10_cpus_shared,
                                       restore_data_context):
-    """端到端测试节点感知的 actor 移除 - 验证功能启用后的行为差异"""
+    """e2e test for actor removal - verifies behavior differences when the feature is enabled"""
     
     class TrackingUDF:
         def __init__(self):
@@ -715,18 +715,18 @@ def test_e2e_node_aware_actor_removal(ray_start_10_cpus_shared,
             self.actor_id = ray.get_runtime_context().get_actor_id()
             
         def __call__(self, batch):
-            time.sleep(0.05)  # 快速处理
+            time.sleep(0.05)
             return {
                 "data": batch["id"],
                 "node_id": [self.node_id] * len(batch["id"]),
                 "actor_id": [self.actor_id] * len(batch["id"])
             }
 
-    # 测试场景1：功能关闭时的行为
+    # Test scenario 1: Behavior when feature is disabled
     ctx = ray.data.DataContext.get_current()
     original_setting = ctx.enable_node_aware_actor_removal
     
-    # 关闭节点感知功能
+    # Disable node-aware feature
     ctx.enable_node_aware_actor_removal = False
     
     ds1 = ray.data.range(40, override_num_blocks=4).map_batches(
@@ -742,9 +742,9 @@ def test_e2e_node_aware_actor_removal(ray_start_10_cpus_shared,
     actors_disabled = set()
     for batch in result1:
         actors_disabled.update(batch["actor_id"])
-    print(f"节点感知关闭时，使用 {len(actors_disabled)} 个actors")
+    print(f"When node awareness is disabled, {len(actors_disabled)} actors are used")
     
-    # 测试场景2：功能启用时的行为
+    # Test scenario 2: Behavior when feature is enabled
     ctx.enable_node_aware_actor_removal = True
     
     ds2 = ray.data.range(40, override_num_blocks=4).map_batches(
@@ -760,19 +760,19 @@ def test_e2e_node_aware_actor_removal(ray_start_10_cpus_shared,
     actors_enabled = set()
     for batch in result2:
         actors_enabled.update(batch["actor_id"])
-    print(f"节点感知启用时，使用 {len(actors_enabled)} 个actors")
+    print(f"When node awareness is enabled, {len(actors_enabled)} actors are used")
     
-    # 验证功能启用标志
+    # Verify feature flag is set
     assert ctx.enable_node_aware_actor_removal is True
     
-    # 验证两种模式下都能正确处理数据
+    # Verify that data is processed correctly in both modes
     assert len(actors_disabled) >= 1
     assert len(actors_enabled) >= 1
     
-    # 恢复原始设置
+    # Restore original setting
     ctx.enable_node_aware_actor_removal = original_setting
     
-    print("节点感知actor移除功能验证完成！")
+    print("Node-aware actor removal feature verification completed!")
 
 if __name__ == "__main__":
     import sys

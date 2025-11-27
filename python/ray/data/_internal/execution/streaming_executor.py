@@ -706,14 +706,14 @@ class StreamingExecutor(Executor, threading.Thread):
         min_resources: Optional[ExecutionResources] = None,
         max_resources: Optional[ExecutionResources] = None
     ) -> None:
-        """更新 job 级别的资源限制,自动计算所有 actor pools 的 size
+        """Update job-level resource limits, automatically calculating all actor pool sizes.
 
         Args:
-            min_resources: Job 级别的最小资源(可选)
-            max_resources: Job 级别的最大资源(可选)
+            min_resources: Job-level minimum resources (optional).
+            max_resources: Job-level maximum resources (optional).
 
         Raises:
-            ValueError: 如果当前 autoscaler 不支持资源调整
+            ValueError: If the current autoscaler does not support resource-based sizing.
         """
         from ray.data._internal.actor_autoscaler.resource_based_actor_autoscaler import (
             ResourceBasedActorAutoscaler
@@ -734,10 +734,10 @@ class StreamingExecutor(Executor, threading.Thread):
     def get_job_resource_limits(
         self
     ) -> tuple[Optional[ExecutionResources], Optional[ExecutionResources]]:
-        """获取当前的 job 级别资源限制
+        """Get the current job-level resource limits
 
         Returns:
-            (min_resources, max_resources) 元组
+            Tuple of (min_resources, max_resources)
         """
         from ray.data._internal.actor_autoscaler.resource_based_actor_autoscaler import (
             ResourceBasedActorAutoscaler
