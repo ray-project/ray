@@ -328,6 +328,11 @@ def fast_tail_last_n_lines(
         A string containing at most ``num_lines`` of the last lines in the file,
         truncated to ``max_chars`` characters.
     """
+    if num_lines < 0:
+        raise ValueError(f"num_lines must be non-negative, got {num_lines}")
+    if num_lines == 0:
+        return ""
+
     if not os.path.exists(path):
         logger.debug(f"Log file {path} does not exist.")
         return ""
@@ -360,7 +365,10 @@ def fast_tail_last_n_lines(
         buffer = b"".join(chunks)
         lines = buffer.decode("utf-8", errors="replace").splitlines(keepends=True)
 
-        result = "".join(lines[-num_lines:])
+        if len(lines) <= num_lines:
+            result = "".join(lines)
+        else:
+            result = "".join(lines[-num_lines:])
 
         return result[-max_chars:]
     except Exception as e:
