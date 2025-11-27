@@ -3,6 +3,7 @@
 set -euo pipefail
 
 OUTPUT_FOLDER="$HOME/fossa_output_folder"
+mkdir -p "$OUTPUT_FOLDER"
 
 FOSSA_API_KEY="$(
     aws secretsmanager get-secret-value --region us-west-2 \
@@ -11,13 +12,10 @@ FOSSA_API_KEY="$(
 )"
 export FOSSA_API_KEY
 
-mkdir -p "$OUTPUT_FOLDER"
-
-bazelisk build //:gen_ray_pkg
-
+# run Full fossa analyze on entire ray repository
 fossa analyze
 
-source "$HOME/venv/bin/activate"
+# run ray_oss_analysis to get askalono results and generate fossa deps file
 bazel run //ci/fossa:ray_oss_analysis -- -cmd bazelisk -p //:gen_ray_pkg -o "$OUTPUT_FOLDER" --log-file "$OUTPUT_FOLDER/package_license_analysis.log"
 cd "$OUTPUT_FOLDER"; fossa analyze -p ray --fossa-deps-file fossa_deps.yaml
 
