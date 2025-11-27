@@ -11,7 +11,6 @@ from ray._private.authentication.authentication_constants import (
 )
 from ray._private.authentication.authentication_utils import (
     is_token_auth_enabled,
-    validate_request_token,
 )
 
 logger = logging.getLogger(__name__)
