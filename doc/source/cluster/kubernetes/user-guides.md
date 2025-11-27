@@ -64,3 +64,4 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`reduce-image-pull-latency`
 * {ref}`kuberay-uv`
 * {ref}`kuberay-dashboard`
+* {ref}`resource-isolation-with-writable-cgroups`
