@@ -117,6 +117,14 @@ def _clean_path(path: str) -> str:
     # Format is typically: /path/to/file.ext:line:column
     return path.split(':')[0]
 
+def _get_package_name(label: str) -> str:
+    """
+    Extract package name from bazel label.
+    matches @repo//pkg:target to repo. regex breaks the string into groups and we return the first group.
+    separated out so that this can be tested.
+    """
+    return re.search(r"(?:@([^/]+))?//", label).group(1)
+
 def _get_bazel_dependencies(package_name: str, bazel_command: str) -> Tuple[List[str], Set[str], Set[str]]:
     """
     Returns the package names and file paths of the dependencies minus build tools and own code.
@@ -144,7 +152,7 @@ def _get_bazel_dependencies(package_name: str, bazel_command: str) -> Tuple[List
             continue
         elif _isCppCode(label):
             file_paths.add(_clean_path(location))
-            package_name = re.search(r"(?:@([^/]+))?//", label).group(1)
+            package_name = _get_package_name(label)
             package_names.add(package_name)
 
     return package_names, file_paths
@@ -196,7 +204,7 @@ def _askalono_crawl(path: str) -> List[Dict]:
     for error_license in error_licenses:
         logger.debug(f"License Crawl failed for {error_license['path']}: {error_license['error']}")
     return cleaned_licenses
-
+    
 def _expand_license_files(path: str) -> List[str]:
     """
     Expand license files using glob patterns.
@@ -340,7 +348,7 @@ if __name__ == "__main__":
 
     parser.formatter_class = argparse.RawTextHelpFormatter
     parser.description = """
-Ray OSS Analysis Combo Tool - Analyze Ray's open source components
+Ray OSS Analysis Tool - Analyze Ray's open source components
 current status: scans only c, cpp libraries are scanned and scanned via askalono
     """
     parser.epilog = """

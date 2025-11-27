@@ -1,10 +1,8 @@
 
 import unittest
-from unittest.mock import MagicMock, patch, mock_open, call
+from unittest.mock import patch, mock_open
 import os
-import sys
 import logging
-from typing import List, Dict, Set
 
 from ci.fossa import ray_oss_analysis
 
@@ -76,14 +74,21 @@ class TestRayOssAnalysis(unittest.TestCase):
         self.assertEqual(ray_oss_analysis._clean_path("/path/to/file:10:20"), "/path/to/file")
         self.assertEqual(ray_oss_analysis._clean_path("/path/to/file"), "/path/to/file")
 
+    def test_get_package_name(self):
+        # Test extraction logic
+        self.assertEqual(ray_oss_analysis._get_package_name("@repo//pkg:target"), "repo")
+        self.assertEqual(ray_oss_analysis._get_package_name("@repo//:target"), "repo")
+        # Should be None for local targets if regex matches but group 1 is empty
+        self.assertIsNone(ray_oss_analysis._get_package_name("//pkg:target"))
+        self.assertIsNone(ray_oss_analysis._get_package_name("@//:target"))
+
     @patch("ci.fossa.ray_oss_analysis.subprocess.check_output")
     def test_get_bazel_dependencies(self, mock_check_output):
         # Mock bazel query output
         mock_output = '\n'.join([
             '{"type": "SOURCE_FILE", "sourceFile": {"name": "//:file.cc", "location": "/abs/file.cc:1:1"}}',
             '{"type": "SOURCE_FILE", "sourceFile": {"name": "@dep//:lib.h", "location": "/external/dep/lib.h:1:1"}}',
-            '{"type": "RULE", "rule": {"ruleClass": "py_library", "name": "//:py_lib", "location": "/abs/lib.py:1:1"}}' # Should be skipped by _isExcludedKind logic inside _get_bazel_dependencies? 
-            # Wait, _get_bazel_dependencies calls _isCppCode.
+            '{"type": "RULE", "rule": {"ruleClass": "py_library", "name": "//:py_lib", "location": "/abs/lib.py:1:1"}}'
         ])
         mock_check_output.return_value = mock_output
         
@@ -143,4 +148,3 @@ class TestRayOssAnalysis(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
