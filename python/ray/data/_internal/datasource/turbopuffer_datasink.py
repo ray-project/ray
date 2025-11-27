@@ -278,9 +278,7 @@ class TurbopufferDatasink(Datasink):
 
         # Filter out rows with null IDs
         if "id" in table.column_names:
-            id_col = table.column("id")
-            mask = pc.invert(pc.is_null(id_col))
-            table = table.filter(mask)
+            table = table.filter(pc.is_valid(table.column("id")))
 
         return table
 
