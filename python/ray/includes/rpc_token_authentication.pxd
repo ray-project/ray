@@ -31,7 +31,6 @@ cdef extern from "ray/rpc/authentication/authentication_token_loader.h" namespac
     cdef cppclass CAuthenticationTokenLoader "ray::rpc::AuthenticationTokenLoader":
         @staticmethod
         CAuthenticationTokenLoader& instance()
-        c_bool HasToken(c_bool ignore_auth_mode)
         void ResetCache()
         optional[CAuthenticationToken] GetToken(c_bool ignore_auth_mode)
         CTokenLoadResult TryLoadToken(c_bool ignore_auth_mode)
