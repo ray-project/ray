@@ -548,11 +548,11 @@ void TaskInfoAccessor::AsyncAddTaskEventData(std::unique_ptr<rpc::TaskEventData>
       });
 }
 
-void TaskInfoAccessor::AsyncAddEvents(const std::string &serialized_request,
+void TaskInfoAccessor::AsyncAddEvents(rpc::events::AddEventsRequest &&request,
                                       const StatusCallback &callback,
                                       int64_t timeout_ms) {
-  client_impl_->GetGcsRpcClient().AddEventsFromBytes(
-      serialized_request,
+  client_impl_->GetGcsRpcClient().AddEvents(
+      std::move(request),
       [callback](const Status &status, rpc::events::AddEventsReply &&reply) {
         if (callback) {
           callback(status);

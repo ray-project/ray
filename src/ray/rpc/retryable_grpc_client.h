@@ -163,30 +163,6 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
                   ClientCallback<Reply> callback,
                   int64_t timeout_ms);
 
-  /// Call a gRPC method with serialized bytes instead of a protobuf object.
-  ///
-  /// This method deserializes the request asynchronously on the io_context thread,
-  /// avoiding blocking the caller's thread for CPU-intensive deserialization work.
-  /// After deserialization, it delegates to the regular CallMethod.
-  ///
-  /// \tparam Service The gRPC service type.
-  /// \tparam Request The protobuf request type (will be deserialized from bytes).
-  /// \tparam Reply The protobuf reply type.
-  /// \param prepare_async_function Pointer to the gRPC PrepareAsync function.
-  /// \param grpc_client The GrpcClient to use for the call.
-  /// \param call_name Name of the RPC method (for logging/stats).
-  /// \param serialized_request The serialized protobuf bytes.
-  /// \param callback Callback to invoke with the result.
-  /// \param timeout_ms Timeout in milliseconds (-1 for default).
-  template <typename Service, typename Request, typename Reply>
-  void CallMethodFromBytes(
-      PrepareAsyncFunction<Service, Request, Reply> prepare_async_function,
-      std::shared_ptr<GrpcClient<Service>> grpc_client,
-      std::string call_name,
-      std::string serialized_request,
-      ClientCallback<Reply> callback,
-      int64_t timeout_ms);
-
   void Retry(std::shared_ptr<RetryableGrpcRequest> request);
 
   // Return the number of active (pending or inflight) requests.
@@ -278,53 +254,6 @@ void RetryableGrpcClient::CallMethod(
                                std::move(callback),
                                timeout_ms)
       ->CallMethod();
-}
-
-template <typename Service, typename Request, typename Reply>
-void RetryableGrpcClient::CallMethodFromBytes(
-    PrepareAsyncFunction<Service, Request, Reply> prepare_async_function,
-    std::shared_ptr<GrpcClient<Service>> grpc_client,
-    std::string call_name,
-    std::string serialized_request,
-    ClientCallback<Reply> callback,
-    int64_t timeout_ms) {
-  // Post deserialization work to io_context thread to avoid blocking the caller.
-  // Use weak_ptr to handle the case where the client is destroyed before the task runs.
-  std::weak_ptr<RetryableGrpcClient> weak_self = weak_from_this();
-  io_context_.post(
-      [weak_self,
-       prepare_async_function = std::move(prepare_async_function),
-       grpc_client = std::move(grpc_client),
-       call_name = std::move(call_name),
-       serialized_request = std::move(serialized_request),
-       callback = std::move(callback),
-       timeout_ms]() mutable {
-        auto self = weak_self.lock();
-        if (!self) {
-          // Client was destroyed, invoke callback with error
-          callback(
-              Status::Disconnected("GRPC client was shut down during deserialization"),
-              Reply{});
-          return;
-        }
-
-        Request request;
-        if (!request.ParseFromString(serialized_request)) {
-          callback(Status::IOError("Failed to parse request from serialized bytes"),
-                   Reply{});
-          return;
-        }
-
-        // Delegate to the normal CallMethod
-        self->template CallMethod<Service, Request, Reply>(
-            std::move(prepare_async_function),
-            std::move(grpc_client),
-            std::move(call_name),
-            std::move(request),
-            std::move(callback),
-            timeout_ms);
-      },
-      call_name + ".Deserialize");
 }
 
 template <typename Service, typename Request, typename Reply>

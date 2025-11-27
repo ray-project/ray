@@ -115,59 +115,6 @@ namespace rpc {
     return promise.get_future().get();                                         \
   }
 
-/// Extends VOID_GCS_RPC_CLIENT_METHOD_FULL with an additional METHODFromBytes variant.
-///
-/// This macro generates all methods from VOID_GCS_RPC_CLIENT_METHOD_FULL plus:
-///   - METHODFromBytes: Accepts serialized protobuf bytes instead of a protobuf object.
-///     Deserialization happens asynchronously on the io_context thread, avoiding blocking
-///     the caller's thread for CPU-intensive deserialization work.
-///
-/// Example usage:
-///   VOID_GCS_RPC_CLIENT_METHOD_FULL_WITH_BYTES(
-///     ray::rpc,
-///     ray::rpc::events,
-///     RayEventExportGcsService,
-///     AddEvents,
-///     ray_event_export_grpc_client_,
-///     /*method_timeout_ms*/ -1,
-///     /*handle_payload_status=*/true, )
-///
-/// Generates:
-///   - AddEvents(AddEventsRequest&&, callback, timeout_ms) - standard async method
-///   - SyncAddEvents(AddEventsRequest&&, reply*, timeout_ms) - synchronous method
-///   - AddEventsFromBytes(string, callback, timeout_ms) - async with bytes input
-#define VOID_GCS_RPC_CLIENT_METHOD_FULL_WITH_BYTES(SERVICE_NAMESPACE,     \
-                                                   METHOD_NAMESPACE,      \
-                                                   SERVICE,               \
-                                                   METHOD,                \
-                                                   grpc_client,           \
-                                                   method_timeout_ms,     \
-                                                   handle_payload_status, \
-                                                   SPECS)                 \
-  VOID_GCS_RPC_CLIENT_METHOD_FULL(SERVICE_NAMESPACE,                      \
-                                  METHOD_NAMESPACE,                       \
-                                  SERVICE,                                \
-                                  METHOD,                                 \
-                                  grpc_client,                            \
-                                  method_timeout_ms,                      \
-                                  handle_payload_status,                  \
-                                  SPECS)                                  \
-  void METHOD##FromBytes(                                                 \
-      const std::string &serialized_request,                              \
-      const ClientCallback<METHOD_NAMESPACE::METHOD##Reply> &callback,    \
-      const int64_t timeout_ms = method_timeout_ms) SPECS {               \
-    invoke_async_method_from_bytes<SERVICE_NAMESPACE::SERVICE,            \
-                                   METHOD_NAMESPACE::METHOD##Request,     \
-                                   METHOD_NAMESPACE::METHOD##Reply,       \
-                                   handle_payload_status>(                \
-        &SERVICE_NAMESPACE::SERVICE::Stub::PrepareAsync##METHOD,          \
-        grpc_client,                                                      \
-        #SERVICE_NAMESPACE "::" #SERVICE ".grpc_client." #METHOD,         \
-        serialized_request,                                               \
-        callback,                                                         \
-        timeout_ms);                                                      \
-  }
-
 /// Client used for communicating with gcs server.
 class GcsRpcClient {
  public:
@@ -284,42 +231,6 @@ class GcsRpcClient {
         std::move(grpc_client),
         call_name,
         std::forward<Request>(request),
-        [callback](const Status &status, Reply &&reply) {
-          if (status.ok()) {
-            if constexpr (handle_payload_status) {
-              Status st = (reply.status().code() == static_cast<int>(StatusCode::OK))
-                              ? Status()
-                              : Status(StatusCode(reply.status().code()),
-                                       reply.status().message());
-              callback(st, std::move(reply));
-            } else {
-              callback(status, std::move(reply));
-            }
-          } else {
-            callback(status, std::move(reply));
-          }
-        },
-        timeout_ms);
-  }
-
-  /// Invoke an async method with serialized request bytes.
-  /// Deserialization happens asynchronously on the io_context thread.
-  template <typename Service,
-            typename Request,
-            typename Reply,
-            bool handle_payload_status>
-  void invoke_async_method_from_bytes(
-      PrepareAsyncFunction<Service, Request, Reply> prepare_async_function,
-      std::shared_ptr<GrpcClient<Service>> grpc_client,
-      const std::string &call_name,
-      const std::string &serialized_request,
-      const ClientCallback<Reply> &callback,
-      const int64_t timeout_ms) {
-    retryable_grpc_client_->template CallMethodFromBytes<Service, Request, Reply>(
-        prepare_async_function,
-        std::move(grpc_client),
-        call_name,
-        serialized_request,
         [callback](const Status &status, Reply &&reply) {
           if (status.ok()) {
             if constexpr (handle_payload_status) {
@@ -490,13 +401,13 @@ class GcsRpcClient {
                              /*method_timeout_ms*/ -1, )
 
   /// Add one event data to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD_FULL_WITH_BYTES(ray::rpc,
-                                             ray::rpc::events,
-                                             RayEventExportGcsService,
-                                             AddEvents,
-                                             ray_event_export_grpc_client_,
-                                             /*method_timeout_ms*/ -1,
-                                             /*handle_payload_status=*/true, )
+  VOID_GCS_RPC_CLIENT_METHOD_FULL(ray::rpc,
+                                  ray::rpc::events,
+                                  RayEventExportGcsService,
+                                  AddEvents,
+                                  ray_event_export_grpc_client_,
+                                  /*method_timeout_ms*/ -1,
+                                  /*handle_payload_status=*/true, )
 
   /// Add task events info to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService,
