@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 from typing import Dict, List, Optional, Set, Tuple
+
 import yaml
 
 logger = logging.getLogger("ray_oss_analysis")
@@ -35,6 +36,7 @@ def _setup_logger(log_file: Optional[str] = None, enable_debug: bool = False) ->
 
     logger.info(f"Log Level Set to {logging.getLevelName(logger.level)}")
 
+
 # not being used since we moved to filtering only for source files to get c, cpp libraries
 def _isExcludedKind(kind_str: str) -> bool:
     """
@@ -53,7 +55,7 @@ def _isExcludedKind(kind_str: str) -> bool:
         "bind",
         "constraint_value",
         "constraint_setting",
-        "GENERATED_FILE"
+        "GENERATED_FILE",
     ]
     python_rule_kinds = ["py_library", "py_binary", "py_test"]
 
@@ -66,10 +68,16 @@ def _isBuildTool(label: str) -> bool:
     Check if the label is a build tool.
     """
     # list of build package labels that are present in dependencies but not part of the target code
-    build_package_labels = ["bazel_tools", "local_config_python", "cython", "local_config_cc"]
+    build_package_labels = [
+        "bazel_tools",
+        "local_config_python",
+        "cython",
+        "local_config_cc",
+    ]
     return any(
         build_package_label in label for build_package_label in build_package_labels
     )
+
 
 def _isOwnCode(location: str) -> bool:
     """
@@ -89,6 +97,7 @@ def _isCppCode(label: str) -> bool:
     cExternsions = [".c", ".cc", ".cpp", ".cxx", ".c++", ".h", ".hpp", ".hxx"]
     return any(path in label for path in cExternsions)
 
+
 def _get_dependency_info(line_json: Dict) -> Tuple[str, str, str, str]:
     """
     Get dependency info from the json line.
@@ -96,18 +105,34 @@ def _get_dependency_info(line_json: Dict) -> Tuple[str, str, str, str]:
     # earlier when we were getting all types of packages there was a need to get the type of the package,
     #  but now we are only getting source files and we are not interested in the type of the package
     # Yet we are keeping the code here, for future needs
-    type = line_json['type']
+    type = line_json["type"]
     match type:
         case "SOURCE_FILE":
-            return type, type, line_json['sourceFile']['name'], line_json['sourceFile']['location']
+            return (
+                type,
+                type,
+                line_json["sourceFile"]["name"],
+                line_json["sourceFile"]["location"],
+            )
         case "GENERATED_FILE":
-            return type, type, line_json['generatedFile']['name'], line_json['generatedFile']['location']
+            return (
+                type,
+                type,
+                line_json["generatedFile"]["name"],
+                line_json["generatedFile"]["location"],
+            )
         case "PACKAGE_GROUP":
-            return type, type, line_json['packageGroup']['name'], None
+            return type, type, line_json["packageGroup"]["name"], None
         case "RULE":
-            return type, line_json['rule']['ruleClass'], line_json['rule']['name'], line_json['rule']['location']
+            return (
+                type,
+                line_json["rule"]["ruleClass"],
+                line_json["rule"]["name"],
+                line_json["rule"]["location"],
+            )
         case _:
             return type, type, "unknown", "unknown"
+
 
 def _clean_path(path: str) -> str:
     """
@@ -115,7 +140,8 @@ def _clean_path(path: str) -> str:
     """
     # Remove location information (e.g., :line:column) from the path
     # Format is typically: /path/to/file.ext:line:column
-    return path.split(':')[0]
+    return path.split(":")[0]
+
 
 def _get_package_name(label: str) -> str:
     """
@@ -125,7 +151,10 @@ def _get_package_name(label: str) -> str:
     """
     return re.search(r"(?:@([^/]+))?//", label).group(1)
 
-def _get_bazel_dependencies(package_name: str, bazel_command: str) -> Tuple[List[str], Set[str], Set[str]]:
+
+def _get_bazel_dependencies(
+    package_name: str, bazel_command: str
+) -> Tuple[List[str], Set[str], Set[str]]:
     """
     Returns the package names and file paths of the dependencies minus build tools and own code.
     Currently works only for c, cpp.
@@ -137,7 +166,12 @@ def _get_bazel_dependencies(package_name: str, bazel_command: str) -> Tuple[List
     file_paths = set()
 
     # works for c, cpp, not sure if the kind based filter works for other languages
-    command = [bazel_command, "query", "--output=streamed_jsonproto", f"kind('source file', deps({package_name}))"]
+    command = [
+        bazel_command,
+        "query",
+        "--output=streamed_jsonproto",
+        f"kind('source file', deps({package_name}))",
+    ]
 
     logger.debug(f"Running command: {command}")
     lines = subprocess.check_output(command, text=True).splitlines()
@@ -157,6 +191,7 @@ def _get_bazel_dependencies(package_name: str, bazel_command: str) -> Tuple[List
 
     return package_names, file_paths
 
+
 def _copy_single_file(source: str, destination: str) -> None:
     """
     Copy a single file from source to destination.
@@ -169,6 +204,7 @@ def _copy_single_file(source: str, destination: str) -> None:
     except FileNotFoundError:
         logger.warning(f"File not found, skipping: {source}")
 
+
 def _copy_files(file_paths: Set[str], output_folder: str) -> None:
     """
     Copy files to output folder.
@@ -179,14 +215,22 @@ def _copy_files(file_paths: Set[str], output_folder: str) -> None:
 
         _copy_single_file(file_path, destination)
 
-def _copy_licenses(package_names: Set[str], bazel_output_base: str, output_folder: str) -> None:
+
+def _copy_licenses(
+    package_names: Set[str], bazel_output_base: str, output_folder: str
+) -> None:
     """
     Copy licenses to output folder.
     """
     for package_name in package_names:
-        license_paths = _expand_license_files(os.path.join(bazel_output_base, "external", package_name))
+        license_paths = _expand_license_files(
+            os.path.join(bazel_output_base, "external", package_name)
+        )
         for license_path in license_paths:
-            _copy_single_file(license_path, os.path.join(output_folder, license_path.split("external/")[-1]))
+            _copy_single_file(
+                license_path,
+                os.path.join(output_folder, license_path.split("external/")[-1]),
+            )
 
 
 def _askalono_crawl(path: str) -> List[Dict]:
@@ -194,7 +238,7 @@ def _askalono_crawl(path: str) -> List[Dict]:
     Crawl licenses using askalono.
     """
     license_text = subprocess.run(
-        ["askalono", "--format=json","crawl", path],
+        ["askalono", "--format=json", "crawl", path],
         capture_output=True,
         text=True,
     ).stdout.strip()
@@ -202,19 +246,22 @@ def _askalono_crawl(path: str) -> List[Dict]:
     cleaned_licenses = [license for license in licenses if "error" not in license]
     error_licenses = [license for license in licenses if "error" in license]
     for error_license in error_licenses:
-        logger.debug(f"License Crawl failed for {error_license['path']}: {error_license['error']}")
+        logger.debug(
+            f"License Crawl failed for {error_license['path']}: {error_license['error']}"
+        )
     return cleaned_licenses
-    
+
+
 def _expand_license_files(path: str) -> List[str]:
     """
     Expand license files using glob patterns.
     """
     patterns = [
-        "**/[Ll][Ii][Cc][Ee][Nn][Ss][Ee]*", # LICENSE
-        "**/[Cc][Oo][Pp][Yy][Ii][Nn][Gg]*", # COPYING
-        "**/[Nn][Oo][Tt][Ii][Cc][Ee]*", # NOTICE
-        "**/[Cc][Oo][Pp][Yy][Rr][Ii][Gg][Hh][Tt]*", # COPYRIGHT
-        "**/[Rr][Ee][Aa][Dd][Mm][Ee]*", # README
+        "**/[Ll][Ii][Cc][Ee][Nn][Ss][Ee]*",  # LICENSE
+        "**/[Cc][Oo][Pp][Yy][Ii][Nn][Gg]*",  # COPYING
+        "**/[Nn][Oo][Tt][Ii][Cc][Ee]*",  # NOTICE
+        "**/[Cc][Oo][Pp][Yy][Rr][Ii][Gg][Hh][Tt]*",  # COPYRIGHT
+        "**/[Rr][Ee][Aa][Dd][Mm][Ee]*",  # README
     ]
     all_paths = set()
     for pattern in patterns:
@@ -224,6 +271,7 @@ def _expand_license_files(path: str) -> List[str]:
         # Only include files, not directories
         all_paths.update(p for p in matching_paths if os.path.isfile(p))
     return list(all_paths)
+
 
 def _expand_and_crawl(path: str) -> List[Dict]:
     """
@@ -237,6 +285,7 @@ def _expand_and_crawl(path: str) -> List[Dict]:
         all_licenses.extend(licenses)
     return all_licenses
 
+
 def _get_askalono_results(dependencies: Set[str], bazel_output_base: str) -> List[Dict]:
     """
     Get askalono results for all dependencies.
@@ -246,7 +295,9 @@ def _get_askalono_results(dependencies: Set[str], bazel_output_base: str) -> Lis
         dependency_path = os.path.join(bazel_output_base, "external", dependency)
         license_json = _askalono_crawl(dependency_path)
         if not license_json:
-            logger.warning(f"No license text found for {dependency}, trying to crawl licenses and copying files manually")
+            logger.warning(
+                f"No license text found for {dependency}, trying to crawl licenses and copying files manually"
+            )
             license_json = _expand_and_crawl(dependency_path)
         if not license_json:
             logger.warning(f"No license text found for {dependency}")
@@ -270,6 +321,7 @@ def _get_askalono_results(dependencies: Set[str], bazel_output_base: str) -> Lis
                 }
             )
     return license_info
+
 
 def _generate_fossa_deps_file(askalono_results: List[Dict], output_folder: str) -> None:
     """
@@ -296,7 +348,9 @@ def _generate_fossa_deps_file(askalono_results: List[Dict], output_folder: str) 
     for dependency, data in sorted(dependency_data.items()):
         licenses = data["licenses"]
         file_licenses = data["file_licenses"]
-        logger.debug(f"generating fossa deps file: Dependency: {dependency}, Licenses: {licenses}")
+        logger.debug(
+            f"generating fossa deps file: Dependency: {dependency}, Licenses: {licenses}"
+        )
 
         # Build description with file paths and licenses
         description_parts = ["generated by ray_oss_analysis.py, askalono scan results."]
@@ -320,6 +374,7 @@ def _generate_fossa_deps_file(askalono_results: List[Dict], output_folder: str) 
     with open(os.path.join(output_folder, "fossa_deps.yaml"), "w") as file:
         yaml.dump(fossa_deps_file, file, indent=4, sort_keys=False)
 
+
 def _change_working_directory() -> None:
     """
     Change working directory to the workspace in case being executed as bazel py_binary.
@@ -328,12 +383,11 @@ def _change_working_directory() -> None:
     if workspace:
         os.chdir(workspace)
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OSS Analysis Combo Tool")
 
-    parser.add_argument(
-        "-o", "--output", help="Output folder path", required=True
-    )
+    parser.add_argument("-o", "--output", help="Output folder path", required=True)
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose output"
     )
@@ -344,7 +398,11 @@ if __name__ == "__main__":
         "-p", "--package", help="Bazel package", default="//:gen_ray_pkg"
     )
     parser.add_argument("--log-file", help="Log file path")
-    parser.add_argument("--copy-files-for-fossa", action="store_true", help="Copy files for fossa analysis on top of askalono")
+    parser.add_argument(
+        "--copy-files-for-fossa",
+        action="store_true",
+        help="Copy files for fossa analysis on top of askalono",
+    )
 
     parser.formatter_class = argparse.RawTextHelpFormatter
     parser.description = """
@@ -370,7 +428,6 @@ Examples:
 
     logger.info(f"Found {len(file_paths)} file paths")
     logger.info(f"Found {len(package_names)} package names")
-
 
     if args.copy_files_for_fossa:
         _copy_files(file_paths, args.output)
