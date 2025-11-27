@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 # Max number of threads for the thread pool executor handling CPU intensive tasks
 THREAD_POOL_EXECUTOR_MAX_WORKERS = ray_constants.env_integer(
-    "RAY_DASHBOARD_AGGREGATOR_AGENT_THREAD_POOL_EXECUTOR_MAX_WORKERS", 2
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_THREAD_POOL_EXECUTOR_MAX_WORKERS", 1
 )
 # Interval to check the main thread liveness
 CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS = ray_constants.env_float(
