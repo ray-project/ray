@@ -175,6 +175,20 @@ class TurbopufferDatasink(Datasink):
         # Initialize client
         self._client = None
 
+    def __getstate__(self) -> dict:
+        """Exclude `_client` and `_turbopuffer` during pickling."""
+        state = self.__dict__.copy()
+        state.pop("_client", None)
+        state.pop("_turbopuffer", None)
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        self.__dict__.update(state)
+        self._client = None
+        # Re-import turbopuffer module
+        import turbopuffer
+        self._turbopuffer = turbopuffer
+
     def _get_client(self):
         """Lazy initialize Turbopuffer client"""
         if self._client is None:
