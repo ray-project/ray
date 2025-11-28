@@ -52,5 +52,10 @@ void RayletClientWithIoContext::GetWorkerPIDs(
   raylet_client_->GetWorkerPIDs(callback, timeout_ms);
 }
 
+void RayletClientWithIoContext::GetAgentPIDs(
+    const gcs::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
+  raylet_client_->GetAgentPIDs(callback, timeout_ms);
+}
+
 }  // namespace rpc
 }  // namespace ray

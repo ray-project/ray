@@ -492,7 +492,7 @@ void RayletClient::GetWorkerPIDs(
                             timeout_ms);
 }
 
-void RayletClient::GetAgentsPIDs(
+void RayletClient::GetAgentPIDs(
     const gcs::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
 
     rpc::GetAgentPIDsRequest request;
