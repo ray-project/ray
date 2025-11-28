@@ -7,10 +7,9 @@ from dataclasses import replace
 from typing import Any, Callable, Dict, Optional, Tuple
 from unittest.mock import MagicMock
 
-import ray
-
 from freezegun import freeze_time
 
+import ray
 from ray._private.ray_constants import ID_SIZE
 from ray.actor import ActorHandle
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
