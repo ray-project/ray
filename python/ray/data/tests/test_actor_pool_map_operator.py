@@ -870,7 +870,7 @@ def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context)
 def test_actor_pool_with_default_removal_strategy(ray_start_regular_shared):
     """Test that _ActorPool uses the default actor removal strategy."""
     from ray.data._internal.execution.operators.actor_removal_strategy import (
-        DefaultActorRemovalStrategy
+        DefaultActorRemovalStrategy,
     )
 
     test_case = TestActorPool()

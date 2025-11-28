@@ -6,7 +6,6 @@ from ray.data import ExecutionResources
 from ray.data._internal.actor_autoscaler.resource_based_actor_autoscaler import (
     ResourceBasedActorAutoscaler,
 )
-
 from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
 from ray.data.context import AutoscalingConfig
 
@@ -104,7 +103,7 @@ def test_distribute_resources_by_weight():
         min_resources=ExecutionResources(cpu=10, gpu=2, memory=10e9),
         max_resources=ExecutionResources(cpu=20, gpu=4, memory=20e9)
     )
-    
+
     # Verify that the pool with higher utilization, pool1, should receive more resources
     # pool1 weight = 1.5, pool2 weight = 0.8, total weight = 2.3
     # pool1 weight ratio = 1.5/2.3 ≈ 0.652, pool2 weight ratio = 0.8/2.3 ≈ 0.348
