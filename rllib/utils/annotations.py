@@ -50,8 +50,7 @@ def override(parent_cls):
             )
 
         # Check if the class is a subclass of the expected base class
-        OverrideCheck(method, parent_cls)
-        return method
+        return OverrideCheck(method, parent_cls)
 
     return decorator
 
