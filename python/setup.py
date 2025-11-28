@@ -226,7 +226,7 @@ ray_files += [
 # in this directory
 if setup_spec.type == SetupType.RAY:
     pandas_dep = "pandas >= 1.3"
-    numpy_dep = "numpy >= 1.20"
+    numpy_dep = "numpy >= 1.20; python_version < '3.13'"
     pyarrow_deps = [
         "pyarrow >= 9.0.0",
     ]
@@ -261,14 +261,14 @@ if setup_spec.type == SetupType.RAY:
             "opencensus",
             "opentelemetry-sdk >= 1.30.0",
             "opentelemetry-exporter-prometheus",
-            "opentelemetry-proto",
+            "opentelemetry-proto >= 1.27.0; python_version < '3.13'",
             pydantic_dep,
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
         ],
         "observability": [
-            "memray; sys_platform != 'win32'",
+            "memray >= 1.14.0; sys_platform != 'win32'",
         ],
         "serve": [
             "uvicorn[standard]",
@@ -324,12 +324,12 @@ if setup_spec.type == SetupType.RAY:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
-        "dm_tree",
+        "dm_tree; python_version < '3.13'",
         "gymnasium==1.1.1",
         "lz4",
         "ormsgpack==1.7.0",
         "pyyaml",
-        "scipy",
+        "scipy >= 1.11.4; python_version < '3.13'",
     ]
 
     setup_spec.extras["train"] = setup_spec.extras["tune"] + [pydantic_dep]
@@ -407,9 +407,9 @@ if setup_spec.type == SetupType.RAY:
         "click>=7.0",
         "filelock",
         "jsonschema",
-        "msgpack >= 1.0.0, < 2.0.0",
+        "msgpack >= 1.1.0, < 2.0.0",
         "packaging",
-        "protobuf>=3.20.3",
+        "protobuf>=3.20.3; python_version < '3.13'",
         "pyyaml",
         "requests",
     ]
