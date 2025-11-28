@@ -354,8 +354,8 @@ class NodeManagerTest : public ::testing::Test {
         node_manager_config.resource_config.GetResourceMap(),
         /*is_node_available_fn*/
         [&](ray::scheduling::NodeID node_id) {
-          return mock_gcs_client_->Nodes().Get(NodeID::FromBinary(node_id.Binary())) !=
-                 nullptr;
+          return mock_gcs_client_->Nodes().IsNodeAlive(
+              NodeID::FromBinary(node_id.Binary()));
         },
         /*get_used_object_store_memory*/
         [&]() {
@@ -379,8 +379,7 @@ class NodeManagerTest : public ::testing::Test {
         node_manager_config.labels);
 
     auto get_node_info_func = [&](const NodeID &node_id) {
-      auto ptr = mock_gcs_client_->Nodes().GetNodeAddressAndLiveness(node_id);
-      return ptr ? std::optional(*ptr) : std::nullopt;
+      return mock_gcs_client_->Nodes().GetNodeAddressAndLiveness(node_id);
     };
 
     auto max_task_args_memory = static_cast<int64_t>(
