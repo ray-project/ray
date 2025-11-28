@@ -259,6 +259,7 @@ class OfflineData:
                 return next(self.batch_iterators)
             except StopIteration:
                 # If the batch iterator is exhausted, reinitiate a new one.
+                logger.debug("Batch iterator exhausted. Reinitiating ...")
                 self.batch_iterators = None
                 return self.sample(
                     num_samples=num_samples,
