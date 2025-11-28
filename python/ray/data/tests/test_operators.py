@@ -713,7 +713,7 @@ def test_map_operator_output_unbundling(
             OutputBlockSizeOption.of(
                 target_max_block_size=1, target_num_rows_per_block=5
             ),
-            10,
+            2,
         ),
         (
             OutputBlockSizeOption.of(
@@ -727,6 +727,16 @@ def test_map_operator_output_unbundling(
             ),
             10,
         ),
+        (
+            OutputBlockSizeOption.of(
+                target_num_rows_per_block=2**20,
+                target_max_block_size=2**20,
+                disable_block_shaping=True,
+            ),
+            10,
+        ),
+        # None output_block_size_option
+        (None, 1),
     ],
 )
 def test_map_operator_output_block_size_options(
