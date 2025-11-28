@@ -149,6 +149,7 @@ anyio==3.7.1 \
     --hash=sha256:91dee416e570e92c64041bd18b900d1d6fa78dff7048769ce5ac5ddad004fbb5
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   httpx
     #   jupyter-server
     #   starlette
     #   watchfiles
@@ -204,6 +205,7 @@ attrs==25.1.0 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   aiohttp
     #   jsonschema
+    #   openlineage-python
     #   referencing
 azure-common==1.1.28 \
     --hash=sha256:4ac0cd3214e36b6a1b6a442686722a5d8cc449603aa833f3f0f40bda836704a3 \
@@ -285,6 +287,12 @@ botocore==1.32.7 \
     #   -r python/requirements/cloud-requirements.txt
     #   boto3
     #   s3transfer
+build==1.3.0 \
+    --hash=sha256:698edd0ea270bde950f53aed21f3a0135672206f3911e0176261a31e0e07b397 \
+    --hash=sha256:7145f0b5061ba90a1500d60bd1b13ca0a8a4cebdd0cc16ed8adf1c0e739f43b4
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   openlineage-python
 cachetools==5.5.2 \
     --hash=sha256:1a661caa9175d26759571b2e19580f9d6393969e5dfca11fdb1f947a23e640d4 \
     --hash=sha256:d26a22bcc62eb95c3beabd9f1ee5e820d3d2704fe2967cbe350e20c8ffcd3f0a
@@ -303,6 +311,8 @@ certifi==2025.1.31 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
+    #   httpcore
+    #   httpx
     #   requests
 cffi==1.16.0 \
     --hash=sha256:0c9ef6ff37e974b73c25eecc13952c55bceed9112be2d9d938ded8e856138bcc \
@@ -558,22 +568,22 @@ cryptography==44.0.3 \
     #   msal
     #   pyjwt
     #   pyopenssl
-cupy-cuda12x==13.6.0 ; sys_platform != 'darwin' \
-    --hash=sha256:297b4268f839de67ef7865c2202d3f5a0fb8d20bd43360bc51b6e60cb4406447 \
-    --hash=sha256:4d2dfd9bb4705d446f542739a3616b4c9eea98d674fce247402cc9bcec89a1e4 \
-    --hash=sha256:52d9e7f83d920da7d81ec2e791c2c2c747fdaa1d7b811971b34865ce6371e98a \
-    --hash=sha256:6ccd2fc75b0e0e24493531b8f8d8f978efecddb45f8479a48890c40d3805eb87 \
-    --hash=sha256:771f3135861b68199c18b49345210180d4fcdce4681b51c28224db389c4aac5d \
-    --hash=sha256:77ba6745a130d880c962e687e4e146ebbb9014f290b0a80dbc4e4634eb5c3b48 \
-    --hash=sha256:79b0cacb5e8b190ef409f9e03f06ac8de1b021b0c0dda47674d446f5557e0eb1 \
-    --hash=sha256:9e37f60f27ff9625dfdccc4688a09852707ec613e32ea9404f425dd22a386d14 \
-    --hash=sha256:a20b7acdc583643a623c8d8e3efbe0db616fbcf5916e9c99eedf73859b6133af \
-    --hash=sha256:a6970ceefe40f9acbede41d7fe17416bd277b1bd2093adcde457b23b578c5a59 \
-    --hash=sha256:c790d012fd4d86872b9c89af9f5f15d91c30b8e3a4aa4dd04c2610f45f06ac44 \
-    --hash=sha256:ca06fede7b8b83ca9ad80062544ef2e5bb8d4762d1c4fc3ac8349376de9c8a5e \
-    --hash=sha256:e5426ae3b1b9cf59927481e457a89e3f0b50a35b114a8034ec9110e7a833434c \
-    --hash=sha256:e78409ea72f5ac7d6b6f3d33d99426a94005254fa57e10617f430f9fd7c3a0a1 \
-    --hash=sha256:f33c9c975782ef7a42c79b6b4fb3d5b043498f9b947126d792592372b432d393
+cupy-cuda12x==13.4.0 ; sys_platform != 'darwin' \
+    --hash=sha256:061ee28b06cb0216ac914b78bc839e99706f930db4f65f6962d004860126f181 \
+    --hash=sha256:11435c5eebafdceb9227fb0136cd3fc63952b974be043148656246e84930d406 \
+    --hash=sha256:1928d84ec59b30e63970247807603b6a361c63927c04e637685844d1b9332d3a \
+    --hash=sha256:1ba5d159fda49d46384df92e47c0ca8064ae5ca0ad996fc7ad62cdb2f614a505 \
+    --hash=sha256:4c75cd875d18f0f054a537e4948cde3d4e5a7abb9bb442160317c2df794ad7e6 \
+    --hash=sha256:6be34823b0de6cbce5ed9fc518f6dc252e37043d4a8e65de8eb1165a41e8e99e \
+    --hash=sha256:9b09a0c619468c00e3585f559a27bf4ad0555f7b1a1557bf8ca434be61332da9 \
+    --hash=sha256:b3ab0fee2caf0826d3c33a93eea95a424de1c368cbe85e2fa3e26f92c64f5676 \
+    --hash=sha256:bbcaba04ca075d5a6a4b0611bfc930eeb054eaa6337c4a556c359f4bd5c2f5eb \
+    --hash=sha256:bfb0e59d22cf1281bed59628593ebd307de2a53e53c5a53f2c044f2afe99de15 \
+    --hash=sha256:c5f8b89f4ea0267e8814656a0ef4b62c02a263083c5dd667ccd2b9e7b8aa04b9 \
+    --hash=sha256:d67efa80c107adf28e4301a87410ef6ed57b1b286943c4101eee902b30330c58 \
+    --hash=sha256:f1c5c0de613872cc8f5f7637a80a35750f10a1b8ad881518a8261236d539f331 \
+    --hash=sha256:f2f796969bfbf4042245060c35cac9503375ba21d884d136e3738ddba620041b \
+    --hash=sha256:f72a9e102f56c42ea157154928e5acc0fca2dc5fa60acc2588f9d95164691008
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements.txt
@@ -1120,6 +1130,7 @@ h11==0.16.0 \
     --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   httpcore
     #   uvicorn
 halo==0.0.31 \
     --hash=sha256:5350488fb7d2aa7c31a1344120cee67a872901ce8858f60da7946cef96c208ab \
@@ -1127,12 +1138,24 @@ halo==0.0.31 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
+httpcore==1.0.9 \
+    --hash=sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55 \
+    --hash=sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   httpx
 httplib2==0.20.4 \
     --hash=sha256:58a98e45b4b1a48273073f905d2961666ecf0fbac4250ea5b47aef259eb5c585 \
     --hash=sha256:8b6a905cb1c79eefd03f8669fd993c36dc341f7c558f056cb5a33b5c2f458543
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   oauth2client
+httpx==0.28.1 \
+    --hash=sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc \
+    --hash=sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   openlineage-python
 humanize==4.12.1 \
     --hash=sha256:1338ba97415c96556758a6e2f65977ed406dddf4620d4c6db9bbdfd07f0f1232 \
     --hash=sha256:86014ca5c52675dffa1d404491952f1f5bf03b07c175a51891a343daebf01fea
@@ -1145,6 +1168,7 @@ idna==3.7 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   anyio
+    #   httpx
     #   jsonschema
     #   requests
     #   yarl
@@ -1965,6 +1989,11 @@ opencensus-context==0.1.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   opencensus
+openlineage-python==1.40.0 \
+    --hash=sha256:1351780af0c9af9d943e74aade26c92c623f2cd26f334cf515fa1cfacef3f349
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -r python/requirements/cloud-requirements.txt
 opentelemetry-api==1.34.1 \
     --hash=sha256:64f0bd06d42824843731d05beea88d4d4b6ae59f9fe347ff7dfa2cc14233bbb3 \
     --hash=sha256:b7df4cb0830d5a6c29ad0c0691dbae874d8daefa934b8b1d642de48323d32a8c
@@ -2006,6 +2035,7 @@ packaging==23.0 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
+    #   build
     #   ipykernel
     #   jupyter-server
     #   jupyterlab
@@ -2013,6 +2043,7 @@ packaging==23.0 \
     #   kombu
     #   lazy-loader
     #   nbconvert
+    #   openlineage-python
     #   pytest
     #   scikit-image
     #   tensorboardx
@@ -2618,6 +2649,12 @@ pyparsing==3.1.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   httplib2
+pyproject-hooks==1.2.0 \
+    --hash=sha256:1e859bd5c40fae9448642dd871adf459e5e2084186e8d2c2a79a824c970da1f8 \
+    --hash=sha256:9e5c6bfa8dcc30091c74b0cf803c81fdd29d94f01992a7707bc97babb1141913
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   build
 pytest==7.4.4 \
     --hash=sha256:2cf0005922c6ace4a3e2ec8b4080eb0d9753fdc93107415332f50ce9e7994280 \
     --hash=sha256:b090cdf5ed60bf4c45261be03239c2c1c22df034fbffe691abe93cd80cea01d8
@@ -2649,6 +2686,7 @@ python-dateutil==2.8.2 \
     #   botocore
     #   celery
     #   jupyter-client
+    #   openlineage-python
     #   pandas
 python-json-logger==2.0.7 \
     --hash=sha256:23e7ec02d34237c5aa1e29a070193a4ea87583bb4e7f8fd06d3de8264c4b2e1c \
@@ -2719,6 +2757,7 @@ pyyaml==6.0.1 \
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
     #   jupyter-events
+    #   openlineage-python
 pyzmq==26.0.3 \
     --hash=sha256:01fbfbeb8249a68d257f601deb50c70c929dc2dfe683b754659569e502fbd3aa \
     --hash=sha256:0270b49b6847f0d106d64b5086e9ad5dc8a902413b5dbbb15d12b60f9c1747a4 \
@@ -2822,9 +2861,9 @@ referencing==0.36.2 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jsonschema
     #   jsonschema-specifications
-requests==2.32.3 \
-    --hash=sha256:55365417734eb18255590a9ff9eb97e9e1da868d4ccd6402399eaf68af20a760 \
-    --hash=sha256:70761cfe03c773ceb22aa2f671b4757976145175cdfca038c02654d061d6dcc6
+requests==2.32.5 \
+    --hash=sha256:2462f94637a34fd532264295e186976db0f5d453d1cdd31473c85a6a161affb6 \
+    --hash=sha256:dbba0bac56e100853db0ea71b82b4dfd5fe2bf6d3754a8893c3af500cec7d7cf
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -2835,6 +2874,7 @@ requests==2.32.3 \
     #   google-cloud-storage
     #   jupyterlab-server
     #   msal
+    #   openlineage-python
     #   smart-open
 rfc3339-validator==0.1.4 \
     --hash=sha256:138a2abdf93304ad60530167e51d2dfb9549521a836871b88d7f4695d0022f6b \

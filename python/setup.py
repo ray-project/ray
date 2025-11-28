@@ -268,7 +268,7 @@ if setup_spec.type == SetupType.RAY:
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
         ],
         "observability": [
-            "memray>=1.14.0; sys_platform != 'win32'",
+            "memray; sys_platform != 'win32'",
         ],
         "serve": [
             "uvicorn[standard]",
@@ -378,6 +378,8 @@ if setup_spec.type == SetupType.RAY:
             [
                 "vllm[audio]>=0.11.0",
                 "nixl>=0.6.1",
+                # TODO(llm): remove after next vLLM version bump
+                "transformers>=4.57.3",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
