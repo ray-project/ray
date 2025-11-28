@@ -132,6 +132,7 @@ class JaxTrainer(DataParallelTrainer):
         if not jax_config:
             jax_config = JaxConfig(
                 use_tpu=scaling_config.use_tpu,
+                use_gpu=scaling_config.use_gpu,
             )
         super(JaxTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
