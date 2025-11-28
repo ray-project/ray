@@ -1,8 +1,8 @@
 from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
-    from ray.actor import ActorHandle
     from .actor_pool_map_operator import _ActorState
+    from ray.actor import ActorHandle
 
 
 class ActorRemovalStrategy:

@@ -1,11 +1,13 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorState
 from ray.data._internal.execution.operators.actor_removal_strategy import (
     DefaultActorRemovalStrategy,
     NodeAwareActorRemovalStrategy,
 )
+
 
 def test_default_actor_removal_strategy():
     """Test the default actor removal strategy."""

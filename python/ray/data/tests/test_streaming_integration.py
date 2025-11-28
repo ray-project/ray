@@ -609,7 +609,7 @@ def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared,
     # Start execution and get the executor
     ds1._execute_to_iterator()
     ds2._execute_to_iterator()
-    
+
     executor1 = ds1._current_executor
     executor2 = ds2._current_executor
     assert executor1 is not None
@@ -713,7 +713,7 @@ def test_e2e_node_aware_actor_removal(ray_start_10_cpus_shared,
             import ray
             self.node_id = ray.get_runtime_context().get_node_id()
             self.actor_id = ray.get_runtime_context().get_actor_id()
-            
+
         def __call__(self, batch):
             time.sleep(0.05)
             return {

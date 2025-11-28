@@ -1,7 +1,11 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
+
 from ray.data import ExecutionResources
-from ray.data._internal.actor_autoscaler.resource_based_actor_autoscaler import ResourceBasedActorAutoscaler
+from ray.data._internal.actor_autoscaler.resource_based_actor_autoscaler import (
+    ResourceBasedActorAutoscaler,
+)
 
 from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
 from ray.data.context import AutoscalingConfig
@@ -183,37 +187,37 @@ def test_gpu_only_allocated_to_gpu_pools():
     assert pool1._max_size is not None
     assert pool2._min_size is not None
     assert pool2._max_size is not None
-    
+
     # Calculate accurate resource allocation
     # Weights: pool1=1.0, pool2=1.0, total weight=2.0
     # pool1 weight ratio = 0.5, pool2 weight ratio = 0.5
-    
+
     # Calculate pool1's(CPU-only) max_size:
     # CPU: 20 * 0.5 = 10 → floor(10/1) = 10
     # Memory: 20 * 0.5 = 10GB → floor(10/1) = 10
     # The final is: min(10, 10) = 10
     assert pool1._max_size == 10
-    
+
     #  Calculate pool2's(GPU) max_size:
     # CPU: 20 * 0.5 = 10 → floor(10/2) = 5
     # GPU: 8 * 1.0 = 8 → floor(8/1) = 8  (pool2 is GPU only pool)
     # Memory: 20 * 0.5 = 10GB → floor(10/2) = 5
     # The final is: ：min(5, 8, 5) = 5
     assert pool2._max_size == 5
-    
+
     # pool1's min_size calculation:
     # CPU: 10 * 0.5 = 5 → ceil(5/1) = 5
     # Memory: 10 * 0.5 = 5GB → ceil(5/1) = 5
     # The final is: max(5, 5) = 5
     assert pool1._min_size == 5
-    
+
     # pool2's min_size calculation:
     # CPU: 10 * 0.5 = 5 → ceil(5/2) = 3
     # GPU: 4 * 1.0 = 4 → ceil(4/1) = 4
     # Memory: 10 * 0.5 = 5GB → ceil(5/2) = 3
     # The final is: max(3, 4, 3) = 4
     assert pool2._min_size == 4
-    
+
     # Verify that GPU resources are allocated only to pools that need GPUs
     # pool1 does not need GPU, so all GPU resources are allocated to pool2
 

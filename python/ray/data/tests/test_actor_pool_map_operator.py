@@ -2,17 +2,13 @@ import asyncio
 import collections
 import datetime
 import threading
-import time
 import unittest
 from dataclasses import replace
 from typing import Any, Callable, Dict, Optional, Tuple
 from unittest.mock import MagicMock
 
-import pytest
 from freezegun import freeze_time
 
-import ray
-from ray._common.test_utils import wait_for_condition
 from ray._private.ray_constants import ID_SIZE
 from ray.actor import ActorHandle
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
@@ -903,7 +899,7 @@ def test_actor_pool_with_default_removal_strategy(ray_start_regular_shared):
 def test_actor_pool_with_node_aware_removal_strategy(ray_start_regular_shared):
     """Test that _ActorPool uses the node-aware actor removal strategy."""
     from ray.data._internal.execution.operators.actor_removal_strategy import (
-        NodeAwareActorRemovalStrategy
+        NodeAwareActorRemovalStrategy,
     )
 
     test_case = TestActorPool()
@@ -923,7 +919,8 @@ def test_actor_pool_with_node_aware_removal_strategy(ray_start_regular_shared):
 
     # Verify that NodeAwareActorRemovalStrategy is being used.
     assert isinstance(pool._actor_removal_strategy,
-                      NodeAwareActorRemovalStrategy)
+                      NodeAwareActorRemovalStrategy,
+    )
 
     # Add 3 actors on node1
     actors_node1 = []
@@ -952,7 +949,7 @@ def test_node_aware_strategy_prioritizes_node_with_most_idle_actors(
 ):
     """Test that the node-aware strategy prioritizes the node with the most idle actors."""
     from ray.data._internal.execution.operators.actor_removal_strategy import (
-        NodeAwareActorRemovalStrategy
+        NodeAwareActorRemovalStrategy,
     )
 
     test_case = TestActorPool()
@@ -1017,7 +1014,7 @@ def test_node_aware_strategy_prioritizes_node_with_most_idle_actors(
 def test_node_aware_strategy_with_active_actors(ray_start_regular_shared):
     """Test that the node-aware strategy does not remove active actors."""
     from ray.data._internal.execution.operators.actor_removal_strategy import (
-        NodeAwareActorRemovalStrategy
+        NodeAwareActorRemovalStrategy,
     )
 
     test_case = TestActorPool()
@@ -1069,9 +1066,8 @@ def test_actor_pool_removal_strategy_integration_with_scaling(
 ):
     """Test actor removal strategy integration with scaling."""
     from ray.data._internal.execution.operators.actor_removal_strategy import (
-        NodeAwareActorRemovalStrategy
+        NodeAwareActorRemovalStrategy,
     )
-    from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 
     # Create test instance directly, without calling setup_class()
     test_case = TestActorPool()

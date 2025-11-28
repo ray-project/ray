@@ -16,10 +16,6 @@ from ray.data._internal.actor_autoscaler import (
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolScalingRequest,
 )
-# from ray.data._internal.execution.operators.actor_removal_strategy import (
-#     ActorRemovalStrategy,
-#     DefaultActorRemovalStrategy,
-# )
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.bundle_queue.bundle_queue import BundleQueue
@@ -550,7 +546,7 @@ class ActorPoolMapOperator(MapOperator):
         actor_removal_strategy = None
         if self.data_context.enable_node_aware_actor_removal:
             from ray.data._internal.execution.operators.actor_removal_strategy import (
-                NodeAwareActorRemovalStrategy
+                NodeAwareActorRemovalStrategy,
             )
             actor_removal_strategy = NodeAwareActorRemovalStrategy()
 
