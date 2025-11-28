@@ -2848,6 +2848,10 @@ cdef class CoreWorker:
         return WorkerID(
             CCoreWorkerProcess.GetCoreWorker().GetWorkerID().Binary())
 
+    def get_runtime_env_agent_port(self):
+        """Get the runtime env agent port for the local node."""
+        return CCoreWorkerProcess.GetCoreWorker().GetRuntimeEnvAgentPort()
+
     def should_capture_child_tasks_in_placement_group(self):
         return CCoreWorkerProcess.GetCoreWorker(
             ).ShouldCaptureChildTasksInPlacementGroup()

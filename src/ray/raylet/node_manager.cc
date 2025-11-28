@@ -210,6 +210,7 @@ NodeManager::NodeManager(
                                                std::move(fn),
                                                std::chrono::milliseconds(delay_ms)));
                     }),
+      runtime_env_agent_port_(config.runtime_env_agent_port),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
                            config.node_manager_address == "127.0.0.1"),
@@ -265,12 +266,30 @@ NodeManager::NodeManager(
   worker_pool_.SetNodeManagerPort(GetServerPort());
 
   dashboard_agent_manager_ = CreateDashboardAgentManager(self_node_id, config);
-  runtime_env_agent_manager_ = CreateRuntimeEnvAgentManager(self_node_id, config);
+
+  // Create the runtime env agent pipe right before spawning the agent so no other
+  // subprocess inherits the write end.
+  runtime_env_agent_pipe_ = std::make_unique<ray::Pipe>();
+  runtime_env_agent_manager_ = CreateRuntimeEnvAgentManager(
+      self_node_id, config, runtime_env_agent_pipe_->WriteHandle());
+  runtime_env_agent_pipe_->CloseWrite();
+  try {
+    const int64_t wait_begin_ms = current_time_ms();
+    RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_)
+        << "Waiting for runtime env agent to report its port via pipe";
+    const auto port_str = runtime_env_agent_pipe_->Read();
+    runtime_env_agent_port_ = std::stoi(port_str);
+    RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_)
+        << "Runtime env agent reported port via pipe: " << runtime_env_agent_port_
+        << " (waited " << (current_time_ms() - wait_begin_ms) << " ms)";
+  } catch (const std::exception &e) {
+    RAY_LOG(FATAL) << "Failed to read runtime env agent port from pipe: " << e.what();
+  }
 
   auto runtime_env_agent_client = RuntimeEnvAgentClient::Create(
       io_service_,
       config.node_manager_address,
-      config.runtime_env_agent_port, /*delay_executor=*/
+      runtime_env_agent_port_, /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
         return execute_after(
             io_service_, std::move(task), std::chrono::milliseconds(delay_ms));
@@ -1212,7 +1231,8 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
                                                  status.ok(),
                                                  fbb.CreateString(status.ToString()),
                                                  flatbuf::to_flatbuf(fbb, self_node_id_),
-                                                 assigned_port);
+                                                 assigned_port,
+                                                 runtime_env_agent_port_);
     fbb.Finish(reply);
     client->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply),
@@ -3309,7 +3329,9 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
 }
 
 std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
-    const NodeID &self_node_id, const NodeManagerConfig &config) {
+    const NodeID &self_node_id,
+    const NodeManagerConfig &config,
+    intptr_t report_port_pipe_handle) {
   auto agent_command_line = ParseCommandLine(config.runtime_env_agent_command);
 
   if (agent_command_line.empty()) {
@@ -3323,6 +3345,12 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
                   strlen(kNodeManagerPortPlaceholder),
                   std::to_string(GetServerPort()));
     }
+  }
+
+  if (report_port_pipe_handle >= 0) {
+    agent_command_line.emplace_back(
+        std::string("--report-runtime-env-agent-port-pipe-handle=") +
+        std::to_string(report_port_pipe_handle));
   }
 
   std::string agent_name = "runtime_env_agent";

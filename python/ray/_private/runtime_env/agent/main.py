@@ -1,6 +1,8 @@
 import argparse
+import asyncio
 import logging
 import os
+import signal
 import sys
 
 import ray._private.ray_constants as ray_constants
@@ -11,6 +13,7 @@ from ray._private import logging_utils
 from ray._private.authentication.http_token_authentication import (
     get_token_auth_middleware,
 )
+from ray._private.pipe import PipeWriter
 from ray._private.process_watcher import create_check_raylet_task
 from ray._raylet import GcsClient
 from ray.core.generated import (
@@ -45,6 +48,14 @@ if __name__ == "__main__":
         type=int,
         default=None,
         help="The port on which the runtime env agent will receive HTTP requests.",
+    )
+    parser.add_argument(
+        "--report-runtime-env-agent-port-pipe-handle",
+        required=False,
+        type=int,
+        default=None,
+        help="Pipe handle (fd on POSIX, HANDLE on Windows) to report the bound runtime "
+        "env agent port back to the parent.",
     )
 
     parser.add_argument(
@@ -222,13 +233,45 @@ if __name__ == "__main__":
         check_raylet_task = create_check_raylet_task(
             args.log_dir, gcs_client, parent_dead_callback, loop
         )
-    try:
-        web.run_app(
-            app,
-            host=args.node_ip_address,
-            port=args.runtime_env_agent_port,
-            loop=loop,
+
+    async def _serve():
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(
+            runner,
+            args.node_ip_address,
+            args.runtime_env_agent_port,
         )
+        await site.start()
+        bound_port = site._server.sockets[0].getsockname()[1]
+        if args.report_runtime_env_agent_port_pipe_handle is not None:
+            try:
+                agent._logger.info(
+                    "About to write bound runtime env agent port %s to pipe", bound_port
+                )
+                writer = PipeWriter(args.report_runtime_env_agent_port_pipe_handle)
+                writer.write(str(bound_port))
+                writer.close_write()
+                agent._logger.info(
+                    "Wrote bound runtime env agent port %s to pipe", bound_port
+                )
+            except Exception as e:
+                agent._logger.error(
+                    "Failed to write runtime env agent port to pipe: %s", e
+                )
+        stop_event = asyncio.Event()
+
+        def _stop():
+            stop_event.set()
+
+        if sys.platform != "win32":
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                loop.add_signal_handler(sig, _stop)
+        await stop_event.wait()
+        await runner.cleanup()
+
+    try:
+        loop.run_until_complete(_serve())
     except SystemExit as e:
         agent._logger.info(f"SystemExit! {e}")
         # We have to poke the task exception, or there's an error message

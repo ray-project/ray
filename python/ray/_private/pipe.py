@@ -126,3 +126,43 @@ class Pipe:
     def __exit__(self, exc_type, exc, tb):
         self.close_read()
         self.close_write()
+
+
+class PipeWriter:
+    """Write helper that accepts an inheritable pipe handle from another process."""
+
+    def __init__(self, pipe_handle: int):
+        if os.name == "nt":
+            # Convert OS handle to an fd we can write with os.write.
+            self._fd = msvcrt.open_osfhandle(pipe_handle, os.O_WRONLY)
+        else:
+            self._fd = int(pipe_handle)
+        self._closed = False
+
+    def write(self, data: str) -> None:
+        if isinstance(data, str):
+            payload = data.encode()
+        else:
+            payload = data
+        view = memoryview(payload)
+        while view:
+            try:
+                written = os.write(self._fd, view)
+            except InterruptedError:
+                continue
+            if written == 0:
+                raise RuntimeError("Failed to write to pipe.")
+            view = view[written:]
+
+    def close_write(self) -> None:
+        if self._closed:
+            return
+        with contextlib.suppress(OSError):
+            os.close(self._fd)
+        self._closed = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close_write()

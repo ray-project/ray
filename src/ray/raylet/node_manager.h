@@ -55,6 +55,7 @@
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/rpc_callback_types.h"
+#include "ray/util/pipe.h"
 #include "ray/util/throttler.h"
 
 namespace ray::raylet {
@@ -187,6 +188,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Get initial node manager configuration.
   const NodeManagerConfig &GetInitialConfig() const;
+
+  /// Return the runtime env agent port (reported via pipe if dynamic).
+  int GetRuntimeEnvAgentPort() const { return runtime_env_agent_port_; }
 
   /// Returns debug string for class.
   ///
@@ -758,7 +762,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Creates a AgentManager that creates and manages a runtime env agent.
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
-      const NodeID &self_node_id, const NodeManagerConfig &config);
+      const NodeID &self_node_id,
+      const NodeManagerConfig &config,
+      intptr_t report_port_pipe_handle = -1);
 
   /// ID of this node.
   NodeID self_node_id_;
@@ -820,6 +826,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// A manager for the runtime env agent.
   /// Ditto for the pointer argument.
   std::unique_ptr<AgentManager> runtime_env_agent_manager_;
+  std::unique_ptr<ray::Pipe> runtime_env_agent_pipe_;
+  int runtime_env_agent_port_{0};
 
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;

@@ -311,10 +311,9 @@ class Node:
         self._metrics_export_port = self._get_cached_port(
             "metrics_export_port", default_port=ray_params.metrics_export_port
         )
-        self._runtime_env_agent_port = self._get_cached_port(
-            "runtime_env_agent_port",
-            default_port=ray_params.runtime_env_agent_port,
-        )
+        # runtime_env_agent_port: if user doesn't specify, use 0 to let agent pick its own port.
+        # The actual port will be updated after CoreWorker registers with raylet.
+        self._runtime_env_agent_port = ray_params.runtime_env_agent_port or 0
 
         ray_params.update_if_absent(
             metrics_agent_port=self.metrics_agent_port,
@@ -618,6 +617,11 @@ class Node:
     def runtime_env_agent_port(self):
         """Get the port that exposes runtime env agent as http"""
         return self._runtime_env_agent_port
+
+    @runtime_env_agent_port.setter
+    def runtime_env_agent_port(self, port: int):
+        """Set the runtime env agent port (updated after agent reports its actual port)."""
+        self._runtime_env_agent_port = port
 
     @property
     def runtime_env_agent_address(self):
