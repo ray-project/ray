@@ -77,7 +77,7 @@ steps:
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
         --test-env=RAY_raylet_start_wait_time_s=120
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
     depends_on: windowsbuild
 
   - label: ":ray-serve: serve: :windows: enormous tests"
