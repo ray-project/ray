@@ -189,7 +189,7 @@ class BlockOutputBuffer:
             # When block shaping is disabled, produce blocks immediately
             return self._buffer.num_rows() > 0
 
-        return self._exceeded_buffer_row_limit() or self._exceeded_buffer_size_limit()
+        return self._exceeded_target_num_rows() or self._exceeded_buffer_size_limit()
 
     def _exceeded_block_size_slice_limit(self, block: BlockAccessor) -> bool:
         # Slice a block to respect the target max block size. We only do this if we are
@@ -217,8 +217,8 @@ class BlockOutputBuffer:
         block_remainder = None
         target_num_rows = None
 
-        if self._exceeded_block_row_slice_limit(accessor):
-            target_num_rows = self._max_num_rows_per_block()
+        if self._exceeded_target_num_rows_slice_limit(accessor):
+            target_num_rows = self._target_num_rows_per_block()
         elif self._exceeded_block_size_slice_limit(accessor):
             assert accessor.num_rows() > 0, "Block may not be empty"
             num_bytes_per_row = accessor.size_bytes() / accessor.num_rows()
