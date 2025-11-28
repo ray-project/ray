@@ -138,7 +138,10 @@ class TestHangingExecutionIssueDetector:
         log_output = log_capture.getvalue()
         assert re.search(warn_msg, log_output) is not None, log_output
 
-    def test_hanging_detector_detects_issues(self, ray_start_regular_shared):
+    @patch("time.perf_counter")
+    def test_hanging_detector_detects_issues(
+        self, mock_perf_counter, ray_start_regular_shared
+    ):
         """Test that the hanging detector correctly identifies tasks that exceed the adaptive threshold."""
 
         # Configure hanging detector with extreme std_factor values
@@ -161,6 +164,8 @@ class TestHangingExecutionIssueDetector:
             blocks=((block_ref, metadata),), owns_blocks=True, schema=None
         )
 
+        mock_perf_counter.return_value = 0.0
+
         # Submit three tasks. Two of them finish immediately, while the third one hangs.
         op.metrics.on_task_submitted(0, input_bundle)
         op.metrics.on_task_submitted(1, input_bundle)
@@ -172,10 +177,8 @@ class TestHangingExecutionIssueDetector:
         issues = detector.detect()
         assert len(issues) == 0
 
-        # Set the hanging time for task 2 directly to trigger the issue
-        # detection for making the test deterministic without relying on
-        # time.sleep
-        detector._state_map[op.id][2].start_time_hanging = 1.0
+        # Set the perf_counter to trigger the issue detection
+        mock_perf_counter.return_value = 10.0
 
         # On the second detect() call, the hanging task should be detected
         issues = detector.detect()
