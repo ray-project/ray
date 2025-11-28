@@ -891,8 +891,8 @@ def test_actor_pool_with_default_removal_strategy(ray_start_regular_shared):
                       DefaultActorRemovalStrategy)
 
     # Add multiple actors
-    actor1 = test_case._add_ready_actor(pool, node_id="node1")
-    actor2 = test_case._add_ready_actor(pool, node_id="node2")
+    test_case._add_ready_actor(pool, node_id="node1")
+    test_case._add_ready_actor(pool, node_id="node2")
 
     # Verify that shrink works normally
     killed = pool._remove_inactive_actor()
@@ -932,7 +932,7 @@ def test_actor_pool_with_node_aware_removal_strategy(ray_start_regular_shared):
         actors_node1.append(actor)
 
     # Add 1 actor on node2
-    actor_node2 = test_case._add_ready_actor(pool, node_id="node2")
+    test_case._add_ready_actor(pool, node_id="node2")
 
     # Verify all actors are added
     assert pool.current_size() == 4
@@ -944,7 +944,7 @@ def test_actor_pool_with_node_aware_removal_strategy(ray_start_regular_shared):
     assert pool.current_size() == 3
 
     # Verify that the actor on node2 still exists
-    picked_actor = test_case._pick_actor(pool)
+    test_case._pick_actor(pool)
 
 
 def test_node_aware_strategy_prioritizes_node_with_most_idle_actors(
@@ -1041,7 +1041,7 @@ def test_node_aware_strategy_with_active_actors(ray_start_regular_shared):
         actors_node1.append(actor)
 
     # Add 1 actor on node2
-    actor_node2 = test_case._add_ready_actor(pool, node_id="node2")
+    test_case._add_ready_actor(pool, node_id="node2")
 
     # Make all actors on node1 active
     for actor in actors_node1:

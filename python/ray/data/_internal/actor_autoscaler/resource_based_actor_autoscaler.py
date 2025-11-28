@@ -42,8 +42,8 @@ class ResourceBasedActorAutoscaler(DefaultActorAutoscaler):
         """Set resource limits for the entire Ray Data job
 
         Args:
-            min_resources: Minimum resources at the job level (optional)
-            max_resources: Maximum resources at the job level (optional)
+            min_resources: Minimum resources on the job level (optional)
+            max_resources: Maximum resources on the job level (optional)
         """
 
         if min_resources is not None and max_resources is not None:

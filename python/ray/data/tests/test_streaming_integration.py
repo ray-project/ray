@@ -607,8 +607,8 @@ def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared,
     )
 
     # Start execution and get the executor
-    iter1 = ds1._execute_to_iterator()
-    iter2 = ds2._execute_to_iterator()
+    ds1._execute_to_iterator()
+    ds2._execute_to_iterator()
     
     executor1 = ds1._current_executor
     executor2 = ds2._current_executor
@@ -666,8 +666,8 @@ def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared,
     )
 
     # Initialize executors
-    iter3 = ds3._execute_to_iterator()
-    iter4 = ds4._execute_to_iterator()
+    ds3._execute_to_iterator()
+    ds4._execute_to_iterator()
 
     # Set up a shared resource pool
     shared_executor3 = ds3._current_executor
