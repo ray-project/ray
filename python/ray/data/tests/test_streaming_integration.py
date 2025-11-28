@@ -599,7 +599,7 @@ def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared,
         compute=ray.data.ActorPoolStrategy(min_size=1, max_size=10),
         batch_size=10,
     )
-    
+
     ds2 = ray.data.range(100, override_num_blocks=10).map_batches(
         SimpleUDF,
         compute=ray.data.ActorPoolStrategy(min_size=1, max_size=10),
@@ -621,12 +621,12 @@ def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared,
         min_resources=ExecutionResources(cpu=2, gpu=0, memory=1e9),
         max_resources=ExecutionResources(cpu=4, gpu=0, memory=2e9)
     )
-    
+
     # Verify that resource limits are applied correctly
     min_res, max_res = executor1.get_job_resource_limits()
     assert min_res.cpu == 2
     assert max_res.cpu == 4
-    
+
     # Execute and get the results
     result1 = list(ds1.iter_batches())
     # Verify data integrity instead of the number of batches
@@ -639,11 +639,11 @@ def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared,
         min_resources=ExecutionResources(cpu=4, gpu=0, memory=4e9),
         max_resources=ExecutionResources(cpu=10, gpu=0, memory=10e9)
     )
-    
+
     min_res, max_res = executor2.get_job_resource_limits()
     assert min_res.cpu == 4
     assert max_res.cpu == 10
-    
+
     result2 = list(ds2.iter_batches())
     # Verify data integrity instead of the number of batches
     total_rows2 = sum(len(batch["id"]) for batch in result2)
@@ -707,7 +707,7 @@ def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared,
 def test_e2e_node_aware_actor_removal(ray_start_10_cpus_shared,
                                       restore_data_context):
     """e2e test for actor removal - verifies behavior differences when the feature is enabled"""
-    
+
     class TrackingUDF:
         def __init__(self):
             import ray
@@ -725,53 +725,53 @@ def test_e2e_node_aware_actor_removal(ray_start_10_cpus_shared,
     # Test scenario 1: Behavior when feature is disabled
     ctx = ray.data.DataContext.get_current()
     original_setting = ctx.enable_node_aware_actor_removal
-    
+
     # Disable node-aware feature
     ctx.enable_node_aware_actor_removal = False
-    
+
     ds1 = ray.data.range(40, override_num_blocks=4).map_batches(
         TrackingUDF,
         compute=ray.data.ActorPoolStrategy(min_size=2, max_size=2),
         batch_size=10,
     )
-    
+
     result1 = list(ds1.iter_batches())
     total_rows1 = sum(len(batch["data"]) for batch in result1)
     assert total_rows1 == 40
-    
+
     actors_disabled = set()
     for batch in result1:
         actors_disabled.update(batch["actor_id"])
     print(f"When node awareness is disabled, {len(actors_disabled)} actors are used")
-    
+
     # Test scenario 2: Behavior when feature is enabled
     ctx.enable_node_aware_actor_removal = True
-    
+
     ds2 = ray.data.range(40, override_num_blocks=4).map_batches(
         TrackingUDF,
         compute=ray.data.ActorPoolStrategy(min_size=2, max_size=2),
         batch_size=10,
     )
-    
+
     result2 = list(ds2.iter_batches())
     total_rows2 = sum(len(batch["data"]) for batch in result2)
     assert total_rows2 == 40
-    
+
     actors_enabled = set()
     for batch in result2:
         actors_enabled.update(batch["actor_id"])
     print(f"When node awareness is enabled, {len(actors_enabled)} actors are used")
-    
+
     # Verify feature flag is set
     assert ctx.enable_node_aware_actor_removal is True
-    
+
     # Verify that data is processed correctly in both modes
     assert len(actors_disabled) >= 1
     assert len(actors_enabled) >= 1
-    
+
     # Restore original setting
     ctx.enable_node_aware_actor_removal = original_setting
-    
+
     print("Node-aware actor removal feature verification completed!")
 
 if __name__ == "__main__":

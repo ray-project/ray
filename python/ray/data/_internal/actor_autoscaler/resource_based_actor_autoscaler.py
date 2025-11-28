@@ -1,17 +1,14 @@
 import logging
 import math
-from typing import TYPE_CHECKING, Optional, Dict
+from typing import TYPE_CHECKING, Dict, Optional
 from .default_actor_autoscaler import DefaultActorAutoscaler
-from ray.data._internal.execution.interfaces.execution_options import \
-    ExecutionResources
+from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data.context import AutoscalingConfig
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.interfaces import PhysicalOperator
     from ray.data._internal.execution.streaming_executor_state import Topology
     from ray.data._internal.execution.resource_manager import ResourceManager
-    from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import \
-        AutoscalingActorPool
+    from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import AutoscalingActorPool
 
 logger = logging.getLogger(__name__)
 
@@ -283,17 +280,17 @@ class ResourceBasedActorAutoscaler(DefaultActorAutoscaler):
         """
         max_size_by_cpu = (
             math.floor(max_resources.cpu / per_actor_resources.cpu)
-            if per_actor_resources.cpu > 0 else float('inf')
+            if per_actor_resources.cpu > 0 else float("inf")
         )
 
         max_size_by_gpu = (
             math.floor(max_resources.gpu / per_actor_resources.gpu)
-            if per_actor_resources.gpu > 0 else float('inf')
+            if per_actor_resources.gpu > 0 else float("inf")
         )
 
         max_size_by_memory = (
             math.floor(max_resources.memory / per_actor_resources.memory)
-            if per_actor_resources.memory > 0 else float('inf')
+            if per_actor_resources.memory > 0 else float("inf")
         )
 
         # Take the minimum to ensure no resource type limit is exceeded

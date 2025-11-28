@@ -1,11 +1,9 @@
 import pytest
 from unittest.mock import MagicMock
 from ray.data import ExecutionResources
-from ray.data._internal.actor_autoscaler.resource_based_actor_autoscaler import (
-    ResourceBasedActorAutoscaler
-)
-from ray.data._internal.execution.operators.actor_pool_map_operator import \
-    _ActorPool
+from ray.data._internal.actor_autoscaler.resource_based_actor_autoscaler import ResourceBasedActorAutoscaler
+
+from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
 from ray.data.context import AutoscalingConfig
 
 
@@ -104,36 +102,36 @@ def test_distribute_resources_by_weight():
     )
     
     # Verify that the pool with higher utilization, pool1, should receive more resources
-    # pool1 weight = 1.5, pool2 weight = 0.8, total weight = 2.3 
+    # pool1 weight = 1.5, pool2 weight = 0.8, total weight = 2.3
     # pool1 weight ratio = 1.5/2.3 ≈ 0.652, pool2 weight ratio = 0.8/2.3 ≈ 0.348
-    
+
     # Calculate resource allocation for pool1
     #   CPU: 20 * 0.652 ≈ 13.04,
     #   Memory: 20 * 0.652 ≈ 13.04GB
     # pool1 every actor needs 1 CPU + 1GB Memory
     # expected_pool1_max = min(13.04 // 1, 13.04 // 1) = 13
-    
+
     # Calculate resource allocation for pool2
     #  CPU: 20 * 0.348 ≈ 6.96,
-    #  GPU: 4 (give all resource to pool2) ,
+    #  GPU: 4 (give all resource to pool2),
     #  Memory: 20 * 0.348 ≈ 6.96GB
     # pool2 every actor needs 2 CPU + 1 GPU + 2GB Memory
     # expected_pool2_max = min(6.96 // 2, 4 // 1, 6.96 // 2) = 3
-    
+
     # Verify that the pool with lower utilization, pool2, receives fewer resources
     # pool2's max_size should be based on the minimum value of all resource limits:
     # CPU: 20 * 0.348 ≈ 6.96 → floor(6.96/2) = 3
-    # GPU: 4 * 1.0 = 4 → floor(4/1) = 4  
+    # GPU: 4 * 1.0 = 4 → floor(4/1) = 4
     # Memory: 20 * 0.348 ≈ 6.96 → floor(6.96/2) = 3
-    # The final should be: min(3, 4, 3) = 3 
+    # The final should be: min(3, 4, 3) = 3
     assert pool1._max_size == 13
     assert pool2._max_size == 3
-    
+
     # calculate pool1's min_size:
     # CPU: 10 * (15/23) ≈ 6.521 → ceil(6.521/1) = 7
     # Memory: 10 * (15/23) ≈ 6.521 → ceil(6.521/1) = 7
     assert pool1._min_size == 7
-    
+
     # pool2's min_size calculation:
     # CPU: 10 * (8/23) ≈ 3.478 → ceil(3.478/2) = 2
     # GPU: 2 * 1.0 = 2 → ceil(2/1) = 2

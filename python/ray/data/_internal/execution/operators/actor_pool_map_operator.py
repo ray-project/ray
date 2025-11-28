@@ -16,10 +16,10 @@ from ray.data._internal.actor_autoscaler import (
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolScalingRequest,
 )
-from ray.data._internal.execution.operators.actor_removal_strategy import (
-    ActorRemovalStrategy,
-    DefaultActorRemovalStrategy,
-)
+# from ray.data._internal.execution.operators.actor_removal_strategy import (
+#     ActorRemovalStrategy,
+#     DefaultActorRemovalStrategy,
+# )
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.bundle_queue.bundle_queue import BundleQueue
@@ -37,6 +37,7 @@ from ray.data._internal.execution.node_trackers.actor_location import (
     ActorLocationTracker,
     get_or_create_actor_location_tracker,
 )
+from ray.data._internal.execution.operators.actor_removal_strategy import DefaultActorRemovalStrategy
 from ray.data._internal.execution.operators.map_operator import (
     BaseRefBundler,
     MapOperator,

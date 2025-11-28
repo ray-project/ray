@@ -216,7 +216,7 @@ class StreamingExecutor(Executor, threading.Thread):
         data_context = DataContext.get_current()
         if data_context.enable_resource_based_autoscaling:
             from ray.data._internal.actor_autoscaler.resource_based_actor_autoscaler import (
-                ResourceBasedActorAutoscaler
+                ResourceBasedActorAutoscaler,
             )
 
             self._actor_autoscaler = ResourceBasedActorAutoscaler(
@@ -716,7 +716,7 @@ class StreamingExecutor(Executor, threading.Thread):
             ValueError: If the current autoscaler does not support resource-based sizing.
         """
         from ray.data._internal.actor_autoscaler.resource_based_actor_autoscaler import (
-            ResourceBasedActorAutoscaler
+            ResourceBasedActorAutoscaler,
         )
 
         if not isinstance(self._actor_autoscaler,
@@ -740,7 +740,7 @@ class StreamingExecutor(Executor, threading.Thread):
             Tuple of (min_resources, max_resources)
         """
         from ray.data._internal.actor_autoscaler.resource_based_actor_autoscaler import (
-            ResourceBasedActorAutoscaler
+            ResourceBasedActorAutoscaler,
         )
 
         if isinstance(self._actor_autoscaler, ResourceBasedActorAutoscaler):

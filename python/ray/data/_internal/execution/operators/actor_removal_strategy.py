@@ -1,5 +1,4 @@
-from typing import TYPE_CHECKING, Optional, Dict, List
-import ray
+from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
@@ -41,7 +40,7 @@ class NodeAwareActorRemovalStrategy(ActorRemovalStrategy):
         running_actors: Dict["ActorHandle", "_ActorState"]
     ) -> Optional["ActorHandle"]:
         """Select an idle actor to remove, preferring nodes with the most idle actors."""
-        
+
         # Count idle actors per node
         idle_counts_per_node = self._count_idle_actors_per_node(running_actors)
 
