@@ -7,6 +7,8 @@ from dataclasses import replace
 from typing import Any, Callable, Dict, Optional, Tuple
 from unittest.mock import MagicMock
 
+import ray
+
 from freezegun import freeze_time
 
 from ray._private.ray_constants import ID_SIZE
@@ -1103,5 +1105,7 @@ def test_actor_pool_removal_strategy_integration_with_scaling(
 
 if __name__ == "__main__":
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -34,7 +34,7 @@ from ray.data._internal.execution.node_trackers.actor_location import (
     get_or_create_actor_location_tracker,
 )
 from ray.data._internal.execution.operators.actor_removal_strategy import (
-    DefaultActorRemovalStrategy,
+    DefaultActorRemovalStrategy, ActorRemovalStrategy,
 )
 from ray.data._internal.execution.operators.map_operator import (
     BaseRefBundler,
