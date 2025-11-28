@@ -183,8 +183,8 @@ class HttpServerDashboardHead:
     @aiohttp.web.middleware
     async def browsers_no_post_put_middleware(self, request, handler):
         if (
-            # A best effort test for browser traffic. All common browsers
-            # start with Mozilla at the time of writing.
+            # Deny mutating requests from browsers.
+            # See `is_browser_request` for details of the check.
             dashboard_optional_utils.is_browser_request(request)
             and request.method in [hdrs.METH_POST, hdrs.METH_PUT]
         ):
