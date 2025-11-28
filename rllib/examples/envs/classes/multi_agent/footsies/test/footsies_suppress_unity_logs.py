@@ -86,7 +86,7 @@ def capture_stdout_stderr():
 
 
 class TestFootsies(unittest.TestCase):
-    def test_default_output_mode(self):
+    def test_default_supress_output_mode(self):
         with capture_stdout_stderr() as log_path:
             env = _create_env({})
             time.sleep(2)  # Give Unity time to write output
@@ -98,15 +98,19 @@ class TestFootsies(unittest.TestCase):
         with open(log_path, "r") as f:
             captured_output = f.read()
 
-        assert "[UnityMemory]" in captured_output
+        assert (
+            "`suppress_unity_output` not set in environment config, suppressing output by default"
+            in captured_output
+        )
+        assert "[UnityMemory]" not in captured_output
 
         # Clean up
         if Path(log_path).exists():
             os.unlink(log_path)
 
-    def test_suppressed_output_mode(self):
+    def test_enable_output_mode(self):
         with capture_stdout_stderr() as log_path:
-            env = _create_env({"suppress_unity_output": True})
+            env = _create_env({"suppress_unity_output": False})
             time.sleep(2)  # Give Unity time to write output
             env.close()
             # Give a bit more time for any buffered output to be written
@@ -116,7 +120,7 @@ class TestFootsies(unittest.TestCase):
         with open(log_path, "r") as f:
             captured_output = f.read()
 
-        assert len(captured_output) == 0
+        assert "[UnityMemory]" in captured_output
 
         # Clean up
         if Path(log_path).exists():
