@@ -31,6 +31,14 @@ def override(parent_cls):
             self.func = func
             self.expected_parent_cls = expected_parent_cls
 
+        def __setattr__(self, name, value):
+            # Only allow setting func and expected_parent_cls attributes when initializing
+            if name in ("func", "expected_parent_cls"):
+                super().__setattr__(name, value)
+            # For other attributes, set them on the function itself
+            else:
+                setattr(self.func, name, value)
+
         def __set_name__(self, owner, name):
             # Check if the owner (the class) is a subclass of the expected base class
             if not issubclass(owner, self.expected_parent_cls):
