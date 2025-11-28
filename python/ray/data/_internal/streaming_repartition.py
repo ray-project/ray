@@ -21,9 +21,7 @@ from ray.data._internal.execution.operators.map_operator import BaseRefBundler
     5. We configured the `OutputBlockSizeOption.target_num_rows_per_block` to the target number of rows per block in
        plan_streaming_repartition_op so the output buffer further splits the n × target rows into n blocks of exactly
        the target size.
-       Note: the output buffer only splits a bundle when its row count exceeds `target_rows × MAX_SAFE_ROWS_PER_BLOCK_FACTOR`
-       (default 1.5). Because we split bundles into target-row blocks, `MAX_SAFE_ROWS_PER_BLOCK_FACTOR` must stay < 2 to
-       output the target-row blocks.
+       Note: the output buffer only splits a bundle when its row count exceeds `target_rows`.
     6. Once upstream input is exhausted, flush any leftover pending bundles and repeat steps 1‑5 for the tail.
     7. The resulting blocks have lengths `[target, …, target, (total_rows % target)]`; ordering isn’t guaranteed, but the
        remainder block should appear near the end.
