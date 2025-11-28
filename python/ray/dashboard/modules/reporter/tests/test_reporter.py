@@ -15,11 +15,11 @@ from google.protobuf import text_format
 import ray
 import ray._common.usage.usage_lib as ray_usage_lib
 from ray._common.network_utils import build_address
+from ray._common.prometheus_utils import fetch_prometheus
 from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
 from ray._private.metrics_agent import fix_grpc_metric
 from ray._private.test_utils import (
-    fetch_prometheus,
     format_web_url,
     wait_until_server_available,
 )

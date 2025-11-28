@@ -473,6 +473,10 @@ class AutoscalingConfig(BaseModel):
         default=30.0, description="How long to wait before scaling up replicas."
     )
 
+    # Prometheus metrics which will be collected at each replica, which will be available in the custom AutoscalingPolicy function
+    # List of metric_names
+    prometheus_metrics: Optional[List[str]] = None
+
     aggregation_function: Union[str, AggregationFunction] = Field(
         default=AggregationFunction.MEAN,
         description="Function used to aggregate metrics across a time window.",

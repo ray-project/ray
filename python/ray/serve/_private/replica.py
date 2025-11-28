@@ -36,6 +36,9 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 import ray
 from ray import cloudpickle
 from ray._common.filters import CoreContextFilter
+from ray._common.prometheus_utils import (
+    fetch_from_prom_server as default_prometheus_handler,
+)
 from ray._common.utils import get_or_create_event_loop
 from ray.actor import ActorClass, ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
@@ -59,6 +62,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
+    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
@@ -174,6 +178,7 @@ class ReplicaMetricsManager:
         event_loop: asyncio.BaseEventLoop,
         autoscaling_config: Optional[AutoscalingConfig],
         ingress: bool,
+        prometheus_handler: Callable[..., Any] = default_prometheus_handler,
     ):
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
@@ -251,6 +256,14 @@ class ReplicaMetricsManager:
         )
 
         self.set_autoscaling_config(autoscaling_config)
+
+        self._prometheus_metrics_enabled = False
+        self._prometheus_queries: Optional[List[str]] = None
+        self._prometheus_handler = prometheus_handler
+
+    def set_prometheus_handler(self, prometheus_handler: Callable[..., Any]):
+        """Update the prometheus handler for testing purposes."""
+        self._prometheus_handler = prometheus_handler
 
     def _report_cached_metrics(self):
         for route, count in self._cached_request_counter.items():
@@ -350,10 +363,25 @@ class ReplicaMetricsManager:
 
     def set_autoscaling_config(self, autoscaling_config: Optional[AutoscalingConfig]):
         """Dynamically update autoscaling config."""
-
         self._autoscaling_config = autoscaling_config
+        if not autoscaling_config:
+            return
 
-        if self._autoscaling_config and self.should_collect_ongoing_requests():
+        if autoscaling_config.prometheus_metrics:
+            if RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST:
+                self._prometheus_metrics_enabled = True
+                self._prometheus_queries = autoscaling_config.prometheus_metrics
+                logger.info(
+                    f"Prometheus metrics enabled with queries: {self._prometheus_queries}"
+                )
+                self.start_metrics_pusher()
+                return
+            logger.error(
+                "Prometheus metrics host is not set! Please export "
+                "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST to enable collection."
+            )
+
+        if self.should_collect_ongoing_requests():
             self.start_metrics_pusher()
 
     def enable_custom_autoscaling_metrics(
@@ -421,6 +449,46 @@ class ReplicaMetricsManager:
         self._controller_handle.record_autoscaling_metrics_from_replica.remote(
             replica_metric_report
         )
+
+    async def _fetch_prometheus_metrics(
+        self, prometheus_metrics: List[str]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Fetch metrics from Prometheus server using PromQL queries.
+        """
+        logger.info(
+            f"Fetching prometheus metrics {prometheus_metrics} for replica {self._replica_id}",
+            extra={"log_to_stderr": False},
+        )
+
+        try:
+            prom_addr = RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PROMETHEUS_HOST
+            logger.info(f"Prometheus address: {prom_addr}")
+            metrics_result = {}
+
+            for metric in prometheus_metrics:
+                # Add label selector for this replica
+                query = f'{metric}{{replica="{self._replica_id.unique_id}"}}'
+                logger.info(f"Querying prometheus with: {query}")
+                response = self._prometheus_handler(
+                    prom_addr,
+                    query,
+                    timeout=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
+                )
+                logger.info(f"Prometheus response: {response}")
+
+                # Extract metric values from response data
+                result = response.get("data", {}).get("result", [])
+                if result:
+                    # Get first matching metric value
+                    metrics_result[metric] = result[0].get("value", [None, 0])[1]
+
+            logger.info(f"Final prometheus metrics result: {metrics_result}")
+            return metrics_result if metrics_result else None
+
+        except Exception as e:
+            logger.error(f"Error fetching prometheus metrics: {e}")
+            return None
 
     async def _fetch_custom_autoscaling_metrics(
         self,
@@ -490,6 +558,13 @@ class ReplicaMetricsManager:
             if custom_metrics:
                 metrics_dict.update(custom_metrics)
 
+        if self._prometheus_metrics_enabled:
+            prom_metrics = await self._fetch_prometheus_metrics(
+                self._prometheus_queries
+            )
+            if prom_metrics:
+                metrics_dict.update(prom_metrics)
+
         self._metrics_store.add_metrics_point(
             metrics_dict,
             time.time(),
@@ -510,6 +585,7 @@ class ReplicaBase(ABC):
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        prometheus_handler: Callable[..., Any] = default_prometheus_handler,
     ):
         self._version = version
         self._replica_id = replica_id
@@ -567,6 +643,7 @@ class ReplicaBase(ABC):
             event_loop=self._event_loop,
             autoscaling_config=self._deployment_config.autoscaling_config,
             ingress=ingress,
+            prometheus_handler=prometheus_handler,
         )
 
         self._internal_grpc_port: Optional[int] = None
@@ -1019,6 +1096,10 @@ class ReplicaBase(ABC):
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
+    def set_prometheus_handler(self, prometheus_handler: Callable[..., Any]):
+        """Update the prometheus handler for testing purposes."""
+        self._metrics_manager.set_prometheus_handler(prometheus_handler)
+
     @abstractmethod
     def _on_request_cancelled(
         self, request_metadata: RequestMetadata, e: asyncio.CancelledError
@@ -1284,6 +1365,10 @@ class ReplicaActor:
     ) -> ReplicaMetadata:
         await self._replica_impl.reconfigure(deployment_config, rank, route_prefix)
         return self._replica_impl.get_metadata()
+
+    def set_prometheus_handler(self, prometheus_handler: Callable[..., Any]):
+        """Update the prometheus handler for testing purposes."""
+        self._replica_impl.set_prometheus_handler(prometheus_handler)
 
     def _preprocess_request_args(
         self,

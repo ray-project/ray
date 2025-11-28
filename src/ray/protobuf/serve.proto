@@ -86,6 +86,21 @@ message AutoscalingConfig {
 
   // How metrics are aggregated for autoscaling. One of "mean", "max", "min".
   string aggregation_function = 16;
+
+  // Custom Prometheus metrics for autoscaling.
+  // Wrapped in a message to preserve presence (None vs empty list) to match
+  // Python type Optional[List[Tuple[str, str]]].
+  optional PrometheusCustomMetrics prometheus_metrics = 17;
+}
+
+message PrometheusMetric {
+  // Metric name.
+  string metric_name = 1;
+}
+
+// Wrapper for a list of Prometheus metrics
+message PrometheusCustomMetrics {
+  repeated PrometheusMetric metrics = 1;
 }
 
 //[Begin] LOGGING CONFIG
