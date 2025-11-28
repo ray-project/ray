@@ -11,7 +11,7 @@ etils==1.5.2; python_version < '3.12'
 # tensorflow dependencies
 keras==2.15.0; python_version < '3.12'
 ml-dtypes==0.3.2; python_version < '3.13'
-flatbuffers>=23.5.26; python_version < '3.13'
+flatbuffers==23.5.26; python_version < '3.13'
 
 # If you make changes below this line, please also make the corresponding changes to `dl-gpu-requirements.txt`
 # and to `install-dependencies.sh`!
