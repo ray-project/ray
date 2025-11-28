@@ -2029,7 +2029,7 @@
 
   run:
     timeout: 1500  # expected 1000 seconds
-    script: python tuned_examples/appo/pong_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
+    script: python example_algorithms/appo/pong_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
 
 - name: rllib_learning_tests_halfcheetah_appo_torch
   python: "3.12"
@@ -2047,7 +2047,7 @@
 
   run:
     timeout: 3000  # expected 2000 seconds
-    script: python tuned_examples/appo/halfcheetah_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
+    script: python example_algorithms/appo/halfcheetah_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
 
 ########################
 # Core Nightly Tests
