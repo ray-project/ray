@@ -2961,8 +2961,8 @@ void NodeManager::HandleGetWorkerPIDs(rpc::GetWorkerPIDsRequest request,
 }
 
 void NodeManager::HandleGetAgentPIDs(rpc::GetAgentPIDsRequest request,
-                                      rpc::GetAgentPIDsReply *reply,
-                                      rpc::SendReplyCallback send_reply_callback) {
+                                     rpc::GetAgentPIDsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
   reply->add_pids(dashboard_agent_manager_->GetPid());
   reply->add_pids(runtime_env_agent_manager_->GetPid());
   send_reply_callback(Status::OK(), /* success */ nullptr, /* failure */ nullptr);

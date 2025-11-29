@@ -494,24 +494,23 @@ void RayletClient::GetWorkerPIDs(
 
 void RayletClient::GetAgentPIDs(
     const gcs::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
-
-    rpc::GetAgentPIDsRequest request;
-    auto client_callback = [callback](const Status &status,
-                                        rpc::GetAgentPIDsReply &&reply) {
-        if (status.ok()) {
-        std::vector<int32_t> agents(reply.pids().begin(), reply.pids().end());
-        callback(status, agents);
-        } else {
-        callback(status, std::nullopt);
-        }
-    };
-    INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
-                                NodeManagerService,
-                                GetAgentPIDs,
-                                request,
-                                client_callback,
-                                grpc_client_,
-                                timeout_ms);
+  rpc::GetAgentPIDsRequest request;
+  auto client_callback = [callback](const Status &status,
+                                    rpc::GetAgentPIDsReply &&reply) {
+    if (status.ok()) {
+      std::vector<int32_t> agents(reply.pids().begin(), reply.pids().end());
+      callback(status, agents);
+    } else {
+      callback(status, std::nullopt);
+    }
+  };
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            GetAgentPIDs,
+                            request,
+                            client_callback,
+                            grpc_client_,
+                            timeout_ms);
 }
 
 void RayletClient::KillLocalActor(
