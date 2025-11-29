@@ -3785,6 +3785,169 @@ class TestAutoscaling:
         dsm.update()
         check_counts(ds1, total=2, by_state=[(ReplicaState.STOPPING, 2, None)])
 
+    def test_autoscaling_timestamps(self, mock_deployment_state_manager):
+        """Test that last_scale_up_time and last_scale_down_time are properly tracked.
+
+        This test verifies that:
+        1. Timestamps are None initially
+        2. last_scale_up_time is set after a scale-up event
+        3. last_scale_down_time is set after a scale-down event
+        4. Timestamps are available in AutoscalingContext
+        """
+        # Create deployment state manager
+        create_dsm, timer, _, asm = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        asm: AutoscalingStateManager = asm
+
+        # Deploy deployment with autoscaling
+        info, _ = deployment_info(
+            autoscaling_config={
+                "target_ongoing_requests": 1,
+                "min_replicas": 1,
+                "max_replicas": 5,
+                "initial_replicas": 2,
+                "upscale_delay_s": 0,
+                "downscale_delay_s": 0,
+                "metrics_interval_s": 100,
+            }
+        )
+        dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        # Make replicas ready
+        dsm.update()
+        for replica in ds._replicas.get():
+            replica._actor.set_ready()
+        dsm.update()
+
+        # Get autoscaling state
+        app_state = asm._app_autoscaling_states[TEST_DEPLOYMENT_ID.app_name]
+        dep_autoscaling_state = app_state._deployment_autoscaling_states[
+            TEST_DEPLOYMENT_ID
+        ]
+
+        # Initially, timestamps should be None
+        ctx = dep_autoscaling_state.get_autoscaling_context(2)
+        assert ctx.last_scale_up_time is None
+        assert ctx.last_scale_down_time is None
+
+        # Trigger scale-up by setting high request metrics
+        replicas = ds._replicas.get()
+        req_per_replica = 5  # High load to trigger scale-up
+
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+            handle_metric_report = HandleMetricReport(
+                deployment_id=TEST_DEPLOYMENT_ID,
+                handle_id="test_handle",
+                actor_id="test_actor",
+                handle_source=DeploymentHandleSource.UNKNOWN,
+                queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
+                aggregated_queued_requests=0,
+                aggregated_metrics={
+                    RUNNING_REQUESTS_KEY: {
+                        replica._actor.replica_id: req_per_replica
+                        for replica in replicas
+                    }
+                },
+                metrics={
+                    RUNNING_REQUESTS_KEY: {
+                        replica._actor.replica_id: [
+                            TimeStampedValue(timer.time() - 0.1, req_per_replica)
+                        ]
+                        for replica in replicas
+                    }
+                },
+                timestamp=timer.time(),
+            )
+            asm.record_request_metrics_for_handle(handle_metric_report)
+        else:
+            for replica in replicas:
+                replica_metric_report = ReplicaMetricReport(
+                    replica_id=replica._actor.replica_id,
+                    aggregated_metrics={RUNNING_REQUESTS_KEY: req_per_replica},
+                    metrics={
+                        RUNNING_REQUESTS_KEY: [
+                            TimeStampedValue(timer.time() - 0.1, req_per_replica)
+                        ]
+                    },
+                    timestamp=timer.time(),
+                )
+                asm.record_request_metrics_for_replica(replica_metric_report)
+
+        # Trigger autoscaling decision
+        self.scale(dsm, asm, [TEST_DEPLOYMENT_ID])
+
+        # After scale-up, last_scale_up_time should be set
+        ctx_after_scale_up = dep_autoscaling_state.get_autoscaling_context(5)
+        assert ctx_after_scale_up.last_scale_up_time is not None
+        assert ctx_after_scale_up.last_scale_up_time > 0
+        assert ctx_after_scale_up.last_scale_down_time is None
+
+        scale_up_time = ctx_after_scale_up.last_scale_up_time
+
+        # Advance timer to simulate time passing
+        timer.advance(10)
+
+        # Set replicas ready
+        dsm.update()
+        for replica in ds._replicas.get():
+            replica._actor.set_ready()
+        dsm.update()
+
+        # Now trigger scale-down by setting low request metrics
+        replicas = ds._replicas.get()
+        req_per_replica = 0  # No load to trigger scale-down
+
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+            handle_metric_report = HandleMetricReport(
+                deployment_id=TEST_DEPLOYMENT_ID,
+                handle_id="test_handle",
+                actor_id="test_actor",
+                handle_source=DeploymentHandleSource.UNKNOWN,
+                queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
+                aggregated_queued_requests=0,
+                aggregated_metrics={
+                    RUNNING_REQUESTS_KEY: {
+                        replica._actor.replica_id: req_per_replica
+                        for replica in replicas
+                    }
+                },
+                metrics={
+                    RUNNING_REQUESTS_KEY: {
+                        replica._actor.replica_id: [
+                            TimeStampedValue(timer.time() - 0.1, req_per_replica)
+                        ]
+                        for replica in replicas
+                    }
+                },
+                timestamp=timer.time(),
+            )
+            asm.record_request_metrics_for_handle(handle_metric_report)
+        else:
+            for replica in replicas:
+                replica_metric_report = ReplicaMetricReport(
+                    replica_id=replica._actor.replica_id,
+                    aggregated_metrics={RUNNING_REQUESTS_KEY: req_per_replica},
+                    metrics={
+                        RUNNING_REQUESTS_KEY: [
+                            TimeStampedValue(timer.time() - 0.1, req_per_replica)
+                        ]
+                    },
+                    timestamp=timer.time(),
+                )
+                asm.record_request_metrics_for_replica(replica_metric_report)
+
+        # Trigger autoscaling decision for scale-down
+        self.scale(dsm, asm, [TEST_DEPLOYMENT_ID])
+
+        # After scale-down, last_scale_down_time should be set
+        ctx_after_scale_down = dep_autoscaling_state.get_autoscaling_context(1)
+        assert (
+            ctx_after_scale_down.last_scale_up_time == scale_up_time
+        )  # Should remain unchanged
+        assert ctx_after_scale_down.last_scale_down_time is not None
+        assert ctx_after_scale_down.last_scale_down_time > scale_up_time
+
 
 class TestTargetCapacity:
     """

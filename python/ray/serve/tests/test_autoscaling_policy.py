@@ -1531,6 +1531,9 @@ def test_autoscaling_status_changes(serve_instance):
 
 
 def custom_autoscaling_policy(ctx: AutoscalingContext):
+    print(
+        f"custom_autoscaling_policy: {ctx.last_scale_up_time}, {ctx.last_scale_down_time}"
+    )
     if ctx.total_num_requests > 50:
         return 3, {}
     else:

@@ -2370,6 +2370,9 @@ class DeploymentState:
                 trigger=DeploymentStatusInternalTrigger.AUTOSCALE_DOWN,
                 message=f"Downscaling from {old_num} to {new_num} replicas.",
             )
+
+        # Record the scaling event timestamp
+        self._autoscaling_state_manager.record_scaling_event(self._id, new_num, old_num)
         return True
 
     def delete(self) -> bool:
