@@ -286,18 +286,17 @@ SERVE_GRAFANA_PANELS = [
         description='Number of nodes in this cluster. Ignores "Application" variable.',
         unit="nodes",
         targets=[
-            # TODO(aguo): Update this to use autoscaler metrics instead
             Target(
-                expr="sum(autoscaler_active_nodes{{{global_filters}}}) by (NodeType)",
-                legend="Active Nodes: {{NodeType}}",
+                expr="sum(ray_cluster_active_nodes{{{global_filters}}}) by (node_type)",
+                legend="Active Nodes: {{node_type}}",
             ),
             Target(
-                expr="sum(autoscaler_recently_failed_nodes{{{global_filters}}}) by (NodeType)",
-                legend="Failed Nodes: {{NodeType}}",
+                expr="sum(ray_cluster_failed_nodes{{{global_filters}}}) by (node_type)",
+                legend="Failed Nodes: {{node_type}}",
             ),
             Target(
-                expr="sum(autoscaler_pending_nodes{{{global_filters}}}) by (NodeType)",
-                legend="Pending Nodes: {{NodeType}}",
+                expr="sum(ray_cluster_pending_nodes{{{global_filters}}}) by (node_type)",
+                legend="Pending Nodes: {{node_type}}",
             ),
         ],
         grid_pos=GridPos(8, 5, 8, 8),
