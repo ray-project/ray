@@ -885,6 +885,13 @@ def main():
         default=None,
         help="The port to use for connecting to the runtime_env_agent.",
     )
+    parser.add_argument(
+        "--runtime-env-agent-port-pipe-fd",
+        required=False,
+        type=int,
+        default=None,
+        help="File descriptor for reading runtime env agent port from pipe.",
+    )
     args, _ = parser.parse_known_args()
     setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
 
@@ -904,7 +911,7 @@ def main():
             args.address,
             redis_username=args.redis_username,
             redis_password=args.redis_password,
-            runtime_env_agent_address=args.runtime_env_agent_address,
+            runtime_env_agent_port_pipe_fd=args.runtime_env_agent_port_pipe_fd,
         )
     else:
         server = serve(args.host, args.port, ray_connect_handler)

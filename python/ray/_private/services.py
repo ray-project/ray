@@ -1562,6 +1562,7 @@ def start_raylet(
     metrics_export_port: Optional[int] = None,
     dashboard_agent_listen_port: Optional[int] = None,
     runtime_env_agent_port: Optional[int] = None,
+    runtime_env_agent_port_pipe_handles: Optional[List[int]] = None,
     use_valgrind: bool = False,
     use_profiler: bool = False,
     raylet_stdout_filepath: Optional[str] = None,
@@ -1627,6 +1628,9 @@ def start_raylet(
             listens to for HTTP.
         runtime_env_agent_port: The port at which the runtime env agent
             listens to for HTTP.
+        runtime_env_agent_port_pipe_handles: List of pipe handles that the
+            runtime env agent will write its bound port to. This allows
+            external consumers (e.g., ray_client_server) to receive the port.
         use_valgrind: True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler: True if the raylet should be started inside
@@ -1741,7 +1745,6 @@ def start_raylet(
             f"--metrics-agent-port={metrics_agent_port}",
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
-            f"--runtime-env-agent-port={runtime_env_agent_port}",
             f"--gcs-address={gcs_address}",
             f"--session-name={session_name}",
             f"--temp-dir={temp_dir}",
@@ -1890,6 +1893,11 @@ def start_raylet(
         f"--cluster-id={cluster_id}",
     ]
 
+    # Pass additional pipe handles for runtime env agent port reporting
+    if runtime_env_agent_port_pipe_handles:
+        handles_str = ",".join(str(h) for h in runtime_env_agent_port_pipe_handles)
+        command.append(f"--runtime_env_agent_port_pipe_handles={handles_str}")
+
     if resource_isolation_config.is_enabled():
         logging.info(
             f"Resource isolation enabled with cgroup_path={resource_isolation_config.cgroup_path}, "
@@ -1946,6 +1954,11 @@ def start_raylet(
     if raylet_stderr_filepath:
         stderr_file = open(os.devnull, "w")
 
+    # Pass pipe handles so raylet can inherit them and forward to runtime_env_agent
+    pass_handles = None
+    if runtime_env_agent_port_pipe_handles:
+        pass_handles = list(runtime_env_agent_port_pipe_handles)
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET,
@@ -1957,6 +1970,7 @@ def start_raylet(
         stderr_file=stderr_file,
         fate_share=fate_share,
         env_updates=env_updates,
+        pass_handles=pass_handles,
     )
     return process_info
 
@@ -2332,9 +2346,9 @@ def start_ray_client_server(
     redis_username: Optional[int] = None,
     redis_password: Optional[int] = None,
     fate_share: Optional[bool] = None,
-    runtime_env_agent_address: Optional[str] = None,
     server_type: str = "proxy",
     serialized_runtime_env_context: Optional[str] = None,
+    runtime_env_agent_port_pipe_fd: Optional[int] = None,
 ):
     """Run the server process of the Ray client.
 
@@ -2348,11 +2362,12 @@ def start_ray_client_server(
             no redirection should happen, then this should be None.
         redis_username: The username of the Redis server.
         redis_password: The password of the Redis server.
-        runtime_env_agent_address: Address to the Runtime Env Agent listens on via HTTP.
-            Only needed when server_type == "proxy".
         server_type: Whether to start the proxy version of Ray Client.
         serialized_runtime_env_context (str|None): If specified, the serialized
             runtime_env_context to start the client server in.
+        runtime_env_agent_port_pipe_fd: File descriptor for reading the runtime
+            env agent port. The Runtime Env Agent will write its bound port to
+            this pipe after starting.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -2382,10 +2397,15 @@ def start_ray_client_server(
         command.append(
             f"--serialized-runtime-env-context={serialized_runtime_env_context}"  # noqa: E501
         )
-    if server_type == "proxy":
-        assert len(runtime_env_agent_address) > 0
-    if runtime_env_agent_address:
-        command.append(f"--runtime-env-agent-address={runtime_env_agent_address}")
+    if runtime_env_agent_port_pipe_fd is not None:
+        command.append(
+            f"--runtime-env-agent-port-pipe-fd={runtime_env_agent_port_pipe_fd}"
+        )
+
+    # Pass the pipe fd to allow child process to inherit it
+    pass_handles = None
+    if runtime_env_agent_port_pipe_fd is not None:
+        pass_handles = [runtime_env_agent_port_pipe_fd]
 
     process_info = start_ray_process(
         command,
@@ -2393,6 +2413,7 @@ def start_ray_client_server(
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         fate_share=fate_share,
+        pass_handles=pass_handles,
     )
     return process_info
 

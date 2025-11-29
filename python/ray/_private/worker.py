@@ -2697,12 +2697,11 @@ def connect(
         debug_source,
     )
 
-    # Update node's runtime_env_agent_port with the actual port from raylet.
-    # This maintains backward compatibility for code accessing
-    # _global_node.runtime_env_agent_port.
-    actual_runtime_env_agent_port = worker.core_worker.get_runtime_env_agent_port()
-    if actual_runtime_env_agent_port > 0:
-        node.runtime_env_agent_port = actual_runtime_env_agent_port
+    # After CoreWorker is created, update the node's runtime_env_agent_port
+    # with the actual port from Raylet (obtained during CoreWorker registration).
+    # This ensures the node object has the correct port regardless of whether
+    # the initial port was 0 (auto-assigned) or explicitly specified.
+    node.runtime_env_agent_port = worker.core_worker.get_runtime_env_agent_port()
 
     if mode == SCRIPT_MODE:
         worker_id = worker.worker_id

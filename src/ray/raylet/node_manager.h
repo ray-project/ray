@@ -79,6 +79,9 @@ struct NodeManagerConfig {
   /// The port to connect the runtime env agent. Note the address is equal to the
   /// node manager address.
   int runtime_env_agent_port;
+  /// Additional pipe handles to report runtime env agent port to external consumers
+  /// (e.g., ray_client_server). These are passed from node.py.
+  std::vector<intptr_t> runtime_env_agent_port_pipe_handles;
   /// The lowest port number that workers started will bind on.
   /// If this is set to 0, workers will bind on random ports.
   int min_worker_port;
@@ -761,10 +764,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const NodeID &self_node_id, const NodeManagerConfig &config);
 
   /// Creates a AgentManager that creates and manages a runtime env agent.
+  /// @param report_port_pipe_handles A vector of pipe handles that the agent
+  ///        will write the bound port to. This allows multiple consumers
+  ///        (e.g., NodeManager and ray_client_server) to receive the port.
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id,
       const NodeManagerConfig &config,
-      intptr_t report_port_pipe_handle = -1);
+      const std::vector<intptr_t> &report_port_pipe_handles = {});
 
   /// ID of this node.
   NodeID self_node_id_;
@@ -826,7 +832,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// A manager for the runtime env agent.
   /// Ditto for the pointer argument.
   std::unique_ptr<AgentManager> runtime_env_agent_manager_;
-  std::unique_ptr<ray::Pipe> runtime_env_agent_pipe_;
+  std::unique_ptr<ray::PipePair> runtime_env_agent_pipe_;
   int runtime_env_agent_port_{0};
 
   /// The RPC server.

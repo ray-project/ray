@@ -30,7 +30,7 @@ from ray._common.network_utils import (
 )
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._common.utils import try_to_create_directory
-from ray._private.pipe import Pipe
+from ray._private.pipe import PipePair
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.services import get_address, serialize_config
@@ -104,6 +104,10 @@ class Node:
         )
         self.all_processes: dict = {}
         self.removal_lock = threading.Lock()
+
+        # Pipe for passing runtime_env_agent_port to ray_client_server.
+        # Created in start_ray_client_server(), used in start_raylet().
+        self._runtime_env_agent_port_pipe = None
 
         self.ray_init_cluster = ray_init_cluster
         if ray_init_cluster:
@@ -311,8 +315,7 @@ class Node:
         self._metrics_export_port = self._get_cached_port(
             "metrics_export_port", default_port=ray_params.metrics_export_port
         )
-        # runtime_env_agent_port: if user doesn't specify, use 0 to let agent pick its own port.
-        # The actual port will be updated after CoreWorker registers with raylet.
+
         self._runtime_env_agent_port = ray_params.runtime_env_agent_port or 0
 
         ray_params.update_if_absent(
@@ -324,12 +327,10 @@ class Node:
 
         # Pick a GCS server port.
         if head:
-            gcs_server_port = os.getenv(ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
-            if gcs_server_port:
-                ray_params.update_if_absent(gcs_server_port=int(gcs_server_port))
-            if ray_params.gcs_server_port is None:
-                # 0 means let the GCS pick a free port.
-                ray_params.gcs_server_port = 0
+            gcs_server_port = int(
+                os.getenv(ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE, 0)
+            )
+            ray_params.update_if_absent(gcs_server_port=gcs_server_port)
 
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
@@ -620,7 +621,12 @@ class Node:
 
     @runtime_env_agent_port.setter
     def runtime_env_agent_port(self, port: int):
-        """Set the runtime env agent port (updated after agent reports its actual port)."""
+        """Set the runtime env agent port.
+
+        This is used to update the port after the agent has started
+        and reported its actual port (e.g., when port 0 was specified
+        for auto-assignment).
+        """
         self._runtime_env_agent_port = port
 
     @property
@@ -1134,38 +1140,45 @@ class Node:
         assert self._gcs_address is None, "GCS server is already running."
         assert self._gcs_client is None, "GCS client is already connected."
 
-        with Pipe() as gcs_port_pipe:
-            stdout_log_fname, stderr_log_fname = self.get_log_file_names(
-                "gcs_server", unique=True, create_out=True, create_err=True
-            )
-            process_info = ray._private.services.start_gcs_server(
-                self.redis_address,
-                log_dir=self._logs_dir,
-                stdout_filepath=stdout_log_fname,
-                stderr_filepath=stderr_log_fname,
-                session_name=self.session_name,
-                redis_username=self._ray_params.redis_username,
-                redis_password=self._ray_params.redis_password,
-                config=self._config,
-                fate_share=self.kernel_fate_share,
-                gcs_server_port=self._ray_params.gcs_server_port,
-                metrics_agent_port=self._ray_params.metrics_agent_port,
-                node_ip_address=self._node_ip_address,
-                gcs_port_pipe_handle=gcs_port_pipe.write_handle,
-            )
+        pipe = PipePair()
+        stdout_log_fname, stderr_log_fname = self.get_log_file_names(
+            "gcs_server", unique=True, create_out=True, create_err=True
+        )
+        writer_handle = pipe.make_writer_handle()
+        process_info = ray._private.services.start_gcs_server(
+            self.redis_address,
+            log_dir=self._logs_dir,
+            stdout_filepath=stdout_log_fname,
+            stderr_filepath=stderr_log_fname,
+            session_name=self.session_name,
+            redis_username=self._ray_params.redis_username,
+            redis_password=self._ray_params.redis_password,
+            config=self._config,
+            fate_share=self.kernel_fate_share,
+            gcs_server_port=self._ray_params.gcs_server_port,
+            metrics_agent_port=self._ray_params.metrics_agent_port,
+            node_ip_address=self._node_ip_address,
+            gcs_port_pipe_handle=writer_handle,
+        )
+        # Close the parent's copy of the write fd now that subprocess has inherited it.
+        # This allows EOF detection when reading from the pipe.
+        pipe.close_writer_handle()
 
-            assert ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes
-            self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
-                process_info,
-            ]
+        assert ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes
+        self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
+            process_info,
+        ]
 
-            gcs_port_pipe.close_write()
+        # Read GCS port from pipe. make_reader() returns a PipeReader
+        # that owns the fd and will close it when done.
+        with pipe.make_reader() as reader:
             try:
-                gcs_server_port_string = gcs_port_pipe.read().strip()
+                gcs_server_port_string = reader.read().strip()
             except RuntimeError as e:
                 raise RuntimeError(f"Failed to read GCS server port: {e}") from e
         gcs_server_port = int(gcs_server_port_string)
-        # This is to make sure using the same port when restarting GCS server.
+
+        # Save the actual port so that restart uses the same port.
         self._ray_params.gcs_server_port = gcs_server_port
 
         # Connecting via non-localhost address may be blocked by firewall rule,
@@ -1219,6 +1232,16 @@ class Node:
             self._get_system_processes_for_resource_isolation()
         )
 
+        # Collect pipe handles for external consumers of runtime_env_agent_port.
+        # These will be passed to Raylet, which passes them to the Runtime Env Agent.
+        runtime_env_agent_port_pipe_handles = []
+        if self._runtime_env_agent_port_pipe is not None:
+            # ray_client_server is waiting for the port via this pipe.
+            # make_writer_handle() returns the handle for subprocess to inherit.
+            runtime_env_agent_port_pipe_handles.append(
+                self._runtime_env_agent_port_pipe.make_writer_handle()
+            )
+
         process_info = ray._private.services.start_raylet(
             self.redis_address,
             self.gcs_address,
@@ -1248,6 +1271,7 @@ class Node:
             redis_password=self._ray_params.redis_password,
             metrics_agent_port=self._ray_params.metrics_agent_port,
             runtime_env_agent_port=self._ray_params.runtime_env_agent_port,
+            runtime_env_agent_port_pipe_handles=runtime_env_agent_port_pipe_handles,
             metrics_export_port=self._metrics_export_port,
             dashboard_agent_listen_port=self._ray_params.dashboard_agent_listen_port,
             use_valgrind=use_valgrind,
@@ -1269,6 +1293,12 @@ class Node:
             webui=self._webui_url,
             resource_isolation_config=self.resource_isolation_config,
         )
+
+        # Close the parent's copy of the write fd now that Raylet has inherited it.
+        # The fd will be passed from Raylet to Agent, and Agent will write to it.
+        if self._runtime_env_agent_port_pipe is not None:
+            self._runtime_env_agent_port_pipe.close_writer_handle()
+
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
@@ -1304,6 +1334,15 @@ class Node:
         stdout_file, stderr_file = self.get_log_file_handles(
             "ray_client_server", unique=True
         )
+
+        # Create pipe for receiving runtime_env_agent_port from the agent.
+        # - read end goes to ray_client_server (started here)
+        # - write end goes to Raylet -> Agent (started later in start_raylet)
+        self._runtime_env_agent_port_pipe = PipePair()
+
+        # make_reader_handle() returns the fd for subprocess to inherit.
+        read_handle = self._runtime_env_agent_port_pipe.make_reader_handle()
+
         process_info = ray._private.services.start_ray_client_server(
             self.address,
             self._node_ip_address,
@@ -1313,8 +1352,11 @@ class Node:
             redis_username=self._ray_params.redis_username,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
-            runtime_env_agent_address=self.runtime_env_agent_address,
+            runtime_env_agent_port_pipe_fd=read_handle,
         )
+        # Close the parent's copy of the read fd now that subprocess has inherited it.
+        self._runtime_env_agent_port_pipe.close_reader_handle()
+
         assert ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [
             process_info

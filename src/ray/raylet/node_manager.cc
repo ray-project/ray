@@ -269,15 +269,30 @@ NodeManager::NodeManager(
 
   // Create the runtime env agent pipe right before spawning the agent so no other
   // subprocess inherits the write end.
-  runtime_env_agent_pipe_ = std::make_unique<ray::Pipe>();
-  runtime_env_agent_manager_ = CreateRuntimeEnvAgentManager(
-      self_node_id, config, runtime_env_agent_pipe_->WriteHandle());
-  runtime_env_agent_pipe_->CloseWrite();
+  runtime_env_agent_pipe_ = std::make_unique<ray::PipePair>();
+  // Combine internal pipe handle with any external pipe handles passed from node.py
+  // (e.g., for ray_client_server to receive the port).
+  // Note: External pipe handles have close-on-exec set (done in main.cc after parsing).
+  // We need to clear it so runtime_env_agent can inherit them.
+  std::vector<intptr_t> pipe_handles = {runtime_env_agent_pipe_->MakeWriterHandle()};
+  for (intptr_t handle : config.runtime_env_agent_port_pipe_handles) {
+    pipe_internal::ClearFdCloseOnExec(static_cast<int>(handle));
+    pipe_handles.push_back(handle);
+  }
+  runtime_env_agent_manager_ =
+      CreateRuntimeEnvAgentManager(self_node_id, config, pipe_handles);
+  // Close write ends in this process after passing to the agent subprocess.
+  // The agent has inherited these fds and will write the port before closing.
+  runtime_env_agent_pipe_->CloseWriterHandle();
+  for (intptr_t handle : config.runtime_env_agent_port_pipe_handles) {
+    pipe_internal::CloseFd(static_cast<int>(handle));
+  }
   try {
     const int64_t wait_begin_ms = current_time_ms();
     RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_)
         << "Waiting for runtime env agent to report its port via pipe";
-    const auto port_str = runtime_env_agent_pipe_->Read();
+    auto reader = runtime_env_agent_pipe_->MakeReader();
+    const auto port_str = reader->Read();
     runtime_env_agent_port_ = std::stoi(port_str);
     RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_)
         << "Runtime env agent reported port via pipe: " << runtime_env_agent_port_
@@ -3331,7 +3346,7 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
 std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
     const NodeID &self_node_id,
     const NodeManagerConfig &config,
-    intptr_t report_port_pipe_handle) {
+    const std::vector<intptr_t> &report_port_pipe_handles) {
   auto agent_command_line = ParseCommandLine(config.runtime_env_agent_command);
 
   if (agent_command_line.empty()) {
@@ -3347,10 +3362,17 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
     }
   }
 
-  if (report_port_pipe_handle >= 0) {
+  if (!report_port_pipe_handles.empty()) {
+    // Build comma-separated list of handles
+    std::string handles_str;
+    for (size_t i = 0; i < report_port_pipe_handles.size(); ++i) {
+      if (i > 0) {
+        handles_str += ",";
+      }
+      handles_str += std::to_string(report_port_pipe_handles[i]);
+    }
     agent_command_line.emplace_back(
-        std::string("--report-runtime-env-agent-port-pipe-handle=") +
-        std::to_string(report_port_pipe_handle));
+        std::string("--report-runtime-env-agent-port-pipe-handles=") + handles_str);
   }
 
   std::string agent_name = "runtime_env_agent";

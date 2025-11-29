@@ -251,7 +251,7 @@ int main(int argc, char *argv[]) {
         [handle = report_gcs_port_pipe_handle](int bound_port) {
           ray::PipeWriter pipe(handle);
           pipe.Write(std::to_string(bound_port) + "\n");
-          pipe.CloseWrite();
+          pipe.Close();
         });
   }
 

@@ -13,7 +13,7 @@ from ray._private import logging_utils
 from ray._private.authentication.http_token_authentication import (
     get_token_auth_middleware,
 )
-from ray._private.pipe import PipeWriter
+from ray._private.pipe import MultiPipeWriter
 from ray._private.process_watcher import create_check_raylet_task
 from ray._raylet import GcsClient
 from ray.core.generated import (
@@ -50,12 +50,12 @@ if __name__ == "__main__":
         help="The port on which the runtime env agent will receive HTTP requests.",
     )
     parser.add_argument(
-        "--report-runtime-env-agent-port-pipe-handle",
+        "--report-runtime-env-agent-port-pipe-handles",
         required=False,
-        type=int,
+        type=str,
         default=None,
-        help="Pipe handle (fd on POSIX, HANDLE on Windows) to report the bound runtime "
-        "env agent port back to the parent.",
+        help="Comma-separated pipe handles (fd on POSIX, HANDLE on Windows) to report "
+        "the bound runtime env agent port back to multiple consumers.",
     )
 
     parser.add_argument(
@@ -244,20 +244,32 @@ if __name__ == "__main__":
         )
         await site.start()
         bound_port = site._server.sockets[0].getsockname()[1]
-        if args.report_runtime_env_agent_port_pipe_handle is not None:
+        if args.report_runtime_env_agent_port_pipe_handles is not None:
             try:
+                # Parse comma-separated handles
+                handles = [
+                    int(h.strip())
+                    for h in args.report_runtime_env_agent_port_pipe_handles.split(",")
+                    if h.strip()
+                ]
                 agent._logger.info(
-                    "About to write bound runtime env agent port %s to pipe", bound_port
+                    "About to write bound runtime env agent port %s to %d pipe(s): handles=%s",
+                    bound_port,
+                    len(handles),
+                    handles,
                 )
-                writer = PipeWriter(args.report_runtime_env_agent_port_pipe_handle)
+                writer = MultiPipeWriter(handles)
                 writer.write(str(bound_port))
                 writer.close_write()
                 agent._logger.info(
-                    "Wrote bound runtime env agent port %s to pipe", bound_port
+                    "Wrote bound runtime env agent port %s to %d pipe(s): handles=%s",
+                    bound_port,
+                    len(handles),
+                    handles,
                 )
             except Exception as e:
                 agent._logger.error(
-                    "Failed to write runtime env agent port to pipe: %s", e
+                    "Failed to write runtime env agent port to pipe(s): %s", e
                 )
         stop_event = asyncio.Event()
 
