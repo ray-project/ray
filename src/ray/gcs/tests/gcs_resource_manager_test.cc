@@ -149,42 +149,13 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageFromDifferentSyncMsgs) {
   resource_view_sync_message.mutable_resources_available()->insert({"CPU", 5});
 
   // Update resource usage from resource view.
-  {
-    ASSERT_FALSE(gcs_resource_manager_->NodeResourceReportView()
-                     .at(NodeID::FromBinary(node->node_id()))
-                     .cluster_full_of_actors_detected());
-    gcs_resource_manager_->UpdateFromResourceView(NodeID::FromBinary(node->node_id()),
-                                                  resource_view_sync_message);
-    ASSERT_EQ(
-        cluster_resource_manager_.GetNodeResources(scheduling::NodeID(node->node_id()))
-            .total.GetResourceMap()
-            .at("CPU"),
-        5);
-
-    ASSERT_FALSE(gcs_resource_manager_->NodeResourceReportView()
-                     .at(NodeID::FromBinary(node->node_id()))
-                     .cluster_full_of_actors_detected());
-  }
-
-  // Update from syncer COMMANDS will not update the resources, but the
-  // cluster_full_of_actors_detected flag. (This is how NodeManager currently
-  // updates potential resources deadlock).
-  {
-    gcs_resource_manager_->UpdateClusterFullOfActorsDetected(
-        NodeID::FromBinary(node->node_id()), true);
-
-    // Still 5 because the syncer COMMANDS message is ignored.
-    ASSERT_EQ(
-        cluster_resource_manager_.GetNodeResources(scheduling::NodeID(node->node_id()))
-            .total.GetResourceMap()
-            .at("CPU"),
-        5);
-
-    // The flag is updated.
-    ASSERT_TRUE(gcs_resource_manager_->NodeResourceReportView()
-                    .at(NodeID::FromBinary(node->node_id()))
-                    .cluster_full_of_actors_detected());
-  }
+  gcs_resource_manager_->UpdateFromResourceView(NodeID::FromBinary(node->node_id()),
+                                                resource_view_sync_message);
+  ASSERT_EQ(
+      cluster_resource_manager_.GetNodeResources(scheduling::NodeID(node->node_id()))
+          .total.GetResourceMap()
+          .at("CPU"),
+      5);
 }
 
 TEST_F(GcsResourceManagerTest, TestSetAvailableResourcesWhenNodeDead) {
