@@ -1788,3 +1788,31 @@ py_test(
         "//:ray_lib",
     ],
 )
+
+py_test(
+    name = "test_resource_based_actor_autoscaler",
+    size = "medium",
+    srcs = ["tests/test_resource_based_actor_autoscaler.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_actor_removal_strategy",
+    size = "small",
+    srcs = ["tests/test_actor_removal_strategy.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
