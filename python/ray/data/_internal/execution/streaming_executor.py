@@ -117,7 +117,6 @@ class StreamingExecutor(Executor, threading.Thread):
         # by comparing it with the current timestamp.
         self._metrics_last_updated: float = 0.0
 
-        # Initialize metrics gauges
         self._initialize_metrics_gauges()
 
         Executor.__init__(self, self._data_context.execution_options)
