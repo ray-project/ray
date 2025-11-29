@@ -145,6 +145,8 @@ class VLLMEngineConfig(BaseModelExtended):
                 "disable_log_requests"
             )
         elif "enable_log_requests" not in engine_kwargs:
+            # Default: disable logging (enable_log_requests=False)
+            # This can be overridden by LLMConfig.log_requests in from_llm_config
             engine_kwargs["enable_log_requests"] = False
 
         return engine_kwargs
@@ -191,6 +193,19 @@ class VLLMEngineConfig(BaseModelExtended):
                 engine_kwargs[key] = value
             else:
                 raise ValueError(f"Unknown engine argument: {key}")
+
+        # Handle log_requests configuration.
+        # Priority: 1) User-specified enable_log_requests in engine_kwargs
+        #           2) User-specified disable_log_requests in engine_kwargs (deprecated, handled in get_initialization_kwargs)
+        #           3) LLMConfig.log_requests
+        #           4) Default: False (disable logging)
+        if (
+            "enable_log_requests" not in engine_kwargs
+            and "disable_log_requests" not in engine_kwargs
+        ):
+            # Use log_requests from LLMConfig, defaulting to False (disabled)
+            log_requests = getattr(llm_config, "log_requests", False)
+            engine_kwargs["enable_log_requests"] = log_requests
 
         # placement_group_config is already validated and stored as dict in LLMConfig
         placement_group_config = llm_config.placement_group_config

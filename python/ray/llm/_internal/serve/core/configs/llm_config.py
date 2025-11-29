@@ -219,6 +219,16 @@ class LLMConfig(BaseModelExtended):
         description="Enable additional engine metrics via Ray Prometheus port.",
     )
 
+    log_requests: Optional[bool] = Field(
+        default=False,
+        description=(
+            "Enable request lifecycle logging. When False (default), request lifecycle "
+            "logs (e.g., 'Request {req_id} started', 'Request {req_id} finished') "
+            "are suppressed. Endpoint access logs (e.g., 'CALL /v1/completions OK') "
+            "are always logged at INFO level regardless of this setting."
+        ),
+    )
+
     callback_config: CallbackConfig = Field(
         default_factory=CallbackConfig,
         description="Callback configuration to use for model initialization. Can be a string path to a class or a Callback subclass.",
