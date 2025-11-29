@@ -309,17 +309,19 @@ class LLMServer(LLMServerProtocol):
         await self._maybe_resolve_lora_from_multiplex()
 
         is_stream = hasattr(request, "stream") and request.stream
+        engine_stream = getattr(self.engine, engine_method)(request)
+
         if is_stream and batch_output_stream:
-            stream = self._batch_output_stream(
-                getattr(self.engine, engine_method)(request)
-            )
+            stream = self._batch_output_stream(engine_stream)
         else:
-            stream = getattr(self.engine, engine_method)(request)
+            stream = engine_stream
 
         return stream
 
     async def chat(
-        self, request: "ChatCompletionRequest"
+        self,
+        request: "ChatCompletionRequest",
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[
         Union[List[Union[str, "ErrorResponse"]], "ChatCompletionResponse"], None
     ]:
@@ -327,6 +329,10 @@ class LLMServer(LLMServerProtocol):
 
         Args:
             request: A ChatCompletionRequest object.
+            raw_request_headers: Optional HTTP headers from the original request.
+                Retained for custom ingress/router implementations that need
+                access to the headers. The core server does not forward them
+                to the engine.
 
         Returns:
             An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of chat streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the ChatCompletionResponse object directly.
@@ -338,7 +344,9 @@ class LLMServer(LLMServerProtocol):
         )
 
     async def completions(
-        self, request: "CompletionRequest"
+        self,
+        request: "CompletionRequest",
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[
         Union[List[Union[str, "ErrorResponse"]], "CompletionResponse"], None
     ]:
@@ -346,6 +354,8 @@ class LLMServer(LLMServerProtocol):
 
         Args:
             request: A CompletionRequest object.
+            raw_request_headers: Optional HTTP headers from the original request.
+                Available for custom routers; not forwarded to the engine.
 
         Returns:
             An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of completion streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the CompletionResponse object directly.
@@ -357,7 +367,9 @@ class LLMServer(LLMServerProtocol):
         )
 
     async def embeddings(
-        self, request: "EmbeddingRequest"
+        self,
+        request: "EmbeddingRequest",
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[Union[List["ErrorResponse"], "EmbeddingResponse"], None]:
         """Runs an embeddings request to the engine and returns the response.
 
@@ -365,6 +377,8 @@ class LLMServer(LLMServerProtocol):
 
         Args:
             request: An EmbeddingRequest object.
+            raw_request_headers: Optional HTTP headers from the original request.
+                Available for custom routers; not forwarded to the engine.
 
         Returns:
             An AsyncGenerator over the EmbeddingResponse object.
@@ -377,7 +391,9 @@ class LLMServer(LLMServerProtocol):
         )
 
     async def transcriptions(
-        self, request: "TranscriptionRequest"
+        self,
+        request: "TranscriptionRequest",
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[
         Union[List[Union[str, "ErrorResponse"]], "TranscriptionResponse"], None
     ]:
@@ -387,6 +403,8 @@ class LLMServer(LLMServerProtocol):
 
         Args:
             request: An TranscriptionRequest object.
+            raw_request_headers: Optional HTTP headers from the original request.
+                Available for custom routers; not forwarded to the engine.
 
         Returns:
             An AsyncGenerator over the TranscriptionResponse object.
@@ -398,7 +416,9 @@ class LLMServer(LLMServerProtocol):
         )
 
     async def score(
-        self, request: "ScoreRequest"
+        self,
+        request: "ScoreRequest",
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[Union["ScoreResponse", "ErrorResponse"], None]:
         """Runs a score request to the engine and returns the response.
 
@@ -406,13 +426,17 @@ class LLMServer(LLMServerProtocol):
 
         Args:
             request: A ScoreRequest object.
+            raw_request_headers: Optional HTTP headers from the original request.
+                Available for custom routers; not forwarded to the engine.
 
         Returns:
             An AsyncGenerator over the ScoreResponse object.
         """
         # NOTE: Score does not need batching, similar to embeddings.
         return await self._run_request(
-            request, engine_method="score", batch_output_stream=False
+            request,
+            engine_method="score",
+            batch_output_stream=False,
         )
 
     async def check_health(self) -> None:
