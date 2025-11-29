@@ -1,4 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any, List
 
 import ray
@@ -68,15 +67,12 @@ def make_callable_class_concurrent(callable_cls: CallableClass) -> CallableClass
 
     class _Wrapper(callable_cls):
         def __init__(self, *args, **kwargs):
-            self.thread_pool_executor = ThreadPoolExecutor(max_workers=1)
             super().__init__(*args, **kwargs)
 
         def __repr__(self):
             return super().__repr__()
 
         def __call__(self, *args, **kwargs):
-            # ThreadPoolExecutor will reuse the same thread for every submit call.
-            future = self.thread_pool_executor.submit(super().__call__, *args, **kwargs)
-            return future.result()
+            return super().__call__(*args, **kwargs)
 
     return _Wrapper
