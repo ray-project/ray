@@ -19,7 +19,7 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
-    NUM_MODULE_STEPS_TRAINED,
+    NUM_MODULE_STEPS_TRAINED_LIFETIME,
 )
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
@@ -107,8 +107,7 @@ class PPOLearner(Learner):
             )
             if (
                 config.use_kl_loss
-                and self.metrics.peek((module_id, NUM_MODULE_STEPS_TRAINED), default=0)
-                > 0
+                and timesteps.get(NUM_MODULE_STEPS_TRAINED_LIFETIME, 0) > 0
                 and (module_id, LEARNER_RESULTS_KL_KEY) in self.metrics
             ):
                 kl_loss = convert_to_numpy(
