@@ -2953,7 +2953,7 @@ class Dataset:
 
             >>> import ray
             >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-            >>> ds.unique("target")
+            >>> sorted(ds.unique("target"))
             [0, 1, 2]
 
             One common use case is to convert the class labels
@@ -2976,7 +2976,7 @@ class Dataset:
         Returns:
             A list with unique elements in the given column.
         """  # noqa: E501
-        ret = self._aggregate_on(Unique, column)
+        ret = self._aggregate_on(Unique, column, ignore_nulls=False)
         return self._aggregate_result(ret)
 
     @AllToAllAPI
