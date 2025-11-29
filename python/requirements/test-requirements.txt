@@ -3,12 +3,12 @@
 # General test requirements
 async-exit-stack==1.0.1
 async-generator==1.10
-azure-cli-core==2.62.0
-azure-identity==1.17.1
-azure-mgmt-compute==31.0.0
-azure-mgmt-network==25.4.0
-azure-mgmt-resource==23.1.1
-msrestazure==0.6.4
+azure-cli-core==2.77.0
+azure-identity==1.23.1
+azure-mgmt-compute==35.0.0
+azure-mgmt-network==29.0.0
+azure-mgmt-resource==24.0.0
+msrestazure==0.6.4.post1
 beautifulsoup4==4.11.1
 boto3==1.29.7
 # Todo: investigate if we can get rid of this and exchange for ray.cloudpickle
