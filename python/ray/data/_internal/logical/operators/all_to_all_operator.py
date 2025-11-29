@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -113,18 +113,22 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThroug
         return PredicatePassThroughBehavior.PASSTHROUGH
 
 
-class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
+class Repartition(
+    AbstractAllToAll,
+    LogicalOperatorSupportsPredicatePassThrough,
+):
     """Logical operator for repartition."""
 
     def __init__(
         self,
         input_op: LogicalOperator,
         num_outputs: int,
-        shuffle: bool,
+        full_shuffle: bool,
+        name: Literal[str] = "Repartition",
         keys: Optional[List[str]] = None,
         sort: bool = False,
     ):
-        if shuffle:
+        if full_shuffle:
             sub_progress_bar_names = [
                 ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
@@ -134,12 +138,13 @@ class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough)
                 ShuffleTaskSpec.SPLIT_REPARTITION_SUB_PROGRESS_BAR_NAME,
             ]
         super().__init__(
-            "Repartition",
+            name,
             input_op,
             num_outputs=num_outputs,
             sub_progress_bar_names=sub_progress_bar_names,
         )
-        self._shuffle = shuffle
+        # If True, performs all-to-all shuffling.
+        self._full_shuffle = full_shuffle
         self._keys = keys
         self._sort = sort
 
@@ -167,10 +172,11 @@ class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
         self,
         input_op: LogicalOperator,
         sort_key: SortKey,
+        name: Literal[str] = "Sort",
         batch_format: Optional[str] = "default",
     ):
         super().__init__(
-            "Sort",
+            name,
             input_op,
             sub_progress_bar_names=[
                 SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
@@ -204,13 +210,14 @@ class Aggregate(AbstractAllToAll):
     def __init__(
         self,
         input_op: LogicalOperator,
-        key: Optional[str],
+        key: Optional[Union[str, List[str]]],
         aggs: List[AggregateFn],
+        name: Literal[str] = "Aggregate",
         num_partitions: Optional[int] = None,
         batch_format: Optional[str] = "default",
     ):
         super().__init__(
-            "Aggregate",
+            name,
             input_op,
             sub_progress_bar_names=[
                 SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,

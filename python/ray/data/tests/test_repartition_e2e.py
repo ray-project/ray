@@ -24,7 +24,8 @@ def test_repartition_shuffle(
     assert ds2._plan.initial_num_blocks() == 5
     assert ds2.sum() == 190
     assert ds2._block_num_rows() == [10, 10, 0, 0, 0]
-
+    # Due to shuffle fusion, we must materialize first
+    ds2 = ds2.materialize()
     ds3 = ds2.repartition(20, shuffle=True)
     assert ds3._plan.initial_num_blocks() == 20
     assert ds3.sum() == 190
@@ -115,7 +116,8 @@ def test_repartition_shuffle_arrow(
     assert ds2._plan.initial_num_blocks() == 5
     assert ds2.count() == 20
     assert ds2._block_num_rows() == [10, 10, 0, 0, 0]
-
+    # Due to shuffle fusion, we must materialize first
+    ds2 = ds2.materialize()
     ds3 = ds2.repartition(20, shuffle=True)
     assert ds3._plan.initial_num_blocks() == 20
     assert ds3.count() == 20

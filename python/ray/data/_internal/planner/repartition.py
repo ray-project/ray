@@ -25,7 +25,7 @@ from ray.data.context import DataContext, ShuffleStrategy
 
 def generate_repartition_fn(
     num_outputs: int,
-    shuffle: bool,
+    full_shuffle: bool,
     data_context: DataContext,
     _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
 ) -> AllToAllTransformFn:
@@ -83,6 +83,6 @@ def generate_repartition_fn(
         scheduler = SplitRepartitionTaskScheduler(shuffle_spec)
         return scheduler.execute(refs, num_outputs, ctx)
 
-    if shuffle:
+    if full_shuffle:
         return shuffle_repartition_fn
     return split_repartition_fn

@@ -20,6 +20,7 @@ from ray.data._internal.logical.rules.operator_fusion import FuseOperators
 from ray.data._internal.logical.rules.predicate_pushdown import PredicatePushdown
 from ray.data._internal.logical.rules.projection_pushdown import ProjectionPushdown
 from ray.data._internal.logical.rules.set_read_parallelism import SetReadParallelismRule
+from ray.data._internal.logical.rules.shuffle_fusion import ShuffleFusion
 from ray.util.annotations import DeveloperAPI
 
 _LOGICAL_RULESET = Ruleset(
@@ -27,6 +28,7 @@ _LOGICAL_RULESET = Ruleset(
         InheritBatchFormatRule,
         LimitPushdownRule,
         ProjectionPushdown,
+        ShuffleFusion,
         PredicatePushdown,
     ]
 )
