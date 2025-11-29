@@ -69,7 +69,7 @@ class OutputBlockSizeOption:
         if existing_option is None:
             return cls.of(target_max_block_size=target_max_block_size)
         else:
-            return OutputBlockSizeOption(
+            return cls.of(
                 target_max_block_size=target_max_block_size,
                 target_num_rows_per_block=existing_option.target_num_rows_per_block,
                 disable_block_shaping=existing_option.disable_block_shaping,
