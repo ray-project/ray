@@ -2345,7 +2345,7 @@ class Algorithm(Checkpointable, Trainable):
 
     @PublicAPI
     def get_module(self, module_id: ModuleID = DEFAULT_MODULE_ID) -> Optional[RLModule]:
-        """Returns the (single-agent) RLModule with `model_id` (None if ID not found).
+        """Returns the (single-agent) RLModule with `module_id` (None if ID not found).
 
         Args:
             module_id: ID of the (single-agent) RLModule to return from the MARLModule
