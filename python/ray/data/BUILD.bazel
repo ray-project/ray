@@ -1524,6 +1524,20 @@ py_test(
 )
 
 py_test(
+    name = "test_adding_streaming_repartition_before_zip",
+    size = "small",
+    srcs = ["tests/test_adding_streaming_repartition_before_zip.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_backpressure_policies",
     size = "medium",
     srcs = ["tests/test_backpressure_policies.py"],
