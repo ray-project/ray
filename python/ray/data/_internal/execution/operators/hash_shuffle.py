@@ -27,7 +27,10 @@ import pyarrow as pa
 
 import ray
 from ray import ObjectRef
-from ray._private.ray_constants import env_integer
+from ray._private.ray_constants import (
+    DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
+    env_integer,
+)
 from ray.actor import ActorHandle
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.arrow_ops.transform_pyarrow import (
@@ -1179,7 +1182,12 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         #
         cap = min(4.0, total_available_cluster_resources.cpu * 0.25 / num_aggregators)
 
-        target_num_cpus = min(cap, estimated_aggregator_memory_required / (4 * GiB))
+        worker_heap_memory_proportion = 1 - DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+        target_num_cpus = min(
+            cap,
+            estimated_aggregator_memory_required
+            / (4 * GiB * worker_heap_memory_proportion),
+        )
 
         # Round resource to 2d decimal point (for readability)
         return round(target_num_cpus, 2)
@@ -1241,18 +1249,25 @@ class HashShuffleOperator(HashShufflingOperatorBase):
         num_partitions: int,
         estimated_dataset_bytes: int,
     ) -> int:
+        max_partitions_for_aggregator = math.ceil(
+            num_partitions / num_aggregators
+        )  # Max number of partitions that a single aggregator might handle
         partition_byte_size_estimate = math.ceil(
             estimated_dataset_bytes / num_partitions
+        )  # Estimated byte size of a single partition
+
+        # Add 30% buffer to account for data skew
+        SKEW_FACTOR = 1.3
+
+        # Inputs (object store) - memory for receiving shuffled partitions
+        aggregator_shuffle_object_store_memory_required = math.ceil(
+            partition_byte_size_estimate * max_partitions_for_aggregator
         )
 
-        # Estimate of object store memory required to accommodate all partitions
-        # handled by a single aggregator
-        aggregator_shuffle_object_store_memory_required: int = math.ceil(
-            estimated_dataset_bytes / num_aggregators
+        # Output (object store) - memory for output partitions
+        output_object_store_memory_required = math.ceil(
+            partition_byte_size_estimate * max_partitions_for_aggregator
         )
-        # Estimate of memory required to accommodate single partition as an output
-        # (inside Object Store)
-        output_object_store_memory_required: int = partition_byte_size_estimate
 
         aggregator_total_memory_required: int = (
             # Inputs (object store)
@@ -1261,7 +1276,7 @@ class HashShuffleOperator(HashShufflingOperatorBase):
             # Output (object store)
             output_object_store_memory_required
         )
-
+        total_with_skew = aggregator_total_memory_required * SKEW_FACTOR
         logger.info(
             f"Estimated memory requirement for shuffling aggregator "
             f"(partitions={num_partitions}, "
@@ -1269,10 +1284,12 @@ class HashShuffleOperator(HashShufflingOperatorBase):
             f"dataset (estimate)={estimated_dataset_bytes / GiB:.1f}GiB): "
             f"shuffle={aggregator_shuffle_object_store_memory_required / MiB:.1f}MiB, "
             f"output={output_object_store_memory_required / MiB:.1f}MiB, "
-            f"total={aggregator_total_memory_required / MiB:.1f}MiB, "
+            f"total_base={aggregator_total_memory_required / MiB:.1f}MiB, "
+            f"skew_factor={SKEW_FACTOR}, "
+            f"total_with_skew={total_with_skew / MiB:.1f}MiB"
         )
 
-        return aggregator_total_memory_required
+        return total_with_skew
 
 
 @dataclass
