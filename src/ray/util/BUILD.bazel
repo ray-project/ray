@@ -57,6 +57,14 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "pipe",
+    hdrs = ["pipe.h"],
+    deps = [
+        ":logging",
+    ],
+)
+
+ray_cc_library(
     name = "filesystem",
     srcs = ["filesystem.cc"],
     hdrs = ["filesystem.h"],

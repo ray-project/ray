@@ -12,10 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <chrono>
+#include <cstdint>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "gflags/gflags.h"
@@ -27,6 +31,7 @@
 #include "ray/observability/metrics.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
+#include "ray/util/pipe.h"
 #include "ray/util/raii.h"
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
@@ -47,6 +52,10 @@ DEFINE_bool(retry_redis, false, "Whether to retry to connect to Redis.");
 DEFINE_string(node_ip_address, "", "The IP address of the node.");
 DEFINE_string(session_name, "", "session_name: The current Ray session name.");
 DEFINE_string(ray_commit, "", "The commit hash of Ray.");
+DEFINE_int64(
+    report_gcs_port_pipe_handle,
+    -1,
+    "Write the bound GCS port to this pipe handle (fd on POSIX, HANDLE on Windows).");
 
 int main(int argc, char *argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
@@ -104,6 +113,8 @@ int main(int argc, char *argv[]) {
   const bool retry_redis = FLAGS_retry_redis;
   const std::string node_ip_address = FLAGS_node_ip_address;
   const std::string session_name = FLAGS_session_name;
+  const intptr_t report_gcs_port_pipe_handle =
+      static_cast<intptr_t>(FLAGS_report_gcs_port_pipe_handle);
   gflags::ShutDownCommandLineFlags();
 
   RayConfig::instance().initialize(config_list);
@@ -235,7 +246,15 @@ int main(int argc, char *argv[]) {
 #endif
   signals.async_wait(handler);
 
-  gcs_server.Start();
+  if (report_gcs_port_pipe_handle >= 0) {
+    gcs_server.SetPortReadyCallback(
+        [handle = report_gcs_port_pipe_handle](int bound_port) {
+          ray::PipeWriter pipe(handle);
+          pipe.Write(std::to_string(bound_port) + "\n");
+          pipe.CloseWrite();
+        });
+  }
 
+  gcs_server.Start();
   main_service.run();
 }
