@@ -28,6 +28,7 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pandas
+    import polars
     import pyarrow
 
     from ray.data._internal.block_builder import BlockBuilder
@@ -58,7 +59,11 @@ BlockColumn = Union["pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series"]
 
 # Represents a single column of the ``Batch``
 BatchColumn = Union[
-    "pandas.Series", "np.ndarray", "pyarrow.Array", "pyarrow.ChunkedArray"
+    "pandas.Series",
+    "polars.Series",
+    "np.ndarray",
+    "pyarrow.Array",
+    "pyarrow.ChunkedArray",
 ]
 
 
@@ -77,11 +82,17 @@ class BatchFormat(str, Enum):
     ARROW = "pyarrow"
     PANDAS = "pandas"
     NUMPY = "numpy"
+    POLARS = "polars"
 
 
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
-DataBatch = Union["pyarrow.Table", "pandas.DataFrame", Dict[str, np.ndarray]]
+DataBatch = Union[
+    "pyarrow.Table",
+    "pandas.DataFrame",
+    "polars.DataFrame",
+    Dict[str, np.ndarray],
+]
 
 # User-facing data column type. This is the data type for data that is supplied to and
 # returned from column UDFs.
@@ -112,7 +123,7 @@ BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
 # same type as the metadata that describes each block in the partition.
 BlockPartitionMetadata = List["BlockMetadata"]
 
-VALID_BATCH_FORMATS = ["pandas", "pyarrow", "numpy", None]
+VALID_BATCH_FORMATS = ["pandas", "pyarrow", "numpy", "polars", None]
 DEFAULT_BATCH_FORMAT = "numpy"
 
 
@@ -389,6 +400,10 @@ class BlockAccessor:
         """Convert this block into an Arrow table."""
         raise NotImplementedError
 
+    def to_polars(self) -> "polars.DataFrame":
+        """Convert this block into a Polars DataFrame."""
+        raise NotImplementedError
+
     def to_block(self) -> Block:
         """Return the base block that this accessor wraps."""
         raise NotImplementedError
@@ -416,6 +431,8 @@ class BlockAccessor:
             return self.to_arrow()
         elif batch_format == "numpy":
             return self.to_numpy()
+        elif batch_format == "polars":
+            return self.to_polars()
         else:
             raise ValueError(
                 f"The batch format must be one of {VALID_BATCH_FORMATS}, got: "
@@ -488,6 +505,33 @@ class BlockAccessor:
             else:
                 assert block_type == BlockType.PANDAS
                 return cls.batch_to_pandas_block(batch)
+        else:
+            # Check if batch is a Polars DataFrame or related type
+            try:
+                import polars as pl
+
+                if isinstance(batch, pl.DataFrame):
+                    return cls.batch_to_block_from_polars(batch, block_type)
+                elif isinstance(batch, (pl.LazyFrame, pl.Series)):
+                    # Provide helpful error messages for common mistakes
+                    if isinstance(batch, pl.LazyFrame):
+                        raise ValueError(
+                            "Cannot convert Polars LazyFrame to block. "
+                            "Call .collect() first to materialize it into a DataFrame."
+                        )
+                    elif isinstance(batch, pl.Series):
+                        raise ValueError(
+                            "Cannot convert Polars Series to block. "
+                            "Return a DataFrame instead. Use pl.DataFrame({column_name: series})."
+                        )
+            except ImportError:
+                # If Polars is not installed but we got here, it means the batch
+                # might be a Polars DataFrame. Raise a clear error.
+                if hasattr(batch, "__class__") and "polars" in str(type(batch)).lower():
+                    raise ImportError(
+                        "Polars is not installed but a Polars object was returned. "
+                        "Install with `pip install polars`."
+                    )
         return batch
 
     @classmethod
@@ -503,6 +547,118 @@ class BlockAccessor:
         from ray.data._internal.pandas_block import PandasBlockBuilder
 
         return PandasBlockBuilder._table_from_pydict(batch)
+
+    @classmethod
+    def batch_to_block_from_polars(
+        cls, batch: "polars.DataFrame", block_type: Optional[BlockType] = None
+    ) -> Block:
+        """Create a block from a Polars DataFrame.
+
+        Converts a Polars DataFrame to an Arrow Table or Pandas DataFrame block.
+        See https://docs.pola.rs/ for Polars documentation.
+
+        Note: This conversion always creates a copy of the data. Polars DataFrames
+        cannot be zero-copy converted to Arrow/Pandas blocks.
+
+        Args:
+            batch: A Polars DataFrame to convert. Must be an eager DataFrame,
+                not a LazyFrame. See https://docs.pola.rs/api/lazyframe/ for
+                LazyFrame documentation.
+            block_type: The target block type. If None, defaults to Arrow.
+
+        Returns:
+            A Block (Arrow Table or Pandas DataFrame) containing the data.
+
+        Raises:
+            ImportError: If Polars is not installed.
+            ValueError: If batch is not a Polars DataFrame or has invalid state.
+        """
+        try:
+            import polars as pl
+        except ImportError:
+            raise ImportError(
+                "Polars is not installed. Install with `pip install polars`. "
+                "See https://docs.pola.rs/ for more information."
+            )
+
+        # Validate input type
+        if isinstance(batch, pl.LazyFrame):
+            raise ValueError(
+                "Cannot convert Polars LazyFrame. Call .collect() first to "
+                "materialize the LazyFrame into a DataFrame. "
+                "See https://docs.pola.rs/api/lazyframe/#collect for details."
+            )
+
+        if isinstance(batch, pl.Series):
+            raise ValueError(
+                "Cannot convert Polars Series. Return a DataFrame instead. "
+                "Use pl.DataFrame({column_name: series}) to convert Series to DataFrame."
+            )
+
+        if not isinstance(batch, pl.DataFrame):
+            raise ValueError(
+                f"Expected polars.DataFrame, got {type(batch)}. "
+                "If you have a LazyFrame, call .collect() first to materialize it."
+            )
+
+        # Handle empty DataFrame
+        if batch.height == 0:
+            # Empty DataFrame - create empty Arrow table with same schema
+            try:
+                arrow_table = batch.to_arrow()
+                if block_type is None or block_type == BlockType.ARROW:
+                    return arrow_table
+                else:
+                    return batch.to_pandas()
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to convert empty Polars DataFrame: {e}"
+                ) from e
+
+        # Validate column names (Polars doesn't allow duplicates)
+        # See https://docs.pola.rs/api/dataframe/#polars.DataFrame.columns
+        if len(batch.columns) != len(set(batch.columns)):
+            duplicates = [
+                col for col in batch.columns if batch.columns.count(col) > 1
+            ]
+            raise ValueError(
+                f"Polars DataFrame has duplicate column names: {duplicates}. "
+                "Rename duplicate columns before converting."
+            )
+
+        # Validate column names are strings
+        for col in batch.columns:
+            if not isinstance(col, str):
+                raise ValueError(
+                    f"Polars DataFrame has non-string column name: {col} (type: {type(col)}). "
+                    "All column names must be strings."
+                )
+
+        # Convert Polars DataFrame to Arrow Table
+        # See https://docs.pola.rs/api/dataframe/#polars.DataFrame.to_arrow
+        # Note: This always creates a copy - Polars cannot zero-copy to Arrow
+        try:
+            arrow_table = batch.to_arrow()
+        except Exception as e:
+            raise ValueError(
+                f"Failed to convert Polars DataFrame to Arrow Table: {e}. "
+                "This may be due to unsupported data types or schema issues."
+            ) from e
+
+        if block_type is None or block_type == BlockType.ARROW:
+            return arrow_table
+        else:
+            # Convert to Pandas if needed
+            # See https://docs.pola.rs/api/dataframe/#polars.DataFrame.to_pandas
+            # Note: This creates another copy (Polars -> Arrow -> Pandas)
+            try:
+                pandas_df = batch.to_pandas()
+                return pandas_df
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to convert Polars DataFrame to Pandas DataFrame: {e}. "
+                    "This may be due to unsupported data types."
+                ) from e
 
     @staticmethod
     def for_block(block: Block) -> "BlockAccessor[T]":

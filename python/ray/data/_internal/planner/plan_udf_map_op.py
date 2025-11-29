@@ -420,6 +420,29 @@ def _try_wrap_udf_exception(e: Exception, item: Any = None):
 
 
 def _validate_batch_output(batch: Block) -> None:
+    """Validate that a batch output from a UDF is a supported type.
+
+    See https://docs.pola.rs/ for Polars documentation.
+    """
+    # Check for Polars DataFrame
+    # Polars is an optional dependency, so we check for it here
+    try:
+        import polars as pl
+
+        if isinstance(batch, pl.DataFrame):
+            # Polars DataFrames are valid - DataFrame is always eager
+            # LazyFrame is a separate class, so if we get here it's already a DataFrame
+            return
+        elif isinstance(batch, pl.LazyFrame):
+            raise ValueError(
+                "The `fn` you passed to `map_batches` returned a Polars LazyFrame. "
+                "LazyFrames must be collected before returning. Use `.collect()` to "
+                "materialize the LazyFrame into a DataFrame. "
+                "See https://docs.pola.rs/api/lazyframe/#collect for details."
+            )
+    except ImportError:
+        pass
+
     if not isinstance(
         batch,
         (
@@ -434,7 +457,7 @@ def _validate_batch_output(batch: Block) -> None:
         raise ValueError(
             "The `fn` you passed to `map_batches` returned a value of type "
             f"{type(batch)}. This isn't allowed -- `map_batches` expects "
-            "`fn` to return a `pandas.DataFrame`, `pyarrow.Table`, "
+            "`fn` to return a `pandas.DataFrame`, `polars.DataFrame`, `pyarrow.Table`, "
             "`numpy.ndarray`, `list`, or `dict[str, numpy.ndarray]`."
         )
 
@@ -510,8 +533,33 @@ def _generate_transform_fn_for_map_batches(
                     else:
                         raise e from None
                 else:
+                    # Validate all yielded batches (for generators, validate each item)
                     for out_batch in res:
                         _validate_batch_output(out_batch)
+                        # Additional validation: ensure Polars DataFrames are eager
+                        # See https://docs.pola.rs/ for Polars documentation
+                        try:
+                            import polars as pl
+
+                            if isinstance(out_batch, pl.LazyFrame):
+                                raise ValueError(
+                                    "Generator yielded a Polars LazyFrame. "
+                                    "All yielded frames must be materialized. "
+                                    "Call .collect() on LazyFrames before yielding. "
+                                    "See https://docs.pola.rs/api/lazyframe/#collect for details."
+                                )
+                            elif isinstance(out_batch, pl.DataFrame):
+                                # DataFrame is always eager, but verify it's valid
+                                try:
+                                    # Access schema to ensure DataFrame is valid
+                                    _ = out_batch.schema
+                                except Exception as e:
+                                    raise ValueError(
+                                        f"Polars DataFrame is in invalid state: {e}. "
+                                        "Ensure the DataFrame is properly constructed."
+                                    ) from e
+                        except ImportError:
+                            pass
                         yield out_batch
 
     return transform_fn

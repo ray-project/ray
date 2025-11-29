@@ -830,6 +830,14 @@ def test_batch_formats(shutdown_only):
     assert isinstance(next(iter(ds.iter_batches(batch_format="pandas"))), pd.DataFrame)
     assert isinstance(next(iter(ds.iter_batches(batch_format="pyarrow"))), pa.Table)
     assert isinstance(next(iter(ds.iter_batches(batch_format="numpy"))), dict)
+    try:
+        import polars as pl
+
+        assert isinstance(
+            next(iter(ds.iter_batches(batch_format="polars"))), pl.DataFrame
+        )
+    except ImportError:
+        pass
 
     ds = ray.data.range_tensor(100)
     assert isinstance(next(iter(ds.iter_batches(batch_format=None))), pa.Table)
@@ -837,6 +845,14 @@ def test_batch_formats(shutdown_only):
     assert isinstance(next(iter(ds.iter_batches(batch_format="pandas"))), pd.DataFrame)
     assert isinstance(next(iter(ds.iter_batches(batch_format="pyarrow"))), pa.Table)
     assert isinstance(next(iter(ds.iter_batches(batch_format="numpy"))), dict)
+    try:
+        import polars as pl
+
+        assert isinstance(
+            next(iter(ds.iter_batches(batch_format="polars"))), pl.DataFrame
+        )
+    except ImportError:
+        pass
 
     df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
     ds = ray.data.from_pandas(df)
@@ -845,6 +861,14 @@ def test_batch_formats(shutdown_only):
     assert isinstance(next(iter(ds.iter_batches(batch_format="pandas"))), pd.DataFrame)
     assert isinstance(next(iter(ds.iter_batches(batch_format="pyarrow"))), pa.Table)
     assert isinstance(next(iter(ds.iter_batches(batch_format="numpy"))), dict)
+    try:
+        import polars as pl
+
+        assert isinstance(
+            next(iter(ds.iter_batches(batch_format="polars"))), pl.DataFrame
+        )
+    except ImportError:
+        pass
 
 
 def test_dataset_schema_after_read_stats(ray_start_cluster):
