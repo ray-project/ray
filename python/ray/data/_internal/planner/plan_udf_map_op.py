@@ -156,11 +156,12 @@ def plan_streaming_repartition_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
     compute = get_compute(op._compute)
-    transform_fn = BlockMapTransformFn(
-        lambda blocks, ctx: blocks,
-        output_block_size_option=OutputBlockSizeOption.of(
-            target_num_rows_per_block=op.target_num_rows_per_block,  # To split n*target_max_block_size row into n blocks
+    transform_fn = BatchMapTransformFn(
+        _generate_transform_fn_for_map_batches(
+            lambda blocks: blocks,
         ),
+        batch_size=op.target_num_rows_per_block,
+        disable_block_shaping=True,
     )
     map_transformer = MapTransformer([transform_fn])
 
@@ -174,7 +175,6 @@ def plan_streaming_repartition_op(
         ref_bundler=StreamingRepartitionRefBundler(op.target_num_rows_per_block),
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
-        supports_fusion=False,
     )
 
     return operator
