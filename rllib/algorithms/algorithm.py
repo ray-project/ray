@@ -1375,7 +1375,7 @@ class Algorithm(Checkpointable, Trainable):
         """Evaluates current policy under `evaluation_config` settings.
 
         Args:
-            parallel_train_future: In case, we are training and avaluating in parallel,
+            parallel_train_future: In case, we are training and evaluating in parallel,
                 this arg carries the currently running ThreadPoolExecutor object that
                 runs the training iteration. Use `parallel_train_future.done()` to
                 check, whether the parallel training job has completed and
