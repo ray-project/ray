@@ -83,11 +83,6 @@ class DreamerV3Config(AlgorithmConfig):
         algo = config.build()
         # algo.train()
         del algo
-
-    .. testoutput::
-        :hide:
-
-        ...
     """
 
     def __init__(self, algo_class=None):
