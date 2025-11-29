@@ -334,7 +334,10 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     parser.add_argument("-m", "--module")
     _, remaining_uv_run_args = parser.parse_known_args(uv_run_args)
 
-    runtime_env["py_executable"] = " ".join(remaining_uv_run_args)
+    # Ensure .venv is created with --system-site-packages for access to pre-installed packages
+    uv_run_cmd = " ".join(remaining_uv_run_args)
+    wrapper = f"bash -c 'test -d .venv || uv venv --system-site-packages .venv >/dev/null 2>&1; exec {uv_run_cmd} \"$@\"' bash"
+    runtime_env["py_executable"] = wrapper
 
     # If the user specified a working_dir, we always honor it, otherwise
     # use the same working_dir that uv run would use
