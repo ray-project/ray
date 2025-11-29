@@ -493,6 +493,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
         shuffle_progress_bar_name: Optional[str] = None,
         finalize_progress_bar_name: Optional[str] = None,
+        disallow_block_splitting: bool = False,
     ):
         input_logical_ops = [
             input_physical_op._logical_operators[0] for input_physical_op in input_ops
@@ -574,6 +575,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             aggregation_factory=partition_aggregation_factory,
             aggregator_ray_remote_args=ray_remote_args,
             data_context=data_context,
+            disallow_block_splitting=disallow_block_splitting,
         )
 
         # We track the running usage total because iterating
@@ -1228,6 +1230,9 @@ class HashShuffleOperator(HashShufflingOperatorBase):
                 )
             ),
             shuffle_progress_bar_name="Shuffle",
+            # NOTE: In cases like ``groupby`` blocks can't be split as this might violate an invariant that all rows
+            #             with the same key are in the same group (block)
+            disallow_block_splitting=True,
         )
 
     def _get_operator_num_cpus_override(self) -> float:
@@ -1295,12 +1300,15 @@ class AggregatorPool:
         aggregation_factory: StatefulShuffleAggregationFactory,
         aggregator_ray_remote_args: Dict[str, Any],
         data_context: DataContext,
+        disallow_block_splitting: bool,
     ):
         assert (
             num_partitions >= 1
         ), f"Number of partitions has to be >= 1 (got {num_partitions})"
 
-        self._data_context = data_context
+        self._data_context = data_context.copy()
+        if disallow_block_splitting:
+            self._data_context.target_max_block_size = None
         self._num_partitions = num_partitions
         self._num_aggregators: int = num_aggregators
         self._aggregator_partition_map: Dict[
