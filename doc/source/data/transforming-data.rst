@@ -142,7 +142,7 @@ batches is more performant than transforming rows.
 Configuring batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data represents batches as dicts of NumPy ndarrays or pandas DataFrames. By
+Ray Data represents batches as dicts of NumPy ndarrays, pandas DataFrames or Arrow Tables. By
 default, Ray Data represents batches as dicts of NumPy ndarrays. To configure the batch type,
 specify ``batch_format`` in :meth:`~ray.data.Dataset.map_batches`. You can return either
 format from your function, but ``batch_format`` should match the input of your function.
@@ -180,23 +180,21 @@ format from your function, but ``batch_format`` should match the input of your f
                 ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
                 .map_batches(drop_nas, batch_format="pandas")
             )
+    .. tab-item:: pyarrow
 
-The user defined function you pass to :meth:`~ray.data.Dataset.map_batches` is more flexible. Because you can represent batches
-in multiple ways (see :ref:`Configuring batch format <configure_batch_format>`), the function should be of type
-``Callable[DataBatch, DataBatch]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``. In
-other words, your function should take as input and output a batch of data which you can represent as a
-pandas DataFrame or a dictionary with string keys and NumPy ndarrays values. For example, your function might look like:
+        .. testcode::
 
-.. testcode::
+            import pyarrow as pa
+            import pyarrow.compute as pc
+            import ray
 
-    import pandas as pd
+            def drop_nas(batch: pa.Table) -> pa.Table:
+                return pc.drop_null(batch)
 
-    def fn(batch: pd.DataFrame) -> pd.DataFrame:
-        # modify batch
-        batch = ...
-
-        # return batch
-        return batch
+            ds = (
+                ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+                .map_batches(drop_nas, batch_format="pyarrow")
+            )
 
 The user defined function can also be a Python generator that yields batches, so the function can also
 be of type ``Callable[DataBatch, Iterator[[DataBatch]]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``.
@@ -211,6 +209,18 @@ In this case, your function would look like:
         # yield the same batch multiple times
         for _ in range(10):
             yield batch
+            
+Choosing the right batch format
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When choosing the appropriate batch format for your ``map_batches`` operation, the primary consideration is the trade-off between performance and convenience.
+
+    * Use ``numpy`` in ``map_batches`` when your batch function needs fast numeric or tensor-style operations .
+    * Use ``pandas`` in ``map_batches`` when your batch function needs a DataFrame API, such as for tabular cleaning, joins, grouping, or row/column-wise transforms.
+    * Use ``pyarrow`` in ``map_batches`` when your batch function benefits from columnar processing, high-performance I/O, or zero-copy conversion to other systems.
+
+You should also take note of the current block type. If you choose a batch format that doesn't match the current block type, the operation incurs an extra copy between formats (for example, if you have one ``map_batches`` using the pandas format, then another using the ``numpy`` format).
+
 
 Configuring batch size
 ~~~~~~~~~~~~~~~~~~~~~~
