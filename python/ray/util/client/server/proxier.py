@@ -122,6 +122,7 @@ class ProxyManager:
         session_dir: Optional[str] = None,
         redis_username: Optional[str] = None,
         redis_password: Optional[str] = None,
+        runtime_env_agent_port: Optional[int] = None,
         runtime_env_agent_port_pipe_fd: Optional[int] = None,
     ):
         self.servers: Dict[str, SpecificServer] = dict()
@@ -139,9 +140,14 @@ class ProxyManager:
         self.fate_share = bool(detect_fate_sharing_support())
         self._node: Optional[ray._private.node.Node] = None
 
-        # Read runtime_env_agent_port from pipe if provided
+        # Use runtime_env_agent_port if provided directly, otherwise read from pipe.
         self._runtime_env_agent_port: Optional[int] = None
-        if runtime_env_agent_port_pipe_fd is not None:
+        if runtime_env_agent_port is not None:
+            self._runtime_env_agent_port = runtime_env_agent_port
+            logger.info(
+                f"Using pre-configured runtime env agent port: {runtime_env_agent_port}"
+            )
+        elif runtime_env_agent_port_pipe_fd is not None:
             self._runtime_env_agent_port = self._read_port_from_pipe(
                 runtime_env_agent_port_pipe_fd
             )
@@ -215,15 +221,14 @@ class ProxyManager:
     def _get_runtime_env_agent_address(self) -> str:
         """Get the runtime env agent address.
 
-        Returns the address using the port read from pipe during init,
-        or falls back to ray.init() if no pipe was provided.
+        Returns the address using the port provided during init
+        (either directly or read from pipe).
         """
         if self._runtime_env_agent_port is None:
-            # Fallback: use ray.init() to get the port from RuntimeContext
-            if not ray.is_initialized():
-                ray.init(address=self.address, ignore_reinit_error=True)
-            self._runtime_env_agent_port = (
-                ray.get_runtime_context().get_runtime_env_agent_port()
+            raise RuntimeError(
+                "Runtime env agent port is not available. "
+                "Either runtime_env_agent_port or runtime_env_agent_port_pipe_fd "
+                "must be provided when starting ray_client_server."
             )
         return f"http://{self.node.node_ip_address}:{self._runtime_env_agent_port}"
 
@@ -897,6 +902,7 @@ def serve_proxier(
     redis_username: Optional[str] = None,
     redis_password: Optional[str] = None,
     session_dir: Optional[str] = None,
+    runtime_env_agent_port: Optional[int] = None,
     runtime_env_agent_port_pipe_fd: Optional[int] = None,
 ):
     # Initialize internal KV to be used to upload and download working_dir
@@ -920,6 +926,7 @@ def serve_proxier(
         session_dir=session_dir,
         redis_username=redis_username,
         redis_password=redis_password,
+        runtime_env_agent_port=runtime_env_agent_port,
         runtime_env_agent_port_pipe_fd=runtime_env_agent_port_pipe_fd,
     )
     task_servicer = RayletServicerProxy(None, proxy_manager)

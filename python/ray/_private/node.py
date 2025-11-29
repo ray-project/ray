@@ -1335,13 +1335,22 @@ class Node:
             "ray_client_server", unique=True
         )
 
-        # Create pipe for receiving runtime_env_agent_port from the agent.
-        # - read end goes to ray_client_server (started here)
-        # - write end goes to Raylet -> Agent (started later in start_raylet)
-        self._runtime_env_agent_port_pipe = PipePair()
+        # Use runtime_env_agent_port directly if already known (port > 0).
+        # Port 0 means auto-assign, so we need to use pipe to get the actual port.
+        # Otherwise, create pipe for receiving runtime_env_agent_port from the agent.
+        runtime_env_agent_port = self._ray_params.runtime_env_agent_port
+        read_handle = None
 
-        # make_reader_handle() returns the fd for subprocess to inherit.
-        read_handle = self._runtime_env_agent_port_pipe.make_reader_handle()
+        # Treat 0 as "not known" since it means auto-assign
+        if runtime_env_agent_port is None or runtime_env_agent_port == 0:
+            # Port not known yet, use pipe to receive it.
+            # - read end goes to ray_client_server (started here)
+            # - write end goes to Raylet -> Agent (started later in start_raylet)
+            self._runtime_env_agent_port_pipe = PipePair()
+
+            # make_reader_handle() returns the fd for subprocess to inherit.
+            read_handle = self._runtime_env_agent_port_pipe.make_reader_handle()
+            runtime_env_agent_port = None  # Don't pass 0 to the command
 
         process_info = ray._private.services.start_ray_client_server(
             self.address,
@@ -1352,10 +1361,12 @@ class Node:
             redis_username=self._ray_params.redis_username,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
+            runtime_env_agent_port=runtime_env_agent_port,
             runtime_env_agent_port_pipe_fd=read_handle,
         )
         # Close the parent's copy of the read fd now that subprocess has inherited it.
-        self._runtime_env_agent_port_pipe.close_reader_handle()
+        if self._runtime_env_agent_port_pipe is not None:
+            self._runtime_env_agent_port_pipe.close_reader_handle()
 
         assert ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [

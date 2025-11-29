@@ -886,6 +886,13 @@ def main():
         help="The port to use for connecting to the runtime_env_agent.",
     )
     parser.add_argument(
+        "--runtime-env-agent-port",
+        required=False,
+        type=int,
+        default=None,
+        help="The port of the runtime_env_agent. If provided, pipe is not needed.",
+    )
+    parser.add_argument(
         "--runtime-env-agent-port-pipe-fd",
         required=False,
         type=int,
@@ -911,6 +918,7 @@ def main():
             args.address,
             redis_username=args.redis_username,
             redis_password=args.redis_password,
+            runtime_env_agent_port=args.runtime_env_agent_port,
             runtime_env_agent_port_pipe_fd=args.runtime_env_agent_port_pipe_fd,
         )
     else:

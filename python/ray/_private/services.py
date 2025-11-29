@@ -2348,6 +2348,7 @@ def start_ray_client_server(
     fate_share: Optional[bool] = None,
     server_type: str = "proxy",
     serialized_runtime_env_context: Optional[str] = None,
+    runtime_env_agent_port: Optional[int] = None,
     runtime_env_agent_port_pipe_fd: Optional[int] = None,
 ):
     """Run the server process of the Ray client.
@@ -2365,9 +2366,11 @@ def start_ray_client_server(
         server_type: Whether to start the proxy version of Ray Client.
         serialized_runtime_env_context (str|None): If specified, the serialized
             runtime_env_context to start the client server in.
+        runtime_env_agent_port: The port of the runtime_env_agent. If provided,
+            the pipe is not needed.
         runtime_env_agent_port_pipe_fd: File descriptor for reading the runtime
             env agent port. The Runtime Env Agent will write its bound port to
-            this pipe after starting.
+            this pipe after starting. Only used if runtime_env_agent_port is None.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -2397,14 +2400,17 @@ def start_ray_client_server(
         command.append(
             f"--serialized-runtime-env-context={serialized_runtime_env_context}"  # noqa: E501
         )
-    if runtime_env_agent_port_pipe_fd is not None:
+    # Prefer using runtime_env_agent_port directly if provided
+    if runtime_env_agent_port is not None:
+        command.append(f"--runtime-env-agent-port={runtime_env_agent_port}")
+    elif runtime_env_agent_port_pipe_fd is not None:
         command.append(
             f"--runtime-env-agent-port-pipe-fd={runtime_env_agent_port_pipe_fd}"
         )
 
     # Pass the pipe fd to allow child process to inherit it
     pass_handles = None
-    if runtime_env_agent_port_pipe_fd is not None:
+    if runtime_env_agent_port_pipe_fd is not None and runtime_env_agent_port is None:
         pass_handles = [runtime_env_agent_port_pipe_fd]
 
     process_info = start_ray_process(
