@@ -32,6 +32,7 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     get_arrow_extension_fixed_shape_tensor_types,
 )
+from ray.data._internal.cache.dataset_cache import cache_result
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.clickhouse_datasink import (
@@ -3398,6 +3399,7 @@ class Dataset:
 
     @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
+    @cache_result("take_batch", include_params=["batch_size", "batch_format"])
     def take_batch(
         self, batch_size: int = 20, *, batch_format: Optional[str] = "default"
     ) -> DataBatch:
@@ -3458,6 +3460,7 @@ class Dataset:
 
     @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
+    @cache_result("take", include_params=["limit"])
     def take(self, limit: int = 20) -> List[Dict[str, Any]]:
         """Return up to ``limit`` rows from the :class:`Dataset`.
 
@@ -3509,6 +3512,7 @@ class Dataset:
 
     @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
+    @cache_result("take_all", include_params=["limit"])
     def take_all(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Return all of the rows in this :class:`Dataset`.
 
@@ -3584,6 +3588,7 @@ class Dataset:
         pattern="Examples:",
     )
     @PublicAPI(api_group=IM_API_GROUP)
+    @cache_result("count")
     def count(self) -> int:
         """Count the number of rows in the dataset.
 
@@ -3635,6 +3640,7 @@ class Dataset:
         pattern="Time complexity:",
     )
     @PublicAPI(api_group=IM_API_GROUP)
+    @cache_result("schema", include_params=["fetch_if_missing"])
     def schema(self, fetch_if_missing: bool = True) -> Optional["Schema"]:
         """Return the schema of the dataset.
 
@@ -3682,6 +3688,7 @@ class Dataset:
         pattern="Time complexity:",
     )
     @PublicAPI(api_group=IM_API_GROUP)
+    @cache_result("columns", include_params=["fetch_if_missing"])
     def columns(self, fetch_if_missing: bool = True) -> Optional[List[str]]:
         """Returns the columns of this Dataset.
 
@@ -3730,6 +3737,7 @@ class Dataset:
 
     @ConsumptionAPI
     @PublicAPI(api_group=IM_API_GROUP)
+    @cache_result("size_bytes")
     def size_bytes(self) -> int:
         """Return the in-memory size of the dataset.
 
@@ -3754,6 +3762,7 @@ class Dataset:
 
     @ConsumptionAPI
     @PublicAPI(api_group=IM_API_GROUP)
+    @cache_result("input_files")
     def input_files(self) -> List[str]:
         """Return the list of input files for the dataset.
 
@@ -6080,6 +6089,7 @@ class Dataset:
 
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
     @PublicAPI(api_group=E_API_GROUP)
+    @cache_result("materialize")
     def materialize(self) -> "MaterializedDataset":
         """Execute and materialize this dataset into object store memory.
 
@@ -6638,6 +6648,7 @@ class MaterializedDataset(Dataset, Generic[T]):
     tasks without re-executing the underlying computations for producing the stream.
     """
 
+    @cache_result("num_blocks")
     def num_blocks(self) -> int:
         """Return the number of blocks of this :class:`MaterializedDataset`.
 
