@@ -112,6 +112,16 @@ def shutdown():
     Deletes all applications and shuts down Serve system actors.
     """
 
+    if not ray.is_initialized():
+        logger.info(
+            "Nothing to shut down. There's no Serve application "
+            "running on this Ray cluster."
+        )
+        # Clear the global client even if Ray is not initialized to avoid
+        # stale actor handles from a previous Ray instance.
+        _set_global_client(None)
+        return
+
     try:
         client = _get_global_client()
     except RayServeException:
@@ -131,6 +141,16 @@ async def shutdown_async():
 
     Deletes all applications and shuts down Serve system actors.
     """
+
+    if not ray.is_initialized():
+        logger.info(
+            "Nothing to shut down. There's no Serve application "
+            "running on this Ray cluster."
+        )
+        # Clear the global client even if Ray is not initialized to avoid
+        # stale actor handles from a previous Ray instance.
+        _set_global_client(None)
+        return
 
     try:
         client = _get_global_client()
