@@ -1672,6 +1672,174 @@ def test_per_block_limit_fn(blocks_data, per_block_limit, expected_output):
     assert result_data == expected_output
 
 
+@pytest.mark.parametrize("use_actors", [False, True])
+@pytest.mark.parametrize(
+    "initial_option,override_value,expected_blocks,test_description,test_data_rows",
+    [
+        (
+            OutputBlockSizeOption.of(target_num_rows_per_block=5),
+            2**20,
+            6,
+            "merge with target_num_rows_per_block",
+            30,
+        ),
+        (
+            OutputBlockSizeOption.of(disable_block_shaping=True),
+            1,
+            10,
+            "merge with disable_block_shaping=True preserves single input block",
+            10,
+        ),
+        (
+            None,
+            2**20,
+            1,
+            "create new option from None",
+            3,
+        ),
+        (
+            OutputBlockSizeOption.of(
+                target_max_block_size=100, target_num_rows_per_block=3
+            ),
+            1,
+            10,
+            "override target_max_block_size",
+            30,
+        ),
+        (
+            None,
+            None,
+            1,
+            "None override with None existing",
+            3,
+        ),
+        (
+            OutputBlockSizeOption.of(target_num_rows_per_block=10),
+            None,
+            3,
+            "None override with existing option",
+            30,
+        ),
+        (
+            None,
+            1,
+            100,
+            "override with small target_max creates multiple blocks",
+            100,
+        ),
+    ],
+)
+def test_map_operator_override_target_max_block_size_merges_with_transformer(
+    ray_start_regular_shared,
+    use_actors,
+    initial_option,
+    override_value,
+    expected_blocks,
+    test_description,
+    test_data_rows,
+):
+    """Test that override_target_max_block_size merges with last transformer's output_block_size_option.
+
+    This test verifies that when a MapOperator overrides the target_max_block_size,
+    it correctly merges with the last transformer's existing output_block_size_option,
+    preserving other settings like target_num_rows_per_block and disable_block_shaping.
+    It also verifies the number of output blocks matches the expected behavior.
+    """
+
+    def noop_transform(
+        block_iter: Iterable[Block], ctx: TaskContext
+    ) -> Iterable[Block]:
+        for block in block_iter:
+            yield block
+
+    test_ctx = TaskContext(
+        op_name="test", task_idx=0, target_max_block_size_override=None
+    )
+
+    test_blocks = [pd.DataFrame({"id": [i]}) for i in range(test_data_rows)]
+
+    def count_output_blocks(transformer, test_blocks, test_ctx):
+        output_blocks = list(transformer.apply_transform(test_blocks, test_ctx))
+        return len(output_blocks)
+
+    transformer = create_map_transformer_from_block_fn(
+        noop_transform,
+        output_block_size_option=initial_option,
+    )
+
+    last_transform_before = transformer._transform_fns[-1]
+    if initial_option is None:
+        assert last_transform_before.output_block_size_option is None
+    else:
+        assert last_transform_before.output_block_size_option is not None
+
+    transformer.override_target_max_block_size(override_value)
+
+    output_count = count_output_blocks(transformer, test_blocks, test_ctx)
+    assert (
+        output_count == expected_blocks
+    ), f"Test case '{test_description}': Expected {expected_blocks} output blocks, got {output_count}"
+
+    # Verify the merged output_block_size_option
+    last_transform = transformer._transform_fns[-1]
+
+    if override_value is None and initial_option is None:
+        assert (
+            last_transform.output_block_size_option is None
+        ), f"Test case '{test_description}': Expected None option"
+    elif override_value is None:
+        # Override is None: creates new option with target_max_block_size=None, preserves other fields
+        assert (
+            last_transform.output_block_size_option is not None
+        ), f"Test case '{test_description}': Expected non-None option"
+        assert last_transform.output_block_size_option.target_max_block_size is None
+        assert (
+            last_transform.output_block_size_option.target_num_rows_per_block
+            == initial_option.target_num_rows_per_block
+        )
+        assert (
+            last_transform.output_block_size_option.disable_block_shaping
+            == initial_option.disable_block_shaping
+        )
+    elif initial_option is None:
+        # Initial is None: creates new option with just target_max_block_size
+        assert (
+            last_transform.output_block_size_option is not None
+        ), f"Test case '{test_description}': Expected non-None option"
+        assert (
+            last_transform.output_block_size_option.target_max_block_size
+            == override_value
+        )
+        assert last_transform.output_block_size_option.target_num_rows_per_block is None
+        assert last_transform.output_block_size_option.disable_block_shaping is False
+    else:
+        # Both not None: merge by overriding target_max_block_size while preserving other fields
+        assert (
+            last_transform.output_block_size_option is not None
+        ), f"Test case '{test_description}': Expected non-None option"
+        assert (
+            last_transform.output_block_size_option.target_max_block_size
+            == override_value
+        ), (
+            f"Test case '{test_description}': Expected target_max_block_size={override_value}, "
+            f"got {last_transform.output_block_size_option.target_max_block_size}"
+        )
+        assert (
+            last_transform.output_block_size_option.target_num_rows_per_block
+            == initial_option.target_num_rows_per_block
+        ), (
+            f"Test case '{test_description}': Expected target_num_rows_per_block={initial_option.target_num_rows_per_block}, "
+            f"got {last_transform.output_block_size_option.target_num_rows_per_block}"
+        )
+        assert (
+            last_transform.output_block_size_option.disable_block_shaping
+            == initial_option.disable_block_shaping
+        ), (
+            f"Test case '{test_description}': Expected disable_block_shaping={initial_option.disable_block_shaping}, "
+            f"got {last_transform.output_block_size_option.disable_block_shaping}"
+        )
+
+
 if __name__ == "__main__":
     import sys
 

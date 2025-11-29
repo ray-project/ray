@@ -66,10 +66,8 @@ class OutputBlockSizeOption:
     ) -> Optional["OutputBlockSizeOption"]:
         """Override the target max block size for the existing option, or create a new option if it doesn't exist."""
 
-        if target_max_block_size is None:
-            return existing_option
-        elif existing_option is None:
-            return OutputBlockSizeOption(target_max_block_size=target_max_block_size)
+        if existing_option is None:
+            return cls.of(target_max_block_size=target_max_block_size)
         else:
             return OutputBlockSizeOption(
                 target_max_block_size=target_max_block_size,

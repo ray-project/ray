@@ -172,8 +172,10 @@ class MapTransformer:
         return self._transform_fns
 
     def override_target_max_block_size(self, target_max_block_size: Optional[int]):
-        self._output_block_size_option_override = OutputBlockSizeOption.of(
-            target_max_block_size=target_max_block_size
+        self._output_block_size_option_override = (
+            OutputBlockSizeOption.override_target_max_block_size(
+                self._output_block_size_option_override, target_max_block_size
+            )
         )
 
     @property
