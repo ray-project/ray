@@ -4,10 +4,10 @@ import { RightPaddedTypography } from "../../common/CustomTypography";
 import PercentageBar from "../../components/PercentageBar";
 import { GPUStats, NodeDetail } from "../../type/node";
 
-const GRAM_COL_WIDTH = 120;
+const VRAM_COL_WIDTH = 120;
 
-export const NodeGRAM = ({ node }: { node: NodeDetail }) => {
-  const nodeGRAMEntries = (node.gpus ?? []).map((gpu, i) => {
+export const NodeVRAM = ({ node }: { node: NodeDetail }) => {
+  const nodeVRAMEntries = (node.gpus ?? []).map((gpu, i) => {
     const props = {
       key: gpu.uuid,
       gpuName: gpu.name,
@@ -15,29 +15,29 @@ export const NodeGRAM = ({ node }: { node: NodeDetail }) => {
       total: gpu.memoryTotal,
       slot: gpu.index,
     };
-    return <GRAMEntry {...props} />;
+    return <VRAMEntry {...props} />;
   });
   return (
     <div style={{ minWidth: 60 }}>
-      {nodeGRAMEntries.length === 0 ? (
+      {nodeVRAMEntries.length === 0 ? (
         <Typography color="textSecondary" component="span" variant="inherit">
           N/A
         </Typography>
       ) : (
-        <div style={{ minWidth: GRAM_COL_WIDTH }}>{nodeGRAMEntries}</div>
+        <div style={{ minWidth: VRAM_COL_WIDTH }}>{nodeVRAMEntries}</div>
       )}
     </div>
   );
 };
 
-export const WorkerGRAM = ({
+export const WorkerVRAM = ({
   workerPID,
   gpus,
 }: {
   workerPID: number | null;
   gpus?: GPUStats[];
 }) => {
-  const workerGRAMEntries = (gpus ?? [])
+  const workerVRAMEntries = (gpus ?? [])
     .map((gpu, i) => {
       const process = gpu.processesPids?.find(
         (process) => workerPID && process.pid === workerPID,
@@ -52,26 +52,26 @@ export const WorkerGRAM = ({
         utilization: process.gpuMemoryUsage,
         slot: gpu.index,
       };
-      return <GRAMEntry {...props} />;
+      return <VRAMEntry {...props} />;
     })
     .filter((entry) => entry !== undefined);
 
-  return workerGRAMEntries.length === 0 ? (
+  return workerVRAMEntries.length === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
       N/A
     </Typography>
   ) : (
-    <div style={{ minWidth: GRAM_COL_WIDTH }}>{workerGRAMEntries}</div>
+    <div style={{ minWidth: VRAM_COL_WIDTH }}>{workerVRAMEntries}</div>
   );
 };
 
-export const getSumGRAMUsage = (
+export const getSumVRAMUsage = (
   workerPID: number | null,
   gpus?: GPUStats[],
 ) => {
-  // Get sum of all GRAM usage values for this worker PID. This is an
-  // aggregate of WorkerGRAM and follows the same logic.
-  const workerGRAMEntries = (gpus ?? [])
+  // Get sum of all VRAM usage values for this worker PID. This is an
+  // aggregate of WorkerVRAM and follows the same logic.
+  const workerVRAMEntries = (gpus ?? [])
     .map((gpu, i) => {
       const process = gpu.processesPids?.find(
         (process) => workerPID && process.pid === workerPID,
@@ -82,20 +82,20 @@ export const getSumGRAMUsage = (
       return process.gpuMemoryUsage;
     })
     .filter((entry) => entry !== undefined);
-  return workerGRAMEntries.reduce((a, b) => a + b, 0);
+  return workerVRAMEntries.reduce((a, b) => a + b, 0);
 };
 
 const getMiBRatioNoPercent = (used: number, total: number) =>
   `${used}MiB/${total}MiB`;
 
-type GRAMEntryProps = {
+type VRAMEntryProps = {
   gpuName: string;
   slot: number;
   utilization: number;
   total: number;
 };
 
-const GRAMEntry: React.FC<GRAMEntryProps> = ({
+const VRAMEntry: React.FC<VRAMEntryProps> = ({
   gpuName,
   slot,
   utilization,
@@ -103,7 +103,7 @@ const GRAMEntry: React.FC<GRAMEntryProps> = ({
 }) => {
   const ratioStr = getMiBRatioNoPercent(utilization, total);
   return (
-    <Box display="flex" flexWrap="nowrap" style={{ minWidth: GRAM_COL_WIDTH }}>
+    <Box display="flex" flexWrap="nowrap" style={{ minWidth: VRAM_COL_WIDTH }}>
       <Tooltip title={gpuName}>
         <Box display="flex" flexWrap="nowrap" flexGrow={1}>
           <RightPaddedTypography variant="body1">
