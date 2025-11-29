@@ -92,6 +92,7 @@ ray_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//src/ray/common:ray_config",
+        "@nlohmann_json",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
     ],
