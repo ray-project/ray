@@ -322,6 +322,7 @@ class BatchMapTransformFn(MapTransformFn):
         batch_format: Optional[BatchFormat] = None,
         zero_copy_batch: bool = True,
         output_block_size_option: Optional[OutputBlockSizeOption] = None,
+        disable_block_shaping: bool = False,
     ):
         super().__init__(
             input_type=MapTransformFnDataType.Batch,
@@ -333,10 +334,11 @@ class BatchMapTransformFn(MapTransformFn):
         self._batch_format = batch_format
         self._zero_copy_batch = zero_copy_batch
         self._ensure_copy = not zero_copy_batch and batch_size is not None
+        self._disable_block_shaping = disable_block_shaping
 
         self._batch_fn = batch_fn
 
-    def _pre_process(self, blocks: Iterable[Block]) -> Iterable[MapTransformFnData]:
+    def _pre_process(self, blocks: Iterable[Block]) -> Iterable[DataBatch]:
         # TODO make batch-udf zero-copy by default
         ensure_copy = not self._zero_copy_batch and self._batch_size is not None
 
@@ -349,12 +351,16 @@ class BatchMapTransformFn(MapTransformFn):
         )
 
     def _apply_transform(
-        self, ctx: TaskContext, batches: Iterable[MapTransformFnData]
-    ) -> Iterable[MapTransformFnData]:
+        self, ctx: TaskContext, batches: Iterable[DataBatch]
+    ) -> Iterable[DataBatch]:
         yield from self._batch_fn(batches, ctx)
 
-    def _post_process(self, results: Iterable[MapTransformFnData]) -> Iterable[Block]:
-        return self._shape_blocks(results)
+    def _post_process(self, results: Iterable[DataBatch]) -> Iterable[Block]:
+        if self._disable_block_shaping:
+            for batch in results:
+                yield BlockAccessor.batch_to_block(batch)
+        else:
+            yield from self._shape_blocks(results)
 
     def __repr__(self) -> str:
         return f"BatchMapTransformFn({self._batch_fn=}, {self._batch_format=}, {self._batch_size=}, {self._zero_copy_batch=})"
