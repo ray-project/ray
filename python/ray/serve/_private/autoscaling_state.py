@@ -234,21 +234,15 @@ class DeploymentAutoscalingState:
 
         return self.apply_bounds(decision_num_replicas)
 
-    def get_autoscaling_context(self, curr_target_num_replicas):
-        total_num_requests = self.get_total_num_requests()
-        total_queued_requests = self._get_queued_requests()
-        # NOTE: for non additive aggregation functions, total_running_requests is not
-        # accurate, consider this is a approximation.
-        total_running_requests = total_num_requests - total_queued_requests
-
-        autoscaling_context: AutoscalingContext = AutoscalingContext(
+    def get_autoscaling_context(self, curr_target_num_replicas) -> AutoscalingContext:
+        return AutoscalingContext(
             deployment_id=self._deployment_id,
             deployment_name=self._deployment_id.name,
             app_name=self._deployment_id.app_name,
             current_num_replicas=len(self._running_replicas),
             target_num_replicas=curr_target_num_replicas,
             running_replicas=self._running_replicas,
-            total_num_requests=total_num_requests,
+            total_num_requests=self.get_total_num_requests,
             capacity_adjusted_min_replicas=self.get_num_replicas_lower_bound(),
             capacity_adjusted_max_replicas=self.get_num_replicas_upper_bound(),
             policy_state=(
@@ -256,15 +250,12 @@ class DeploymentAutoscalingState:
             ),
             current_time=time.time(),
             config=self._config,
-            total_queued_requests=total_queued_requests,
-            total_running_requests=total_running_requests,
-            aggregated_metrics=self._get_aggregated_custom_metrics(),
-            raw_metrics=self._get_raw_custom_metrics(),
+            total_queued_requests=self._get_queued_requests,
+            aggregated_metrics=self._get_aggregated_custom_metrics,
+            raw_metrics=self._get_raw_custom_metrics,
             last_scale_up_time=None,
             last_scale_down_time=None,
         )
-
-        return autoscaling_context
 
     def _collect_replica_running_requests(self) -> List[TimeSeries]:
         """Collect running requests timeseries from replicas for aggregation.

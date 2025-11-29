@@ -1,6 +1,6 @@
 # @OldAPIStack
 # Given a SAC-generated offline file generated via:
-# rllib train -f tuned_examples/sac/pendulum-sac.yaml --no-ray-ui
+# rllib train -f examples/algorithms/sac/pendulum-sac.yaml --no-ray-ui
 
 # Pendulum CQL can attain ~ -300 reward in 10k from that file.
 pendulum-cql:

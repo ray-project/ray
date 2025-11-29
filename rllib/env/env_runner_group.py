@@ -1282,9 +1282,8 @@ class EnvRunnerGroup:
             .remote(**kwargs)
         )
 
-    @classmethod
-    def _valid_module(cls, class_path):
-        del cls
+    @staticmethod
+    def _valid_module(class_path):
         if (
             isinstance(class_path, str)
             and not os.path.isfile(class_path)
@@ -1295,9 +1294,8 @@ class EnvRunnerGroup:
                 spec = importlib.util.find_spec(module_path)
                 if spec is not None:
                     return True
-            except (ModuleNotFoundError, ValueError):
-                print(
-                    f"module {module_path} not found while trying to get "
-                    f"input {class_path}"
+            except (ModuleNotFoundError, ValueError) as e:
+                logger.warning(
+                    f"module {module_path} not found using input {class_path} with error: {e}"
                 )
         return False

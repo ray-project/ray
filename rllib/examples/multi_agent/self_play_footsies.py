@@ -2,14 +2,14 @@
 Multi-agent RLlib Footsies Simplified Example (PPO)
 
 About:
-    - This example as a simplified version of "rllib/tuned_examples/ppo/multi_agent_footsies_ppo.py",
+    - This example as a simplified version of "rllib/examples/ppo/multi_agent_footsies_ppo.py",
       which has more detailed comments and instructions. Please refer to that example for more information.
     - This example is created to test the self-play training progression with footsies.
     - Simplified version runs with single learner (cpu), single env runner, and single eval env runner.
 """
 from pathlib import Path
 
-from ray.rllib.tuned_examples.ppo.multi_agent_footsies_ppo import (
+from ray.rllib.examples.algorithms.ppo.multi_agent_footsies_ppo import (
     config,
     env_creator,
     stop,
