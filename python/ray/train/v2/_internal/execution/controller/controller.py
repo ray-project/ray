@@ -67,6 +67,7 @@ from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.exceptions import (
     ControllerError,
     TrainingFailedError,
+    WorkerGroupError,
 )
 from ray.train.v2.api.report_config import CheckpointConsistencyMode
 from ray.train.v2.api.result import Result
@@ -186,7 +187,18 @@ class TrainController:
             callback.before_controller_execute_resize_decision(decision)
 
         if self._worker_group:
-            self._shutdown_worker_group()
+            optional_worker_group_error = self._shutdown_worker_group()
+            if optional_worker_group_error:
+                failure_decision = self._failure_policy.make_decision(
+                    training_failed_error=optional_worker_group_error,
+                )
+                return self._execute_failure_decision(
+                    failure_decision,
+                    training_failed_error=optional_worker_group_error,
+                    # Worker Group Shutdown failures during resize come from a running worker group,
+                    # so treat them as running failures to trigger a restart instead of rescheduling.
+                    failure_context_state=RunningState(),
+                )
 
         optional_controller_error = self._start_worker_group(
             num_workers=decision.num_workers,
@@ -226,10 +238,12 @@ class TrainController:
         self,
         failure_decision: FailureDecision,
         training_failed_error: TrainingFailedError,
+        failure_context_state: Optional[TrainControllerState] = None,
     ) -> TrainControllerLoopIterationResult:
         """Executes failure handling decisions for a scheduling or poll error."""
 
         controller_state = self.get_state()
+        context_state = failure_context_state or controller_state
 
         for callback in self._controller_callbacks:
             callback.before_controller_execute_failure_decision(failure_decision)
@@ -245,19 +259,29 @@ class TrainController:
             )
 
         if failure_decision == FailureDecision.RETRY:
-            return TrainControllerLoopIterationResult(
-                run_attempt_id=self._get_run_attempt_id(),
-                previous_state=controller_state,
-                next_state=self._get_retry_state(
-                    controller_state, training_failed_error
-                ),
-            )
+            if isinstance(context_state, ShuttingDownState):
+                logger.warning(
+                    "Ignoring RETRY failure decision while in ShuttingDownState; "
+                    "escalating to RAISE."
+                )
+                failure_decision = FailureDecision.RAISE
+            else:
+                return TrainControllerLoopIterationResult(
+                    run_attempt_id=self._get_run_attempt_id(),
+                    previous_state=controller_state,
+                    next_state=self._get_retry_state(
+                        context_state, training_failed_error
+                    ),
+                )
         elif failure_decision == FailureDecision.RAISE:
-            next_state = ShuttingDownState(
-                next_state=ErroredState(
-                    training_failed_error=training_failed_error,
-                ),
+            errored_state = ErroredState(
+                training_failed_error=training_failed_error,
             )
+            if isinstance(controller_state, ShuttingDownState):
+                # If the error occurs during shutdown, propagate the error immediately to errored state.
+                next_state = errored_state
+            else:
+                next_state = ShuttingDownState(next_state=errored_state)
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
@@ -338,17 +362,24 @@ class TrainController:
         for callback in self._controller_callbacks:
             callback.after_controller_start(self._train_run_context)
 
-    def _shutdown(self):
+    def _shutdown(self) -> Optional[WorkerGroupError]:
         if self._worker_group:
-            self._shutdown_worker_group()
+            optional_worker_group_error = self._shutdown_worker_group()
+            if optional_worker_group_error:
+                return optional_worker_group_error
 
         for callback in self._controller_callbacks:
             callback.before_controller_shutdown()
 
-    def _shutdown_worker_group(self):
+    def _shutdown_worker_group(self) -> Optional[WorkerGroupError]:
         """Shutdown the worker group and set the worker group to None."""
-        self._worker_group.shutdown()
-        self._worker_group = None
+        try:
+            self._worker_group.shutdown()
+            self._worker_group = None
+            return None
+        except Exception as e:
+            self._worker_group = None
+            return WorkerGroupError(error_message=str(e), worker_failures={})
 
     def get_worker_group(self) -> Optional[WorkerGroup]:
         return self._worker_group
@@ -475,7 +506,15 @@ class TrainController:
             )
         elif isinstance(controller_state, ShuttingDownState):
             # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
-            self._shutdown()
+            optional_worker_group_error = self._shutdown()
+            if optional_worker_group_error:
+                failure_decision = self._failure_policy.make_decision(
+                    training_failed_error=optional_worker_group_error,
+                )
+                return self._execute_failure_decision(
+                    failure_decision,
+                    training_failed_error=optional_worker_group_error,
+                )
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
