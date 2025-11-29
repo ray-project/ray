@@ -908,6 +908,14 @@ class ReporterAgent(
             logger.exception("Failed to get worker pids from raylet")
             return []
 
+    async def _async_get_agent_pids_from_raylet(self) -> List[int]:
+        try:
+            # Get agents pids from raylet via gRPC.
+            return await self._raylet_client.async_get_agent_pids()
+        except (GetTimeoutError, RpcError):
+            logger.exception("Failed to get agents pids from raylet")
+            return []
+
     def _get_agent_proc(self) -> psutil.Process:
         # Agent is the current process.
         # This method is not necessary, but we have it for mock testing.
@@ -931,8 +939,25 @@ class ReporterAgent(
                 continue
         return workers
 
+    async def _async_get_agent_processes(self):
+        pids = await self._async_get_agent_pids_from_raylet()
+        logger.info(f"Agent PIDs from raylet: {pids}")
+        if not pids:
+            return []
+        agents = {}
+        for pid in pids:
+            try:
+                proc = psutil.Process(pid)
+                agents[self._generate_worker_key(proc)] = proc
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                logger.error(f"Failed to access worker process {pid}")
+                continue
+        return agents
+
     async def _async_get_workers(self, gpus: Optional[List[GpuUtilizationInfo]] = None):
         workers = await self._async_get_worker_processes()
+        agents = await self._async_get_agent_processes()
+        workers += agents
         if not workers:
             return []
         else:
