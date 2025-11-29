@@ -574,6 +574,11 @@ class Worker:
         return self.core_worker.get_current_node_id()
 
     @property
+    def current_temp_dir(self):
+        self.check_connected()
+        return self.node.temp_dir
+
+    @property
     def task_depth(self):
         return self.core_worker.get_task_depth()
 
@@ -1559,7 +1564,9 @@ def init(
         runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
         object_spilling_directory: The path to spill objects to. The same path will
-            be used as the object store fallback directory as well.
+            be used as the object store fallback directory as well. Defaults to the node's session dir.
+            If head node specifies an object spilling directory, and this node doesn't specify one,
+            use the head node's object spilling directory.
         enable_resource_isolation: Enable resource isolation through cgroupv2 by reserving
             memory and cpu resources for ray system processes. To use, only cgroupv2 (not cgroupv1)
             must be enabled with read and write permissions for the raylet. Cgroup memory and
@@ -1586,6 +1593,10 @@ def init(
             thrown.
         _plasma_directory: Override the plasma mmap file directory.
         _node_ip_address: The IP address of the node that we are on.
+            Note: If attempting to connect a driver process to a non-head
+            node with a custom node ip address, the custom node ip address must
+            be specified in the _node_ip_address argument. Otherwise, the behavior
+            is unsupported.
         _driver_object_store_memory: Deprecated.
         _memory: Amount of reservable memory resource in bytes rounded
             down to the nearest integer.
@@ -1595,7 +1606,11 @@ def init(
             from connecting to Redis if provided.
         _temp_dir: If provided, specifies the root temporary
             directory for the Ray process. Must be an absolute path. Defaults to an
-            OS-specific conventional location, e.g., "/tmp/ray".
+            OS-specific conventional location, e.g., "/tmp/ray" for head node, and
+            head node's temp dir for worker node.
+            Note: If attempting to connect a driver process to a non-head
+            node with a custom temp dir, the custom temp dir must be specified
+            in the _temp_dir argument. Otherwise, the behavior is unsupported.
         _metrics_export_port: Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
