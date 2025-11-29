@@ -2,7 +2,10 @@ import dataclasses
 import logging
 import threading
 from contextlib import nullcontext
-from typing import Any, Callable, Iterator, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Iterator, List, Optional, Tuple, Union
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
 
 import ray
 from ray.actor import ActorHandle
@@ -43,27 +46,67 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
 def resolve_block_refs(
     block_ref_iter: Iterator[ObjectRef[Block]],
     stats: Optional[DatasetStats] = None,
+    max_get_batch_size: Optional[Union[int, Callable[[], int]]] = None,
+    ctx: Optional["DataContext"] = None,
 ) -> Iterator[Block]:
     """Resolves the block references for each logical batch.
 
     Args:
         block_ref_iter: An iterator over block object references.
         stats: An optional stats object to recording block hits and misses.
+        max_get_batch_size: Maximum number of block references to resolve in a
+            single ``ray.get()`` call. This can be an integer override or a callable
+            that returns the desired batch size dynamically. If ``None``, defaults to
+            ``DataContext.get_current().iter_get_block_batch_size``.
+        ctx: Optional ``DataContext`` to use. If ``None``, the current context is
+            fetched.
     """
     hits = 0
     misses = 0
     unknowns = 0
 
-    for block_ref in block_ref_iter:
-        current_hit, current_miss, current_unknown = _calculate_ref_hits([block_ref])
-        hits += current_hit
-        misses += current_miss
-        unknowns += current_unknown
+    if ctx is None:
+        ctx = ray.data.context.DataContext.get_current()
 
-        # TODO(amogkam): Optimized further by batching multiple references in a single
-        # `ray.get()` call.
+    def _get_effective_batch_size() -> int:
+        override: Optional[int]
+        if callable(max_get_batch_size):
+            override = max_get_batch_size()
+        else:
+            override = max_get_batch_size
+
+        candidate = override if override is not None else ctx.iter_get_block_batch_size
+        return max(1, candidate)
+
+    pending: List[ObjectRef[Block]] = []
+
+    def _resolve_pending() -> List[Block]:
+        nonlocal hits, misses, unknowns, pending
+        if not pending:
+            return []
+
+        current_hit, current_miss, current_unknown = _calculate_ref_hits(pending)
+        if current_hit == current_miss == current_unknown == -1:
+            hits = misses = unknowns = -1
+        elif hits != -1:
+            hits += current_hit
+            misses += current_miss
+            unknowns += current_unknown
+
         with stats.iter_get_s.timer() if stats else nullcontext():
-            block = ray.get(block_ref)
+            blocks = ray.get(pending)
+
+        pending.clear()
+
+        return blocks
+
+    for block_ref in block_ref_iter:
+        pending.append(block_ref)
+        if len(pending) >= _get_effective_batch_size():
+            for block in _resolve_pending():
+                yield block
+
+    for block in _resolve_pending():
         yield block
 
     if stats:
@@ -223,6 +266,7 @@ class WaitBlockPrefetcher(BlockPrefetcher):
     def __init__(self):
         self._blocks = []
         self._stopped = False
+        self._last_prefetch_size = 0
         self._condition = threading.Condition()
         self._thread = threading.Thread(
             target=self._run,
@@ -261,7 +305,12 @@ class WaitBlockPrefetcher(BlockPrefetcher):
             if self._stopped:
                 raise RuntimeError("Prefetcher is stopped.")
             self._blocks = blocks
+            self._last_prefetch_size = len(blocks)
             self._condition.notify()
+
+    def num_prefetched_blocks(self) -> int:
+        with self._condition:
+            return self._last_prefetch_size
 
     def stop(self):
         with self._condition:
@@ -279,6 +328,7 @@ class ActorBlockPrefetcher(BlockPrefetcher):
 
     def __init__(self):
         self.prefetch_actor = self._get_or_create_actor_prefetcher()
+        self._last_prefetch_size = 0
 
     @staticmethod
     def _get_or_create_actor_prefetcher() -> "ActorHandle":
@@ -292,7 +342,11 @@ class ActorBlockPrefetcher(BlockPrefetcher):
         ).remote()
 
     def prefetch_blocks(self, blocks: List[ObjectRef[Block]]):
+        self._last_prefetch_size = len(blocks)
         self.prefetch_actor.prefetch.remote(*blocks)
+
+    def num_prefetched_blocks(self) -> int:
+        return self._last_prefetch_size
 
 
 @ray.remote(num_cpus=0)
