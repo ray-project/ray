@@ -402,6 +402,182 @@ def test_batching_request_context(serve_instance):
     ), f"Expected 6 unique request IDs, got {len(request_ids_in_batch_context)}"
 
 
+def test_batch_size_fn_simple(serve_instance):
+    """Test batch_size_fn with a simple custom batch size metric."""
+
+    @serve.deployment
+    class BatchSizeFnExample:
+        def __init__(self):
+            self.batches_received = []
+
+        @serve.batch(
+            max_batch_size=100,  # Set based on total size, not count
+            batch_wait_timeout_s=0.5,
+            batch_size_fn=lambda items: sum(item["size"] for item in items),
+        )
+        async def handle_batch(self, requests: List):
+            # Record the batch for verification
+            self.batches_received.append(requests)
+            # Return results
+            return [req["value"] * 2 for req in requests]
+
+        async def __call__(self, request):
+            return await self.handle_batch(request)
+
+        def get_batches(self):
+            return self.batches_received
+
+    handle = serve.run(BatchSizeFnExample.bind())
+
+    # Send requests with different sizes
+    # Request 1: size=30, value=1
+    # Request 2: size=40, value=2
+    # Request 3: size=20, value=3
+    # Request 4: size=25, value=4
+    # Total of first 3 = 90 (< 100), but adding 4th would be 115 (> 100)
+    requests = [
+        {"size": 30, "value": 1},
+        {"size": 40, "value": 2},
+        {"size": 20, "value": 3},
+        {"size": 25, "value": 4},
+    ]
+
+    result_futures = [handle.remote(req) for req in requests]
+    results = [future.result() for future in result_futures]
+
+    # Verify results are correct
+    assert results == [2, 4, 6, 8]
+
+    # Verify batching behavior
+    batches = handle.get_batches.remote().result()
+    # Should have created at least one batch
+    assert len(batches) > 0
+
+
+def test_batch_size_fn_graph_nodes(serve_instance):
+    """Test batch_size_fn with a GNN-style use case (batching by total nodes)."""
+
+    class Graph:
+        def __init__(self, num_nodes: int, graph_id: int):
+            self.num_nodes = num_nodes
+            self.graph_id = graph_id
+
+    @serve.deployment
+    class GraphBatcher:
+        def __init__(self):
+            self.batch_sizes = []
+
+        @serve.batch(
+            max_batch_size=100,  # Max 100 nodes per batch
+            batch_wait_timeout_s=0.5,
+            batch_size_fn=lambda graphs: sum(g.num_nodes for g in graphs),
+        )
+        async def process_graphs(self, graphs: List[Graph]):
+            # Record batch size (total nodes)
+            total_nodes = sum(g.num_nodes for g in graphs)
+            self.batch_sizes.append(total_nodes)
+            # Return graph_id * num_nodes as result
+            return [g.graph_id * g.num_nodes for g in graphs]
+
+        async def __call__(self, graph):
+            return await self.process_graphs(graph)
+
+        def get_batch_sizes(self):
+            return self.batch_sizes
+
+    handle = serve.run(GraphBatcher.bind())
+
+    # Create graphs with different node counts
+    # Graph 1: 30 nodes, Graph 2: 40 nodes, Graph 3: 35 nodes, Graph 4: 50 nodes
+    # First 3 total = 105 nodes (> 100), so should be 2 batches
+    graphs = [
+        Graph(num_nodes=30, graph_id=1),
+        Graph(num_nodes=40, graph_id=2),
+        Graph(num_nodes=35, graph_id=3),
+        Graph(num_nodes=50, graph_id=4),
+    ]
+
+    result_futures = [handle.remote(g) for g in graphs]
+    results = [future.result() for future in result_futures]
+
+    # Verify results
+    assert results == [30, 80, 105, 200]
+
+    # Verify batch sizes respect the limit
+    batch_sizes = handle.get_batch_sizes.remote().result()
+    for batch_size in batch_sizes:
+        # Each batch should have <= 100 nodes
+        assert batch_size <= 100, f"Batch size {batch_size} exceeds limit of 100"
+
+
+def test_batch_size_fn_token_count(serve_instance):
+    """Test batch_size_fn with an NLP-style use case (batching by total tokens)."""
+
+    @serve.deployment
+    class TokenBatcher:
+        @serve.batch(
+            max_batch_size=1000,  # Max 1000 tokens per batch
+            batch_wait_timeout_s=0.5,
+            batch_size_fn=lambda sequences: sum(len(s.split()) for s in sequences),
+        )
+        async def process_sequences(self, sequences: List[str]):
+            # Return word count for each sequence
+            return [len(s.split()) for s in sequences]
+
+        async def __call__(self, sequence):
+            return await self.process_sequences(sequence)
+
+    handle = serve.run(TokenBatcher.bind())
+
+    # Create sequences with different token counts
+    sequences = [
+        "This is a short sequence",  # 5 tokens
+        "This is a much longer sequence with many more words in it",  # 12 tokens
+        "Short",  # 1 token
+        "A B C D E F G H I J",  # 10 tokens
+    ]
+
+    result_futures = [handle.remote(s) for s in sequences]
+    results = [future.result() for future in result_futures]
+
+    # Verify results are correct
+    assert results == [5, 12, 1, 10]
+
+
+def test_batch_size_fn_validation():
+    """Test that batch_size_fn validation works correctly."""
+    from ray.serve.batching import batch
+
+    # Test with non-callable batch_size_fn
+    with pytest.raises(TypeError, match="batch_size_fn must be a callable or None"):
+
+        @batch(batch_size_fn="not_a_function")
+        async def my_batch_handler(items):
+            return items
+
+
+def test_batch_size_fn_default_behavior(serve_instance):
+    """Test that default behavior (batch_size_fn=None) still works as expected."""
+
+    @serve.deployment
+    class DefaultBatcher:
+        @serve.batch(max_batch_size=5, batch_wait_timeout_s=0.5)
+        async def handle_batch(self, requests):
+            return [r * 2 for r in requests]
+
+        async def __call__(self, request):
+            return await self.handle_batch(request)
+
+    handle = serve.run(DefaultBatcher.bind())
+
+    # Send 10 requests
+    result_futures = [handle.remote(i) for i in range(10)]
+    results = [future.result() for future in result_futures]
+
+    # Verify all results are correct
+    assert results == [i * 2 for i in range(10)]
+
+
 if __name__ == "__main__":
     import sys
 

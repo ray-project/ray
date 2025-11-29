@@ -109,6 +109,7 @@ class _BatchQueue:
         batch_wait_timeout_s: float,
         max_concurrent_batches: int,
         handle_batch_func: Optional[Callable] = None,
+        batch_size_fn: Optional[Callable[[List], int]] = None,
     ) -> None:
         """Async queue that accepts individual items and returns batches.
 
@@ -128,11 +129,18 @@ class _BatchQueue:
             max_concurrent_batches: max number of batches to run concurrently.
             handle_batch_func(Optional[Callable]): callback to run in the
                 background to handle batches if provided.
+            batch_size_fn(Optional[Callable[[List], int]]): optional function to
+                compute the effective batch size. If None, uses len(batch).
+                The function takes a list of requests and returns an integer
+                representing the batch size. This is useful for batching based
+                on custom metrics such as total nodes in graphs, total tokens
+                in sequences, etc.
         """
         self.queue: asyncio.Queue[_SingleRequest] = asyncio.Queue()
         self.max_batch_size = max_batch_size
         self.batch_wait_timeout_s = batch_wait_timeout_s
         self.max_concurrent_batches = max_concurrent_batches
+        self.batch_size_fn = batch_size_fn
         self.semaphore = asyncio.Semaphore(max_concurrent_batches)
         self.requests_available_event = asyncio.Event()
         self.tasks: Set[asyncio.Task] = set()
@@ -174,6 +182,23 @@ class _BatchQueue:
         self.queue.put_nowait(request)
         self.requests_available_event.set()
 
+    def _compute_batch_size(self, batch: List[_SingleRequest]) -> int:
+        """Compute the effective batch size using batch_size_fn or len()."""
+        if self.batch_size_fn is None:
+            return len(batch)
+
+        # Extract the actual data items from requests to pass to batch_size_fn.
+        # We need to reconstruct the original arguments from flattened_args.
+        items = []
+        for request in batch:
+            # Recover the original arguments from flattened format
+            args, kwargs = recover_args(request.flattened_args)
+            # The batch function expects a single positional argument (the item)
+            # after 'self' has been extracted (if it was a method)
+            items.append(args[0])
+
+        return self.batch_size_fn(items)
+
     async def wait_for_batch(self) -> List[_SingleRequest]:
         """Wait for batch respecting self.max_batch_size and self.timeout_s.
 
@@ -207,8 +232,31 @@ class _BatchQueue:
                 pass
 
             # Add all new arrivals to the batch.
-            while len(batch) < max_batch_size and not self.queue.empty():
-                batch.append(self.queue.get_nowait())
+            # Track items we need to put back if they don't fit
+            deferred_item = None
+
+            # Custom batch size function logic
+            if self.batch_size_fn is not None:
+                while not self.queue.empty():
+                    next_item = self.queue.get_nowait()
+                    # Temporarily add to check size
+                    batch.append(next_item)
+                    new_size = self._compute_batch_size(batch)
+
+                    if new_size > max_batch_size:
+                        # Would exceed limit, remove it and save for later
+                        batch.pop()
+                        deferred_item = next_item
+                        break
+                    # Size is OK, keep it in the batch (already added above)
+            else:
+                # Default behavior: use original len() check logic
+                while len(batch) < max_batch_size and not self.queue.empty():
+                    batch.append(self.queue.get_nowait())
+
+            # Put deferred item back in queue for next batch
+            if deferred_item is not None:
+                self.queue.put_nowait(deferred_item)
 
             # Only clear the put event if the queue is empty. If it's not empty
             # we can start constructing a new batch immediately in the next loop.
@@ -219,9 +267,10 @@ class _BatchQueue:
             if self.queue.empty():
                 self.requests_available_event.clear()
 
+            current_batch_size = self._compute_batch_size(batch)
             if (
                 time.time() - batch_start_time >= batch_wait_timeout_s
-                or len(batch) >= max_batch_size
+                or current_batch_size >= max_batch_size
             ):
                 break
 
@@ -409,12 +458,14 @@ class _LazyBatchQueueWrapper:
         batch_wait_timeout_s: float = 0.0,
         max_concurrent_batches: int = 1,
         handle_batch_func: Optional[Callable] = None,
+        batch_size_fn: Optional[Callable[[List], int]] = None,
     ):
         self._queue: Optional[_BatchQueue] = None
         self.max_batch_size = max_batch_size
         self.batch_wait_timeout_s = batch_wait_timeout_s
         self.max_concurrent_batches = max_concurrent_batches
         self.handle_batch_func = handle_batch_func
+        self.batch_size_fn = batch_size_fn
 
     @property
     def queue(self) -> _BatchQueue:
@@ -428,6 +479,7 @@ class _LazyBatchQueueWrapper:
                 self.batch_wait_timeout_s,
                 self.max_concurrent_batches,
                 self.handle_batch_func,
+                self.batch_size_fn,
             )
         return self._queue
 
@@ -516,6 +568,13 @@ def _validate_max_concurrent_batches(max_concurrent_batches: int) -> None:
         )
 
 
+def _validate_batch_size_fn(batch_size_fn: Optional[Callable[[List], int]]) -> None:
+    if batch_size_fn is not None and not callable(batch_size_fn):
+        raise TypeError(
+            f"batch_size_fn must be a callable or None, got {type(batch_size_fn)}"
+        )
+
+
 SelfType = TypeVar("SelfType", contravariant=True)
 T = TypeVar("T")
 R = TypeVar("R")
@@ -564,6 +623,7 @@ def batch(
     max_batch_size: int = 10,
     batch_wait_timeout_s: float = 0.01,
     max_concurrent_batches: int = 1,
+    batch_size_fn: Optional[Callable[[List], int]] = None,
 ) -> "_BatchDecorator":
     ...
 
@@ -601,6 +661,7 @@ def batch(
     max_batch_size: int = 10,
     batch_wait_timeout_s: float = 0.01,
     max_concurrent_batches: int = 1,
+    batch_size_fn: Optional[Callable[[List], int]] = None,
 ) -> Callable:
     """Converts a function to asynchronously handle batches.
 
@@ -652,6 +713,12 @@ def batch(
             executed concurrently. If the number of concurrent batches exceeds
             this limit, the batch handler will wait for a batch to complete
             before sending the next batch to the underlying function.
+        batch_size_fn: optional function to compute the effective batch size.
+            If provided, this function takes a list of items and returns an
+            integer representing the batch size. This is useful for batching
+            based on custom metrics such as total nodes in graphs, total tokens
+            in sequences, or other domain-specific measures. If None, the batch
+            size is computed as len(batch).
     """
     # `_func` will be None in the case when the decorator is parametrized.
     # See the comment at the end of this function for a detailed explanation.
@@ -667,6 +734,7 @@ def batch(
     _validate_max_batch_size(max_batch_size)
     _validate_batch_wait_timeout_s(batch_wait_timeout_s)
     _validate_max_concurrent_batches(max_concurrent_batches)
+    _validate_batch_size_fn(batch_size_fn)
 
     def _batch_decorator(_func):
         lazy_batch_queue_wrapper = _LazyBatchQueueWrapper(
@@ -674,6 +742,7 @@ def batch(
             batch_wait_timeout_s,
             max_concurrent_batches,
             _func,
+            batch_size_fn,
         )
 
         async def batch_handler_generator(
