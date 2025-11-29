@@ -41,13 +41,12 @@ class DeepSpeedInferenceWorker:
         self.model_config = AutoConfig.from_pretrained(
             model_id_or_path,
             torch_dtype=torch.bfloat16,
-            token="",
             trust_remote_code=False,
         )
 
         # Load and configure the tokenizer.
         self.tokenizer = AutoTokenizer.from_pretrained(
-            model_id_or_path, use_fast=False, token=""
+            model_id_or_path, use_fast=False
         )
         self.tokenizer.padding_side = "left"
         if self.tokenizer.pad_token is None:
@@ -82,7 +81,7 @@ class DeepSpeedInferenceWorker:
         # Create a file to indicate where the checkpoint is.
         checkpoints_json = tempfile.NamedTemporaryFile(suffix=".json", mode="w+")
         write_checkpoints_json(
-            self.model_id_or_path, self._local_rank, checkpoints_json, token=""
+            self.model_id_or_path, self._local_rank, checkpoints_json
         )
 
         # Prepare the DeepSpeed inference configuration.
@@ -171,10 +170,11 @@ class RayTextIteratorStreamer(TextStreamer):
 # __deploy_def_start__
 # We need to set these variables for this example.
 HABANA_ENVS = {
+    "PT_HPU_LAZY_MODE": "1",
     "PT_HPU_LAZY_ACC_PAR_MODE": "0",
     "PT_HPU_ENABLE_REFINE_DYNAMIC_SHAPES": "0",
     "PT_HPU_ENABLE_WEIGHT_CPU_PERMUTE": "0",
-    "PT_HPU_ENABLE_LAZY_COLLECTIVES": "true",
+    "PT_HPU_ENABLE_LAZY_COLLECTIVES": "1",
     "HABANA_VISIBLE_MODULES": "0,1,2,3,4,5,6,7",
 }
 
