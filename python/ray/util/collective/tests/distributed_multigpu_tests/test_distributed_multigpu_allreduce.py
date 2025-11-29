@@ -1,4 +1,4 @@
-"""Test the collective allreduice API on a distributed Ray cluster."""
+"""Test the collective allreduce API on a distributed Ray cluster."""
 import logging
 
 import cupy as cp

@@ -104,3 +104,31 @@ def ray_start_distributed_2_nodes():
 def shutdown_only():
     yield None
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_single_node_2_npus():
+    # Please start this fixture in a cluster with 2 NPUs.
+    address_info = ray.init(resources={"NPU": 2})
+    yield address_info
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_distributed_2_nodes_4_npus():
+    # The cluster has a setup of 2 nodes, each node with 2
+    # NPUs. Each actor will be allocated 1 NPU.
+    ray.init("auto")
+    yield
+    clean_up()
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_distributed_multinpu_2_nodes_4_npus():
+    # The cluster has a setup of 2 nodes, each node with 2
+    # NPUs. Each actor will be allocated 2 NPUs.
+    ray.init("auto")
+    yield
+    clean_up()
+    ray.shutdown()

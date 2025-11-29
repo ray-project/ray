@@ -46,6 +46,13 @@ try:
 except ImportError:
     _NIXL_AVAILABLE = False
 
+try:
+    from ray.util.collective.collective_group.hccl_collective_group import HCCLGroup
+
+    _HCCL_AVAILABLE = True
+except ImportError:
+    _HCCL_AVAILABLE = False
+
 
 def nccl_available():
     global _LOG_NCCL_WARNING
@@ -71,6 +78,10 @@ def torch_distributed_available():
 
 def nixl_available():
     return _NIXL_AVAILABLE
+
+
+def hccl_available():
+    return _HCCL_AVAILABLE
 
 
 class GroupManager(object):
@@ -128,6 +139,31 @@ class GroupManager(object):
             _check_backend_availability(backend)
             logger.debug("Creating NIXL Backend: '{}'...".format(group_name))
             g = NixlBackend()
+        elif backend == types.Backend.HCCL:
+            # Rendezvous: ensure a MASTER_ADDR:MASTER_PORT is published in internal_kv.
+            metadata_key = _get_master_addr_key(group_name)
+            if rank == 0:
+                addr, port = _get_address_and_port()
+                _internal_kv._internal_kv_put(metadata_key, f"{addr}:{port}")
+            else:
+                # Wait until rank 0 publishes the metadata or timeout.
+                deadline_s = time.time() + (
+                    gloo_timeout / 1000.0 if gloo_timeout else 30.0
+                )
+                while True:
+                    meta = _internal_kv._internal_kv_get(metadata_key)
+                    if meta is not None:
+                        break
+                    if time.time() > deadline_s:
+                        raise TimeoutError(
+                            f"Timed out waiting for HCCL rendezvous metadata for group '{group_name}'."
+                        )
+                    time.sleep(0.05)
+
+            logger.debug(
+                "Creating torch.distributed HCCL group: '{}'...".format(group_name)
+            )
+            g = HCCLGroup(world_size, rank, group_name)
         else:
             raise RuntimeError(f"Unexpected backend: {backend}")
 
@@ -837,6 +873,9 @@ def _check_backend_availability(backend: types.Backend):
     elif backend == types.Backend.NIXL:
         if not nixl_available():
             raise RuntimeError("NIXL is not available.")
+    elif backend == types.Backend.HCCL:
+        if not hccl_available():
+            raise RuntimeError("HCCL is not available.")
 
 
 def _check_inside_actor():
