@@ -266,6 +266,31 @@ Ray tasks can be canceled by calling :func:`ray.cancel() <ray.cancel>` on the re
             :start-after: __cancel_start__
             :end-before: __cancel_end__
 
+When a task is cancelled, the worker process receives a ``KeyboardInterrupt`` signal.
+By default, this kills the worker process immediately. However, you can handle the
+``KeyboardInterrupt`` exception to perform cleanup operations before the task exits.
+
+Detecting cancellation in running tasks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can check whether a cancellation has been requested by calling
+``ray.get_runtime_context().is_canceled()`` within a ``KeyboardInterrupt`` exception handler.
+This allows tasks to detect cancellation and perform cleanup operations before exiting gracefully.
+
+.. tab-set::
+
+    .. tab-item:: Python
+
+        .. literalinclude:: doc_code/tasks.py
+            :language: python
+            :start-after: __cancel_graceful_start__
+            :end-before: __cancel_graceful_end__
+
+**Important notes:**
+
+- ``is_canceled()`` only works within a ``KeyboardInterrupt`` exception handler for normal tasks.
+- Without handling ``KeyboardInterrupt``, the worker process is killed immediately when cancelled.
+
 
 Scheduling
 ----------

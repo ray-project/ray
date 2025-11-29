@@ -109,6 +109,35 @@ except ray.exceptions.TaskCancelledError:
     print("Object reference was cancelled.")
 # __cancel_end__
 
+# __cancel_graceful_start__
+@ray.remote
+def long_running_task():
+    """A task that handles cancellation via KeyboardInterrupt."""
+    try:
+        for i in range(1000):
+            time.sleep(0.01)
+        return "completed"
+    except KeyboardInterrupt:
+        # For normal tasks, is_canceled() only works within KeyboardInterrupt handler
+        if ray.get_runtime_context().is_canceled():
+            print("Task canceled, cleaning up...")
+            return "canceled"
+        raise
+
+
+# Start the task
+obj_ref = long_running_task.remote()
+# Cancel it
+ray.cancel(obj_ref)
+
+# The task will detect cancellation in the KeyboardInterrupt handler
+try:
+    result = ray.get(obj_ref)
+    print(f"Task result: {result}")
+except ray.exceptions.TaskCancelledError:
+    print("Task was cancelled")
+# __cancel_graceful_end__
+
 # __resource_start__
 # Specify required resources.
 @ray.remote(num_cpus=4, num_gpus=2)
