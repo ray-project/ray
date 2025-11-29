@@ -31,6 +31,40 @@ bool IsIntentionalWorkerFailure(rpc::WorkerExitType exit_type) {
 }
 }  // namespace
 
+void GcsWorkerManager::Initialize(void) {
+  RAY_LOG(INFO) << "Initialize GcsWorkerManager Start.";
+  worker_dead_listeners_.emplace_back([this](std::shared_ptr<rpc::WorkerTableData> data) {
+    while (sorted_dead_worker_list_.size() >=
+           RayConfig::instance().maximum_gcs_dead_worker_cached_count()) {
+      WorkerID worker_id = sorted_dead_worker_list_.front().first;
+      sorted_dead_worker_list_.pop_front();
+      gcs_table_storage_.WorkerTable().Delete(worker_id, {[](auto) {}, io_context_});
+      RAY_LOG(DEBUG) << "Delete Worker Info. worker_id = " << worker_id
+                     << ". Dead worker list size is " << sorted_dead_worker_list_.size();
+    }
+    WorkerID add_worker_id = WorkerID::FromBinary(data->worker_address().worker_id());
+    sorted_dead_worker_list_.emplace_back(add_worker_id, data->end_time_ms());
+    RAY_LOG(DEBUG) << "Add dead worker. worker_id = " << add_worker_id
+                   << " end_time_ms = " << data->end_time_ms();
+  });
+
+  auto on_done =
+      [this](const absl::flat_hash_map<WorkerID, rpc::WorkerTableData> &result) {
+        for (auto &data : result) {
+          if (data.second.is_alive()) {
+            continue;
+          }
+          sorted_dead_worker_list_.emplace_back(data.first,
+                                                (int64_t)data.second.end_time_ms());
+        }
+        sorted_dead_worker_list_.sort([](const std::pair<WorkerID, int64_t> &left,
+                                         const std::pair<WorkerID, int64_t> &right) {
+          return left.second < right.second;
+        });
+      };
+  gcs_table_storage_.WorkerTable().GetAll({on_done, io_context_});
+}
+
 void GcsWorkerManager::HandleReportWorkerFailure(
     rpc::ReportWorkerFailureRequest request,
     rpc::ReportWorkerFailureReply *reply,
