@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import concurrent.futures
 import logging
@@ -36,10 +38,13 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
+    PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+    RECORD_METRICS_TASK_NAME,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
@@ -69,9 +74,6 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 class RouterMetricsManager:
     """Manages metrics for the router."""
-
-    PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
-    RECORD_METRICS_TASK_NAME = "record_metrics"
 
     def __init__(
         self,
@@ -253,6 +255,7 @@ class RouterMetricsManager:
 
         # Start the metrics pusher if autoscaling is enabled.
         autoscaling_config = self.autoscaling_config
+        shared = SharedHandleMetricsPusher.get_or_create(self._controller_handle)
         if autoscaling_config:
             self.metrics_pusher.start()
             # Optimization for autoscaling cold start time. If there are
@@ -265,23 +268,19 @@ class RouterMetricsManager:
             # Record number of queued + ongoing requests at regular
             # intervals into the in-memory metrics store
             self.metrics_pusher.register_or_update_task(
-                self.RECORD_METRICS_TASK_NAME,
+                RECORD_METRICS_TASK_NAME,
                 self._add_autoscaling_metrics_point,
                 min(
                     RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
-                    autoscaling_config.metrics_interval_s,
+                    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
                 ),
             )
             # Push metrics to the controller periodically.
-            self.metrics_pusher.register_or_update_task(
-                self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
-                self.push_autoscaling_metrics_to_controller,
-                autoscaling_config.metrics_interval_s,
-            )
-
+            shared.register(self)
         else:
             if self.metrics_pusher:
                 self.metrics_pusher.stop_tasks()
+            shared.unregister(self)
 
     def _report_cached_metrics(self):
         for route, count in self._cached_num_router_requests.items():
@@ -401,7 +400,7 @@ class RouterMetricsManager:
             )
 
         # Prevent in memory metrics store memory from growing
-        start_timestamp = time.time() - self.autoscaling_config.look_back_period_s
+        start_timestamp = timestamp - self.autoscaling_config.look_back_period_s
         self.metrics_store.prune_keys_and_compact_data(start_timestamp)
 
     def _get_metrics_report(self) -> HandleMetricReport:
@@ -467,6 +466,62 @@ class RouterMetricsManager:
             await self.metrics_pusher.graceful_shutdown()
 
         self._shutdown = True
+
+
+class SharedHandleMetricsPusher:
+    def __init__(self, controller_handle: ActorHandle):
+        self._controller_handler = controller_handle
+
+        self._metrics_pusher = MetricsPusher()
+
+        # We use a WeakSet to store the `RouterMetricsManager`s
+        # so that we don't prevent them from being garbage-collected
+        # if they run out of references elsewhere.
+        self._router_metrics_managers: weakref.WeakSet[
+            RouterMetricsManager
+        ] = weakref.WeakSet()
+
+    @classmethod
+    @lru_cache(maxsize=None)
+    def get_or_create(cls, controller_handle: ActorHandle) -> SharedHandleMetricsPusher:
+        pusher = cls(controller_handle=controller_handle)
+        pusher.start()
+        logger.info(f"Created {pusher} for Serve Controller {controller_handle}.")
+        return pusher
+
+    def register(self, router_metrics_manager: RouterMetricsManager) -> None:
+        self._router_metrics_managers.add(router_metrics_manager)
+
+    def unregister(self, router_metrics_manager: RouterMetricsManager) -> None:
+        self._router_metrics_managers.discard(router_metrics_manager)
+
+    def start(self) -> None:
+        self._metrics_pusher.start()
+
+        self._metrics_pusher.register_or_update_task(
+            PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
+            self.push_metrics,
+            RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
+        )
+
+    def push_metrics(self) -> None:
+        logger.debug("Gathering handle metrics reports...")
+        reports = []
+        for m in self._router_metrics_managers:
+            try:
+                reports.append(m._get_metrics_report())
+            except Exception as e:
+                logger.exception(f"Error getting handle metrics report: {e!r}")
+
+        if reports:
+            logger.debug(
+                f"Pushing metrics from {len(reports)} handles to Serve Controller {self._controller_handler}..."
+            )
+            self._controller_handler.record_autoscaling_metrics_from_handles.remote(
+                reports
+            )
+        else:
+            logger.debug("No handle metrics reports to push.")
 
 
 class Router(ABC):
@@ -1052,8 +1107,9 @@ class SharedRouterLongPollClient:
         self.controller_handler = controller_handle
         self.event_loop = event_loop
 
-        # We use a WeakSet to store the Routers so that we don't prevent them
-        # from being garbage-collected.
+        # We use a WeakSet to store the `Router`s
+        # so that we don't prevent them from being garbage-collected
+        # if they run out of references elsewhere.
         self.routers: MutableMapping[
             DeploymentID, weakref.WeakSet[AsyncioRouter]
         ] = defaultdict(weakref.WeakSet)
@@ -1069,9 +1125,9 @@ class SharedRouterLongPollClient:
     @lru_cache(maxsize=None)
     def get_or_create(
         cls, controller_handle: ActorHandle, event_loop: AbstractEventLoop
-    ) -> "SharedRouterLongPollClient":
+    ) -> SharedRouterLongPollClient:
         shared = cls(controller_handle=controller_handle, event_loop=event_loop)
-        logger.info(f"Started {shared}.")
+        logger.info(f"Started {shared} for Serve Controller {controller_handle}.")
         return shared
 
     def update_deployment_targets(
