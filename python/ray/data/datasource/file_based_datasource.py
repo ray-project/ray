@@ -89,8 +89,8 @@ class FileShuffleConfig:
 
     def __post_init__(self):
         """Ensure that the seed is either None or an integer."""
-        if self.seed is not None and not isinstance(self.seed, int):
-            raise ValueError("Seed must be an integer or None.")
+        if self.base_seed is not None and not isinstance(self.base_seed, int):
+            raise ValueError("base_seed must be an integer or None.")
 
     def get_seed(self, epoch_idx: int) -> Optional[int]:
         if self.base_seed is None:
