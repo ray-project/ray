@@ -144,6 +144,7 @@ attrs==25.1.0
     #   jsonschema
     #   jupyter-cache
     #   open-spiel
+    #   openlineage-python
     #   referencing
     #   sarif-om
     #   semgrep
@@ -258,6 +259,8 @@ braceexpand==0.1.7
     # via webdataset
 bracex==2.4
     # via wcmatch
+build==1.3.0
+    # via openlineage-python
 cachetools==5.5.2
     # via
     #   aim
@@ -400,7 +403,7 @@ cryptography==44.0.3 ; sys_platform != "darwin"
     #   snowflake-connector-python
     #   sshpubkeys
     #   trustme
-cupy-cuda12x==13.1.0 ; sys_platform != "darwin"
+cupy-cuda12x==13.4.0 ; sys_platform != "darwin"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
@@ -765,11 +768,12 @@ httplib2==0.20.4
     #   google-auth-httplib2
     #   gsutil
     #   oauth2client
-httpx==0.27.2
+httpx==0.28.1
     # via
     #   -r python/requirements/test-requirements.txt
     #   gradio
     #   gradio-client
+    #   openlineage-python
 hudi==0.4.0
     # via -r python/requirements/ml/data-test-requirements.txt
 huggingface-hub==0.27.0
@@ -862,10 +866,10 @@ isoduration==20.11.0
     # via jsonschema
 itsdangerous==2.1.2
     # via flask
-jax==0.4.25
-    # via -r python/requirements/ml/train-test-requirements.txt
-jaxlib==0.4.25
-    # via -r python/requirements/ml/train-test-requirements.txt
+jax==0.4.13 ; python_version < "3.12" and sys_platform != "darwin"
+    # via -r python/requirements/ml/dl-cpu-requirements.txt
+jaxlib==0.4.13 ; python_version < "3.12" and sys_platform != "darwin"
+    # via -r python/requirements/ml/dl-cpu-requirements.txt
 jedi==0.19.1
     # via ipython
 jinja2==3.1.6
@@ -1021,6 +1025,8 @@ linear-operator==0.4.0
     # via
     #   botorch
     #   gpytorch
+linkify-it-py==2.0.3
+    # via markdown-it-py
 llvmlite==0.42.0
     # via
     #   -r python/requirements/test-requirements.txt
@@ -1055,6 +1061,7 @@ markdown-it-py==2.2.0
     #   mdit-py-plugins
     #   myst-parser
     #   rich
+    #   textual
 markupsafe==2.1.3
     # via
     #   gradio
@@ -1076,10 +1083,11 @@ matplotlib-inline==0.1.6
 mdit-py-plugins==0.3.5
     # via
     #   jupytext
+    #   markdown-it-py
     #   myst-parser
 mdurl==0.1.2
     # via markdown-it-py
-memray==1.10.0 ; platform_system != "Windows" and sys_platform != "darwin" and platform_machine != "aarch64"
+memray==1.19.1 ; platform_system != "Windows" and sys_platform != "darwin" and platform_machine != "aarch64"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1351,6 +1359,8 @@ opencensus-context==0.1.3
     # via opencensus
 opencv-python-headless==4.9.0.80
     # via -r python/requirements/ml/rllib-test-requirements.txt
+openlineage-python==1.40.0
+    # via -r python/requirements/cloud-requirements.txt
 openpyxl==3.0.10
     # via -r python/requirements/test-requirements.txt
 opentelemetry-api==1.34.1
@@ -1414,6 +1424,7 @@ packaging==23.0
     #   altair
     #   azure-cli-core
     #   bokeh
+    #   build
     #   dask
     #   datasets
     #   deepspeed
@@ -1438,6 +1449,7 @@ packaging==23.0
     #   modin
     #   nbconvert
     #   onnxruntime
+    #   openlineage-python
     #   opentelemetry-instrumentation
     #   optuna
     #   plotly
@@ -1529,6 +1541,7 @@ platformdirs==3.11.0
     #   black
     #   jupyter-core
     #   snowflake-connector-python
+    #   textual
     #   virtualenv
     #   wandb
 plotly==5.23.0
@@ -1731,6 +1744,8 @@ pyparsing==3.1.1
     #   pydot
     #   pyiceberg
     #   torch-geometric
+pyproject-hooks==1.2.0
+    # via build
 pyro-api==0.1.2
     # via pyro-ppl
 pyro-ppl==1.9.1
@@ -1817,6 +1832,7 @@ python-dateutil==2.8.2
     #   kubernetes
     #   matplotlib
     #   moto
+    #   openlineage-python
     #   pandas
     #   segment-analytics-python
     #   strictyaml
@@ -1872,6 +1888,7 @@ pyyaml==6.0.1
     #   moto
     #   myst-nb
     #   myst-parser
+    #   openlineage-python
     #   optuna
     #   pre-commit
     #   pymars
@@ -1906,7 +1923,7 @@ regex==2024.5.15
     # via
     #   cfn-lint
     #   transformers
-requests==2.32.3
+requests==2.32.5
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -1938,6 +1955,7 @@ requests==2.32.3
     #   moto
     #   msal
     #   msrest
+    #   openlineage-python
     #   pyiceberg
     #   ray
     #   requests-oauthlib
@@ -1981,7 +1999,7 @@ rfc3986-validator==0.1.1
     # via
     #   jsonschema
     #   jupyter-events
-rich==13.3.2
+rich==13.3.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -1990,6 +2008,7 @@ rich==13.3.2
     #   memray
     #   pyiceberg
     #   semgrep
+    #   textual
     #   typer
 rpds-py==0.22.3
     # via
@@ -2143,9 +2162,7 @@ smart-open==6.2.0
 smmap==5.0.1
     # via gitdb
 sniffio==1.3.1
-    # via
-    #   anyio
-    #   httpx
+    # via anyio
 snowballstemmer==2.2.0
     # via sphinx
 snowflake-connector-python==3.15.0
@@ -2279,6 +2296,8 @@ testcontainers==4.13.3
     # via -r python/requirements/ml/data-test-requirements.txt
 testfixtures==7.0.0
     # via -r python/requirements/test-requirements.txt
+textual==4.0.0
+    # via memray
 threadpoolctl==3.1.0
     # via
     #   -r python/requirements/test-requirements.txt
@@ -2429,6 +2448,8 @@ types-pyyaml==6.0.12.2
     # via -r python/requirements/lint-requirements.txt
 types-requests==2.31.0.6
     # via -r python/requirements/lint-requirements.txt
+types-setuptools==80.9.0.20250822
+    # via -r python/requirements/lint-requirements.txt
 types-urllib3==1.26.25.14
     # via types-requests
 typing-extensions==4.12.2
@@ -2466,6 +2487,7 @@ typing-extensions==4.12.2
     #   sqlalchemy
     #   tensorflow
     #   testcontainers
+    #   textual
     #   torch
     #   typer
     #   typing-inspection
@@ -2475,6 +2497,8 @@ tzdata==2025.2
     # via kombu
 tzlocal==5.3
     # via -r python/requirements/cloud-requirements.txt
+uc-micro-py==1.0.3
+    # via linkify-it-py
 ujson==5.10.0
     # via python-lsp-jsonrpc
 uri-template==1.3.0

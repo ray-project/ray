@@ -652,7 +652,7 @@ class StreamingExecutor(Executor, threading.Thread):
                     "total_rows": op.num_output_rows_total(),
                     "queued_blocks": op_state.total_enqueued_input_blocks(),
                     "state": DatasetState.FINISHED.name
-                    if op.execution_finished()
+                    if op.has_execution_finished()
                     else state,
                 }
                 for i, (op, op_state) in enumerate(self._topology.items())
