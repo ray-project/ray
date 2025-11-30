@@ -74,7 +74,9 @@ def plan_read_op(
 
         # Get the original read tasks
         read_tasks = op._datasource_or_legacy_reader.get_read_tasks(
-            parallelism, per_task_row_limit=op._per_block_limit
+            parallelism,
+            per_task_row_limit=op._per_block_limit,
+            epoch_idx=data_context.epoch_idx,
         )
 
         _warn_on_high_parallelism(parallelism, len(read_tasks))
