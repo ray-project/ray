@@ -4,11 +4,20 @@ from typing import Any, Optional
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block, BlockAccessor, DataBatch
-from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, MAX_SAFE_ROWS_PER_BLOCK_FACTOR
+from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
 
 
 @dataclass
 class OutputBlockSizeOption:
+    """
+    Options for shaping the output blocks.
+
+    We check the following conditions in order:
+    1. If `disable_block_shaping` is True, the output buffer will not shape the blocks, and will yield the blocks immediately.
+    2. If `target_num_rows_per_block` is not None, the output buffer will shape the blocks to the target number of rows.
+    3. If `target_max_block_size` is not None, the output buffer will shape the blocks to follow the target max block size.
+    """
+
     target_max_block_size: Optional[int] = None
     target_num_rows_per_block: Optional[int] = None
     disable_block_shaping: bool = False
@@ -47,6 +56,23 @@ class OutputBlockSizeOption:
                 target_max_block_size=target_max_block_size,
                 target_num_rows_per_block=target_num_rows_per_block,
                 disable_block_shaping=disable_block_shaping,
+            )
+
+    @classmethod
+    def override_target_max_block_size(
+        cls,
+        existing_option: Optional["OutputBlockSizeOption"],
+        target_max_block_size: Optional[int],
+    ) -> Optional["OutputBlockSizeOption"]:
+        """Override the target max block size for the existing option, or create a new option if it doesn't exist."""
+
+        if existing_option is None:
+            return cls.of(target_max_block_size=target_max_block_size)
+        else:
+            return cls.of(
+                target_max_block_size=target_max_block_size,
+                target_num_rows_per_block=existing_option.target_num_rows_per_block,
+                disable_block_shaping=existing_option.disable_block_shaping,
             )
 
 
@@ -105,13 +131,13 @@ class BlockOutputBuffer:
         assert not self._finalized
         self._finalized = True
 
-    def _exceeded_buffer_row_limit(self) -> bool:
+    def _exceeded_target_num_rows(self) -> bool:
         if self._output_block_size_option.disable_block_shaping:
             return False
 
         return (
-            self._max_num_rows_per_block() is not None
-            and self._buffer.num_rows() > self._max_num_rows_per_block()
+            self._target_num_rows_per_block() is not None
+            and self._buffer.num_rows() > self._target_num_rows_per_block()
         )
 
     def _exceeded_buffer_size_limit(self) -> bool:
@@ -123,7 +149,7 @@ class BlockOutputBuffer:
             and self._buffer.get_estimated_memory_usage() > self._max_bytes_per_block()
         )
 
-    def _max_num_rows_per_block(self) -> Optional[int]:
+    def _target_num_rows_per_block(self) -> Optional[int]:
         if self._output_block_size_option is None:
             return None
 
@@ -137,6 +163,10 @@ class BlockOutputBuffer:
             return None
 
         if self._output_block_size_option.disable_block_shaping:
+            return None
+
+        # If target_num_rows_per_block is set, we don't output blocks based on target_max_block_size
+        if self._output_block_size_option.target_num_rows_per_block is not None:
             return None
 
         return self._output_block_size_option.target_max_block_size
@@ -157,7 +187,7 @@ class BlockOutputBuffer:
             # When block shaping is disabled, produce blocks immediately
             return self._buffer.num_rows() > 0
 
-        return self._exceeded_buffer_row_limit() or self._exceeded_buffer_size_limit()
+        return self._exceeded_target_num_rows() or self._exceeded_buffer_size_limit()
 
     def _exceeded_block_size_slice_limit(self, block: BlockAccessor) -> bool:
         # Slice a block to respect the target max block size. We only do this if we are
@@ -169,14 +199,10 @@ class BlockOutputBuffer:
             >= MAX_SAFE_BLOCK_SIZE_FACTOR * self._max_bytes_per_block()
         )
 
-    def _exceeded_block_row_slice_limit(self, block: BlockAccessor) -> bool:
-        # Slice a block to respect the target max rows per block. We only do this if we
-        # are more than 50% above the target rows per block, because this ensures that
-        # the last block produced will be at least half the target row count.
+    def _exceeded_target_num_rows_slice_limit(self, block: BlockAccessor) -> bool:
         return (
-            self._max_num_rows_per_block() is not None
-            and block.num_rows()
-            >= MAX_SAFE_ROWS_PER_BLOCK_FACTOR * self._max_num_rows_per_block()
+            self._target_num_rows_per_block() is not None
+            and block.num_rows() >= self._target_num_rows_per_block()
         )
 
     def next(self) -> Block:
@@ -189,8 +215,8 @@ class BlockOutputBuffer:
         block_remainder = None
         target_num_rows = None
 
-        if self._exceeded_block_row_slice_limit(accessor):
-            target_num_rows = self._max_num_rows_per_block()
+        if self._exceeded_target_num_rows_slice_limit(accessor):
+            target_num_rows = self._target_num_rows_per_block()
         elif self._exceeded_block_size_slice_limit(accessor):
             assert accessor.num_rows() > 0, "Block may not be empty"
             num_bytes_per_row = accessor.size_bytes() / accessor.num_rows()
