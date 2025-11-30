@@ -1,25 +1,43 @@
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional
 
 import ray
-from ray.experimental.collective.tensor_transport_manager import (
+from ray.experimental.gpu_object_manager.tensor_transport_manager import (
     TensorTransportManager,
 )
-from ray.util.collective.types import (
-    Backend,
-    CollectiveCommunicatorMetadata,
-    CollectiveTransportMetadata,
+from ray.experimental.gpu_object_manager.types import (
+    CommunicatorMetadata,
+    TensorTransportMetadata,
 )
 
 if TYPE_CHECKING:
     import torch
 
 
+@dataclass
+class CollectiveTransportMetadata(TensorTransportMetadata):
+    """Metadata for tensors stored in the GPU object store for collective transport."""
+
+
+@dataclass
+class CollectiveCommunicatorMetadata(CommunicatorMetadata):
+    """Metadata for the collective communicator (e.g. NCCL, GLOO).
+
+    Args:
+        src_rank: The rank of the source actor.
+        dst_rank: The rank of the destination actor.
+    """
+
+    src_rank: Optional[int] = None
+    dst_rank: Optional[int] = None
+
+
 class CollectiveTensorTransport(TensorTransportManager):
-    def __init__(self, tensor_transport_backend: Backend):
+    def __init__(self, tensor_transport_backend: str):
         self._tensor_transport_backend = tensor_transport_backend
 
     @property
-    def tensor_transport_backend(self) -> Backend:
+    def tensor_transport_backend(self) -> str:
         return self._tensor_transport_backend
 
     @staticmethod
@@ -38,8 +56,8 @@ class CollectiveTensorTransport(TensorTransportManager):
         )
         return len(communicators) > 0
 
-    @staticmethod
     def extract_tensor_transport_metadata(
+        self,
         obj_id: str,
         gpu_object: List["torch.Tensor"],
     ) -> CollectiveTransportMetadata:
@@ -58,40 +76,8 @@ class CollectiveTensorTransport(TensorTransportManager):
             tensor_device=device,
         )
 
-    @staticmethod
-    def get_tensor_transport_metadata(
-        src_actor: "ray.actor.ActorHandle",
-        obj_id: str,
-    ) -> CollectiveTransportMetadata:
-        def __ray_get_tensor_transport_metadata__(
-            self: "ray.actor.ActorHandle",
-            obj_id: str,
-        ) -> CollectiveTransportMetadata:
-
-            from ray._private.worker import global_worker
-
-            gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-            # NOTE: We do not specify a timeout here because the user task that returns
-            # it could take arbitrarily long and we don't want to trigger a spurious
-            # timeout.
-            gpu_object = gpu_object_store.wait_and_get_object(obj_id)
-            return CollectiveTensorTransport.extract_tensor_transport_metadata(
-                obj_id, gpu_object
-            )
-
-        # Submit a Ray actor task to the source actor to get the tensor metadata.
-        # The metadata is a list of tuples, where each tuple contains the shape and dtype
-        # of a tensor in the GPU object store. This function returns an ObjectRef that
-        # points to the tensor metadata.
-        # NOTE(swang): We put this task on the background thread to avoid tasks
-        # executing on the main thread blocking this task.
-
-        return src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-            __ray_get_tensor_transport_metadata__, obj_id
-        )
-
-    @staticmethod
     def get_communicator_metadata(
+        self,
         src_actor: "ray.actor.ActorHandle",
         dst_actor: "ray.actor.ActorHandle",
         backend: Optional[str] = None,
@@ -138,21 +124,20 @@ class CollectiveTensorTransport(TensorTransportManager):
         )
         return communicator_metadata
 
-    @staticmethod
     def recv_multiple_tensors(
+        self,
         tensors,
         obj_id: str,
         tensor_transport_metadata: CollectiveTransportMetadata,
         communicator_metadata: CollectiveCommunicatorMetadata,
     ):
-        from ray.util.collective import types
         from ray.util.collective.collective import recv
 
         assert isinstance(
-            tensor_transport_metadata, types.CollectiveTransportMetadata
+            tensor_transport_metadata, CollectiveTransportMetadata
         ), "metadata must be a CollectiveTransportMetadata object for non-NIXL transport"
         assert isinstance(
-            communicator_metadata, types.CollectiveCommunicatorMetadata
+            communicator_metadata, CollectiveCommunicatorMetadata
         ), "metadata must be a CollectiveCommunicatorMetadata object for non-NIXL transport"
 
         for tensor in tensors:
@@ -162,8 +147,8 @@ class CollectiveTensorTransport(TensorTransportManager):
                 communicator_metadata.communicator_name,
             )
 
-    @staticmethod
     def send_multiple_tensors(
+        self,
         tensors: List["torch.Tensor"],
         tensor_transport_metadata: CollectiveTransportMetadata,
         communicator_metadata: CollectiveCommunicatorMetadata,
@@ -183,14 +168,13 @@ class CollectiveTensorTransport(TensorTransportManager):
                 communicator_metadata.communicator_name,
             )
 
-    @staticmethod
     def garbage_collect(
-        obj_id: str, tensor_transport_meta: CollectiveTransportMetadata
+        self, obj_id: str, tensor_transport_meta: CollectiveTransportMetadata
     ):
         pass
 
-    @staticmethod
     def abort_transport(
+        self,
         obj_id: str,
         communicator_metadata: CollectiveCommunicatorMetadata,
     ):
