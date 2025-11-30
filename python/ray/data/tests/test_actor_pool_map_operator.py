@@ -2,6 +2,7 @@ import asyncio
 import collections
 import datetime
 import threading
+import time
 import unittest
 from dataclasses import replace
 from typing import Any, Callable, Dict, Optional, Tuple
@@ -11,6 +12,7 @@ from freezegun import freeze_time
 
 import ray
 from ray._private.ray_constants import ID_SIZE
+from ray._private.test_utils import wait_for_condition
 from ray.actor import ActorHandle
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
