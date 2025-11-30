@@ -1334,7 +1334,7 @@ def read_json(
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             If setting to ``FileShuffleConfig``, you can pass a random seed to shuffle
-            the input files, e.g. ``FileShuffleConfig(seed=42)``.
+            the input files, e.g. ``FileShuffleConfig(base_seed=42)``.
             Defaults to not shuffle with ``None``.
         arrow_json_args: JSON read options to pass to `pyarrow.json.read_json <https://\
             arrow.apache.org/docs/python/generated/pyarrow.json.read_json.html#pyarrow.\
@@ -1894,7 +1894,7 @@ def read_numpy(
             found. Defaults to False.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             if setting to ``FileShuffleConfig``, the random seed can be passed toshuffle the
-            input files, i.e. ``FileShuffleConfig(seed = 42)``.
+            input files, i.e. ``FileShuffleConfig(base_seed = 42)``.
             Defaults to not shuffle with ``None``.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
@@ -2321,7 +2321,7 @@ def read_webdataset(
         verbose_open: Whether to print the file names as they are opened.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             if setting to ``FileShuffleConfig``, the random seed can be passed toshuffle the
-            input files, i.e. ``FileShuffleConfig(seed = 42)``.
+            input files, i.e. ``FileShuffleConfig(base_seed = 42)``.
             Defaults to not shuffle with ``None``.
         include_paths: If ``True``, include the path to each file. File paths are
             stored in the ``'path'`` column.
