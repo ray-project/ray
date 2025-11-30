@@ -13,9 +13,9 @@ class OutputBlockSizeOption:
     Options for shaping the output blocks.
 
     We check the following conditions in order:
-    1. If `disable_block_shaping` is True, the output buffer will not shape the blocks.
+    1. If `disable_block_shaping` is True, the output buffer will not shape the blocks, and will yield the blocks immediately.
     2. If `target_num_rows_per_block` is not None, the output buffer will shape the blocks to the target number of rows.
-    3. If `target_num_rows_per_block` is None, the output buffer will shape the blocks to follow `target_max_block_size`.
+    3. If `target_max_block_size` is not None, the output buffer will shape the blocks to follow the target max block size.
     """
 
     target_max_block_size: Optional[int] = None
