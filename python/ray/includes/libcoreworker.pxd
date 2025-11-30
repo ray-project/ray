@@ -122,6 +122,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
         CWorkerType GetWorkerType()
         CLanguage GetLanguage()
+        int GetRuntimeEnvAgentPort()
 
         c_vector[CObjectReference] SubmitTask(
             const CRayFunction &function,

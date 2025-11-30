@@ -586,6 +586,10 @@ class Worker:
         return self.core_worker.get_placement_group_id()
 
     @property
+    def runtime_env_agent_port(self):
+        return self.core_worker.get_runtime_env_agent_port()
+
+    @property
     def worker_id(self):
         return self.core_worker.get_worker_id().binary()
 
@@ -2692,6 +2696,12 @@ def connect(
         worker_launched_time_ms,
         debug_source,
     )
+
+    # After CoreWorker is created, update the node's runtime_env_agent_port
+    # with the actual port from Raylet (obtained during CoreWorker registration).
+    # This ensures the node object has the correct port regardless of whether
+    # the initial port was 0 (auto-assigned) or explicitly specified.
+    node.runtime_env_agent_port = worker.core_worker.get_runtime_env_agent_port()
 
     if mode == SCRIPT_MODE:
         worker_id = worker.worker_id

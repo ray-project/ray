@@ -310,6 +310,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
+  if (port_ready_callback_) {
+    port_ready_callback_(rpc_server_.GetPort());
+  }
 
   periodical_runner_->RunFnPeriodically(
       [this] { RecordMetrics(); },

@@ -317,8 +317,10 @@ CoreWorker::CoreWorker(
     std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
     uint32_t pid,
     ray::observability::MetricInterface &task_by_state_gauge,
-    ray::observability::MetricInterface &actor_by_state_gauge)
+    ray::observability::MetricInterface &actor_by_state_gauge,
+    int runtime_env_agent_port)
     : options_(std::move(options)),
+      runtime_env_agent_port_(runtime_env_agent_port),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
                          : nullptr),
