@@ -340,7 +340,10 @@ class _LegacyDatasourceReader(Reader):
         return None
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        epoch_idx: int = 0,
     ) -> List["ReadTask"]:
         """Execute the read and return read tasks.
 
@@ -348,6 +351,8 @@ class _LegacyDatasourceReader(Reader):
             parallelism: The requested read parallelism. The number of read
                 tasks should equal to this value if possible.
             per_task_row_limit: The per-task row limit for the read tasks.
+            epoch_idx: The epoch index for the read tasks. Not used by this
+                legacy reader.
 
         Returns:
             A list of read tasks that can be executed to read blocks from the
@@ -454,6 +459,7 @@ class RandomIntRowDatasource(Datasource):
         self,
         parallelism: int,
         per_task_row_limit: Optional[int] = None,
+        epoch_idx: int = 0,
     ) -> List[ReadTask]:
         _check_pyarrow_version()
         import pyarrow
