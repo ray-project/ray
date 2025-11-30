@@ -728,7 +728,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         self._actor_autoscaler.update_job_resource_limits(
             min_resources=min_resources,
-            max_resources=max_resources
+            max_resources=max_resources,
         )
 
     def get_job_resource_limits(

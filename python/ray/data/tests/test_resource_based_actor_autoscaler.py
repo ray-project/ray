@@ -72,9 +72,7 @@ def test_distribute_resources_by_weight():
     # mock operator 和 actor pools
     op1 = MagicMock()
     pool1 = MagicMock(spec=_ActorPool)
-    pool1.per_actor_resource_usage.return_value = ExecutionResources(cpu=1,
-                                                                     gpu=0,
-                                                                     memory=1e9)
+    pool1.per_actor_resource_usage.return_value = ExecutionResources(cpu=1, gpu=0,memory=1e9)
     pool1.get_pool_util.return_value = 1.5
     pool1.max_tasks_in_flight_per_actor.return_value = 4
     pool1.max_actor_concurrency.return_value = 1
@@ -82,9 +80,7 @@ def test_distribute_resources_by_weight():
 
     op2 = MagicMock()
     pool2 = MagicMock(spec=_ActorPool)
-    pool2.per_actor_resource_usage.return_value = ExecutionResources(cpu=2,
-                                                                     gpu=1,
-                                                                     memory=2e9)
+    pool2.per_actor_resource_usage.return_value = ExecutionResources(cpu=2, gpu=1, memory=2e9)
     pool2.get_pool_util.return_value = 0.8
     pool2.max_tasks_in_flight_per_actor.return_value = 4
     pool2.max_actor_concurrency.return_value = 1
@@ -101,7 +97,7 @@ def test_distribute_resources_by_weight():
     # setting job-level resource limits
     autoscaler.update_job_resource_limits(
         min_resources=ExecutionResources(cpu=10, gpu=2, memory=10e9),
-        max_resources=ExecutionResources(cpu=20, gpu=4, memory=20e9)
+        max_resources=ExecutionResources(cpu=20, gpu=4, memory=20e9),
     )
 
     # Verify that the pool with higher utilization, pool1, should receive more resources
@@ -178,7 +174,7 @@ def test_gpu_only_allocated_to_gpu_pools():
     # Set resource limits that include GPU
     autoscaler.update_job_resource_limits(
         min_resources=ExecutionResources(cpu=10, gpu=4, memory=10e9),
-        max_resources=ExecutionResources(cpu=20, gpu=8, memory=20e9)
+        max_resources=ExecutionResources(cpu=20, gpu=8, memory=20e9),
     )
 
     # Verify resource allocation - should set min_size and max_size for each pool
@@ -231,13 +227,13 @@ def test_update_job_resource_limits_validation():
 
     autoscaler.update_job_resource_limits(
         min_resources=ExecutionResources(cpu=5, gpu=1, memory=5e9),
-        max_resources=ExecutionResources(cpu=10, gpu=2, memory=10e9)
+        max_resources=ExecutionResources(cpu=10, gpu=2, memory=10e9),
     )
 
     with pytest.raises(AssertionError):
         autoscaler.update_job_resource_limits(
             min_resources=ExecutionResources(cpu=10, gpu=2, memory=10e9),
-            max_resources=ExecutionResources(cpu=5, gpu=1, memory=5e9)
+            max_resources=ExecutionResources(cpu=5, gpu=1, memory=5e9),
         )
 
 
@@ -259,7 +255,7 @@ def test_get_current_job_resource_limits():
     max_resources = ExecutionResources(cpu=10, gpu=2, memory=10e9)
     autoscaler.update_job_resource_limits(
         min_resources=min_resources,
-        max_resources=max_resources
+        max_resources=max_resources,
     )
 
     min_res, max_res = autoscaler.get_current_job_resource_limits()
