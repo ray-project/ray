@@ -22,23 +22,19 @@ def test_calculate_min_pool_size():
 
     # CPU is the bottleneck: ceil(5/2) = 3
     min_resources = ExecutionResources(cpu=5, gpu=0, memory=0)
-    assert autoscaler._calculate_min_pool_size(min_resources,
-                                               per_actor_resources) == 3
+    assert autoscaler._calculate_min_pool_size(min_resources, per_actor_resources) == 3
 
     # GPU is the bottleneck: ceil(3/1) = 3
     min_resources = ExecutionResources(cpu=0, gpu=3, memory=0)
-    assert autoscaler._calculate_min_pool_size(min_resources,
-                                               per_actor_resources) == 3
+    assert autoscaler._calculate_min_pool_size(min_resources, per_actor_resources) == 3
 
     # Memory is the bottleneck: ceil(5e9/2e9) = 3
     min_resources = ExecutionResources(cpu=0, gpu=0, memory=5e9)
-    assert autoscaler._calculate_min_pool_size(min_resources,
-                                               per_actor_resources) == 3
+    assert autoscaler._calculate_min_pool_size(min_resources, per_actor_resources) == 3
 
     # Multiple resources, take maximum: max(ceil(10/2), ceil(2/1), ceil(6e9/2e9)) = max(5, 2, 3) = 5
     min_resources = ExecutionResources(cpu=10, gpu=2, memory=6e9)
-    assert autoscaler._calculate_min_pool_size(min_resources,
-                                               per_actor_resources) == 5
+    assert autoscaler._calculate_min_pool_size(min_resources, per_actor_resources) == 5
 
 
 def test_calculate_max_pool_size():
@@ -53,18 +49,15 @@ def test_calculate_max_pool_size():
 
     # CPU is the bottleneck: floor(5/2) = 2
     max_resources = ExecutionResources(cpu=5, gpu=10, memory=10e9)
-    assert autoscaler._calculate_max_pool_size(max_resources,
-                                               per_actor_resources) == 2
+    assert autoscaler._calculate_max_pool_size(max_resources, per_actor_resources) == 2
 
     # GPU is the bottleneck: floor(3/1) = 3
     max_resources = ExecutionResources(cpu=10, gpu=3, memory=10e9)
-    assert autoscaler._calculate_max_pool_size(max_resources,
-                                               per_actor_resources) == 3
+    assert autoscaler._calculate_max_pool_size(max_resources, per_actor_resources) == 3
 
     # Memory is the bottleneck: floor(5e9/2e9) = 2
     max_resources = ExecutionResources(cpu=10, gpu=10, memory=5e9)
-    assert autoscaler._calculate_max_pool_size(max_resources,
-                                               per_actor_resources) == 2
+    assert autoscaler._calculate_max_pool_size(max_resources, per_actor_resources) == 2
 
 
 def test_distribute_resources_by_weight():
@@ -72,7 +65,9 @@ def test_distribute_resources_by_weight():
     # mock operator 和 actor pools
     op1 = MagicMock()
     pool1 = MagicMock(spec=_ActorPool)
-    pool1.per_actor_resource_usage.return_value = ExecutionResources(cpu=1, gpu=0,memory=1e9)
+    pool1.per_actor_resource_usage.return_value = ExecutionResources(
+        cpu=1, gpu=0,memory=1e9
+    )
     pool1.get_pool_util.return_value = 1.5
     pool1.max_tasks_in_flight_per_actor.return_value = 4
     pool1.max_actor_concurrency.return_value = 1
@@ -144,9 +139,9 @@ def test_gpu_only_allocated_to_gpu_pools():
     # CPU-only pool
     op1 = MagicMock()
     pool1 = MagicMock(spec=_ActorPool)
-    pool1.per_actor_resource_usage.return_value = ExecutionResources(cpu=1,
-                                                                     gpu=0,
-                                                                     memory=1e9)
+    pool1.per_actor_resource_usage.return_value = ExecutionResources(
+        cpu=1, gpu=0, memory=1e9
+    )
     pool1.get_pool_util.return_value = 1.0
     pool1.max_tasks_in_flight_per_actor.return_value = 4
     pool1.max_actor_concurrency.return_value = 1
@@ -155,9 +150,9 @@ def test_gpu_only_allocated_to_gpu_pools():
     # GPU pool
     op2 = MagicMock()
     pool2 = MagicMock(spec=_ActorPool)
-    pool2.per_actor_resource_usage.return_value = ExecutionResources(cpu=2,
-                                                                     gpu=1,
-                                                                     memory=2e9)
+    pool2.per_actor_resource_usage.return_value = ExecutionResources(
+        cpu=2, gpu=1, memory=2e9
+    )
     pool2.get_pool_util.return_value = 1.0
     pool2.max_tasks_in_flight_per_actor.return_value = 4
     pool2.max_actor_concurrency.return_value = 1

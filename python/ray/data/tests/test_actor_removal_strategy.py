@@ -19,12 +19,15 @@ def test_default_actor_removal_strategy():
     actor3 = MagicMock()
 
     running_actors = {
-        actor1: _ActorState(num_tasks_in_flight=2, actor_location="node1",
-                            is_restarting=False),
-        actor2: _ActorState(num_tasks_in_flight=0, actor_location="node1",
-                            is_restarting=False),
-        actor3: _ActorState(num_tasks_in_flight=0, actor_location="node2",
-                            is_restarting=False),
+        actor1: _ActorState(
+            num_tasks_in_flight=2, actor_location="node1", is_restarting=False
+        ),
+        actor2: _ActorState(
+            num_tasks_in_flight=0, actor_location="node1", is_restarting=False
+        ),
+        actor3: _ActorState(
+            num_tasks_in_flight=0, actor_location="node2", is_restarting=False
+        ),
     }
 
     # Should return the first idle actor (actor2 or actor3)
@@ -33,10 +36,12 @@ def test_default_actor_removal_strategy():
 
     # Should return None when there are no idle actors
     running_actors_busy = {
-        actor1: _ActorState(num_tasks_in_flight=2, actor_location="node1",
-                            is_restarting=False),
-        actor2: _ActorState(num_tasks_in_flight=1, actor_location="node1",
-                            is_restarting=False),
+        actor1: _ActorState(
+            num_tasks_in_flight=2, actor_location="node1",  is_restarting=False
+        ),
+        actor2: _ActorState(
+            num_tasks_in_flight=1, actor_location="node1", is_restarting=False
+        ),
     }
     selected = strategy.select_actor_to_remove(running_actors_busy)
     assert selected is None
@@ -55,17 +60,22 @@ def test_node_aware_actor_removal_strategy():
 
     running_actors = {
         # node1: 1 idle actor
-        actor1: _ActorState(num_tasks_in_flight=1, actor_location="node1",
-                            is_restarting=False),
-        actor2: _ActorState(num_tasks_in_flight=0, actor_location="node1",
-                            is_restarting=False),
+        actor1: _ActorState(
+            num_tasks_in_flight=1, actor_location="node1", is_restarting=False
+        ),
+        actor2: _ActorState(
+            num_tasks_in_flight=0, actor_location="node1", is_restarting=False
+        ),
         # node2: 3 idle actors
-        actor3: _ActorState(num_tasks_in_flight=0, actor_location="node2",
-                            is_restarting=False),
-        actor4: _ActorState(num_tasks_in_flight=0, actor_location="node2",
-                            is_restarting=False),
-        actor5: _ActorState(num_tasks_in_flight=0, actor_location="node2",
-                            is_restarting=False),
+        actor3: _ActorState(
+            num_tasks_in_flight=0, actor_location="node2", is_restarting=False
+        ),
+        actor4: _ActorState(
+            num_tasks_in_flight=0, actor_location="node2", is_restarting=False
+        ),
+        actor5: _ActorState(
+            num_tasks_in_flight=0, actor_location="node2", is_restarting=False
+        ),
     }
 
     # Should select an actor from node2 (because node2 has the most idle actors)
@@ -86,10 +96,12 @@ def test_node_aware_strategy_no_idle_actors():
     actor2 = MagicMock()
 
     running_actors = {
-        actor1: _ActorState(num_tasks_in_flight=2, actor_location="node1",
-                            is_restarting=False),
-        actor2: _ActorState(num_tasks_in_flight=1, actor_location="node2",
-                            is_restarting=False),
+        actor1: _ActorState(
+            num_tasks_in_flight=2, actor_location="node1", is_restarting=False
+        ),
+        actor2: _ActorState(
+            num_tasks_in_flight=1, actor_location="node2", is_restarting=False
+        ),
     }
 
     selected = strategy.select_actor_to_remove(running_actors)
@@ -104,16 +116,20 @@ def test_node_aware_strategy_single_node():
     actor2 = MagicMock()
 
     running_actors = {
-        actor1: _ActorState(num_tasks_in_flight=0, actor_location="node1",
-                            is_restarting=False),
-        actor2: _ActorState(num_tasks_in_flight=0, actor_location="node1",
-                            is_restarting=False),
+        actor1: _ActorState(
+            num_tasks_in_flight=0, actor_location="node1", is_restarting=False
+        ),
+        actor2: _ActorState(
+            num_tasks_in_flight=0, actor_location="node1", is_restarting=False
+        ),
     }
 
     # Should select an actor from the single node
     selected = strategy.select_actor_to_remove(running_actors)
     assert selected in [actor1, actor2]
 
+
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -583,8 +583,7 @@ def test_e2e_liveness_with_output_backpressure_edge_case(
     assert extract_values("id", ds.take_all()) == list(range(10000))
 
 
-def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared,
-                                        restore_data_context):
+def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared, restore_data_context):
     """E2E test for resource-based autoscaling - validates the effect of resource limits on actor pool size."""
     ctx = ray.data.DataContext.get_current()
     ctx.enable_resource_based_autoscaling = True
@@ -619,7 +618,7 @@ def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared,
     print("Testing scenario 1: Strict resource limits")
     executor1.update_job_resource_limits(
         min_resources=ExecutionResources(cpu=2, gpu=0, memory=1e9),
-        max_resources=ExecutionResources(cpu=4, gpu=0, memory=2e9)
+        max_resources=ExecutionResources(cpu=4, gpu=0, memory=2e9),
     )
 
     # Verify that resource limits are applied correctly
@@ -703,14 +702,13 @@ def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared,
 
     print("All test scenarios passed!")
 
-
-def test_e2e_node_aware_actor_removal(ray_start_10_cpus_shared,
-                                      restore_data_context):
+def test_e2e_node_aware_actor_removal(ray_start_10_cpus_shared, restore_data_context):
     """e2e test for actor removal - verifies behavior differences when the feature is enabled"""
 
     class TrackingUDF:
         def __init__(self):
             import ray
+
             self.node_id = ray.get_runtime_context().get_node_id()
             self.actor_id = ray.get_runtime_context().get_actor_id()
 
@@ -773,6 +771,7 @@ def test_e2e_node_aware_actor_removal(ray_start_10_cpus_shared,
     ctx.enable_node_aware_actor_removal = original_setting
 
     print("Node-aware actor removal feature verification completed!")
+
 
 if __name__ == "__main__":
     import sys

@@ -852,7 +852,8 @@ class _ActorPool(AutoscalingActorPool):
         self._num_restarting_actors: int = 0
         self._num_active_actors: int = 0
         self._total_num_tasks_in_flight: int = 0
-        self._actor_removal_strategy = actor_removal_strategy or DefaultActorRemovalStrategy()
+        self._actor_removal_strategy = (
+            actor_removal_strategy or DefaultActorRemovalStrategy())
 
     # === Overriding methods of AutoscalingActorPool ===
 
