@@ -274,7 +274,7 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
             parallelism: The requested read parallelism. The number of read
                 tasks should equal to this value if possible.
             per_task_row_limit: The per-task row limit for the read tasks.
-            epoch_idx: The epoch index for the read tasks.
+            epoch_idx: The epoch index for the read tasks. This is used to vary the shuffle across epochs if the datasource support shuffling.
         Returns:
             A list of read tasks that can be executed to read blocks from the
             datasource in parallel.
