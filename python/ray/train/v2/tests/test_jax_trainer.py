@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 import ray
@@ -71,6 +73,10 @@ def train_func():
     train.report({"result": [str(d) for d in devices]})
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Current jax version is not supported in python 3.12+",
+)
 def test_minimal_singlehost(ray_tpu_single_host, tmp_path):
     trainer = JaxTrainer(
         train_loop_per_worker=train_func,
@@ -83,6 +89,11 @@ def test_minimal_singlehost(ray_tpu_single_host, tmp_path):
         ),
         run_config=RunConfig(
             storage_path=str(tmp_path),
+            worker_runtime_env={
+                "env_vars": {
+                    "JAX_PLATFORMS": "cpu",
+                },
+            },
         ),
     )
     result = trainer.fit()
@@ -96,6 +107,10 @@ def test_minimal_singlehost(ray_tpu_single_host, tmp_path):
     assert len(labeled_nodes) == 1
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Current jax version is not supported in python 3.12+",
+)
 def test_minimal_multihost(ray_tpu_multi_host, tmp_path):
     trainer = JaxTrainer(
         train_loop_per_worker=train_func,
@@ -108,6 +123,11 @@ def test_minimal_multihost(ray_tpu_multi_host, tmp_path):
         ),
         run_config=RunConfig(
             storage_path=str(tmp_path),
+            worker_runtime_env={
+                "env_vars": {
+                    "JAX_PLATFORMS": "cpu",
+                },
+            },
         ),
     )
     result = trainer.fit()

@@ -101,10 +101,6 @@ class MapTransformFn(ABC):
         results = self._apply_transform(ctx, batches)
         yield from self._post_process(results)
 
-    @abstractmethod
-    def _can_skip_block_sizing(self):
-        pass
-
     @property
     def output_block_size_option(self):
         return self._output_block_size_option
@@ -310,9 +306,6 @@ class RowMapTransformFn(MapTransformFn):
     def _post_process(self, results: Iterable[MapTransformFnData]) -> Iterable[Block]:
         return self._shape_blocks(results)
 
-    def _can_skip_block_sizing(self):
-        return False
-
     def __repr__(self) -> str:
         return f"RowMapTransformFn({self._row_fn})"
 
@@ -327,7 +320,7 @@ class BatchMapTransformFn(MapTransformFn):
         is_udf: bool = False,
         batch_size: Optional[int] = None,
         batch_format: Optional[BatchFormat] = None,
-        zero_copy_batch: bool = False,
+        zero_copy_batch: bool = True,
         output_block_size_option: Optional[OutputBlockSizeOption] = None,
     ):
         super().__init__(
@@ -362,12 +355,6 @@ class BatchMapTransformFn(MapTransformFn):
 
     def _post_process(self, results: Iterable[MapTransformFnData]) -> Iterable[Block]:
         return self._shape_blocks(results)
-
-    def _can_skip_block_sizing(self):
-        return self._output_block_size_option is None and self._batch_format in (
-            BatchFormat.ARROW,
-            BatchFormat.PANDAS,
-        )
 
     def __repr__(self) -> str:
         return f"BatchMapTransformFn({self._batch_fn=}, {self._batch_format=}, {self._batch_size=}, {self._zero_copy_batch=})"
@@ -418,9 +405,6 @@ class BlockMapTransformFn(MapTransformFn):
             return results
 
         return self._shape_blocks(results)
-
-    def _can_skip_block_sizing(self):
-        return self._output_block_size_option is None
 
     def __repr__(self) -> str:
         return (

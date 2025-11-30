@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 import urllib.parse
+import uuid
 from queue import Empty, Full, Queue
 from types import ModuleType
 from typing import (
@@ -36,6 +37,7 @@ import pyarrow.fs
 import ray
 from ray._common.retry import call_with_retry
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
+from ray.util.annotations import DeveloperAPI
 
 import psutil
 
@@ -1666,6 +1668,41 @@ def unzip(data: List[Tuple[Any, ...]]) -> Tuple[List[Any], ...]:
     return tuple(map(list, zip(*data)))
 
 
+def _sort_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Sort DataFrame by columns and rows, and also handle unhashable types."""
+    df = df.copy()
+
+    def to_sortable(x):
+        if isinstance(x, (list, np.ndarray)):
+            return tuple(to_sortable(i) for i in x)
+        if isinstance(x, dict):
+            return tuple(sorted((k, to_sortable(v)) for k, v in x.items()))
+        return x
+
+    sort_cols = []
+    temp_cols = []
+    # Sort by all columns to ensure deterministic order.
+    columns = sorted(df.columns)
+
+    for col in columns:
+        if df[col].dtype == "object":
+            # Create a temporary column for sorting to handle unhashable types.
+            # Use UUID to avoid collisions with existing column names.
+            temp_col = f"__sort_proxy_{uuid.uuid4().hex}_{col}__"
+            df[temp_col] = df[col].map(to_sortable)
+            sort_cols.append(temp_col)
+            temp_cols.append(temp_col)
+        else:
+            sort_cols.append(col)
+
+    sorted_df = df.sort_values(sort_cols)
+
+    if temp_cols:
+        sorted_df = sorted_df.drop(columns=temp_cols)
+
+    return sorted_df
+
+
 def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
     """Check if two DataFrames have the same rows.
 
@@ -1673,13 +1710,16 @@ def rows_same(actual: pd.DataFrame, expected: pd.DataFrame) -> bool:
     order of rows. This is useful for testing Ray Data because its interface doesn't
     usually guarantee the order of rows.
     """
-    if len(actual) == len(expected) == 0:
+    if len(actual) != len(expected):
+        return False
+
+    if len(actual) == 0:
         return True
 
     try:
         pd.testing.assert_frame_equal(
-            actual.sort_values(sorted(actual.columns)).reset_index(drop=True),
-            expected.sort_values(sorted(expected.columns)).reset_index(drop=True),
+            _sort_df(actual).reset_index(drop=True),
+            _sort_df(expected).reset_index(drop=True),
             check_dtype=False,
         )
         return True
@@ -1712,3 +1752,21 @@ def merge_resources_to_ray_remote_args(
     if memory is not None:
         ray_remote_args["memory"] = memory
     return ray_remote_args
+
+
+@DeveloperAPI
+def infer_compression(path: str) -> Optional[str]:
+    import pyarrow as pa
+
+    compression = None
+    try:
+        # Try to detect compression codec from path.
+        compression = pa.Codec.detect(path).name
+    except (ValueError, TypeError):
+        # Arrow's compression inference on the file path doesn't work for Snappy, so we double-check ourselves.
+        import pathlib
+
+        suffix = pathlib.Path(path).suffix
+        if suffix and suffix[1:] == "snappy":
+            compression = "snappy"
+    return compression

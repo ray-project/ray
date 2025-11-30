@@ -5,8 +5,8 @@ value to > 1. However, by default the n sub-environments are stepped through
 sequentially, rather than in parallel.
 
 This script shows the effect of setting the `config.gym_env_vectorize_mode` from its
-default value of "SYNC" (all sub envs are located in the same EnvRunner process)
-to "ASYNC" (all sub envs in each EnvRunner get their own process).
+default value of "sync" (all sub envs are located in the same EnvRunner process)
+to "async" (all sub envs in each EnvRunner get their own process).
 
 This example:
     - shows, which config settings to change in order to switch from sub-envs being
@@ -21,7 +21,7 @@ How to run this script
 ----------------------
 `python [script file name].py `
 
-Use the `--vectorize-mode=BOTH` option to run both modes (SYNC and ASYNC)
+Use the `--vectorize-mode=both` option to run both modes (sync and async)
 through Tune at the same time and get a better comparison of the throughputs
 achieved.
 
@@ -44,8 +44,8 @@ when using the
 | Trial name               | status     | gym_env_vectorize_mode | iter |
 |                          |            |                        |      |
 |--------------------------+------------+------------------------+------+
-| PPO_slow-env_6ddf4_00000 | TERMINATED | SYNC                   |    4 |
-| PPO_slow-env_6ddf4_00001 | TERMINATED | ASYNC                  |    4 |
+| PPO_slow-env_6ddf4_00000 | TERMINATED | sync                   |    4 |
+| PPO_slow-env_6ddf4_00001 | TERMINATED | async                  |    4 |
 +--------------------------+------------+------------------------+------+
 +------------------+----------------------+------------------------+
 |   total time (s) |  episode_return_mean |   num_env_steps_sample |
@@ -55,7 +55,7 @@ when using the
 |          19.1203 |                73.86 |                  16037 |
 +------------------+----------------------+------------------------+
 
-You can see that the ASYNC mode, given that the env is sufficiently slow,
+You can see that the async mode, given that the env is sufficiently slow,
 achieves much better results when using vectorization.
 
 You should see no difference, however, when only using
@@ -65,12 +65,12 @@ import time
 
 import gymnasium as gym
 
+from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray import tune
 
 parser = add_rllib_example_script_args(default_reward=60.0)
 parser.set_defaults(
@@ -80,11 +80,11 @@ parser.set_defaults(
 parser.add_argument(
     "--vectorize-mode",
     type=str,
-    default="ASYNC",
+    default="async",
     help="The value `gym.envs.registration.VectorizeMode` to use for env "
-    "vectorization. SYNC steps through all sub-envs in sequence. ASYNC (default) "
+    "vectorization. sync steps through all sub-envs in sequence. 'async' (default) "
     "parallelizes sub-envs through multiprocessing and can speed up EnvRunners "
-    "significantly. Use the special value `BOTH` to run both ASYNC and SYNC through a "
+    "significantly. Use the special value `both` to run both 'async' and 'sync' through a "
     "Tune grid-search.",
 )
 
@@ -98,9 +98,9 @@ class SlowEnv(gym.ObservationWrapper):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    if args.no_tune and args.vectorize_mode == "BOTH":
+    if args.no_tune and args.vectorize_mode == "both":
         raise ValueError(
-            "Can't run this script with both --no-tune and --vectorize-mode=BOTH!"
+            "Can't run this script with both --no-tune and --vectorize-mode=both!"
         )
 
     # Wrap the env with the slowness wrapper.
@@ -109,18 +109,13 @@ if __name__ == "__main__":
 
     tune.register_env("slow-env", _env_creator)
 
-    if args.vectorize_mode == "BOTH" and args.no_tune:
-        raise ValueError(
-            "`--vectorize-mode=BOTH` and `--no-tune` not allowed in combination!"
-        )
-
     base_config = (
         PPOConfig()
         .environment("slow-env")
         .env_runners(
             gym_env_vectorize_mode=(
-                tune.grid_search(["SYNC", "ASYNC"])
-                if args.vectorize_mode == "BOTH"
+                tune.grid_search(["sync", "async"])
+                if args.vectorize_mode == "both"
                 else args.vectorize_mode
             ),
         )
@@ -129,7 +124,7 @@ if __name__ == "__main__":
     results = run_rllib_example_script_experiment(base_config, args)
 
     # Compare the throughputs and assert that ASYNC is much faster than SYNC.
-    if args.vectorize_mode == "BOTH":
+    if args.vectorize_mode == "both":
         throughput_sync = (
             results[0].metrics["num_env_steps_sampled_lifetime"]
             / results[0].metrics["time_total_s"]

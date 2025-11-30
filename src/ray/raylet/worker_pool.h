@@ -219,7 +219,7 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
       std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client) = 0;
 
   virtual std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
-      bool filter_dead_drivers = false) const = 0;
+      bool filter_dead_drivers = false, bool filter_system_drivers = false) const = 0;
 
   virtual Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
                                 const rpc::JobConfig &job_config,
@@ -519,10 +519,14 @@ class WorkerPool : public WorkerPoolInterface {
   ///
   /// \param filter_dead_drivers whether or not if this method will filter dead drivers
   /// that are still registered.
+  /// \param filter_system_drivers whether or not if this method will filter system
+  /// drivers. A system driver is a driver with job config namespace starting with
+  /// "__ray_internal__".
   ///
   /// \return A list containing all the drivers.
   std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
-      bool filter_dead_drivers = false) const override;
+      bool filter_dead_drivers = false,
+      bool filter_system_drivers = false) const override;
 
   /// Returns debug string for class.
   ///
@@ -859,6 +863,8 @@ class WorkerPool : public WorkerPoolInterface {
   const NodeID node_id_;
   /// Address of the current node.
   const std::string node_address_;
+  /// Address family for the node IP address (AF_INET or AF_INET6).
+  const int node_address_family_;
   /// A callback to get the number of CPUs available. We use this to determine
   /// how many idle workers to keep around.
   std::function<int64_t()> get_num_cpus_available_;

@@ -24,6 +24,8 @@ doctest(
 doctest(
     name = "py_doctest[train-gpu]",
     size = "large",
+    # TODO: [V2] Migrate
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     files = [
         "_internal/session.py",
         "context.py",
