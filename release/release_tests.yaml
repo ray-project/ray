@@ -2032,7 +2032,7 @@
 # APPO
 # --------------------------
 - name: rllib_learning_tests_pong_appo_torch
-  python: "3.12"
+  python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2041,6 +2041,8 @@
 
   cluster:
     byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: 1gpu_16cpus.yaml
@@ -2050,7 +2052,7 @@
     script: python example_algorithms/appo/pong_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
 
 - name: rllib_learning_tests_halfcheetah_appo_torch
-  python: "3.12"
+  python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2059,6 +2061,8 @@
 
   cluster:
     byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: 1gpu_16cpus.yaml

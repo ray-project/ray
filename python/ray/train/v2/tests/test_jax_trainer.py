@@ -144,6 +144,19 @@ def test_minimal_multihost(ray_tpu_multi_host, tmp_path):
     assert len(labeled_nodes) == 2
 
 
+def test_scaling_config_validation():
+    with pytest.raises(
+        ValueError, match="Cannot set `bundle_label_selector` when `use_tpu=True`"
+    ):
+        ScalingConfig(
+            num_workers=2,
+            use_tpu=True,
+            topology="2x2x2",
+            accelerator_type="TPU-V4",
+            bundle_label_selector={"subcluster": "my_subcluster"},
+        )
+
+
 if __name__ == "__main__":
     import sys
 
