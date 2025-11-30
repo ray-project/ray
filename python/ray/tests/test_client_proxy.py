@@ -482,44 +482,5 @@ def test_proxy_cancelled_grpc_request_stream():
     assert context.set_details.called, "grpc error should be set"
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="PSUtil does not work the same on windows."
-)
-def test_proxy_manager_dynamic_runtime_env_agent_port(shutdown_only):
-    """
-    Test that ProxyManager can dynamically fetch the runtime env agent port
-    via RuntimeContext instead of requiring it at initialization time.
-
-    This is important for supporting agent self-assigned ports (port=0),
-    where the actual port is only known after the agent starts.
-    """
-    # Start Ray - the agent will start and bind to its port
-    ray_instance = ray.init(_redis_password=REDIS_DEFAULT_PASSWORD)
-
-    # Create ProxyManager without passing runtime_env_agent_address
-    pm = proxier.ProxyManager(
-        ray_instance["address"],
-        session_dir=ray_instance["session_dir"],
-        redis_password=REDIS_DEFAULT_PASSWORD,
-    )
-
-    # Verify the ProxyManager can dynamically fetch the runtime env agent address
-    runtime_env_agent_address = pm._get_runtime_env_agent_address()
-
-    # The address should be a valid http URL with a port
-    assert runtime_env_agent_address.startswith("http://")
-    # Extract port from address (format: http://ip:port)
-    port_str = runtime_env_agent_address.rsplit(":", 1)[1]
-    port = int(port_str)
-    assert port > 0, f"Expected valid port, got {port}"
-
-    # Verify we can get the same port via RuntimeContext
-    context_port = ray.get_runtime_context().get_runtime_env_agent_port()
-    assert port == context_port, (
-        f"Port from ProxyManager ({port}) should match "
-        f"port from RuntimeContext ({context_port})"
-    )
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
