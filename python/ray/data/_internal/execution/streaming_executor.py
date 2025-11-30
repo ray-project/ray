@@ -493,7 +493,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
             topology[op].dispatch_next_task()
 
-            self._resource_manager.update_usages()
+            self._resource_manager.update_usages_for_a_operator(op)
 
             i += 1
             if not self._use_rich_progress() and i % PROGRESS_BAR_UPDATE_INTERVAL == 0:
