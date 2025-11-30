@@ -196,7 +196,7 @@ class ServerCallImpl : public ServerCall {
         auth_token_(auth_token),
         start_time_(0),
         record_metrics_(record_metrics) {
-    reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
+    reply_ = google::protobuf::Arena::Create<Reply>(&arena_);
     // TODO(Yi Cheng) call_name_ sometimes get corrunpted due to memory issues.
     RAY_CHECK(!call_name_.empty()) << "Call name is empty";
     if (record_metrics_) {
