@@ -176,6 +176,34 @@ def test_connect_without_token_raises_error(setup_cluster_with_token_auth):
         ray.init(address=cluster.address)
 
 
+@pytest.mark.parametrize(
+    "token,expected_status",
+    [
+        (None, 401),  # No token -> Unauthorized
+        ("wrong_token", 403),  # Wrong token -> Forbidden
+    ],
+    ids=["no_token", "wrong_token"],
+)
+def test_state_api_auth_failure(token, expected_status, setup_cluster_with_token_auth):
+    """Test that state API calls fail with missing or incorrect token."""
+    import requests
+
+    cluster_info = setup_cluster_with_token_auth
+    dashboard_url = cluster_info["dashboard_url"]
+
+    # Make direct HTTP request to state API endpoint
+    headers = {}
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
+
+    response = requests.get(f"{dashboard_url}/api/v0/actors", headers=headers)
+
+    assert response.status_code == expected_status, (
+        f"State API should return {expected_status}, got {response.status_code}: "
+        f"{response.text}"
+    )
+
+
 @pytest.mark.parametrize("tokens_match", [True, False])
 def test_cluster_token_authentication(tokens_match, setup_cluster_with_token_auth):
     """Test cluster authentication with matching and non-matching tokens."""
@@ -363,9 +391,10 @@ def test_e2e_operations_with_token_auth(setup_cluster_with_token_auth):
     """Test that e2e operations work with token authentication enabled.
 
     This verifies that with token auth enabled:
-    1. Job submission works
-    2. Tasks execute successfully
-    3. Actors can be created and called
+    1. Tasks execute successfully
+    2. Actors can be created and called
+    3. State API works (list_nodes, list_actors, list_tasks)
+    4. Job submission works
     """
     cluster_info = setup_cluster_with_token_auth
 
@@ -391,7 +420,26 @@ def test_e2e_operations_with_token_auth(setup_cluster_with_token_auth):
     result = ray.get(actor.increment.remote())
     assert result == 1, f"Actor method should return 1, got {result}"
 
-    # Test 3: Submit a job and wait for completion
+    # Test 3: State API operations (uses HTTP with auth headers)
+    from ray.util.state import list_actors, list_nodes, list_tasks
+
+    # List nodes - should include at least the head node
+    nodes = list_nodes()
+    assert len(nodes) >= 1, f"Expected at least 1 node, got {len(nodes)}"
+
+    # List actors - should include our SimpleActor
+    actors = list_actors()
+    assert len(actors) >= 1, f"Expected at least 1 actor, got {len(actors)}"
+    actor_classes = [a.class_name for a in actors]
+    assert (
+        "SimpleActor" in actor_classes[0]
+    ), f"SimpleActor not found in {actor_classes}"
+
+    # List tasks - should include completed tasks
+    tasks = list_tasks()
+    assert len(tasks) >= 1, f"Expected at least 1 task, got {len(tasks)}"
+
+    # Test 4: Submit a job and wait for completion
     from ray.job_submission import JobSubmissionClient
 
     # Create job submission client (uses HTTP with auth headers)
@@ -425,7 +473,6 @@ def test_get_auth_token_cli(use_generate):
     test_token = "a" * 64
 
     with authentication_env_guard():
-        set_auth_mode("token")
         if use_generate:
             # Test --generate flag (no token set)
             clear_auth_token_sources(remove_default=True)
@@ -473,7 +520,6 @@ def test_get_auth_token_cli(use_generate):
 def test_get_auth_token_cli_no_token_no_generate():
     """Test ray get-auth-token fails without token and without --generate."""
     with authentication_env_guard():
-        set_auth_mode("token")
         reset_auth_token_state()
         clear_auth_token_sources(remove_default=True)
         env = os.environ.copy()
@@ -500,7 +546,6 @@ def test_get_auth_token_cli_piping():
     test_token = "b" * 64
 
     with authentication_env_guard():
-        set_auth_mode("token")
         set_env_auth_token(test_token)
         reset_auth_token_state()
         env = os.environ.copy()
