@@ -1,9 +1,42 @@
-from .bundle_queue import BundleQueue
-from .fifo_bundle_queue import FIFOBundleQueue
+from __future__ import annotations
+
+from .base import (
+    BaseBundleQueue,
+    SupportsDeque,
+    SupportsIndexing,
+    SupportsRebundling,
+)
+from .bundler import BlockRefBundler
+from .bundler_exact import StreamingRepartitionRefBundler
+from .fifo import FIFOBundleQueue
+from .hash_link import HashLinkedQueue
+from .ordered import OrderedBundleQueue
 
 
-def create_bundle_queue() -> BundleQueue:
-    return FIFOBundleQueue()
+class QueueWithIndexing(BaseBundleQueue, SupportsIndexing):
+    pass
 
 
-__all__ = ["BundleQueue", "create_bundle_queue"]
+class QueueWithRebundling(BaseBundleQueue, SupportsRebundling):
+    pass
+
+
+def create_bundle_queue() -> QueueWithIndexing:
+    return HashLinkedQueue()
+
+
+__all__ = [
+    "BaseBundleQueue",
+    "create_bundle_queue",
+    "SupportsIndexing",
+    "HashLinkedQueue",
+    "BlockRefBundler",
+    "StreamingRepartitionRefBundler",
+    "OrderedBundleQueue",
+    "FIFOBundleQueue",
+    "SupportsDeque",
+    "SupportsRebundling",
+    "QueueWithIndexing",
+    "QueueWithRebundling",
+    "DequeWithIndexing",
+]

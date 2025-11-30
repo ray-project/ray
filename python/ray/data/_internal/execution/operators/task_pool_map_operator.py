@@ -1,6 +1,9 @@
 import warnings
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
+from typing_extensions import override
+
+from ray.data._internal.execution.bundle_queue import BaseBundleQueue
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
@@ -8,7 +11,6 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
 )
 from ray.data._internal.execution.operators.map_operator import (
-    BaseRefBundler,
     MapOperator,
     _map_task,
 )
@@ -28,7 +30,7 @@ class TaskPoolMapOperator(MapOperator):
         name: str = "TaskPoolMap",
         target_max_block_size_override: Optional[int] = None,
         min_rows_per_bundle: Optional[int] = None,
-        ref_bundler: Optional[BaseRefBundler] = None,
+        ref_bundler: Optional[BaseBundleQueue] = None,
         max_concurrency: Optional[int] = None,
         supports_fusion: bool = True,
         map_task_kwargs: Optional[Dict[str, Any]] = None,
@@ -89,6 +91,16 @@ class TaskPoolMapOperator(MapOperator):
         }
 
         self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
+
+    @property
+    @override
+    def input_buffers(self) -> List["BaseBundleQueue"]:
+        return [self._block_ref_bundler]
+
+    @property
+    @override
+    def output_buffers(self) -> List["BaseBundleQueue"]:
+        return [self._output_queue]
 
     def _add_bundled_input(self, bundle: RefBundle):
         # Submit the task as a normal Ray task.

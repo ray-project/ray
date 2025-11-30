@@ -16,6 +16,7 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
+from ray.data._internal.execution.bundle_queue.bundler import BlockRefBundler
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
@@ -31,7 +32,6 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import (
-    BlockRefBundler,
     MapOperator,
     _per_block_limit_fn,
 )

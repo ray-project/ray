@@ -17,7 +17,7 @@ from ray._common.test_utils import wait_for_condition
 from ray._private.ray_constants import ID_SIZE
 from ray.actor import ActorHandle
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
-from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
+from ray.data._internal.execution.bundle_queue import IndexedQueue
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -81,7 +81,7 @@ class TestActorPool(unittest.TestCase):
             bundles = make_ref_bundles([[0]])
         else:
             bundles = [bundle]
-        queue = FIFOBundleQueue()
+        queue = IndexedQueue()
         for bundle in bundles:
             queue.add(bundle)
         actor_task_selector = self._create_task_selector(pool)
@@ -513,7 +513,7 @@ class TestActorPool(unittest.TestCase):
         actor2 = self._add_ready_actor(pool, node_id="node2")
 
         # Create the mock bundle queue
-        bundle_queue = FIFOBundleQueue()
+        bundle_queue = IndexedQueue()
         for bundle in bundles:
             bundle_queue.add(bundle)
 
@@ -560,7 +560,7 @@ class TestActorPool(unittest.TestCase):
             b.get_preferred_object_locations = lambda: {}
 
         # Create the mock bundle queue
-        bundle_queue = FIFOBundleQueue()
+        bundle_queue = IndexedQueue()
         for bundle in bundles:
             bundle_queue.add(bundle)
 
