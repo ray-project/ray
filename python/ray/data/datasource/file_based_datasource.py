@@ -12,6 +12,7 @@ from typing import (
     Literal,
     Optional,
     Tuple,
+    TypeVar,
     Union,
 )
 
@@ -69,13 +70,19 @@ class FileShuffleConfig:
     datasets.
 
     .. note::
-        Even if you provided a seed, you might still observe a non-deterministic row
+        Even if you provided a base_seed, you might still observe a non-deterministic row
         order. This is because tasks are executed in parallel and their completion
         order might vary. If you need to preserve the order of rows, set
         `DataContext.get_current().execution_options.preserve_order`.
 
+    .. note::
+        When a `base_seed` is provided, different epochs will yield different file
+        orders and thus different results. The actual seed used for each epoch is
+        computed as `base_seed + epoch_idx`, ensuring deterministic but varying
+        shuffles across epochs.
+
     Args:
-        seed: An optional integer seed for the file shuffler. If provided, Ray Data
+        base_seed: An optional integer seed for the file shuffler. If provided, Ray Data
             shuffles files deterministically based on this seed.
 
     Example:
@@ -92,7 +99,7 @@ class FileShuffleConfig:
         if self.base_seed is not None and not isinstance(self.base_seed, int):
             raise ValueError("base_seed must be an integer or None.")
 
-    def get_seed(self, epoch_idx: int) -> Optional[int]:
+    def get_seed(self, epoch_idx: int = 0) -> Optional[int]:
         if self.base_seed is None:
             return None
         return self.base_seed + epoch_idx
@@ -559,15 +566,18 @@ def _validate_shuffle_arg(
         )
 
 
+FileMetadata = TypeVar("FileMetadata")
+
+
 def shuffle_file_metadata(
     paths: List[str],
-    file_sizes: List[float],
+    file_metadata: List[FileMetadata],
     shuffler: Union[Literal["files"], FileShuffleConfig, None],
     epoch_idx: int,
-) -> Tuple[List[str], List[float]]:
+) -> Tuple[List[str], List[FileMetadata]]:
     """Shuffle file paths and sizes together using the given shuffler."""
     if shuffler is None:
-        return paths, file_sizes
+        return paths, file_metadata
 
     if shuffler == "files":
         file_metadata_shuffler = np.random.default_rng()
@@ -575,7 +585,7 @@ def shuffle_file_metadata(
         assert isinstance(shuffler, FileShuffleConfig)
         file_metadata_shuffler = np.random.default_rng(shuffler.get_seed(epoch_idx))
 
-    files_metadata = list(zip(paths, file_sizes))
+    files_metadata = list(zip(paths, file_metadata))
     shuffled_files_metadata = [
         files_metadata[i]
         for i in file_metadata_shuffler.permutation(len(files_metadata))
