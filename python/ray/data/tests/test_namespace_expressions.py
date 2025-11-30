@@ -4,8 +4,8 @@ This module tests the namespace accessor methods (list, str, struct) that provid
 convenient access to PyArrow compute functions through the expression API.
 """
 
-from io import BytesIO
 import datetime
+from io import BytesIO
 from typing import Any
 
 import pandas as pd
