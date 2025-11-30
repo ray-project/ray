@@ -169,8 +169,28 @@ class ResourceManager:
 
         return mem_op_internal + mem_op_outputs
 
+    def _calculate_operator_usage(
+        self, op: PhysicalOperator, state: "OpState"
+    ) -> tuple:
+        op.update_resource_usage()
+        op_usage = op.current_processor_usage()
+        op_running_usage = op.running_processor_usage()
+        op_pending_usage = op.pending_processor_usage()
+
+        assert not op_usage.object_store_memory
+        assert not op_running_usage.object_store_memory
+        assert not op_pending_usage.object_store_memory
+
+        used_object_store = self._estimate_object_store_memory(op, state)
+        op_usage = op_usage.copy(object_store_memory=used_object_store)
+        op_running_usage = op_running_usage.copy(object_store_memory=used_object_store)
+        if isinstance(op, ReportsExtraResourceUsage):
+            op_usage.add(op.extra_resource_usage())
+
+        return op_usage, op_running_usage, op_pending_usage
+
     def update_usages(self):
-        """Recalculate resource usages."""
+        """Recalculate resource usages for all operators."""
         # TODO(hchen): This method will be called frequently during the execution loop.
         # And some computations are redundant. We should either remove redundant
         # computations or remove this method entirely and compute usages on demand.
@@ -181,35 +201,18 @@ class ResourceManager:
         self._op_running_usages.clear()
         self._op_pending_usages.clear()
 
-        # Iterate from last to first operator.
         for op, state in reversed(self._topology.items()):
-            # Update `self._op_usages`, `self._op_running_usages`,
-            # and `self._op_pending_usages`.
-            op.update_resource_usage()
-            op_usage = op.current_processor_usage()
-            op_running_usage = op.running_processor_usage()
-            op_pending_usage = op.pending_processor_usage()
-
-            assert not op_usage.object_store_memory
-            assert not op_running_usage.object_store_memory
-            assert not op_pending_usage.object_store_memory
-
-            used_object_store = self._estimate_object_store_memory(op, state)
-
-            op_usage = op_usage.copy(object_store_memory=used_object_store)
-            op_running_usage = op_running_usage.copy(
-                object_store_memory=used_object_store
-            )
-
-            if isinstance(op, ReportsExtraResourceUsage):
-                op_usage.add(op.extra_resource_usage())
+            (
+                op_usage,
+                op_running_usage,
+                op_pending_usage,
+            ) = self._calculate_operator_usage(op, state)
 
             self._op_usages[op] = op_usage
             self._op_running_usages[op] = op_running_usage
             self._op_pending_usages[op] = op_pending_usage
 
-            # Update `self._global_usage`, `self._global_running_usage`,
-            # and `self._global_pending_usage`.
+            # Update global totals
             self._global_usage = self._global_usage.add(op_usage)
             self._global_running_usage = self._global_running_usage.add(
                 op_running_usage
@@ -228,39 +231,28 @@ class ResourceManager:
             )
 
     def update_usages_for_a_operator(self, op: PhysicalOperator):
-        """Calculate resource usages for a single operator."""
-        self._global_usage = self._global_usage.subtract(self._op_usages[op])
-        self._global_running_usage = self._global_running_usage.subtract(
-            self._op_running_usages[op]
-        )
-        self._global_pending_usage = self._global_pending_usage.subtract(
-            self._op_pending_usages[op]
-        )
+        """Calculate resource usages for a single operator and update the global usage."""
+        # Subtract old usage from globals (if exists)
+        if op in self._op_usages:
+            self._global_usage = self._global_usage.subtract(self._op_usages[op])
+            self._global_running_usage = self._global_running_usage.subtract(
+                self._op_running_usages[op]
+            )
+            self._global_pending_usage = self._global_pending_usage.subtract(
+                self._op_pending_usages[op]
+            )
 
-        op.update_resource_usage()
-        op_usage = op.current_processor_usage()
-        op_running_usage = op.running_processor_usage()
-        op_pending_usage = op.pending_processor_usage()
-
-        assert not op_usage.object_store_memory
-        assert not op_running_usage.object_store_memory
-        assert not op_pending_usage.object_store_memory
-
+        # Calculate new usage for this operator
         state = self._topology[op]
-        used_object_store = self._estimate_object_store_memory(op, state)
-
-        op_usage = op_usage.copy(object_store_memory=used_object_store)
-        op_running_usage = op_running_usage.copy(object_store_memory=used_object_store)
-
-        if isinstance(op, ReportsExtraResourceUsage):
-            op_usage.add(op.extra_resource_usage())
+        op_usage, op_running_usage, op_pending_usage = self._calculate_operator_usage(
+            op, state
+        )
 
         self._op_usages[op] = op_usage
         self._op_running_usages[op] = op_running_usage
         self._op_pending_usages[op] = op_pending_usage
 
-        # Update `self._global_usage`, `self._global_running_usage`,
-        # and `self._global_pending_usage`.
+        # Add new usage to globals
         self._global_usage = self._global_usage.add(op_usage)
         self._global_running_usage = self._global_running_usage.add(op_running_usage)
         self._global_pending_usage = self._global_pending_usage.add(op_pending_usage)
