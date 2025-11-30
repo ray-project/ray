@@ -3,7 +3,7 @@ import math
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Tuple
 
 from ray._private.ray_constants import env_bool, env_float
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -171,7 +171,7 @@ class ResourceManager:
 
     def _calculate_operator_usage(
         self, op: PhysicalOperator, state: "OpState"
-    ) -> tuple:
+    ) -> Tuple[ExecutionResources, ExecutionResources, ExecutionResources]:
         op.update_resource_usage()
         op_usage = op.current_processor_usage()
         op_running_usage = op.running_processor_usage()
@@ -230,7 +230,7 @@ class ResourceManager:
                 limits=self._global_limits,
             )
 
-    def update_usages_for_a_operator(self, op: PhysicalOperator):
+    def update_usages_for_operator(self, op: PhysicalOperator):
         """Calculate resource usages for a single operator and update the global usage."""
         # Subtract old usage from globals (if exists)
         if op in self._op_usages:
