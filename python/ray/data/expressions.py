@@ -503,7 +503,6 @@ class Expr(ABC):
 
         return _DatetimeNamespace(self)
 
-
     def _unalias(self) -> "Expr":
         return self
 
