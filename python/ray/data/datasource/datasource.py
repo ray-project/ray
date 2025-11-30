@@ -263,7 +263,10 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
         raise NotImplementedError
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        epoch_idx: int = 0,
     ) -> List["ReadTask"]:
         """Execute the read and return read tasks.
 
@@ -271,6 +274,7 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
             parallelism: The requested read parallelism. The number of read
                 tasks should equal to this value if possible.
             per_task_row_limit: The per-task row limit for the read tasks.
+            epoch_idx: The epoch index for the read tasks.
         Returns:
             A list of read tasks that can be executed to read blocks from the
             datasource in parallel.

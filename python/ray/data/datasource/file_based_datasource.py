@@ -194,12 +194,7 @@ class FileBasedDatasource(Datasource):
                 )
 
         _validate_shuffle_arg(shuffle)
-        self._file_metadata_shuffler = None
-        if shuffle == "files":
-            self._file_metadata_shuffler = np.random.default_rng()
-        elif isinstance(shuffle, FileShuffleConfig):
-            # Create a NumPy random generator with a fixed seed if provided
-            self._file_metadata_shuffler = np.random.default_rng(shuffle.seed)
+        self._shuffle = shuffle
 
         # Read tasks serialize `FileBasedDatasource` instances, and the list of paths
         # can be large. To avoid slow serialization speeds, we store a reference to
@@ -221,7 +216,10 @@ class FileBasedDatasource(Datasource):
         return total_size
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        epoch_idx: int = 0,
     ) -> List[ReadTask]:
         import numpy as np
 
@@ -231,13 +229,9 @@ class FileBasedDatasource(Datasource):
         paths = self._paths()
         file_sizes = self._file_sizes()
 
-        if self._file_metadata_shuffler is not None:
-            files_metadata = list(zip(paths, file_sizes))
-            shuffled_files_metadata = [
-                files_metadata[i]
-                for i in self._file_metadata_shuffler.permutation(len(files_metadata))
-            ]
-            paths, file_sizes = list(map(list, zip(*shuffled_files_metadata)))
+        paths, file_sizes = shuffle_file_metadata(
+            paths, file_sizes, self._shuffle, epoch_idx
+        )
 
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
 
@@ -562,3 +556,27 @@ def _validate_shuffle_arg(
             f"Invalid value for 'shuffle': {shuffle}. "
             "Valid values are None, 'files', `FileShuffleConfig`."
         )
+
+
+def shuffle_file_metadata(
+    paths: List[str],
+    file_sizes: List[float],
+    shuffler: Union[Literal["files"], FileShuffleConfig, None],
+    epoch_idx: int,
+) -> Tuple[List[str], List[float]]:
+    """Shuffle file paths and sizes together using the given shuffler."""
+    if shuffler is None:
+        return paths, file_sizes
+
+    if shuffler == "files":
+        file_metadata_shuffler = np.random.default_rng()
+    else:
+        assert isinstance(shuffler, FileShuffleConfig)
+        file_metadata_shuffler = np.random.default_rng(shuffler.get_seed(epoch_idx))
+
+    files_metadata = list(zip(paths, file_sizes))
+    shuffled_files_metadata = [
+        files_metadata[i]
+        for i in file_metadata_shuffler.permutation(len(files_metadata))
+    ]
+    return list(map(list, zip(*shuffled_files_metadata)))
