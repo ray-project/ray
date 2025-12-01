@@ -1041,10 +1041,11 @@ entrypoints==0.4 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jupyter-client
     #   nbconvert
-exceptiongroup==1.3.0 ; python_full_version < '3.11' \
-    --hash=sha256:4d111e6e0c13d0644cad6ddaa7ed0261a0b36971f6d23e7ec9b4b9097da78a10 \
-    --hash=sha256:b241f5885f560bc56a59ee63ca4c6a8bfa46ae4ad651af316d4e81817bb9fd88
+exceptiongroup==1.3.1 ; python_full_version < '3.11' \
+    --hash=sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219 \
+    --hash=sha256:a7a39a3bd276781e98394987d3a5701d0c4edffb633bb7a5144577f82c773598
     # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   anyio
     #   pytest
 executing==2.0.1 \
@@ -1815,7 +1816,6 @@ grpcio==1.74.0 \
     --hash=sha256:fd3c71aeee838299c5887230b8a1822795325ddfea635edd82954c1eaa831e24 \
     --hash=sha256:fe0f540750a13fd8e5da4b3eaba91a785eea8dca5ccd2bc2ffe978caa403090e
     # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r docker/base-extra/requirements.in
     #   google-api-core
     #   googleapis-common-protos

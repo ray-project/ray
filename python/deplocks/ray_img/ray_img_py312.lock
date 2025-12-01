@@ -713,9 +713,7 @@ grpcio==1.74.0 \
     --hash=sha256:f6ec94f0e50eb8fa1744a731088b966427575e40c2944a980049798b127a687e \
     --hash=sha256:fd3c71aeee838299c5887230b8a1822795325ddfea635edd82954c1eaa831e24 \
     --hash=sha256:fe0f540750a13fd8e5da4b3eaba91a785eea8dca5ccd2bc2ffe978caa403090e
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
-    #   ray
+    # via ray
 gymnasium==1.1.1 \
     --hash=sha256:8bd9ea9bdef32c950a444ff36afc785e1d81051ec32d30435058953c20d2456d \
     --hash=sha256:9c167ec0a2b388666e37f63b2849cd2552f7f5b71938574c637bb36487eb928a

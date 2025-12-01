@@ -1171,7 +1171,6 @@ grpcio==1.74.0 \
     --hash=sha256:fd3c71aeee838299c5887230b8a1822795325ddfea635edd82954c1eaa831e24 \
     --hash=sha256:fe0f540750a13fd8e5da4b3eaba91a785eea8dca5ccd2bc2ffe978caa403090e
     # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r docker/base-extra/requirements.in
     #   google-api-core
     #   googleapis-common-protos
