@@ -598,3 +598,41 @@ def test_write_multi_namespace_end_to_end_uses_write_multi_namespace():
 
 
 
+
+def test_serialization_excludes_non_serializable_attributes(mock_turbopuffer_module):
+    """Test that TurbopufferDatasink can be pickled and unpickled correctly.
+    
+    This verifies that __getstate__ and __setstate__ properly handle
+    non-serializable attributes (_turbopuffer module and _client object).
+    """
+    import pickle
+    
+    sink = make_sink()
+    
+    # Trigger client initialization
+    client = sink._get_client()
+    assert sink._client is not None
+    assert sink._turbopuffer is not None
+    
+    # Pickle and unpickle
+    pickled = pickle.dumps(sink)
+    unpickled_sink = pickle.loads(pickled)
+    
+    # Verify non-serializable attributes are reinitialized correctly
+    assert unpickled_sink._client is None  # Client should be reset to None
+    assert unpickled_sink._turbopuffer is not None  # Module re-imported in __setstate__
+    
+    # Verify all configuration is preserved
+    assert unpickled_sink.namespace == sink.namespace
+    assert unpickled_sink.api_key == sink.api_key
+    assert unpickled_sink.region == sink.region
+    assert unpickled_sink.batch_size == sink.batch_size
+    
+    # Verify lazy initialization still works after unpickling
+    client2 = unpickled_sink._get_client()
+    assert client2 is not None
+    assert unpickled_sink._client is client2
+    mock_turbopuffer_module.Turbopuffer.assert_called()
+
+
+
