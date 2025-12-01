@@ -23,7 +23,6 @@ class PlacementGroupCleaner:
         self._pg_queue: queue.Queue = queue.Queue()
         self._stop_event = threading.Event()
         self._controller_actor_id: Optional[str] = None
-        self._curr_placement_group: Optional[PlacementGroup] = None
         self._monitor_thread: Optional[threading.Thread] = None
         self._get_actor_timeout_s = GET_ACTOR_TIMEOUT_S
         self._exiting: bool = False
@@ -62,17 +61,18 @@ class PlacementGroupCleaner:
         This runs continuously until controller dies or stop() is called.
         Uses a queue to receive placement group updates.
         """
+        curr_placement_group: Optional[PlacementGroup] = None
         while not self._stop_event.is_set():
             # Check for new placement group updates from queue
             try:
                 pg = self._pg_queue.get(timeout=self._check_interval_s)
-                self._curr_placement_group = pg
+                curr_placement_group = pg
                 logger.debug(f"Updated current placement group to {pg.id}")
             except queue.Empty:
                 pass  # continue to monitor current placement group
 
             # Skip monitoring if no placement group registered
-            if not self._curr_placement_group:
+            if not curr_placement_group:
                 continue
 
             # Check if controller is still alive
@@ -90,16 +90,15 @@ class PlacementGroupCleaner:
 
             # Cleanup if controller is dead
             if not alive:
-                self._cleanup_placement_group()
+                self._cleanup_placement_group(curr_placement_group)
                 break
 
         # Exit the actor after cleanup since controller is dead
         self._exit()
         self._monitor_thread = None
 
-    def _cleanup_placement_group(self):
+    def _cleanup_placement_group(self, placement_group: PlacementGroup):
         """Clean up the current placement group if it hasn't been removed."""
-        placement_group = self._curr_placement_group
         if self._is_placement_group_removed(placement_group):
             logger.debug(
                 "Controller actor died but placement group already removed; "
@@ -148,12 +147,8 @@ class PlacementGroupCleaner:
         self._stop_monitor_thread()
         self._exit()
 
-    def _is_placement_group_removed(
-        self, placement_group: Optional[PlacementGroup]
-    ) -> bool:
+    def _is_placement_group_removed(self, placement_group: PlacementGroup) -> bool:
         """Check if a placement group has been removed."""
-        if not placement_group:
-            return True
         try:
             table = ray.util.placement_group_table(placement_group)
         except Exception as e:
