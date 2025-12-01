@@ -137,9 +137,7 @@ class ExactRebundleQueue(BaseBundleQueue, SupportsRebundling):
         return bundle
 
     @override
-    def peek_next(
-        self,
-    ) -> Optional[RefBundle]:
+    def peek_next(self) -> Optional[RefBundle]:
         if not self.has_next():
             return None
         return self._ready_bundles[0]

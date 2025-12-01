@@ -89,7 +89,7 @@ class BaseBundleQueue(_QueueMetricRecorderMixin):
         blocks, rows, and bytes must be in remain unchanged
         before and after this method call.
 
-        If the queue is empty, return `None`.
+        If the queue.has_next() == False, return `None`.
         """
         ...
 
