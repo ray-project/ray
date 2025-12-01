@@ -942,12 +942,7 @@ def start(
                 )
 
         # Ensure auth token is available if authentication mode is token
-        try:
-            ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
-        except ray.exceptions.AuthenticationError:
-            raise RuntimeError(
-                "Failed to load authentication token. To generate a token for local development, use `ray get-auth-token --generate`. For remote clusters, ensure that the token is propagated to all nodes of the cluster when token authentication is enabled."
-            )
+        ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
 
         node = ray._private.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block
@@ -2723,7 +2718,7 @@ def shutdown_prometheus():
     help="Generate a new token if none exists",
 )
 def get_auth_token(generate):
-    """Prints the Ray authentication token to stdout when RAY_AUTH_MODE=token.
+    """Prints the Ray authentication token to stdout.
 
     If --generate is specified, a new token is created and saved to ~/.ray/auth_token if one does not exist.
     """
@@ -2731,21 +2726,13 @@ def get_auth_token(generate):
         generate_and_save_token,
     )
     from ray._raylet import (
-        AuthenticationMode,
         AuthenticationTokenLoader,
-        get_authentication_mode,
     )
-
-    # Check if token auth mode is enabled and provide guidance if not
-    if get_authentication_mode() != AuthenticationMode.TOKEN:
-        raise click.ClickException(
-            "Token authentication is not currently enabled. To enable token authentication, set: export RAY_AUTH_MODE=token\n For more instructions, see: https://docs.ray.io/en/latest/ray-security/auth.html",
-        )
 
     # Try to load existing token
     loader = AuthenticationTokenLoader.instance()
 
-    if not loader.has_token():
+    if not loader.has_token(ignore_auth_mode=True):
         if generate:
             click.echo("Generating new authentication token...", err=True)
             generate_and_save_token()
@@ -2755,8 +2742,8 @@ def get_auth_token(generate):
                 "No authentication token found. Use ray `get-auth-token --generate` to create one.",
             )
 
-    # Get raw token value
-    token = loader.get_raw_token()
+    # Get raw token value (ignore auth mode - explicitly loading token)
+    token = loader.get_raw_token(ignore_auth_mode=True)
 
     # Print token to stdout (for piping) without newline
     click.echo(token, nl=False)
