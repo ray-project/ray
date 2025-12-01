@@ -328,7 +328,6 @@ TEST_F(GcsActorManagerTest, TestBasic) {
 
   ASSERT_TRUE(worker_client_->Reply());
   io_service_.run_one();
-  // Complete graceful shutdown by confirming worker exit
   gcs_actor_manager_->OnWorkerDead(node_id, worker_id);
   io_service_.poll();
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);

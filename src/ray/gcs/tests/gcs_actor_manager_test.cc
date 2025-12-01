@@ -285,7 +285,6 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 1);
 
   ASSERT_TRUE(worker_client_->Reply());
-  // Complete graceful shutdown by confirming worker exit
   gcs_actor_manager_->OnWorkerDead(node_id, worker_id);
   io_service_.run_one();
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
@@ -355,7 +354,6 @@ TEST_F(GcsActorManagerTest, TestDeadCount) {
     io_service_.run_one();
     // Actor is killed.
     ASSERT_TRUE(worker_client_->Reply());
-    // Complete graceful shutdown
     gcs_actor_manager_->OnWorkerDead(node_id, worker_id);
     io_service_.run_one();
     ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
@@ -942,7 +940,6 @@ TEST_F(GcsActorManagerTest, TestDestroyActorBeforeActorCreationCompletes) {
   auto worker_id = WorkerID::FromBinary(address.worker_id());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
-  // Complete graceful shutdown
   gcs_actor_manager_->OnWorkerDead(node_id, worker_id);
   io_service_.run_one();
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
@@ -1477,7 +1474,6 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
   // The actor is out of scope and dead.
   ReportActorOutOfScope(actor->GetActorID(),
                         /*num_restarts_due_to_lineage_reconstruction=*/0);
-  // Complete graceful shutdown
   auto current_node_id = NodeID::FromBinary(actor->GetAddress().node_id());
   auto current_worker_id = WorkerID::FromBinary(actor->GetAddress().worker_id());
   gcs_actor_manager_->OnWorkerDead(current_node_id, current_worker_id);
@@ -1596,7 +1592,6 @@ TEST_F(GcsActorManagerTest, TestIdempotencyOfRestartActorForLineageReconstructio
   // The actor is out of scope and dead.
   ReportActorOutOfScope(actor->GetActorID(),
                         /*num_restarts_due_to_lineage_reconstruction=*/0);
-  // Complete graceful shutdown
   auto dead_actor_node_id = NodeID::FromBinary(address.node_id());
   auto dead_actor_worker_id = WorkerID::FromBinary(address.worker_id());
   gcs_actor_manager_->OnWorkerDead(dead_actor_node_id, dead_actor_worker_id);

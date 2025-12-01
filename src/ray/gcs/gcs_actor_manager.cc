@@ -1048,6 +1048,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   RAY_LOG(DEBUG) << "Try to kill actor " << actor->GetActorID() << ", with status "
                  << rpc::ActorTableData::ActorState_Name(actor->GetState()) << ", name "
                  << actor->GetName();
+  bool actor_is_created = false;
   if (actor->GetState() == rpc::ActorTableData::DEPENDENCIES_UNREADY) {
     // The actor creation task still has unresolved dependencies. Remove from the
     // unresolved actors map.
@@ -1058,7 +1059,9 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     const auto &node_id = actor->GetNodeID();
     const auto &worker_id = actor->GetWorkerID();
     auto node_it = created_actors_.find(node_id);
-    if (node_it != created_actors_.end() && node_it->second.count(worker_id)) {
+    actor_is_created =
+        (node_it != created_actors_.end() && node_it->second.count(worker_id));
+    if (actor_is_created) {
       NotifyRayletToKillActor(actor, death_cause, force_kill);
       // For force kill, remove immediately. For graceful, keep so OnWorkerDead can find
       // it.
@@ -1118,10 +1121,13 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   }
 
   // For force kill, mark DEAD immediately. For graceful, defer until
-  // OnWorkerDead confirms. However, if we can't signal the actor,
-  // treat graceful as force to avoid indefinite waiting.
+  // OnWorkerDead confirms. However, we can only defer for created actors because
+  // OnWorkerDead looks up actors in created_actors_ or the scheduler. For actors
+  // in creation phase, CancelActorInScheduling removes them from the scheduler,
+  // so OnWorkerDead won't find them and won't call RestartActor. Also treat
+  // unsignalable actors as needing immediate marking to avoid indefinite waiting.
   bool can_signal_actor = actor->LocalRayletAddress().has_value();
-  bool should_mark_dead_now = force_kill || (!can_signal_actor && !force_kill);
+  bool should_mark_dead_now = force_kill || !actor_is_created || !can_signal_actor;
 
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   auto time = current_sys_time_ms();
