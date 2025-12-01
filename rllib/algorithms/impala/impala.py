@@ -32,8 +32,8 @@ from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     MEAN_NUM_EPISODE_LISTS_RECEIVED,
-    MEAN_NUM_LEARNER_RESULTS_RECEIVED,
     MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED,
+    MEAN_NUM_LEARNER_RESULTS_RECEIVED,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
@@ -42,8 +42,8 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_SYNCH_WORKER_WEIGHTS,
     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
-    SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
     TIMERS,
 )
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
@@ -427,7 +427,7 @@ class IMPALAConfig(AlgorithmConfig):
                 and self.minibatch_size <= self.total_train_batch_size
             ):
                 self._value_error(
-                    f"`minibatch_size` ({self._minibatch_size}) must either be None "
+                    f"`minibatch_size` ({self.minibatch_size}) must either be None "
                     "or a multiple of `rollout_fragment_length` "
                     f"({self.rollout_fragment_length}) while at the same time smaller "
                     "than or equal to `total_train_batch_size` "

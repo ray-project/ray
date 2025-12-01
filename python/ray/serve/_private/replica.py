@@ -20,7 +20,9 @@ from typing import (
     Callable,
     Dict,
     Generator,
+    List,
     Optional,
+    Set,
     Tuple,
     Union,
 )
@@ -36,6 +38,7 @@ from ray import cloudpickle
 from ray._common.filters import CoreContextFilter
 from ray._common.utils import get_or_create_event_loop
 from ray.actor import ActorClass, ActorHandle
+from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.common import (
@@ -96,7 +99,9 @@ from ray.serve._private.logging_utils import (
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.task_consumer import TaskConsumerWrapper
-from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
+from ray.serve._private.thirdparty.get_asgi_route_name import (
+    extract_route_patterns,
+)
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     Semaphore,
@@ -112,7 +117,8 @@ from ray.serve.exceptions import (
     DeploymentUnavailableError,
     RayServeException,
 )
-from ray.serve.schema import EncodingType, LoggingConfig
+from ray.serve.handle import DeploymentHandle
+from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -124,6 +130,10 @@ ReplicaMetadata = Tuple[
     Optional[int],
     Optional[str],
     int,
+    int,
+    ReplicaRank,  # rank
+    Optional[List[str]],  # route_patterns
+    Optional[List[DeploymentID]],  # outbound_deployments
 ]
 
 
@@ -300,35 +310,35 @@ class ReplicaMetricsManager:
     def should_collect_ongoing_requests(self) -> bool:
         """Determine if replicas should collect ongoing request metrics.
 
-        ┌─────────────────────────────────────────────────────────────────┐
-        │  Replica-based metrics collection                               │
-        ├─────────────────────────────────────────────────────────────────┤
-        │                                                                 │
-        │  Client          Handle            Replicas                     │
-        │  ┌──────┐      ┌────────┐                                       │
-        │  │  App │─────>│ Handle │────┬───>┌─────────┐                  │
-        │  │      │      │ Tracks │    │    │ Replica │                  │
-        │  └──────┘      │ Queued │    │    │    1    │                  │
-        │                │Requests│    │    │ Tracks  │                  │
-        │                └────────┘    │    │ Running │                  │
-        │                     │        │    └─────────┘                  │
-        │                     │        │         │                       │
-        │                     │        │         │                       │
-        │                     │        │    ┌─────────┐                  │
-        │                     │        └───>│ Replica │                  │
-        │                     │             │    2    │                  │
-        │                     │             │ Tracks  │                  │
-        │                     │             │ Running │                  │
-        │                     │             └─────────┘                  │
-        │                     │                  │                        │
-        │                     │                  │                        │
-        │                     ▼                  ▼                        │
-        │              ┌──────────────────────────────┐                  │
-        │              │        Controller            │                  │
-        │              │  • Queued metrics (handle)   │                  │
-        │              │  • Running metrics (replica1)│                  │
-        │              │  • Running metrics (replica2)│                  │
-        │              └──────────────────────────────┘                  │
+        ┌────────────────────────────────────────────────────────────────┐
+        │  Replica-based metrics collection                              │
+        ├────────────────────────────────────────────────────────────────┤
+        │                                                                │
+        │      Client          Handle            Replicas                │
+        │      ┌──────┐      ┌────────┐                                  │
+        │      │  App │─────>│ Handle │────┬───>┌─────────┐              │
+        │      │      │      │ Tracks │    │    │ Replica │              │
+        │      └──────┘      │ Queued │    │    │    1    │              │
+        │                    │Requests│    │    │ Tracks  │              │
+        │                    └────────┘    │    │ Running │              │
+        │                         │        │    └─────────┘              │
+        │                         │        │         │                   │
+        │                         │        │         │                   │
+        │                         │        │    ┌─────────┐              │
+        │                         │        └───>│ Replica │              │
+        │                         │             │    2    │              │
+        │                         │             │ Tracks  │              │
+        │                         │             │ Running │              │
+        │                         │             └─────────┘              │
+        │                         │                  │                   │
+        │                         │                  │                   │
+        │                         ▼                  ▼                   │
+        │                  ┌──────────────────────────────┐              │
+        │                  │        Controller            │              │
+        │                  │  • Queued metrics (handle)   │              │
+        │                  │  • Running metrics (replica1)│              │
+        │                  │  • Running metrics (replica2)│              │
+        │                  └──────────────────────────────┘              │
         │                                                                │
         └────────────────────────────────────────────────────────────────┘
         """
@@ -496,7 +506,6 @@ class ReplicaBase(ABC):
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
-        rank: int,
     ):
         self._version = version
         self._replica_id = replica_id
@@ -531,6 +540,9 @@ class ReplicaBase(ABC):
         self._user_callable_initialized_lock = asyncio.Lock()
         self._initialization_latency: Optional[float] = None
 
+        # Track deployment handles created dynamically via get_deployment_handle()
+        self._dynamically_created_handles: Set[DeploymentID] = set()
+
         # Flipped to `True` when health checks pass and `False` when they fail. May be
         # used by replica subclass implementations.
         self._healthy = False
@@ -544,7 +556,7 @@ class ReplicaBase(ABC):
 
         # Set metadata for logs and metrics.
         # servable_object will be populated in `initialize_and_get_metadata`.
-        self._set_internal_replica_context(servable_object=None, rank=rank)
+        self._set_internal_replica_context(servable_object=None, rank=None)
 
         self._metrics_manager = create_replica_metrics_manager(
             replica_id=replica_id,
@@ -558,7 +570,7 @@ class ReplicaBase(ABC):
         self._http_port: Optional[int] = None
         self._grpc_port: Optional[int] = None
 
-        self._rank = rank
+        self._rank: Optional[ReplicaRank] = None
 
     @property
     def max_ongoing_requests(self) -> int:
@@ -569,6 +581,14 @@ class ReplicaBase(ABC):
 
     def get_metadata(self) -> ReplicaMetadata:
         current_rank = ray.serve.context._get_internal_replica_context().rank
+        # Extract route patterns from ASGI app if available
+        route_patterns = None
+        if self._user_callable_asgi_app is not None:
+            # _user_callable_asgi_app is the actual ASGI app (FastAPI/Starlette)
+            # It's set when initialize_callable() returns an ASGI app
+            if hasattr(self._user_callable_asgi_app, "routes"):
+                route_patterns = extract_route_patterns(self._user_callable_asgi_app)
+
         return (
             self._version.deployment_config,
             self._version,
@@ -578,19 +598,69 @@ class ReplicaBase(ABC):
             self._http_port,
             self._grpc_port,
             current_rank,
+            route_patterns,
+            self.list_outbound_deployments(),
         )
 
+    def get_dynamically_created_handles(self) -> Set[DeploymentID]:
+        return self._dynamically_created_handles
+
+    def list_outbound_deployments(self) -> List[DeploymentID]:
+        """List all outbound deployment IDs this replica calls into.
+
+        This includes:
+        - Handles created via get_deployment_handle()
+        - Handles passed as init args/kwargs to the deployment constructor
+
+        This is used to determine which deployments are reachable from this replica.
+        The list of DeploymentIDs can change over time as new handles can be created at runtime.
+        Also its not guaranteed that the list of DeploymentIDs are identical across replicas
+        because it depends on user code.
+
+        Returns:
+            A list of DeploymentIDs that this replica calls into.
+        """
+        seen_deployment_ids: Set[DeploymentID] = set()
+
+        # First, collect dynamically created handles
+        for deployment_id in self.get_dynamically_created_handles():
+            seen_deployment_ids.add(deployment_id)
+
+        # Get the init args/kwargs
+        init_args = self._user_callable_wrapper._init_args
+        init_kwargs = self._user_callable_wrapper._init_kwargs
+
+        # Use _PyObjScanner to find all DeploymentHandle objects in:
+        # The init_args and init_kwargs (handles might be passed as init args)
+        scanner = _PyObjScanner(source_type=DeploymentHandle)
+        try:
+            handles = scanner.find_nodes((init_args, init_kwargs))
+
+            for handle in handles:
+                deployment_id = handle.deployment_id
+                seen_deployment_ids.add(deployment_id)
+        finally:
+            scanner.clear()
+
+        return list(seen_deployment_ids)
+
     def _set_internal_replica_context(
-        self, *, servable_object: Callable = None, rank: int = None
+        self, *, servable_object: Callable = None, rank: ReplicaRank = None
     ):
         # Calculate world_size from deployment config instead of storing it
         world_size = self._deployment_config.num_replicas
+
+        # Create callback for registering dynamically created handles
+        def register_handle_callback(deployment_id: DeploymentID) -> None:
+            self._dynamically_created_handles.add(deployment_id)
+
         ray.serve.context._set_internal_replica_context(
             replica_id=self._replica_id,
             servable_object=servable_object,
             _deployment_config=self._deployment_config,
             rank=rank,
             world_size=world_size,
+            handle_registration_callback=register_handle_callback,
         )
 
     def _configure_logger_and_profilers(
@@ -648,36 +718,6 @@ class ReplicaBase(ABC):
         # requests reaches max_ongoing_requests, the semaphore becomes locked.
         # A new request can be accepted if the semaphore is currently unlocked.
         return not self._semaphore.locked()
-
-    def _maybe_get_http_route(
-        self, request_metadata: RequestMetadata, request_args: Tuple[Any]
-    ) -> Optional[str]:
-        """Get the matched route string for ASGI apps to be used in logs & metrics.
-
-        If this replica does not wrap an ASGI app or there is no matching for the
-        request, returns the existing route from the request metadata.
-        """
-        route = request_metadata.route
-        if self._user_callable_asgi_app is not None:
-            req: StreamingHTTPRequest = request_args[0]
-            try:
-                matched_route = get_asgi_route_name(
-                    self._user_callable_asgi_app, req.asgi_scope
-                )
-            except Exception:
-                matched_route = None
-                logger.exception(
-                    "Failed unexpectedly trying to get route name for request. "
-                    "Routes in metric tags and log messages may be inaccurate. "
-                    "Please file a GitHub issue containing this traceback."
-                )
-
-            # If there is no match in the ASGI app, don't overwrite the route_prefix
-            # from the proxy.
-            if matched_route is not None:
-                route = matched_route
-
-        return route
 
     @contextmanager
     def _handle_errors_and_metrics(
@@ -765,9 +805,6 @@ class ReplicaBase(ABC):
             )
 
             request_metadata._http_method = scope.get("method", "WS")
-            request_metadata.route = self._maybe_get_http_route(
-                request_metadata, request_args
-            )
 
             request_args = (scope, receive)
         elif request_metadata.is_grpc_request:
@@ -875,7 +912,14 @@ class ReplicaBase(ABC):
     async def _on_initialized(self):
         raise NotImplementedError
 
-    async def initialize(self, deployment_config: DeploymentConfig):
+    async def initialize(
+        self, deployment_config: Optional[DeploymentConfig], rank: Optional[ReplicaRank]
+    ):
+        if rank is not None:
+            self._rank = rank
+            self._set_internal_replica_context(
+                servable_object=self._user_callable_wrapper.user_callable, rank=rank
+            )
         try:
             # Ensure that initialization is only performed once.
             # When controller restarts, it will call this method again.
@@ -906,7 +950,7 @@ class ReplicaBase(ABC):
                             record_autoscaling_stats_fn=self._user_callable_wrapper.call_record_autoscaling_stats,
                         )
 
-                if deployment_config:
+                if deployment_config is not None:
                     await self._user_callable_wrapper.set_sync_method_threadpool_limit(
                         deployment_config.max_ongoing_requests
                     )
@@ -926,7 +970,7 @@ class ReplicaBase(ABC):
     async def reconfigure(
         self,
         deployment_config: DeploymentConfig,
-        rank: int,
+        rank: ReplicaRank,
         route_prefix: Optional[str] = None,
     ):
         try:
@@ -1151,7 +1195,6 @@ class ReplicaActor:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
-        rank: int,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -1168,7 +1211,6 @@ class ReplicaActor:
             version=version,
             ingress=ingress,
             route_prefix=route_prefix,
-            rank=rank,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):
@@ -1207,8 +1249,11 @@ class ReplicaActor:
             get_component_logger_file_path(),
         )
 
+    def list_outbound_deployments(self) -> Optional[List[DeploymentID]]:
+        return self._replica_impl.list_outbound_deployments()
+
     async def initialize_and_get_metadata(
-        self, deployment_config: DeploymentConfig = None, _after: Optional[Any] = None
+        self, deployment_config: DeploymentConfig = None, rank: ReplicaRank = None
     ) -> ReplicaMetadata:
         """Handles initializing the replica.
 
@@ -1221,7 +1266,7 @@ class ReplicaActor:
         """
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.
-        await self._replica_impl.initialize(deployment_config)
+        await self._replica_impl.initialize(deployment_config, rank)
         return self._replica_impl.get_metadata()
 
     async def check_health(self):
@@ -1231,7 +1276,7 @@ class ReplicaActor:
         return await self._replica_impl.record_routing_stats()
 
     async def reconfigure(
-        self, deployment_config, rank: int, route_prefix: Optional[str] = None
+        self, deployment_config, rank: ReplicaRank, route_prefix: Optional[str] = None
     ) -> ReplicaMetadata:
         await self._replica_impl.reconfigure(deployment_config, rank, route_prefix)
         return self._replica_impl.get_metadata()
@@ -1728,7 +1773,7 @@ class UserCallableWrapper:
         return result
 
     @_run_user_code
-    async def call_reconfigure(self, user_config: Optional[Any], rank: int):
+    async def call_reconfigure(self, user_config: Optional[Any], rank: ReplicaRank):
         self._raise_if_not_initialized("call_reconfigure")
 
         # NOTE(edoakes): there is the possibility of a race condition in user code if

@@ -1074,6 +1074,7 @@ class TestInitialReplicasHandling:
                 deployment_name: int(initial_replicas * config_target_capacity / 100)
             },
             app_name="app1",
+            timeout=30,
         )
 
         # When deploying a new config, initial_replicas * target_capacity
