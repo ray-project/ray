@@ -7,7 +7,6 @@ from typing import Dict
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_dashboard_agent_available
 
 logger = logging.getLogger(__name__)
 
@@ -72,12 +71,8 @@ def fibonacci(a, i):
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="procfs only works on linux.")
-def test_threaded_actor_have_bounded_num_of_threads(ray_start_cluster):
-    cluster = ray_start_cluster
-    cluster.add_node()
-    cluster.wait_for_nodes()
-    wait_for_dashboard_agent_available(cluster)
-    ray.init(address=cluster.address)
+def test_threaded_actor_have_bounded_num_of_threads(shutdown_only):
+    ray.init()
 
     @ray.remote
     class A:
@@ -102,12 +97,8 @@ def test_threaded_actor_have_bounded_num_of_threads(ray_start_cluster):
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="procfs only works on linux.")
-def test_async_actor_have_bounded_num_of_threads(ray_start_cluster):
-    cluster = ray_start_cluster
-    cluster.add_node()
-    cluster.wait_for_nodes()
-    wait_for_dashboard_agent_available(cluster)
-    ray.init(address=cluster.address)
+def test_async_actor_have_bounded_num_of_threads(shutdown_only):
+    ray.init()
 
     @ray.remote
     class A:
@@ -132,12 +123,8 @@ def test_async_actor_have_bounded_num_of_threads(ray_start_cluster):
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="procfs only works on linux.")
-def test_async_actor_cg_have_bounded_num_of_threads(ray_start_cluster):
-    cluster = ray_start_cluster
-    cluster.add_node()
-    cluster.wait_for_nodes()
-    wait_for_dashboard_agent_available(cluster)
-    ray.init(address=cluster.address)
+def test_async_actor_cg_have_bounded_num_of_threads(shutdown_only):
+    ray.init()
 
     @ray.remote(concurrency_groups={"io": 2, "compute": 4})
     class A:

@@ -34,7 +34,6 @@
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
-#include "ray/rpc/server_call.h"
 #include "ray/stats/stats.h"
 #include "ray/stats/tag_defs.h"
 #include "ray/util/env.h"
@@ -776,7 +775,6 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // NOTE(kfstorm): any initialization depending on RayConfig must happen after this
   // line.
   InitializeSystemConfig();
-  rpc::SetServerCallThreadPoolMode(rpc::ServerCallThreadPoolMode::CORE_WORKER);
 
   // Assume stats module will be initialized exactly once in once process.
   // So it must be called in CoreWorkerProcess constructor and will be reused
