@@ -607,6 +607,13 @@ def shuffle_file_metadata(
     if shuffler is None:
         return paths, file_metadata
 
+    assert len(paths) == len(file_metadata), (
+        "Number of paths and file metadata must match. "
+        f"Got {len(paths)} paths and {len(file_metadata)} file metadata."
+    )
+    if len(paths) == 0:
+        return paths, file_metadata
+
     if shuffler == "files":
         file_metadata_shuffler = np.random.default_rng()
     else:
