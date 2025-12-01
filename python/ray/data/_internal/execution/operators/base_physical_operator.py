@@ -52,20 +52,12 @@ class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
         )
 
     def clear_internal_input_queue(self) -> None:
-        """Clear internal input queue(s).
-
-        This should drain all buffered input bundles and update metrics appropriately
-        by calling on_input_dequeued().
-        """
+        """Clear internal input queue(s)."""
         for input_buffer in self.input_buffers:
             input_buffer.clear()
 
     def clear_internal_output_queue(self) -> None:
-        """Clear internal output queue(s).
-
-        This should drain all buffered output bundles and update metrics appropriately
-        by calling on_output_dequeued().
-        """
+        """Clear internal output queue(s)."""
         for output_buffer in self.output_buffers:
             output_buffer.clear()
 

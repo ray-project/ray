@@ -85,7 +85,9 @@ class BaseBundleQueue(_QueueMetricRecorderMixin):
 
     @abc.abstractmethod
     def peek_next(self) -> Optional[RefBundle]:
-        """Return the head of the queue without removing it.
+        """Return the head of the queue. The number of
+        blocks, rows, and bytes must be in remain unchanged
+        before and after this method call.
 
         If the queue is empty, return `None`.
         """
@@ -106,11 +108,10 @@ class BaseBundleQueue(_QueueMetricRecorderMixin):
             return True
         return False
 
+    @abc.abstractmethod
     def clear(self):
         """Remove all bundles from the queue."""
-        while self.has_next():
-            self.get_next()
-        assert len(self) == 0
+        ...
 
     @abc.abstractmethod
     def done_adding_bundles(self, **kwargs: Any):

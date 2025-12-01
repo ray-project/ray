@@ -67,3 +67,9 @@ class OrderedBundleQueue(BaseBundleQueue):
         if key == self._current_index:
             if len(self._inner[key]) == 0:
                 self._move_to_next_index()
+
+    @override
+    def clear(self):
+        self._inner.clear()
+        self._completed_keys.clear()
+        self._current_index = 0

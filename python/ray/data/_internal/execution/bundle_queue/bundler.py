@@ -127,6 +127,11 @@ class RebundleQueue(BaseBundleQueue, SupportsRebundling):
     def done_adding_bundles(self, **kwargs: Any):
         self._finalized = True
 
+    @override
+    def clear(self):
+        self._bundle_buffer.clear()
+        self._finalized = False
+
 
 BlockRefBundler = RebundleQueue
 

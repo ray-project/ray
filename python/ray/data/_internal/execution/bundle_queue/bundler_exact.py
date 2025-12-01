@@ -149,5 +149,12 @@ class ExactRebundleQueue(BaseBundleQueue, SupportsRebundling):
         if len(self._pending_bundles) > 0:
             self._try_build_ready_bundle(flush_remaining=True)
 
+    @override
+    def clear(self):
+        self._pending_bundles.clear()
+        self._ready_bundles.clear()
+        self._total_pending_rows = 0
+        self._consumed_input_bundles.clear()
+
 
 StreamingRepartitionRefBundler = ExactRebundleQueue

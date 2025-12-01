@@ -80,3 +80,7 @@ class FIFOBundleQueue(BaseBundleQueue, SupportsDeque):
 
     def to_list(self) -> List[RefBundle]:
         return list(self._inner)
+
+    @override
+    def clear(self):
+        self._inner.clear()
