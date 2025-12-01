@@ -107,7 +107,7 @@ class _CheckpointManager:
                 metrics=metrics,
             )
 
-        if score_attr is not None and score_attr in checkpoint_result.metrics:
+        if score_attr is not None and score_attr in flatten_dict(checkpoint_result.metrics):
             # If we're ordering by a score, insert the checkpoint
             # so that the list remains sorted.
             _insert_into_sorted_list(
