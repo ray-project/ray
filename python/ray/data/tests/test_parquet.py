@@ -22,7 +22,7 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     get_arrow_extension_fixed_shape_tensor_types,
 )
-from ray.data import FileShuffleConfig, Schema
+from ray.data import EpochAwareFileShuffleConfig, FileShuffleConfig, Schema
 from ray.data._internal.datasource.parquet_datasource import (
     ParquetDatasource,
 )
@@ -1277,8 +1277,8 @@ def test_seed_file_shuffle(
         # Write dummy Parquet files
         write_parquet_file(path, i)
 
-    # Read with deterministic shuffling
-    shuffle_config = FileShuffleConfig(base_seed=42)
+    # Read with deterministic shuffling using the original FileShuffleConfig
+    shuffle_config = FileShuffleConfig(seed=42)
     ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
     ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
 
@@ -1308,8 +1308,8 @@ def test_seed_file_shuffle_with_epoch_update(
         # Write dummy Parquet files
         write_parquet_file(path, i)
 
-    # Read with deterministic shuffling
-    shuffle_config = FileShuffleConfig(base_seed=42)
+    # Read with deterministic epoch-aware shuffling using EpochAwareFileShuffleConfig
+    shuffle_config = EpochAwareFileShuffleConfig(base_seed=42)
     ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
     ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
 
@@ -1345,12 +1345,6 @@ def test_seed_file_shuffle_with_epoch_update(
 def test_seed_file_shuffle_with_epoch_no_effect(
     restore_data_context, tmp_path, target_max_block_size_infinite_or_default
 ):
-    class CustomFileShuffleConfig(FileShuffleConfig):
-        """Custom FileShuffleConfig that always returns the same seed."""
-
-        def get_seed(self, epoch_idx: int = 0) -> Optional[int]:
-            return self.base_seed
-
     def write_parquet_file(path, file_index):
         """Write a dummy Parquet file with test data."""
         # Create a dummy dataset with unique data for each file
@@ -1370,8 +1364,8 @@ def test_seed_file_shuffle_with_epoch_no_effect(
         # Write dummy Parquet files
         write_parquet_file(path, i)
 
-    # Read with deterministic shuffling
-    shuffle_config = CustomFileShuffleConfig(base_seed=42)
+    # Use regular FileShuffleConfig which ignores epoch_idx and always returns same seed
+    shuffle_config = FileShuffleConfig(seed=42)
     ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
     ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
 
