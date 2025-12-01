@@ -7,7 +7,7 @@ jupyter nbconvert "05a_ray_tune_pytorch_example.ipynb" --to markdown --output "R
 # Hyperparameter tuning with Ray Tune and PyTorch  
 This notebook runs **hyperparameter tuning experiments** on a PyTorch CNN using **Ray Tune**, a scalable library for experiment management and search. The workload runs on the driver, but it sets the stage for the next tutorial where you’ll combine **Ray Tune with Ray Train** for distributed training.  
 
-## What you learn and take away  
+## Learning objectives  
 * How to define a **search space** for model hyperparameters using Ray Tune’s sampling APIs  
 * How to run **multiple training trials in parallel** with Ray’s orchestration  
 * How to add **checkpointing and resume** logic to your training function with `tune.get_checkpoint()`  
@@ -285,7 +285,7 @@ Define a simple **convolutional neural network (CNN)** for classifying CIFAR-10 
   - Passes through two ReLU-activated fully connected layers  
   - Outputs logits for 10 classes  
 
-This network provides a baseline model for tuning, and you treat `l1` and `l2` as hyperparameters to explore different hidden layer sizes.    
+This network provides a baseline model for tuning, and the network treats `l1` and `l2` as hyperparameters to explore different hidden layer sizes.    
 
 
 ```python
@@ -485,7 +485,7 @@ def train_cifar(config):
 
 ## 6. Evaluate the best model  
 
-After hyperparameter tuning finishes, you want to verify the performance of the **best trial** on the held-out test set.  
+After hyperparameter tuning finishes, verify the performance of the **best trial** on the held-out test set.  
 
 - **Model reconstruction**:  
   - Rebuilds the CNN (`Net`) using the hyperparameters (`l1`, `l2`) from the best configuration.  
@@ -873,7 +873,7 @@ You should now feel confident:
 
 ---
 
-### Where can you take this next?  
+## Next steps  
 
 The following are a few directions to extend or adapt this workload:  
 
