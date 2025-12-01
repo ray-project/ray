@@ -57,8 +57,6 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.registry import register_env
 from ray.tune.result import TRAINING_ITERATION
 
-NUM_ENV_RUNNERS = 10
-
 parser = add_rllib_example_script_args(
     default_iters=500,
     default_timesteps=5_000_000,
@@ -250,7 +248,7 @@ stop = {
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
-    results = run_rllib_example_script_experiment(
+    run_rllib_example_script_experiment(
         base_config=config,
         args=args,
         stop=stop,
