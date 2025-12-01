@@ -193,8 +193,8 @@ spec:
               tag: latest
               pullPolicy: IfNotPresent
             disabled: false
-            replicas: 0
-            minReplicas: 0
+            replicas: 1
+            minReplicas: 1
             maxReplicas: 30
             rayStartParams:
               resources: '"{\"additional-worker-group1\": 1}"'
