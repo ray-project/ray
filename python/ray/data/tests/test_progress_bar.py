@@ -159,8 +159,10 @@ def test_progress_bar_logging_in_non_interactive_terminal_with_total(mock_logger
 
         # Update progress - should log
         pb.update(5)
-        # Verify logger.info was called with expected message
-        mock_logger.info.assert_called_once_with("test: Progress Completed 5 / 10")
+        # Verify logger.info was called exactly twice with expected messages
+        assert mock_logger.info.call_count == 2
+        mock_logger.info.assert_any_call("=== Ray Data Progress {test} ===")
+        mock_logger.info.assert_any_call("test: Progress Completed 5 / 10")
 
 
 @patch("ray.data._internal.progress_bar.logger")
@@ -181,8 +183,10 @@ def test_progress_bar_logging_in_non_interactive_terminal_without_total(mock_log
         # Update progress - should log
         pb.update(3)
 
-        # Verify logger.info was called with expected message for unknown total
-        mock_logger.info.assert_called_once_with("test2: Progress Completed 3 / ?")
+        # Verify logger.info was called exactly twice with expected messages
+        assert mock_logger.info.call_count == 2
+        mock_logger.info.assert_any_call("=== Ray Data Progress {test2} ===")
+        mock_logger.info.assert_any_call("test2: Progress Completed 3 / ?")
 
 
 if __name__ == "__main__":
