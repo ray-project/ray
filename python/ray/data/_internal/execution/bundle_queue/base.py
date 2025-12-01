@@ -72,8 +72,8 @@ class BaseBundleQueue(_QueueMetricRecorderMixin):
 
         Args:
             bundle: The bundle to add.
-            **kwargs: Additional queue-specific parameters (e.g., `key` for ordered queues).
-            This will be used for `done_adding_bundles`
+            **kwargs: Additional queue-specific parameters (e.g., `key` for ordered queues). 
+                This will be used for `done_adding_bundles`.
         """
         ...
 
