@@ -1533,9 +1533,10 @@ class ActorClass(Generic[T]):
                 try:
                     return self._remote(args, kwargs, **updated_options)
                 except ActorAlreadyExistsError:
-                    # The actor was created between the first and second get_actor calls.
-                    # Try to get it again to see if it's there.
-                    return ray.get_actor(name, namespace=namespace)
+                    pass
+                # The actor was created between the first and second get_actor calls.
+                # Try to get it again to see if it's there.
+                return ray.get_actor(name, namespace=namespace)
 
         # We pop the "concurrency_groups" coming from "@ray.remote" here. We no longer
         # need it in "_remote()".

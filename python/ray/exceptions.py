@@ -977,10 +977,10 @@ class UnserializableException(RayError):
 
 
 @DeveloperAPI
-class ActorAlreadyExistsError(ValueError):
+class ActorAlreadyExistsError(ValueError, RayError):
     """Raised when a named actor already exists.
 
-    Note that this error is a subclass of ValueError, not RayError, to maintain backward compatibility.
+    Note that this error is not only a subclass of RayError, but also a subclass of ValueError, to maintain backward compatibility.
 
     Args:
         error_message: The error message that contains information about the actor name and namespace.
