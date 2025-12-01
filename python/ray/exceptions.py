@@ -477,6 +477,49 @@ class RaySystemError(RayError):
         return error_msg
 
 
+@PublicAPI
+class AuthenticationError(RayError):
+    """Indicates that an authentication error occurred.
+
+    Most commonly, this is caused by a missing or mismatching token set on the client
+    (e.g., a Ray CLI command interacting with a remote cluster).
+
+    Only applicable when `RAY_AUTH_MODE` is not set to `disabled`.
+    """
+
+    def __init__(self, message: str):
+        self.message = message
+
+        # Always hide traceback for cleaner output
+        self.__suppress_context__ = True
+        super().__init__(message)
+
+    def __str__(self) -> str:
+        # Check if RAY_AUTH_MODE is set to token and add a heads-up if not
+        auth_mode_note = ""
+
+        from ray._private.authentication.authentication_utils import (
+            get_authentication_mode_name,
+        )
+        from ray._raylet import AuthenticationMode, get_authentication_mode
+
+        current_mode = get_authentication_mode()
+        if current_mode != AuthenticationMode.TOKEN:
+            mode_name = get_authentication_mode_name(current_mode)
+            auth_mode_note = (
+                f" Note: RAY_AUTH_MODE is currently '{mode_name}' (not 'token')."
+            )
+
+        help_text = (
+            " Ensure that the token for the cluster is available in a local file (e.g., ~/.ray/auth_token or via "
+            "RAY_AUTH_TOKEN_PATH) or as the `RAY_AUTH_TOKEN` environment variable. "
+            "To generate a token for local development, use `ray get-auth-token --generate` "
+            "For remote clusters, ensure that the token is propagated to all nodes of the cluster when token authentication is enabled. "
+            "For more information, see: https://docs.ray.io/en/latest/ray-security/auth.html"
+        )
+        return self.message + "." + auth_mode_note + help_text
+
+
 @DeveloperAPI
 class UserCodeException(RayError):
     """Indicates that an exception occurred while executing user code.
@@ -981,4 +1024,5 @@ RAY_EXCEPTION_TYPES = [
     RayCgraphCapacityExceeded,
     UnserializableException,
     ActorAlreadyExistsError,
+    AuthenticationError,
 ]
