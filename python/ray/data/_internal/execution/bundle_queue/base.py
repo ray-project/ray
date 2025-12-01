@@ -52,6 +52,12 @@ class _QueueMetricRecorderMixin:
         """Return the total # of rows across all bundles."""
         return self._num_rows
 
+    def _reset_metrics(self):
+        self._num_rows = 0
+        self._num_blocks = 0
+        self._num_bundles = 0
+        self._nbytes = 0
+
     def __len__(self) -> int:
         """Return the total # bundles."""
         return self._num_bundles

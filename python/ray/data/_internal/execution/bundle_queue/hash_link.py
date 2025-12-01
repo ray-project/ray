@@ -179,6 +179,7 @@ class HashLinkedQueue(BaseBundleQueue, SupportsIndexing, SupportsDeque):
             curr = curr.next
 
     def clear(self):
+        self._reset_metrics()
         self._bundle_to_nodes.clear()
         self._head = None
         self._tail = None

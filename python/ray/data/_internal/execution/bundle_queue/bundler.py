@@ -129,6 +129,7 @@ class RebundleQueue(BaseBundleQueue, SupportsRebundling):
 
     @override
     def clear(self):
+        self._reset_metrics()
         self._bundle_buffer.clear()
         self._finalized = False
 

@@ -149,6 +149,7 @@ class ExactRebundleQueue(BaseBundleQueue, SupportsRebundling):
 
     @override
     def clear(self):
+        self._reset_metrics()
         self._pending_bundles.clear()
         self._ready_bundles.clear()
         self._total_pending_rows = 0

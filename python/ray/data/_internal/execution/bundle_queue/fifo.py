@@ -83,4 +83,5 @@ class FIFOBundleQueue(BaseBundleQueue, SupportsDeque):
 
     @override
     def clear(self):
+        self._reset_metrics()
         self._inner.clear()

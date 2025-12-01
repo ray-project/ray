@@ -70,6 +70,7 @@ class OrderedBundleQueue(BaseBundleQueue):
 
     @override
     def clear(self):
+        self._reset_metrics()
         self._inner.clear()
         self._completed_keys.clear()
         self._current_index = 0
