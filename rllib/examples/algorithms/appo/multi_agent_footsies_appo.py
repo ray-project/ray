@@ -47,8 +47,6 @@ from ray.rllib.examples.rl_modules.classes.lstm_containing_rlm import (
     LSTMContainingRLModule,
 )
 from ray.rllib.utils.metrics import (
-    ENV_RUNNER_RESULTS,
-    EPISODE_RETURN_MEAN,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.test_utils import (
@@ -154,7 +152,7 @@ config = (
     .env_runners(
         env_runner_cls=MultiAgentEnvRunner,
         num_env_runners=args.num_env_runners or 1,
-        num_cpus_per_env_runner=0.5,
+        num_cpus_per_env_runner=1,
         num_envs_per_env_runner=1,
         batch_mode="truncate_episodes",
         rollout_fragment_length=args.rollout_fragment_length,
@@ -238,9 +236,7 @@ config = (
 
 
 stop = {
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward
-    * args.num_env_runners,
-    f"{ENV_RUNNER_RESULTS}/{NUM_ENV_STEPS_SAMPLED_LIFETIME}": (args.stop_timesteps),
+    NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
     TRAINING_ITERATION: args.stop_iters,
     "mix_size": args.target_mix_size,
 }
