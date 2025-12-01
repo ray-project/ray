@@ -320,7 +320,7 @@ You can also use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLo
     import time
     from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 
-    logger = MetricsLogger()
+    logger = MetricsLogger(root=True) # We can only peek throughputs from the root MetricsLogger.
 
     for _ in range(3):
         with logger.log_time("my_block_to_be_timed", with_throughput=True, reduce="sum"):
