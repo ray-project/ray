@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Dict, Optional
 
 from .default_actor_autoscaler import DefaultActorAutoscaler
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
+from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data.context import AutoscalingConfig
 
 if TYPE_CHECKING:
