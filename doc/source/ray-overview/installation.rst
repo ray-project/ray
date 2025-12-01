@@ -420,12 +420,12 @@ We publish the dependencies that are installed in our ``ray`` Docker images for 
 
 .. tab-set::
 
-    .. tab-item:: ray (Python 3.9)
-        :sync: ray (Python 3.9)
+    .. tab-item:: ray (Python 3.10)
+        :sync: ray (Python 3.10)
 
-        Ray version: nightly (`a69004e <https://github.com/ray-project/ray/commit/a69004ef0e4722347cf00c5e1caa3bd0197923ed>`_)
+        Ray version: nightly (`ae94ff4 <https://github.com/ray-project/ray/commit/ae94ff496a308c52100cd99b1857836b739498e0>`_)
 
-        .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
+        .. literalinclude:: ./pip_freeze_ray-py310-cpu.txt
 
 .. _ray-install-java:
 
