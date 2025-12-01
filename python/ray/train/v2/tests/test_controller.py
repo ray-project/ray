@@ -400,7 +400,9 @@ async def test_worker_group_shutdown_error_during_resize():
     await controller._run_control_loop_iteration()
     # During execute_resize_decision, shutdown should fail and trigger failure handling
     # The failure policy should be called with WorkerGroupError
-    assert isinstance(controller.get_state(), RestartingState)
+    # Since we're in SchedulingState, RETRY should transition to ReschedulingState
+    # (to retry the scheduling phase) rather than RestartingState
+    assert isinstance(controller.get_state(), ReschedulingState)
 
 
 @pytest.mark.asyncio

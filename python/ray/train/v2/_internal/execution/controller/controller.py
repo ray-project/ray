@@ -189,15 +189,15 @@ class TrainController:
         if self._worker_group:
             optional_worker_group_error = self._shutdown_worker_group()
             if optional_worker_group_error:
+                # Shutdown failure during resize. We're in SchedulingState, so the failure
+                # will be handled with SchedulingState as context, resulting in ReschedulingState
+                # on RETRY (to retry the scheduling phase).
                 failure_decision = self._failure_policy.make_decision(
                     training_failed_error=optional_worker_group_error,
                 )
                 return self._execute_failure_decision(
                     failure_decision,
                     training_failed_error=optional_worker_group_error,
-                    # Worker Group Shutdown failures during resize come from a running worker group,
-                    # so treat them as running failures to trigger a restart instead of rescheduling.
-                    failure_context_state=RunningState(),
                 )
 
         optional_controller_error = self._start_worker_group(
@@ -238,12 +238,10 @@ class TrainController:
         self,
         failure_decision: FailureDecision,
         training_failed_error: TrainingFailedError,
-        failure_context_state: Optional[TrainControllerState] = None,
     ) -> TrainControllerLoopIterationResult:
         """Executes failure handling decisions for a scheduling or poll error."""
 
         controller_state = self.get_state()
-        context_state = failure_context_state or controller_state
 
         for callback in self._controller_callbacks:
             callback.before_controller_execute_failure_decision(failure_decision)
@@ -259,29 +257,19 @@ class TrainController:
             )
 
         if failure_decision == FailureDecision.RETRY:
-            if isinstance(context_state, ShuttingDownState):
-                logger.warning(
-                    "Ignoring RETRY failure decision while in ShuttingDownState; "
-                    "escalating to RAISE."
-                )
-                failure_decision = FailureDecision.RAISE
-            else:
-                return TrainControllerLoopIterationResult(
-                    run_attempt_id=self._get_run_attempt_id(),
-                    previous_state=controller_state,
-                    next_state=self._get_retry_state(
-                        context_state, training_failed_error
-                    ),
-                )
-        elif failure_decision == FailureDecision.RAISE:
-            errored_state = ErroredState(
-                training_failed_error=training_failed_error,
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=controller_state,
+                next_state=self._get_retry_state(
+                    controller_state, training_failed_error
+                ),
             )
-            if isinstance(controller_state, ShuttingDownState):
-                # If the error occurs during shutdown, propagate the error immediately to errored state.
-                next_state = errored_state
-            else:
-                next_state = ShuttingDownState(next_state=errored_state)
+        elif failure_decision == FailureDecision.RAISE:
+            next_state = ShuttingDownState(
+                next_state=ErroredState(
+                    training_failed_error=training_failed_error,
+                ),
+            )
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
@@ -508,12 +496,30 @@ class TrainController:
             # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
             optional_worker_group_error = self._shutdown()
             if optional_worker_group_error:
-                failure_decision = self._failure_policy.make_decision(
-                    training_failed_error=optional_worker_group_error,
-                )
-                return self._execute_failure_decision(
-                    failure_decision,
-                    training_failed_error=optional_worker_group_error,
+                # If shutdown fails, we should transition to ErroredState.
+                # However, if we're shutting down after an unsuccessful run,
+                # we should preserve the original training error rather than
+                # overriding it with the shutdown error.
+                if isinstance(controller_state.next_state, ErroredState):
+                    # Preserve the original training error, but log the shutdown error
+                    logger.warning(
+                        f"Worker group shutdown failed during error handling: "
+                        f"{optional_worker_group_error}. Preserving original training error: "
+                        f"{controller_state.next_state.training_failed_error}"
+                    )
+                    # Use the original training error
+                    next_state = controller_state.next_state
+                else:
+                    # Shutdown failed during successful run completion
+                    # Use the shutdown error as the primary error
+                    next_state = ErroredState(
+                        training_failed_error=optional_worker_group_error,
+                    )
+                return TrainControllerLoopIterationResult(
+                    run_attempt_id=self._get_run_attempt_id(),
+                    previous_state=controller_state,
+                    next_state=next_state,
+                    training_failed_error=next_state.training_failed_error,
                 )
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
