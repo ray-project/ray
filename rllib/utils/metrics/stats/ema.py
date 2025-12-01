@@ -92,7 +92,10 @@ class EmaStats(StatsBase):
             value = value.numpy()
 
         # If incoming value is NaN, do nothing
-        if (torch and torch.is_tensor(value) and torch.isnan(value)) or np.isnan(value):
+        if torch and torch.is_tensor(value):
+            if torch.isnan(value):
+                return
+        elif np.isnan(value):
             return
 
         if torch and isinstance(value, torch.Tensor):
