@@ -4,21 +4,21 @@ Modify README.ipynb instead, then regenerate this file with:
 jupyter nbconvert "README.ipynb" --to markdown --output "README.md"
 -->
 
-# Ray Train Workloads Tutorial Series
+# Ray Train workloads tutorial series
 
 <div align="left">
 <a target="_blank" href="https://console.anyscale.com/"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
 <a href="https://github.com/ray-project/ray" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
-This repository contains a hands-on tutorial series for learning **Ray Train V2** and its ecosystem (Ray Data, Ray Tune, Anyscale Workspaces).  
-The tutorials walk through common ML workload patterns—vision, tabular, time-series, generative, policy learning, and recommendation—showing how to scale them **from single-node to fully distributed training and inference** with minimal code changes.
+This tutorial series provides hands-on learning for **Ray Train V2** and its ecosystem (Ray Data, Ray Tune, Anyscale Workspaces).  
+The tutorials walk through common ML workload patterns—vision, tabular, time series, generative, policy learning, and recommendation—showing how to scale them **from single-node to fully distributed training and inference** with minimal code changes.
 
 ---
 
-## Tutorial Index
+## Tutorial index
 
-### 1. Getting Started
+### 1. Getting started
 - [**Introduction to Ray Train**](https://docs.ray.io/en/latest/ray-overview/examples/ray_train_workloads/content/getting-started/01_02_03_intro_to_ray_train.html)  
   Your starting point. Learn the basics of distributed training with PyTorch and Ray Train:
   - Why and when to use Ray Train vs. raw Distributed Data Parallel (DDP)  
@@ -29,7 +29,7 @@ The tutorials walk through common ML workload patterns—vision, tabular, time-s
 
 ---
 
-### 2. Workload Patterns (independent, can be taken in any order)
+### 2. Workload patterns (independent, can be taken in any order)
 
 - [**Vision workloads**](https://docs.ray.io/en/latest/ray-overview/examples/ray_train_workloads/content/workload-patterns/04a_vision_pattern.html)  
   Real-world computer vision with Food-101, preprocessing with Ray Data, fault-tolerant ResNet training, and scalable inference tasks.  
@@ -51,7 +51,7 @@ The tutorials walk through common ML workload patterns—vision, tabular, time-s
 
 ---
 
-### 3. Hyperparameter Tuning
+### 3. Hyperparameter tuning
 
 - [**Hyperparameter tuning with Ray Tune**](https://docs.ray.io/en/latest/ray-overview/examples/ray_train_workloads/content/hyperparameter-tuning/05a_ray_tune_pytorch_example.html)  
   Introduces **Ray Tune** for PyTorch hyperparameter optimization:  
@@ -63,12 +63,12 @@ The tutorials walk through common ML workload patterns—vision, tabular, time-s
 
 ---
 
-## Key Benefits
-- **Unified abstraction:** One training loop, portable across CPU, GPU, and multi-node clusters  
-- **Fault tolerance:** Seamless resume from checkpoints on failures or pre-emptions  
-- **Scalability:** Move from laptop prototyping to cluster-scale training without code changes  
-- **Observability:** Metrics, logs, and checkpoints accessible through Ray + Anyscale tooling  
-- **Flexibility:** Mix and match workload patterns for real-world ML pipelines  
+## Key benefits
+- **Unified abstraction:** One training loop works across CPU, GPU, and multi-node clusters.
+- **Fault tolerance:** Resume from checkpoints on failures or preemptions.
+- **Scalability:** Move from laptop prototyping to cluster-scale training without code changes.
+- **Observability:** Access metrics, logs, and checkpoints through Ray and Anyscale tooling.
+- **Flexibility:** Mix and match workload patterns for real-world ML pipelines.  
 
 ```{toctree}
 :hidden:

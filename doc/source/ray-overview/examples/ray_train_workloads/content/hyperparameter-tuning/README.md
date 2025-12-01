@@ -4,7 +4,7 @@ Modify 05a_ray_tune_pytorch_example.ipynb instead, then regenerate this file wit
 jupyter nbconvert "05a_ray_tune_pytorch_example.ipynb" --to markdown --output "README.md"
 -->
 
-# 05a Hyperparameter tuning with Ray Tune and PyTorch  
+# Hyperparameter tuning with Ray Tune and PyTorch  
 This notebook runs **hyperparameter tuning experiments** on a PyTorch CNN using **Ray Tune**, a scalable library for experiment management and search. The workload runs on the driver, but it sets the stage for the next tutorial where you’ll combine **Ray Tune with Ray Train** for distributed training.  
 
 ## What you learn and take away  
