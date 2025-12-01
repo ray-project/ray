@@ -69,15 +69,14 @@ class ExactRebundleQueue(BaseBundleQueue, SupportsRebundling):
 
     def _try_build_ready_bundle(self, flush_remaining: bool = False):
         if self._total_pending_rows >= self._target_num_rows:
-            rows_needed_from_last_bundle = self._pending_bundles[-1].num_rows() - (
-                self._total_pending_rows - self._target_num_rows
+            rows_needed_from_last_bundle = (
+                self._pending_bundles[-1].num_rows()
+                - self._total_pending_rows % self._target_num_rows
             )
             assert rows_needed_from_last_bundle >= 0  # This will never be negative
             remaining_bundle = None
-            if (
-                rows_needed_from_last_bundle > 0
-                and rows_needed_from_last_bundle < self._pending_bundles[-1].num_rows()
-            ):
+
+            if 0 < rows_needed_from_last_bundle < self._pending_bundles[-1].num_rows():
                 # Need to slice the last bundle
                 last_bundle = self._pending_bundles.pop()
                 self._on_exit(last_bundle)  # Exit the original bundle

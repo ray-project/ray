@@ -71,7 +71,7 @@ class HashLinkedQueue(BaseBundleQueue, SupportsIndexing, SupportsDeque):
             self._head.prev = new_node  # Link old head back to new node
             self._head = new_node  # Update head pointer
 
-        self._bundle_to_nodes[bundle].append(new_node)
+        self._bundle_to_nodes[bundle].appendleft(new_node)
 
         self._on_enter(bundle)
 
