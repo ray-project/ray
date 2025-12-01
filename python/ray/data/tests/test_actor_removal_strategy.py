@@ -37,7 +37,7 @@ def test_default_actor_removal_strategy():
     # Should return None when there are no idle actors
     running_actors_busy = {
         actor1: _ActorState(
-            num_tasks_in_flight=2, actor_location="node1",  is_restarting=False
+            num_tasks_in_flight=2, actor_location="node1", is_restarting=False
         ),
         actor2: _ActorState(
             num_tasks_in_flight=1, actor_location="node1", is_restarting=False

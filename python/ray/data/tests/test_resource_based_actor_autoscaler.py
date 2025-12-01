@@ -66,7 +66,7 @@ def test_distribute_resources_by_weight():
     op1 = MagicMock()
     pool1 = MagicMock(spec=_ActorPool)
     pool1.per_actor_resource_usage.return_value = ExecutionResources(
-        cpu=1, gpu=0,memory=1e9
+        cpu=1, gpu=0, memory=1e9
     )
     pool1.get_pool_util.return_value = 1.5
     pool1.max_tasks_in_flight_per_actor.return_value = 4

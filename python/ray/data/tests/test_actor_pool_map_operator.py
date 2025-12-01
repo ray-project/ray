@@ -1059,9 +1059,7 @@ def test_node_aware_strategy_with_active_actors(ray_start_regular_shared):
     assert remaining_node1_actors == 3
 
 
-def test_actor_pool_removal_strategy_integration_with_scaling(
-    ray_start_regular_shared
-):
+def test_actor_pool_removal_strategy_integration_with_scaling(ray_start_regular_shared):
     """Test actor removal strategy integration with scaling."""
     from ray.data._internal.execution.operators.actor_removal_strategy import (
         NodeAwareActorRemovalStrategy,
