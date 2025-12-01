@@ -1190,7 +1190,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
          }
          gcs_publisher_->PublishActor(actor_id,
                                       GenActorDataOnlyWithStates(*actor_table_data));
-         if (!is_restartable) {
+         if (!is_restartable && should_mark_dead_now) {
            gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id,
                                                            {[](auto) {}, io_context_});
          }
