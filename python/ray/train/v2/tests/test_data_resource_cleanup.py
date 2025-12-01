@@ -1,4 +1,5 @@
 import sys
+import time
 from unittest.mock import MagicMock, create_autospec
 
 import pytest
@@ -19,13 +20,6 @@ from ray.train.v2._internal.execution.worker_group import (
 from ray.train.v2.tests.util import DummyObjectRefWrapper, create_dummy_run_context
 
 pytestmark = pytest.mark.usefixtures("mock_runtime_context")
-
-
-@pytest.fixture
-def ray_start_4_cpus():
-    ray.init(num_cpus=4)
-    yield
-    ray.shutdown()
 
 
 def test_datasets_callback_multiple_datasets(ray_start_4_cpus):
@@ -107,6 +101,20 @@ def test_after_worker_group_shutdown():
 
 def test_split_coordinator_shutdown_executor(ray_start_4_cpus):
     """Tests that the SplitCoordinator properly requests resources for the data executor and cleans up after it is shutdown"""
+
+    def get_resources(requester, timeout=3.0):
+        """Gets resource requests, allowing for a timeout for requests to be made."""
+        deadline = time.time() + timeout
+        requests = {}
+        while time.time() < deadline:
+            requests = ray.get(
+                requester.__ray_call__.remote(lambda r: r._resource_requests)
+            )
+            if len(requests) == 1:
+                break
+            time.sleep(0.05)
+        return requests
+
     # Start coordinator and executor
     NUM_SPLITS = 1
     dataset = ray.data.range(100)
@@ -115,10 +123,16 @@ def test_split_coordinator_shutdown_executor(ray_start_4_cpus):
     )
     ray.get(coord.start_epoch.remote(0))
 
-    requester = get_or_create_autoscaling_requester_actor()
-    requests = ray.get(
-        requester.__ray_call__.remote(lambda requester: requester._resource_requests)
+    # Explicity trigger autoscaling
+    ray.get(
+        coord.__ray_call__.remote(
+            lambda coord: coord._executor._cluster_autoscaler.try_trigger_scaling()
+        )
     )
+
+    # Collect requests
+    requester = get_or_create_autoscaling_requester_actor()
+    requests = get_resources(requester)
 
     # One request made, with non-empty resource bundle
     assert len(requests) == 1
@@ -130,11 +144,9 @@ def test_split_coordinator_shutdown_executor(ray_start_4_cpus):
     # Shutdown data executor
     ray.get(coord.shutdown_executor.remote())
 
-    requests = ray.get(
-        requester.__ray_call__.remote(lambda requester: requester._resource_requests)
-    )
+    requests = get_resources(requester)
 
-    # Old resourece request overwritten by new cleanup request
+    # Old resource request overwritten by new cleanup request
     assert len(requests) == 1
     resource_bundles = list(requests.values())[0][0]
     assert isinstance(resource_bundles, dict)
