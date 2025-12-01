@@ -25,6 +25,7 @@ import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
 import ray.scripts.scripts as scripts
 from ray._common.network_utils import build_address, parse_address
+from ray._common.prometheus_utils import fetch_prometheus_metrics
 from ray._common.ray_constants import (
     LOGGING_ROTATE_BACKUP_COUNT,
     LOGGING_ROTATE_BYTES,
@@ -36,7 +37,6 @@ from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS_LEGACY,
 )
 from ray._private.test_utils import (
-    fetch_prometheus_metrics,
     format_web_url,
     get_error_message,
     init_error_pubsub,

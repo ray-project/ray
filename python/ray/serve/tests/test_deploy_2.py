@@ -332,6 +332,7 @@ def test_num_replicas_auto_api(serve_instance, use_options):
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "prometheus_metrics": None,
         "aggregation_function": "mean",
         "policy": {
             "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
@@ -398,6 +399,7 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "prometheus_metrics": None,
         "aggregation_function": "mean",
         "policy": {
             "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"

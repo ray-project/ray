@@ -56,6 +56,7 @@ class DeploymentAutoscalingState:
         self._running_replicas: List[ReplicaID] = []
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
+        self._prometheus_query_func: Optional[Callable] = None
 
     def register(self, info: DeploymentInfo, curr_target_num_replicas: int) -> int:
         """Registers an autoscaling deployment's info.
@@ -633,6 +634,68 @@ class DeploymentAutoscalingState:
 
         return dict(raw_metrics)
 
+    def set_prometheus_query_func(self, prom_query_func: Callable):
+        """Set the prometheus query function for this deployment.
+
+        This is used to inject a mock Prometheus handler in tests.
+
+        Args:
+            prom_query_func: Callable to use for Prometheus queries.
+        """
+        self._prometheus_query_func = prom_query_func
+        logger.info(
+            f"Set prometheus query function for deployment {self._deployment_id}"
+        )
+
+    def _get_prometheus_metrics(self) -> Dict[str, float]:
+        """Fetch prometheus metrics for this deployment.
+
+        Returns:
+            Dict mapping metric name to value.
+        """
+        if not self._prometheus_query_func:
+            logger.info(
+                f"No prometheus query function for deployment {self._deployment_id}"
+            )
+            return {}
+
+        if not self._config or not self._config.prometheus_metrics:
+            logger.info(
+                f"No prometheus metrics configured for deployment {self._deployment_id}"
+            )
+            return {}
+
+        prometheus_metrics = {}
+        for metric_name in self._config.prometheus_metrics:
+            try:
+                logger.info(
+                    f"Fetching prometheus metric {metric_name} for deployment {self._deployment_id}"
+                )
+                # Call the prometheus query function with the correct signature
+                result = self._prometheus_query_func("localhost:9090", metric_name)
+                if result and "data" in result and "result" in result["data"]:
+                    # Extract the value from the prometheus response
+                    if result["data"]["result"]:
+                        value = result["data"]["result"][0]["value"][1]
+                        prometheus_metrics[metric_name] = float(value)
+                        logger.info(
+                            f"Got prometheus metric {metric_name}={value} for deployment {self._deployment_id}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Prometheus metric {metric_name} returned empty result for deployment {self._deployment_id}"
+                        )
+                else:
+                    logger.warning(
+                        f"Prometheus metric {metric_name} returned invalid response for deployment {self._deployment_id}"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Error fetching prometheus metric {metric_name} for deployment {self._deployment_id}: {e}"
+                )
+
+        return prometheus_metrics
+
 
 class ApplicationAutoscalingState:
     """Manages autoscaling for a single application."""
@@ -717,6 +780,17 @@ class ApplicationAutoscalingState:
             info,
             curr_target_num_replicas,
         )
+
+    def set_prometheus_query_func(self, prom_query_func: Callable):
+        """Set the prometheus query function for all deployments in this application.
+
+        This is used to inject a mock Prometheus handler in tests.
+
+        Args:
+            prom_query_func: Callable to use for Prometheus queries.
+        """
+        for deployment_state in self._deployment_autoscaling_states.values():
+            deployment_state.set_prometheus_query_func(prom_query_func)
 
     def deregister_deployment(self, deployment_id: DeploymentID):
         if deployment_id not in self._deployment_autoscaling_states:
@@ -999,3 +1073,59 @@ class AutoscalingStateManager:
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         for app_state in self._app_autoscaling_states.values():
             app_state.drop_stale_handle_metrics(alive_serve_actor_ids)
+
+    def _dump_all_autoscaling_metrics_for_testing(
+        self,
+    ) -> Dict[DeploymentID, Dict[str, float]]:
+        """Dump all autoscaling metrics for testing purposes.
+
+        Returns:
+            Dict mapping deployment IDs to their current autoscaling metrics.
+        """
+        all_metrics = {}
+        for app_state in self._app_autoscaling_states.values():
+            for (
+                deployment_id,
+                deployment_state,
+            ) in app_state._deployment_autoscaling_states.items():
+                # Get aggregated custom metrics for this deployment
+                aggregated_metrics = deployment_state._get_aggregated_custom_metrics()
+
+                # Get prometheus metrics for this deployment
+                prometheus_metrics = deployment_state._get_prometheus_metrics()
+
+                # Flatten the metrics into a simple dict for testing
+                deployment_metrics = {}
+                for metric_name, replica_values in aggregated_metrics.items():
+                    # For testing, we'll use the average value across replicas
+                    if replica_values:
+                        deployment_metrics[metric_name] = sum(
+                            replica_values.values()
+                        ) / len(replica_values)
+
+                # Add prometheus metrics
+                deployment_metrics.update(prometheus_metrics)
+
+                # Also include ongoing requests if available
+                total_requests = deployment_state.get_total_num_requests()
+                if total_requests > 0:
+                    deployment_metrics["num_ongoing_requests"] = total_requests
+
+                all_metrics[deployment_id] = deployment_metrics
+
+        return all_metrics
+
+    def set_prometheus_query_func(self, prom_query_func: Callable):
+        """Set the prometheus query function for testing purposes.
+
+        This is used to inject a mock Prometheus handler in tests.
+
+        Args:
+            prom_query_func: Callable to use for Prometheus queries.
+        """
+        # Store the prometheus query function for testing
+        self._prom_query_func = prom_query_func
+
+        # Propagate the prometheus query function to all applications
+        for app_state in self._app_autoscaling_states.values():
+            app_state.set_prometheus_query_func(prom_query_func)
