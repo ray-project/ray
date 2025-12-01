@@ -103,10 +103,7 @@ class BaseBundleQueue(_QueueMetricRecorderMixin):
 
         This method is used for testing.
         """
-        if not self.has_next():
-            assert len(self) == 0
-            return True
-        return False
+        return len(self) == 0
 
     @abc.abstractmethod
     def clear(self):
