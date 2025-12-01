@@ -48,7 +48,19 @@ class _ArrayNamespace:
         This operation is only valid for nested list types. If the input
         is not a list-of-lists, PyArrow will raise a type error.
         """
+        # Default to object if we cannot infer a better type.
         return_dtype = DataType(object)
+
+        expr_dtype = self._expr.data_type
+        if expr_dtype.is_arrow_type() and expr_dtype.is_list_type():
+            outer_arrow_type = expr_dtype.to_arrow_dtype()
+            inner_arrow_type = outer_arrow_type.value_type
+
+            # Inner list type; list_flatten(list<list<T>>) -> list<T>
+            inner_dtype = DataType.from_arrow(inner_arrow_type)
+            if inner_dtype.is_list_type():
+                value_arrow_type = inner_arrow_type.value_type
+                return_dtype = DataType.from_arrow(pyarrow.list_(value_arrow_type))
 
         @pyarrow_udf(return_dtype=return_dtype)
         def _flatten(arr: pyarrow.Array) -> pyarrow.Array:
@@ -63,12 +75,24 @@ class _ArrayNamespace:
         ``ListArray`` with the same value type, using PyArrow's cast
         operator. Non-fixed-size list arrays are returned unchanged.
         """
+        # Default to object; refine when we know more.
         return_dtype = DataType(object)
+
+        expr_dtype = self._expr.data_type
+        if expr_dtype.is_arrow_type():
+            arrow_type = expr_dtype.to_arrow_dtype()
+            if pyarrow.types.is_fixed_size_list(arrow_type):
+                # FixedSizeListArray<T> -> ListArray<T>
+                return_dtype = DataType.from_arrow(pyarrow.list_(arrow_type.value_type))
+            elif expr_dtype.is_list_type():
+                # For other list-like arrays we return the input unchanged,
+                # so the dtype is the same as the original expression.
+                return_dtype = expr_dtype
 
         @pyarrow_udf(return_dtype=return_dtype)
         def _to_list(arr: pyarrow.Array) -> pyarrow.Array:
-            # Only FixedSizeListArray needs conversion; for other list-like
-            # types we just return the input unchanged.
+            # Only FixedSizeListArray needs conversion; other list-like
+            # types are returned unchanged.
             if isinstance(arr.type, pyarrow.FixedSizeListType):
                 return arr.cast(pyarrow.list_(arr.type.value_type))
             return arr
