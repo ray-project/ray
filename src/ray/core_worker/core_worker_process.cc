@@ -34,6 +34,7 @@
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
+#include "ray/rpc/server_call.h"
 #include "ray/stats/stats.h"
 #include "ray/stats/tag_defs.h"
 #include "ray/util/env.h"
@@ -587,9 +588,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     if (object_locations.has_value()) {
       locations.reserve(object_locations->size());
       for (const auto &node_id : *object_locations) {
-        auto *node_info = core_worker->gcs_client_->Nodes().GetNodeAddressAndLiveness(
+        auto node_info = core_worker->gcs_client_->Nodes().GetNodeAddressAndLiveness(
             node_id, /*filter_dead_nodes=*/false);
-        if (node_info == nullptr) {
+        if (!node_info) {
           // Unsure if the node is dead, so we need to confirm with the GCS. This should
           // be rare, the only foreseeable reasons are:
           // 1. We filled our cache after the GCS cleared the node info due to
@@ -775,6 +776,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // NOTE(kfstorm): any initialization depending on RayConfig must happen after this
   // line.
   InitializeSystemConfig();
+  rpc::SetServerCallThreadPoolMode(rpc::ServerCallThreadPoolMode::CORE_WORKER);
 
   // Assume stats module will be initialized exactly once in once process.
   // So it must be called in CoreWorkerProcess constructor and will be reused

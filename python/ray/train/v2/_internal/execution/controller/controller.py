@@ -68,6 +68,7 @@ from ray.train.v2.api.exceptions import (
     ControllerError,
     TrainingFailedError,
 )
+from ray.train.v2.api.report_config import CheckpointConsistencyMode
 from ray.train.v2.api.result import Result
 
 if TYPE_CHECKING:
@@ -274,6 +275,12 @@ class TrainController:
                 self._health_check_interval_s - time_since_last_poll, 0
             )
             await asyncio.sleep(remaining_time)
+            if self.get_state().is_terminal():
+                logger.debug(
+                    f"Controller is unexpectedly in terminal state {self.get_state()} after "
+                    "sleeping and before polling workers. Exiting actor."
+                )
+                ray.actor.exit_actor()
 
         status = self._worker_group.poll_status(timeout=self._health_check_interval_s)
         self._latest_poll_time = time_monotonic()
@@ -297,13 +304,26 @@ class TrainController:
 
         # Check for `bundle_label_selector` to influence WorkerGroup scheduling.
         bundle_label_selector = None
+        if isinstance(scaling_config.bundle_label_selector, list):
+            bundle_label_selector = scaling_config.bundle_label_selector[:num_workers]
+        elif isinstance(scaling_config.bundle_label_selector, dict):
+            bundle_label_selector = [
+                scaling_config.bundle_label_selector.copy() for _ in range(num_workers)
+            ]
         try:
             for callback in self._controller_callbacks:
                 selector = callback.on_controller_start_worker_group(
                     scaling_config=scaling_config, num_workers=num_workers
                 )
                 if selector:
-                    bundle_label_selector = selector
+                    if bundle_label_selector:
+                        logger.warning(
+                            f"Overriding `ScalingConfig.bundle_label_selector` {bundle_label_selector} "
+                            f"with bundle_label_selector returned by user-specified callback {selector}"
+                        )
+                    bundle_label_selector = [
+                        selector.copy() for _ in range(num_workers)
+                    ]
                     break
         except Exception as e:
             return ControllerError(e)
@@ -583,8 +603,10 @@ class TrainController:
         return None
 
     async def get_all_reported_checkpoints(
-        self, current_report_index: int
+        self,
+        current_report_index: int,
+        consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
     ) -> List["ReportedCheckpoint"]:
         return await self._checkpoint_manager.get_all_reported_checkpoints(
-            current_report_index
+            current_report_index, consistency_mode
         )

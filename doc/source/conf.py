@@ -235,6 +235,7 @@ exclude_patterns = [
     "train/examples/**/README.md",
     "serve/tutorials/deployment-serve-llm/README.*",
     "serve/tutorials/deployment-serve-llm/*/notebook.ipynb",
+    "data/examples/**/content/README.md",
     "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
     "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
 ] + autogen_files
@@ -653,6 +654,7 @@ autodoc_mock_imports = [
     "numpy",
     "pandas",
     "pyarrow",
+    "pyarrow.compute",
     "pytorch_lightning",
     "scipy",
     "setproctitle",
