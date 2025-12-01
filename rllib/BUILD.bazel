@@ -2291,6 +2291,16 @@ py_test(
 )
 
 py_test(
+    name = "env/tests/test_env_runner.py",
+    size = "medium",
+    srcs = ["env/tests/test_env_runner.py"],
+    tags = [
+        "env",
+        "team:rllib",
+    ],
+)
+
+py_test(
     name = "env/tests/test_multi_agent_env",
     size = "large",
     srcs = ["env/tests/test_multi_agent_env.py"],
