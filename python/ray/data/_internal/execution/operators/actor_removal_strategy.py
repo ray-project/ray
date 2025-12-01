@@ -9,8 +9,7 @@ class ActorRemovalStrategy:
     """Strategy for selecting which actor to remove during scale down"""
 
     def select_actor_to_remove(
-        self,
-        running_actors: Dict["ActorHandle", "_ActorState"]
+        self, running_actors: Dict["ActorHandle", "_ActorState"]
     ) -> Optional["ActorHandle"]:
         """Select an idle actor to remove. Returns None if no idle actors."""
         raise NotImplementedError
@@ -20,8 +19,7 @@ class DefaultActorRemovalStrategy(ActorRemovalStrategy):
     """Default strategy: remove first idle actor found"""
 
     def select_actor_to_remove(
-        self,
-        running_actors: Dict["ActorHandle", "_ActorState"]
+        self, running_actors: Dict["ActorHandle", "_ActorState"]
     ) -> Optional["ActorHandle"]:
         for actor, state in running_actors.items():
             if state.num_tasks_in_flight == 0:
@@ -36,8 +34,7 @@ class NodeAwareActorRemovalStrategy(ActorRemovalStrategy):
     """Select an idle actor to remove, preferring nodes with the most idle actors."""
 
     def select_actor_to_remove(
-        self,
-        running_actors: Dict["ActorHandle", "_ActorState"]
+        self, running_actors: Dict["ActorHandle", "_ActorState"]
     ) -> Optional["ActorHandle"]:
         """Select an idle actor to remove, preferring nodes with the most idle actors."""
 
@@ -48,8 +45,9 @@ class NodeAwareActorRemovalStrategy(ActorRemovalStrategy):
             return None
 
         # Find the node with the most idle actors
-        target_node = max(idle_counts_per_node.keys(),
-                          key=lambda n: idle_counts_per_node[n])
+        target_node = max(
+            idle_counts_per_node.keys(), key=lambda n: idle_counts_per_node[n]
+        )
 
         # Select an idle actor from the target node
         for actor, state in running_actors.items():
@@ -59,8 +57,7 @@ class NodeAwareActorRemovalStrategy(ActorRemovalStrategy):
         return None
 
     def _count_idle_actors_per_node(
-        self,
-        running_actors: Dict["ActorHandle", "_ActorState"]
+        self, running_actors: Dict["ActorHandle", "_ActorState"]
     ) -> Dict[str, int]:
         """Count idle actors per node"""
         idle_counts = {}

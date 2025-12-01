@@ -702,6 +702,7 @@ def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared, restore_data_c
 
     print("All test scenarios passed!")
 
+
 def test_e2e_node_aware_actor_removal(ray_start_10_cpus_shared, restore_data_context):
     """e2e test for actor removal - verifies behavior differences when the feature is enabled"""
 

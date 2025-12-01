@@ -551,6 +551,7 @@ class ActorPoolMapOperator(MapOperator):
             from ray.data._internal.execution.operators.actor_removal_strategy import (
                 NodeAwareActorRemovalStrategy,
             )
+
             actor_removal_strategy = NodeAwareActorRemovalStrategy()
 
         return _ActorPool(

@@ -886,8 +886,7 @@ def test_actor_pool_with_default_removal_strategy(ray_start_regular_shared):
     )
 
     # Verify that the default strategy is being used.
-    assert isinstance(pool._actor_removal_strategy,
-                      DefaultActorRemovalStrategy)
+    assert isinstance(pool._actor_removal_strategy, DefaultActorRemovalStrategy)
 
     # Add multiple actors
     test_case._add_ready_actor(pool, node_id="node1")
@@ -921,8 +920,9 @@ def test_actor_pool_with_node_aware_removal_strategy(ray_start_regular_shared):
     )
 
     # Verify that NodeAwareActorRemovalStrategy is being used.
-    assert isinstance(pool._actor_removal_strategy,
-                      NodeAwareActorRemovalStrategy,
+    assert isinstance(
+        pool._actor_removal_strategy,
+        NodeAwareActorRemovalStrategy,
     )
 
     # Add 3 actors on node1
@@ -948,7 +948,7 @@ def test_actor_pool_with_node_aware_removal_strategy(ray_start_regular_shared):
 
 
 def test_node_aware_strategy_prioritizes_node_with_most_idle_actors(
-    ray_start_regular_shared
+    ray_start_regular_shared,
 ):
     """Test that the node-aware strategy prioritizes the node with the most idle actors."""
     from ray.data._internal.execution.operators.actor_removal_strategy import (
@@ -981,12 +981,10 @@ def test_node_aware_strategy_prioritizes_node_with_most_idle_actors(
 
     # Record the number of actors on node1 and node2
     node1_actors = sum(
-        1 for state in pool._running_actors.values()
-        if state.actor_location == "node1"
+        1 for state in pool._running_actors.values() if state.actor_location == "node1"
     )
     node2_actors = sum(
-        1 for state in pool._running_actors.values()
-        if state.actor_location == "node2"
+        1 for state in pool._running_actors.values() if state.actor_location == "node2"
     )
 
     assert node1_actors == 4
@@ -1001,12 +999,10 @@ def test_node_aware_strategy_prioritizes_node_with_most_idle_actors(
 
     # Verify that the actors on node1 were removed first
     remaining_node1_actors = sum(
-        1 for state in pool._running_actors.values()
-        if state.actor_location == "node1"
+        1 for state in pool._running_actors.values() if state.actor_location == "node1"
     )
     remaining_node2_actors = sum(
-        1 for state in pool._running_actors.values()
-        if state.actor_location == "node2"
+        1 for state in pool._running_actors.values() if state.actor_location == "node2"
     )
 
     # node1 should have 1 actor remaining, node2 should have 2 actors
@@ -1058,8 +1054,7 @@ def test_node_aware_strategy_with_active_actors(ray_start_regular_shared):
 
     # Verify that the actors on node1 still exist
     remaining_node1_actors = sum(
-        1 for state in pool._running_actors.values()
-        if state.actor_location == "node1"
+        1 for state in pool._running_actors.values() if state.actor_location == "node1"
     )
     assert remaining_node1_actors == 3
 
@@ -1097,8 +1092,7 @@ def test_actor_pool_removal_strategy_integration_with_scaling(
     assert pool.current_size() == 4
 
     # Shrink 3 actors
-    pool.scale(
-        ActorPoolScalingRequest(delta=-3, reason="scale down", force=True))
+    pool.scale(ActorPoolScalingRequest(delta=-3, reason="scale down", force=True))
 
     # Verify shrink success
     assert pool.current_size() == 3

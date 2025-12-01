@@ -75,7 +75,9 @@ def test_distribute_resources_by_weight():
 
     op2 = MagicMock()
     pool2 = MagicMock(spec=_ActorPool)
-    pool2.per_actor_resource_usage.return_value = ExecutionResources(cpu=2, gpu=1, memory=2e9)
+    pool2.per_actor_resource_usage.return_value = ExecutionResources(
+        cpu=2, gpu=1, memory=2e9
+    )
     pool2.get_pool_util.return_value = 0.8
     pool2.max_tasks_in_flight_per_actor.return_value = 4
     pool2.max_actor_concurrency.return_value = 1
@@ -256,6 +258,7 @@ def test_get_current_job_resource_limits():
     min_res, max_res = autoscaler.get_current_job_resource_limits()
     assert min_res == min_resources
     assert max_res == max_resources
+
 
 if __name__ == "__main__":
     import sys

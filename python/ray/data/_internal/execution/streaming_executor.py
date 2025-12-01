@@ -704,7 +704,7 @@ class StreamingExecutor(Executor, threading.Thread):
     def update_job_resource_limits(
         self,
         min_resources: Optional[ExecutionResources] = None,
-        max_resources: Optional[ExecutionResources] = None
+        max_resources: Optional[ExecutionResources] = None,
     ) -> None:
         """Update job-level resource limits, automatically calculating all actor pool sizes.
 
@@ -719,8 +719,7 @@ class StreamingExecutor(Executor, threading.Thread):
             ResourceBasedActorAutoscaler,
         )
 
-        if not isinstance(self._actor_autoscaler,
-                          ResourceBasedActorAutoscaler):
+        if not isinstance(self._actor_autoscaler, ResourceBasedActorAutoscaler):
             raise ValueError(
                 "Current autoscaler does not support resource-based sizing. "
                 "Please enable resource_based_autoscaling in DataContext."
@@ -732,7 +731,7 @@ class StreamingExecutor(Executor, threading.Thread):
         )
 
     def get_job_resource_limits(
-        self
+        self,
     ) -> tuple[Optional[ExecutionResources], Optional[ExecutionResources]]:
         """Get the current job-level resource limits
 
