@@ -1,17 +1,17 @@
 import logging
 import math
-from typing import TYPE_CHECKING, Dict, Optional
-
+from typing import TYPE_CHECKING, Optional, Dict
 from .default_actor_autoscaler import DefaultActorAutoscaler
-from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
+from ray.data._internal.execution.interfaces.execution_options import \
+    ExecutionResources
 from ray.data.context import AutoscalingConfig
 
 if TYPE_CHECKING:
-    from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
-        AutoscalingActorPool,
-    )
-    from ray.data._internal.execution.resource_manager import ResourceManager
+    from ray.data._internal.execution.interfaces import PhysicalOperator
     from ray.data._internal.execution.streaming_executor_state import Topology
+    from ray.data._internal.execution.resource_manager import ResourceManager
+    from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import \
+        AutoscalingActorPool
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class ResourceBasedActorAutoscaler(DefaultActorAutoscaler):
     def update_job_resource_limits(
         self,
         min_resources: Optional[ExecutionResources] = None,
-        max_resources: Optional[ExecutionResources] = None,
+        max_resources: Optional[ExecutionResources] = None
     ) -> None:
         """Set resource limits for the entire Ray Data job
 
@@ -119,12 +119,8 @@ class ResourceBasedActorAutoscaler(DefaultActorAutoscaler):
             # Calculate min_size
             if self._job_min_resources is not None:
                 pool_min_resources = self._calculate_pool_min_resources(
-                    actor_pool,
-                    per_actor_resources,
-                    weight_ratio,
-                    all_pools,
-                    pool_weights,
-                    pool_resource_needs,
+                    actor_pool, per_actor_resources, weight_ratio, all_pools,
+                    pool_weights, pool_resource_needs
                 )
                 new_min_size = self._calculate_min_pool_size(
                     pool_min_resources, per_actor_resources
@@ -138,12 +134,8 @@ class ResourceBasedActorAutoscaler(DefaultActorAutoscaler):
             # Calculate max_size
             if self._job_max_resources is not None:
                 pool_max_resources = self._calculate_pool_max_resources(
-                    actor_pool,
-                    per_actor_resources,
-                    weight_ratio,
-                    all_pools,
-                    pool_weights,
-                    pool_resource_needs,
+                    actor_pool, per_actor_resources, weight_ratio, all_pools,
+                    pool_weights, pool_resource_needs
                 )
                 new_max_size = self._calculate_max_pool_size(
                     pool_max_resources, per_actor_resources
@@ -161,24 +153,23 @@ class ResourceBasedActorAutoscaler(DefaultActorAutoscaler):
         weight_ratio: float,
         all_pools: list,
         pool_weights: Dict,
-        pool_resource_needs: Dict,
+        pool_resource_needs: Dict
     ) -> ExecutionResources:
         """Calculate min resources for a single pool"""
         pool_min_cpu = (
             self._job_min_resources.cpu * weight_ratio
-            if per_actor_resources.cpu > 0
-            else 0
+            if per_actor_resources.cpu > 0 else 0
         )
 
         # GPU allocation: Only allocate to pools that need GPUs
         if per_actor_resources.gpu > 0:
-            gpu_pools = [p for p in all_pools if pool_resource_needs[p].gpu > 0]
+            gpu_pools = [p for p in all_pools if
+                         pool_resource_needs[p].gpu > 0]
             if gpu_pools:
                 gpu_total_weight = sum(pool_weights[p] for p in gpu_pools)
                 gpu_weight_ratio = (
                     pool_weights[actor_pool] / gpu_total_weight
-                    if gpu_total_weight > 0
-                    else 1.0 / len(gpu_pools)
+                    if gpu_total_weight > 0 else 1.0 / len(gpu_pools)
                 )
                 pool_min_gpu = self._job_min_resources.gpu * gpu_weight_ratio
             else:
@@ -189,8 +180,7 @@ class ResourceBasedActorAutoscaler(DefaultActorAutoscaler):
         # Memory allocation
         pool_min_memory = (
             self._job_min_resources.memory * weight_ratio
-            if per_actor_resources.memory > 0
-            else 0
+            if per_actor_resources.memory > 0 else 0
         )
 
         return ExecutionResources(
@@ -206,26 +196,24 @@ class ResourceBasedActorAutoscaler(DefaultActorAutoscaler):
         weight_ratio: float,
         all_pools: list,
         pool_weights: Dict,
-        pool_resource_needs: Dict,
+        pool_resource_needs: Dict
     ) -> ExecutionResources:
         """Calculate max resources for a single pool"""
         # CPU allocation
         pool_max_cpu = (
             self._job_max_resources.cpu * weight_ratio
-            if per_actor_resources.cpu > 0
-            else 0
+            if per_actor_resources.cpu > 0 else 0
         )
 
         # GPU allocation: Only allocate to pools that need GPUs
         if per_actor_resources.gpu > 0:
-            gpu_pools = [p for p in all_pools if pool_resource_needs[p].gpu > 0]
-
+            gpu_pools = [p for p in all_pools if
+                         pool_resource_needs[p].gpu > 0]
             if gpu_pools:
                 gpu_total_weight = sum(pool_weights[p] for p in gpu_pools)
                 gpu_weight_ratio = (
                     pool_weights[actor_pool] / gpu_total_weight
-                    if gpu_total_weight > 0
-                    else 1.0 / len(gpu_pools)
+                    if gpu_total_weight > 0 else 1.0 / len(gpu_pools)
                 )
                 pool_max_gpu = self._job_max_resources.gpu * gpu_weight_ratio
             else:
@@ -236,8 +224,7 @@ class ResourceBasedActorAutoscaler(DefaultActorAutoscaler):
         # Memory allocation
         pool_max_memory = (
             self._job_max_resources.memory * weight_ratio
-            if per_actor_resources.memory > 0
-            else 0
+            if per_actor_resources.memory > 0 else 0
         )
 
         return ExecutionResources(
@@ -246,8 +233,10 @@ class ResourceBasedActorAutoscaler(DefaultActorAutoscaler):
             memory=pool_max_memory,
         )
 
-    def _calculate_pool_weight(self, actor_pool: "AutoscalingActorPool") -> float:
-
+    def _calculate_pool_weight(
+        self,
+        actor_pool: "AutoscalingActorPool"
+    ) -> float:
         """Calculate the weight of an actor pool for resource allocation
 
         Based on current utilization: Higher utilization results in higher weight
@@ -257,7 +246,9 @@ class ResourceBasedActorAutoscaler(DefaultActorAutoscaler):
         return max(0.1, util)
 
     def _calculate_min_pool_size(
-        self, min_resources: ExecutionResources, per_actor_resources: ExecutionResources
+        self,
+        min_resources: ExecutionResources,
+        per_actor_resources: ExecutionResources
     ) -> int:
         """Calculate min pool size based on min resources (round up)
 
@@ -265,27 +256,26 @@ class ResourceBasedActorAutoscaler(DefaultActorAutoscaler):
         """
         min_size_by_cpu = (
             math.ceil(min_resources.cpu / per_actor_resources.cpu)
-            if per_actor_resources.cpu > 0
-            else 0
+            if per_actor_resources.cpu > 0 else 0
         )
 
         min_size_by_gpu = (
             math.ceil(min_resources.gpu / per_actor_resources.gpu)
-            if per_actor_resources.gpu > 0
-            else 0
+            if per_actor_resources.gpu > 0 else 0
         )
 
         min_size_by_memory = (
             math.ceil(min_resources.memory / per_actor_resources.memory)
-            if per_actor_resources.memory > 0
-            else 0
+            if per_actor_resources.memory > 0 else 0
         )
 
         # Take the maximum to ensure all resource types are satisfied
         return max(min_size_by_cpu, min_size_by_gpu, min_size_by_memory, 1)
 
     def _calculate_max_pool_size(
-        self, max_resources: ExecutionResources, per_actor_resources: ExecutionResources
+        self,
+        max_resources: ExecutionResources,
+        per_actor_resources: ExecutionResources
     ) -> int:
         """Calculate max pool size based on max resources (round down)
 
@@ -293,20 +283,17 @@ class ResourceBasedActorAutoscaler(DefaultActorAutoscaler):
         """
         max_size_by_cpu = (
             math.floor(max_resources.cpu / per_actor_resources.cpu)
-            if per_actor_resources.cpu > 0
-            else float("inf")
+            if per_actor_resources.cpu > 0 else float('inf')
         )
 
         max_size_by_gpu = (
             math.floor(max_resources.gpu / per_actor_resources.gpu)
-            if per_actor_resources.gpu > 0
-            else float("inf")
+            if per_actor_resources.gpu > 0 else float('inf')
         )
 
         max_size_by_memory = (
             math.floor(max_resources.memory / per_actor_resources.memory)
-            if per_actor_resources.memory > 0
-            else float("inf")
+            if per_actor_resources.memory > 0 else float('inf')
         )
 
         # Take the minimum to ensure no resource type limit is exceeded
@@ -319,7 +306,7 @@ class ResourceBasedActorAutoscaler(DefaultActorAutoscaler):
         return int(max_size)
 
     def get_current_job_resource_limits(
-        self,
+        self
     ) -> tuple[Optional[ExecutionResources], Optional[ExecutionResources]]:
         """Get current job-level resource limits
 
