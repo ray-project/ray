@@ -11,6 +11,7 @@ develop-and-deploy
 model_composition
 multi-app
 model-multiplexing
+model-registries
 configure-serve-deployment
 http-guide
 Serving LLMs <llm/index>
