@@ -1960,7 +1960,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   std::function<void(const ObjectID &)> free_actor_object_callback_;
 
   // Shutdown synchronization primitives
-  bool connected_ ABSL_GUARDED_BY(mutex_) = true;
+  std::atomic<bool> connected_{true};
   std::atomic<bool> event_loops_running_{false};
 };
 }  // namespace ray::core

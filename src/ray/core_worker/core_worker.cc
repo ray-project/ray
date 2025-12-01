@@ -589,16 +589,7 @@ void CoreWorker::Disconnect(
 
   opencensus::stats::StatsExporter::ExportNow();
 
-  bool should_disconnect = false;
-  {
-    absl::MutexLock lock(&mutex_);
-    if (connected_) {
-      connected_ = false;
-      should_disconnect = true;
-    }
-  }
-
-  if (should_disconnect) {
+  if (connected_.exchange(false)) {
     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
     Status status = raylet_ipc_client_->Disconnect(
         exit_type, exit_detail, creation_task_exception_pb_bytes);

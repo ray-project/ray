@@ -353,16 +353,7 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
 
   opencensus::stats::StatsExporter::ExportNow();
 
-  bool should_disconnect = false;
-  {
-    absl::MutexLock lock(&core_worker->mutex_);
-    if (core_worker->connected_) {
-      core_worker->connected_ = false;
-      should_disconnect = true;
-    }
-  }
-
-  if (should_disconnect) {
+  if (core_worker->connected_.exchange(false)) {
     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
     if (core_worker->raylet_ipc_client_) {
       rpc::WorkerExitType worker_exit_type = rpc::WorkerExitType::INTENDED_USER_EXIT;
