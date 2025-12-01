@@ -49,7 +49,7 @@ AuthenticationTokenLoader &AuthenticationTokenLoader::instance() {
 
 std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken(
     bool ignore_auth_mode) {
-  std::lock_guard<std::mutex> lock(token_mutex_);
+  absl::MutexLock lock(&token_mutex_);
 
   // If already loaded, return cached value
   if (cached_token_.has_value()) {
@@ -81,7 +81,7 @@ std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken(
 }
 
 TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
-  std::lock_guard<std::mutex> lock(token_mutex_);
+  absl::MutexLock lock(&token_mutex_);
   TokenLoadResult result;
 
   // If already loaded, return cached value

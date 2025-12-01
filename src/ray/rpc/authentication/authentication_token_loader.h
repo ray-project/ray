@@ -14,10 +14,10 @@
 
 #pragma once
 
-#include <mutex>
 #include <optional>
 #include <string>
 
+#include "absl/synchronization/mutex.h"
 #include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/authentication_token.h"
 
@@ -59,7 +59,7 @@ class AuthenticationTokenLoader {
   TokenLoadResult TryLoadToken(bool ignore_auth_mode = false);
 
   void ResetCache() {
-    std::lock_guard<std::mutex> lock(token_mutex_);
+    absl::MutexLock lock(&token_mutex_);
     cached_token_.reset();
   }
 
@@ -82,7 +82,7 @@ class AuthenticationTokenLoader {
   /// Trim whitespace from the beginning and end of the string.
   std::string TrimWhitespace(const std::string &str);
 
-  std::mutex token_mutex_;
+  absl::Mutex token_mutex_;
   std::optional<AuthenticationToken> cached_token_;
 };
 
