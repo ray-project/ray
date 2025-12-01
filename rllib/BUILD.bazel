@@ -108,41 +108,6 @@ doctest(
 )
 
 # --------------------------------------------------------------------
-# Benchmarks
-#
-# Tag: benchmark
-#
-# This is smoke-testing the benchmark scripts.
-# --------------------------------------------------------------------
-py_test(
-    name = "torch_compile_inference_bm",
-    size = "medium",
-    srcs = ["benchmarks/torch_compile/run_inference_bm.py"],
-    args = ["--smoke-test"],
-    main = "benchmarks/torch_compile/run_inference_bm.py",
-    tags = [
-        "benchmark",
-        "exclusive",
-        "team:rllib",
-        "torch_2.x_only_benchmark",
-    ],
-)
-
-py_test(
-    name = "torch_compile_ppo_with_inference",
-    size = "medium",
-    srcs = ["benchmarks/torch_compile/run_ppo_with_inference_bm.py"],
-    args = ["--smoke-test"],
-    main = "benchmarks/torch_compile/run_ppo_with_inference_bm.py",
-    tags = [
-        "benchmark",
-        "exclusive",
-        "team:rllib",
-        "torch_2.x_only_benchmark",
-    ],
-)
-
-# --------------------------------------------------------------------
 # Algorithms learning regression tests.
 #
 # Tag: learning_tests
