@@ -8,6 +8,7 @@ ray_cc_library(
         "//src/ray/common:gcs_callback_types",
         "//src/ray/common:id",
         "//src/ray/common:status",
+        "//src/ray/gcs/postable",
     ],
 )
 
@@ -29,6 +30,7 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
+        "//src/ray/gcs/postable",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:container_util",
         "//src/ray/util:exponential_backoff",
