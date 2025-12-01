@@ -11,7 +11,7 @@ Before proceeding with this guide, ensure you have the following:
 * A Kubernetes cluster with appropriate resources for running Ray workloads.
 * `kubectl` configured to access your Kubernetes cluster.
 * (Optional)[ArgoCD installed](https://argo-cd.readthedocs.io/en/stable/getting_started/) on your Kubernetes cluster.
-* (Optional)[ArgoCD CLI](https://argo-cd.readthedocs.io/en/stable/cli_installation/) installed on your local machine (recommended for easier application management. It might need [port-forwad and login](https://argo-cd.readthedocs.io/en/stable/getting_started/#port-forwarding) depending on your environment).
+* (Optional)[ArgoCD CLI](https://argo-cd.readthedocs.io/en/stable/cli_installation/) installed on your local machine (recommended for easier application management. It might need [port-forwarding and login](https://argo-cd.readthedocs.io/en/stable/getting_started/#port-forwarding) depending on your environment).
 * (Optional)Access to the ArgoCD UI or API server.
 
 ## Step 1: Deploy KubeRay Operator CRDs
