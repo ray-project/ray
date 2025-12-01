@@ -91,6 +91,7 @@ class ActorPoolStrategy(ComputeStrategy):
         max_size: Optional[int] = None,
         initial_size: Optional[int] = None,
         max_tasks_in_flight_per_actor: Optional[int] = None,
+        single_threaded: bool = True,
     ):
         """Construct ActorPoolStrategy for a Dataset transform.
 
@@ -106,6 +107,8 @@ class ActorPoolStrategy(ComputeStrategy):
                 opportunities for pipelining task dependency prefetching with
                 computation and avoiding actor startup delays, but will also increase
                 queueing delay.
+            single_threaded: If single_threded=True, then no more than 1 actor task
+                will be run per actor. Otherwise, will respect the `max_concurrency` argument.
         """
         if size is not None:
             if size < 1:
@@ -151,6 +154,7 @@ class ActorPoolStrategy(ComputeStrategy):
         self.max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
         self.num_workers = 0
         self.ready_to_total_workers_ratio = 0.8
+        self.single_threaded = single_threaded
 
     def __eq__(self, other: Any) -> bool:
         return isinstance(other, ActorPoolStrategy) and (

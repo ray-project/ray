@@ -24,7 +24,7 @@ import pyarrow as pa
 import ray
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_integer
-from ray.data._internal.compute import get_compute
+from ray.data._internal.compute import ActorPoolStrategy, get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -218,6 +218,7 @@ def plan_filter_op(
             op._fn_kwargs,
             op._fn_constructor_args if udf_is_callable_class else None,
             op._fn_constructor_kwargs if udf_is_callable_class else None,
+            single_threaded=False,
         )
 
         transform_fn = RowMapTransformFn(
@@ -258,12 +259,18 @@ def plan_udf_map_op(
 
     compute = get_compute(op._compute)
     udf_is_callable_class = isinstance(op._fn, CallableClass)
+    singled_threaded: bool = (
+        op._compute.single_threaded
+        if isinstance(op._compute, ActorPoolStrategy)
+        else False
+    )
     fn, init_fn = _get_udf(
         op._fn,
         op._fn_args,
         op._fn_kwargs,
         op._fn_constructor_args if udf_is_callable_class else None,
         op._fn_constructor_kwargs if udf_is_callable_class else None,
+        single_threaded=singled_threaded,
     )
 
     if isinstance(op, MapBatches):
@@ -311,6 +318,7 @@ def _get_udf(
     op_fn_kwargs: Dict[str, Any],
     op_fn_constructor_args: Optional[Tuple[Any, ...]],
     op_fn_constructor_kwargs: Optional[Dict[str, Any]],
+    single_threaded: bool,
 ):
     # Note, it's important to define these standalone variables.
     # So the parsed functions won't need to capture the entire operator, which may not
@@ -328,7 +336,7 @@ def _get_udf(
         if not is_async_udf:
             # TODO(ak) this constrains concurrency for user UDFs to run in a single
             #          thread irrespective of max_concurrency. Remove
-            udf = make_callable_class_concurrent(udf)
+            udf = make_callable_class_concurrent(udf, single_threaded=single_threaded)
 
         def init_fn():
             if ray.data._map_actor_context is None:
