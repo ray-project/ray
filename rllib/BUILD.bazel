@@ -214,7 +214,6 @@ py_test(
     ],
 )
 
-
 py_test(
     name = "learning_test_appo_connect4_local",
     size = "large",
