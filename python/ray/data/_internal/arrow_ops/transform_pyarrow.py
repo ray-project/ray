@@ -721,9 +721,8 @@ def concat(
     # Backfill missing columns
     blocks = list(blocks)
     for i, block in enumerate(blocks):
-        # Fast path: if there is no missing column and column order matches, skip
-        # Struct field alignment is handled separately in _align_struct_fields.
-        if block.schema.names == schema.names:
+        # Fast path: if schema matches exactly, skip
+        if block.schema.equals(schema):
             continue
 
         # 1. Find fields that are in the target schema but missing from the block
