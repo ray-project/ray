@@ -67,88 +67,70 @@ class FileShuffleConfig:
     """Configuration for file shuffling.
 
     This configuration object controls how files are shuffled while reading file-based
-    datasets.
+    datasets. You can configure either a fixed seed for consistent shuffling across
+    epochs, or a base seed for different shuffling in each epoch.
 
     .. note::
-        Even if you provided a seed, you might still observe a non-deterministic row
-        order. This is because tasks are executed in parallel and their completion
-        order might vary. If you need to preserve the order of rows, set
-        `DataContext.get_current().execution_options.preserve_order`.
+        Even if you provided a seed or base_seed, you might still observe a
+        non-deterministic row order. This is because tasks are executed in parallel
+        and their completion order might vary. If you need to preserve the order of
+        rows, set ``DataContext.get_current().execution_options.preserve_order``.
 
     Args:
         seed: An optional integer seed for the file shuffler. If provided, Ray Data
-            shuffles files deterministically based on this seed.
+            shuffles files deterministically with the same order across all epochs.
+            Cannot be set together with ``base_seed``.
+        base_seed: An optional integer base seed for the file shuffler. If provided,
+            Ray Data shuffles files deterministically but with different orders across
+            epochs. The actual seed used for each epoch is computed as
+            ``base_seed + epoch_idx``. Cannot be set together with ``seed``.
 
     Example:
         >>> import ray
         >>> from ray.data import FileShuffleConfig
+        >>> # Fixed seed - same shuffle across epochs
         >>> shuffle = FileShuffleConfig(seed=42)
+        >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/batoidea", shuffle=shuffle)
+        >>>
+        >>> # Base seed - different shuffle per epoch
+        >>> shuffle = FileShuffleConfig(base_seed=42)
         >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/batoidea", shuffle=shuffle)
     """  # noqa: E501
 
     seed: Optional[int] = None
+    base_seed: Optional[int] = None
 
     def __post_init__(self):
-        """Ensure that the seed is either None or an integer."""
+        """Ensure that seed and base_seed are valid and mutually exclusive."""
+        if self.seed is not None and self.base_seed is not None:
+            raise ValueError(
+                "Cannot set both 'seed' and 'base_seed'. Use 'seed' for consistent "
+                "shuffling across epochs, or 'base_seed' for different shuffling per epoch."
+            )
+
         if self.seed is not None and not isinstance(self.seed, int):
-            raise ValueError("Seed must be an integer or None.")
+            raise ValueError("seed must be an integer or None.")
+
+        if self.base_seed is not None and not isinstance(self.base_seed, int):
+            raise ValueError("base_seed must be an integer or None.")
 
     def get_seed(self, epoch_idx: int = 0) -> Optional[int]:
-        """Get the seed for a given epoch. Always returns the same seed.
-
-        Args:
-            epoch_idx: The epoch index (ignored for FileShuffleConfig).
-
-        Returns:
-            The configured seed value.
-        """
-        return self.seed
-
-
-@DeveloperAPI
-@dataclass
-class EpochAwareFileShuffleConfig:
-    """Configuration for epoch-aware file shuffling.
-
-    This configuration object enables different file shuffles across epochs while
-    maintaining determinism. Each epoch uses a different seed computed as
-    `base_seed + epoch_idx`.
-
-    .. note::
-        Even if you provided a base_seed, you might still observe a non-deterministic row
-        order. This is because tasks are executed in parallel and their completion
-        order might vary. If you need to preserve the order of rows, set
-        `DataContext.get_current().execution_options.preserve_order`.
-
-    Args:
-        base_seed: An integer seed for the file shuffler. The actual seed used for each
-            epoch is computed as `base_seed + epoch_idx`, ensuring deterministic but
-            varying shuffles across epochs.
-
-    Example:
-        >>> import ray
-        >>> from ray.data import EpochAwareFileShuffleConfig
-        >>> shuffle = EpochAwareFileShuffleConfig(base_seed=42)
-        >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/batoidea", shuffle=shuffle)
-    """  # noqa: E501
-
-    base_seed: int
-
-    def __post_init__(self):
-        """Ensure that the base_seed is an integer."""
-        if not isinstance(self.base_seed, int):
-            raise ValueError("base_seed must be an integer.")
-
-    def get_seed(self, epoch_idx: int = 0) -> int:
         """Get the seed for a given epoch.
 
         Args:
-            epoch_idx: The epoch index.
+            epoch_idx: The epoch index (only used when base_seed is set).
 
         Returns:
-            The computed seed as base_seed + epoch_idx.
+            The seed to use for shuffling. If ``seed`` is set, returns that value.
+            If ``base_seed`` is set, returns ``base_seed + epoch_idx``.
+            If neither is set, returns None (no deterministic shuffling).
         """
-        return self.base_seed + epoch_idx
+        if self.seed is not None:
+            return self.seed
+        elif self.base_seed is not None:
+            return self.base_seed + epoch_idx
+        else:
+            return None
 
 
 @DeveloperAPI
@@ -178,9 +160,7 @@ class FileBasedDatasource(Datasource):
         partition_filter: PathPartitionFilter = None,
         partitioning: Partitioning = None,
         ignore_missing_paths: bool = False,
-        shuffle: Optional[
-            Union[Literal["files"], FileShuffleConfig, EpochAwareFileShuffleConfig]
-        ] = None,
+        shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
@@ -603,18 +583,14 @@ def _resolve_kwargs(
 
 
 def _validate_shuffle_arg(
-    shuffle: Union[
-        Literal["files"], FileShuffleConfig, EpochAwareFileShuffleConfig, None
-    ],
+    shuffle: Union[Literal["files"], FileShuffleConfig, None],
 ) -> None:
     if not (
-        shuffle is None
-        or shuffle == "files"
-        or isinstance(shuffle, (FileShuffleConfig, EpochAwareFileShuffleConfig))
+        shuffle is None or shuffle == "files" or isinstance(shuffle, FileShuffleConfig)
     ):
         raise ValueError(
             f"Invalid value for 'shuffle': {shuffle}. "
-            "Valid values are None, 'files', `FileShuffleConfig`, or `EpochAwareFileShuffleConfig`."
+            "Valid values are None, 'files', or `FileShuffleConfig`."
         )
 
 
@@ -624,9 +600,7 @@ FileMetadata = TypeVar("FileMetadata")
 def shuffle_file_metadata(
     paths: List[str],
     file_metadata: List[FileMetadata],
-    shuffler: Union[
-        Literal["files"], FileShuffleConfig, EpochAwareFileShuffleConfig, None
-    ],
+    shuffler: Union[Literal["files"], FileShuffleConfig, None],
     epoch_idx: int,
 ) -> Tuple[List[str], List[FileMetadata]]:
     """Shuffle file paths and sizes together using the given shuffler."""
@@ -636,7 +610,7 @@ def shuffle_file_metadata(
     if shuffler == "files":
         file_metadata_shuffler = np.random.default_rng()
     else:
-        assert isinstance(shuffler, (FileShuffleConfig, EpochAwareFileShuffleConfig))
+        assert isinstance(shuffler, FileShuffleConfig)
         file_metadata_shuffler = np.random.default_rng(shuffler.get_seed(epoch_idx))
 
     files_metadata = list(zip(paths, file_metadata))

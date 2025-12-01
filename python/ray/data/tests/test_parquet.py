@@ -22,7 +22,7 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     get_arrow_extension_fixed_shape_tensor_types,
 )
-from ray.data import EpochAwareFileShuffleConfig, FileShuffleConfig, Schema
+from ray.data import FileShuffleConfig, Schema
 from ray.data._internal.datasource.parquet_datasource import (
     ParquetDatasource,
 )
@@ -1308,8 +1308,8 @@ def test_seed_file_shuffle_with_epoch_update(
         # Write dummy Parquet files
         write_parquet_file(path, i)
 
-    # Read with deterministic epoch-aware shuffling using EpochAwareFileShuffleConfig
-    shuffle_config = EpochAwareFileShuffleConfig(base_seed=42)
+    # Read with deterministic epoch-aware shuffling using base_seed
+    shuffle_config = FileShuffleConfig(base_seed=42)
     ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
     ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
 

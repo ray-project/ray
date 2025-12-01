@@ -20,7 +20,6 @@ from ray.data.datasource.datasource import (
     ReadTask,
 )
 from ray.data.datasource.file_based_datasource import (
-    EpochAwareFileShuffleConfig,
     FileBasedDatasource,
     FileShuffleConfig,
     _S3FileSystemWrapper,
@@ -54,7 +53,6 @@ __all__ = [
     "DefaultFileMetadataProvider",
     "DeltaSharingDatasource",
     "DummyOutputDatasink",
-    "EpochAwareFileShuffleConfig",
     "FastFileMetadataProvider",
     "FileBasedDatasource",
     "FileShuffleConfig",

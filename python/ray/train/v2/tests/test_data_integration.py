@@ -10,7 +10,6 @@ import ray.data
 import ray.train
 from ray.data import (
     DataContext,
-    EpochAwareFileShuffleConfig,
     ExecutionOptions,
     ExecutionResources,
     FileShuffleConfig,
@@ -243,9 +242,9 @@ def test_parquet_file_shuffle_with_epochs(
 ):
     """Test that Parquet file shuffling produces:
     1. Different results across epochs when different_seeds_across_epochs=True
-       (EpochAwareFileShuffleConfig: seed = base_seed + epoch_idx)
+       (FileShuffleConfig with base_seed: seed = base_seed + epoch_idx)
     2. Same results across epochs when different_seeds_across_epochs=False
-       (FileShuffleConfig: seed remains constant)
+       (FileShuffleConfig with seed: seed remains constant)
     3. Same results for different datasets with same shuffle config per epoch
     """
     NUM_WORKERS = 2
@@ -278,10 +277,10 @@ def test_parquet_file_shuffle_with_epochs(
 
         # Create shuffle config based on parameter
         if different_seeds_across_epochs:
-            # EpochAwareFileShuffleConfig: seed = base_seed + epoch_idx
-            shuffle_config = EpochAwareFileShuffleConfig(base_seed=42)
+            # FileShuffleConfig with base_seed: seed = base_seed + epoch_idx
+            shuffle_config = FileShuffleConfig(base_seed=42)
         else:
-            # FileShuffleConfig: seed remains constant across epochs
+            # FileShuffleConfig with seed: seed remains constant across epochs
             shuffle_config = FileShuffleConfig(seed=42)
 
         # Create two datasets with the same shuffle config
@@ -330,7 +329,7 @@ def test_parquet_file_shuffle_with_epochs(
             # Assertion 2: Different epochs produce different results vs same results
             # based on whether seed varies by epoch_idx
             if different_seeds_across_epochs:
-                # With EpochAwareFileShuffleConfig, seed varies by epoch, so expect variation
+                # With FileShuffleConfig(base_seed=X), seed varies by epoch, so expect variation
                 assert len(ds1_hashable_results) > 1, (
                     f"ds1 should produce different results across epochs, "
                     f"but got {len(ds1_hashable_results)} unique results out of {NUM_EPOCHS}"
@@ -340,7 +339,7 @@ def test_parquet_file_shuffle_with_epochs(
                     f"but got {len(ds2_hashable_results)} unique results out of {NUM_EPOCHS}"
                 )
             else:
-                # With FileShuffleConfig, seed is constant, so expect no variation
+                # With FileShuffleConfig(seed=X), seed is constant, so expect no variation
                 assert len(ds1_hashable_results) == 1, (
                     f"ds1 should produce the same results across all epochs, "
                     f"but got {len(ds1_hashable_results)} unique results out of {NUM_EPOCHS}"

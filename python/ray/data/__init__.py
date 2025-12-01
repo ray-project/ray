@@ -19,7 +19,6 @@ from ray.data.datasource import (
     BlockBasedFileDatasink,
     Datasink,
     Datasource,
-    EpochAwareFileShuffleConfig,
     FileShuffleConfig,
     ReadTask,
     RowBasedFileDatasink,
@@ -128,7 +127,6 @@ __all__ = [
     "DatasetIterator",  # Backwards compatibility alias.
     "Datasink",
     "Datasource",
-    "EpochAwareFileShuffleConfig",
     "ExecutionOptions",
     "ExecutionResources",
     "FileShuffleConfig",
