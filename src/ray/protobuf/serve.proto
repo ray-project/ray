@@ -430,3 +430,7 @@ message DeploymentArgs {
   bool ingress = 6;
   optional string docs_path = 7;
 }
+
+message ApplicationArgs {
+  bool external_scaler_enabled = 1;
+}
