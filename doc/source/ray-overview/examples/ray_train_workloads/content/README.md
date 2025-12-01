@@ -29,7 +29,7 @@ The tutorials walk through common ML workload patterns—vision, tabular, time s
 
 ---
 
-### 2. Workload patterns (independent, can be taken in any order)
+### 2. Workload patterns (independent, work in any order)
 
 - [**Vision workloads**](https://docs.ray.io/en/latest/ray-overview/examples/ray_train_workloads/content/workload-patterns/04a_vision_pattern.html)  
   Real-world computer vision with Food-101, preprocessing with Ray Data, fault-tolerant ResNet training, and scalable inference tasks.  

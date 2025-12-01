@@ -5,9 +5,9 @@ jupyter nbconvert "01_02_03_intro_to_ray_train.ipynb" --to markdown --output "RE
 -->
 
 # Introduction to Ray Train  
-This notebook shows how to run **distributed data-parallel training with PyTorch** on an Anyscale cluster using **Ray Train**. You'll train a **ResNet-18 model on MNIST** across multiple GPUs, with built-in support for **checkpointing, metrics reporting, and distributed orchestration**.  
+This notebook shows how to run **distributed data-parallel training with PyTorch** on an Anyscale cluster using **Ray Train**. You train a **ResNet-18 model on MNIST** across multiple GPUs, with built-in support for **checkpointing, metrics reporting, and distributed orchestration**.  
 
-## What you'll learn
+## Learning objectives
 * Why and when to use **Ray Train** for distributed training instead of managing PyTorch DDP manually  
 * How to wrap your PyTorch code with **`prepare_model()`** and **`prepare_data_loader()`** for multi-GPU execution  
 * How to configure scale with **`ScalingConfig(num_workers=..., use_gpu=True)`** and track outputs with **`RunConfig(storage_path=...)`**  
@@ -46,7 +46,7 @@ The preceding diagram shows the **lifecycle of a single training step** in PyTor
    An AllReduce step aggregates gradients across workers, ensuring an **AllReduce** step that model updates stay consistent across all GPUs.  
 
 5. **Weight Updates**  
-   Once gradients are synchronized, each worker applies the update, keeping model replicas in sync.  
+   Once Ray Train synchronizes gradients, each worker applies the update, keeping model replicas in sync.  
 
 6. **Checkpointing & Metrics**  
    By convention, only the **rank 0 worker** saves checkpoints and logs metrics to persistent storage. This avoids duplication while preserving progress and results.  
@@ -55,7 +55,7 @@ With Ray Train, you don’t need to manage process groups or samplers manually�
 
 |<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/ray-ai-libraries/diagrams/multi_gpu_pytorch_v4.png" width="70%" loading="lazy">|
 |:--|
-|Schematic overview of DistributedDataParallel (DDP) training: (1) the model is replicated from the <code>GPU rank 0</code> to all other workers; (2) each worker receives a shard of the dataset and processes a mini-batch; (3) during the backward pass, gradients are averaged across GPUs; (4) checkpoint and metrics from rank 0 GPU are saved to the persistent storage.|
+|Schematic overview of DistributedDataParallel (DDP) training: (1) Ray Train replicates the model from the <code>GPU rank 0</code> to all other workers; (2) each worker receives a shard of the dataset and processes a mini-batch; (3) during the backward pass, gradients are averaged across GPUs; (4) checkpoint and metrics from rank 0 GPU save to the persistent storage.|
 
 ## 01 · Imports  
 
@@ -128,7 +128,7 @@ Next, download the **MNIST dataset** using `torchvision.datasets.MNIST`.
 - MNIST consists of **60,000 grayscale images of handwritten digits (0–9)**, each sized **28×28 pixels**.  
 - By setting `train=True`, this loads the training split of the dataset.  
 
-Once downloaded, you can later wrap this dataset in a `DataLoader` and apply normalization so it can be used for model training.
+After downloading, wrap this dataset in a `DataLoader` and apply normalization for use for model training.
 
 
 ```python
@@ -141,7 +141,7 @@ dataset = MNIST(root="/mnt/cluster_storage/data", train=True, download=True)
 
 <b>Note about Anyscale storage options</b>
 
-In this example, the MNIST dataset is stored under <code>/mnt/cluster_storage/</code>, which is Anyscale’s **persistent cluster storage**.  
+In this example, this tutorial stores the MNIST dataset under <code>/mnt/cluster_storage/</code>, which is Anyscale’s **persistent cluster storage**.  
 
 * Unlike node-local NVMe volumes, cluster storage is **shared across nodes** in your cluster.  
 * Data written here **persist across cluster restarts**, making it a safe place for datasets, checkpoints, and results.  
@@ -149,7 +149,7 @@ In this example, the MNIST dataset is stored under <code>/mnt/cluster_storage/</
 
 * Anyscale also provides each node with its own volume and disk and doesn’t share them with other nodes.
 * Local storage is very fast - Anyscale supports the Non-Volatile Memory Express (NVMe) interface.
-* Local storage isn't a persistent storage, Anyscale deletes data in the local storage after instances are terminated. 
+* Local storage isn't a persistent storage, Anyscale deletes data in the local storage after instance termination. 
 
 Read more about available <a href="https://docs.anyscale.com/configuration/storage" target="_blank">storage</a> options.
 </div>
@@ -260,7 +260,7 @@ Key points:
 - **Training step**: standard PyTorch loop—forward → loss → `zero_grad` → backward → step.
 - **Metrics & checkpointing**: `print_metrics_ray_train(...)` logs loss; `save_checkpoint_and_metrics_ray_train(...)` calls `ray.train.report(...)` (rank-0 saves the checkpoint).
 
-This function is passed to `TorchTrainer`, which runs it **concurrently on all workers**.
+Pass this function to `TorchTrainer`, which runs it **concurrently on all workers**.
 
 See how this data-parallel training loop looks like with Ray Train and PyTorch.
 
