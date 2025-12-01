@@ -730,7 +730,7 @@ def test_e2e_node_aware_actor_removal(ray_start_10_cpus_shared, restore_data_con
 
     ds1 = ray.data.range(40, override_num_blocks=4).map_batches(
         TrackingUDF,
-        compute=ray.data.ActorPoolStrategy(min_size=2, max_size=2),
+        compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
         batch_size=10,
     )
 
@@ -748,7 +748,7 @@ def test_e2e_node_aware_actor_removal(ray_start_10_cpus_shared, restore_data_con
 
     ds2 = ray.data.range(40, override_num_blocks=4).map_batches(
         TrackingUDF,
-        compute=ray.data.ActorPoolStrategy(min_size=2, max_size=2),
+        compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
         batch_size=10,
     )
 
