@@ -1961,8 +1961,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   // Shutdown synchronization primitives
   bool connected_ ABSL_GUARDED_BY(mutex_) = true;
-  ray::core::ShutdownState shutdown_state_ ABSL_GUARDED_BY(mutex_) =
-      ray::core::ShutdownState::kRunning;
   std::atomic<bool> event_loops_running_{true};
 };
 }  // namespace ray::core
