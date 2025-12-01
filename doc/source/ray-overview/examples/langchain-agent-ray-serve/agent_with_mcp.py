@@ -48,9 +48,7 @@ PROMPT = (
     "Only output final answers or tool calls (no hidden thoughts)."
 )
 
-# ========== MCP  ==========
-# If you're using langchain_mcp_adapters, import and connect here.
-# This code logs tools clearly and works even if MCP returns no tools.
+# ========== MCP Tools  ==========
 async def get_mcp_tools() -> List[Any]:
     """Return tools discovered from the configured MCP server."""
     try:
