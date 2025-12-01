@@ -938,6 +938,8 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
         import pyarrow.compute as pac
 
         col = BlockAccessor.for_block(block).to_arrow().column(self._target_col_name)
+        if self._ignore_nulls:
+            col = pac.drop_null(col)
         return pac.unique(col).to_pylist()
 
     @staticmethod
