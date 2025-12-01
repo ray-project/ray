@@ -91,6 +91,19 @@ class _ArrayNamespace:
 
         @pyarrow_udf(return_dtype=return_dtype)
         def _to_list(arr: pyarrow.Array) -> pyarrow.Array:
+            # Check if it's any list type.
+            is_list_like = (
+                pyarrow.types.is_list(arr.type)
+                or pyarrow.types.is_large_list(arr.type)
+                or pyarrow.types.is_fixed_size_list(arr.type)
+                or (hasattr(pyarrow.types, "is_list_view") and pyarrow.types.is_list_view(arr.type))
+                or (hasattr(pyarrow.types, "is_large_list_view") and pyarrow.types.is_large_list_view(arr.type))
+            )
+            if not is_list_like:
+                raise pyarrow.lib.ArrowInvalid(
+                    f"arr.to_list() can only be called on list-like columns, but got {arr.type}"
+                )
+
             # Only FixedSizeListArray needs conversion; other list-like
             # types are returned unchanged.
             if isinstance(arr.type, pyarrow.FixedSizeListType):
