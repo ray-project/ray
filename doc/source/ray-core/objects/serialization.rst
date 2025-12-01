@@ -90,6 +90,11 @@ You can enable it by setting the environment variable `RAY_ENABLE_ZERO_COPY_TORC
 Here is an example:
 
 .. testcode::
+    :hide:
+
+    ray.shutdown()
+
+.. testcode::
 
     import os
 
