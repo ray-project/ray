@@ -46,7 +46,6 @@ repos:
     rev: "0.8.3"
     hooks:
       - id: pydoclint
-        language_version: python3.10
         args: [
           --style=google,
           --baseline=ci/lint/pydoclint-baseline.txt,
