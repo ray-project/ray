@@ -110,7 +110,9 @@ class ExactRebundleQueue(BaseBundleQueue, SupportsRebundling):
     def get_next_with_original(self) -> Tuple[List[RefBundle], RefBundle]:
         consumed_input_bundles = self._consumed_input_bundles
         self._consumed_input_bundles = []
-        return consumed_input_bundles, self._ready_bundles.popleft()
+        ready_bundle = self._ready_bundles.popleft()
+        self._on_exit(ready_bundle)
+        return consumed_input_bundles, ready_bundle
 
     @override
     def add(self, bundle: RefBundle, **kwargs: Any):

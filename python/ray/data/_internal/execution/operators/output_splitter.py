@@ -172,7 +172,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 b.output_split_idx = i
                 self._output_queue.add(b)
                 self._metrics.on_output_queued(b)
-        self._buffer = FIFOBundleQueue()
+        self._buffer.clear()
 
     def progress_str(self) -> str:
         if self._locality_hints:

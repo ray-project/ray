@@ -145,11 +145,11 @@ class SupportsIndexing(Protocol):
         ...
 
     def remove(self, bundle: RefBundle) -> RefBundle:
-        """Remove the first(earliest) bundle from the queue."""
+        """Remove the specified bundle from the queue. If multiple instances exist, remove the earliest one."""
         ...
 
     def remove_last(self, bundle: RefBundle) -> RefBundle:
-        """Remove the last(latest) bundle from the queue."""
+        """Remove the specified bundle from the queue. If multiple instances exist, remove the latest one."""
         ...
 
 

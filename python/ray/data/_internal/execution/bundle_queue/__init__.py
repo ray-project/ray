@@ -38,5 +38,4 @@ __all__ = [
     "SupportsRebundling",
     "QueueWithIndexing",
     "QueueWithRebundling",
-    "DequeWithIndexing",
 ]
