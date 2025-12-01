@@ -402,6 +402,8 @@ class EnvRunnerGroup:
                 with the merged state. Use None (default) to update all remote
                 EnvRunners.
         """
+        if env_steps_sampled is not None:
+            env_steps_sampled = int(env_steps_sampled)
         from_worker = from_worker or self.local_env_runner
 
         merge = (

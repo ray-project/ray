@@ -68,6 +68,7 @@ class TestCheckpointable(unittest.TestCase):
                 )
                 expanded_config.rl_module(
                     algorithm_config_overrides_per_module={
+                        "p1": PPOConfig.overrides(lr=0.001),
                         "p2": PPOConfig.overrides(lr=0.002),
                         "p3": PPOConfig.overrides(lr=0.003),
                     }
@@ -83,11 +84,12 @@ class TestCheckpointable(unittest.TestCase):
                 # Assert that the correct per-policy learning rates were used.
                 assert (
                     learner_res["p0"]["default_optimizer_learning_rate"] == 0.00005
-                    and learner_res["p1"]["default_optimizer_learning_rate"] == 0.0001
+                    and learner_res["p1"]["default_optimizer_learning_rate"]
+                    == (0.001 + 0.0001) / 2
                     and learner_res["p2"]["default_optimizer_learning_rate"]
-                    == 0.0011  # (0.002 + 0.0002) / 2
+                    == (0.002 + 0.0002) / 2
                     and learner_res["p3"]["default_optimizer_learning_rate"]
-                    == 0.00165  # (0.003 + 0.0003) / 2
+                    == (0.003 + 0.0003) / 2
                 )
                 algo.stop()
 
@@ -98,7 +100,7 @@ class TestCheckpointable(unittest.TestCase):
                 # Assert that the correct per-policy learning rates were used.
                 assert (
                     learner_res["p0"]["default_optimizer_learning_rate"] == 0.00005
-                    and learner_res["p1"]["default_optimizer_learning_rate"] == 0.0001
+                    and learner_res["p1"]["default_optimizer_learning_rate"] == 0.001
                     and learner_res["p2"]["default_optimizer_learning_rate"] == 0.002
                     and learner_res["p3"]["default_optimizer_learning_rate"] == 0.003
                 )
