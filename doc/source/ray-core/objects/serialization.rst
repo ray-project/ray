@@ -86,7 +86,7 @@ Ray serializes these tensors by converting them to NumPy arrays and leveraging p
 This avoids copying the underlying tensor data, which can improve performance when passing large tensors across tasks or actors.
 
 This feature is disabled by default.
-You can enable it by setting the environment variable `RAY_ENABLE_ZERO_COPY_TORCH_TENSORS = 1`.
+You can enable it by setting the environment variable `RAY_ENABLE_ZERO_COPY_TORCH_TENSORS = "1"`.
 Here is an example:
 
 .. testcode::
@@ -117,7 +117,7 @@ Note that this should be used with caution as Ray won't copy and allow a write t
 One process changing a tensor after `ray.get()` could be reflected in another process.
 This feature works best under the following conditions:
 
-- The tensor has `requires_grad=False` (i.e., is detached from the autograd graph).
+- The tensor has `requires_grad = False` (i.e., is detached from the autograd graph).
 
 - The tensor is contiguous in memory.
 
