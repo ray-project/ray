@@ -416,6 +416,9 @@ Content-Type: application/json
    schema.ProxyStatus
    schema.TargetGroup
    schema.Target
+   schema.DeploymentNode
+   schema.DeploymentTopology
+
 ```
 
 ## Observability

@@ -27,6 +27,7 @@ from ray.data.datasource import (
 from ray.data.iterator import DataIterator, DatasetIterator
 from ray.data.preprocessor import Preprocessor
 from ray.data.read_api import (  # noqa: F401
+    KafkaAuthConfig,  # noqa: F401
     from_arrow,
     from_arrow_refs,
     from_blocks,
@@ -55,6 +56,7 @@ from ray.data.read_api import (  # noqa: F401
     read_datasource,
     read_delta,
     read_delta_sharing_tables,
+    read_kafka,
     read_hudi,
     read_iceberg,
     read_images,
@@ -64,7 +66,6 @@ from ray.data.read_api import (  # noqa: F401
     read_mongo,
     read_numpy,
     read_parquet,
-    read_parquet_bulk,
     read_snowflake,
     read_sql,
     read_text,
@@ -162,6 +163,8 @@ __all__ = [
     "read_datasource",
     "read_delta",
     "read_delta_sharing_tables",
+    "read_kafka",
+    "KafkaAuthConfig",
     "read_hudi",
     "read_iceberg",
     "read_images",
@@ -171,7 +174,6 @@ __all__ = [
     "read_numpy",
     "read_mongo",
     "read_parquet",
-    "read_parquet_bulk",
     "read_snowflake",
     "read_sql",
     "read_tfrecords",

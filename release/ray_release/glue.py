@@ -18,7 +18,6 @@ from ray_release.anyscale_util import (
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
 from ray_release.cloud_util import archive_directory
 from ray_release.cluster_manager.cluster_manager import ClusterManager
-from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
 from ray_release.command_runner.command_runner import CommandRunner
@@ -46,7 +45,6 @@ from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result, ResultStatus, handle_exception
 from ray_release.signal_handling import (
-    register_handler,
     reset_signal_handling,
     setup_signal_handling,
 )
@@ -219,12 +217,6 @@ def _local_environment_information(
     cluster_id: Optional[str],
     cluster_env_id: Optional[str],
 ) -> None:
-    if isinstance(cluster_manager, FullClusterManager):
-        if not no_terminate:
-            register_handler(
-                lambda sig, frame: cluster_manager.terminate_cluster(wait=True)
-            )
-
     # Start cluster
     if cluster_id:
         buildkite_group(":rocket: Using existing cluster")
@@ -239,10 +231,7 @@ def _local_environment_information(
 
         cluster_manager.build_configs(timeout=build_timeout)
 
-        if isinstance(cluster_manager, FullClusterManager):
-            buildkite_group(":rocket: Starting up cluster")
-            cluster_manager.start_cluster(timeout=cluster_timeout)
-        elif isinstance(command_runner, AnyscaleJobRunner):
+        if isinstance(command_runner, AnyscaleJobRunner):
             command_runner.job_manager.cluster_startup_timeout = cluster_timeout
 
     result.cluster_url = cluster_manager.get_cluster_url()
