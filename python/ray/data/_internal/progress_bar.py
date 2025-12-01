@@ -231,7 +231,7 @@ class ProgressBar(AbstractProgressBar):
                 # If the progress goes over 100%, update the total.
                 self._bar.total = self._progress
             self._bar.update(increment)
-        elif self._use_logging and (increment != 0):
+        elif self._use_logging and (increment is not None and increment != 0):
             self._progress += increment
             if total is not None:
                 self._total = total
