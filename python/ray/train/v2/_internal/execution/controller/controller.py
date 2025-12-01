@@ -189,9 +189,6 @@ class TrainController:
         if self._worker_group:
             optional_worker_group_error = self._shutdown_worker_group()
             if optional_worker_group_error:
-                # Shutdown failure during resize. We're in SchedulingState, so the failure
-                # will be handled with SchedulingState as context, resulting in ReschedulingState
-                # on RETRY (to retry the scheduling phase).
                 failure_decision = self._failure_policy.make_decision(
                     training_failed_error=optional_worker_group_error,
                 )
@@ -496,9 +493,9 @@ class TrainController:
             # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
             optional_worker_group_error = self._shutdown()
             if optional_worker_group_error:
-                # If shutdown fails, we should transition to ErroredState.
+                # If shutdown fails, we transition to ErroredState directly instead of failure handling.
                 # However, if we're shutting down after an unsuccessful run,
-                # we should preserve the original training error rather than
+                # we preserve the original training error rather than
                 # overriding it with the shutdown error.
                 if isinstance(controller_state.next_state, ErroredState):
                     # Preserve the original training error, but log the shutdown error
@@ -510,7 +507,7 @@ class TrainController:
                     # Use the original training error
                     next_state = controller_state.next_state
                 else:
-                    # Shutdown failed during successful run completion
+                    # Shutdown failed during successful run completion.
                     # Use the shutdown error as the primary error
                     next_state = ErroredState(
                         training_failed_error=optional_worker_group_error,
