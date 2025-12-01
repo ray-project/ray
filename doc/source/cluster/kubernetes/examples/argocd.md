@@ -31,7 +31,7 @@ spec:
     namespace: ray-cluster
   source:
     repoURL: https://github.com/ray-project/kuberay
-    targetRevision: v1.4.0  # update this as necessary
+    targetRevision: v1.5.1  # update this as necessary
     path: helm-chart/kuberay-operator/crds
   syncPolicy:
     automated:
@@ -54,6 +54,12 @@ Wait for the CRDs Application to sync and become healthy. You can check the stat
 kubectl get application ray-operator-crds -n argocd
 ```
 
+Which should eventually give something like:
+```
+NAME                SYNC STATUS   HEALTH STATUS
+ray-operator-crds   Synced        Healthy
+```
+
 Alternatively, if you have the ArgoCD CLI installed, you can wait for the application:
 
 ```sh
@@ -74,7 +80,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/ray-project/kuberay
-    targetRevision: v1.4.0  # update this as necessary
+    targetRevision: v1.5.1  # update this as necessary
     path: helm-chart/kuberay-operator
     helm:
       skipCrds: true   # CRDs are already installed in Step 1
@@ -103,6 +109,12 @@ Wait for the operator Application to sync and become healthy. You can check the 
 kubectl get application ray-operator -n argocd
 ```
 
+Which should give the following output eventually:
+```
+NAME           SYNC STATUS   HEALTH STATUS
+ray-operator   Synced        Healthy
+```
+
 Alternatively, if you have the ArgoCD CLI installed:
 
 ```sh
@@ -114,6 +126,8 @@ Verify that the KubeRay operator pod is running:
 ```sh
 kubectl get pods -n ray-cluster -l app.kubernetes.io/name=kuberay-operator
 ```
+
+
 
 ## Step 3: Deploy a RayCluster
 
@@ -142,7 +156,7 @@ spec:
   source:
     repoURL: https://ray-project.github.io/kuberay-helm/
     chart: ray-cluster
-    targetRevision: "1.4.1"
+    targetRevision: "1.5.1"
     helm:
       releaseName: raycluster
       valuesObject:
@@ -168,6 +182,10 @@ spec:
           maxReplicas: 200
           rayStartParams:
             resources: '"{\"standard-worker\": 1}"'
+          resources:
+            requests:
+              cpu: "1"
+              memory: "1G"
         additionalWorkerGroups:
           additional-worker-group1:
             image:
@@ -180,6 +198,10 @@ spec:
             maxReplicas: 30
             rayStartParams:
               resources: '"{\"additional-worker-group1\": 1}"'
+            resources:
+              requests:
+                cpu: "1"
+                memory: "1G"
           additional-worker-group2:
             image:
               repository: docker.io/rayproject/ray
@@ -191,6 +213,10 @@ spec:
             maxReplicas: 200
             rayStartParams:
               resources: '"{\"additional-worker-group2\": 1}"'
+            resources:
+              requests:
+                cpu: "1"
+                memory: "1G"
   syncPolicy:
     automated:
       prune: true
@@ -223,10 +249,27 @@ Verify that the RayCluster is running:
 kubectl get raycluster -n ray-cluster
 ```
 
+Which will give something like:
+```
+NAME                 DESIRED WORKERS   AVAILABLE WORKERS   CPUS   MEMORY   GPUS   STATUS   AGE
+raycluster-kuberay   3                 3                   ...    ...      ...    ready    ...
+```
+
+
 You should see the head pod and worker pods:
 
 ```sh
 kubectl get pods -n ray-cluster
+```
+
+Gives something like:
+```
+NAME                                               READY   STATUS    RESTARTS   AGE
+kuberay-operator-6c485bc876-28dnl                  1/1     Running   0          11d
+raycluster-kuberay-additional-worker-group1-n45rc   1/1     Running   0          5d21h
+raycluster-kuberay-additional-worker-group2-b2455   1/1     Running   0          2d18h
+raycluster-kuberay-head                            2/2     Running   0          5d21h
+raycluster-kuberay-standard-worker-worker-bs8t8    1/1     Running   0          5d21h
 ```
 
 ## Understanding Ray Autoscaling with ArgoCD
@@ -285,6 +328,8 @@ ignoreDifferences:
 
 This configuration tells ArgoCD to ignore differences in the `replicas` field for each worker group. Without this setting, ArgoCD and the Ray Autoscaler may conflict, resulting in unexpected behavior when requesting workers dynamically (for example, using `ray.autoscaler.sdk.request_resources`). Specifically, when requesting N workers, the Autoscaler might not spin up the expected number of workers because ArgoCD could revert the replica count back to the original value defined in the Application manifest.
 
+Note the `name` and `namespace` may be different depending on the values you used. It's best to check this separately.
+
 **Important**: The `jsonPointers` list must match the number of worker groups in your deployment:
 - `/spec/workerGroupSpecs/0/replicas` - First worker group (the default `worker` group)
 - `/spec/workerGroupSpecs/1/replicas` - Second worker group (`additional-worker-group1`)
@@ -336,7 +381,7 @@ spec:
     namespace: ray-cluster
   source:
     repoURL: https://github.com/ray-project/kuberay
-    targetRevision: v1.4.0  # update this as necessary
+    targetRevision: v1.5.1  # update this as necessary
     path: helm-chart/kuberay-operator/crds
   syncPolicy:
     automated:
@@ -357,7 +402,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/ray-project/kuberay
-    targetRevision: v1.4.0  # update this as necessary
+    targetRevision: v1.5.1  # update this as necessary
     path: helm-chart/kuberay-operator
     helm:
       skipCrds: true   # CRDs are installed in the first Application
@@ -386,9 +431,9 @@ spec:
   ignoreDifferences:
     - group: ray.io
       kind: RayCluster
-      name: raycluster-kuberay
-      namespace: ray-cluster
-      jsonPointers:
+      name: raycluster-kuberay # ensure this is aligned with the release name
+      namespace: ray-cluster   # ensure this is aligned with the namespace
+      jsonPointers:  # Adjust this list to match the number of worker groups
         - /spec/workerGroupSpecs/0/replicas
         - /spec/workerGroupSpecs/1/replicas
         - /spec/workerGroupSpecs/2/replicas
@@ -397,7 +442,7 @@ spec:
     chart: ray-cluster
     targetRevision: "1.4.1"
     helm:
-      releaseName: raycluster
+      releaseName: raycluster  # this affects the ignoreDifferences field
       valuesObject:
         image:
           repository: docker.io/rayproject/ray
@@ -421,6 +466,10 @@ spec:
           maxReplicas: 200
           rayStartParams:
             resources: '"{\"standard-worker\": 1}"'
+          resources:
+            requests:
+              cpu: "1"
+              memory: "1G"
         additionalWorkerGroups:
           additional-worker-group1:
             image:
@@ -428,11 +477,15 @@ spec:
               tag: latest
               pullPolicy: IfNotPresent
             disabled: false
-            replicas: 0
-            minReplicas: 0
+            replicas: 1
+            minReplicas: 1
             maxReplicas: 30
             rayStartParams:
               resources: '"{\"additional-worker-group1\": 1}"'
+            resources:
+              requests:
+                cpu: "1"
+                memory: "1G"
           additional-worker-group2:
             image:
               repository: docker.io/rayproject/ray
@@ -444,6 +497,10 @@ spec:
             maxReplicas: 200
             rayStartParams:
               resources: '"{\"additional-worker-group2\": 1}"'
+            resources:
+              requests:
+                cpu: "1"
+                memory: "1G"
   syncPolicy:
     automated:
       prune: true
