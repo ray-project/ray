@@ -99,3 +99,69 @@ Then update with:
 ```bash
 serve deploy --config user_config.yaml
 ```
+
+### A/B testing with model registry and experiment tracking
+
+A/B testing allows you to compare multiple model versions in production by routing live traffic to different models and tracking their performance. This pattern is essential for validating model improvements, detecting regressions, and making data-driven decisions about model deployments.
+
+Ray Serve makes A/B testing straightforward with its composable deployment architecture. You can deploy multiple model versions simultaneously and use a router deployment to split traffic between them. Combined with MLflow's experiment tracking, you can monitor and compare model performance in real-time.
+
+:::{note}
+This example uses MLflow for experiment tracking, but the A/B testing pattern works with other frameworks such as Weights & Biases, Neptune, or custom tracking solutions. Some of these frameworks also provide flexibility to create experiments and set traffic weights directly from their UI or CLI tools.
+:::
+
+#### How it works
+
+The A/B testing pattern consists of three components:
+
+1. **Multiple model deployments**: Each deployment loads a different model version from the registry
+2. **Router deployment**: Routes incoming requests to different model versions based on your routing logic (random, weighted, or custom)
+3. **Experiment tracking**: Logs inference metrics to MLflow for performance comparison
+
+The following example demonstrates A/B testing with two RandomForest models that have different hyperparameters:
+
+**Train and register two models:**
+
+```{literalinclude} doc_code/mlflow_model_registry_integration.py
+:language: python
+:start-after: __ab_testing_train_models_start__
+:end-before: __ab_testing_train_models_end__
+```
+
+This code trains two models with different configurations (v1 with 50 estimators, v2 with 100 estimators) and tags them with version identifiers in MLflow Model Registry.
+
+**Create router and model deployments:**
+
+```{literalinclude} doc_code/mlflow_model_registry_integration.py
+:language: python
+:start-after: __ab_testing_router_start__
+:end-before: __ab_testing_router_end__
+```
+
+The `ModelVersionDeployment` class loads a model from MLflow and measures inference time. The `ABTestRouter` randomly routes requests to either model version and logs comprehensive metrics to MLflow, including:
+
+- Which model version handled each request
+- Inference latency per request
+- Prediction values
+
+**Run the example:**
+
+To see the A/B test in action, run the complete example:
+
+```{literalinclude} doc_code/mlflow_model_registry_integration.py
+:language: python
+:start-after: __ab_testing_run_start__
+:end-before: __ab_testing_run_end__
+```
+
+#### View results in MLflow UI
+
+Launch the MLflow UI to view and compare your A/B test results:
+
+```bash
+mlflow ui
+```
+
+Then open `http://localhost:5000` in your browser. You'll see the `ray-serve-ab-experiment` experiment with all inference runs.
+
+![MLflow Experiment Tracking UI](mlflow_experiment.png)
