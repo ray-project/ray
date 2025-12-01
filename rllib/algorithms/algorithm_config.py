@@ -4452,6 +4452,12 @@ class AlgorithmConfig(_Config):
         # If module_config_dict is not defined, set to our generic one.
         if rl_module_spec.model_config is None:
             rl_module_spec.model_config = self.model_config
+        # Otherwise we combine the two dictionaries where settings from the
+        # `RLModuleSpec` have higher priority.
+        else:
+            rl_module_spec.model_config = (
+                self.model_config | rl_module_spec._get_model_config()
+            )
 
         if inference_only is not None:
             rl_module_spec.inference_only = inference_only

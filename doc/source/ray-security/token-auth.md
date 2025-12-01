@@ -93,10 +93,7 @@ $ export RAY_AUTH_MODE=token
 # First attempt - an error is raised if no token exists.
 $ ray start --head
 ...
-RuntimeError: Token authentication is enabled but no authentication token was found. Please provide an authentication token using one of these methods:
-  1. Set the RAY_AUTH_TOKEN environment variable
-  2. Set the RAY_AUTH_TOKEN_PATH environment variable (pointing to a token file)
-  3. Create a token file at the default location: ~/.ray/auth_token
+ray.exceptions.AuthenticationError: Token authentication is enabled but no authentication token was found. Ensure that the token for the cluster is available in a local file (e.g., ~/.ray/auth_token or via RAY_AUTH_TOKEN_PATH) or as the `RAY_AUTH_TOKEN` environment variable. To generate a token for local development, use `ray get-auth-token --generate` For remote clusters, ensure that the token is propagated to all nodes of the cluster when token authentication is enabled. For more information, see: https://docs.ray.io/en/latest/ray-security/auth.html
 
 # Generate a token.
 $ ray get-auth-token --generate
@@ -113,7 +110,7 @@ Ray runtime started.
 
 When working with remote clusters you must ensure that all nodes in the remote cluster have token authentication enabled and access to the same token. Any clients that interact with the remote cluster, including your local machine, must also have the token configured. The following sections provide an overview of configuring this using the Ray cluster launcher and self-managed clusters.
 
-For instructions on configuring token authentication with KubeRay, see :ref:`Token authentication with KubeRay <kuberay-auth>`.
+For instructions on configuring token authentication with KubeRay, see {ref}`Token authentication with KubeRay <kuberay-auth>`.
 
 :::{note}
 If you're using a hosted version of Ray, contact your customer support for authentication questions.
