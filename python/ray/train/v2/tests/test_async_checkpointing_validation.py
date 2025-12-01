@@ -369,6 +369,50 @@ def test_report_checkpoint_upload_fn(tmp_path):
     }
 
 
+def test_checkpoint_upload_fn_returns_checkpoint():
+    def train_fn():
+        with create_dict_checkpoint({}) as checkpoint:
+            ray.train.report(
+                metrics={},
+                checkpoint=checkpoint,
+                checkpoint_upload_fn=lambda x, y: None,
+            )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=1),
+    )
+    with pytest.raises(
+        WorkerGroupError,
+        match="checkpoint_upload_fn must return a `ray.train.Checkpoint`",
+    ):
+        trainer.fit()
+
+
+def test_report_get_all_reported_checkpoints():
+    """Check that get_all_reported_checkpoints returns checkpoints depending on # report calls."""
+
+    def train_fn():
+        if ray.train.get_context().get_world_rank() == 0:
+            ray.train.report(metrics={}, checkpoint=None)
+            with create_dict_checkpoint({}) as checkpoint:
+                ray.train.report(metrics={}, checkpoint=checkpoint)
+            assert len(ray.train.get_all_reported_checkpoints()) == 1
+            with create_dict_checkpoint({}) as checkpoint:
+                ray.train.report(metrics={}, checkpoint=checkpoint)
+        else:
+            ray.train.report(metrics={}, checkpoint=None)
+            ray.train.report(metrics={}, checkpoint=None)
+            ray.train.report(metrics={}, checkpoint=None)
+            assert len(ray.train.get_all_reported_checkpoints()) == 2
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    trainer.fit()
+
+
 def test_get_all_reported_checkpoints_all_consistency_modes():
     signal_actor = create_remote_signal_actor(ray).remote()
 
@@ -416,6 +460,18 @@ def test_get_all_reported_checkpoints_all_consistency_modes():
         train_fn,
         scaling_config=ScalingConfig(num_workers=2),
         train_loop_config={"signal_actor": signal_actor},
+    )
+    trainer.fit()
+
+
+def test_get_all_reported_checkpoints_empty_reports():
+    def train_fn():
+        ray.train.report(metrics={}, checkpoint=None)
+        assert len(ray.train.get_all_reported_checkpoints()) == 0
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
     )
     trainer.fit()
 

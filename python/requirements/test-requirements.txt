@@ -103,7 +103,7 @@ pytz==2022.7.1
 # which conflicts with the opentelemetry-api 1.1.0.
 segment-analytics-python==2.2.0
 httpcore>=1.0.9
-httpx==0.27.2
+httpx>=0.28.1
 backoff==1.10
 
 # For test_basic.py::test_omp_threads_set
