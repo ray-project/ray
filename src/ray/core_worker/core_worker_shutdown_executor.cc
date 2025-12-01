@@ -159,7 +159,7 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
     }
 
     if (!worker->event_loops_running_.load()) {
-      RAY_LOG(WARNING) << "Event loops already stopped, executing shutdown directly";
+      RAY_LOG(WARNING) << "Event loops not running, executing shutdown directly";
       rpc::DrainServerCallExecutor();
       KillChildProcessesImmediately();
       DisconnectServices(exit_type, detail, creation_task_exception_pb_bytes);
@@ -193,7 +193,7 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
     }
 
     if (!worker->event_loops_running_.load()) {
-      RAY_LOG(WARNING) << "Event loops already stopped, cannot drain references";
+      RAY_LOG(WARNING) << "Event loops not running, cannot drain references";
       shutdown_callback();
       return;
     }

@@ -2735,6 +2735,7 @@ void CoreWorker::RunTaskExecutionLoop() {
         10,
         "CoreWorker.CheckSignal");
   }
+  event_loops_running_ = true;
   task_execution_service_.run();
   RAY_CHECK(shutdown_coordinator_ && shutdown_coordinator_->IsShuttingDown())
       << "Task execution loop was terminated without calling shutdown API.";
