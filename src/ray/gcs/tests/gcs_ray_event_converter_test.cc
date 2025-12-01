@@ -14,8 +14,6 @@
 
 #include "ray/gcs/gcs_ray_event_converter.h"
 
-#include <vector>
-
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -26,26 +24,18 @@
 namespace ray {
 namespace gcs {
 
-class GcsRayEventConverterTest : public ::testing::Test {
- public:
-  GcsRayEventConverterTest() = default;
-};
-
-TEST_F(GcsRayEventConverterTest, TestConvertToTaskEventData) {
+TEST(GcsRayEventConverterTest, TestConvertToTaskEventData) {
   rpc::events::AddEventsRequest request;
-  GcsRayEventConverter converter;
 
   // Convert empty request
-  auto task_event_data_requests =
-      converter.ConvertToTaskEventDataRequests(std::move(request));
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
 
   // Test empty request
   EXPECT_EQ(task_event_data_requests.size(), 0);
 }
 
-TEST_F(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
+TEST(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   rpc::events::AddEventsRequest request;
-  GcsRayEventConverter converter;
 
   // Create a task definition event
   auto *event = request.mutable_events_data()->add_events();
@@ -75,12 +65,10 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   (*task_def_event->mutable_required_resources())["memory"] = 1024.0;
 
   // Set runtime env info
-  auto *runtime_env = task_def_event->mutable_runtime_env_info();
-  runtime_env->set_serialized_runtime_env("test_env");
+  task_def_event->set_serialized_runtime_env("test_env");
 
   // Convert
-  auto task_event_data_requests =
-      converter.ConvertToTaskEventDataRequests(std::move(request));
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
 
   // Verify conversion
   ASSERT_EQ(task_event_data_requests.size(), 1);
@@ -108,9 +96,8 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   EXPECT_EQ(task_info.required_resources().at("memory"), 1024.0);
 }
 
-TEST_F(GcsRayEventConverterTest, TestConvertWithDroppedTaskAttempts) {
+TEST(GcsRayEventConverterTest, TestConvertWithDroppedTaskAttempts) {
   rpc::events::AddEventsRequest request;
-  GcsRayEventConverter converter;
 
   // Create a proper TaskID for testing
   const auto job_id = JobID::FromInt(100);
@@ -126,8 +113,7 @@ TEST_F(GcsRayEventConverterTest, TestConvertWithDroppedTaskAttempts) {
   dropped_attempt->set_attempt_number(2);
 
   // Convert
-  auto task_event_data_requests =
-      converter.ConvertToTaskEventDataRequests(std::move(request));
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
 
   // Verify dropped task attempts are copied
   ASSERT_FALSE(task_event_data_requests.empty());
@@ -138,9 +124,8 @@ TEST_F(GcsRayEventConverterTest, TestConvertWithDroppedTaskAttempts) {
   EXPECT_EQ(converted_dropped.attempt_number(), 2);
 }
 
-TEST_F(GcsRayEventConverterTest, TestMultipleJobIds) {
+TEST(GcsRayEventConverterTest, TestMultipleJobIds) {
   rpc::events::AddEventsRequest request;
-  GcsRayEventConverter converter;
 
   // Create events with different job IDs
   const auto job_id_1 = JobID::FromInt(100);
@@ -190,8 +175,7 @@ TEST_F(GcsRayEventConverterTest, TestMultipleJobIds) {
   dropped_attempt_2->set_attempt_number(4);
 
   // Convert
-  auto task_event_data_requests =
-      converter.ConvertToTaskEventDataRequests(std::move(request));
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
 
   // Verify that we get two separate requests (one for each job ID)
   ASSERT_EQ(task_event_data_requests.size(), 2);
@@ -225,9 +209,8 @@ TEST_F(GcsRayEventConverterTest, TestMultipleJobIds) {
   EXPECT_TRUE(found_job_2);
 }
 
-TEST_F(GcsRayEventConverterTest, TestSameJobIdGrouping) {
+TEST(GcsRayEventConverterTest, TestSameJobIdGrouping) {
   rpc::events::AddEventsRequest request;
-  GcsRayEventConverter converter;
 
   // Create multiple events with the same job ID
   const auto job_id = JobID::FromInt(100);
@@ -255,8 +238,7 @@ TEST_F(GcsRayEventConverterTest, TestSameJobIdGrouping) {
   task_def_event2->set_task_name("task_2_name");
 
   // Convert
-  auto task_event_data_requests =
-      converter.ConvertToTaskEventDataRequests(std::move(request));
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
 
   // Verify that we get one request with both events grouped together
   ASSERT_EQ(task_event_data_requests.size(), 1);
@@ -269,9 +251,8 @@ TEST_F(GcsRayEventConverterTest, TestSameJobIdGrouping) {
   EXPECT_EQ(events[1].job_id(), job_id.Binary());
 }
 
-TEST_F(GcsRayEventConverterTest, TestConvertTaskProfileEvents) {
+TEST(GcsRayEventConverterTest, TestConvertTaskProfileEvents) {
   rpc::events::AddEventsRequest request;
-  GcsRayEventConverter converter;
 
   // Create a task profile event
   auto *event = request.mutable_events_data()->add_events();
@@ -296,16 +277,15 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskProfileEvents) {
   auto *ProfileEventEntry = profile_events->add_events();
   ProfileEventEntry->set_start_time(123456789);
   ProfileEventEntry->set_end_time(123456799);
-  ProfileEventEntry->set_extra_data("{\"foo\": \"bar\"}");
+  ProfileEventEntry->set_extra_data(R"({"foo": "bar"})");
   ProfileEventEntry->set_event_name("test_event");
 
   // Convert
-  auto task_event_data_requests =
-      converter.ConvertToTaskEventDataRequests(std::move(request));
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
 
   // Verify conversion
   EXPECT_EQ(task_event_data_requests.size(), 1);
-  auto task_event_data = task_event_data_requests[0];
+  auto &task_event_data = task_event_data_requests[0];
   EXPECT_EQ(task_event_data.data().events_by_task_size(), 1);
   const auto &converted_task = task_event_data.data().events_by_task(0);
 
@@ -327,13 +307,15 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskProfileEvents) {
   const auto &entry = profile_event.events(0);
   EXPECT_EQ(entry.start_time(), 123456789);
   EXPECT_EQ(entry.end_time(), 123456799);
-  EXPECT_EQ(entry.extra_data(), "{\"foo\": \"bar\"}");
+  EXPECT_EQ(entry.extra_data(), R"({"foo": "bar"})");
   EXPECT_EQ(entry.event_name(), "test_event");
 }
 
-TEST_F(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
-  GcsRayEventConverter converter;
-  rpc::events::TaskExecutionEvent exec_event;
+TEST(GcsRayEventConverterTest, TestConvertTaskLifecycleEvent) {
+  rpc::events::AddEventsRequest request;
+  rpc::events::RayEvent &event = *request.mutable_events_data()->mutable_events()->Add();
+  event.set_event_type(rpc::events::RayEvent::TASK_LIFECYCLE_EVENT);
+  rpc::events::TaskLifecycleEvent &exec_event = *event.mutable_task_lifecycle_event();
 
   // Set basic fields
   exec_event.set_task_id("test_task_id");
@@ -349,10 +331,13 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
   google::protobuf::Timestamp ts;
   ts.set_seconds(42);
   ts.set_nanos(123456789);
-  (*exec_event.mutable_task_state())[rpc::TaskStatus::SUBMITTED_TO_WORKER] = ts;
+  auto *state_transition = exec_event.mutable_state_transitions()->Add();
+  state_transition->set_state(rpc::TaskStatus::SUBMITTED_TO_WORKER);
+  state_transition->mutable_timestamp()->CopyFrom(ts);
 
   // Call the converter
-  rpc::TaskEvents task_event = converter.ConvertToTaskEvents(std::move(exec_event));
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
+  rpc::TaskEvents task_event = task_event_data_requests[0].data().events_by_task()[0];
 
   // Check basic fields
   EXPECT_EQ(task_event.attempt_number(), 3);
@@ -370,9 +355,12 @@ TEST_F(GcsRayEventConverterTest, TestConvertTaskExecutionEvent) {
   EXPECT_EQ(state_updates.state_ts_ns().at(5), expected_ns);
 }
 
-TEST_F(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
-  GcsRayEventConverter converter;
-  rpc::events::ActorTaskDefinitionEvent actor_def_event;
+TEST(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
+  rpc::events::AddEventsRequest request;
+  rpc::events::RayEvent &event = *request.mutable_events_data()->mutable_events()->Add();
+  event.set_event_type(rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT);
+  rpc::events::ActorTaskDefinitionEvent &actor_def_event =
+      *event.mutable_actor_task_definition_event();
 
   // Set basic fields
   actor_def_event.set_task_id("test_actor_task_id");
@@ -385,8 +373,7 @@ TEST_F(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
   actor_def_event.set_placement_group_id("pg-actor");
 
   // Set runtime env info
-  auto *runtime_env = actor_def_event.mutable_runtime_env_info();
-  runtime_env->set_serialized_runtime_env("test_actor_env");
+  actor_def_event.set_serialized_runtime_env("test_actor_env");
 
   // Set actor function descriptor (Python)
   auto *func_desc = actor_def_event.mutable_actor_func();
@@ -399,7 +386,8 @@ TEST_F(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
   (*actor_def_event.mutable_required_resources())["GPU"] = 1.0;
 
   // Call the converter
-  rpc::TaskEvents task_event = converter.ConvertToTaskEvents(std::move(actor_def_event));
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
+  rpc::TaskEvents task_event = task_event_data_requests[0].data().events_by_task()[0];
 
   // Check basic fields
   EXPECT_EQ(task_event.task_id(), "test_actor_task_id");
@@ -422,6 +410,140 @@ TEST_F(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
   EXPECT_EQ(task_info.required_resources().at("CPU"), 2.0);
   EXPECT_EQ(task_info.required_resources().at("GPU"), 1.0);
 }
+
+// Parameterized test for optional fields in TaskLifecycleEvent.
+// Tests that optional fields are only set when they have non-empty values,
+// preventing issues where explicitly set empty fields overwrite existing values
+// during protobuf mergeFrom() operations.
+struct OptionalFieldTestCase {
+  std::string test_name;
+  std::string node_id;
+  std::string worker_id;
+  int32_t worker_pid;
+  std::string error_message;  // Empty string means no error_info should be set
+  bool expect_node_id_set;
+  bool expect_worker_id_set;
+  bool expect_worker_pid_set;
+  bool expect_error_info_set;
+};
+
+class TaskLifecycleEventOptionalFieldsTest
+    : public ::testing::TestWithParam<OptionalFieldTestCase> {};
+
+TEST_P(TaskLifecycleEventOptionalFieldsTest, TestOptionalFieldPresence) {
+  const auto &test_case = GetParam();
+
+  rpc::events::AddEventsRequest request;
+  rpc::events::RayEvent &event = *request.mutable_events_data()->mutable_events()->Add();
+  event.set_event_type(rpc::events::RayEvent::TASK_LIFECYCLE_EVENT);
+  rpc::events::TaskLifecycleEvent &lifecycle_event =
+      *event.mutable_task_lifecycle_event();
+
+  // Set basic required fields
+  lifecycle_event.set_task_id("test_task_id");
+  lifecycle_event.set_task_attempt(1);
+  lifecycle_event.set_job_id("test_job_id");
+
+  // Set optional fields according to test case
+  lifecycle_event.set_node_id(test_case.node_id);
+  lifecycle_event.set_worker_id(test_case.worker_id);
+  lifecycle_event.set_worker_pid(test_case.worker_pid);
+
+  // Set error_info if specified
+  if (!test_case.error_message.empty()) {
+    lifecycle_event.mutable_ray_error_info()->set_error_message(test_case.error_message);
+  }
+
+  // Call the converter
+  auto task_event_data_requests = ConvertToTaskEventDataRequests(std::move(request));
+  ASSERT_EQ(task_event_data_requests.size(), 1);
+  const rpc::TaskEvents &task_event =
+      task_event_data_requests[0].data().events_by_task()[0];
+
+  // Verify that state_updates exists
+  ASSERT_TRUE(task_event.has_state_updates());
+  const auto &state_updates = task_event.state_updates();
+
+  // Verify field presence matches expectations
+  EXPECT_EQ(state_updates.has_node_id(), test_case.expect_node_id_set)
+      << "node_id presence mismatch for test: " << test_case.test_name;
+  if (test_case.expect_node_id_set) {
+    EXPECT_EQ(state_updates.node_id(), test_case.node_id);
+  }
+
+  EXPECT_EQ(state_updates.has_worker_id(), test_case.expect_worker_id_set)
+      << "worker_id presence mismatch for test: " << test_case.test_name;
+  if (test_case.expect_worker_id_set) {
+    EXPECT_EQ(state_updates.worker_id(), test_case.worker_id);
+  }
+
+  EXPECT_EQ(state_updates.has_worker_pid(), test_case.expect_worker_pid_set)
+      << "worker_pid presence mismatch for test: " << test_case.test_name;
+  if (test_case.expect_worker_pid_set) {
+    EXPECT_EQ(state_updates.worker_pid(), test_case.worker_pid);
+  }
+
+  EXPECT_EQ(state_updates.has_error_info(), test_case.expect_error_info_set)
+      << "error_info presence mismatch for test: " << test_case.test_name;
+  if (test_case.expect_error_info_set) {
+    EXPECT_EQ(state_updates.error_info().error_message(), test_case.error_message);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    OptionalFields,
+    TaskLifecycleEventOptionalFieldsTest,
+    ::testing::Values(
+        // All fields empty - none should be set
+        OptionalFieldTestCase{"AllEmpty", "", "", 0, "", false, false, false, false},
+        // All fields non-empty - all should be set
+        OptionalFieldTestCase{"AllNonEmpty",
+                              "test_node_id",
+                              "test_worker_id",
+                              1234,
+                              "Test error",
+                              true,
+                              true,
+                              true,
+                              true},
+        // Mixed: node_id set, others empty
+        OptionalFieldTestCase{
+            "OnlyNodeId", "test_node_id", "", 0, "", true, false, false, false},
+        // Mixed: worker_id set, others empty
+        OptionalFieldTestCase{
+            "OnlyWorkerId", "", "test_worker_id", 0, "", false, true, false, false},
+        // Mixed: worker_pid set, others empty
+        OptionalFieldTestCase{
+            "OnlyWorkerPid", "", "", 5678, "", false, false, true, false},
+        // Only error_info set, others empty
+        OptionalFieldTestCase{
+            "OnlyErrorInfo", "", "", 0, "Test error", false, false, false, true},
+        // Mixed: node_id and worker_pid set, worker_id and error_info empty
+        OptionalFieldTestCase{
+            "NodeIdAndWorkerPid", "test_node_id", "", 9999, "", true, false, true, false},
+        // Mixed: worker_id and worker_pid set, node_id and error_info empty
+        OptionalFieldTestCase{"WorkerIdAndWorkerPid",
+                              "",
+                              "test_worker_id",
+                              4321,
+                              "",
+                              false,
+                              true,
+                              true,
+                              false},
+        // Mixed: worker_id and error_info set, others empty
+        OptionalFieldTestCase{"WorkerIdAndErrorInfo",
+                              "",
+                              "test_worker_id",
+                              0,
+                              "Worker error",
+                              false,
+                              true,
+                              false,
+                              true}),
+    [](const ::testing::TestParamInfo<OptionalFieldTestCase> &info) {
+      return info.param.test_name;
+    });
 
 }  // namespace gcs
 }  // namespace ray

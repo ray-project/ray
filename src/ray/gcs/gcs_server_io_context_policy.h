@@ -18,10 +18,10 @@
 #include <string_view>
 #include <type_traits>
 
-#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/gcs/gcs_task_manager.h"
 #include "ray/observability/ray_event_recorder.h"
 #include "ray/pubsub/gcs_publisher.h"
+#include "ray/ray_syncer/ray_syncer.h"
 #include "ray/util/array.h"
 #include "ray/util/type_traits.h"
 
@@ -44,13 +44,9 @@ struct GcsServerIOContextPolicy {
       return IndexOf("ray_syncer_io_context");
     } else if constexpr (std::is_same_v<T, observability::RayEventRecorder>) {
       return IndexOf("ray_event_io_context");
-    } else if constexpr (std::is_same_v<T, GcsInternalKVManager>) {
+    } else {
       // default io context
       return -1;
-    } else {
-      // Due to if-constexpr limitations, this have to be in an else block.
-      // Using this template to put T into compile error message.
-      static_assert(AlwaysFalse<T>, "unknown type");
     }
   }
 

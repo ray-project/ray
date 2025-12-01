@@ -164,7 +164,7 @@ class OpenTelemetryMetricRecorder:
                 if i == 0:
                     lower_bound = 0.0 if buckets[0] > 0 else buckets[0] * 2.0
                     self._histogram_bucket_midpoints[name].append(
-                        lower_bound + buckets[0] / 2.0
+                        (lower_bound + buckets[0]) / 2.0
                     )
                 else:
                     self._histogram_bucket_midpoints[name].append(

@@ -1,7 +1,6 @@
 import logging
 import threading
 import time
-from dataclasses import replace
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
@@ -18,7 +17,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 if TYPE_CHECKING:
     import pyarrow
 
-    from ray.data import Dataset
+    from ray.data.dataset import Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +46,9 @@ class StreamSplitDataIterator(DataIterator):
         See also: `Dataset.streaming_split`.
         """
         # To avoid deadlock, the concurrency on this actor must be set to at least `n`.
+        # We add 1 to the concurrency to allow for a shutdown_executor thread to run.
         coord_actor = SplitCoordinator.options(
-            max_concurrency=n,
+            max_concurrency=n + 1,
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             ),
@@ -95,6 +95,7 @@ class StreamSplitDataIterator(DataIterator):
                         schema=block_ref_and_md.schema,
                     )
 
+        self._base_dataset._plan._run_index += 1
         return gen_blocks(), self._iter_stats, False
 
     def stats(self) -> str:
@@ -225,7 +226,12 @@ class SplitCoordinator:
 
             schema = next_bundle.schema
             block = next_bundle.blocks[-1]
-            next_bundle = replace(next_bundle, blocks=next_bundle.blocks[:-1])
+            next_bundle = RefBundle(
+                blocks=next_bundle.blocks[:-1],
+                schema=next_bundle.schema,
+                owns_blocks=next_bundle.owns_blocks,
+                output_split_idx=next_bundle.output_split_idx,
+            )
 
             # Accumulate any remaining blocks in next_bundle map as needed.
             with self._lock:
@@ -241,6 +247,13 @@ class SplitCoordinator:
         finally:
             # Track overhead time in the instance variable
             self._coordinator_overhead_s += time.perf_counter() - start_time
+
+    def shutdown_executor(self):
+        """Shuts down the internal data executor."""
+        with self._lock:
+            # Call shutdown on the executor
+            if self._executor is not None:
+                self._executor.shutdown(force=False)
 
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""

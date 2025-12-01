@@ -215,6 +215,25 @@ def null_array_table(request):
         )
 
 
+@pytest.fixture
+def image_dataset(ray_start_regular_shared):
+    """Fixture that returns a Ray dataset with image-like columns."""
+    num_rows = 10
+    num_images = 8
+    image_size_flat = 224 * 224 * 3  # Flattened image size
+    rows = []
+    for _ in range(num_rows):
+        row = {}
+        for i in range(num_images):
+            row[f"image_{i}"] = np.random.randint(
+                0, 255, size=image_size_flat, dtype=np.uint8
+            )
+        rows.append(row)
+
+    table = pa.Table.from_pylist(rows)
+    return ray.data.from_arrow([table])
+
+
 def test_torch_conversion_null_type(ray_start_regular_shared, null_array_table):
     """Test iter_torch_batches with a PyArrow table containing null type arrays."""
     ds = ray.data.from_arrow(null_array_table)
@@ -227,14 +246,61 @@ def test_torch_conversion_null_type(ray_start_regular_shared, null_array_table):
         assert batch["fruit_apple"].shape == (3,)
 
 
-def test_iterator_to_materialized_dataset(ray_start_regular_shared):
+@pytest.fixture
+def collate_fns_with_and_without_threading():
+    """Fixture that provides DefaultCollateFn with and without threading."""
+    from ray.data.collate_fn import DefaultCollateFn
+
+    collate_fn_with_threading = DefaultCollateFn(num_workers=4)
+    collate_fn_no_threading = DefaultCollateFn(num_workers=0)
+
+    return {
+        "with_threading": collate_fn_with_threading,
+        "without_threading": collate_fn_no_threading,
+    }
+
+
+def _collect_batches(ds, collate_fn, batch_size=5):
+    """Helper function to collect batches from iter_torch_batches."""
+    batches = []
+    for batch in ds.iterator().iter_torch_batches(
+        collate_fn=collate_fn, batch_size=batch_size
+    ):
+        batches.append(batch)
+    return batches
+
+
+def test_torch_conversion_default_collate_fn_threading(
+    ray_start_regular_shared,
+    image_dataset,
+    collate_fns_with_and_without_threading,
+):
+    """Test DefaultCollateFn with/without threading produces same results."""
+    ds = image_dataset
+    collate_fns = collate_fns_with_and_without_threading
+
+    batches_with_threading = _collect_batches(ds, collate_fns["with_threading"])
+    batches_no_threading = _collect_batches(ds, collate_fns["without_threading"])
+
+    # Verify results are the same
+    assert len(batches_with_threading) == len(batches_no_threading)
+    for b1, b2 in zip(batches_with_threading, batches_no_threading):
+        assert set(b1.keys()) == set(b2.keys())
+        for col in b1.keys():
+            assert len(b1[col]) == len(b2[col])
+            for t1, t2 in zip(b1[col], b2[col]):
+                assert torch.equal(t1, t2)
+
+
+@pytest.mark.parametrize("should_equalize", [True, False])
+def test_iterator_to_materialized_dataset(ray_start_regular_shared, should_equalize):
     """Tests that `DataIterator.materialize` fully consumes the
     iterator and returns a `MaterializedDataset` view of the data
     that can be used to interact with the full dataset
     (e.g. load it all into memory)."""
     ds = ray.data.range(10)
     num_splits = 2
-    iters = ds.streaming_split(num_splits, equal=True)
+    iters = ds.streaming_split(num_splits, equal=should_equalize)
 
     def consume_in_parallel(fn):
         runners = [

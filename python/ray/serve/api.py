@@ -10,12 +10,13 @@ from starlette.types import ASGIApp
 
 import ray
 from ray import cloudpickle
-from ray._private.serialization import pickle_dumps
+from ray._common.serialization import pickle_dumps
 from ray.serve._private.build_app import build_app
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     handle_num_replicas_auto,
+    prepare_imperative_http_options,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
@@ -39,7 +40,6 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import (
     AutoscalingConfig,
-    DeploymentMode,
     HTTPOptions,
     ProxyLocation,
     RequestRouterConfig,
@@ -96,20 +96,7 @@ def start(
         logging_config: logging config options for the serve component (
             controller & proxy).
     """
-    if proxy_location is None:
-        if http_options is None:
-            http_options = HTTPOptions(location=DeploymentMode.EveryNode)
-    else:
-        if http_options is None:
-            http_options = HTTPOptions()
-        elif isinstance(http_options, dict):
-            http_options = HTTPOptions(**http_options)
-
-        if isinstance(proxy_location, str):
-            proxy_location = ProxyLocation(proxy_location)
-
-        http_options.location = ProxyLocation._to_deployment_mode(proxy_location)
-
+    http_options = prepare_imperative_http_options(proxy_location, http_options)
     _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
@@ -352,6 +339,7 @@ def deployment(
     request_router_config: Default[
         Union[Dict, RequestRouterConfig, None]
     ] = DEFAULT.VALUE,
+    max_constructor_retry_count: Default[int] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -417,6 +405,8 @@ def deployment(
         logging_config: Logging config options for the deployment. If provided,
             the config will be used to set up the Serve logger on the deployment.
         request_router_config: Config for the request router used for this deployment.
+        max_constructor_retry_count: Maximum number of times to retry the deployment
+            constructor. Defaults to 20.
     Returns:
         `Deployment`
     """
@@ -482,6 +472,7 @@ def deployment(
         health_check_timeout_s=health_check_timeout_s,
         logging_config=logging_config,
         request_router_config=request_router_config,
+        max_constructor_retry_count=max_constructor_retry_count,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 
@@ -532,6 +523,7 @@ class RunTarget:
     name: str = SERVE_DEFAULT_APP_NAME
     route_prefix: Optional[str] = "/"
     logging_config: Optional[Union[Dict, LoggingConfig]] = None
+    external_scaler_enabled: bool = False
 
 
 @DeveloperAPI
@@ -579,6 +571,7 @@ def _run_many(
                 default_runtime_env=ray.get_runtime_context().runtime_env
                 if not _local_testing_mode
                 else None,
+                external_scaler_enabled=t.external_scaler_enabled,
             )
         )
 
@@ -604,11 +597,16 @@ def _run_many(
         # Record after Ray has been started.
         ServeUsageTag.API_VERSION.record("v2")
 
-        return client.deploy_applications(
+        handles = client.deploy_applications(
             built_apps,
             wait_for_ingress_deployment_creation=wait_for_ingress_deployment_creation,
             wait_for_applications_running=wait_for_applications_running,
         )
+
+        client.wait_for_proxies_serving(
+            wait_for_applications_running=wait_for_applications_running
+        )
+        return handles
 
 
 @PublicAPI(stability="stable")
@@ -620,6 +618,7 @@ def _run(
     route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
     _local_testing_mode: bool = False,
+    external_scaler_enabled: bool = False,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -633,6 +632,7 @@ def _run(
                 name=name,
                 route_prefix=route_prefix,
                 logging_config=logging_config,
+                external_scaler_enabled=external_scaler_enabled,
             )
         ],
         wait_for_applications_running=_blocking,
@@ -689,6 +689,7 @@ def run(
     route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
     _local_testing_mode: bool = False,
+    external_scaler_enabled: bool = False,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -712,6 +713,8 @@ def run(
             gRPC or a `DeploymentHandle`).
         logging_config: Application logging config. If provided, the config will
             be applied to all deployments which doesn't have logging config.
+        external_scaler_enabled: Whether external autoscaling is enabled for
+            this application.
 
     Returns:
         DeploymentHandle: A handle that can be used to call the application.
@@ -722,6 +725,7 @@ def run(
         route_prefix=route_prefix,
         logging_config=logging_config,
         _local_testing_mode=_local_testing_mode,
+        external_scaler_enabled=external_scaler_enabled,
     )
 
     if blocking:
@@ -1069,4 +1073,15 @@ def get_deployment_handle(
     if _record_telemetry:
         ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
 
-    return client.get_handle(deployment_name, app_name, check_exists=_check_exists)
+    handle: DeploymentHandle = client.get_handle(
+        deployment_name, app_name, check_exists=_check_exists
+    )
+
+    # Track handle creation if called from within a replica
+    if (
+        internal_replica_context is not None
+        and internal_replica_context._handle_registration_callback is not None
+    ):
+        internal_replica_context._handle_registration_callback(handle.deployment_id)
+
+    return handle

@@ -113,13 +113,22 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             each batch. The default value may not be optimal when the batch size
             or the batch processing latency is too small, but it should be good
             enough for batch size >= 64.
-        apply_chat_template: Whether to apply chat template.
-        chat_template: The chat template to use. This is usually not needed if the
-            model checkpoint already contains the chat template.
-        tokenize: Whether to tokenize the input before passing it to the vLLM engine.
-            If not, vLLM will tokenize the prompt in the engine.
-        detokenize: Whether to detokenize the output.
-        has_image: Whether the input messages have images.
+        chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
+            Defaults to True. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, and memory. Legacy ``apply_chat_template``
+            and ``chat_template`` fields are deprecated but still supported.
+        tokenize_stage: Tokenizer stage config (bool | dict | TokenizerStageConfig).
+            Defaults to True. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
+            ``tokenize`` field is deprecated but still supported.
+        detokenize_stage: Detokenizer stage config (bool | dict | DetokenizeStageConfig).
+            Defaults to True. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
+            ``detokenize`` field is deprecated but still supported.
+        prepare_image_stage: Prepare image stage config (bool | dict | PrepareImageStageConfig).
+            Defaults to False. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, and memory. Legacy ``has_image`` field
+            is deprecated but still supported.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
@@ -127,6 +136,7 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
             If ``concurrency`` is an ``int`` ``n``, CPU stages use an autoscaling
             pool from ``(1, n)``, while GPU stages use a fixed pool of ``n`` workers.
+            Stage-specific concurrency can be set via nested stage configs.
 
     Examples:
 
@@ -205,12 +215,18 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
             each batch. The default value may not be optimal when the batch size
             or the batch processing latency is too small, but it should be good
             enough for batch size >= 64.
-        apply_chat_template: Whether to apply chat template.
-        chat_template: The chat template to use. This is usually not needed if the
-            model checkpoint already contains the chat template.
-        tokenize: Whether to tokenize the input before passing it to the SGLang engine.
-            If not, SGLang will tokenize the prompt in the engine.
-        detokenize: Whether to detokenize the output.
+        chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
+            Defaults to True. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, and memory. Legacy ``apply_chat_template``
+            and ``chat_template`` fields are deprecated but still supported.
+        tokenize_stage: Tokenizer stage config (bool | dict | TokenizerStageConfig).
+            Defaults to True. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
+            ``tokenize`` field is deprecated but still supported.
+        detokenize_stage: Detokenizer stage config (bool | dict | DetokenizeStageConfig).
+            Defaults to True. Use nested config for per-stage control over batch_size,
+            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
+            ``detokenize`` field is deprecated but still supported.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
@@ -218,6 +234,7 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
             actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
             If ``concurrency`` is an ``int`` ``n``, CPU stages use an autoscaling
             pool from ``(1, n)``, while GPU stages use a fixed pool of ``n`` workers.
+            Stage-specific concurrency can be set via nested stage configs.
 
     Examples:
         .. testcode::
@@ -366,15 +383,21 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
 @PublicAPI(stability="alpha")
 def build_llm_processor(
     config: ProcessorConfig,
-    chat_template_kwargs: Optional[Dict[str, Any]] = None,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
+    preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+    postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+    builder_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Processor:
     """Build a LLM processor using the given config.
 
     Args:
-        config: The processor config.
-        chat_template_kwargs: The optional kwargs to pass apply_chat_template.
+        config: The processor config. Supports nested stage configs for per-stage
+            control over batch_size, concurrency, runtime_env, num_cpus, and memory
+            (e.g., ``chat_template_stage=ChatTemplateStageConfig(batch_size=128)``
+            or ``tokenize_stage={"batch_size": 256, "concurrency": 2}``). Legacy
+            boolean flags (``apply_chat_template``, ``tokenize``, ``detokenize``,
+            ``has_image``) are deprecated but still supported with deprecation warnings.
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages. Each row
@@ -384,12 +407,23 @@ def build_llm_processor(
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict). To keep all the original columns,
             you can use the `**row` syntax to return all the original columns.
-
+        preprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            preprocess stage. Useful for controlling resources (e.g., num_cpus=0.5)
+            and concurrency independently of the main LLM stage.
+        postprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            postprocess stage. Useful for controlling resources (e.g., num_cpus=0.25)
+            and concurrency independently of the main LLM stage.
+        builder_kwargs: Optional additional kwargs to pass to the processor builder
+            function. These will be passed through to the registered builder and
+            should match the signature of the specific builder being used.
+            For example, vLLM and SGLang processors support `chat_template_kwargs`.
 
     Returns:
         The built processor.
 
-    Example:
+    Examples:
+        Basic usage:
+
         .. testcode::
             :skipif: True
 
@@ -430,15 +464,89 @@ def build_llm_processor(
             ds = processor(ds)
             for row in ds.take_all():
                 print(row)
+
+        Using map_kwargs to control preprocess/postprocess resources:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+            from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
+
+            config = vLLMEngineProcessorConfig(
+                model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
+                concurrency=1,
+                batch_size=64,
+            )
+
+            processor = build_llm_processor(
+                config,
+                preprocess=lambda row: dict(
+                    messages=[{"role": "user", "content": row["prompt"]}],
+                    sampling_params=dict(temperature=0.3, max_tokens=20),
+                ),
+                postprocess=lambda row: dict(resp=row["generated_text"]),
+                preprocess_map_kwargs={"num_cpus": 0.5},
+                postprocess_map_kwargs={"num_cpus": 0.25},
+            )
+
+            ds = ray.data.range(300)
+            ds = processor(ds)
+            for row in ds.take_all():
+                print(row)
+
+        Using builder_kwargs to pass chat_template_kwargs:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+            from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
+
+            config = vLLMEngineProcessorConfig(
+                model_source="Qwen/Qwen3-0.6B",
+                chat_template_stage={"enabled": True},
+                concurrency=1,
+                batch_size=64,
+            )
+
+            processor = build_llm_processor(
+                config,
+                preprocess=lambda row: dict(
+                    messages=[
+                        {"role": "user", "content": row["prompt"]},
+                    ],
+                    sampling_params=dict(
+                        temperature=0.6,
+                        max_tokens=100,
+                    ),
+                ),
+                builder_kwargs=dict(
+                    chat_template_kwargs={"enable_thinking": True},
+                ),
+            )
+
+            ds = ray.data.from_items([{"prompt": "What is 2+2?"}])
+            ds = processor(ds)
+            for row in ds.take_all():
+                print(row)
     """
     from ray.llm._internal.batch.processor import ProcessorBuilder
 
-    return ProcessorBuilder.build(
-        config,
-        chat_template_kwargs=chat_template_kwargs,
+    ProcessorBuilder.validate_builder_kwargs(builder_kwargs)
+
+    build_kwargs = dict(
         preprocess=preprocess,
         postprocess=postprocess,
+        preprocess_map_kwargs=preprocess_map_kwargs,
+        postprocess_map_kwargs=postprocess_map_kwargs,
     )
+
+    # Pass through any additional builder kwargs
+    if builder_kwargs is not None:
+        build_kwargs.update(builder_kwargs)
+
+    return ProcessorBuilder.build(config, **build_kwargs)
 
 
 __all__ = [

@@ -103,7 +103,7 @@ message ActorTableData {
   // Number of restarts that has been tried on this actor.
   // This will be greater by 1 than what's published before in ALIVE.
   // ALIVE:0 RESTARTING:1 ALIVE:1 RESTARTING:2, etc
-  uint64 num_restarts = 8;
+  int64 num_restarts = 8;
   // The address of the actor.
   Address address = 9;
   // The address of the actor's owner (parent).
@@ -352,6 +352,29 @@ message GcsNodeInfo {
   NodeDeathInfo death_info = 29;
 }
 
+// A lighter version of GcsNodeInfo containing only essential fields.
+message GcsNodeAddressAndLiveness {
+  // The ID of node.
+  bytes node_id = 1;
+
+  // The IP address of the node manager.
+  string node_manager_address = 2;
+
+  // The port at which the node manager is listening for TCP
+  // connections from other node managers.
+  int32 node_manager_port = 3;
+
+  // The port at which the object manager is listening for TCP
+  // connections from other object managers.
+  int32 object_manager_port = 4;
+
+  // Current state of this node.
+  GcsNodeInfo.GcsNodeState state = 5;
+
+  // The death info of this node.
+  NodeDeathInfo death_info = 6;
+}
+
 // Please keep this in sync with the definition of JobInfo in
 // dashboard/modules/job/common.py
 message JobsAPIInfo {
@@ -483,7 +506,7 @@ message ResourceLoad {
 }
 
 message ResourcesData {
-  reserved 3, 8, 17;
+  reserved 3, 8, 14, 17;
   // Node id.
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
@@ -507,8 +530,6 @@ message ResourcesData {
   bool resources_normal_task_changed = 12;
   // The timestamp that normal task resources are measured.
   int64 resources_normal_task_timestamp = 13;
-  // Whether this node has detected a resource deadlock (full of actors).
-  bool cluster_full_of_actors_detected = 14;
   // The duration in ms during which all the node's resources are idle. If the
   // node currently has any resource being used, this will be 0.
   int64 idle_duration_ms = 15;

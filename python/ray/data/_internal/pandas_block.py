@@ -21,7 +21,7 @@ from pandas.api.types import is_object_dtype, is_scalar, is_string_dtype
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.utils import _should_convert_to_tensor
 from ray.data._internal.numpy_support import convert_to_numpy
-from ray.data._internal.row import TableRow
+from ray.data._internal.row import row_repr, row_repr_pretty, row_str
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data._internal.util import is_null
 from ray.data.block import (
@@ -34,6 +34,7 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DataContext
+from ray.data.expressions import Expr
 
 if TYPE_CHECKING:
     import pandas
@@ -60,10 +61,13 @@ def lazy_import_pandas():
     return _pandas
 
 
-class PandasRow(TableRow):
+class PandasRow(Mapping):
     """
     Row of a tabular Dataset backed by a Pandas DataFrame block.
     """
+
+    def __init__(self, row: Any):
+        self._row = row
 
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
         from ray.data.extensions import TensorArrayElement
@@ -123,6 +127,15 @@ class PandasRow(TableRow):
 
         return pydict
 
+    def __str__(self):
+        return row_str(self)
+
+    def __repr__(self):
+        return row_repr(self)
+
+    def _repr_pretty_(self, p, cycle):
+        return row_repr_pretty(self, p, cycle)
+
 
 class PandasBlockColumnAccessor(BlockColumnAccessor):
     def __init__(self, col: "pandas.Series"):
@@ -173,12 +186,56 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
     ) -> Optional[U]:
         return self._column.quantile(q=q)
 
+    def value_counts(self) -> Optional[Dict[str, List]]:
+        value_counts = self._column.value_counts()
+        if len(value_counts) == 0:
+            return None
+        return {
+            "values": value_counts.index.tolist(),
+            "counts": value_counts.values.tolist(),
+        }
+
+    def hash(self) -> BlockColumn:
+
+        from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+
+        first_non_null = next((x for x in self._column if x is not None), None)
+        if isinstance(first_non_null, TensorArrayElement):
+            self._column = self._column.apply(lambda x: x.to_numpy())
+
+        import polars as pl
+
+        df = pl.from_pandas(self._column.to_frame())
+        hashes = df.hash_rows().cast(pl.Int64, wrap_numerical=True)
+        return hashes.to_pandas()
+
     def unique(self) -> BlockColumn:
+
         pd = lazy_import_pandas()
-        return pd.Series(self._column.unique())
+
+        try:
+            return pd.Series(self._column.unique())
+        except ValueError as e:
+            if "buffer source array is read-only" in str(e):
+                # NOTE: Pandas < 2.0 somehow tries to update the underlying buffer
+                #       when computing unique values hence failing
+                return pd.Series(self._column.copy().unique())
+            else:
+                raise
 
     def flatten(self) -> BlockColumn:
-        return self._column.list.flatten()
+        from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+
+        first_non_null = next((x for x in self._column if x is not None), None)
+        if isinstance(first_non_null, TensorArrayElement):
+            self._column = self._column.apply(
+                lambda x: x.to_numpy() if isinstance(x, TensorArrayElement) else x
+            )
+
+        return self._column.explode(ignore_index=True)
+
+    def dropna(self) -> BlockColumn:
+        return self._column.dropna()
 
     def sum_of_squared_diffs_from_mean(
         self,
@@ -210,6 +267,14 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
     def _is_all_null(self):
         return not self._column.notna().any()
 
+    def is_composed_of_lists(self, types: Optional[Tuple] = None) -> bool:
+        from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+
+        if not types:
+            types = (list, np.ndarray, TensorArrayElement)
+        first_non_null = next((x for x in self._column if x is not None), None)
+        return isinstance(first_non_null, types)
+
 
 class PandasBlockBuilder(TableBlockBuilder):
     def __init__(self):
@@ -235,7 +300,7 @@ class PandasBlockBuilder(TableBlockBuilder):
         )
 
     @staticmethod
-    def _concat_tables(tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
+    def _combine_tables(tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         from ray.air.util.data_batch_conversion import (
             _cast_ndarray_columns_to_tensor_extension,
@@ -246,9 +311,11 @@ class PandasBlockBuilder(TableBlockBuilder):
             df.reset_index(drop=True, inplace=True)
         else:
             df = tables[0]
+
         ctx = DataContext.get_current()
         if ctx.enable_tensor_extension_casting:
             df = _cast_ndarray_columns_to_tensor_extension(df)
+
         return df
 
     @staticmethod
@@ -275,19 +342,25 @@ class PandasBlockAccessor(TableBlockAccessor):
     def __init__(self, table: "pandas.DataFrame"):
         super().__init__(table)
 
+    def _get_row(self, index: int) -> PandasRow:
+        base_row = self.slice(index, index + 1, copy=False)
+        return PandasRow(base_row)
+
     def column_names(self) -> List[str]:
         return self._table.columns.tolist()
 
     def fill_column(self, name: str, value: Any) -> Block:
-        assert name not in self._table.columns
-
+        # Check if value is array-like - if so, use upsert_column logic
+        if isinstance(value, (pd.Series, np.ndarray)):
+            return self.upsert_column(name, value)
+        # Scalar value - use original fill_column logic
         return self._table.assign(**{name: value})
 
     @staticmethod
-    def _build_tensor_row(row: PandasRow) -> np.ndarray:
+    def _build_tensor_row(row: PandasRow, row_idx: int) -> np.ndarray:
         from ray.data.extensions import TensorArrayElement
 
-        tensor = row[TENSOR_COLUMN_NAME].iloc[0]
+        tensor = row[TENSOR_COLUMN_NAME].iloc[row_idx]
         if isinstance(tensor, TensorArrayElement):
             # Getting an item in a Pandas tensor column may return a TensorArrayElement,
             # which we have to convert to an ndarray.
@@ -306,6 +379,9 @@ class PandasBlockAccessor(TableBlockAccessor):
         table.reset_index(drop=True, inplace=True)
         return table
 
+    def drop(self, columns: List[str]) -> Block:
+        return self._table.drop(columns, axis="columns")
+
     def select(self, columns: List[str]) -> "pandas.DataFrame":
         if not all(isinstance(col, str) for col in columns):
             raise ValueError(
@@ -320,6 +396,8 @@ class PandasBlockAccessor(TableBlockAccessor):
     def upsert_column(
         self, column_name: str, column_data: BlockColumn
     ) -> "pandas.DataFrame":
+        import pyarrow
+
         if isinstance(column_data, (pyarrow.Array, pyarrow.ChunkedArray)):
             column_data = column_data.to_pandas()
 
@@ -493,6 +571,9 @@ class PandasBlockAccessor(TableBlockAccessor):
 
                 # Determine the sample size based on max_sample_count
                 sample_size = min(total_size, max_sample_count)
+                # Skip size calculation for empty columns
+                if sample_size == 0:
+                    continue
                 # Following codes can also handel case that sample_size == total_size
                 sampled_data = self._table[column].sample(n=sample_size).values
 
@@ -599,9 +680,25 @@ class PandasBlockAccessor(TableBlockAccessor):
     def iter_rows(
         self, public_row_format: bool
     ) -> Iterator[Union[Mapping, np.ndarray]]:
-        for i in range(self.num_rows()):
+        num_rows = self.num_rows()
+        for i in range(num_rows):
             row = self._get_row(i)
-            if public_row_format and isinstance(row, TableRow):
+            if public_row_format:
                 yield row.as_pydict()
             else:
                 yield row
+
+    def filter(self, predicate_expr: "Expr") -> "pandas.DataFrame":
+        """Filter rows based on a predicate expression."""
+        if self._table.empty:
+            return self._table
+
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            eval_expr,
+        )
+
+        # Evaluate the expression to get a boolean mask
+        mask = eval_expr(predicate_expr, self._table)
+
+        # Use pandas boolean indexing
+        return self._table[mask]

@@ -14,7 +14,7 @@ Binding of C++ ray::gcs::GcsClient.
 #
 # We need to best-effort import everything we need.
 #
-# For how async API are implemented, see src/ray/gcs_client/python_callbacks.h
+# For how async API are implemented, see src/ray/common/python_callbacks.h
 from asyncio import Future
 from typing import List, Sequence
 from libcpp.utility cimport move
@@ -417,28 +417,6 @@ cdef class InnerGcsClient:
                 timeout_ms)
         return asyncio.wrap_future(fut)
 
-    def async_kill_actor(
-        self, actor_id: ActorID, c_bool force_kill, c_bool no_restart,
-        timeout: Optional[int | float] = None
-    ) -> ConcurrentFuture[None]:
-        """
-        On success: returns None.
-        On failure: raises an exception.
-        """
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            fut = incremented_fut()
-            CActorID c_actor_id = actor_id.native()
-
-        with nogil:
-            self.inner.get().Actors().AsyncKillActor(
-                c_actor_id,
-                force_kill,
-                no_restart,
-                StatusPyCallback(convert_status, assign_and_decrement_fut, fut),
-                timeout_ms
-            )
-        return asyncio.wrap_future(fut)
     #############################################################
     # Job methods
     #############################################################
@@ -515,6 +493,7 @@ cdef class InnerGcsClient:
     def request_cluster_resource_constraint(
             self,
             bundles: c_vector[unordered_map[c_string, cython.double]],
+            label_selectors: c_vector[unordered_map[c_string, c_string]],
             count_array: c_vector[int64_t],
             timeout_s=None):
         cdef:
@@ -523,7 +502,7 @@ cdef class InnerGcsClient:
             check_status_timeout_as_rpc_error(
                 self.inner.get()
                 .Autoscaler()
-                .RequestClusterResourceConstraint(timeout_ms, bundles, count_array)
+                .RequestClusterResourceConstraint(timeout_ms, bundles, label_selectors, count_array)
             )
 
     def get_cluster_resource_state(
@@ -683,34 +662,6 @@ cdef class InnerGcsClient:
                 )
             )
 
-
-# Util functions for async handling
-
-cdef incremented_fut():
-    fut = concurrent.futures.Future()
-    cpython.Py_INCREF(fut)
-    return fut
-
-cdef void assign_and_decrement_fut(result, fut) noexcept with gil:
-    assert isinstance(fut, concurrent.futures.Future)
-
-    assert not fut.done()
-    try:
-        ret, exc = result
-        if exc:
-            fut.set_exception(exc)
-        else:
-            fut.set_result(ret)
-    finally:
-        # We INCREFed it in `incremented_fut` to keep it alive during the async wait,
-        # and we DECREF it here to balance it.
-        cpython.Py_DECREF(fut)
-
-cdef raise_or_return(tup):
-    ret, exc = tup
-    if exc:
-        raise exc
-    return ret
 
 #############################################################
 # Converter functions: C++ types -> Python types, use by both Sync and Async APIs.

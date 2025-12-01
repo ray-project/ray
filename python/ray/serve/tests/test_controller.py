@@ -176,9 +176,11 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                                     "upscaling_factor": None,
                                     "downscaling_factor": None,
                                     "downscale_delay_s": 600.0,
+                                    "downscale_to_zero_delay_s": None,
                                     "upscale_delay_s": 30.0,
+                                    "aggregation_function": "mean",
                                     "policy": {
-                                        "name": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+                                        "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
                                     },
                                 },
                                 "graceful_shutdown_wait_loop_s": 2.0,
@@ -214,6 +216,19 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                             ],
                         }
                     },
+                    "external_scaler_enabled": False,
+                    "deployment_topology": {
+                        "app_name": "default",
+                        "nodes": {
+                            "autoscaling_app": {
+                                "name": "autoscaling_app",
+                                "app_name": "default",
+                                "outbound_deployments": [],
+                                "is_ingress": True,
+                            }
+                        },
+                        "ingress_deployment": "autoscaling_app",
+                    },
                 }
             },
             "target_capacity": None,
@@ -224,6 +239,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                             "ip": node_ip,
                             "port": 8000,
                             "instance_id": node_instance_id,
+                            "name": proxy_details.actor_name,
                         },
                     ],
                     "route_prefix": "/",
@@ -235,6 +251,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                             "ip": node_ip,
                             "port": 9000,
                             "instance_id": node_instance_id,
+                            "name": proxy_details.actor_name,
                         },
                     ],
                     "route_prefix": "/",

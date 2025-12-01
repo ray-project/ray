@@ -32,7 +32,6 @@ Parquet
    :toctree: doc/
 
    read_parquet
-   read_parquet_bulk
    Dataset.write_parquet
 
 CSV
@@ -252,6 +251,15 @@ Lance
    read_lance
    Dataset.write_lance
 
+MCAP (Message Capture)
+----------------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_mcap
+
 ClickHouse
 ----------
 
@@ -358,6 +366,15 @@ WebDataset
    read_webdataset
 
 .. _data_source_api:
+
+Kafka
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_kafka
 
 Datasource API
 --------------

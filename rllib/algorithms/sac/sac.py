@@ -1,6 +1,9 @@
 import logging
 from typing import Any, Dict, Optional, Tuple, Type, Union
 
+from typing_extensions import Self
+
+from ray._common.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
@@ -15,7 +18,6 @@ from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
-from ray._common.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
 from ray.rllib.utils.typing import LearningRateOrSchedule, RLModuleSpecType
@@ -159,7 +161,7 @@ class SACConfig(AlgorithmConfig):
         _use_beta_distribution: Optional[bool] = NotProvided,
         num_steps_sampled_before_learning_starts: Optional[int] = NotProvided,
         **kwargs,
-    ) -> "SACConfig":
+    ) -> Self:
         """Sets the training related configuration.
 
         Args:
@@ -573,7 +575,7 @@ class SAC(DQN):
 
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> SACConfig:
         return SACConfig()
 
     @classmethod

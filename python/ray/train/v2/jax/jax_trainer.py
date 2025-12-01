@@ -2,7 +2,7 @@ import logging
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Union
 
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
-from ray.train import Checkpoint, DataConfig
+from ray.train import DataConfig
 from ray.train.trainer import GenDataset
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
@@ -26,6 +26,7 @@ class JaxTrainer(DataParallelTrainer):
     function is expected to take in either 0 or 1 arguments:
 
     .. testcode::
+        :skipif: True
 
         import os
         from absl import app
@@ -71,10 +72,6 @@ class JaxTrainer(DataParallelTrainer):
 
             result = trainer.fit()
 
-    .. testoutput::
-        :options: +ELLIPSIS
-        :hide:
-
     If ``train_loop_per_worker`` accepts an argument, then
     ``train_loop_config`` will be passed in as the argument.
 
@@ -119,9 +116,6 @@ class JaxTrainer(DataParallelTrainer):
             by calling ``ray.train.get_dataset_shard(name)``.
             Sharding and additional configuration can be done by
             passing in a ``dataset_config``.
-        resume_from_checkpoint: A checkpoint to resume training from.
-            This checkpoint can be accessed from within ``train_loop_per_worker``
-            by calling ``ray.train.get_checkpoint()``.
     """
 
     def __init__(
@@ -134,11 +128,11 @@ class JaxTrainer(DataParallelTrainer):
         dataset_config: Optional[Dict[str, DataConfig]] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
         if not jax_config:
             jax_config = JaxConfig(
                 use_tpu=scaling_config.use_tpu,
+                use_gpu=scaling_config.use_gpu,
             )
         super(JaxTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
@@ -148,7 +142,6 @@ class JaxTrainer(DataParallelTrainer):
             dataset_config=dataset_config,
             run_config=run_config,
             datasets=datasets,
-            resume_from_checkpoint=resume_from_checkpoint,
         )
 
     @classmethod

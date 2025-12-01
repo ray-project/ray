@@ -409,7 +409,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (void(const CObjectID &) nogil) free_actor_object_callback
         (function[void()]() nogil) initialize_thread_callback
         (CRayStatus() nogil) check_signals
-        (void(c_bool) nogil) gc_collect
+        (void() nogil) gc_collect
         (c_vector[c_string](
             const c_vector[CObjectReference] &) nogil) spill_objects
         (int64_t(
@@ -429,7 +429,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int num_workers
         (c_bool(const CTaskID &) nogil) kill_main
         CCoreWorkerOptions()
-        (void() nogil) terminate_asyncio_thread
         c_string serialized_job_config
         int metrics_agent_port
         int runtime_env_hash

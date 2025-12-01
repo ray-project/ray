@@ -1,9 +1,9 @@
 import os
 from datetime import datetime
 from enum import Enum
-from typing import List
+from typing import Dict, List
 
-from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
+from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_TAG_VERSION
 from ci.ray_ci.linux_container import LinuxContainer
 
 PLATFORMS_RAY = [
@@ -34,8 +34,21 @@ ARCHITECTURES_RAY_LLM = ["x86_64"]
 
 class RayType(str, Enum):
     RAY = "ray"
+    RAY_EXTRA = "ray-extra"
     RAY_ML = "ray-ml"
+    RAY_ML_EXTRA = "ray-ml-extra"
     RAY_LLM = "ray-llm"
+    RAY_LLM_EXTRA = "ray-llm-extra"
+
+
+RAY_REPO_MAP: Dict[str, str] = {
+    RayType.RAY.value: RayType.RAY.value,
+    RayType.RAY_ML.value: RayType.RAY_ML.value,
+    RayType.RAY_LLM.value: RayType.RAY_LLM.value,
+    RayType.RAY_EXTRA.value: RayType.RAY.value,
+    RayType.RAY_ML_EXTRA.value: RayType.RAY_ML.value,
+    RayType.RAY_LLM_EXTRA.value: RayType.RAY_LLM.value,
+}
 
 
 class DockerContainer(LinuxContainer):
@@ -53,35 +66,36 @@ class DockerContainer(LinuxContainer):
         upload: bool = False,
     ) -> None:
         assert "RAYCI_CHECKOUT_DIR" in os.environ, "RAYCI_CHECKOUT_DIR not set"
-
-        if image_type == RayType.RAY_ML:
-            assert python_version in PYTHON_VERSIONS_RAY_ML
-            assert platform in PLATFORMS_RAY_ML
-            assert architecture in ARCHITECTURES_RAY_ML
-        elif image_type == RayType.RAY_LLM:
-            assert python_version in PYTHON_VERSIONS_RAY_LLM
-            assert platform in PLATFORMS_RAY_LLM
-            assert architecture in ARCHITECTURES_RAY_LLM
-        else:
-            assert python_version in PYTHON_VERSIONS_RAY
-            assert platform in PLATFORMS_RAY
-            assert architecture in ARCHITECTURES_RAY
-
         rayci_checkout_dir = os.environ["RAYCI_CHECKOUT_DIR"]
-        self.python_version = python_version
-        self.platform = platform
-        self.image_type = image_type
-        self.architecture = architecture
-        self.canonical_tag = canonical_tag
-        self.upload = upload
 
         super().__init__(
             "forge" if architecture == "x86_64" else "forge-aarch64",
+            python_version=python_version,
             volumes=[
                 f"{rayci_checkout_dir}:/rayci",
                 "/var/run/docker.sock:/var/run/docker.sock",
             ],
         )
+
+        if image_type in [RayType.RAY_ML, RayType.RAY_ML_EXTRA]:
+            assert python_version in PYTHON_VERSIONS_RAY_ML
+            assert platform in PLATFORMS_RAY_ML
+            assert architecture in ARCHITECTURES_RAY_ML
+        elif image_type in [RayType.RAY_LLM, RayType.RAY_LLM_EXTRA]:
+            assert python_version in PYTHON_VERSIONS_RAY_LLM
+            assert platform in PLATFORMS_RAY_LLM
+            assert architecture in ARCHITECTURES_RAY_LLM
+        else:
+            # ray or ray-extra
+            assert python_version in PYTHON_VERSIONS_RAY
+            assert platform in PLATFORMS_RAY
+            assert architecture in ARCHITECTURES_RAY
+
+        self.platform = platform
+        self.image_type = image_type
+        self.architecture = architecture
+        self.canonical_tag = canonical_tag
+        self.upload = upload
 
     def _get_image_version_tags(self, external: bool) -> List[str]:
         """
@@ -148,27 +162,37 @@ class DockerContainer(LinuxContainer):
         versions = self._get_image_version_tags(external)
 
         platforms = [self._get_platform_tag()]
-        if self.platform == "cpu" and self.image_type == RayType.RAY:
+        if self.platform == "cpu" and self.image_type in [
+            RayType.RAY,
+            RayType.RAY_EXTRA,
+        ]:
             # no tag is alias to cpu for ray image
             platforms.append("")
         elif self.platform == GPU_PLATFORM:
             # gpu is alias to cu118 for ray image
             platforms.append("-gpu")
-            if self.image_type == RayType.RAY_ML:
+            if self.image_type in [RayType.RAY_ML, RayType.RAY_ML_EXTRA]:
                 # no tag is alias to gpu for ray-ml image
                 platforms.append("")
 
         py_versions = [self._get_python_version_tag()]
-        if self.python_version == DEFAULT_PYTHON_VERSION:
+        if self.python_version == DEFAULT_PYTHON_TAG_VERSION:
             py_versions.append("")
+
+        variation = ""
+        if self.image_type in [
+            RayType.RAY_EXTRA,
+            RayType.RAY_ML_EXTRA,
+            RayType.RAY_LLM_EXTRA,
+        ]:
+            variation = "-extra"
 
         tags = []
         for version in versions:
             for platform in platforms:
                 for py_version in py_versions:
-                    if self.architecture == DEFAULT_ARCHITECTURE:
-                        tag = f"{version}{py_version}{platform}"
-                    else:
-                        tag = f"{version}{py_version}{platform}-{self.architecture}"
+                    tag = f"{version}{variation}{py_version}{platform}"
+                    if self.architecture != DEFAULT_ARCHITECTURE:
+                        tag += f"-{self.architecture}"
                     tags.append(tag)
         return tags

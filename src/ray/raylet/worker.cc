@@ -19,6 +19,7 @@
 #include <string>
 #include <utility>
 
+#include "ray/core_worker_rpc_client/core_worker_client.h"
 #include "ray/flatbuffers/node_manager_generated.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
@@ -172,6 +173,10 @@ void Worker::Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client)
     notify_gcs_restarted_ = false;
   }
 }
+
+std::optional<pid_t> Worker::GetSavedProcessGroupId() const { return saved_pgid_; }
+
+void Worker::SetSavedProcessGroupId(pid_t pgid) { saved_pgid_ = pgid; }
 
 void Worker::GrantLeaseId(const LeaseID &lease_id) {
   lease_id_ = lease_id;

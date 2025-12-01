@@ -14,16 +14,14 @@
 
 #pragma once
 
+#include <boost/circular_buffer.hpp>
+
 #include "absl/synchronization/mutex.h"
-#include "absl/time/time.h"
-#include "google/protobuf/timestamp.pb.h"
 #include "ray/common/asio/periodical_runner.h"
-#include "ray/common/ray_config.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/observability/ray_event_interface.h"
 #include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/rpc/event_aggregator_client.h"
-#include "ray/util/logging.h"
-#include "src/ray/protobuf/public/events_base_event.pb.h"
 
 namespace ray {
 namespace observability {
@@ -38,26 +36,36 @@ namespace observability {
 class RayEventRecorder : public RayEventRecorderInterface {
  public:
   RayEventRecorder(rpc::EventAggregatorClient &event_aggregator_client,
-                   instrumented_io_context &io_service);
-  virtual ~RayEventRecorder() = default;
+                   instrumented_io_context &io_service,
+                   size_t max_buffer_size,
+                   std::string_view metric_source,
+                   ray::observability::MetricInterface &dropped_events_counter);
 
   // Start exporting events to the event aggregator by periodically sending events to
   // the event aggregator. This should be called only once. Subsequent calls will be
   // ignored.
-  void StartExportingEvents();
+  void StartExportingEvents() override;
 
   // Add a vector of data to the internal buffer. Data in the buffer will be sent to
   // the event aggregator periodically.
-  void AddEvents(std::vector<std::unique_ptr<RayEventInterface>> &&data_list);
+  void AddEvents(std::vector<std::unique_ptr<RayEventInterface>> &&data_list) override;
 
  private:
+  using RayEventKey = std::pair<std::string, rpc::events::RayEvent::EventType>;
+
   rpc::EventAggregatorClient &event_aggregator_client_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   // Lock for thread safety when modifying the buffer.
   absl::Mutex mutex_;
-  // Buffer to store events before sending to the event aggregator.
-  // TODO(#56391): Add a max size for the buffer and overflow recovery logic.
-  std::vector<std::unique_ptr<RayEventInterface>> buffer_ ABSL_GUARDED_BY(mutex_);
+
+  // Maximum number of events to store in the buffer (configurable at runtime)
+  size_t max_buffer_size_;
+  std::string_view metric_source_;
+  // Bounded queue to store events before sending to the event aggregator.
+  // When the queue is full, old events are dropped to make room for new ones.
+  boost::circular_buffer<std::unique_ptr<RayEventInterface>> buffer_
+      ABSL_GUARDED_BY(mutex_);
+  ray::observability::MetricInterface &dropped_events_counter_;
   // Flag to track if exporting has been started
   bool exporting_started_ ABSL_GUARDED_BY(mutex_) = false;
   // Export events to the event aggregator. This is called periodically by the

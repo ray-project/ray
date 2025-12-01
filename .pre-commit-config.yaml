@@ -8,7 +8,7 @@ exclude: |
     python/ray/_private/runtime_env/_clonevirtualenv.py|
     python/ray/data/examples/data/|
     release/release_logs/|
-    rllib/tests/data|
+    rllib/offline/tests/data|
     thirdparty/patches/|
     src/ray/thirdparty/|
     doc/external/|
@@ -30,10 +30,7 @@ repos:
         exclude: |
           (?x)^(
             # Intentionally bad json schema
-            python/ray/tests/unit/test_runtime_env_validation_bad_schema.json|
-            # json5 comments prevent parsing
-            python/asv.conf.json|
-            rllib/asv.conf.json
+            python/ray/tests/unit/test_runtime_env_validation_bad_schema.json
           )
       - id: check-toml
 
@@ -45,38 +42,10 @@ repos:
       - id: ruff
         args: [ --select, "I", --fix, --exit-non-zero-on-fix ]
 
-  # pydoclint-local is for local commits only due to pre-commit-hook only passing
-  # updated files to the hook and overwriting the baseline text file
   - repo: https://github.com/jsh9/pydoclint
-    rev: "0.6.6"
+    rev: "0.8.3"
     hooks:
       - id: pydoclint
-        name: pydoclint-local
-        stages: [pre-commit, pre-push]
-        args: [
-          --style=google,
-          --baseline=ci/lint/pydoclint-baseline.txt,
-          --exclude=thirdparty|^python/ray/serve/tests/test_config_files/syntax_error\.py$|^python/ray/_private/parameter\.py$,
-          --auto-regenerate-baseline=False,
-          # Current settings (not because we think they're right, but because we
-          # don't want a baseline the size of the codebase)
-          --arg-type-hints-in-docstring=False,
-          --skip-checking-raises=True,
-          --check-return-types=False,
-          --allow-init-docstring=True,
-          --check-class-attributes=False,
-          # --check-style-mismatch=True, # Bring this back once things are a bit cleaner
-        ]
-        types: [python]
-        files: '^python/ray/'
-
-  # pydoclint-ci is for CI, overwrites the baseline text file, and is run with the manual stage flag
-  - repo: https://github.com/jsh9/pydoclint
-    rev: "0.6.6"
-    hooks:
-      - id: pydoclint
-        name: pydoclint-ci
-        stages: [manual]
         args: [
           --style=google,
           --baseline=ci/lint/pydoclint-baseline.txt,
@@ -177,7 +146,6 @@ repos:
 
   - repo: https://github.com/pre-commit/mirrors-clang-format
     # `rev` specifies a tag on the above repo that mirrors the corresponding clang-format version.
-    # The version should be kept in sync with the version in `ci/lint/format.sh`.
     rev: v12.0.1
     hooks:
       - id: clang-format
@@ -203,11 +171,23 @@ repos:
         language: system
         types: [python]
 
+  - repo: https://github.com/semgrep/pre-commit
+    rev: v1.32.0
+    hooks:
+      - id: semgrep
+        args: [--config=semgrep.yml, --error]
+
   - repo: https://github.com/errata-ai/vale
     rev: v3.4.1
     hooks:
       - id: vale
         files: ^doc/source/data/.*\.(md|rst)$
+
+  - repo: https://github.com/MarcoGorelli/cython-lint
+    rev: v0.18.1
+    hooks:
+      - id: cython-lint
+        args: [--no-pycodestyle]
 
   - repo: local
     hooks:
@@ -227,3 +207,33 @@ repos:
         language: python
         files: '^src/ray/'
         types: [c++]
+
+  - repo: local
+    hooks:
+    - id: check-train-circular-imports
+      name: Check Ray Train circular imports
+      entry: python python/ray/train/lint/check_circular_imports.py
+      language: system
+      types: [python]
+      files: '^python/ray/train/.*\.py$'
+      pass_filenames: false
+      args: ["--patch_dir", "ray/train/v2"]
+
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v8.26.0
+    hooks:
+      - id: eslint
+        files: ^python/ray/dashboard/client/src/.*\.(tsx|ts)$
+        types: [file]
+        args:
+          - --max-warnings=0
+        additional_dependencies:
+          - eslint@8.26.0
+          - eslint-plugin-react@7.31.10
+          - eslint-plugin-import@2.26.0
+          - eslint-config-react-app@7.0.1
+          - eslint-plugin-prefer-arrow@1.2.3
+          - '@typescript-eslint/parser@5.41.0'
+          - '@typescript-eslint/eslint-plugin@5.41.0'
+          - '@typescript-eslint/parser@5.41.0'
+          - '@typescript-eslint/eslint-plugin@5.41.0'

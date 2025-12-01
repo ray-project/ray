@@ -12,6 +12,7 @@ import logging
 from typing import Any, Dict, Optional, Union
 
 import gymnasium as gym
+from typing_extensions import Self
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
@@ -29,11 +30,11 @@ from ray.rllib.connectors.common import AddStatesFromEpisodesToBatch
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.env import INPUT_ENV_SINGLE_SPACES
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deep_update
-from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.numpy import one_hot
+from ray.rllib.utils.annotations import PublicAPI, override
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     LEARN_ON_BATCH_TIMER,
@@ -47,9 +48,9 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
     TIMERS,
 )
+from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
 from ray.rllib.utils.typing import LearningRateOrSchedule
-
 
 logger = logging.getLogger(__name__)
 
@@ -82,11 +83,6 @@ class DreamerV3Config(AlgorithmConfig):
         algo = config.build()
         # algo.train()
         del algo
-
-    .. testoutput::
-        :hide:
-
-        ...
     """
 
     def __init__(self, algo_class=None):
@@ -200,7 +196,7 @@ class DreamerV3Config(AlgorithmConfig):
         replay_buffer_config: Optional[dict] = NotProvided,
         use_curiosity: Optional[bool] = NotProvided,
         **kwargs,
-    ) -> "DreamerV3Config":
+    ) -> Self:
         """Sets the training related configuration.
 
         Args:
@@ -473,7 +469,7 @@ class DreamerV3(Algorithm):
 
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> DreamerV3Config:
         return DreamerV3Config()
 
     @override(Algorithm)
@@ -576,6 +572,11 @@ class DreamerV3(Algorithm):
         replay_buffer_results = self.local_replay_buffer.get_metrics()
         self.metrics.aggregate([replay_buffer_results], key=REPLAY_BUFFER_RESULTS)
 
+        # Use self.spaces for the environment spaces of the env-runners
+        single_observation_space, single_action_space = self.spaces[
+            INPUT_ENV_SINGLE_SPACES
+        ]
+
         # Continue sampling batch_size_B x batch_length_T sized batches from the buffer
         # and using these to update our models (`LearnerGroup.update()`)
         # until the computed `training_ratio` is larger than the configured one, meaning
@@ -601,13 +602,11 @@ class DreamerV3(Algorithm):
                 replayed_steps = self.config.batch_size_B * self.config.batch_length_T
                 replayed_steps_this_iter += replayed_steps
 
-                if isinstance(
-                    self.env_runner.env.single_action_space, gym.spaces.Discrete
-                ):
+                if isinstance(single_action_space, gym.spaces.Discrete):
                     sample["actions_ints"] = sample[Columns.ACTIONS]
                     sample[Columns.ACTIONS] = one_hot(
                         sample["actions_ints"],
-                        depth=self.env_runner.env.single_action_space.n,
+                        depth=single_action_space.n,
                     )
 
                 # Perform the actual update via our learner group.
@@ -640,7 +639,7 @@ class DreamerV3(Algorithm):
             batch_size_B=self.config.batch_size_B,
             batch_length_T=self.config.batch_length_T,
             symlog_obs=do_symlog_obs(
-                self.env_runner.env.single_observation_space,
+                single_observation_space,
                 self.config.symlog_obs,
             ),
             do_report=(
@@ -661,7 +660,7 @@ class DreamerV3(Algorithm):
             dreamed_T=self.config.horizon_H + 1,
             dreamer_model=self.env_runner.module.dreamer_model,
             symlog_obs=do_symlog_obs(
-                self.env_runner.env.single_observation_space,
+                single_observation_space,
                 self.config.symlog_obs,
             ),
             do_report=(

@@ -5,18 +5,22 @@ import pytest
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import (
+    RPC_FAILURE_MAP,
+    RPC_FAILURE_TYPES,
+    wait_for_condition,
+)
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
-@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
+@pytest.mark.parametrize("deterministic_failure", RPC_FAILURE_TYPES)
 def test_free_objects_idempotent(
     monkeypatch, shutdown_only, deterministic_failure, ray_start_cluster
 ):
+    failure = RPC_FAILURE_MAP[deterministic_failure]
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "ObjectManagerService.grpc_client.FreeObjects=1:"
-        + ("100:0" if deterministic_failure == "request" else "0:100"),
+        f"ObjectManagerService.grpc_client.FreeObjects=1:{failure}",
     )
 
     @ray.remote
@@ -48,11 +52,11 @@ def test_free_objects_idempotent(
     del big_object_ref
 
     def get_cluster_memory_usage():
-        state = get_state_from_address()
+        state = get_state_from_address(ray.get_runtime_context().gcs_address)
         reply = get_memory_info_reply(state)
         return reply.store_stats.object_store_bytes_used
 
-    wait_for_condition(lambda: get_cluster_memory_usage() == 0, timeout=10)
+    wait_for_condition(lambda: get_cluster_memory_usage() == 0, timeout=30)
 
 
 if __name__ == "__main__":

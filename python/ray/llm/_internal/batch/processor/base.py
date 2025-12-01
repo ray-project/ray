@@ -2,7 +2,7 @@ import logging
 from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, root_validator
 
 import ray
 from ray.data import Dataset
@@ -36,9 +36,8 @@ class ProcessorConfig(BaseModelExtended):
     )
     resources_per_bundle: Optional[Dict[str, float]] = Field(
         default=None,
-        description="This will override the default resource bundles for placement groups. "
-        "You can specify a custom device label e.g. {'NPU': 1}. "
-        "The default resource bundle for LLM Stage is always a GPU resource i.e. {'GPU': 1}.",
+        description="[DEPRECATED] This parameter is deprecated and will be removed in a future version. ",
+        deprecated=True,
     )
     accelerator_type: Optional[str] = Field(
         default=None,
@@ -156,28 +155,93 @@ class OfflineProcessorConfig(ProcessorConfig):
         "enough for batch size >= 32.",
     )
 
-    # Processor stage configurations.
+    # Processor stage configurations (legacy booleans, will be deprecated).
     apply_chat_template: bool = Field(
-        default=True, description="Whether to apply chat template."
+        default=True,
+        description="[DEPRECATED] Prefer `chat_template_stage`. Whether to apply chat template.",
     )
     chat_template: Optional[str] = Field(
         default=None,
-        description="The chat template to use. This is usually not needed if the "
-        "model checkpoint already contains the chat template.",
+        description="[DEPRECATED] Prefer `chat_template_stage.chat_template`. The chat template to use.",
     )
     tokenize: bool = Field(
         default=True,
-        description="Whether to tokenize the input before passing it to the "
-        "backend engine. If not, the backend engine will tokenize the prompt.",
+        description="[DEPRECATED] Prefer `tokenize_stage`. Whether to tokenize input before engine.",
     )
     detokenize: bool = Field(
         default=True,
-        description="Whether to detokenize the output.",
+        description="[DEPRECATED] Prefer `detokenize_stage`. Whether to detokenize the output.",
     )
     has_image: bool = Field(
         default=False,
-        description="Whether the input messages have images.",
+        description="[DEPRECATED] Prefer `prepare_image_stage`. Whether the input messages have images.",
     )
+
+    # New nested stage configuration (bool | dict | typed config).
+    chat_template_stage: Any = Field(
+        default=True,
+        description="Chat templating stage config (bool | dict | ChatTemplateStageConfig).",
+    )
+    tokenize_stage: Any = Field(
+        default=True,
+        description="Tokenizer stage config (bool | dict | TokenizerStageConfig).",
+    )
+    detokenize_stage: Any = Field(
+        default=True,
+        description="Detokenizer stage config (bool | dict | DetokenizeStageConfig).",
+    )
+    prepare_image_stage: Any = Field(
+        default=False,
+        description="Prepare image stage config (bool | dict | PrepareImageStageConfig).",
+    )
+
+    @root_validator(pre=True)
+    def _coerce_legacy_to_stage_config(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        # Only set stage fields if not explicitly provided.
+        # Emit deprecation warnings when legacy boolean flags are used.
+
+        # Chat template stage: special case (handles both apply_chat_template and chat_template fields)
+        if "chat_template_stage" not in values:
+            if "apply_chat_template" in values or "chat_template" in values:
+                logger.warning(
+                    "The `apply_chat_template` and `chat_template` fields are deprecated. "
+                    "Use `chat_template_stage` instead. For example: "
+                    "`chat_template_stage=ChatTemplateStageConfig(enabled=True, chat_template='...')` "
+                    "or `chat_template_stage={'enabled': True, 'chat_template': '...'}`. "
+                    "This will raise an error in a future version."
+                )
+                enabled_value = values.get("apply_chat_template")
+                enabled = enabled_value if enabled_value is not None else True
+                stage: Dict[str, Any] = {"enabled": enabled}
+                if values.get("chat_template") is not None:
+                    stage["chat_template"] = values["chat_template"]
+                values["chat_template_stage"] = stage
+
+        # Other stages: simple boolean-to-stage mapping
+        stage_mappings = [
+            ("tokenize_stage", "tokenize", True, "TokenizerStageConfig"),
+            ("detokenize_stage", "detokenize", True, "DetokenizeStageConfig"),
+            ("prepare_image_stage", "has_image", False, "PrepareImageStageConfig"),
+        ]
+        for (
+            stage_field,
+            legacy_field,
+            default_enabled,
+            config_class_name,
+        ) in stage_mappings:
+            if stage_field not in values and legacy_field in values:
+                logger.warning(
+                    f"The `{legacy_field}` field is deprecated. "
+                    f"Use `{stage_field}` instead. For example: "
+                    f"`{stage_field}={config_class_name}(enabled=True)` "
+                    f"or `{stage_field}={{'enabled': True}}`. "
+                    "This will raise an error in a future version."
+                )
+                legacy_value = values.get(legacy_field)
+                enabled = default_enabled if legacy_value is None else legacy_value
+                values[stage_field] = {"enabled": enabled}
+
+        return values
 
 
 @PublicAPI(stability="alpha")
@@ -188,11 +252,16 @@ class Processor:
 
     Args:
         config: The processor config.
+        stages: List of processing stages.
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages.
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict).
+        preprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            preprocess stage (e.g., num_cpus, memory, concurrency).
+        postprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
+            postprocess stage (e.g., num_cpus, memory, concurrency).
     """
 
     # The internal used data column name ("__data"). Your input
@@ -206,10 +275,14 @@ class Processor:
         stages: List[StatefulStage],
         preprocess: Optional[UserDefinedFunction] = None,
         postprocess: Optional[UserDefinedFunction] = None,
+        preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+        postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
     ):
         self.config = config
         self.preprocess = None
         self.postprocess = None
+        self.preprocess_map_kwargs = preprocess_map_kwargs or {}
+        self.postprocess_map_kwargs = postprocess_map_kwargs or {}
         self.stages: OrderedDict[str, StatefulStage] = OrderedDict()
 
         # FIXES: https://github.com/ray-project/ray/issues/53124
@@ -251,7 +324,7 @@ class Processor:
             The output dataset.
         """
         if self.preprocess is not None:
-            dataset = dataset.map(self.preprocess)
+            dataset = dataset.map(self.preprocess, **self.preprocess_map_kwargs)
 
         # Apply stages.
         for stage in self.stages.values():
@@ -262,7 +335,7 @@ class Processor:
             dataset = dataset.map_batches(stage.fn, **kwargs)
 
         if self.postprocess is not None:
-            dataset = dataset.map(self.postprocess)
+            dataset = dataset.map(self.postprocess, **self.postprocess_map_kwargs)
         return dataset
 
     def _append_stage(self, stage: StatefulStage) -> None:
@@ -342,6 +415,39 @@ class ProcessorBuilder:
         cls._registry[type_name] = builder
 
     @classmethod
+    def clear_registry(cls) -> None:
+        """Clear the processor builder registry."""
+        cls._registry.clear()
+
+    @classmethod
+    def validate_builder_kwargs(cls, builder_kwargs: Optional[Dict[str, Any]]) -> None:
+        """Validate builder kwargs for conflicts with reserved keys.
+
+        Args:
+            builder_kwargs: Optional additional kwargs to pass to the processor builder
+                function.
+
+        Raises:
+            ValueError: If builder_kwargs contains reserved keys that conflict with
+                explicit arguments.
+        """
+        if builder_kwargs is not None:
+            # Check for conflicts with explicitly passed arguments
+            reserved_keys = {
+                "preprocess",
+                "postprocess",
+                "preprocess_map_kwargs",
+                "postprocess_map_kwargs",
+            }
+            conflicting_keys = reserved_keys & builder_kwargs.keys()
+            if conflicting_keys:
+                raise ValueError(
+                    f"builder_kwargs cannot contain {conflicting_keys} as these are "
+                    "passed as explicit arguments to build_llm_processor. "
+                    "Please pass these directly instead of in builder_kwargs."
+                )
+
+    @classmethod
     def build(
         cls,
         config: ProcessorConfig,
@@ -353,6 +459,9 @@ class ProcessorBuilder:
         Args:
             config: The processor config.
             override_stage_config_fn: Custom stages configurations.
+            **kwargs: Additional keyword arguments to pass through to the
+                registered builder function. The builder function must accept
+                these kwargs in its signature, otherwise a TypeError will be raised.
 
         Returns:
             The built processor.

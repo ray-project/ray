@@ -3,15 +3,16 @@
 set -ex
 
 export CI="true"
-export PYTHON="3.9"
+export PYTHON="3.10"
+export RAY_BUILD_ENV="macos-py${PYTHON}"
 export RAY_USE_RANDOM_PORTS="1"
 export RAY_DEFAULT_BUILD="1"
 export LC_ALL="en_US.UTF-8"
 export LANG="en_US.UTF-8"
 export BUILD="1"
 export DL="1"
-export TORCH_VERSION=2.0.1
-export TORCHVISION_VERSION=0.15.2
+export TORCH_VERSION=2.3.0
+export TORCHVISION_VERSION=0.18.0
 
 filter_out_flaky_tests() {
   if [[ "${RAYCI_DISABLE_TEST_DB:-}" == "1" ]]; then
@@ -85,13 +86,20 @@ run_core_dashboard_test() {
     //:all python/ray/dashboard/... -python/ray/serve/... -rllib/...) || exit 42
 }
 
-run_ray_cpp_and_java() {
-  # clang-format is needed by java/test.sh
-  # 42 is the universal rayci exit code for test failures
-  pip install clang-format==12.0.1
-  export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home
-  ./java/test.sh || exit 42
-  ./ci/ci.sh test_cpp || exit 42
+run_ray_cpp() {
+  echo "--- Generate ray cpp package"
+  bazel run --config=ci //cpp:gen_ray_cpp_pkg
+
+  echo "--- Test //cpp:all"
+  bazel test --config=ci --test_strategy=exclusive --build_tests_only \
+    --test_tag_filters=-no_macos //cpp:all
+
+  echo "--- Test //cpp:cluster_mode_test"
+  bazel test --config=ci //cpp:cluster_mode_test --test_arg=--external_cluster=true \
+    --test_arg=--ray_redis_password="1234" --test_arg=--ray_redis_username="default"
+
+  echo "--- Test //cpp:test_python_call_cpp"
+  bazel test --config=ci --test_output=all //cpp:test_python_call_cpp
 }
 
 bisect() {

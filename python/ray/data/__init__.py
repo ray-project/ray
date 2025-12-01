@@ -5,7 +5,7 @@ from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version
 
-from ray.data._internal.compute import ActorPoolStrategy
+from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -22,10 +22,12 @@ from ray.data.datasource import (
     FileShuffleConfig,
     ReadTask,
     RowBasedFileDatasink,
+    SaveMode,
 )
 from ray.data.iterator import DataIterator, DatasetIterator
 from ray.data.preprocessor import Preprocessor
 from ray.data.read_api import (  # noqa: F401
+    KafkaAuthConfig,  # noqa: F401
     from_arrow,
     from_arrow_refs,
     from_blocks,
@@ -54,15 +56,16 @@ from ray.data.read_api import (  # noqa: F401
     read_datasource,
     read_delta,
     read_delta_sharing_tables,
+    read_kafka,
     read_hudi,
     read_iceberg,
     read_images,
     read_json,
     read_lance,
+    read_mcap,
     read_mongo,
     read_numpy,
     read_parquet,
-    read_parquet_bulk,
     read_snowflake,
     read_sql,
     read_text,
@@ -130,8 +133,10 @@ __all__ = [
     "NodeIdStr",
     "ReadTask",
     "RowBasedFileDatasink",
+    "SaveMode",
     "Schema",
     "SinkMode",
+    "TaskPoolStrategy",
     "from_daft",
     "from_dask",
     "from_items",
@@ -158,15 +163,17 @@ __all__ = [
     "read_datasource",
     "read_delta",
     "read_delta_sharing_tables",
+    "read_kafka",
+    "KafkaAuthConfig",
     "read_hudi",
     "read_iceberg",
     "read_images",
     "read_json",
     "read_lance",
+    "read_mcap",
     "read_numpy",
     "read_mongo",
     "read_parquet",
-    "read_parquet_bulk",
     "read_snowflake",
     "read_sql",
     "read_tfrecords",

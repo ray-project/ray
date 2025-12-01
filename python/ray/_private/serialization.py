@@ -1,7 +1,7 @@
-import io
 import logging
 import threading
 import traceback
+import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:
@@ -12,7 +12,10 @@ import google.protobuf.message
 import ray._private.utils
 import ray.cloudpickle as pickle
 import ray.exceptions
-from ray._private import ray_constants
+from ray._private import (
+    ray_constants,
+    tensor_serialization_utils,
+)
 from ray._raylet import (
     DynamicObjectRefGenerator,
     MessagePackSerializedObject,
@@ -54,7 +57,7 @@ from ray.exceptions import (
     WorkerCrashedError,
 )
 from ray.experimental.compiled_dag_ref import CompiledDAGRef
-from ray.util import inspect_serializability, serialization_addons
+from ray.util import serialization_addons
 
 logger = logging.getLogger(__name__)
 ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION = ray_constants.env_bool(
@@ -64,22 +67,6 @@ ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION = ray_constants.env_bool(
 
 class DeserializationError(Exception):
     pass
-
-
-def pickle_dumps(obj: Any, error_msg: str):
-    """Wrap cloudpickle.dumps to provide better error message
-    when the object is not serializable.
-    """
-    try:
-        return pickle.dumps(obj)
-    except (TypeError, ray.exceptions.OufOfBandObjectRefSerializationException) as e:
-        sio = io.StringIO()
-        inspect_serializability(obj, print_file=sio)
-        msg = f"{error_msg}:\n{sio.getvalue()}"
-        if isinstance(e, TypeError):
-            raise TypeError(msg) from e
-        else:
-            raise ray.exceptions.OufOfBandObjectRefSerializationException(msg)
 
 
 def _object_ref_deserializer(
@@ -175,6 +162,28 @@ class SerializationContext:
         # (e.g. gloo, nccl, etc.) for tensor communication between actors,
         # instead of the normal serialize -> object store -> deserialize codepath.
         self._torch_custom_serializer_registered = False
+
+        # Enable zero-copy serialization of tensors if the environment variable is set.
+        self._zero_copy_tensors_enabled = (
+            ray_constants.RAY_ENABLE_ZERO_COPY_TORCH_TENSORS
+        )
+        if self._zero_copy_tensors_enabled:
+            try:
+                import torch
+
+                self._register_cloudpickle_reducer(
+                    torch.Tensor, tensor_serialization_utils.zero_copy_tensors_reducer
+                )
+            except ImportError:
+                # Warn and disable zero-copy tensor serialization when PyTorch is missing,
+                # even if RAY_ENABLE_ZERO_COPY_TORCH_TENSORS is set.
+                warnings.warn(
+                    "PyTorch is not installed. Disabling zero-copy tensor serialization "
+                    "even though RAY_ENABLE_ZERO_COPY_TORCH_TENSORS is set.",
+                    tensor_serialization_utils.ZeroCopyTensorsWarning,
+                    stacklevel=3,
+                )
+                self._zero_copy_tensors_enabled = False
 
         def actor_handle_reducer(obj):
             ray._private.worker.global_worker.check_connected()
@@ -713,7 +722,7 @@ class SerializationContext:
             obj_id is not None
         ), "`obj_id` is required, and it is the key to retrieve corresponding tensors from the GPU object store."
         # Regardless of whether `tensors` is empty, we always store the GPU object
-        # in the GPU object store. This ensures that `_get_tensor_meta` is not
+        # in the GPU object store. This ensures that `get_tensor_transport_metadata` is not
         # blocked indefinitely.
         worker = ray._private.worker.global_worker
         gpu_object_manager = worker.gpu_object_manager

@@ -1,3 +1,4 @@
+assess_quality
 autoscaler
 [Aa]vro
 [Bb]ackpressure
@@ -5,8 +6,10 @@ Dask
 [Dd]ata('s)?
 [Dd]atasource(s)?
 [Dd]iscretizer(s)?
+docstrings
 dtype
-[Gg]roupby
+FLAC
+[Gg]roup[bB]y
 [Hh]asher(s)?
 [Hh]udi
 [Ii]ndexable
@@ -14,17 +17,23 @@ dtype
 [Ii]nqueue(s)?
 [Ll]ookup(s)?
 LLM(s)?
+MCAP
 Modin
 [Mm]ultiget(s)?
 ndarray(s)?
+NLP
 [Oo]utqueue(s)?
+PDFs
 [Pp]ipelined
 Predibase('s)?
 [Pp]refetch
 [Pp]refetching
 [Pp]reprocess
 [Pp]reprocessor(s)?
+process_file
 [Pp]ushdown
+queryable
+RGB
 runai
 [Ss]calers
 Spotify('s)?
@@ -32,5 +41,4 @@ TFRecord(s)?
 UDF(s)?
 VLM(s)?
 XGBoost
-[Ss]harding
-[Ss]harded
+YOLO
