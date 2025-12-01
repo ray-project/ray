@@ -409,6 +409,7 @@ Configuring resources and locality
 By default, the CPU and GPU limits are set to the cluster size, and the object store memory limit conservatively to 1/4 of the total object store size to avoid the possibility of disk spilling.
 
 You may want to customize these limits in the following scenarios:
+
 - If running multiple concurrent jobs on the cluster, setting lower limits can avoid resource contention between the jobs.
 - If you want to fine-tune the memory limit to maximize performance.
 - For data loading into training jobs, you may want to set the object store memory to a low value (for example, 2 GB) to limit resource usage.
