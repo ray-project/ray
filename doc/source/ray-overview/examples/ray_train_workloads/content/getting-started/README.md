@@ -25,9 +25,9 @@ Use Ray Train when you face one of the following challenges:
 |---|---|---|
 |Need to speed up or scale up training| Training jobs might take a long time to complete, or require a lot of compute | Ray Train provides a distributed training framework that scales training to multiple GPUs |
 |Minimize overhead of setting up distributed training| You must manage the underlying infrastructure | Ray Train handles the underlying infrastructure through Ray's autoscaling |
-|Achieve observability| Engineers need to connect to different nodes and GPUs to find the root cause of failures, fetch logs, traces, etc | Ray Train provides observability through Ray's dashboard, metrics, and traces that let you monitor the training job |
+|Achieve observability| You need to connect to different nodes and GPUs to find the root cause of failures, fetch logs, traces, etc | Ray Train provides observability through Ray's dashboard, metrics, and traces that let you monitor the training job |
 |Ensure reliable training| Training jobs can fail due to hardware failures, network issues, or other unexpected events | Ray Train provides fault tolerance through checkpointing, automatic retries, and the ability to resume training from the last checkpoint |
-|Avoid significant code rewrite| You might need to fully rewrite their training loop to support distributed training | Ray Train provides a suite of integrations with the PyTorch ecosystem, Tree-based methods (XGB, LGBM), and more to minimize the amount of code changes needed |
+|Avoid significant code rewrite| You might need to fully rewrite your training loop to support distributed training | Ray Train provides a suite of integrations with the PyTorch ecosystem, Tree-based methods (XGB, LGBM), and more to minimize the amount of code changes needed |
 
 # How Distributed Data Parallel (DDP) Works  
 
@@ -43,7 +43,7 @@ The preceding diagram shows the **lifecycle of a single training step** in PyTor
    Each worker runs a forward pass and computes gradients locally during the backward pass.  
 
 4. **Gradient Synchronization**  
-   An AllReduce step aggregates gradients across workers, ensuring an **AllReduce** step that model updates stay consistent across all GPUs.  
+   An AllReduce step aggregates gradients across workers, ensuring that model updates stay consistent across all GPUs.  
 
 5. **Weight Updates**  
    Once Ray Train synchronizes gradients, each worker applies the update, keeping model replicas in sync.  
@@ -55,14 +55,14 @@ With Ray Train, you don’t need to manage process groups or samplers manually�
 
 |<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/ray-ai-libraries/diagrams/multi_gpu_pytorch_v4.png" width="70%" loading="lazy">|
 |:--|
-|Schematic overview of DistributedDataParallel (DDP) training: (1) Ray Train replicates the model from the <code>GPU rank 0</code> to all other workers; (2) each worker receives a shard of the dataset and processes a mini-batch; (3) during the backward pass, gradients are averaged across GPUs; (4) checkpoint and metrics from rank 0 GPU save to the persistent storage.|
+|Schematic overview of DistributedDataParallel (DDP) training: (1) Ray Train replicates the model from the <code>GPU rank 0</code> to all other workers; (2) each worker receives a shard of the dataset and processes a mini-batch; (3) during the backward pass, Ray Train averages gradients across GPUs; (4) checkpoint and metrics from rank 0 GPU save to the persistent storage.|
 
 ## 01 · Imports  
 
 Start by importing all the libraries you’ll need for this tutorial.  
 
 - **Standard utilities**: `os`, `datetime`, `tempfile`, `csv`, `shutil`, and `gc` help with file paths, checkpointing, cleanup, and general housekeeping.  
-- **Data and visualization**: `pandas`, `numpy`, `matplotlib`, and `PIL` help you inspect the dataset and plotting sample images.  
+- **Data and visualization**: `pandas`, `numpy`, `matplotlib`, and `PIL` help you inspect the dataset and plot sample images.  
 - **PyTorch**: core deep learning components (`torch`, `CrossEntropyLoss`, `Adam`) plus `torchvision` for loading MNIST and building a ResNet-18 model.  
 - **Ray Train**: the key imports for distributed training—`ScalingConfig`, `RunConfig`, and `TorchTrainer`. These components handle cluster scaling, experiment output storage, and execution of your training loop across GPUs.  
 
@@ -144,7 +144,7 @@ dataset = MNIST(root="/mnt/cluster_storage/data", train=True, download=True)
 In this example, this tutorial stores the MNIST dataset under <code>/mnt/cluster_storage/</code>, which is Anyscale’s **persistent cluster storage**.  
 
 * Unlike node-local NVMe volumes, cluster storage is **shared across nodes** in your cluster.  
-* Data written here **persist across cluster restarts**, making it a safe place for datasets, checkpoints, and results.  
+* Data written here **persists across cluster restarts**, making it a safe place for datasets, checkpoints, and results.  
 * This is the recommended location for training data and artifacts you want to reuse.  
 
 * Anyscale also provides each node with its own volume and disk and doesn’t share them with other nodes.
@@ -158,7 +158,7 @@ Read more about available <a href="https://docs.anyscale.com/configuration/stora
 
 Before training, let’s take a quick look at the dataset.  
 - Random sample of **9 images** from the MNIST training set.  
-- Each image is a **28×28 grayscale digit**, with its ground-truth label shown before the plot.  
+- Each image is a **28×28 grayscale digit**, with its ground-truth label shown above the plot.  
 - This simple visualization is a good sanity check to confirm that the dataset downloaded correctly and that labels align with the images.  
 
 
@@ -237,7 +237,7 @@ The following are the steps to take a **regular PyTorch training loop** and run 
 
 
 Ray Train is built around [four key concepts](https://docs.ray.io/en/latest/train/overview.html):
-1. **Training function**: (implemented the preceding `train_loop_ray_train`): A Python function that contains your model training logic.
+1. **Training function**: (implemented in the preceding `train_loop_ray_train`): A Python function that contains your model training logic.
 1. **Worker**: A process that runs the training function.
 1. **Scaling config**: specifies number of workers and compute resources (CPUs or GPUs, TPUs).
 1. **Trainer**: A Python class (Ray Actor) that ties together the training function, workers, and scaling configuration to execute a distributed training job.
@@ -305,7 +305,7 @@ def train_loop_ray_train(config: dict):  # pass in hyperparameters in config
             loss = criterion(outputs, labels)  # compute loss
             optimizer.zero_grad()              # reset gradients
 
-            loss.backward()   # backward pass (grads averaged across workers via DDP)
+            loss.backward()   # backward pass (grads averaged across workers through DDP)
             optimizer.step()  # update model weights
 
         # After each epoch: report loss and log metrics
@@ -333,7 +333,7 @@ def train_loop_ray_train(config: dict):  # pass in hyperparameters in config
   <li>
     <a href="https://docs.ray.io/en/latest/train/api/doc/ray.train.v2.api.context.TrainContext.html#ray-train-v2-api-context-traincontext" target="_blank">
       TrainContext
-    </a> lets users get useful information about the training such as node rank, world size, world rank, experiment name.
+    </a> lets you get useful information about the training such as node rank, world size, world rank, experiment name.
   </li>
 
   <li><code>load_model_ray_train</code> and <code>build_data_loader_ray_train</code> are implemented below.</li>
@@ -389,7 +389,7 @@ Later, you can pass this `scaling_config` into the `TorchTrainer` to launch dist
 # ScalingConfig defines how many parallel training workers Ray should launch
 # and whether each worker should be assigned a GPU or CPU.Z
 # → Each worker runs train_loop_ray_train(config) independently,
-#    with Ray handling synchronization via DDP under the hood.
+#    with Ray handling synchronization through DDP under the hood.
 
 scaling_config = ScalingConfig(
     num_workers=8,   # Launch 8 training workers (1 process per worker)
@@ -866,7 +866,7 @@ This demonstrates a simple but practical workflow: **CPU-based preprocessing + G
 
 
 ```python
-# 19. CPU preprocessing + GPU inference via Ray actor
+# 19. CPU preprocessing + GPU inference using a Ray actor
 
 to_tensor = ToTensor()
 
@@ -892,7 +892,7 @@ for i in range(1, cols * rows + 1):
     # Preprocess on CPU, add batch dim → [1,C,H,W]
     x = normalize_cpu(img).unsqueeze(0)    
 
-    # Run inference on GPU via Ray actor, fetch result   
+    # Run inference on GPU using the Ray actor, fetch result   
     pred = ray.get(worker.predict.remote(x))[0]  # int
     
     # Plot image with true label and predicted label
@@ -913,7 +913,7 @@ Once you’re done running inference, it’s a good practice to free up resource
 - **`ray.kill(worker, no_restart=True)`** → stops the `ModelWorker` actor and releases its GPU.  
 - **`del worker` + `gc.collect()`** → drop local references so Python’s garbage collector can clean up.  
 
-This ensures the GPU is no longer pinned by the actor and can be reused for other jobs.  
+This ensures the GPU is no longer pinned by the actor and becomes available for other jobs.  
 
 
 ```python
@@ -932,7 +932,7 @@ del worker
 gc.collect()
 ```
 
-### End of introduction to Ray Train
+## End of introduction to Ray Train
 
 
 # 02 · Integrating Ray Train with Ray Data  
