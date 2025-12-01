@@ -96,8 +96,14 @@ class _ArrayNamespace:
                 pyarrow.types.is_list(arr.type)
                 or pyarrow.types.is_large_list(arr.type)
                 or pyarrow.types.is_fixed_size_list(arr.type)
-                or (hasattr(pyarrow.types, "is_list_view") and pyarrow.types.is_list_view(arr.type))
-                or (hasattr(pyarrow.types, "is_large_list_view") and pyarrow.types.is_large_list_view(arr.type))
+                or (
+                    hasattr(pyarrow.types, "is_list_view")
+                    and pyarrow.types.is_list_view(arr.type)
+                )
+                or (
+                    hasattr(pyarrow.types, "is_large_list_view")
+                    and pyarrow.types.is_large_list_view(arr.type)
+                )
             )
             if not is_list_like:
                 raise pyarrow.lib.ArrowInvalid(
