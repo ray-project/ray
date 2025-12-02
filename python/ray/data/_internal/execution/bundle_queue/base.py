@@ -91,11 +91,11 @@ class BaseBundleQueue(_QueueMetricRecorderMixin):
 
     @abc.abstractmethod
     def peek_next(self) -> Optional[RefBundle]:
-        """Return the head of the queue. The number of
-        blocks, rows, and bytes must be in remain unchanged
+        """Return the head of the queue. The only invariant is
+        that the # of blocks, rows, and bytes must be in remain unchanged
         before and after this method call.
 
-        If the queue.has_next() == False, return `None`.
+        If queue.has_next() == False, return `None`.
         """
         ...
 
