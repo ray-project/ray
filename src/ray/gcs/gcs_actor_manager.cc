@@ -1154,7 +1154,8 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
       AddDestroyedActorToCache(it->second);
       registered_actors_.erase(it);
       function_manager_.RemoveJobReference(actor_id.JobId());
-      // Force kills always remove the actor name to allow immediate reuse.
+      // For immediate marking (force kill, pending creation, or unsignalable),
+      // remove the actor name to allow reuse.
       RemoveActorNameFromRegistry(actor);
       if (!actor->IsDetached()) {
         // For intentional terminations, also remove the owner mapping immediately.
@@ -1666,8 +1667,13 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
     gcs_table_storage_->ActorTable().Put(
         actor_id,
         *mutable_actor_table_data,
-        {[this, actor, actor_id, mutable_actor_table_data, death_cause, done_callback](
-             Status status) {
+        {[this,
+          actor,
+          actor_id,
+          mutable_actor_table_data,
+          death_cause,
+          done_callback,
+          can_restart_for_lineage](Status status) {
            // If actor was a detached actor, make sure to destroy it.
            // We need to do this because detached actors are not destroyed
            // when its owners are dead because it doesn't have owners.
@@ -1679,8 +1685,12 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
            }
            gcs_publisher_->PublishActor(
                actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
-           gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id,
-                                                           {[](auto) {}, io_context_});
+           // Only delete ActorTaskSpec if actor won't be restarted for lineage.
+           // Actors kept for lineage reconstruction need ActorTaskSpec for GCS restart.
+           if (!can_restart_for_lineage) {
+             gcs_table_storage_->ActorTaskSpecTable().Delete(
+                 actor_id, {[](auto) {}, io_context_});
+           }
            actor->WriteActorExportEvent(false);
          },
          io_context_});
