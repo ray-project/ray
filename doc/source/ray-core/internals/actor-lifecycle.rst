@@ -58,15 +58,42 @@ The concurrency model affects how tasks are executed within the actor worker but
 Actor states
 ------------
 
-An actor transitions through the following states during its lifecycle:
+An actor transitions through the following states during its lifecycle. The state is defined in `gcs.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/gcs.proto#L79>`__ and managed by `GcsActorManager <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.h#L50>`__.
 
 .. code-block:: none
 
-  DEPENDENCIES_UNREADY ──► PENDING_CREATION ──► ALIVE ──► DEAD
-                                               │    ▲
-                                               │    │
-                                               ▼    │
-                                           RESTARTING
+                                                          (3)
+   (0)                    (1)                  (2)        ───►
+  ────► DEPENDENCIES_UNREADY ──► PENDING_CREATION ──► ALIVE      RESTARTING
+              │                        │               │    ◄───      ▲
+            (8)                      (7)             (6)     (4)      │ (9)
+              │                        ▼               │              │
+              └─────────────────────► DEAD ◄──────────┴──────────────┘
+                                             (5)
+
+**Transitions:**
+
+0. `RegisterActor <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L333>`__: Actor is registered, initial state is set in `GcsActor constructor <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor.h#L112>`__.
+
+1. `CreateActor <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L884>`__: Dependencies resolved, actor is scheduled.
+
+2. `OnActorCreationSuccess <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1781>`__: Actor successfully created on a worker.
+
+3. `RestartActor <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1602>`__: Worker died, actor has remaining restarts.
+
+4. `OnActorCreationSuccess <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1781>`__: Actor successfully restarted.
+
+5. `RestartActor <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1622>`__: Actor in RESTARTING exhausted restarts or can't restart.
+
+6. `DestroyActor <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1137>`__ / `OnWorkerDead <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1331>`__: Actor terminated (out of scope, ray.kill, etc.).
+
+7. Owner died while actor was in PENDING_CREATION.
+
+8. Creator died while actor had unresolved dependencies.
+
+9. `HandleRestartActorForLineageReconstruction <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L360>`__: Dead actor restarted for lineage reconstruction.
+
+**States:**
 
 1. **DEPENDENCIES_UNREADY**: Actor is registered in GCS but its constructor arguments (dependencies) aren't ready yet.
 
@@ -76,9 +103,10 @@ An actor transitions through the following states during its lifecycle:
 
 4. **RESTARTING**: Actor worker died but the actor is configured for restarts (``max_restarts > 0``). GCS is scheduling a new worker.
 
-5. **DEAD**: Actor is permanently terminated. This happens when:
-   - All references go out of scope (``OUT_OF_SCOPE``)
-   - All references including lineage refs are deleted (``REF_DELETED``)
+5. **DEAD**: Actor is terminated. This can be permanent or temporary (if lineage reconstruction is possible). Causes include:
+
+   - All references go out of scope (``OUT_OF_SCOPE``) - may be reconstructed later
+   - All references including lineage refs are deleted (``REF_DELETED``) - permanent
    - ``ray.kill()`` is called (``RAY_KILL``)
    - Actor exhausted its restart budget
    - Actor's owner died (for non-detached actors)
@@ -459,4 +487,3 @@ See also
 - :ref:`actor-lifetimes`: Named and detached actors
 - :ref:`fault-tolerance-actors`: Actor fault tolerance and restarts
 - :ref:`task-lifecycle`: Task lifecycle internals
-
