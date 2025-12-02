@@ -1,10 +1,10 @@
-import gymnasium as gym
-import ray
 import sys
 import unittest
-
 from pathlib import Path
 
+import gymnasium as gym
+
+import ray
 from ray.rllib.algorithms.bc.bc import BCConfig
 from ray.rllib.offline.offline_evaluation_runner_group import (
     OfflineEvaluationRunnerGroup,
@@ -13,7 +13,7 @@ from ray.rllib.offline.offline_evaluation_runner_group import (
 
 class TestOfflineData(unittest.TestCase):
     def setUp(self) -> None:
-        data_path = "tests/data/cartpole/cartpole-v1_large"
+        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
         self.base_path = Path(__file__).parents[2]
         self.data_path = "local://" + self.base_path.joinpath(data_path).as_posix()
         # Assign the observation and action spaces.
@@ -122,7 +122,7 @@ class TestOfflineData(unittest.TestCase):
         self.assertIsInstance(metrics, list)
         self.assertEqual(len(metrics), offline_runner_group.num_runners)
         # Ensure that the `eval_total_loss_key` is part of the runner metrics.
-        from ray.rllib.core import DEFAULT_MODULE_ID, ALL_MODULES
+        from ray.rllib.core import ALL_MODULES, DEFAULT_MODULE_ID
         from ray.rllib.offline.offline_evaluation_runner import TOTAL_EVAL_LOSS_KEY
         from ray.rllib.utils.metrics import (
             NUM_ENV_STEPS_SAMPLED,
@@ -187,6 +187,7 @@ class TestOfflineData(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

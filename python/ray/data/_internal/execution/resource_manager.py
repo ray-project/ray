@@ -1,12 +1,11 @@
 import logging
 import math
-import os
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
 
-from ray._private.ray_constants import env_float
+from ray._private.ray_constants import env_bool, env_float
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -33,7 +32,12 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-DEBUG_RESOURCE_MANAGER = os.environ.get("RAY_DATA_DEBUG_RESOURCE_MANAGER", "0") == "1"
+
+
+LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE: Optional[bool] = env_bool(
+    "RAY_DATA_DEBUG_RESOURCE_MANAGER", None
+)
+
 
 # These are physical operators that must receive all inputs before they start
 # processing data.
@@ -83,8 +87,6 @@ class ResourceManager:
         # the operator, including the external output buffer in OpState, and the
         # input buffers of the downstream operators.
         self._mem_op_outputs: Dict[PhysicalOperator, int] = defaultdict(int)
-        # Whether to print debug information.
-        self._debug = DEBUG_RESOURCE_MANAGER
 
         self._op_resource_allocator: Optional["OpResourceAllocator"] = None
 
@@ -266,7 +268,7 @@ class ResourceManager:
         """Return the resource usage of the given operator at the current time."""
         return self._op_usages[op]
 
-    def get_op_usage_str(self, op: PhysicalOperator) -> str:
+    def get_op_usage_str(self, op: PhysicalOperator, *, verbose: bool) -> str:
         """Return a human-readable string representation of the resource usage of
         the given operator."""
         usage_str = f"{self._op_running_usages[op].cpu:.1f} CPU"
@@ -276,7 +278,11 @@ class ResourceManager:
             f", {self._op_running_usages[op].object_store_memory_str()} object store"
         )
 
-        if self._debug:
+        # NOTE: Config can override requested verbosity level
+        if LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE is not None:
+            verbose = LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE
+
+        if verbose:
             usage_str += (
                 f" (in={memory_string(self._mem_op_internal[op])},"
                 f"out={memory_string(self._mem_op_outputs[op])})"
@@ -335,7 +341,7 @@ class ResourceManager:
             not op.throttling_disabled()
             # As long as the op has finished execution, even if there are still
             # non-taken outputs, we don't need to allocate resources for it.
-            and not op.execution_finished()
+            and not op.has_execution_finished()
         )
 
     def get_eligible_ops(self) -> List[PhysicalOperator]:
@@ -547,7 +553,7 @@ class OpResourceAllocator(ABC):
             not op.throttling_disabled()
             # As long as the op has finished execution, even if there are still
             # non-taken outputs, we don't need to allocate resources for it.
-            and not op.execution_finished()
+            and not op.has_execution_finished()
         )
 
     def _get_downstream_eligible_ops(
@@ -668,9 +674,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         ops_to_exclude_from_reservation = []
         # Traverse operator tree collecting all operators that have already finished
         for op in self._topology:
-            if not op.execution_finished():
+            if not op.has_execution_finished():
                 for dep in op.input_dependencies:
-                    if dep.execution_finished():
+                    if dep.has_execution_finished():
                         last_completed_ops.append(dep)
 
         # In addition to completed operators,

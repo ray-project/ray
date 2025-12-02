@@ -8,9 +8,10 @@ import pytest
 
 import ray
 import ray.dashboard.consts as dashboard_consts
+from ray._common.network_utils import find_free_port
 from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
-from ray._private.test_utils import find_free_port, run_string_as_driver_nonblocking
+from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray._raylet import GcsClient
 
 logger = logging.getLogger(__name__)
@@ -858,14 +859,14 @@ except Exception as e:
                 expected_task_id_error_info_dict = {
                     (normal_task_id, 0): {
                         "error_type": "NODE_DIED",
-                        "error_message": "Task failed due to the node (where this task was running)  was dead or unavailable",
+                        "error_message": "Task failed because the node it was running on is dead or unavailable",
                     }
                 }
             else:
                 expected_task_id_error_info_dict = {
                     (normal_task_id, 0): {
                         "errorType": "NODE_DIED",
-                        "errorMessage": "Task failed due to the node (where this task was running)  was dead or unavailable",
+                        "errorMessage": "Task failed because the node it was running on is dead or unavailable",
                     }
                 }
             check_task_lifecycle_event_states_and_error_info(

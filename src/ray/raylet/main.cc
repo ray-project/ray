@@ -269,6 +269,7 @@ int main(int argc, char *argv[]) {
   RAY_CHECK_NE(FLAGS_cluster_id, "") << "Expected cluster ID.";
   ray::ClusterID cluster_id = ray::ClusterID::FromHex(FLAGS_cluster_id);
   RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
+
   gflags::ShutDownCommandLineFlags();
 
   // Setting up resource isolation with cgroups.
@@ -701,8 +702,8 @@ int main(int argc, char *argv[]) {
           // Post on the node manager's event loop since this
           // callback is called from the plasma store thread.
           // This will help keep node manager lock-less.
-          main_service.post([&]() { node_manager->TriggerGlobalGC(); },
-                            "NodeManager.GlobalGC");
+          main_service.post([&]() { node_manager->SetShouldGlobalGC(); },
+                            "NodeManager.SetShouldGlobalGC");
         },
         /*add_object_callback=*/
         [&](const ray::ObjectInfo &object_info) {
@@ -811,8 +812,7 @@ int main(int argc, char *argv[]) {
         node_manager_config.resource_config.GetResourceMap(),
         /*is_node_available_fn*/
         [&](ray::scheduling::NodeID id) {
-          return gcs_client->Nodes().GetNodeAddressAndLiveness(
-                     ray::NodeID::FromBinary(id.Binary())) != nullptr;
+          return gcs_client->Nodes().IsNodeAlive(ray::NodeID::FromBinary(id.Binary()));
         },
         /*get_used_object_store_memory*/
         [&]() {
@@ -837,8 +837,7 @@ int main(int argc, char *argv[]) {
 
     auto get_node_info_func =
         [&](const ray::NodeID &id) -> std::optional<ray::rpc::GcsNodeAddressAndLiveness> {
-      auto ptr = gcs_client->Nodes().GetNodeAddressAndLiveness(id);
-      return ptr ? std::optional(*ptr) : std::nullopt;
+      return gcs_client->Nodes().GetNodeAddressAndLiveness(id);
     };
     auto announce_infeasible_lease = [](const ray::RayLease &lease) {
       /// Publish the infeasible lease error to GCS so that drivers can subscribe to it
@@ -908,8 +907,7 @@ int main(int argc, char *argv[]) {
                                                            *local_lease_manager);
 
     auto raylet_client_factory = [&](const ray::NodeID &id) {
-      const ray::rpc::GcsNodeAddressAndLiveness *node_info =
-          gcs_client->Nodes().GetNodeAddressAndLiveness(id);
+      auto node_info = gcs_client->Nodes().GetNodeAddressAndLiveness(id);
       RAY_CHECK(node_info) << "No GCS info for node " << id;
       auto addr = ray::rpc::RayletClientPool::GenerateRayletAddress(
           id, node_info->node_manager_address(), node_info->node_manager_port());

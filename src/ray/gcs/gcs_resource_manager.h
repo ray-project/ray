@@ -22,10 +22,10 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
-#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_node_manager.h"
 #include "ray/gcs/grpc_service_interfaces.h"
+#include "ray/ray_syncer/ray_syncer.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -137,13 +137,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
   void UpdateFromResourceView(
       const NodeID &node_id,
       const syncer::ResourceViewSyncMessage &resource_view_sync_message);
-
-  /// Update the resource usage of a node from syncer COMMANDS
-  ///
-  /// This is currently used for setting cluster full of actors info from syncer.
-  /// \param data The resource report.
-  void UpdateClusterFullOfActorsDetected(const NodeID &node_id,
-                                         bool cluster_full_of_actors_detected);
 
   /// Update the placement group load information so that it will be reported through
   /// heartbeat.
