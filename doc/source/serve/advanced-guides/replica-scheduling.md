@@ -52,15 +52,10 @@ Use [`max_replicas_per_node`](../api/doc/ray.serve.deployment_decorator.rst) to 
 - You want to ensure high availability by spreading replicas across nodes
 - You want to avoid resource contention between replicas of the same deployment
 
-```python
-from ray import serve
-
-@serve.deployment(num_replicas=6, max_replicas_per_node=2)
-class MyDeployment:
-    def __call__(self, request):
-        return "Hello!"
-
-app = MyDeployment.bind()
+```{literalinclude} ../doc_code/replica_scheduling.py
+:start-after: __max_replicas_per_node_start__
+:end-before: __max_replicas_per_node_end__
+:language: python
 ```
 
 In this example, if you have 6 replicas and `max_replicas_per_node=2`, Ray Serve requires at least 3 nodes to schedule all replicas.
@@ -148,24 +143,10 @@ Don't use placement groups when:
 
 The following example reserves 2 GPUs for each replica using a strict pack strategy:
 
-```python
-from ray import serve
-
-@serve.deployment(
-    ray_actor_options={"num_cpus": 0.1},
-    placement_group_bundles=[{"GPU": 1}, {"GPU": 1}],
-    placement_group_strategy="STRICT_PACK",
-)
-class MultiGPUModel:
-    def __init__(self):
-        # Initialize model shards across both GPUs
-        pass
-
-    def __call__(self, request):
-        # Use both GPUs for inference
-        return "Processed with 2 GPUs"
-
-app = MultiGPUModel.bind()
+```{literalinclude} ../doc_code/replica_scheduling.py
+:start-after: __placement_group_start__
+:end-before: __placement_group_end__
+:language: python
 ```
 
 The replica actor is scheduled in the first bundle, so the resources specified in `ray_actor_options` must be a subset of the first bundle's resources. All actors and tasks created by the replica are scheduled in the placement group by default (`placement_group_capture_child_tasks=True`).
@@ -174,35 +155,20 @@ The replica actor is scheduled in the first bundle, so the resources specified i
 
 You can use custom resources in [`ray_actor_options`](../api/doc/ray.serve.deployment_decorator.rst) to target replicas to specific nodes. This is the recommended approach for controlling which nodes run your replicas.
 
-First, start your Ray nodes with custom resources that identify their capabilities:
-
-```bash
-# Start head node with GPU type label
-ray start --head --resources='{"A100": 4}'
-
-# Start worker node with different GPU type
-ray start --address=<head-address> --resources='{"T4": 2}'
-```
-
 Then configure your deployment to require the specific resource:
 
-```python
-from ray import serve
+```{literalinclude} ../doc_code/replica_scheduling.py
+:start-after: __custom_resources_start__
+:end-before: __custom_resources_end__
+:language: python
+```
 
-# Schedule only on nodes with A100 GPUs
-@serve.deployment(ray_actor_options={"resources": {"A100": 1}})
-class A100Model:
-    def __call__(self, request):
-        return "Running on A100"
+First, start your Ray nodes with custom resources that identify their capabilities:
 
-# Schedule only on nodes with T4 GPUs
-@serve.deployment(ray_actor_options={"resources": {"T4": 1}})
-class T4Model:
-    def __call__(self, request):
-        return "Running on T4"
-
-a100_app = A100Model.bind()
-t4_app = T4Model.bind()
+```{literalinclude} ../doc_code/replica_scheduling.py
+:start-after: __custom_resources_main_start__
+:end-before: __custom_resources_main_end__
+:language: python
 ```
 
 Custom resources offer several advantages for Ray Serve deployments:
