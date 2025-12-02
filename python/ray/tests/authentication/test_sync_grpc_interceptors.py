@@ -146,6 +146,40 @@ def test_sync_server_with_auth_disabled_allows_all(create_sync_test_server):
             server.stop(grace=1)
 
 
+def test_sync_streaming_response_with_valid_token(create_sync_test_server):
+    """Test sync server streaming response (unary_stream) works with valid token."""
+    token = generate_new_authentication_token()
+
+    with authentication_env_guard():
+        set_auth_mode("token")
+        set_env_auth_token(token)
+        reset_auth_token_state()
+
+        # Create server with auth enabled
+        server, port = create_sync_test_server(with_auth=True)
+
+        try:
+            # Client with auth interceptor via init_grpc_channel
+            channel = init_grpc_channel(
+                f"localhost:{port}",
+                options=None,
+                asynchronous=False,
+            )
+            stub = reporter_pb2_grpc.LogServiceStub(channel)
+            request = reporter_pb2.StreamLogRequest(log_file_name="test.log")
+
+            # Stream the response - this tests the unary_stream RPC path
+            chunks = []
+            for response in stub.StreamLog(request, timeout=5):
+                chunks.append(response.data)
+
+            # Verify we got all 3 chunks from the test service
+            assert len(chunks) == 3
+            assert chunks == [b"chunk0", b"chunk1", b"chunk2"]
+        finally:
+            server.stop(grace=1)
+
+
 if __name__ == "__main__":
     import sys
 
