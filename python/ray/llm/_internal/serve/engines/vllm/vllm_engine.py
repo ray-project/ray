@@ -3,6 +3,7 @@ import os
 from typing import TYPE_CHECKING, AsyncGenerator, Dict, Optional, Tuple, Union
 
 from starlette.datastructures import State
+from starlette.requests import Request
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.entrypoints.openai.protocol import ErrorResponse as VLLMErrorResponse
@@ -51,6 +52,22 @@ if TYPE_CHECKING:
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
+
+
+def _create_raw_request_from_headers(
+    headers: Optional[Dict[str, str]] = None,
+) -> Request:
+    """Create a minimal Starlette Request from headers."""
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/",
+        "headers": [
+            (k.lower().encode(), (v or "").encode()) for k, v in (headers or {}).items()
+        ],
+        "query_string": b"",
+    }
+    return Request(scope)
 
 
 def _get_vllm_engine_config(
@@ -363,8 +380,10 @@ class VLLMEngine(LLMEngine):
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
         self._validate_openai_serving_chat()
 
+        raw_request = _create_raw_request_from_headers(raw_request_headers)
         chat_response = await self._oai_serving_chat.create_chat_completion(  # type: ignore[attr-defined]
-            request
+            request,
+            raw_request=raw_request,
         )
 
         if isinstance(chat_response, AsyncGenerator):
@@ -387,8 +406,10 @@ class VLLMEngine(LLMEngine):
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         self._validate_openai_serving_completion()
 
+        raw_request = _create_raw_request_from_headers(raw_request_headers)
         completion_response = await self._oai_serving_completion.create_completion(  # type: ignore[attr-defined]
-            request
+            request,
+            raw_request=raw_request,
         )
 
         if isinstance(completion_response, AsyncGenerator):
@@ -413,8 +434,10 @@ class VLLMEngine(LLMEngine):
     ) -> AsyncGenerator[Union[EmbeddingResponse, ErrorResponse], None]:
         self._validate_openai_serving_embedding()
 
+        raw_request = _create_raw_request_from_headers(raw_request_headers)
         embedding_response = await self._oai_serving_embedding.create_embedding(  # type: ignore[attr-defined]
-            request
+            request,
+            raw_request=raw_request,
         )
 
         if isinstance(embedding_response, VLLMErrorResponse):
@@ -434,9 +457,11 @@ class VLLMEngine(LLMEngine):
         # Extract audio data from the request file
         audio_data = await request.file.read()
 
+        raw_request = _create_raw_request_from_headers(raw_request_headers)
         transcription_response = await self._oai_serving_transcription.create_transcription(  # type: ignore[attr-defined]
             audio_data,
             request,
+            raw_request=raw_request,
         )
 
         if isinstance(transcription_response, AsyncGenerator):
@@ -461,7 +486,11 @@ class VLLMEngine(LLMEngine):
     ) -> AsyncGenerator[Union[ScoreResponse, ErrorResponse], None]:
         self._validate_openai_serving_scores()
 
-        score_response = await self._oai_serving_scores.create_score(request)
+        raw_request = _create_raw_request_from_headers(raw_request_headers)
+        score_response = await self._oai_serving_scores.create_score(
+            request,
+            raw_request=raw_request,
+        )
 
         if isinstance(score_response, VLLMErrorResponse):
             yield ErrorResponse(**score_response.model_dump())

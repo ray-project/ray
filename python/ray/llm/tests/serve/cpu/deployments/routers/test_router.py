@@ -219,6 +219,8 @@ class TestOpenAiIngress:
         mock_handle.llm_config.remote = AsyncMock(return_value=llm_config)
         mock_handle.chat = MagicMock()
         mock_handle.chat.remote = mock_chat_generator
+        # Make options() return the same mock so chat.remote is preserved
+        mock_handle.options.return_value = mock_handle
 
         # Create router with mock handle
         router = OpenAiIngress(llm_deployments=[mock_handle])

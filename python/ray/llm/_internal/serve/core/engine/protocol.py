@@ -60,7 +60,7 @@ class LLMEngine(abc.ABC):
 
         Args:
             request: The chat completion request.
-            raw_request_headers: Optional headers from the original HTTP request.
+            raw_request_headers: Optional HTTP headers from the original request.
 
         Yields:
             Union[str, ChatCompletionResponse, ErrorResponse]: A string representing a chunk of the response, a ChatCompletionResponse object, or an ErrorResponse object.
@@ -92,7 +92,7 @@ class LLMEngine(abc.ABC):
 
         Args:
             request: The completion request.
-            raw_request_headers: Optional headers from the original HTTP request.
+            raw_request_headers: Optional HTTP headers from the original request.
 
         Yields:
             Union[str, CompletionResponse, ErrorResponse]: A string
@@ -122,7 +122,7 @@ class LLMEngine(abc.ABC):
 
         Args:
             request: The embedding request.
-            raw_request_headers: Optional headers from the original HTTP request.
+            raw_request_headers: Optional HTTP headers from the original request.
 
         Returns:
             An async generator that yields EmbeddingResponse objects or ErrorResponse objects, and returns None when the generator is done.
@@ -149,7 +149,7 @@ class LLMEngine(abc.ABC):
 
         Args:
             request: The transcription request.
-            raw_request_headers: Optional headers from the original HTTP request.
+            raw_request_headers: Optional HTTP headers from the original request.
 
         Yields:
             Union[str, TranscriptionResponse, ErrorResponse]: A string
