@@ -273,7 +273,7 @@ class ResourceManager:
         the given operator."""
         # Handle case where operator is not in _op_running_usages dict
         if op not in self._op_running_usages:
-            usage_str = "Operator is not in _op_running_usages dict."
+            usage_str = "n/a"
         else:
             usage_str = f"{self._op_running_usages[op].cpu:.1f} CPU"
             if self._op_running_usages[op].gpu:
