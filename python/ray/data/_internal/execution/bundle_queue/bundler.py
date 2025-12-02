@@ -39,7 +39,7 @@ class RebundleQueue(BaseBundleQueue, SupportsRebundling):
     @override
     def add(self, bundle: RefBundle, **kwargs: Any) -> None:
         self._bundle_buffer.append(bundle)
-        self._on_enter(bundle)
+        self._on_enqueue(bundle)
 
     @override
     def get_next(self) -> RefBundle:
@@ -49,7 +49,7 @@ class RebundleQueue(BaseBundleQueue, SupportsRebundling):
                 f"Popping from empty {self.__class__.__name__} is prohibited"
             )
 
-        self._on_exit(bundle)
+        self._on_dequeue(bundle)
         self._bundle_buffer.popleft()
         return bundle
 
@@ -94,7 +94,7 @@ class RebundleQueue(BaseBundleQueue, SupportsRebundling):
             ):
                 output_buffer.append(bundle)
                 output_buffer_size += bundle_size
-                self._on_exit(bundle)
+                self._on_dequeue(bundle)
                 self._bundle_buffer.popleft()
             else:
                 break
@@ -103,7 +103,7 @@ class RebundleQueue(BaseBundleQueue, SupportsRebundling):
         from ray.data._internal.execution.interfaces import RefBundle
 
         merged_bundle = RefBundle.merge_ref_bundles(output_buffer)
-        self._on_enter(merged_bundle)
+        self._on_enqueue(merged_bundle)
         self._bundle_buffer.appendleft(merged_bundle)
         return output_buffer, merged_bundle
 
@@ -117,7 +117,7 @@ class RebundleQueue(BaseBundleQueue, SupportsRebundling):
                 f"Popping from empty {self.__class__.__name__} is prohibited"
             )
 
-        self._on_exit(pack[1])
+        self._on_dequeue(pack[1])
         self._bundle_buffer.popleft()
         return pack
 

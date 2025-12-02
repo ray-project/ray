@@ -56,7 +56,7 @@ class HashLinkedQueue(BaseBundleQueue, SupportsIndexing, SupportsDeque):
 
         self._bundle_to_nodes[bundle].append(new_node)
 
-        self._on_enter(bundle)
+        self._on_enqueue(bundle)
 
     @override
     def add_to_front(self, bundle: RefBundle):
@@ -73,7 +73,7 @@ class HashLinkedQueue(BaseBundleQueue, SupportsIndexing, SupportsDeque):
 
         self._bundle_to_nodes[bundle].appendleft(new_node)
 
-        self._on_enter(bundle)
+        self._on_enqueue(bundle)
 
     @override
     def get_next(self) -> RefBundle:
@@ -159,7 +159,7 @@ class HashLinkedQueue(BaseBundleQueue, SupportsIndexing, SupportsDeque):
             node.prev.next = node.next
             node.next.prev = node.prev
 
-        self._on_exit(node.value)
+        self._on_dequeue(node.value)
 
         assert self._nbytes >= 0, (
             "Expected the total size of objects in the queue to be non-negative, but "

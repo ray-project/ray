@@ -317,7 +317,7 @@ def test_method_raise_and_exit_no_over_retry(
     ) == [3, 3, 3]
 
 
-def test_task_retries_on_exit(ray_start_regular_shared):
+def test_task_retries_on_dequeue(ray_start_regular_shared):
     """Sanity check that task retries work when the actor exits."""
     counter = Counter.remote()
     sync_actor = TroubleMaker.options(max_restarts=2).remote(counter_key="sync")

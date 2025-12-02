@@ -26,12 +26,12 @@ class FIFOBundleQueue(BaseBundleQueue, SupportsDeque):
 
     @override
     def add(self, bundle: RefBundle, **kwargs: Any):
-        self._on_enter(bundle)
+        self._on_enqueue(bundle)
         self._inner.append(bundle)
 
     @override
     def add_to_front(self, bundle: RefBundle):
-        self._on_enter(bundle)
+        self._on_enqueue(bundle)
         self._inner.appendleft(bundle)
 
     @override
@@ -42,7 +42,7 @@ class FIFOBundleQueue(BaseBundleQueue, SupportsDeque):
             )
 
         bundle = self._inner.popleft()
-        self._on_exit(bundle)
+        self._on_dequeue(bundle)
         return bundle
 
     @override
@@ -52,7 +52,7 @@ class FIFOBundleQueue(BaseBundleQueue, SupportsDeque):
                 f"Popping from empty {self.__class__.__name__} is prohibited"
             )
         bundle = self._inner.pop()
-        self._on_exit(bundle)
+        self._on_dequeue(bundle)
         return bundle
 
     @override

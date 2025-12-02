@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 class _QueueMetricRecorderMixin:
     """Mixin for recording stats about a queue. Subclasses
-    may choose to use the _on_exit and _on_enter methods to
+    may choose to use the _on_dequeue and _on_enqueue methods to
     track num_blocks, nbytes, etc... If not, they should override
     those methods."""
 
@@ -27,13 +27,13 @@ class _QueueMetricRecorderMixin:
         self._num_bundles: int = 0
         self._num_rows: int = 0
 
-    def _on_enter(self, bundle: RefBundle):
+    def _on_enqueue(self, bundle: RefBundle):
         self._nbytes += bundle.size_bytes()
         self._num_blocks += len(bundle.block_refs)
         self._num_bundles += 1
         self._num_rows += bundle.num_rows() or 0
 
-    def _on_exit(self, bundle: RefBundle):
+    def _on_dequeue(self, bundle: RefBundle):
         self._nbytes -= bundle.size_bytes()
         self._num_blocks -= len(bundle.block_refs)
         self._num_bundles -= 1
@@ -64,11 +64,14 @@ class _QueueMetricRecorderMixin:
 
 
 class BaseBundleQueue(_QueueMetricRecorderMixin):
-    """Base class for storing bundles."""
+    """Base class for storing bundles. Here and subclasses should adhere to the mental
+    model that "first", "front", or "head" is the next bundle to be dequeued. Consequently,
+    "last", "back", or "tail" is the last bundle to be dequeued.
+    """
 
     @abc.abstractmethod
     def add(self, bundle: RefBundle, **kwargs: Any) -> None:
-        """Add a bundle to the tail of queue.
+        """Add a bundle to the tail(end) of the queue.
 
         Args:
             bundle: The bundle to add.
@@ -103,13 +106,6 @@ class BaseBundleQueue(_QueueMetricRecorderMixin):
     def has_next(self) -> bool:
         """Check if the queue has a valid bundle."""
         ...
-
-    def is_empty(self):
-        """Return whether this queue and all of its internal data structures are empty.
-
-        This method is used for testing.
-        """
-        return len(self) == 0
 
     @abc.abstractmethod
     def clear(self):
@@ -149,11 +145,11 @@ class SupportsIndexing(Protocol):
         ...
 
     def remove(self, bundle: RefBundle) -> RefBundle:
-        """Remove the specified bundle from the queue. If multiple instances exist, remove the earliest one."""
+        """Remove the specified bundle from the queue. If multiple instances exist, remove the first one."""
         ...
 
     def remove_last(self, bundle: RefBundle) -> RefBundle:
-        """Remove the specified bundle from the queue. If multiple instances exist, remove the latest one."""
+        """Remove the specified bundle from the queue. If multiple instances exist, remove the last one."""
         ...
 
 

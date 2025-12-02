@@ -60,7 +60,7 @@ class ExactRebundleQueue(BaseBundleQueue, SupportsRebundling):
         from ray.data._internal.execution.interfaces import RefBundle
 
         for bundle in self._pending_bundles:
-            self._on_exit(bundle)
+            self._on_dequeue(bundle)
         merged_bundle = RefBundle.merge_ref_bundles(list(self._pending_bundles))
         self._pending_bundles.clear()
         self._total_pending_rows = 0
@@ -79,29 +79,29 @@ class ExactRebundleQueue(BaseBundleQueue, SupportsRebundling):
             if 0 < rows_needed_from_last_bundle < self._pending_bundles[-1].num_rows():
                 # Need to slice the last bundle
                 last_bundle = self._pending_bundles.pop()
-                self._on_exit(last_bundle)  # Exit the original bundle
+                self._on_dequeue(last_bundle)  # Exit the original bundle
 
                 sliced_bundle, remaining_bundle = last_bundle.slice(
                     rows_needed_from_last_bundle
                 )
 
                 self._pending_bundles.append(sliced_bundle)
-                self._on_enter(sliced_bundle)  # Enter the sliced portion
+                self._on_enqueue(sliced_bundle)  # Enter the sliced portion
 
             # Merge and clear all pending bundles
             merged_bundle = self._merge_and_clear()
             self._ready_bundles.append(merged_bundle)
-            self._on_enter(merged_bundle)
+            self._on_enqueue(merged_bundle)
 
             if remaining_bundle and remaining_bundle.num_rows() > 0:
                 self._pending_bundles.append(remaining_bundle)
-                self._on_enter(remaining_bundle)  # Enter the remainder
+                self._on_enqueue(remaining_bundle)  # Enter the remainder
                 self._total_pending_rows += remaining_bundle.num_rows()
 
         if flush_remaining and self._total_pending_rows > 0:
             merged_bundle = self._merge_and_clear()
             self._ready_bundles.append(merged_bundle)
-            self._on_enter(merged_bundle)
+            self._on_enqueue(merged_bundle)
 
     # TODO: remove this once we transition from op runtime metrics to
     # inner queue metrics.
@@ -110,14 +110,14 @@ class ExactRebundleQueue(BaseBundleQueue, SupportsRebundling):
         consumed_input_bundles = self._consumed_input_bundles
         self._consumed_input_bundles = []
         ready_bundle = self._ready_bundles.popleft()
-        self._on_exit(ready_bundle)
+        self._on_dequeue(ready_bundle)
         return consumed_input_bundles, ready_bundle
 
     @override
     def add(self, bundle: RefBundle, **kwargs: Any):
         self._total_pending_rows += bundle.num_rows() or 0
         self._pending_bundles.append(bundle)
-        self._on_enter(bundle)
+        self._on_enqueue(bundle)
         self._try_build_ready_bundle()
         self._consumed_input_bundles.append(bundle)
 
@@ -132,7 +132,7 @@ class ExactRebundleQueue(BaseBundleQueue, SupportsRebundling):
         if not self.has_next():
             raise ValueError("You can't pop from empty queue")
         bundle = self._ready_bundles.popleft()
-        self._on_exit(bundle)
+        self._on_dequeue(bundle)
         return bundle
 
     @override
