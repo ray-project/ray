@@ -211,7 +211,7 @@ class Pipe {
     CloseWriterHandle();
   }
 
-  /// Parse comma-separated writer handles, set close-on-exec, return as fds.
+  /// Parse comma-separated handles and set close-on-exec.
   static std::vector<intptr_t> ParseHandlesAndSetCloexec(const std::string &handles_str) {
     std::vector<intptr_t> result;
     if (handles_str.empty()) return result;
@@ -222,8 +222,8 @@ class Pipe {
       if (token.empty()) continue;
 #ifdef _WIN32
       intptr_t handle = static_cast<intptr_t>(std::stoll(token));
-      int fd = OpenHandleAsFd(handle, _O_BINARY | _O_WRONLY);
-      if (fd >= 0) result.push_back(static_cast<intptr_t>(fd));
+      SetHandleInformation(reinterpret_cast<HANDLE>(handle), HANDLE_FLAG_INHERIT, 0);
+      result.push_back(handle);
 #else
       int fd = std::stoi(token);
       SetFdCloseOnExec(fd);

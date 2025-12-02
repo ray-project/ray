@@ -2425,7 +2425,7 @@ def start_ray_client_server(
         stderr_file=stderr_file,
         fate_share=fate_share,
         pass_handles=[runtime_env_agent_port_read_handle]
-        if runtime_env_agent_port_read_handle
+        if runtime_env_agent_port_read_handle is not None
         else None,
     )
     return process_info
