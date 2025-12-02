@@ -20,7 +20,7 @@ class _LogicalDataType(str, Enum):
 
     Note: _LogicalDataType.ANY is exposed as DataType.ANY and used as the default
     parameter in factory methods (e.g., DataType.list(DataType.ANY)) to explicitly
-    request pattern-matching types. When _logical_dtype field is None, that represents
+    request pattern-matching types. When _logical_dtype field is ANY, that represents
     matching "any type at all" (completely unspecified).
     """
 

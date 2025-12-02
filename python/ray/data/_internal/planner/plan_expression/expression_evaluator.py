@@ -18,10 +18,10 @@ from ray.data.block import Block, BlockAccessor, BlockColumn, BlockType
 from ray.data.expressions import (
     AliasExpr,
     BinaryExpr,
-    ColumnExpr,
     DownloadExpr,
     Expr,
     LiteralExpr,
+    NamedExpr,
     Operation,
     StarExpr,
     UDFExpr,
@@ -503,8 +503,8 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
         elif isinstance(node.value, ast.Attribute):
             # Recursively handle nested attributes
             left_expr = self.visit(node.value)
-            if isinstance(left_expr, ColumnExpr):
-                return col(f"{left_expr._name}.{node.attr}")
+            if isinstance(left_expr, NamedExpr):
+                return col(f"{left_expr.name}.{node.attr}")
 
         raise ValueError(
             f"Unsupported attribute access: {node.attr}. Node details: {ast.dump(node)}"
@@ -570,7 +570,7 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         else:
             raise TypeError(f"Unsupported block type: {block_type}")
 
-    def visit_column(self, expr: ColumnExpr) -> Union[BlockColumn, ScalarType]:
+    def visit_column(self, expr: NamedExpr) -> Union[BlockColumn, ScalarType]:
         """Visit a column expression and return the column data.
 
         Args:

@@ -4,10 +4,11 @@ from typing import Dict, List, TypeVar
 from ray.data.expressions import (
     AliasExpr,
     BinaryExpr,
-    ColumnExpr,
+    BinaryOperation,
     DownloadExpr,
     Expr,
     LiteralExpr,
+    NamedExpr,
     Operation,
     StarExpr,
     UDFExpr,
@@ -18,22 +19,22 @@ from ray.data.expressions import (
 T = TypeVar("T")
 
 # Mapping of operations to their string symbols for inline representation
-_INLINE_OP_SYMBOLS = {
-    Operation.ADD: "+",
-    Operation.SUB: "-",
-    Operation.MUL: "*",
-    Operation.DIV: "/",
-    Operation.FLOORDIV: "//",
-    Operation.GT: ">",
-    Operation.LT: "<",
-    Operation.GE: ">=",
-    Operation.LE: "<=",
-    Operation.EQ: "==",
-    Operation.NE: "!=",
-    Operation.AND: "&",
-    Operation.OR: "|",
-    Operation.IN: "in",
-    Operation.NOT_IN: "not in",
+_INLINE_BIN_OP_SYMBOLS: Dict[Operation, str] = {
+    BinaryOperation.ADD: "+",
+    BinaryOperation.SUB: "-",
+    BinaryOperation.MUL: "*",
+    BinaryOperation.DIV: "/",
+    BinaryOperation.FLOORDIV: "//",
+    BinaryOperation.GT: ">",
+    BinaryOperation.LT: "<",
+    BinaryOperation.GE: ">=",
+    BinaryOperation.LE: "<=",
+    BinaryOperation.EQ: "==",
+    BinaryOperation.NE: "!=",
+    BinaryOperation.AND: "&",
+    BinaryOperation.OR: "|",
+    BinaryOperation.IN: "in",
+    BinaryOperation.NOT_IN: "not in",
 }
 
 
@@ -93,7 +94,7 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
     def get_column_refs(self) -> List[str]:
         return list(self._col_refs.keys())
 
-    def visit_column(self, expr: ColumnExpr) -> None:
+    def visit_column(self, expr: NamedExpr) -> None:
         """Visit a column expression and collect its name.
 
         Args:
@@ -131,7 +132,7 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         """
         self._col_ref_substitutions = column_ref_substitutions
 
-    def visit_column(self, expr: ColumnExpr) -> Expr:
+    def visit_column(self, expr: NamedExpr) -> Expr:
         """Visit a column expression and substitute it.
 
         Args:
@@ -243,8 +244,8 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
 
 
 def _is_col_expr(expr: Expr) -> bool:
-    return isinstance(expr, ColumnExpr) or (
-        isinstance(expr, AliasExpr) and isinstance(expr.expr, ColumnExpr)
+    return isinstance(expr, NamedExpr) or (
+        isinstance(expr, AliasExpr) and isinstance(expr.expr, NamedExpr)
     )
 
 
@@ -308,7 +309,7 @@ class _TreeReprVisitor(_ExprVisitor[str]):
 
         return "\n".join(lines)
 
-    def visit_column(self, expr: "ColumnExpr") -> str:
+    def visit_column(self, expr: "NamedExpr") -> str:
         return self._make_tree_lines(f"COL({expr.name!r})", expr=expr)
 
     def visit_literal(self, expr: "LiteralExpr") -> str:
@@ -385,7 +386,7 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
         """
         self._max_literal_length = max_literal_length
 
-    def visit_column(self, expr: "ColumnExpr") -> str:
+    def visit_column(self, expr: "NamedExpr") -> str:
         """Visit a column expression and return its inline representation."""
         return f"col({expr.name!r})"
 
@@ -407,7 +408,7 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
         if isinstance(expr.right, BinaryExpr):
             right_str = f"({right_str})"
 
-        op_str = _INLINE_OP_SYMBOLS.get(expr.op, expr.op.name.lower())
+        op_str = _INLINE_BIN_OP_SYMBOLS.get(expr.op, expr.op.name.lower())
         return f"{left_str} {op_str} {right_str}"
 
     def visit_unary(self, expr: "UnaryExpr") -> str:

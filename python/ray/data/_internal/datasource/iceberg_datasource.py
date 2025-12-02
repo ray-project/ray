@@ -18,9 +18,9 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.expressions import (
     AliasExpr,
     BinaryExpr,
-    ColumnExpr,
     DownloadExpr,
     LiteralExpr,
+    NamedExpr,
     Operation,
     StarExpr,
     UDFExpr,
@@ -96,7 +96,7 @@ class _IcebergExpressionVisitor(
         >>> # iceberg_expr can now be used with PyIceberg's filter APIs
     """
 
-    def visit_column(self, expr: "ColumnExpr") -> "UnboundTerm[Any]":
+    def visit_column(self, expr: "NamedExpr") -> "UnboundTerm[Any]":
         """Convert a column reference to an Iceberg reference."""
         return Reference(expr.name)
 

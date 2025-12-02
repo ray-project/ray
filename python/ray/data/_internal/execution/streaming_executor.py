@@ -148,6 +148,11 @@ class StreamingExecutor(Executor, threading.Thread):
             description="Maximum bytes to read from streaming generator buffer.",
             tag_keys=("dataset", "operator"),
         )
+        self._max_bytes_to_read_gauge2: Gauge = Gauge(
+            "data_max_bytes_to_read",
+            description="Maximum bytes to read from streaming generator buffer.",
+            tag_keys=("dataset", "operator"),
+        )
 
         Executor.__init__(self, self._data_context.execution_options)
         thread_name = f"StreamingExecutor-{self._dataset_id}"
