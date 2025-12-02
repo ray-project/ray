@@ -221,6 +221,37 @@ def test_write_multi_namespace_converts_uuid_bytes_to_string():
     assert ns_names == expected
 
 
+def test_write_multi_namespace_converts_non_uuid_bytes_to_hex():
+    # Non-16-byte bytes should be converted to hex strings for consistency
+    # with _transform_to_turbopuffer_format (which also uses .hex())
+    bytes1 = b"\x01\x02\x03"
+    bytes2 = b"\xde\xad\xbe\xef"
+    table = pa.table(
+        {
+            "space_id": [bytes1, bytes2, bytes1],
+            "id": [1, 2, 3],
+            "vector": [[1.0], [2.0], [3.0]],
+        }
+    )
+    sink = make_sink(
+        namespace=None,
+        namespace_column="space_id",
+        namespace_format="ns-{namespace}",
+    )
+    client = MagicMock()
+
+    with patch.object(sink, "_write_single_namespace") as mock_write_single:
+        sink._write_multi_namespace(client, table)
+
+    ns_names = {call.args[2] for call in mock_write_single.call_args_list}
+    # Non-UUID bytes should be converted via .hex(), not str()
+    expected = {f"ns-{bytes1.hex()}", f"ns-{bytes2.hex()}"}
+    assert ns_names == expected
+    # Verify they're clean hex strings, not Python bytes repr like "b'\\x01\\x02\\x03'"
+    assert "ns-010203" in ns_names
+    assert "ns-deadbeef" in ns_names
+
+
 def test_write_multi_namespace_missing_column_raises():
     table = pa.table({"id": [1, 2], "vector": [[1.0], [2.0]]})
     sink = make_sink(
