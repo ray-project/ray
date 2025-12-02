@@ -93,11 +93,6 @@ class Operator:
             if self in input_op._output_dependencies:
                 input_op._output_dependencies.remove(self)
 
-        # Remove from outputs' input lists
-        for output_op in self.output_dependencies:
-            if self in output_op._input_dependencies:
-                output_op._input_dependencies.remove(self)
-
     def _wire_output_deps(self, input_dependencies: List["Operator"]):
         for x in input_dependencies:
             assert isinstance(x, Operator), x
