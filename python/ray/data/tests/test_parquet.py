@@ -23,7 +23,6 @@ from ray.air.util.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data import FileShuffleConfig, Schema
-from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data._internal.datasource.parquet_datasource import (
     ParquetDatasource,
 )
@@ -33,7 +32,6 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource import DefaultFileMetadataProvider
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
@@ -231,153 +229,6 @@ def test_parquet_read_random_shuffle(
     # Check when shuffle is enabled, output order has at least one different
     # case.
     assert not all(all_rows_matched)
-
-
-@pytest.mark.parametrize(
-    "fs,data_path",
-    [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
-        (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
-        ),  # Path contains space.
-        (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
-        ),
-    ],
-)
-def test_parquet_read_bulk(
-    ray_start_regular_shared, fs, data_path, target_max_block_size_infinite_or_default
-):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    table = pa.Table.from_pandas(df1)
-    setup_data_path = _unwrap_protocol(data_path)
-    path1 = os.path.join(setup_data_path, "test1.parquet")
-    pq.write_table(table, path1, filesystem=fs)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    table = pa.Table.from_pandas(df2)
-    path2 = os.path.join(setup_data_path, "test2.parquet")
-    pq.write_table(table, path2, filesystem=fs)
-
-    # Expect directory path expansion to fail due to default format-based path
-    # filtering: The filter will not match any of the files.
-    with pytest.raises(ValueError):
-        ray.data.read_parquet_bulk(data_path, filesystem=fs)
-
-    # Expect directory path expansion to fail with OS error if default format-based path
-    # filtering is turned off.
-    with pytest.raises(OSError):
-        ds = ray.data.read_parquet_bulk(data_path, filesystem=fs, file_extensions=None)
-        ds.schema()
-
-    paths = [path1, path2]
-    ds = ray.data.read_parquet_bulk(paths, filesystem=fs)
-
-    # Expect to lazily compute all metadata correctly.
-    input_files = ds.input_files()
-    assert len(input_files) == 2, input_files
-    assert "test1.parquet" in str(input_files)
-    assert "test2.parquet" in str(input_files)
-    assert not ds._plan.has_started_execution
-    assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
-
-    # Schema isn't available, so we do a partial read.
-    assert not ds._plan.has_computed_output()
-
-    # Forces a data read.
-    values = [[s["one"], s["two"]] for s in ds.take()]
-    assert sorted(values) == [
-        [1, "a"],
-        [2, "b"],
-        [3, "c"],
-        [4, "e"],
-        [5, "f"],
-        [6, "g"],
-    ]
-
-    # Add a file with a non-matching file extension. This file should be ignored.
-    txt_path = os.path.join(data_path, "foo.txt")
-    txt_df = pd.DataFrame({"foobar": [4, 5, 6]})
-    txt_table = pa.Table.from_pandas(txt_df)
-    pq.write_table(txt_table, _unwrap_protocol(txt_path), filesystem=fs)
-
-    ds = ray.data.read_parquet_bulk(paths + [txt_path], filesystem=fs)
-    assert ds._plan.initial_num_blocks() == 2
-    assert not ds._plan.has_started_execution
-
-    # Forces a data read.
-    values = [[s["one"], s["two"]] for s in ds.take()]
-    assert sorted(values) == [
-        [1, "a"],
-        [2, "b"],
-        [3, "c"],
-        [4, "e"],
-        [5, "f"],
-        [6, "g"],
-    ]
-
-
-@pytest.mark.parametrize(
-    "fs,data_path",
-    [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
-        (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
-        ),  # Path contains space.
-        (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
-        ),
-    ],
-)
-def test_parquet_read_bulk_meta_provider(
-    ray_start_regular_shared, fs, data_path, target_max_block_size_infinite_or_default
-):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    table = pa.Table.from_pandas(df1)
-    setup_data_path = _unwrap_protocol(data_path)
-    path1 = os.path.join(setup_data_path, "test1.parquet")
-    pq.write_table(table, path1, filesystem=fs)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    table = pa.Table.from_pandas(df2)
-    path2 = os.path.join(setup_data_path, "test2.parquet")
-    pq.write_table(table, path2, filesystem=fs)
-
-    # Expect directory path expansion to succeed with the default metadata provider.
-    ds = ray.data.read_parquet_bulk(
-        data_path,
-        filesystem=fs,
-        meta_provider=DefaultFileMetadataProvider(),
-    )
-
-    # Expect to lazily compute all metadata correctly.
-    input_files = ds.input_files()
-    assert len(input_files) == 2, input_files
-    assert "test1.parquet" in str(input_files)
-    assert "test2.parquet" in str(input_files)
-    assert not ds._plan.has_started_execution
-
-    assert ds.count() == 6
-    assert ds.size_bytes() > 0
-    assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
-    assert not ds._plan.has_started_execution
-
-    # Forces a data read.
-    values = [[s["one"], s["two"]] for s in ds.take()]
-    assert sorted(values) == [
-        [1, "a"],
-        [2, "b"],
-        [3, "c"],
-        [4, "e"],
-        [5, "f"],
-        [6, "g"],
-    ]
 
 
 @pytest.mark.parametrize(
@@ -1118,7 +969,6 @@ def test_parquet_datasource_names(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "data.parquet")
     df.to_parquet(path)
 
-    assert ParquetBulkDatasource(path).get_name() == "ParquetBulk"
     assert ParquetDatasource(path).get_name() == "Parquet"
 
 
@@ -1217,14 +1067,6 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path, restore_data_context):
     for block in block_refs:
         locations.extend(location_data[block]["node_ids"])
     assert set(locations) == {node1_id, node2_id}, set(locations)
-
-
-def test_parquet_bulk_columns(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    ds = ray.data.read_parquet_bulk("example://iris.parquet", columns=["variety"])
-
-    assert ds.columns() == ["variety"]
 
 
 @pytest.mark.parametrize("shuffle", [True, False, "file"])

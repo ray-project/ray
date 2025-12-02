@@ -25,7 +25,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
 )
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data.context import DataContext
+from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, DataContext
 from ray.data.tests.conftest import *  # noqa
 
 
@@ -333,14 +333,19 @@ class TestResourceManager:
         assert resource_manager.get_op_usage(o2).object_store_memory == 0
         assert resource_manager.get_op_usage(o3).object_store_memory == 0
 
-        # Operators estimate pending task outputs using the target max block size.
-        # In this case, the target max block size is 2 and there is at most 1 block
-        # in the streaming generator buffer, so the estimated usage is 2.
+        # Operators estimate pending task outputs using the target max block size
+        # multiplied by MAX_SAFE_BLOCK_SIZE_FACTOR (1.5) during no-sample phase.
+        # In this case, the target max block size is 2, MAX_SAFE_BLOCK_SIZE_FACTOR
+        # is 1.5, and there is at most 1 block in the streaming generator buffer,
+        # so the estimated usage is 2 * 1.5 * 1 = 3.
         o2.metrics.on_input_dequeued(input)
         o2.metrics.on_task_submitted(0, input)
         resource_manager.update_usages()
+        # target_max_block_size * factor * max_blocks
+        expected_usage = 2 * MAX_SAFE_BLOCK_SIZE_FACTOR * 1
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
-        assert resource_manager.get_op_usage(o2).object_store_memory == 2
+        op2_usage = resource_manager.get_op_usage(o2).object_store_memory
+        assert op2_usage == expected_usage
         assert resource_manager.get_op_usage(o3).object_store_memory == 0
 
         # When the task finishes, we move the data from the streaming generator to the
@@ -367,15 +372,19 @@ class TestResourceManager:
         assert resource_manager.get_op_usage(o2).object_store_memory == 1
         assert resource_manager.get_op_usage(o3).object_store_memory == 0
 
-        # Task inputs count toward the previous operator's object store memory usage,
-        # and task outputs count toward the current operator's object store memory
-        # usage.
+        # Task inputs count toward the previous operator's object store memory
+        # usage, and task outputs count toward the current operator's object
+        # store memory usage. During no-sample phase, pending outputs are
+        # estimated using target_max_block_size * MAX_SAFE_BLOCK_SIZE_FACTOR.
         o3.metrics.on_input_dequeued(input)
         o3.metrics.on_task_submitted(0, input)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 1
-        assert resource_manager.get_op_usage(o3).object_store_memory == 2
+        # target_max_block_size (2) * factor (1.5) * max_blocks (1) = 3
+        expected_o3_usage = 2 * MAX_SAFE_BLOCK_SIZE_FACTOR * 1
+        op3_usage = resource_manager.get_op_usage(o3).object_store_memory
+        assert op3_usage == expected_o3_usage
 
         # Task inputs no longer count once the task is finished.
         o3.metrics.on_output_queued(input)
