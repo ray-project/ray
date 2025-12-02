@@ -24,7 +24,7 @@ Problem
 Prior to the fix described here, ``RequestWorkerLease`` could not be made retryable because 
 its handler in the Raylet was not idempotent.
 
-This was because once leases are granted, they were considered occupied until ``ReturnWorker`` 
+This was because once leases were granted, they were considered occupied until ``ReturnWorker``
 was called. Until this RPC was called, the worker and its resources were never returned to the pool 
 of available workers and resources. The raylet assumed that the original RPC and its retry were 
 both fresh lease requests and couldn't deduplicate them. 
