@@ -23,14 +23,12 @@ from ray.job_config import JobConfig
 
 def start_ray_and_proxy_manager(n_ports=2):
     ray_instance = ray.init(_redis_password=REDIS_DEFAULT_PASSWORD)
-    runtime_env_agent_address = (
-        ray._private.worker.global_worker.node.runtime_env_agent_address
-    )
     pm = proxier.ProxyManager(
         ray_instance["address"],
         session_dir=ray_instance["session_dir"],
         redis_password=REDIS_DEFAULT_PASSWORD,
-        runtime_env_agent_address=runtime_env_agent_address,
+        runtime_env_agent_ip=ray._private.worker.global_worker.node.node_ip_address,
+        runtime_env_agent_port=ray.get_runtime_context().get_runtime_env_agent_port(),
     )
     free_ports = random.choices(pm._free_ports, k=n_ports)
     assert len(free_ports) == n_ports
@@ -186,6 +184,7 @@ def test_delay_in_rewriting_environment(shutdown_only):
         "localhost",
         25010,
         ray_instance["address"],
+        "127.0.0.1",
         session_dir=ray_instance["session_dir"],
     )
 
@@ -225,6 +224,7 @@ def test_startup_error_yields_clean_result(shutdown_only):
         "localhost",
         25030,
         ray_instance["address"],
+        "127.0.0.1",
         session_dir=ray_instance["session_dir"],
     )
 

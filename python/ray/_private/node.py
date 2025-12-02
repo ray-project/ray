@@ -30,6 +30,7 @@ from ray._common.network_utils import (
 )
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._common.utils import try_to_create_directory
+from ray._private.pipe import Pipe
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.services import get_address, serialize_config
@@ -310,25 +311,24 @@ class Node:
         self._metrics_export_port = self._get_cached_port(
             "metrics_export_port", default_port=ray_params.metrics_export_port
         )
-        self._runtime_env_agent_port = self._get_cached_port(
-            "runtime_env_agent_port",
-            default_port=ray_params.runtime_env_agent_port,
-        )
 
         ray_params.update_if_absent(
             metrics_agent_port=self.metrics_agent_port,
             metrics_export_port=self._metrics_export_port,
             dashboard_agent_listen_port=self._dashboard_agent_listen_port,
-            runtime_env_agent_port=self._runtime_env_agent_port,
+            runtime_env_agent_port=ray_params.runtime_env_agent_port or 0,
         )
+
+        # Pipe for runtime_env_agent to send port to ray_client_server.
+        # Created lazily when runtime_env_agent_port == 0 (auto-assign).
+        self._runtime_env_agent_port_pipe_for_ray_client = None
 
         # Pick a GCS server port.
         if head:
-            gcs_server_port = os.getenv(ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
-            if gcs_server_port:
-                ray_params.update_if_absent(gcs_server_port=int(gcs_server_port))
-            if ray_params.gcs_server_port is None or ray_params.gcs_server_port == 0:
-                ray_params.gcs_server_port = self._get_cached_port("gcs_server_port")
+            gcs_server_port = int(
+                os.getenv(ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE, 0)
+            )
+            ray_params.update_if_absent(gcs_server_port=gcs_server_port)
 
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
@@ -615,12 +615,23 @@ class Node:
     @property
     def runtime_env_agent_port(self):
         """Get the port that exposes runtime env agent as http"""
-        return self._runtime_env_agent_port
+        if self._ray_params.runtime_env_agent_port == 0:
+            raise RuntimeError(
+                "runtime_env_agent_port is set to agent self-binding mode (port=0). "
+                "Use ray.get_runtime_context().get_runtime_env_agent_port() instead."
+            )
+        return self._ray_params.runtime_env_agent_port
 
     @property
     def runtime_env_agent_address(self):
         """Get the address that exposes runtime env agent as http"""
-        return f"http://{build_address(self._node_ip_address, self._runtime_env_agent_port)}"
+        if self._ray_params.runtime_env_agent_port == 0:
+            raise RuntimeError(
+                "runtime_env_agent_port is set to agent self-binding mode (port=0). "
+                "Use ray.get_runtime_context().get_runtime_env_agent_port() to get the "
+                "port and node_ip_address property to construct the address."
+            )
+        return f"http://{build_address(self._node_ip_address, self._ray_params.runtime_env_agent_port)}"
 
     @property
     def dashboard_agent_listen_port(self):
@@ -1125,14 +1136,15 @@ class Node:
 
     def start_gcs_server(self):
         """Start the gcs server."""
-        gcs_server_port = self._ray_params.gcs_server_port
-        assert gcs_server_port > 0
+        assert self._ray_params.gcs_server_port >= 0
         assert self._gcs_address is None, "GCS server is already running."
         assert self._gcs_client is None, "GCS client is already connected."
 
         stdout_log_fname, stderr_log_fname = self.get_log_file_names(
             "gcs_server", unique=True, create_out=True, create_err=True
         )
+
+        gcs_server_port_pipe = Pipe()
         process_info = ray._private.services.start_gcs_server(
             self.redis_address,
             log_dir=self._logs_dir,
@@ -1143,19 +1155,28 @@ class Node:
             redis_password=self._ray_params.redis_password,
             config=self._config,
             fate_share=self.kernel_fate_share,
-            gcs_server_port=gcs_server_port,
+            gcs_server_port=self._ray_params.gcs_server_port,
             metrics_agent_port=self._ray_params.metrics_agent_port,
             node_ip_address=self._node_ip_address,
+            gcs_port_write_handle=gcs_server_port_pipe.make_writer_handle(),
         )
+        gcs_server_port_pipe.close_writer_handle()
+
         assert ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
             process_info,
         ]
+
+        self._ray_params.gcs_server_port = int(gcs_server_port_pipe.read().strip())
+        gcs_server_port_pipe.close()
+
         # Connecting via non-localhost address may be blocked by firewall rule,
         # e.g. https://github.com/ray-project/ray/issues/15780
         # TODO(mwtian): figure out a way to use 127.0.0.1 for local connection
         # when possible.
-        self._gcs_address = build_address(self._node_ip_address, gcs_server_port)
+        self._gcs_address = build_address(
+            self._node_ip_address, self._ray_params.gcs_server_port
+        )
 
     def start_raylet(
         self,
@@ -1202,6 +1223,21 @@ class Node:
             self._get_system_processes_for_resource_isolation()
         )
 
+        runtime_env_agent_port_write_handles = []
+        runtime_env_agent_port_pipe_for_raylet = None
+
+        if self._ray_params.runtime_env_agent_port == 0:
+            runtime_env_agent_port_pipe_for_raylet = Pipe()
+            if self._runtime_env_agent_port_pipe_for_ray_client is None:
+                self._runtime_env_agent_port_pipe_for_ray_client = Pipe()
+
+            runtime_env_agent_port_write_handles.append(
+                runtime_env_agent_port_pipe_for_raylet.make_writer_handle()
+            )
+            runtime_env_agent_port_write_handles.append(
+                self._runtime_env_agent_port_pipe_for_ray_client.make_writer_handle()
+            )
+
         process_info = ray._private.services.start_raylet(
             self.redis_address,
             self.gcs_address,
@@ -1231,6 +1267,7 @@ class Node:
             redis_password=self._ray_params.redis_password,
             metrics_agent_port=self._ray_params.metrics_agent_port,
             runtime_env_agent_port=self._ray_params.runtime_env_agent_port,
+            runtime_env_agent_port_write_handles=runtime_env_agent_port_write_handles,
             metrics_export_port=self._metrics_export_port,
             dashboard_agent_listen_port=self._ray_params.dashboard_agent_listen_port,
             use_valgrind=use_valgrind,
@@ -1252,6 +1289,17 @@ class Node:
             webui=self._webui_url,
             resource_isolation_config=self.resource_isolation_config,
         )
+
+        if self._runtime_env_agent_port_pipe_for_ray_client:
+            self._runtime_env_agent_port_pipe_for_ray_client.close_writer_handle()
+
+        if runtime_env_agent_port_pipe_for_raylet:
+            runtime_env_agent_port_pipe_for_raylet.close_writer_handle()
+            self._ray_params.runtime_env_agent_port = int(
+                runtime_env_agent_port_pipe_for_raylet.read().strip()
+            )
+            runtime_env_agent_port_pipe_for_raylet.close()
+
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
@@ -1287,6 +1335,15 @@ class Node:
         stdout_file, stderr_file = self.get_log_file_handles(
             "ray_client_server", unique=True
         )
+
+        read_handle = None
+        if self._ray_params.runtime_env_agent_port == 0:
+            if self._runtime_env_agent_port_pipe_for_ray_client is None:
+                self._runtime_env_agent_port_pipe_for_ray_client = Pipe()
+            read_handle = (
+                self._runtime_env_agent_port_pipe_for_ray_client.make_reader_handle()
+            )
+
         process_info = ray._private.services.start_ray_client_server(
             self.address,
             self._node_ip_address,
@@ -1296,8 +1353,14 @@ class Node:
             redis_username=self._ray_params.redis_username,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
-            runtime_env_agent_address=self.runtime_env_agent_address,
+            runtime_env_agent_ip=self._node_ip_address,
+            runtime_env_agent_port=self._ray_params.runtime_env_agent_port,
+            runtime_env_agent_port_read_handle=read_handle,
         )
+
+        if self._runtime_env_agent_port_pipe_for_ray_client:
+            self._runtime_env_agent_port_pipe_for_ray_client.close_reader_handle()
+
         assert ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [
             process_info

@@ -115,6 +115,17 @@ class RuntimeContext(object):
         node_id = self.worker.current_node_id
         return node_id.hex()
 
+    def get_runtime_env_agent_port(self) -> int:
+        """Get the runtime env agent port for the local node.
+
+        Returns:
+            The port number of the runtime env agent on this node.
+        """
+        assert (
+            ray.is_initialized()
+        ), "Runtime env agent port is not available because Ray has not been initialized."
+        return self.worker.runtime_env_agent_port
+
     def get_worker_id(self) -> str:
         """Get current worker ID for this worker or driver process.
 

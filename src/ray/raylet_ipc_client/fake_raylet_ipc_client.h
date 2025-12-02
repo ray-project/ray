@@ -34,7 +34,11 @@ class FakeRayletIpcClient : public RayletIpcClientInterface {
                         const std::string &serialized_job_config,
                         const StartupToken &startup_token,
                         NodeID *node_id,
-                        int *assigned_port) override {
+                        int *assigned_port,
+                        int *runtime_env_agent_port) override {
+    if (runtime_env_agent_port != nullptr) {
+      *runtime_env_agent_port = 0;
+    }
     return Status::OK();
   }
 

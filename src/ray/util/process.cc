@@ -168,7 +168,9 @@ class ProcessFD {
         RAY_UNUSED(
             new_env_block.c_str());  // Ensure there's a final terminator for Windows
         char *const envp = &new_env_block[0];
-        if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, envp, NULL, &si, &pi)) {
+        // bInheritHandles = TRUE so that inheritable handles (e.g., pipe handles
+        // marked with HANDLE_FLAG_INHERIT) are passed to child processes.
+        if (CreateProcessA(NULL, cmdline, NULL, NULL, TRUE, 0, envp, NULL, &si, &pi)) {
           succeeded = true;
           break;
         }

@@ -18,6 +18,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -50,6 +51,7 @@
 #include "ray/stats/tag_defs.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
+#include "ray/util/pipe.h"
 #include "ray/util/process.h"
 #include "ray/util/raii.h"
 #include "ray/util/stream_redirection.h"
@@ -69,7 +71,11 @@ DEFINE_int32(object_manager_port, -1, "The port of object manager.");
 DEFINE_int32(node_manager_port, -1, "The port of node manager.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_int32(metrics_export_port, 1, "The port at which metrics are exposed.");
-DEFINE_int32(runtime_env_agent_port, 1, "The port of runtime env agent.");
+DEFINE_int32(runtime_env_agent_port, 0, "The port of runtime env agent.");
+DEFINE_string(runtime_env_agent_port_write_handles,
+              "",
+              "Comma-separated list of pipe write handles to report runtime env "
+              "agent port to external consumers (e.g., ray_client_server).");
 DEFINE_string(node_id, "", "The id of this node.");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(gcs_address, "", "The address of the GCS server, including IP and port.");
@@ -231,6 +237,8 @@ int main(int argc, char *argv[]) {
   const int node_manager_port = static_cast<int>(FLAGS_node_manager_port);
   const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
   const int runtime_env_agent_port = static_cast<int>(FLAGS_runtime_env_agent_port);
+  const std::string runtime_env_agent_port_write_handles_str =
+      FLAGS_runtime_env_agent_port_write_handles;
   RAY_CHECK_NE(FLAGS_node_id, "") << "Expected node ID.";
   const std::string node_id = FLAGS_node_id;
   const std::string node_ip_address = FLAGS_node_ip_address;
@@ -513,6 +521,11 @@ int main(int argc, char *argv[]) {
     node_manager_config.num_prestart_python_workers = num_prestart_python_workers;
     node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
     node_manager_config.runtime_env_agent_port = runtime_env_agent_port;
+
+    // Set close-on-exec so handles doesn’t leak to all child—only to the one we intend.
+    node_manager_config.runtime_env_agent_port_write_handles =
+        ray::Pipe::ParseHandlesAndSetCloexec(runtime_env_agent_port_write_handles_str);
+
     node_manager_config.min_worker_port = min_worker_port;
     node_manager_config.max_worker_port = max_worker_port;
     node_manager_config.worker_ports = worker_ports;
@@ -1002,7 +1015,7 @@ int main(int argc, char *argv[]) {
     self_node_info.set_node_manager_port(node_manager->GetServerPort());
     self_node_info.set_node_manager_hostname(boost::asio::ip::host_name());
     self_node_info.set_metrics_export_port(metrics_export_port);
-    self_node_info.set_runtime_env_agent_port(node_manager_config.runtime_env_agent_port);
+    self_node_info.set_runtime_env_agent_port(node_manager->GetRuntimeEnvAgentPort());
     self_node_info.mutable_state_snapshot()->set_state(ray::rpc::NodeSnapshot::ACTIVE);
     auto resource_map = node_manager_config.resource_config.GetResourceMap();
     self_node_info.mutable_resources_total()->insert(resource_map.begin(),

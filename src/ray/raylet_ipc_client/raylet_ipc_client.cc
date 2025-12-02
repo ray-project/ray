@@ -97,7 +97,8 @@ ray::Status RayletIpcClient::RegisterClient(const WorkerID &worker_id,
                                             const std::string &serialized_job_config,
                                             const StartupToken &startup_token,
                                             NodeID *node_id,
-                                            int *assigned_port) {
+                                            int *assigned_port,
+                                            int *runtime_env_agent_port) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       protocol::CreateRegisterClientRequest(fbb,
@@ -125,6 +126,9 @@ ray::Status RayletIpcClient::RegisterClient(const WorkerID &worker_id,
 
   *node_id = NodeID::FromBinary(reply_message->node_id()->str());
   *assigned_port = reply_message->port();
+  if (runtime_env_agent_port != nullptr) {
+    *runtime_env_agent_port = reply_message->runtime_env_agent_port();
+  }
   return Status::OK();
 }
 

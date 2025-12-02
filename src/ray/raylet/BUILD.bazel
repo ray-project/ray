@@ -266,6 +266,7 @@ ray_cc_library(
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:container_util",
         "//src/ray/util:network_util",
+        "//src/ray/util:pipe",
         "//src/ray/util:throttler",
         "//src/ray/util:time",
         "@boost//:system",

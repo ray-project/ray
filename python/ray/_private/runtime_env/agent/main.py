@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import socket
 import sys
 
 import ray._private.ray_constants as ray_constants
@@ -11,6 +12,7 @@ from ray._private import logging_utils
 from ray._private.authentication.http_token_authentication import (
     get_token_auth_middleware,
 )
+from ray._private.pipe import Pipe
 from ray._private.process_watcher import create_check_raylet_task
 from ray._raylet import GcsClient
 from ray.core.generated import (
@@ -45,6 +47,14 @@ if __name__ == "__main__":
         type=int,
         default=None,
         help="The port on which the runtime env agent will receive HTTP requests.",
+    )
+    parser.add_argument(
+        "--runtime-env-agent-port-write-handles",
+        required=False,
+        type=Pipe.parse_handles,
+        default=None,
+        help="Comma-separated pipe write handles (fd on POSIX, HANDLE on Windows) "
+        "to report the bound runtime env agent port back to multiple consumers.",
     )
 
     parser.add_argument(
@@ -222,13 +232,22 @@ if __name__ == "__main__":
         check_raylet_task = create_check_raylet_task(
             args.log_dir, gcs_client, parent_dead_callback, loop
         )
+
+    port = args.runtime_env_agent_port or 0
+    infos = socket.getaddrinfo(args.node_ip_address, port, type=socket.SOCK_STREAM)
+    family, socktype, proto, _, sockaddr = infos[0]
+    sock = socket.socket(family, socktype, proto)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(sockaddr)
+
+    if args.runtime_env_agent_port_write_handles:
+        port_str = str(sock.getsockname()[1])
+        for handle in args.runtime_env_agent_port_write_handles:
+            with Pipe.from_writer_handle(handle) as pipe:
+                pipe.write(port_str)
+
     try:
-        web.run_app(
-            app,
-            host=args.node_ip_address,
-            port=args.runtime_env_agent_port,
-            loop=loop,
-        )
+        web.run_app(app, sock=sock, loop=loop)
     except SystemExit as e:
         agent._logger.info(f"SystemExit! {e}")
         # We have to poke the task exception, or there's an error message

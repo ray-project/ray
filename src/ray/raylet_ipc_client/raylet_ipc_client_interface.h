@@ -104,7 +104,8 @@ class RayletIpcClientInterface {
                                 const std::string &serialized_job_config,
                                 const StartupToken &startup_token,
                                 NodeID *node_id,
-                                int *assigned_port) = 0;
+                                int *assigned_port,
+                                int *runtime_env_agent_port) = 0;
 
   /// Notify the raylet that this client is disconnecting gracefully. This
   /// is used by actors to exit gracefully so that the raylet doesn't

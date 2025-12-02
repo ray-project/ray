@@ -210,6 +210,7 @@ NodeManager::NodeManager(
                                                std::move(fn),
                                                std::chrono::milliseconds(delay_ms)));
                     }),
+      runtime_env_agent_port_(config.runtime_env_agent_port),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
                            config.node_manager_address == "127.0.0.1"),
@@ -265,12 +266,14 @@ NodeManager::NodeManager(
   worker_pool_.SetNodeManagerPort(GetServerPort());
 
   dashboard_agent_manager_ = CreateDashboardAgentManager(self_node_id, config);
-  runtime_env_agent_manager_ = CreateRuntimeEnvAgentManager(self_node_id, config);
+
+  std::tie(runtime_env_agent_manager_, runtime_env_agent_port_) =
+      CreateRuntimeEnvAgentManager(self_node_id, config);
 
   auto runtime_env_agent_client = RuntimeEnvAgentClient::Create(
       io_service_,
       config.node_manager_address,
-      config.runtime_env_agent_port, /*delay_executor=*/
+      runtime_env_agent_port_, /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
         return execute_after(
             io_service_, std::move(task), std::chrono::milliseconds(delay_ms));
@@ -1212,7 +1215,8 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
                                                  status.ok(),
                                                  fbb.CreateString(status.ToString()),
                                                  flatbuf::to_flatbuf(fbb, self_node_id_),
-                                                 assigned_port);
+                                                 assigned_port,
+                                                 runtime_env_agent_port_);
     fbb.Finish(reply);
     client->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply),
@@ -3308,12 +3312,13 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
       add_process_to_system_cgroup_hook_);
 }
 
-std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
+std::pair<std::unique_ptr<AgentManager>, int> NodeManager::CreateRuntimeEnvAgentManager(
     const NodeID &self_node_id, const NodeManagerConfig &config) {
-  auto agent_command_line = ParseCommandLine(config.runtime_env_agent_command);
+  int runtime_env_agent_port = config.runtime_env_agent_port;
 
+  auto agent_command_line = ParseCommandLine(config.runtime_env_agent_command);
   if (agent_command_line.empty()) {
-    return nullptr;
+    return {nullptr, runtime_env_agent_port};
   }
 
   for (auto &arg : agent_command_line) {
@@ -3325,13 +3330,32 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
     }
   }
 
+  std::vector<Pipe> external_pipes;
+  std::vector<intptr_t> handles;
+  for (intptr_t handle : config.runtime_env_agent_port_write_handles) {
+    external_pipes.push_back(Pipe::FromWriterHandle(handle));
+    handles.push_back(external_pipes.back().MakeWriterHandle());
+  }
+
+  std::unique_ptr<Pipe> node_manager_pipe;
+  if (config.runtime_env_agent_port == 0) {
+    node_manager_pipe = std::make_unique<Pipe>();
+    // MakeWriterHandle also ensures the handle is inheritable.
+    handles.push_back(node_manager_pipe->MakeWriterHandle());
+  }
+
+  if (!handles.empty()) {
+    agent_command_line.emplace_back("--runtime-env-agent-port-write-handles=" +
+                                    Pipe::FormatHandles(handles));
+  }
+
   std::string agent_name = "runtime_env_agent";
 
   auto options = AgentManager::Options({self_node_id,
                                         agent_name,
                                         agent_command_line,
                                         /*fate_shares=*/true});
-  return std::make_unique<AgentManager>(
+  auto agent_manager = std::make_unique<AgentManager>(
       std::move(options),
       /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
@@ -3341,6 +3365,16 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
       this->shutdown_raylet_gracefully_,
       true,
       add_process_to_system_cgroup_hook_);
+
+  for (auto &pipe : external_pipes) {
+    pipe.CloseWriterHandle();
+  }
+  if (node_manager_pipe) {
+    node_manager_pipe->CloseWriterHandle();
+    runtime_env_agent_port = std::stoi(node_manager_pipe->Read());
+  }
+
+  return {std::move(agent_manager), runtime_env_agent_port};
 }
 
 void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
