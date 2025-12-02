@@ -77,7 +77,12 @@ class NixlTensorTransport(TensorTransportManager):
         ) -> bool:
             # Check if nixl is installed
             try:
-                pass
+                from ray.experimental.gpu_object_manager.util import (
+                    get_tensor_transport_manager,
+                )
+
+                get_tensor_transport_manager("nixl")
+                return True
             except Exception:
                 return False
 
