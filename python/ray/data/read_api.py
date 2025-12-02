@@ -32,6 +32,7 @@ from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
+from ray.data._internal.datasource.hl7_datasource import HL7Datasource
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
@@ -1812,6 +1813,177 @@ def read_avro(
 
     datasource = AvroDatasource(
         paths,
+        filesystem=filesystem,
+        open_stream_args=arrow_open_stream_args,
+        meta_provider=meta_provider,
+        partition_filter=partition_filter,
+        partitioning=partitioning,
+        ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_hl7(
+    paths: Union[str, List[str]],
+    *,
+    encoding: str = "utf-8",
+    parse_messages: bool = True,
+    segment_separator: str = "\r",
+    field_separator: str = "|",
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: Optional[BaseFileMetadataProvider] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = None,
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
+    file_extensions: Optional[List[str]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Create a :class:`~ray.data.Dataset` from HL7 (Health Level Seven) message files.
+
+    HL7 is a standard for exchanging health information electronically.
+    This function reads HL7 v2.x message files, which are text-based files
+    containing healthcare data in a structured format.
+
+    HL7 messages consist of segments separated by carriage returns (\\r),
+    with fields separated by pipes (|). Each segment starts with a 3-character
+    segment type identifier (e.g., MSH, PID, OBR).
+
+    .. note::
+
+        This function requires the ``hl7`` Python library for parsing HL7 messages.
+        Install it with: ``pip install hl7``
+
+        Library documentation: https://python-hl7.readthedocs.io/
+
+    .. note::
+
+        For more information about HL7 format, see:
+        - HL7 v2.x Standard: https://www.hl7.org/fhir/v2/
+        - HL7 Documentation: https://www.hl7.org/documentcenter/
+
+    Examples:
+        Read HL7 files from local directory:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+            ds = ray.data.read_hl7("path/to/hl7/files/")
+
+        Read HL7 files from S3:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+            ds = ray.data.read_hl7("s3://bucket/hl7/messages/")
+
+        Read with custom encoding and parsing options:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+            ds = ray.data.read_hl7(
+                "path/to/hl7/files/",
+                encoding="latin-1",
+                parse_messages=True,
+                segment_separator="\\n"
+            )
+
+    Args:
+        paths: A single file or directory, or a list of file or directory paths.
+            A list of paths can contain both files and directories.
+        encoding: Text encoding for HL7 files. Defaults to "utf-8".
+        parse_messages: If True, parse HL7 messages into structured format with
+            segments and fields. If False, return raw message text. Defaults to True.
+        segment_separator: Character(s) used to separate HL7 segments.
+            Defaults to carriage return ("\\r").
+        field_separator: Character used to separate fields within segments.
+            Defaults to pipe ("|").
+        filesystem: The PyArrow filesystem implementation to read from.
+            These filesystems are specified in the `PyArrow docs <https://arrow.apache.org/docs/python/api/filesystems.html#filesystem-implementations>`_.
+            Specify this parameter if you need to provide specific configurations
+            to the filesystem. By default, the filesystem is automatically selected
+            based on the scheme of the paths. For example, if the path begins with
+            ``s3://``, the `S3FileSystem` is used.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        arrow_open_stream_args: kwargs passed to
+            `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html#pyarrow.fs.FileSystem.open_input_stream>`_
+            when opening input files to read.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
+        partition_filter: A
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
+            Use with a custom callback to read only selected partitions of a
+            dataset. By default, no files are filtered.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
+        ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
+            found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
+        file_extensions: A list of file extensions to filter files by.
+            Defaults to ["hl7", "hl7v2", "msg"].
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        :class:`~ray.data.Dataset` producing HL7 messages read from the specified paths.
+        If ``parse_messages=True``, each row contains structured message data with
+        segments and fields. If ``parse_messages=False``, each row contains raw
+        message text in a "message" column.
+    """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
+    if meta_provider is None:
+        meta_provider = DefaultFileMetadataProvider()
+
+    datasource = HL7Datasource(
+        paths,
+        encoding=encoding,
+        parse_messages=parse_messages,
+        segment_separator=segment_separator,
+        field_separator=field_separator,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
