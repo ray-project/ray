@@ -1624,10 +1624,19 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
     mutable_actor_table_data->set_end_time(time);
     mutable_actor_table_data->set_timestamp(time);
 
-    // Only do full cleanup if actor is truly non-restartable (remaining_restarts == 0).
-    // For restartable actors with explicit termination, keep them in registered_actors_
-    // to allow manual restart via HandleRestartActorForLineageReconstruction.
-    if (remaining_restarts == 0) {
+    // Keep for lineage reconstruction ONLY if:
+    // - Death cause is OUT_OF_SCOPE (not REF_DELETED, not creation failure, etc.)
+    // - AND has remaining restarts
+    // This matches IsActorRestartable() which only returns true for OUT_OF_SCOPE.
+    // REF_DELETED means all refs including lineage refs are gone, so actor can never
+    // be restarted. Creation failures are permanent __init__ errors.
+    bool is_out_of_scope =
+        death_cause.has_actor_died_error_context() &&
+        death_cause.actor_died_error_context().reason() ==
+            rpc::ActorDiedErrorContext::OUT_OF_SCOPE;
+    bool can_restart_for_lineage = is_out_of_scope && remaining_restarts != 0;
+
+    if (!can_restart_for_lineage) {
       // Fully non-restartable: clean up completely.
       AddDestroyedActorToCache(actor);
       auto registered_iter = registered_actors_.find(actor_id);
