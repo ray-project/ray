@@ -817,7 +817,6 @@ class StandardAutoscaler:
         """
         # For type checking, assert that this object has been instantitiated.
         assert self.resource_demand_scheduler
-        pending = []
         infeasible = []
         for bundle in unfulfilled:
             placement_group = any(
@@ -826,22 +825,8 @@ class StandardAutoscaler:
             )
             if placement_group:
                 continue
-            if self.resource_demand_scheduler.is_feasible(bundle):
-                pending.append(bundle)
-            else:
+            if not self.resource_demand_scheduler.is_feasible(bundle):
                 infeasible.append(bundle)
-        if pending:
-            if self.load_metrics.cluster_full_of_actors_detected:
-                for request in pending:
-                    self.event_summarizer.add_once_per_interval(
-                        "Warning: The following resource request cannot be "
-                        "scheduled right now: {}. This is likely due to all "
-                        "cluster resources being claimed by actors. Consider "
-                        "creating fewer actors or adding more nodes "
-                        "to this Ray cluster.".format(request),
-                        key="pending_{}".format(sorted(request.items())),
-                        interval_s=30,
-                    )
         if infeasible:
             for request in infeasible:
                 self.event_summarizer.add_once_per_interval(
