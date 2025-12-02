@@ -1,4 +1,5 @@
 import abc
+from collections import defaultdict
 from typing import Any, Dict, Optional
 
 from ray.rllib.algorithms.appo.appo import APPOConfig
@@ -29,7 +30,7 @@ class APPOLearner(IMPALALearner):
 
     @override(IMPALALearner)
     def build(self):
-        self._last_update_ts = 0
+        self._last_update_ts_by_mid = defaultdict(int)
 
         self._learner_thread_in_queue = CircularBuffer(
             num_batches=self.config.circular_buffer_num_batches,
@@ -95,7 +96,7 @@ class APPOLearner(IMPALALearner):
             config = self.config.get_config_for_module(module_id)
 
             if isinstance(module.unwrapped(), TargetNetworkAPI) and (
-                curr_timestep - self._last_update_ts
+                curr_timestep - self._last_update_ts_by_mid[module_id]
                 >= (
                     config.target_network_update_freq
                     * config.circular_buffer_num_batches
@@ -117,7 +118,7 @@ class APPOLearner(IMPALALearner):
                     (module_id, NUM_TARGET_UPDATES), 1, reduce="lifetime_sum"
                 )
                 # Update the (single-value -> window=1) last updated timestep metric.
-                self._last_update_ts = curr_timestep
+                self._last_update_ts_by_mid[module_id] = curr_timestep
                 self.metrics.log_value(
                     (module_id, LAST_TARGET_UPDATE_TS), curr_timestep, reduce="max"
                 )
