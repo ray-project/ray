@@ -7,14 +7,13 @@ Supports multi-namespace mode for writing data from many workspaces to separate 
 
 import logging
 import os
-import random
-import time
 import uuid
 from typing import TYPE_CHECKING, Iterable, Optional
 
 import pyarrow as pa
 import pyarrow.compute as pc
 
+from ray._common.retry import call_with_retry
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
@@ -452,53 +451,31 @@ class TurbopufferDatasink(Datasink):
         namespace_name: str,
     ):
         """
-        Write a single batch with exponential backoff retry and jitter.
-
-        Internal constants (not user-configurable):
-        - MAX_RETRIES = 5
-        - INITIAL_BACKOFF = 1.0 seconds
-        - MAX_BACKOFF = 32.0 seconds
-        - Jitter: 0-100% random
+        Write a single batch with exponential backoff retry using Ray's common utility.
         """
-        MAX_RETRIES = 5
-        INITIAL_BACKOFF = 1.0
-        MAX_BACKOFF = 32.0
 
-        num_rows = len(batch_data)
+        def _write_fn():
+            namespace.write(
+                upsert_rows=batch_data,
+                schema=self.schema,
+                distance_metric=self.distance_metric,
+            )
+            return  # Success
 
-        for attempt in range(MAX_RETRIES):
-            try:
-                # Write to Turbopuffer using upsert_rows (row-based format)
-                namespace.write(
-                    upsert_rows=batch_data,
-                    schema=self.schema,
-                    distance_metric=self.distance_metric,
-                )
-
-                logger.debug(
-                    f"Successfully wrote {num_rows} rows to namespace '{namespace_name}'"
-                )
-                return  # Success
-
-            except Exception as e:
-                if attempt < MAX_RETRIES - 1:
-                    # Calculate exponential backoff with jitter
-                    backoff = min(MAX_BACKOFF, INITIAL_BACKOFF * (2**attempt))
-                    # Full jitter: randomly choose wait_time in [0, backoff].
-                    wait_time = random.uniform(0, backoff)
-
-                    logger.warning(
-                        f"Write failed for namespace '{namespace_name}' "
-                        f"(attempt {attempt + 1}/{MAX_RETRIES}), "
-                        f"retrying in {wait_time:.2f}s: {e}"
-                    )
-                    time.sleep(wait_time)
-                else:
-                    # All retries exhausted
-                    logger.error(
-                        f"Write failed for namespace '{namespace_name}' "
-                        f"after {MAX_RETRIES} attempts: {e}"
-                    )
-                    raise
+        try:
+            call_with_retry(
+                _write_fn,
+                description=f"write batch to namespace '{namespace_name}'",
+                max_attempts=5,
+                max_backoff_s=32,
+            )
+            logger.debug(
+                f"Successfully wrote {len(batch_data)} rows to namespace '{namespace_name}'"
+            )
+        except Exception as e:
+            logger.error(
+                f"Write failed for namespace '{namespace_name}' after retries: {e}"
+            )
+            raise
 
 

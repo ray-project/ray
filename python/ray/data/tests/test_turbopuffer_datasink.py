@@ -426,15 +426,8 @@ def test_write_batch_with_retry_success_first_try(monkeypatch):
     namespace = MagicMock()
     batch_data = [{"id": 1}]
 
-    # Make sleep and randomness deterministic/no-op.
-    monkeypatch.setattr(
-        "ray.data._internal.datasource.turbopuffer_datasink.time.sleep", lambda _: None
-    )
-    monkeypatch.setattr(
-        "ray.data._internal.datasource.turbopuffer_datasink.random.uniform",
-        lambda a, b: 0.0,
-    )
-
+    # No need to mock sleep/randomness since call_with_retry handles it
+    # and the first attempt should succeed without retry
     sink._write_batch_with_retry(namespace, batch_data, "ns")
 
     namespace.write.assert_called_once_with(
@@ -458,28 +451,14 @@ def test_write_batch_with_retry_retries_then_succeeds(monkeypatch):
 
     namespace.write.side_effect = flaky_write
 
-    sleep_calls = []
-
-    def fake_sleep(duration):
-        sleep_calls.append(duration)
-
-    monkeypatch.setattr(
-        "ray.data._internal.datasource.turbopuffer_datasink.time.sleep", fake_sleep
-    )
-    monkeypatch.setattr(
-        "ray.data._internal.datasource.turbopuffer_datasink.random.uniform",
-        lambda a, b: 0.0,
-    )
+    # Mock time.sleep to avoid actual delays during test
+    import time
+    monkeypatch.setattr(time, "sleep", lambda _: None)
 
     sink._write_batch_with_retry(namespace, batch_data, "ns")
 
+    # Should succeed on the 3rd attempt
     assert attempts["count"] == 3
-    # Two failures => two sleeps.
-    assert len(sleep_calls) == 2
-    # With full jitter wait_time = random.uniform(0, backoff), and we've fixed
-    # the implementation to no longer add the base backoff. Since we return
-    # 0.0 from random.uniform, all computed wait times should be 0.0.
-    assert sleep_calls == [0.0, 0.0]
 
 
 def test_write_batch_with_retry_exhausts_retries_and_raises(monkeypatch):
@@ -489,47 +468,30 @@ def test_write_batch_with_retry_exhausts_retries_and_raises(monkeypatch):
 
     namespace.write.side_effect = RuntimeError("persistent error")
 
-    sleep_calls = []
+    # Mock time.sleep to avoid actual delays during test
+    import time
+    monkeypatch.setattr(time, "sleep", lambda _: None)
 
-    def fake_sleep(duration):
-        sleep_calls.append(duration)
-
-    monkeypatch.setattr(
-        "ray.data._internal.datasource.turbopuffer_datasink.time.sleep", fake_sleep
-    )
-    monkeypatch.setattr(
-        "ray.data._internal.datasource.turbopuffer_datasink.random.uniform",
-        lambda a, b: 0.0,
-    )
-
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError, match="persistent error"):
         sink._write_batch_with_retry(namespace, batch_data, "ns")
 
-    # MAX_RETRIES is 5, sleeps occur on all but last attempt => 4 sleeps.
-    assert len(sleep_calls) == 4
+    # Should be called 5 times (max_attempts=5)
+    assert namespace.write.call_count == 5
 
 
 def test_write_batch_with_retry_uses_configurable_distance_metric(monkeypatch):
-    # Users can override the distance metric from the default \"cosine_distance\".
-    sink = make_sink(schema={\"field\": \"value\"}, distance_metric=\"euclidean_squared\")
+    # Users can override the distance metric from the default "cosine_distance".
+    sink = make_sink(schema={"field": "value"}, distance_metric="euclidean_squared")
     namespace = MagicMock()
-    batch_data = [{\"id\": 1}]
+    batch_data = [{"id": 1}]
 
-    # Make sleep and randomness deterministic/no-op in case of unexpected retries.
-    monkeypatch.setattr(
-        \"ray.data._internal.datasource.turbopuffer_datasink.time.sleep\", lambda _: None
-    )
-    monkeypatch.setattr(
-        \"ray.data._internal.datasource.turbopuffer_datasink.random.uniform\",
-        lambda a, b: 0.0,
-    )
-
-    sink._write_batch_with_retry(namespace, batch_data, \"ns\")
+    # No need to mock sleep/randomness since the first attempt should succeed
+    sink._write_batch_with_retry(namespace, batch_data, "ns")
 
     namespace.write.assert_called_once_with(
         upsert_rows=batch_data,
-        schema={\"field\": \"value\"},
-        distance_metric=\"euclidean_squared\",
+        schema={"field": "value"},
+        distance_metric="euclidean_squared",
     )
 
 
@@ -609,26 +571,21 @@ def test_serialization_excludes_non_serializable_attributes(mock_turbopuffer_mod
     
     sink = make_sink()
     
-    # Trigger client initialization
     client = sink._get_client()
     assert sink._client is not None
     assert sink._turbopuffer is not None
     
-    # Pickle and unpickle
     pickled = pickle.dumps(sink)
     unpickled_sink = pickle.loads(pickled)
     
-    # Verify non-serializable attributes are reinitialized correctly
     assert unpickled_sink._client is None  # Client should be reset to None
-    assert unpickled_sink._turbopuffer is not None  # Module re-imported in __setstate__
+    assert unpickled_sink._turbopuffer is not None
     
-    # Verify all configuration is preserved
     assert unpickled_sink.namespace == sink.namespace
     assert unpickled_sink.api_key == sink.api_key
     assert unpickled_sink.region == sink.region
     assert unpickled_sink.batch_size == sink.batch_size
     
-    # Verify lazy initialization still works after unpickling
     client2 = unpickled_sink._get_client()
     assert client2 is not None
     assert unpickled_sink._client is client2
