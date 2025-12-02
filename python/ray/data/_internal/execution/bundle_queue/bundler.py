@@ -78,11 +78,11 @@ class RebundleQueue(BaseBundleQueue, SupportsRebundling):
             bundle = self._bundle_buffer[0]
             return [bundle], bundle
 
-        remainder = []
         output_buffer = []
         output_buffer_size = 0
 
-        for idx, bundle in enumerate(self._bundle_buffer):
+        while self._bundle_buffer:
+            bundle = self._bundle_buffer.popleft()
             bundle_size = _get_bundle_size(bundle)
 
             # Add bundle to the output buffer so long as either
@@ -96,10 +96,7 @@ class RebundleQueue(BaseBundleQueue, SupportsRebundling):
                 output_buffer_size += bundle_size
                 self._on_exit(bundle)
             else:
-                remainder = self._bundle_buffer[idx:]
                 break
-
-        self._bundle_buffer = deque(remainder)
 
         # Merge the bundles together and append them to the front of the queue
         from ray.data._internal.execution.interfaces import RefBundle
