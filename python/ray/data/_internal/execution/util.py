@@ -66,7 +66,7 @@ def make_callable_class_concurrent(callable_cls: CallableClass) -> CallableClass
     user provided UDF.
     """
 
-    class _Wrapper(callable_cls):
+    class _SingleThreadedWrapper(callable_cls):
         def __init__(self, *args, **kwargs):
             self.thread_pool_executor = ThreadPoolExecutor(max_workers=1)
             super().__init__(*args, **kwargs)
@@ -79,4 +79,4 @@ def make_callable_class_concurrent(callable_cls: CallableClass) -> CallableClass
             future = self.thread_pool_executor.submit(super().__call__, *args, **kwargs)
             return future.result()
 
-    return _Wrapper
+    return _SingleThreadedWrapper
