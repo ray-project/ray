@@ -9,7 +9,7 @@ the buffer.
 Generate the offline json file by running an SAC algo until it reaches expert
 level on your command line. For example:
 $ cd ray
-$ rllib train -f rllib/tuned_examples/sac/pendulum-sac.yaml --no-ray-ui
+$ rllib train -f rllib/examples/algorithms/sac/pendulum-sac.yaml --no-ray-ui
 
 Also make sure that in the above SAC yaml file (pendulum-sac.yaml),
 you specify an additional "output" key with any path on your local
@@ -55,7 +55,7 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    # See rllib/tuned_examples/cql/pendulum-cql.yaml for comparison.
+    # See rllib/examples/algorithms/cql/pendulum-cql.yaml for comparison.
     config = (
         cql.CQLConfig()
         .api_stack(
@@ -92,7 +92,7 @@ if __name__ == "__main__":
         .environment("Pendulum-v1", normalize_actions=True)
         .offline_data(
             input_config={
-                "paths": ["tests/data/pendulum/enormous.zip"],
+                "paths": ["offline/tests/data/pendulum/enormous.zip"],
                 "format": "json",
             }
         )

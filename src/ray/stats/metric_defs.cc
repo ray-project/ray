@@ -74,27 +74,6 @@ DEFINE_stats(
 /// ===================== INTERNAL SYSTEM METRICS =================================
 /// ===============================================================================
 
-DEFINE_stats(io_context_event_loop_lag_ms,
-             "Latency of a task from post to execution",
-             ("Name"),  // Name of the instrumented_io_context.
-             (),
-             ray::stats::GAUGE);
-
-/// Event stats
-DEFINE_stats(operation_count, "operation count", ("Name"), (), ray::stats::COUNT);
-DEFINE_stats(operation_run_time_ms,
-             "operation execution time",
-             ("Name"),
-             ({1, 10, 100, 1000, 10000}),
-             ray::stats::HISTOGRAM);
-DEFINE_stats(operation_queue_time_ms,
-             "operation queuing time",
-             ("Name"),
-             ({1, 10, 100, 1000, 10000}),
-             ray::stats::HISTOGRAM);
-DEFINE_stats(
-    operation_active_count, "active operation number", ("Name"), (), ray::stats::GAUGE);
-
 /// Scheduler
 DEFINE_stats(
     scheduler_tasks,
@@ -115,6 +94,11 @@ DEFINE_stats(scheduler_failed_worker_startup_total,
              "available. Labels are broken per reason {JobConfigMissing, "
              "RegistrationTimedOut, RateLimited}",
              ("Reason"),
+             (),
+             ray::stats::GAUGE);
+DEFINE_stats(local_resource_view_node_count,
+             "Number of nodes tracked locally by the reporting raylet.",
+             (),
              (),
              ray::stats::GAUGE);
 
