@@ -187,7 +187,7 @@ Finally, run the VLM inference:
 .. literalinclude:: doc_code/working-with-llms/vlm_example.py
     :language: python
     :start-after: def run_vlm_example():
-    :end-before: # __vlm_example_end__
+    :end-before: # __vlm_run_example_end__
     :dedent: 0
 
 .. _embedding_models:

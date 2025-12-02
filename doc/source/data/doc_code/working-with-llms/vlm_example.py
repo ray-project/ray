@@ -202,6 +202,7 @@ def run_vlm_example():
         print(f"Has image support: {config.has_image}")
         result = processor(vision_dataset).take_all()
         return config, processor, result
+    # __vlm_run_example_end__
     return None, None, None
 
 
