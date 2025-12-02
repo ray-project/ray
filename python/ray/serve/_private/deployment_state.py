@@ -2361,6 +2361,7 @@ class DeploymentState:
                 trigger=DeploymentStatusInternalTrigger.AUTOSCALE_UP,
                 message=f"Upscaling from {old_num} to {new_num} replicas.",
             )
+            self._autoscaling_state_manager.record_scale_up(self._id)
         elif new_num < old_num:
             logger.info(
                 f"Downscaling {self._id} from {old_num} to {new_num} replicas. "
@@ -2370,6 +2371,8 @@ class DeploymentState:
                 trigger=DeploymentStatusInternalTrigger.AUTOSCALE_DOWN,
                 message=f"Downscaling from {old_num} to {new_num} replicas.",
             )
+            self._autoscaling_state_manager.record_scale_down(self._id)
+
         return True
 
     def delete(self) -> bool:
