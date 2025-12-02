@@ -398,25 +398,17 @@ def check_call_ray(args, capture_stdout=False, capture_stderr=False):
     check_call_subprocess(["ray"] + args, capture_stdout, capture_stderr)
 
 
-def get_dashboard_agent_address(gcs_client: GcsClient, node_id: str):
-    result = gcs_client.internal_kv_get(
-        f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}".encode(),
-        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
-    )
-    if result:
-        # Returns [ip, http_port, grpc_port]
-        ip, _, grpc_port = json.loads(result)
-        return f"{ip}:{grpc_port}"
-    return None
-
-
 def wait_for_dashboard_agent_available(cluster):
     gcs_client = GcsClient(address=cluster.address)
-    wait_for_condition(
-        lambda: get_dashboard_agent_address(gcs_client, cluster.head_node.node_id)
-        is not None
-    )
+
+    def get_dashboard_agent_address():
+        return gcs_client.internal_kv_get(
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{cluster.head_node.node_id}".encode(),
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+        )
+
+    wait_for_condition(lambda: get_dashboard_agent_address() is not None)
 
 
 def wait_for_pid_to_exit(pid: int, timeout: float = 20):

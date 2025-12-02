@@ -17,7 +17,6 @@
 #include <google/protobuf/map.h>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 
@@ -75,12 +74,31 @@ void PopulateTaskRuntimeAndFunctionInfo(
   task_info->set_language(language);
   task_info->mutable_runtime_env_info()->set_serialized_runtime_env(
       std::move(serialized_runtime_env));
-
-  // Use CallString() to get the short function name (e.g., "foo" instead of "module.foo")
-  // This ensures consistency with the default (non-aggregator) code path.
-  auto func_descriptor = FunctionDescriptorBuilder::FromProto(function_descriptor);
-  task_info->set_func_or_class_name(func_descriptor->CallString());
-
+  switch (language) {
+  case rpc::Language::CPP:
+    if (function_descriptor.has_cpp_function_descriptor()) {
+      task_info->set_func_or_class_name(
+          std::move(*function_descriptor.mutable_cpp_function_descriptor()
+                         ->mutable_function_name()));
+    }
+    break;
+  case rpc::Language::PYTHON:
+    if (function_descriptor.has_python_function_descriptor()) {
+      task_info->set_func_or_class_name(
+          std::move(*function_descriptor.mutable_python_function_descriptor()
+                         ->mutable_function_name()));
+    }
+    break;
+  case rpc::Language::JAVA:
+    if (function_descriptor.has_java_function_descriptor()) {
+      task_info->set_func_or_class_name(
+          std::move(*function_descriptor.mutable_java_function_descriptor()
+                         ->mutable_function_name()));
+    }
+    break;
+  default:
+    RAY_CHECK(false) << "Unsupported language: " << language;
+  }
   task_info->mutable_required_resources()->swap(required_resources);
 }
 

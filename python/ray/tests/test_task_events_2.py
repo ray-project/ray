@@ -1,9 +1,7 @@
 import asyncio
 import os
-import socket
 import sys
 import time
-import urllib.parse
 from collections import defaultdict
 from functools import reduce
 from typing import Dict
@@ -21,11 +19,9 @@ from ray._private.state_api_test_utils import (
     verify_tasks_running_or_terminated,
 )
 from ray._private.test_utils import (
-    get_dashboard_agent_address,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
 )
-from ray._raylet import GcsClient
 from ray.util.state import (
     StateApiClient,
     list_actors,
@@ -36,14 +32,6 @@ from ray.util.state.common import ListApiOptions, StateResource
 
 import psutil
 
-# Run every test in this module twice: default and aggregator-enabled
-pytestmark = [
-    pytest.mark.parametrize(
-        "event_routing_config", ["default", "aggregator"], indirect=True
-    ),
-    pytest.mark.usefixtures("event_routing_config"),
-]
-
 _SYSTEM_CONFIG = {
     "task_events_report_interval_ms": 100,
     "metrics_report_interval_ms": 200,
@@ -51,27 +39,6 @@ _SYSTEM_CONFIG = {
     "gcs_mark_task_failed_on_job_done_delay_ms": 1000,
     "gcs_mark_task_failed_on_worker_dead_delay_ms": 1000,
 }
-
-
-def _wait_for_aggregator_agent(address: str, node_id: str) -> None:
-    """Wait for the aggregator agent to be ready by checking socket connectivity."""
-    gcs_client = GcsClient(address=address)
-    # Wait for the agent to publish its address
-    wait_for_condition(
-        lambda: get_dashboard_agent_address(gcs_client, node_id) is not None
-    )
-    # Get the agent address and test socket connectivity
-    agent_address = get_dashboard_agent_address(gcs_client, node_id)
-    parsed = urllib.parse.urlparse(f"grpc://{agent_address}")
-
-    def _can_connect() -> bool:
-        try:
-            with socket.create_connection((parsed.hostname, parsed.port), timeout=1):
-                return True
-        except OSError:
-            return False
-
-    wait_for_condition(_can_connect, timeout=10)
 
 
 @ray.remote
@@ -634,11 +601,7 @@ def test_ray_intentional_errors(shutdown_only):
 def test_fault_tolerance_chained_task_fail(
     shutdown_only, exit_type, actor_or_normal_tasks
 ):
-    ray_context = ray.init(_system_config=_SYSTEM_CONFIG)
-    address = ray_context.address_info["address"]
-    node_id = ray_context.address_info["node_id"]
-    # TODO(#57203): remove this once task event buffer handles this internally.
-    _wait_for_aggregator_agent(address, node_id)
+    ray.init(_system_config=_SYSTEM_CONFIG)
 
     def sleep_or_fail(pid_actor=None, exit_type=None):
         if exit_type is None:
@@ -1087,7 +1050,7 @@ def test_task_events_gc_default_policy(shutdown_only):
     def error_task():
         raise ValueError("Expected to fail")
 
-    ray_context = ray.init(
+    ray.init(
         num_cpus=8,
         _system_config={
             "task_events_max_num_task_in_gcs": 5,
@@ -1095,11 +1058,6 @@ def test_task_events_gc_default_policy(shutdown_only):
             "task_events_report_interval_ms": 100,
         },
     )
-    address = ray_context.address_info["address"]
-    node_id = ray_context.address_info["node_id"]
-    # TODO(#57203): remove this once task event buffer handles this internally.
-    _wait_for_aggregator_agent(address, node_id)
-
     a = Actor.remote()
     ray.get(a.ready.remote())
     # Run 10 and 5 should be evicted

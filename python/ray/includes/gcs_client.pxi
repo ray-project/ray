@@ -16,7 +16,6 @@ Binding of C++ ray::gcs::GcsClient.
 #
 # For how async API are implemented, see src/ray/common/python_callbacks.h
 from asyncio import Future
-from ray._common.utils import get_or_create_event_loop
 from typing import List, Sequence
 from libcpp.utility cimport move
 import concurrent.futures
@@ -32,9 +31,6 @@ from ray.includes.common cimport (
     CGcsNodeState,
     CNodeSelector,
     CGcsNodeInfo,
-    CAddEventsRequest,
-    CAddEventsReply,
-    CRayStatus,
 )
 from ray.includes.optional cimport optional, make_optional
 from ray.core.generated import gcs_pb2, autoscaler_pb2
@@ -666,23 +662,6 @@ cdef class InnerGcsClient:
                 )
             )
 
-    #############################################################
-    # TaskInfo methods
-    #############################################################
-    async def async_add_events(self, serialized_request: bytes, timeout_s=None):
-        """Send async AddEvents request to GCS."""
-        cdef:
-            c_string c_req = serialized_request
-            int64_t timeout_ms
-            fut = incremented_fut()
-        timeout_ms = round(1000 * timeout_s) if timeout_s else -1
-
-        with nogil:
-            self.inner.get().Tasks().AsyncAddEvents(
-                c_req,
-                StatusPyCallback(convert_status, assign_and_decrement_fut, fut),
-                timeout_ms)
-        return await asyncio.wrap_future(fut)
 
 #############################################################
 # Converter functions: C++ types -> Python types, use by both Sync and Async APIs.
