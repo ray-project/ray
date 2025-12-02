@@ -46,14 +46,10 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.utils import (
 from ray.rllib.examples.rl_modules.classes.lstm_containing_rlm import (
     LSTMContainingRLModule,
 )
-from ray.rllib.utils.metrics import (
-    NUM_ENV_STEPS_SAMPLED_LIFETIME,
-)
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
 )
 from ray.tune.registry import register_env
-from ray.tune.result import TRAINING_ITERATION
 
 parser = add_rllib_example_script_args(
     default_iters=500,
@@ -146,24 +142,24 @@ config = (
     .learners(
         num_learners=1,
         num_cpus_per_learner=1,
-        num_gpus_per_learner=0,
+        num_gpus_per_learner=1,
         num_aggregator_actors_per_learner=2,
     )
     .env_runners(
         env_runner_cls=MultiAgentEnvRunner,
-        num_env_runners=args.num_env_runners or 1,
+        num_env_runners=args.num_env_runners or 2,
         num_cpus_per_env_runner=1,
         num_envs_per_env_runner=1,
         batch_mode="truncate_episodes",
         rollout_fragment_length=args.rollout_fragment_length,
         episodes_to_numpy=True,
-        create_env_on_local_worker=True,
+        create_env_on_local_worker=False,
     )
     .training(
-        train_batch_size_per_learner=4096 * (args.num_env_runners or 1),
+        train_batch_size_per_learner=4096 * (args.num_env_runners or 2),
         lr=1e-4,
         entropy_coeff=0.01,
-        minibatch_size=128,
+        circular_buffer_iterations_per_batch=128,
     )
     .multi_agent(
         policies={
@@ -234,11 +230,7 @@ config = (
 )
 
 
-stop = {
-    NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
-    TRAINING_ITERATION: args.stop_iters,
-    "mix_size": args.target_mix_size,
-}
+stop = {"mix_size": args.target_mix_size}
 
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
