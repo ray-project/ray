@@ -574,8 +574,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             num_aggregators=num_aggregators,
             aggregation_factory=partition_aggregation_factory,
             aggregator_ray_remote_args=ray_remote_args,
-            data_context=data_context,
-            disallow_block_splitting=disallow_block_splitting,
+            target_max_block_size=None
+            if disallow_block_splitting
+            else data_context.target_max_block_size,
         )
 
         # We track the running usage total because iterating
@@ -1299,16 +1300,13 @@ class AggregatorPool:
         num_aggregators: int,
         aggregation_factory: StatefulShuffleAggregationFactory,
         aggregator_ray_remote_args: Dict[str, Any],
-        data_context: DataContext,
-        disallow_block_splitting: bool,
+        target_max_block_size: Optional[int],
     ):
         assert (
             num_partitions >= 1
         ), f"Number of partitions has to be >= 1 (got {num_partitions})"
 
-        self._data_context = data_context.copy()
-        if disallow_block_splitting:
-            self._data_context.target_max_block_size = None
+        self._target_max_block_size = target_max_block_size
         self._num_partitions = num_partitions
         self._num_aggregators: int = num_aggregators
         self._aggregator_partition_map: Dict[
@@ -1350,7 +1348,7 @@ class AggregatorPool:
                 aggregator_id,
                 target_partition_ids,
                 self._aggregation_factory_ref,
-                self._data_context,
+                self._target_max_block_size,
             )
 
             self._aggregators.append(aggregator)
@@ -1563,13 +1561,13 @@ class HashShuffleAggregator:
         aggregator_id: int,
         target_partition_ids: List[int],
         agg_factory: StatefulShuffleAggregationFactory,
-        data_context: DataContext,
+        target_max_block_size: Optional[int],
     ):
         self._lock = threading.Lock()
         self._agg: StatefulShuffleAggregation = agg_factory(
             aggregator_id, target_partition_ids
         )
-        self._data_context = data_context
+        self._target_max_block_size = target_max_block_size
 
     def submit(self, input_seq_id: int, partition_id: int, partition_shard: Block):
         with self._lock:
@@ -1587,16 +1585,16 @@ class HashShuffleAggregator:
             # Clear any remaining state (to release resources)
             self._agg.clear(partition_id)
 
-        target_max_block_size = self._data_context.target_max_block_size
-        # None means the user wants to preserve the block distribution,
-        # so we do not break the block down further.
-        if target_max_block_size is not None:
+        if self._target_max_block_size is None:
+            yield block
+            yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
+        else:
             # Creating a block output buffer per partition finalize task because
             # retrying finalize tasks cause stateful output_bufer to be
             # fragmented (ie, adding duplicated blocks, calling finalize 2x)
             output_buffer = BlockOutputBuffer(
                 output_block_size_option=OutputBlockSizeOption(
-                    target_max_block_size=target_max_block_size
+                    target_max_block_size=self._target_max_block_size
                 )
             )
 
@@ -1606,9 +1604,6 @@ class HashShuffleAggregator:
                 block = output_buffer.next()
                 yield block
                 yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
-        else:
-            yield block
-            yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
 
 
 def _get_total_cluster_resources() -> ExecutionResources:
