@@ -648,7 +648,7 @@ def _add_min_workers_nodes(
     request_resources() constraints.
 
     Args:
-        node_resources: Resources of exisiting nodes already launched/pending.
+        node_resources: Resources of existing nodes already launched/pending.
         node_type_counts: Counts of existing nodes already launched/pending.
         node_types: Node types config.
         max_workers: global max_workers constaint.

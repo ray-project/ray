@@ -114,7 +114,7 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
       }
 
       // Add label selectors
-      *by_shape_entry->add_label_selectors() = label_selectors.ToProto();
+      label_selectors.ToProto(by_shape_entry->add_label_selectors());
 
       if (is_infeasible) {
         by_shape_entry->set_num_infeasible_requests_queued(count);
@@ -180,7 +180,6 @@ void SchedulerResourceReporter::FillPendingActorCountByShape(
   }
 
   if (!pending_count_by_shape.empty()) {
-    data.set_cluster_full_of_actors_detected(true);
     auto resource_load_by_shape =
         data.mutable_resource_load_by_shape()->mutable_resource_demands();
     for (const auto &shape_entry : pending_count_by_shape) {
