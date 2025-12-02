@@ -224,7 +224,7 @@ def resolve_user_ray_temp_dir(gcs_address: str, node_id: str):
     """
     Get the ray temp directory.
 
-    If a temp dir was specified for this cluster, this function will
+    If a temp dir was specified for this node, this function will
     retrieve the information from GCS. Otherwise, it will fallback to the
     default ray temp directory.
 
@@ -246,20 +246,25 @@ def resolve_user_ray_temp_dir(gcs_address: str, node_id: str):
     if gcs_address is not None and node_id is not None:
         gcs_client = GcsClient(gcs_address)
         try:
-            node_info = next(
-                iter(
-                    gcs_client.get_all_node_info(
-                        filters=[
-                            ("node_id", "=", node_id),
-                            ("state", "=", "ALIVE"),
-                        ]
-                    ).values()
-                )
-            )
+            node_infos = gcs_client.get_all_node_info(
+                filters=[
+                    ("node_id", "=", node_id),
+                    ("state", "=", "ALIVE"),
+                ]
+            ).values()
         except Exception as e:
             raise Exception(
                 f"Failed to get node info from GCS when fetching tempdir for node {node_id}: {e}"
             )
+
+        # Check that node infos is not empty
+        if not node_infos:
+            raise Exception(
+                f"No node info associated with ALIVE state found for node {node_id} in GCS"
+            )
+
+        # Get the first node info
+        node_info = next(iter(node_infos))
 
         if node_info is not None:
             temp_dir = getattr(node_info, "temp_dir", None)

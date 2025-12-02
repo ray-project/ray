@@ -479,17 +479,22 @@ class Node:
                     ],
                     timeout=3.0,
                     num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
-                )
+                ).values()
             except Exception as e:
                 logger.error(f"Failed to get head node info: {e}")
                 raise e
 
-            if node_infos is None or not node_infos:
+            if not node_infos:
                 raise Exception(
                     "Head node not found in GCS when trying to get temp dir, did GCS start successfully?"
                 )
-            node_info = next(iter(node_infos.values()))
+            node_info = next(iter(node_infos))
             self._head_temp_dir = getattr(node_info, "temp_dir", None)
+            if self._head_temp_dir is None:
+                raise Exception(
+                    "Head node temp_dir not found in NodeInfo, "
+                    "either GCS or head node's raylet may not have started successfully."
+                )
             self._head_session_dir = getattr(node_info, "session_dir", None)
             if self._head_session_dir is None:
                 raise Exception(
@@ -499,19 +504,20 @@ class Node:
 
         self.temp_dir = self._ray_params.temp_dir
         if self.temp_dir is None:
+            node_infos = []
             if connect_only:
-                # Try resolving temp dir using node ip address first
+                # Connecting to an existing Ray cluster without a temp-dir specified using ray.init().
+                # In this case, we will resolve the temp-dir by querying the temp-dir on the host.
                 # Note: If the user specified an ip_address that's different from the
-                # discoverable ip_address on a non-head node with custom temp dir, they must
+                # discoverable ip_address on a worker node with custom temp dir, they must
                 # explicitly specify either the temp dir or node ip address if they
-                # want to connect a driver to the non-head node. Otherwise, we will
+                # want to connect a driver to the worker node. Otherwise, we will
                 # not be able to retrieve the temp dir for the current node.
-                # This is documented in the init API.
+                # For more information, please check the API doc of ray.init().
                 if self._ray_params.node_ip_address is not None:
                     node_ip_address = self._ray_params.node_ip_address
                 else:
                     node_ip_address = ray._private.services.get_node_ip_address()
-                node_infos = {}
                 try:
                     node_infos = get_all_node_info_with_retry(
                         self.get_gcs_client(),
@@ -520,38 +526,15 @@ class Node:
                         ],
                         timeout=3.0,
                         num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
-                    )
+                    ).values()
                 except Exception as e:
                     raise Exception(
                         f"Failed to get node info from gcs with node ip address {node_ip_address} "
                         f"when connecting to the current node: {repr(e)}. "
                     )
-                if not node_infos:
-                    # fallback to head node's temp dir if no node info is found for the given node ip address
-                    logger.warning(
-                        f"Failed to resolve temp dir using node IP {node_ip_address} due "
-                        f"to no node info found, falling back to head node's temp dir."
-                        "This may cause current driver's temp dir to diverge from the node's temp dir."
-                    )
-                    try:
-                        node_infos = get_all_node_info_with_retry(
-                            self.get_gcs_client(),
-                            filters=[
-                                ("is_head_node", "=", True),
-                            ],
-                            timeout=3.0,
-                            num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
-                        )
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to get head node info when connecting to the current node: {e}"
-                        )
-                        raise e
-                    if not node_infos:
-                        raise Exception(
-                            "Head node not found in GCS when trying to get temp dir, did GCS start successfully?"
-                        )
-                node_info = next(iter(node_infos.values()))
+
+            if node_infos:
+                node_info = next(iter(node_infos))
                 self.temp_dir = getattr(node_info, "temp_dir", None)
                 if self.temp_dir is None:
                     raise Exception(
@@ -560,15 +543,12 @@ class Node:
                     )
             else:
                 if self.head:
+                    # fallback to head node's default
                     self.temp_dir = ray._private.utils.get_default_ray_temp_dir()
                 else:
+                    # fallback to head node's temp dir if no node info is found for the given node ip address
                     assert not self._default_worker
                     self.temp_dir = self._head_temp_dir
-                    if self.temp_dir is None:
-                        raise Exception(
-                            "Head node temp_dir not found in NodeInfo, "
-                            "either GCS or head node's raylet may not have started successfully."
-                        )
 
         # Assumes session_name is resolved before _init_temp is called
         self._session_dir = os.path.join(self.temp_dir, self._session_name)
@@ -1477,10 +1457,10 @@ class Node:
 
             # Note: We decide which object spilling directory to use based on the following policy:
             # 1. If this node specifies an object spilling directory, use it.
-            # 2. If the head node specifies an object spilling directory, and this node doesn't specify one,
+            # 2. If the head node specifies an object spilling directory, and the worker node doesn't specify one,
             #    use the head node's object spilling directory.
-            # 3. If the head node doesn't specify an object spilling directory, and this node doesn't specify one,
-            #    use the temp_dir as the object spilling directory.
+            # 3. If the head node doesn't specify an object spilling directory, and the worker node doesn't specify one,
+            #    use the temp_dir of the worker node as the object spilling directory.
             try:
                 if new_config["automatic_object_spilling_enabled"]:
                     config = json.loads(new_config["object_spilling_config"])
