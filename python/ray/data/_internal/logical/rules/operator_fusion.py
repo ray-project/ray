@@ -339,14 +339,19 @@ class FuseOperators(Rule):
             op.add_map_task_kwargs_fn(map_task_kwargs_fn)
 
         input_op = up_logical_op.input_dependency
+        udf_logical_op = None
+        if isinstance(down_logical_op, AbstractUDFMap):
+            udf_logical_op = down_logical_op
+        else:
+            udf_logical_op = up_logical_op
         logical_op = AbstractUDFMap(
             name,
             input_op,
-            down_logical_op._fn,
-            fn_args=down_logical_op._fn_args,
-            fn_kwargs=down_logical_op._fn_kwargs,
-            fn_constructor_args=down_logical_op._fn_constructor_args,
-            fn_constructor_kwargs=down_logical_op._fn_constructor_kwargs,
+            udf_logical_op._fn,
+            fn_args=udf_logical_op._fn_args,
+            fn_kwargs=udf_logical_op._fn_kwargs,
+            fn_constructor_args=udf_logical_op._fn_constructor_args,
+            fn_constructor_kwargs=udf_logical_op._fn_constructor_kwargs,
             min_rows_per_bundled_input=batch_size,
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
