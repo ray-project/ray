@@ -193,6 +193,10 @@ class NodeManagerServiceHandler {
                                    GetWorkerPIDsReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleGetAgentPIDs(GetAgentPIDsRequest request,
+                                  GetAgentPIDsReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleKillLocalActor(KillLocalActorRequest request,
                                     KillLocalActorReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;

@@ -57,10 +57,11 @@ cdef class RayletClient:
                 fut = incremented_fut()
                 int32_t timeout = <int32_t>timeout_ms
             assert self.inner.get() is not NULL
-            self.inner.get().GetAgentPIDs(
-                OptionalItemPyCallback[c_vector[int32_t]](
-                    &convert_optional_vector_int32,
-                    assign_and_decrement_fut,
-                    fut),
-                timeout)
+            with nogil:
+                self.inner.get().GetAgentPIDs(
+                    OptionalItemPyCallback[c_vector[int32_t]](
+                        &convert_optional_vector_int32,
+                        assign_and_decrement_fut,
+                        fut),
+                    timeout)
             return asyncio.wrap_future(fut)
