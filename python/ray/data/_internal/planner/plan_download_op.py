@@ -72,7 +72,7 @@ def plan_download_op(
             {},
             (uri_column_names, data_context),
             {},
-            enable_true_multi_threading=False,
+            enable_true_multi_threading=True,
         )
         block_fn = _generate_transform_fn_for_map_batches(fn)
 
@@ -112,7 +112,7 @@ def plan_download_op(
         {},
         None,
         None,
-        enable_true_multi_threading=False,
+        enable_true_multi_threading=True,
     )
 
     download_transform_fn = _generate_transform_fn_for_map_batches(fn)
