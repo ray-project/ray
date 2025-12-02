@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import Any, Dict, Optional
 
 from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
@@ -44,7 +45,7 @@ class DQNLearner(Learner):
     def build(self) -> None:
         super().build()
 
-        self._last_update_ts = 0
+        self.last_update_ts_by_mid = defaultdict(int)  # Returns 0 for missing keys
 
         # Make target networks.
         self.module.foreach_module(
@@ -93,9 +94,10 @@ class DQNLearner(Learner):
         #  method per module?
         for module_id, module in self.module._rl_modules.items():
             config = self.config.get_config_for_module(module_id)
-            if (
-                timestep - self._last_update_ts >= config.target_network_update_freq
-                and isinstance(module.unwrapped(), TargetNetworkAPI)
+            if timestep - self.last_update_ts_by_mid[
+                module_id
+            ] >= config.target_network_update_freq and isinstance(
+                module.unwrapped(), TargetNetworkAPI
             ):
                 for (
                     main_net,
@@ -111,7 +113,7 @@ class DQNLearner(Learner):
                     (module_id, NUM_TARGET_UPDATES), 1, reduce="lifetime_sum"
                 )
                 # Update the (single-value -> window=1) last updated timestep metric.
-                self._last_update_ts = timestep
+                self.last_update_ts_by_mid[module_id] = timestep
                 self.metrics.log_value(
                     (module_id, LAST_TARGET_UPDATE_TS), timestep, reduce="max"
                 )
