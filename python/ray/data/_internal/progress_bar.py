@@ -138,21 +138,23 @@ class ProgressBar(AbstractProgressBar):
         if unit[0] != " ":
             unit = " " + unit
 
-        if not sys.stdout.isatty():
-            enabled = False
-            if log_once("progress_bar_disabled"):
-                logger.info(
-                    "Progress bar disabled because stdout is a non-interactive terminal."
-                )
-        elif enabled is None:
+        self._use_logging = False
+
+        if enabled is None:
             # When enabled is None (not explicitly set by the user),
             # check DataContext setting
             from ray.data.context import DataContext
 
             enabled = DataContext.get_current().enable_progress_bars
 
-        # Use logging when in non-interactive terminal
-        self._use_logging = not sys.stdout.isatty()
+        # If enabled, and in non-interactive terminal, use logging instead of tqdm
+        if enabled and not sys.stdout.isatty():
+            self._use_logging = True
+            enabled = False
+            if log_once("progress_bar_disabled"):
+                logger.info(
+                    "Progress bar disabled because stdout is a non-interactive terminal."
+                )
 
         if not enabled:
             self._bar = None
