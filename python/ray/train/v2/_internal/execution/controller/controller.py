@@ -348,13 +348,16 @@ class TrainController:
             callback.after_controller_start(self._train_run_context)
 
     def _shutdown(self) -> Optional[WorkerGroupError]:
+        optional_worker_group_error = None
         if self._worker_group:
             optional_worker_group_error = self._shutdown_worker_group()
-            if optional_worker_group_error:
-                return optional_worker_group_error
 
+        # Always call before_controller_shutdown callbacks, even if worker group
+        # shutdown failed.
         for callback in self._controller_callbacks:
             callback.before_controller_shutdown()
+
+        return optional_worker_group_error
 
     def _shutdown_worker_group(self) -> Optional[WorkerGroupError]:
         """Shutdown the worker group and set the worker group to None."""
