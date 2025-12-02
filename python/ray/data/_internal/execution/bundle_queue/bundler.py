@@ -82,7 +82,7 @@ class RebundleQueue(BaseBundleQueue, SupportsRebundling):
         output_buffer_size = 0
 
         while self._bundle_buffer:
-            bundle = self._bundle_buffer.popleft()
+            bundle = self._bundle_buffer[0]
             bundle_size = _get_bundle_size(bundle)
 
             # Add bundle to the output buffer so long as either
@@ -95,6 +95,7 @@ class RebundleQueue(BaseBundleQueue, SupportsRebundling):
                 output_buffer.append(bundle)
                 output_buffer_size += bundle_size
                 self._on_exit(bundle)
+                self._bundle_buffer.popleft()
             else:
                 break
 
