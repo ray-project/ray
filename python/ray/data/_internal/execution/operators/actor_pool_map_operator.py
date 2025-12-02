@@ -296,13 +296,16 @@ class ActorPoolMapOperator(MapOperator):
             # active actor pool.
             try:
                 has_actor = self._actor_pool.pending_to_running(res_ref)
-            except Exception:
+            except ray.exceptions.RayError:
                 # Check if we should retry this initialization failure based on DataContext settings.
                 if self.data_context.actor_init_retry_on_errors:
                     self._actor_init_retry_count += 1
                     max_retries = self.data_context.actor_init_max_retries
                     # -1 means infinite retries
                     if max_retries < 0 or self._actor_init_retry_count <= max_retries:
+                        # Spawn a replacement actor
+                        new_actor, new_ready_ref = self._actor_pool._create_actor()
+                        self._actor_pool.add_pending_actor(new_actor, new_ready_ref)
                         return
                 # Non-retryable error or max retries exceeded, let it propagate.
                 raise
@@ -1026,14 +1029,24 @@ class _ActorPool(AutoscalingActorPool):
         Returns:
             Whether the actor was still pending. This can return False if the actor had
             already been killed.
+
+        Raises:
+            RayError: If the actor initialization failed. The actor is cleaned up
+                from internal tracking before re-raising.
         """
         if ready_ref not in self._pending_actors:
             # The actor has been removed from the pool before becoming running.
             return False
         actor = self._pending_actors.pop(ready_ref)
+        try:
+            actor_location = ray.get(ready_ref)
+        except ray.exceptions.RayError:
+            # Actor init failed - clean up the actor from _actor_to_logical_id
+            self._actor_to_logical_id.pop(actor, None)
+            raise
         self._running_actors[actor] = _ActorState(
             num_tasks_in_flight=0,
-            actor_location=ray.get(ready_ref),
+            actor_location=actor_location,
             is_restarting=False,
         )
         return True
