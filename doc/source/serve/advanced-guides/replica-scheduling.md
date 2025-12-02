@@ -20,6 +20,46 @@ This guide explains how Ray Serve schedules deployment replicas across your clus
 
 When you deploy an application, Ray Serve's deployment scheduler determines where to place each replica actor across the available nodes in your Ray cluster. The scheduler runs on the Serve Controller and makes batch scheduling decisions during each update cycle. For information on configuring CPU, GPU, and other resource requirements for your replicas, see [Resource allocation](serve-resource-allocation).
 
+```text
+                              ┌──────────────────────────────────┐
+                              │        serve.run(app)            │
+                              └────────────────┬─────────────────┘
+                                               │
+                                               ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              Serve Controller                                   │
+│  ┌───────────────────────────────────────────────────────────────────────────┐  │
+│  │                        Deployment Scheduler                               │  │
+│  │                                                                           │  │
+│  │   1. Check placement_group_bundles  ──▶  PlacementGroupSchedulingStrategy │  │
+│  │   2. Check target node affinity     ──▶  NodeAffinitySchedulingStrategy   │  │
+│  │   3. Use default strategy           ──▶  SPREAD (default) or COMPACT      │  │
+│  └───────────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                               │
+             ┌─────────────────────────────────┴─────────────────────────────────┐
+             │                                                                   │
+             ▼                                                                   ▼
+┌─────────────────────────────────────┐               ┌─────────────────────────────────────┐
+│    SPREAD Strategy (default)        │               │         COMPACT Strategy             │
+│                                     │               │                                     │
+│  Distributes replicas across nodes  │               │   Packs replicas onto fewer nodes   │
+│  for fault tolerance                │               │   to minimize resource waste        │
+│                                     │               │                                     │
+│  ┌─────────┐ ┌─────────┐ ┌───────┐  │               │  ┌─────────┐ ┌─────────┐ ┌───────┐  │
+│  │ Node 1  │ │ Node 2  │ │Node 3 │  │               │  │ Node 1  │ │ Node 2  │ │Node 3 │  │
+│  │ ┌─────┐ │ │ ┌─────┐ │ │┌─────┐│  │               │  │ ┌─────┐ │ │         │ │       │  │
+│  │ │ R1  │ │ │ │ R2  │ │ ││ R3  ││  │               │  │ │ R1  │ │ │  idle   │ │ idle  │  │
+│  │ └─────┘ │ │ └─────┘ │ │└─────┘│  │               │  │ │ R2  │ │ │         │ │       │  │
+│  │         │ │         │ │       │  │               │  │ │ R3  │ │ │         │ │       │  │
+│  └─────────┘ └─────────┘ └───────┘  │               │  └─────────┘ └─────────┘ └───────┘  │
+│                                     │               │               ▲           ▲        │
+│  ✓ High availability                │               │               └───────────┘        │
+│  ✓ Load balanced                    │               │           Can be released          │
+│  ✓ Reduced contention               │               │  ✓ Fewer nodes = lower cloud costs │
+└─────────────────────────────────────┘               └─────────────────────────────────────┘
+```
+
 By default, Ray Serve uses a **spread scheduling strategy** that distributes replicas across nodes with best effort. This approach:
 - Maximizes fault tolerance by avoiding concentration of replicas on a single node
 - Balances load across the cluster
