@@ -212,14 +212,18 @@ def plan_filter_op(
         )
     else:
         udf_is_callable_class = isinstance(op._fn, CallableClass)
-        assert isinstance(compute, ActorPoolStrategy)
+        enable_true_multi_threading = (
+            compute.enable_true_multi_threading
+            if isinstance(compute, ActorPoolStrategy)
+            else True
+        )
         filter_fn, init_fn = _get_udf(
             op._fn,
             op._fn_args,
             op._fn_kwargs,
             op._fn_constructor_args if udf_is_callable_class else None,
             op._fn_constructor_kwargs if udf_is_callable_class else None,
-            enable_true_multi_threading=compute.enable_true_multi_threading,
+            enable_true_multi_threading=enable_true_multi_threading,
         )
 
         transform_fn = RowMapTransformFn(
