@@ -815,7 +815,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   const rpc::ReturnObject &returned_object = request.returned_object();
 
   size_t num_objects_written = 0;
-  // for (const auto &return_object : request.dynamic_return_objects()) {
   const auto object_id = ObjectID::FromBinary(returned_object.object_id());
 
   RAY_LOG(DEBUG) << "Write an object " << object_id << " to the object ref stream of id "
@@ -840,7 +839,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     RAY_LOG(WARNING).WithField(object_id)
         << "Failed to handle streaming dynamic return: " << put_res.status();
   }
-  // }
 
   // Handle backpressure if needed.
   auto total_generated = stream_it->second.TotalNumObjectWritten();
