@@ -46,10 +46,12 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.utils import (
 from ray.rllib.examples.rl_modules.classes.lstm_containing_rlm import (
     LSTMContainingRLModule,
 )
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
 )
 from ray.tune.registry import register_env
+from ray.tune.result import TRAINING_ITERATION
 
 parser = add_rllib_example_script_args(
     default_iters=500,
@@ -230,8 +232,11 @@ config = (
 )
 
 
-stop = {"mix_size": args.target_mix_size}
-
+stop = {
+    NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+    TRAINING_ITERATION: args.stop_iters,
+    "mix_size": args.target_mix_size,
+}
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
