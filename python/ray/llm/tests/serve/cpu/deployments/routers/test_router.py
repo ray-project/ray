@@ -207,6 +207,11 @@ class TestOpenAiIngress:
                 ],
                 model="llm_model_id",
                 object="chat.completion",
+                usage={
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2,
+                },
             )
 
         mock_handle = MagicMock()
