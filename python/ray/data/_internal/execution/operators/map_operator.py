@@ -544,7 +544,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         return list(self._metadata_tasks.values()) + list(self._data_tasks.values())
 
     def all_inputs_done(self):
-        print("DONNNNEE")
         self._block_ref_bundler.done_adding_bundles()
         if self._block_ref_bundler.has_bundle():
             # Handle any leftover bundles in the bundler.
@@ -737,7 +736,6 @@ class BlockRefBundler(BaseRefBundler):
 
         for idx, bundle in enumerate(self._bundle_buffer):
             bundle_size = self._get_bundle_size(bundle)
-            print(f"({idx}/{len(self._bundle_buffer)}) bundle_size is {bundle_size}")
 
             # Add bundle to the output buffer so long as either
             #   - Output buffer size is still 0
@@ -748,14 +746,8 @@ class BlockRefBundler(BaseRefBundler):
             ):
                 output_buffer.append(bundle)
                 output_buffer_size += bundle_size
-                print(
-                    f"[1] ({idx}/{len(self._bundle_buffer)}) output_buffer_size({self._min_rows_per_bundle}): {output_buffer_size}"
-                )
             else:
                 remainder = self._bundle_buffer[idx:]
-                print(
-                    f"[2] ({idx}/{len(self._bundle_buffer)}) output_buffer_size({self._min_rows_per_bundle}): {output_buffer_size}"
-                )
 
         self._bundle_buffer = remainder
         self._bundle_buffer_size = sum(
