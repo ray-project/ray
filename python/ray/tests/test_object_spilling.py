@@ -253,7 +253,8 @@ def test_default_config_cluster_with_different_temp_dir(ray_start_cluster_enable
     assert not is_dir_empty(Path(node_0._session_dir), node_0.node_id)
     assert not is_dir_empty(Path(node_1._session_dir), node_1.node_id)
 
-    # Hold the object refs to prevent them from being deleted
+    # We hold the object refs until the end to prevent them from being deleted
+    # due to out of scope.
     del res
 
 
