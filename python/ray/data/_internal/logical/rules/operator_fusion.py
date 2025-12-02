@@ -55,7 +55,7 @@ class FuseOperators(Rule):
         fused_dag = self._fuse_streaming_repartition_operators_in_dag(plan.dag)
         # Do DFS fusion on compatible pairwise operators in two passes.
         # In the first pass, only fuse back-to-back map operators together.
-        fused_dag = self._fuse_map_operators_in_dag(plan.dag)
+        fused_dag = self._fuse_map_operators_in_dag(fused_dag)
 
         # Now that we have fused together all back-to-back map operators,
         # we fuse together MapOperator -> AllToAllOperator pairs.

@@ -236,16 +236,25 @@ def test_repartition_empty_datasets(ray_start_regular_shared_2_cpus, shuffle):
         assert metadata.size_bytes == 0
 
 
-def test_streaming_repartition_write_no_operator_fusion(
-    ray_start_regular_shared_2_cpus, tmp_path, disable_fallback_to_object_extension
+@pytest.mark.parametrize("streaming_repartition_first", [True, False])
+def test_streaming_repartition_write_with_operator_fusion(
+    ray_start_regular_shared_2_cpus,
+    tmp_path,
+    disable_fallback_to_object_extension,
+    streaming_repartition_first,
 ):
     """Test that write with streaming repartition produces exact partitions
-    without operator fusion.
+    with operator fusion.
     This test verifies:
-    1. StreamingRepartition and Write operators are not fused
-    2. Exact partition structure is maintained
-    3. Skewed data is properly distributed across partitions
+    1. StreamingRepartition and MapBatches operators are fused, with both orders
+    2. Skewed data is properly distributed across partitions
     """
+
+    def fn(batch):
+        # Get number of rows from the first column (batch is a dict of column_name -> array)
+        num_rows = len(batch["id"])
+        assert num_rows == 20, f"Expected batch size 20, got {num_rows}"
+        return batch
 
     # Configure shuffle strategy
     ctx = DataContext.get_current()
@@ -262,47 +271,33 @@ def test_streaming_repartition_write_no_operator_fusion(
     # Repartition by key to simulate shuffle
     ds = ds.repartition(num_blocks=2, keys=[partition_col])
 
-    # Further rebalance to meet target row size
-    ds = ds.repartition(target_num_rows_per_block=20)
+    # mess up with the block size
+    ds = ds.repartition(target_num_rows_per_block=30)
 
-    # Verify non-fusion of map_batches with repartition
-    ds = ds.map_batches(lambda x: x)
+    # Verify fusion of StreamingRepartition and MapBatches operators
+    if streaming_repartition_first:
+        ds = ds.repartition(target_num_rows_per_block=20)
+        ds = ds.map_batches(fn, batch_size=20)
+    else:
+        ds = ds.map_batches(fn, batch_size=20)
+        ds = ds.repartition(target_num_rows_per_block=20)
     planner = create_planner()
     physical_plan = planner.plan(ds._logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
-    assert physical_op.name == "MapBatches(<lambda>)"
-    assert len(physical_op.input_dependencies) == 1
-
-    # Verify that StreamingRepartition physical operator has supports_fusion=False
-    up_physical_op = physical_op.input_dependencies[0]
-    assert up_physical_op.name == "StreamingRepartition[num_rows_per_block=20]"
-    assert not getattr(
-        up_physical_op, "_supports_fusion", True
-    ), "StreamingRepartition should have supports_fusion=False"
+    if streaming_repartition_first:
+        assert (
+            physical_op.name
+            == "StreamingRepartition[num_rows_per_block=20]->MapBatches(fn)"
+        )
+    else:
+        assert (
+            physical_op.name
+            == "MapBatches(fn)->StreamingRepartition[num_rows_per_block=20]"
+        )
 
     # Write output to local Parquet files partitioned by key
     ds.write_parquet(path=tmp_path, partition_cols=[partition_col])
-
-    # Verify exact number of files created based on target_num_rows_per_block=20
-    # 80 rows with key=0 should create 4 files (80/20=4)
-    # 20 rows with key=1 should create 1 file (20/20=1)
-    # Total should be 5 files
-    # Note: Partition column values are returned as strings when reading partitioned Parquet
-    partition_0_files = list((tmp_path / f"{partition_col}=0").glob("*.parquet"))
-    partition_1_files = list((tmp_path / f"{partition_col}=1").glob("*.parquet"))
-
-    assert (
-        len(partition_0_files) == 4
-    ), f"Expected 4 files in partition 0, got {len(partition_0_files)}"
-    assert (
-        len(partition_1_files) == 1
-    ), f"Expected 1 file in partition 1, got {len(partition_1_files)}"
-
-    total_files = len(partition_0_files) + len(partition_1_files)
-    assert (
-        total_files == 5
-    ), f"Expected exactly 5 parquet files total, got {total_files}"
 
     # Verify data can be read back correctly with expected row count
     ds_read_back = ray.data.read_parquet(str(tmp_path))
@@ -371,6 +366,99 @@ def test_repartition_guarantee_row_num_to_be_exact(
                 f"Expected remainder block to have {expected_remaining_rows} rows, "
                 f"got {remaining_blocks[0]}. Block counts: {block_row_counts}"
             )
+
+
+def test_streaming_repartition_with_partial_last_block(
+    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+):
+    """Test repartition with target_num_rows_per_block where last block has fewer rows.
+    This test verifies:
+    1. Most blocks have exactly target_num_rows_per_block rows
+    2. Only the last block can have fewer rows (remainder)
+    """
+    # Configure shuffle strategy
+    ctx = DataContext.get_current()
+    ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+
+    num_rows = 110
+
+    table = [{"id": n} for n in range(num_rows)]
+    ds = ray.data.from_items(table)
+
+    ds = ds.repartition(target_num_rows_per_block=20)
+
+    ds = ds.materialize()
+
+    block_row_counts = []
+    for ref_bundle in ds.iter_internal_ref_bundles():
+        for _, metadata in ref_bundle.blocks:
+            block_row_counts.append(metadata.num_rows)
+
+    assert sum(block_row_counts) == num_rows, f"Expected {num_rows} total rows"
+
+    # Verify that all blocks have 20 rows except one block with 10 rows
+    # The block with 10 rows should be the last one
+    assert (
+        block_row_counts[-1] == 10
+    ), f"Expected last block to have 10 rows, got {block_row_counts[-1]}"
+    assert all(
+        count == 20 for count in block_row_counts[:-1]
+    ), f"Expected all blocks except last to have 20 rows, got {block_row_counts}"
+
+
+def test_streaming_repartition_with_target_max_block_size_zero(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+    restore_data_context,
+):
+    """Test repartition with MapOperator's target_max_block_size_override set to 0.
+    This test verifies that even when the MapOperator's target_max_block_size_override
+    is directly set to 0, the repartition operation with target_num_rows_per_block
+    still produces blocks with the specified number of rows. This demonstrates that
+    operator fusion works correctly with streaming repartition.
+    """
+    num_rows = 100
+
+    table = [{"id": n} for n in range(num_rows)]
+    ds = ray.data.from_items(table)
+
+    # mess up with the block size
+    ds = ds.repartition(target_num_rows_per_block=30)
+    # Repartition with target_num_rows_per_block should produce 5 blocks of 20 rows each
+    ds = ds.repartition(target_num_rows_per_block=20)
+
+    # Get the physical plan and directly override the MapOperator's target_max_block_size
+    planner = create_planner()
+    physical_plan = planner.plan(ds._logical_plan)
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    physical_op = physical_plan.dag
+
+    # Directly override the MapOperator's target_max_block_size_override to 0
+    physical_op.override_target_max_block_size(0)
+
+    # Verify the override was set correctly
+    assert (
+        physical_op.target_max_block_size_override == 0
+    ), f"Expected MapOperator's target_max_block_size_override to be 0, got {physical_op.target_max_block_size_override}"
+
+    # Materialize and verify blocks
+    ds = ds.materialize()
+
+    # Collect block row counts
+    block_row_counts = []
+    for ref_bundle in ds.iter_internal_ref_bundles():
+        for _, metadata in ref_bundle.blocks:
+            block_row_counts.append(metadata.num_rows)
+
+    # Verify total rows
+    assert sum(block_row_counts) == num_rows, f"Expected {num_rows} total rows"
+
+    # Verify all blocks have exactly 20 rows despite target_max_block_size_override being 0
+    # This demonstrates that target_num_rows_per_block takes precedence
+    assert all(
+        count == 20 for count in block_row_counts
+    ), f"All blocks should have 20 rows, got {block_row_counts}"
+    assert len(block_row_counts) == 5, f"Expected 5 blocks, got {len(block_row_counts)}"
 
 
 if __name__ == "__main__":
