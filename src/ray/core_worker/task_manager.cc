@@ -812,34 +812,35 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     return false;
   }
 
-  // TODO(sang): Support the regular return values as well.
+  const rpc::ReturnObject &returned_object = request.returned_object();
+
   size_t num_objects_written = 0;
-  for (const auto &return_object : request.dynamic_return_objects()) {
-    const auto object_id = ObjectID::FromBinary(return_object.object_id());
+  // for (const auto &return_object : request.dynamic_return_objects()) {
+  const auto object_id = ObjectID::FromBinary(returned_object.object_id());
 
-    RAY_LOG(DEBUG) << "Write an object " << object_id
-                   << " to the object ref stream of id " << generator_id;
-    auto index_not_used_yet = stream_it->second.InsertToStream(object_id, item_index);
+  RAY_LOG(DEBUG) << "Write an object " << object_id << " to the object ref stream of id "
+                 << generator_id;
+  auto index_not_used_yet = stream_it->second.InsertToStream(object_id, item_index);
 
-    // If the ref was written to a stream, we should also
-    // own the dynamically generated task return.
-    // NOTE: If we call this method while holding a lock, it can deadlock.
-    if (index_not_used_yet) {
-      reference_counter_.OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
-      num_objects_written += 1;
-    }
-    // When an object is reported, the object is ready to be fetched.
-    reference_counter_.UpdateObjectPendingCreation(object_id, false);
-    StatusOr<bool> put_res =
-        HandleTaskReturn(object_id,
-                         return_object,
-                         NodeID::FromBinary(request.worker_addr().node_id()),
-                         /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
-    if (!put_res.ok()) {
-      RAY_LOG(WARNING).WithField(object_id)
-          << "Failed to handle streaming dynamic return: " << put_res.status();
-    }
+  // If the ref was written to a stream, we should also
+  // own the dynamically generated task return.
+  // NOTE: If we call this method while holding a lock, it can deadlock.
+  if (index_not_used_yet) {
+    reference_counter_.OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
+    num_objects_written += 1;
   }
+  // When an object is reported, the object is ready to be fetched.
+  reference_counter_.UpdateObjectPendingCreation(object_id, false);
+  StatusOr<bool> put_res =
+      HandleTaskReturn(object_id,
+                       returned_object,
+                       NodeID::FromBinary(request.worker_addr().node_id()),
+                       /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
+  if (!put_res.ok()) {
+    RAY_LOG(WARNING).WithField(object_id)
+        << "Failed to handle streaming dynamic return: " << put_res.status();
+  }
+  // }
 
   // Handle backpressure if needed.
   auto total_generated = stream_it->second.TotalNumObjectWritten();
