@@ -36,6 +36,8 @@ UNSUPPORTED_OPEN_STREAM_ARGS = {"path", "buffer", "metadata"}
 # https://arrow.apache.org/docs/python/generated/pyarrow.dataset.write_dataset.html
 ARROW_DEFAULT_MAX_ROWS_PER_GROUP = 1024 * 1024
 
+DEFAULT_PARTITIONING_FLAVOR = "hive"
+
 logger = logging.getLogger(__name__)
 
 
@@ -149,6 +151,14 @@ class ParquetDatasink(_FileDatasink):
             if "compression" in open_stream_args:
                 self.arrow_parquet_args["compression"] = open_stream_args["compression"]
 
+        if ("partitioning_flavor" in self.arrow_parquet_args) or (
+            self.arrow_parquet_args_fn is not None
+            and "partitioning_flavor" in self.arrow_parquet_args_fn()
+        ):
+            assert (
+                self.partition_cols is not None
+            ), "partition_cols must be provided when partitioning_flavor is set."
+
         super().__init__(
             path,
             filesystem=filesystem,
@@ -183,6 +193,13 @@ class ParquetDatasink(_FileDatasink):
             self.arrow_parquet_args_fn, **self.arrow_parquet_args
         )
         user_schema = write_kwargs.pop("schema", None)
+        # Extract partitioning_flavor before the closure to preserve it across retries
+        # For partitioning_flavor, if it's not provided, the default is "hive"
+        # Otherwise, it follows pyarrow's behavior: None for directory,
+        # "hive" for hive, and "filename" for FilenamePartitioning.
+        partitioning_flavor = write_kwargs.pop(
+            "partitioning_flavor", DEFAULT_PARTITIONING_FLAVOR
+        )
 
         def write_blocks_to_path():
             tables = [BlockAccessor.for_block(block).to_arrow() for block in blocks]
@@ -197,6 +214,7 @@ class ParquetDatasink(_FileDatasink):
                 output_schema,
                 ctx.kwargs[WRITE_UUID_KWARG_NAME],
                 write_kwargs,
+                partitioning_flavor,
             )
 
         logger.debug(f"Writing {filename} file to {self.path}.")
@@ -246,6 +264,7 @@ class ParquetDatasink(_FileDatasink):
         output_schema: "pyarrow.Schema",
         write_uuid: str,
         write_kwargs: Dict[str, Any],
+        partitioning_flavor: Optional[str],
     ) -> None:
         import pyarrow.dataset as ds
 
@@ -282,7 +301,7 @@ class ParquetDatasink(_FileDatasink):
             partitioning=self.partition_cols,
             format=FILE_FORMAT,
             existing_data_behavior=existing_data_behavior,
-            partitioning_flavor="hive",
+            partitioning_flavor=partitioning_flavor,
             use_threads=True,
             min_rows_per_group=min_rows_per_group,
             max_rows_per_group=max_rows_per_group,
