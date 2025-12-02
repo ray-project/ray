@@ -6,12 +6,13 @@ import numpy as np
 import pytest
 
 import ray
+import ray._common.test_utils
 import ray._private.test_utils as test_utils
 from ray._private.state import available_resources
 
 
 def ensure_cpu_returned(expected_cpus):
-    test_utils.wait_for_condition(
+    ray._common.test_utils.wait_for_condition(
         lambda: (available_resources().get("CPU", 0) == expected_cpus)
     )
 

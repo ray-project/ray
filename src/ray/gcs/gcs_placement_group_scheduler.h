@@ -1,0 +1,520 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+#pragma once
+
+#include <list>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/bundle_location_index.h"
+#include "ray/common/id.h"
+#include "ray/gcs/gcs_node_manager.h"
+#include "ray/gcs/gcs_placement_group.h"
+#include "ray/gcs/gcs_table_storage.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/policy/scheduling_context.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
+#include "src/ray/protobuf/gcs_service.pb.h"
+
+namespace ray {
+namespace gcs {
+
+using PGSchedulingFailureCallback =
+    std::function<void(std::shared_ptr<GcsPlacementGroup>, bool)>;
+using PGSchedulingSuccessfulCallback =
+    std::function<void(std::shared_ptr<GcsPlacementGroup>)>;
+
+using raylet_scheduling_policy::BundleSchedulingContext;
+using raylet_scheduling_policy::SchedulingOptions;
+using raylet_scheduling_policy::SchedulingResultStatus;
+
+using ScheduleMap = absl::flat_hash_map<BundleID, NodeID, pair_hash>;
+
+struct SchedulePgRequest {
+  /// The placement group to be scheduled.
+  std::shared_ptr<GcsPlacementGroup> placement_group;
+  // Called if the pg failed to schedule (prepare or commit).
+  PGSchedulingFailureCallback failure_callback;
+  // Called if the pg is successfully committed.
+  PGSchedulingSuccessfulCallback success_callback;
+};
+
+class GcsPlacementGroupSchedulerInterface {
+ public:
+  /// Schedule unplaced bundles of the specified placement group.
+  virtual void ScheduleUnplacedBundles(const SchedulePgRequest &request) = 0;
+
+  /// Get and remove bundles belong to the specified node.
+  ///
+  /// This is expected to be called on dead node only since it will remove
+  /// the bundles from the node.
+  ///
+  /// \param node_id ID of the dead node.
+  /// \return The bundles belong to the dead node.
+  virtual absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
+  GetAndRemoveBundlesOnNode(const NodeID &node_id) = 0;
+
+  /// Get bundles belong to the specified node.
+  ///
+  /// \param node_id ID of a node.
+  /// \return The bundles belong to the node.
+  virtual absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
+      const NodeID &node_id) const = 0;
+
+  /// Destroy bundle resources from all nodes in the placement group.
+  ///
+  /// \param placement_group_id The id of the placement group to be destroyed.
+  virtual void DestroyPlacementGroupBundleResourcesIfExists(
+      const PlacementGroupID &placement_group_id) = 0;
+
+  /// Mark the placement group scheduling is cancelled.
+  /// This method will incur check failure if scheduling
+  /// is not actually going on to guarantee strong consistency.
+  ///
+  /// \param placement_group_id The placement group id scheduling is in progress.
+  virtual void MarkScheduleCancelled(const PlacementGroupID &placement_group_id) = 0;
+
+  /// Notify raylets to release unused bundles.
+  ///
+  /// \param node_to_bundles Bundles used by each node.
+  virtual void ReleaseUnusedBundles(
+      const absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles) = 0;
+
+  /// Initialize with the gcs tables data synchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param node_to_bundles Bundles used by each node.
+  /// \param prepared_pgs placement groups in state PREPARED. Need to be committed asap.
+  virtual void Initialize(
+      const absl::flat_hash_map<PlacementGroupID,
+                                std::vector<std::shared_ptr<BundleSpecification>>>
+          &group_to_bundles,
+      const std::vector<SchedulePgRequest> &prepared_pgs) = 0;
+
+  virtual ~GcsPlacementGroupSchedulerInterface() {}
+};
+
+enum class LeasingState {
+  /// The first phase of 2PC. It means requests to nodes are sent to prepare resources.
+  PREPARING,
+  /// The second phase of 2PC. It means that all prepare requests succeed, and GCS is
+  /// committing resources to each node.
+  COMMITTING,
+  /// Placement group has been removed, and this leasing is not valid.
+  CANCELLED
+};
+
+/// A data structure that encapsulates information regarding bundle resource leasing
+/// status.
+class LeaseStatusTracker {
+ public:
+  LeaseStatusTracker(
+      std::shared_ptr<GcsPlacementGroup> placement_group,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &unplaced_bundles,
+      const ScheduleMap &schedule_map);
+  ~LeaseStatusTracker() = default;
+
+  // Creates a LeaseStatusTracker that starts with PREPARED status.
+  static std::shared_ptr<LeaseStatusTracker> CreatePrepared(
+      std::shared_ptr<GcsPlacementGroup> placement_group,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &unplaced_bundles);
+
+  /// Indicate the tracker that prepare requests are sent to a specific node.
+  ///
+  /// \param node_id Id of a node where prepare request is sent.
+  /// \param bundle Bundle specification the node is supposed to prepare.
+  /// \return False if the prepare phase was already started. True otherwise.
+  bool MarkPreparePhaseStarted(const NodeID &node_id,
+                               const std::shared_ptr<const BundleSpecification> &bundle);
+
+  /// Indicate the tracker that all prepare requests are returned.
+  ///
+  /// \param node_id Id of a node where prepare request is returned.
+  /// \param bundle Bundle specification the node was supposed to schedule.
+  /// \param status Status of the prepare response.
+  /// \param void
+  void MarkPrepareRequestReturned(
+      const NodeID &node_id,
+      const std::shared_ptr<const BundleSpecification> &bundle,
+      const Status &status);
+
+  /// Used to know if all prepare requests are returned.
+  ///
+  /// \return True if all prepare requests are returned. False otherwise.
+  bool AllPrepareRequestsReturned() const;
+
+  /// Used to know if the prepare phase succeed.
+  ///
+  /// \return True if all prepare requests were successful.
+  bool AllPrepareRequestsSuccessful() const;
+
+  /// Indicate the tracker that the commit request of a bundle from a node has returned.
+  ///
+  /// \param node_id Id of a node where commit request is returned.
+  /// \param bundle Bundle specification the node was supposed to schedule.
+  /// \param status Status of the returned commit request.
+  void MarkCommitRequestReturned(const NodeID &node_id,
+                                 const std::shared_ptr<const BundleSpecification> &bundle,
+                                 const Status &status);
+
+  /// Used to know if all commit requests are returend.
+  ///
+  /// \return True if all commit requests are returned. False otherwise.
+  bool AllCommitRequestReturned() const;
+
+  /// Used to know if the commit phase succeed.
+  ///
+  /// \return True if all commit requests were successful..
+  bool AllCommitRequestsSuccessful() const;
+
+  /// Return a placement group this status tracker is associated with.
+  ///
+  /// \return The placement group of this lease status tracker is tracking.
+  const std::shared_ptr<GcsPlacementGroup> &GetPlacementGroup() const;
+
+  /// Return bundles that should be scheduled.
+  ///
+  /// \return List of bundle specification that are supposed to be scheduled.
+  [[nodiscard]] const std::vector<std::shared_ptr<const BundleSpecification>>
+      &GetBundlesToSchedule() const;
+
+  /// This method returns bundle locations that succeed to prepare resources.
+  ///
+  /// \return Location of bundles that succeed to prepare resources on a node.
+  const std::shared_ptr<BundleLocations> &GetPreparedBundleLocations() const;
+
+  /// This method returns bundle locations that failed to commit resources.
+  ///
+  /// \return Location of bundles that failed to commit resources on a node.
+  const std::shared_ptr<BundleLocations> &GetUnCommittedBundleLocations() const;
+
+  /// This method returns bundle locations that success to commit resources.
+  ///
+  /// \return Location of bundles that success to commit resources on a node.
+  const std::shared_ptr<BundleLocations> &GetCommittedBundleLocations() const;
+
+  /// This method returns bundle locations.
+  ///
+  /// \return Location of bundles.
+  const std::shared_ptr<BundleLocations> &GetBundleLocations() const;
+
+  /// Return the leasing state.
+  ///
+  /// \return Leasing state.
+  LeasingState GetLeasingState() const;
+
+  /// Mark that this leasing is cancelled.
+  void MarkPlacementGroupScheduleCancelled();
+
+  /// Mark that the commit phase is started.
+  /// There's no need to mark commit phase is done because in that case, we won't need the
+  /// status tracker anymore.
+  void MarkCommitPhaseStarted();
+
+ private:
+  /// Method to update leasing states.
+  ///
+  /// \param leasing_state The state to update.
+  /// \return True if succeeds to update. False otherwise.
+  bool UpdateLeasingState(LeasingState leasing_state);
+
+  /// Placement group of which this leasing context is associated with.
+  std::shared_ptr<GcsPlacementGroup> placement_group_;
+
+  /// Location of bundles that prepare requests were sent.
+  /// If prepare succeeds, the decision will be set as schedule_map[bundles[pos]]
+  /// else will be set NodeID::Nil().
+  std::shared_ptr<BundleLocations> preparing_bundle_locations_;
+
+  /// Location of bundles grouped by node.
+  absl::flat_hash_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
+      grouped_preparing_bundle_locations_;
+
+  /// Number of prepare requests that are returned.
+  size_t prepare_request_returned_count_ = 0;
+
+  /// Number of commit requests that are returned.
+  size_t commit_request_returned_count_ = 0;
+
+  /// Location of bundles that commit requests failed.
+  std::shared_ptr<BundleLocations> uncommitted_bundle_locations_;
+
+  /// Location of bundles that committed requests success.
+  std::shared_ptr<BundleLocations> committed_bundle_locations_;
+
+  /// The leasing stage. This is used to know the state of current leasing context.
+  LeasingState leasing_state_ = LeasingState::PREPARING;
+
+  /// Map from node ID to the set of bundles for whom we are trying to acquire a lease
+  /// from that node. This is needed so that we can retry lease requests from the node
+  /// until we receive a reply or the node is removed.
+  /// TODO(sang): We don't currently handle retry.
+  absl::flat_hash_map<NodeID, absl::flat_hash_set<BundleID>>
+      node_to_bundles_when_preparing_;
+
+  /// Bundles to schedule.
+  std::vector<std::shared_ptr<const BundleSpecification>> bundles_to_schedule_;
+
+  /// Location of bundles.
+  std::shared_ptr<BundleLocations> bundle_locations_;
+};
+
+/// GcsPlacementGroupScheduler is responsible for scheduling placement_groups registered
+/// to GcsPlacementGroupManager. This class is not thread-safe.
+class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
+ public:
+  /// Create a GcsPlacementGroupScheduler
+  ///
+  /// \param io_context The main event loop.
+  /// \param placement_group_info_accessor Used to flush placement_group info to storage.
+  /// \param gcs_node_manager The node manager which is used when scheduling.
+  /// \param cluster_resource_scheduler The resource scheduler which is used when
+  /// scheduling.
+  /// \param raylet_client_pool Pool to get remote raylet client connections.
+  GcsPlacementGroupScheduler(instrumented_io_context &io_context,
+                             gcs::GcsTableStorage &gcs_table_storage,
+                             const GcsNodeManager &gcs_node_manager,
+                             ClusterResourceScheduler &cluster_resource_scheduler,
+                             rpc::RayletClientPool &raylet_client_pool);
+
+  virtual ~GcsPlacementGroupScheduler() = default;
+
+  /// Schedule unplaced bundles of the specified placement group.
+  /// If there is no available nodes then the `schedule_failed_handler` will be
+  /// triggered, otherwise the bundle in placement_group will be added into a queue and
+  /// scheduled to all nodes.
+  ///
+  /// \param placement_group to be scheduled.
+  /// \param failure_callback This function is called if the schedule is failed.
+  /// \param success_callback This function is called if the schedule is successful.
+  void ScheduleUnplacedBundles(const SchedulePgRequest &request) override;
+
+  /// Destroy the actual bundle resources or locked resources (for 2PC)
+  /// on all nodes associated with this placement group.
+  /// The method is idempotent, meaning if all bundles are already cancelled,
+  /// this method won't do anything.
+  ///
+  /// \param placement_group_id The id of a placement group to destroy all bundle
+  /// or locked resources.
+  void DestroyPlacementGroupBundleResourcesIfExists(
+      const PlacementGroupID &placement_group_id) override;
+
+  /// Mark the placement group scheduling is cancelled.
+  /// This method will incur check failure if scheduling
+  /// is not actually going on to guarantee strong consistency.
+  ///
+  /// \param placement_group_id The placement group id scheduling is in progress.
+  void MarkScheduleCancelled(const PlacementGroupID &placement_group_id) override;
+
+  /// Get and remove bundles belong to the specified node.
+  ///
+  /// This is expected to be called on dead node only since it will remove
+  /// the bundles from the node.
+  ///
+  /// \param node_id ID of the dead node.
+  /// \return The bundles belong to the dead node.
+  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetAndRemoveBundlesOnNode(
+      const NodeID &node_id) override;
+
+  /// Get bundles belong to the specified node.
+  ///
+  /// \param node_id ID of a node.
+  /// \return The bundles belong to the node.
+  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
+      const NodeID &node_id) const override;
+
+  /// Notify raylets to release unused bundles.
+  ///
+  /// \param node_to_bundles Bundles used by each node.
+  void ReleaseUnusedBundles(const absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>>
+                                &node_to_bundles) override;
+
+  /// Initialize with the gcs tables data synchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param node_to_bundles Bundles used by each node.
+  /// \param prepared_pgs placement groups in state PREPARED. Need to be committed asap.
+  void Initialize(
+      const absl::flat_hash_map<PlacementGroupID,
+                                std::vector<std::shared_ptr<BundleSpecification>>>
+          &group_to_bundles,
+      const std::vector<SchedulePgRequest> &prepared_pgs) override;
+
+  /// Add resources changed listener.
+  void AddResourcesChangedListener(std::function<void()> listener);
+
+  void HandleWaitingRemovedBundles();
+
+ protected:
+  /// Send bundles PREPARE requests to a node. The PREPARE requests will lock resources
+  /// on a node until COMMIT or CANCEL requests are sent to a node.
+  /// NOTE: All of given bundles will be prepared on the same node. It is guaranteed that
+  /// all of bundles are atomically prepared on a given node.
+  ///
+  /// \param bundles Bundles to be scheduled on a node.
+  /// \param node A node to prepare resources for given bundles.
+  /// \param callback
+  void PrepareResources(
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
+      const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
+      const StatusCallback &callback);
+
+  /// Send bundles COMMIT request to a node. This means the placement group creation
+  /// is ready and GCS will commit resources on a given node.
+  ///
+  /// \param bundles Bundles to be scheduled on a node.
+  /// \param node A node to commit resources for given bundles.
+  /// \param callback
+  void CommitResources(
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
+      const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
+      const StatusCallback callback);
+
+  /// Cacnel prepared or committed resources from a node.
+  /// Nodes will be in charge of tracking state of a bundle.
+  /// This method is supposed to be idempotent.
+  ///
+  /// \param bundle A description of the bundle to return.
+  /// \param node The node that the worker will be returned for.
+  /// \param max_retry The maximum times cancel request can be retried.
+  /// \param retry_cnt The number of times the cancel request is retried.
+  void CancelResourceReserve(
+      const std::shared_ptr<const BundleSpecification> &bundle_spec,
+      const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
+      int max_retry,
+      int current_retry_cnt);
+
+  /// Get an existing lease client or connect a new one or connect a new one.
+  std::shared_ptr<RayletClientInterface> GetOrConnectRayletClient(
+      const rpc::Address &raylet_address);
+
+  /// Get an existing lease client for a given node.
+  std::shared_ptr<RayletClientInterface> GetRayletClientFromNode(
+      const std::shared_ptr<const ray::rpc::GcsNodeInfo> &node);
+
+  /// Called when all prepare requests are returned from nodes.
+  void OnAllBundlePrepareRequestReturned(
+      const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
+      const PGSchedulingFailureCallback &schedule_failure_handler,
+      const PGSchedulingSuccessfulCallback &schedule_success_handler);
+
+  /// Called when all commit requests are returned from nodes.
+  void OnAllBundleCommitRequestReturned(
+      const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
+      const PGSchedulingFailureCallback &schedule_failure_handler,
+      const PGSchedulingSuccessfulCallback &schedule_success_handler);
+
+  /// Commit all bundles recorded in lease status tracker.
+  void CommitAllBundles(const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
+                        const PGSchedulingFailureCallback &schedule_failure_handler,
+                        const PGSchedulingSuccessfulCallback &schedule_success_handler);
+
+  /// Destroy the prepared bundle resources with this placement group.
+  /// The method is idempotent, meaning if all bundles are already cancelled,
+  /// this method won't do anything.
+  ///
+  /// \param placement_group_id The id of a placement group to destroy all prepared
+  /// bundles.
+  void DestroyPlacementGroupPreparedBundleResources(
+      const PlacementGroupID &placement_group_id);
+
+  /// Destroy the committed bundle resources with this placement group.
+  /// The method is idempotent, meaning if all bundles are already cancelled,
+  /// this method won't do anything.
+  ///
+  /// \param placement_group_id The id of a placement group to destroy all committed
+  /// bundles.
+  void DestroyPlacementGroupCommittedBundleResources(
+      const PlacementGroupID &placement_group_id);
+
+  /// Acquire the bundle resources from the cluster resources.
+  void AcquireBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
+
+  /// Commit the bundle resources to the cluster resources.
+  void CommitBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
+
+  /// Return the bundle resources to the cluster resources.
+  /// It will remove bundle resources AND also add original resources back.
+  void ReturnBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
+
+  /// Create scheduling context.
+  std::unique_ptr<BundleSchedulingContext> CreateSchedulingContext(
+      const PlacementGroupID &placement_group_id);
+
+  /// Create scheduling options.
+  SchedulingOptions CreateSchedulingOptions(const PlacementGroupID &placement_group_id,
+                                            rpc::PlacementStrategy strategy,
+                                            NodeID soft_target_node_id);
+
+  /// Try to release bundle resource to cluster resource manager.
+  ///
+  /// \param bundle The node to which the bundle is scheduled and the bundle's
+  /// specification.
+  /// \return True if the bundle is succesfully released. False otherwise.
+  bool TryReleasingBundleResources(
+      const std::pair<NodeID, std::shared_ptr<const BundleSpecification>> &bundle);
+
+  /// Help function to check if the resource_name has the pattern
+  /// {original_resource_name}_group_{placement_group_id}, which means
+  /// wildcard resource.
+  bool IsPlacementGroupWildcardResource(const std::string &resource_name);
+
+  instrumented_io_context &io_context_;
+
+  /// A timer that ticks every cancel resource failure milliseconds.
+  boost::asio::deadline_timer return_timer_;
+
+  /// Used to update placement group information upon creation, deletion, etc.
+  gcs::GcsTableStorage &gcs_table_storage_;
+
+  /// Reference of GcsNodeManager.
+  const GcsNodeManager &gcs_node_manager_;
+
+  /// Reference of ClusterResourceScheduler.
+  ClusterResourceScheduler &cluster_resource_scheduler_;
+
+  /// Index to lookup committed bundle locations of node or placement group.
+  BundleLocationIndex committed_bundle_location_index_;
+
+  /// Set of placement group that have lease requests in flight to nodes.
+  absl::flat_hash_map<PlacementGroupID, std::shared_ptr<LeaseStatusTracker>>
+      placement_group_leasing_in_progress_;
+
+  /// The cached raylet clients used to communicate with raylets.
+  rpc::RayletClientPool &raylet_client_pool_;
+
+  /// The nodes which are releasing unused bundles.
+  absl::flat_hash_set<NodeID> nodes_of_releasing_unused_bundles_;
+
+  /// The resources changed listeners.
+  std::vector<std::function<void()>> resources_changed_listeners_;
+
+  /// The bundles that waiting to be destroyed and release resources.
+  std::list<std::pair<NodeID, std::shared_ptr<const BundleSpecification>>>
+      waiting_removed_bundles_;
+
+  friend class GcsPlacementGroupSchedulerTest;
+  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
+  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestWaitingRemovedBundles);
+  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestBundlesRemovedWhenNodeDead);
+};
+
+}  // namespace gcs
+}  // namespace ray

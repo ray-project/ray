@@ -23,6 +23,7 @@ from ray_release.result import (
 )
 from ray_release.logger import logger
 from ray_release.util import (
+    ANYSCALE_RAY_IMAGE_PREFIX,
     dict_hash,
     get_read_state_machine_aws_bucket,
     get_write_state_machine_aws_bucket,
@@ -382,6 +383,18 @@ class Test(dict):
         """
         return self.get("env") == "gce"
 
+    def is_kuberay(self) -> bool:
+        """
+        Returns whether this test is running on KubeRay.
+        """
+        return self.get("env") == "kuberay"
+
+    def is_azure(self) -> bool:
+        """
+        Returns whether this test is running on Azure.
+        """
+        return self.get("env") == "azure"
+
     def is_high_impact(self) -> bool:
         # a test is high impact if it catches regressions frequently, this field is
         # populated by the determine_microcheck_tests.py script
@@ -426,7 +439,13 @@ class Test(dict):
         """
         Returns the post-build script for the BYOD cluster.
         """
-        return self["cluster"]["byod"].get("post_build_script")
+        return self["cluster"]["byod"].get("post_build_script", None)
+
+    def get_byod_python_depset(self) -> Optional[str]:
+        """
+        Returns the lock file path.
+        """
+        return self["cluster"]["byod"].get("python_depset", None)
 
     def get_byod_runtime_env(self) -> Dict[str, str]:
         """
@@ -451,6 +470,14 @@ class Test(dict):
         Returns the list of pips for the BYOD cluster.
         """
         return self["cluster"]["byod"].get("pip", [])
+
+    def get_ray_version(self) -> Optional[str]:
+        """
+        Returns the Ray version to use from DockerHub if specified in cluster config.
+        If set, this will use released Ray images like anyscale/ray:2.50.0-py39-cpu
+        instead of building custom BYOD images.
+        """
+        return self["cluster"].get("ray_version", None)
 
     def get_name(self) -> str:
         """
@@ -525,7 +552,7 @@ class Test(dict):
         """
         return self.get("python", ".".join(str(v) for v in DEFAULT_PYTHON_VERSION))
 
-    def get_byod_base_image_tag(self) -> str:
+    def get_byod_base_image_tag(self, build_id: Optional[str] = None) -> str:
         """
         Returns the byod image tag to use for this test.
         """
@@ -535,34 +562,27 @@ class Test(dict):
             # TODO(can): this is a temporary backdoor that should be removed
             # once civ2 is fully rolled out.
             return byod_image_tag
-        commit = os.environ.get(
-            "COMMIT_TO_TEST",
-            os.environ["BUILDKITE_COMMIT"],
-        )
-        branch = os.environ.get(
-            "BRANCH_TO_TEST",
-            os.environ["BUILDKITE_BRANCH"],
-        )
-        pr = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
-        ray_version = commit[:6]
-        if pr != "false":
-            ray_version = f"pr-{pr}.{ray_version}"
-        elif branch.startswith("releases/"):
-            release_name = branch[len("releases/") :]
-            ray_version = f"{release_name}.{ray_version}"
-        python_version = f"py{self.get_python_version().replace('.',   '')}"
-        return f"{ray_version}-{python_version}-{self.get_tag_suffix()}"
+        build_id = build_id or os.environ.get("RAYCI_BUILD_ID", "")
+        if not build_id:
+            raise ValueError("RAYCI_BUILD_ID is not set")
+        python_version = "py" + self.get_python_version().replace(".", "")
+        return f"{build_id}-{python_version}-{self.get_tag_suffix()}"
 
-    def get_byod_image_tag(self) -> str:
+    def get_byod_image_tag(self, build_id: Optional[str] = None) -> str:
         """
         Returns the byod custom image tag to use for this test.
         """
         if not self.require_custom_byod_image():
-            return self.get_byod_base_image_tag()
+            return self.get_byod_base_image_tag(build_id)
         custom_info = {
             "post_build_script": self.get_byod_post_build_script(),
+            "python_depset": self.get_byod_python_depset(),
         }
-        return f"{self.get_byod_base_image_tag()}-{dict_hash(custom_info)}"
+        tag = f"{self.get_byod_base_image_tag(build_id)}-{dict_hash(custom_info)}"
+        ray_version = self.get_ray_version()
+        if ray_version:
+            tag = f"{tag}-{ray_version}"
+        return tag
 
     def use_byod_ml_image(self) -> bool:
         """Returns whether to use the ML image for this test."""
@@ -585,8 +605,10 @@ class Test(dict):
         """
         Returns the anyscale byod ecr to use for this test.
         """
-        if self.is_gce():
+        if self.is_gce() or self.is_kuberay():
             return get_global_config()["byod_gcp_cr"]
+        if self.is_azure():
+            return get_global_config()["byod_azure_cr"]
         byod_ecr = get_global_config()["byod_aws_cr"]
         if byod_ecr:
             return byod_ecr
@@ -611,29 +633,50 @@ class Test(dict):
         tag = self.get_byod_base_image_tag()
         return f"{ecr}/{repo_name}:{tag}"
 
-    def get_anyscale_base_byod_image(self) -> str:
+    def get_anyscale_base_byod_image(self, build_id: Optional[str] = None) -> str:
         """
         Returns the anyscale byod image to use for this test.
         """
+        ray_version = self.get_ray_version()
+        if ray_version:
+            python_version = "py" + self.get_python_version().replace(".", "")
+            tag_suffix = self.get_tag_suffix()
+            if tag_suffix == "gpu":
+                tag_suffix = "cu121"
+            return f"{ANYSCALE_RAY_IMAGE_PREFIX}:{ray_version}-{python_version}-{tag_suffix}"
         return (
             f"{self.get_byod_ecr()}/"
-            f"{self.get_byod_repo()}:{self.get_byod_base_image_tag()}"
+            f"{self.get_byod_repo()}:{self.get_byod_base_image_tag(build_id)}"
         )
 
     def require_custom_byod_image(self) -> bool:
         """
         Returns whether this test requires a custom byod image.
         """
-        return self.get_byod_post_build_script() is not None
+        return (
+            self.get_byod_post_build_script() is not None
+            or self.get_byod_python_depset() is not None
+        )
 
-    def get_anyscale_byod_image(self) -> str:
+    def get_anyscale_byod_image(self, build_id: Optional[str] = None) -> str:
         """
         Returns the anyscale byod image to use for this test.
+        If ray_version is specified in cluster config, returns anyscale/ray image.
         """
-        return (
-            f"{self.get_byod_ecr()}/"
-            f"{self.get_byod_repo()}:{self.get_byod_image_tag()}"
+        ray_version = self.get_ray_version()
+        if not ray_version or self.require_custom_byod_image():
+            # Use custom BYOD image
+            return (
+                f"{self.get_byod_ecr()}/"
+                f"{self.get_byod_repo()}:{self.get_byod_image_tag(build_id)}"
+            )
+
+        python_version = "py" + self.get_python_version().replace(".", "")
+        tag_suffix = (
+            "cu121" if self.get_tag_suffix() == "gpu" else self.get_tag_suffix()
         )
+        tag = f"{ray_version}-{python_version}-{tag_suffix}"
+        return f"{ANYSCALE_RAY_IMAGE_PREFIX}:{tag}"
 
     def get_test_results(
         self,

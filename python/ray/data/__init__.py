@@ -5,7 +5,7 @@ from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version
 
-from ray.data._internal.compute import ActorPoolStrategy
+from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -52,19 +52,23 @@ from ray.data.read_api import (  # noqa: F401
     read_csv,
     read_databricks_tables,
     read_datasource,
+    read_delta,
     read_delta_sharing_tables,
     read_hudi,
     read_iceberg,
     read_images,
     read_json,
     read_lance,
+    read_mcap,
     read_mongo,
     read_numpy,
     read_parquet,
     read_parquet_bulk,
+    read_snowflake,
     read_sql,
     read_text,
     read_tfrecords,
+    read_unity_catalog,
     read_videos,
     read_webdataset,
 )
@@ -78,14 +82,20 @@ configure_logging()
 try:
     import pyarrow as pa
 
+    # Import these arrow extension types to ensure that they are registered.
+    from ray.air.util.tensor_extensions.arrow import (  # noqa
+        ArrowTensorType,
+        ArrowVariableShapedTensorType,
+    )
+
     # https://github.com/apache/arrow/pull/38608 deprecated `PyExtensionType`, and
     # disabled it's deserialization by default. To ensure that users can load data
     # written with earlier version of Ray Data, we enable auto-loading of serialized
     # tensor extensions.
+    #
+    # NOTE: `PyExtensionType` is deleted from Arrow >= 21.0
     pyarrow_version = get_pyarrow_version()
-    if pyarrow_version is None:
-        # PyArrow is mocked in documentation builds. In this case, we don't need to do
-        # anything.
+    if pyarrow_version is None or pyarrow_version >= parse_version("21.0.0"):
         pass
     else:
         from ray._private.ray_constants import env_bool
@@ -99,11 +109,7 @@ try:
             and RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE
         ):
             pa.PyExtensionType.set_auto_load(True)
-        # Import these arrow extension types to ensure that they are registered.
-        from ray.air.util.tensor_extensions.arrow import (  # noqa
-            ArrowTensorType,
-            ArrowVariableShapedTensorType,
-        )
+
 except ModuleNotFoundError:
     pass
 
@@ -127,6 +133,7 @@ __all__ = [
     "RowBasedFileDatasink",
     "Schema",
     "SinkMode",
+    "TaskPoolStrategy",
     "from_daft",
     "from_dask",
     "from_items",
@@ -151,18 +158,22 @@ __all__ = [
     "read_clickhouse",
     "read_csv",
     "read_datasource",
+    "read_delta",
     "read_delta_sharing_tables",
     "read_hudi",
     "read_iceberg",
     "read_images",
     "read_json",
     "read_lance",
+    "read_mcap",
     "read_numpy",
     "read_mongo",
     "read_parquet",
     "read_parquet_bulk",
+    "read_snowflake",
     "read_sql",
     "read_tfrecords",
+    "read_unity_catalog",
     "read_videos",
     "read_webdataset",
     "Preprocessor",

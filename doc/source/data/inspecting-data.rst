@@ -123,12 +123,11 @@ of the returned batch, set ``batch_format``.
             print(batch)
 
         .. testoutput::
-            :options: +NORMALIZE_WHITESPACE
+            :options: +MOCK
 
                sepal length (cm)  sepal width (cm)  ...  petal width (cm)  target
             0                5.1               3.5  ...               0.2       0
             1                4.9               3.0  ...               0.2       0
-            <BLANKLINE>
 
 For more information on working with batches, see
 :ref:`Transforming batches <transforming_batches>` and
@@ -143,7 +142,10 @@ Ray Data calculates statistics during execution for each operator, such as wall 
 To view stats about your :class:`Datasets <ray.data.Dataset>`, call :meth:`Dataset.stats() <ray.data.Dataset.stats>` on an executed dataset. The stats are also persisted under `/tmp/ray/session_*/logs/ray-data/ray-data.log`.
 For more on how to read this output, see :ref:`Monitoring Your Workload with the Ray Data Dashboard <monitoring-your-workload>`.
 
+.. This snippet below is skipped because of  https://github.com/ray-project/ray/issues/54101.
+
 .. testcode::
+    :skipif: True
 
     import ray
     import datasets

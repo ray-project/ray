@@ -41,6 +41,9 @@ class WorkerHealthCheckFailedError(RayTrainError):
     def __reduce__(self):
         return (self.__class__, (self._message, self.health_check_failure))
 
+    def __str__(self):
+        return self._message + "\n" + str(self.health_check_failure)
+
 
 class WorkerGroupStartupTimeoutError(RayTrainError):
     """Exception raised when the worker group startup times out.
@@ -80,6 +83,14 @@ class WorkerGroupStartupFailedError(RayTrainError):
 
     Example scenario: A worker is scheduled onto a node that dies while
     the worker actor is initializing.
+    """
+
+
+class InsufficientClusterResourcesError(RayTrainError):
+    """Exception raised when the cluster has insufficient resources.
+
+    Example scenario: A worker that requires 1 GPU is scheduled onto a cluster
+    that only has CPU worker node types.
     """
 
 

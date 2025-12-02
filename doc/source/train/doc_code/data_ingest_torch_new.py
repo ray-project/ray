@@ -92,7 +92,7 @@ train_ds = train_ds.map_batches(augment_data)
 from ray.train import DataConfig
 
 options = DataConfig.default_ingest_options()
-options.resource_limits.object_store_memory = 10e9
+options.resource_limits = options.resource_limits.copy(object_store_memory=10e9)
 
 
 my_trainer = TorchTrainer(

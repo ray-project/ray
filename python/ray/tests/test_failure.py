@@ -1,26 +1,22 @@
+import logging
 import os
 import signal
 import sys
-import time
-import logging
 import threading
+import time
 
 import numpy as np
 import pytest
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
-    SignalActor,
-    convert_actor_state,
     get_error_message,
     init_error_pubsub,
-    wait_for_condition,
 )
-from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError, ActorDiedError
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.exceptions import ActorDiedError, GetTimeoutError, RayActorError, RayTaskError
 
 
 def test_unhandled_errors(ray_start_regular):
@@ -295,14 +291,15 @@ def test_actor_scope_or_intentionally_killed_message(ray_start_regular, error_pu
             pass
 
     a = Actor.remote()
-    # Without this waiting, there seems to be race condition happening
-    # in the CI. This is not a fundamental fix for that, but it at least
-    # makes the test less flaky.
     ray.get(a.ping.remote())
+    del a
+
     a = Actor.remote()
-    a.__ray_terminate__.remote()
-    time.sleep(1)
-    errors = get_error_message(p, 1)
+    ray.get(a.ping.remote())
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(a.__ray_terminate__.remote())
+
+    errors = get_error_message(p, 1, timeout=1)
     assert len(errors) == 0, "Should not have propogated an error - {}".format(errors)
 
 
@@ -320,8 +317,6 @@ def test_mixed_hanging_and_exception_should_not_hang(ray_start_regular):
         raise ValueError
 
     def print_and_sleep_forever(i):
-        import time
-
         print(i)
         while True:
             time.sleep(3600)
@@ -351,8 +346,6 @@ def test_mixed_hanging_and_died_actor_should_not_hang(ray_start_regular):
             ray.actor.exit_actor()
 
     def print_and_sleep_forever(i):
-        import time
-
         print(i)
         while True:
             time.sleep(3600)
@@ -382,26 +375,6 @@ def test_exception_chain(ray_start_regular):
         ray.get(r)
     except ZeroDivisionError as ex:
         assert isinstance(ex, RayTaskError)
-
-
-def test_baseexception_task(ray_start_regular):
-    @ray.remote
-    def task():
-        raise BaseException("abc")
-
-    with pytest.raises(ray.exceptions.WorkerCrashedError):
-        ray.get(task.remote())
-
-
-def test_baseexception_actor(ray_start_regular):
-    @ray.remote
-    class Actor:
-        def f(self):
-            raise BaseException("abc")
-
-    with pytest.raises(ActorDiedError):
-        a = Actor.remote()
-        ray.get(a.f.remote())
 
 
 @pytest.mark.skip("This test does not work yet.")
@@ -541,52 +514,32 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
     assert errors[0]["type"] == ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR
 
 
-@pytest.mark.parametrize("sync", [True, False])
-def test_warning_many_actor_tasks_queued(shutdown_only, sync: bool):
+def test_warning_many_actor_tasks_queued(shutdown_only):
     ray.init(num_cpus=1)
     p = init_error_pubsub()
 
     @ray.remote(num_cpus=1)
-    class SyncFoo:
+    class Foo:
         def f(self):
-            import time
-
             time.sleep(1000)
 
-    @ray.remote(num_cpus=1)
-    class AsyncFoo:
-        async def f(self):
-            import asyncio
-
-            await asyncio.sleep(1000)
-
-    Foo = SyncFoo if sync else AsyncFoo
     a = Foo.remote()
-    [a.f.remote() for _ in range(50000)]
-    errors = get_error_message(p, 4, ray_constants.EXCESS_QUEUEING_WARNING)
+    [a.f.remote() for _ in range(20000)]
+    errors = get_error_message(p, 2, ray_constants.EXCESS_QUEUEING_WARNING)
     msgs = [e["error_message"] for e in errors]
     assert "Warning: More than 5000 tasks are pending submission to actor" in msgs[0]
     assert "Warning: More than 10000 tasks are pending submission to actor" in msgs[1]
-    assert "Warning: More than 20000 tasks are pending submission to actor" in msgs[2]
-    assert "Warning: More than 40000 tasks are pending submission to actor" in msgs[3]
 
 
-@pytest.mark.parametrize("sync", [True, False])
-def test_no_warning_many_actor_tasks_queued_when_sequential(shutdown_only, sync: bool):
+def test_no_warning_many_actor_tasks_queued_when_sequential(shutdown_only):
     ray.init(num_cpus=1)
     p = init_error_pubsub()
 
     @ray.remote(num_cpus=1)
-    class SyncFoo:
+    class Foo:
         def f(self):
             return 1
 
-    @ray.remote(num_cpus=1)
-    class AsyncFoo:
-        async def f(self):
-            return 1
-
-    Foo = SyncFoo if sync else AsyncFoo
     a = Foo.remote()
     for _ in range(10000):
         assert ray.get(a.f.remote()) == 1
@@ -606,6 +559,7 @@ def test_no_warning_many_actor_tasks_queued_when_sequential(shutdown_only, sync:
                 "health_check_period_ms": 100,
                 "timeout_ms_task_wait_for_death_info": 100,
             },
+            "include_dashboard": True,  # for list_actors API
         },
     ],
     indirect=True,
@@ -663,13 +617,11 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
 
     # Wait for the actor to be alive again in a new worker process.
     def check_actor_restart():
-        actors = list(ray._private.state.actors().values())
+        actors = ray.util.state.list_actors(
+            detail=True
+        )  # detail is needed for num_restarts to populate
         assert len(actors) == 1
-        print(actors)
-        return (
-            actors[0]["State"] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
-            and actors[0]["NumRestarts"] == 1
-        )
+        return actors[0].state == "ALIVE" and actors[0].num_restarts == 1
 
     wait_for_condition(check_actor_restart)
 
@@ -735,68 +687,33 @@ def test_final_user_exception(ray_start_regular, propagate_logs, caplog):
     caplog.clear()
 
 
-def test_transient_error_retry(monkeypatch, ray_start_cluster):
-    with monkeypatch.context() as m:
-        # This test submits 200 tasks with infinite retries and verifies that all tasks eventually succeed in the unstable network environment.
-        m.setenv(
-            "RAY_testing_rpc_failure",
-            "CoreWorkerService.grpc_client.PushTask=100:25:25",
-        )
-        cluster = ray_start_cluster
-        cluster.add_node(
-            num_cpus=1,
-            resources={"head": 1},
-        )
-        ray.init(address=cluster.address)
+def test_raytaskerror_serialization(ray_start_regular):
+    """Test that RayTaskError with dual exception instances can be properly serialized."""
+    import ray.cloudpickle as pickle
 
-        @ray.remote(max_task_retries=-1, resources={"head": 1})
-        class RetryActor:
-            def echo(self, value):
-                return value
+    class MyException(Exception):
+        def __init__(self, one, two):
+            self.one = one
+            self.two = two
 
-        refs = []
-        actor = RetryActor.remote()
-        for i in range(200):
-            refs.append(actor.echo.remote(i))
-        assert ray.get(refs) == list(range(200))
+        def __reduce__(self):
+            return self.__class__, (self.one, self.two)
 
+    original_exception = MyException("test 1", "test 2")
+    ray_task_error = ray.exceptions.RayTaskError(
+        function_name="test_function",
+        traceback_str="test traceback",
+        cause=original_exception,
+    )
 
-@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
-def test_update_object_location_batch_failure(
-    monkeypatch, ray_start_cluster, deterministic_failure
-):
-    with monkeypatch.context() as m:
-        m.setenv(
-            "RAY_testing_rpc_failure",
-            "CoreWorkerService.grpc_client.UpdateObjectLocationBatch=1:"
-            + ("100:0" if deterministic_failure == "request" else "0:100"),
-        )
-        cluster = ray_start_cluster
-        head_node_id = cluster.add_node(
-            num_cpus=0,
-        ).node_id
-        ray.init(address=cluster.address)
-        worker_node_id = cluster.add_node(num_cpus=1).node_id
+    dual_exception = ray_task_error.make_dual_exception_instance()
+    pickled = pickle.dumps(dual_exception)
+    unpickled = pickle.loads(pickled)
 
-        @ray.remote(num_cpus=1)
-        def create_large_object():
-            return np.zeros(100 * 1024 * 1024, dtype=np.uint8)
-
-        @ray.remote(num_cpus=0)
-        def consume_large_object(obj):
-            return sys.getsizeof(obj)
-
-        obj_ref = create_large_object.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=worker_node_id, soft=False
-            )
-        ).remote()
-        consume_ref = consume_large_object.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=head_node_id, soft=False
-            )
-        ).remote(obj_ref)
-        assert ray.get(consume_ref) > 0
+    assert isinstance(unpickled, ray.exceptions.RayTaskError)
+    assert isinstance(unpickled, MyException)
+    assert unpickled.one == "test 1"
+    assert unpickled.two == "test 2"
 
 
 if __name__ == "__main__":

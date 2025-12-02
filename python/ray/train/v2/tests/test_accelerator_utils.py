@@ -11,13 +11,13 @@ from ray.train.v2._internal.callbacks.accelerators import (
     AcceleratorSetupCallback,
     _get_visible_accelerator_ids_per_worker,
 )
-from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.worker_group import ActorMetadata, WorkerGroup
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
 from ray.train.v2._internal.util import ObjectRefWrapper
-from ray.train.v2.api.config import RunConfig, ScalingConfig
+from ray.train.v2.api.config import ScalingConfig
+from ray.train.v2.tests.util import create_dummy_run_context
 
 
 @pytest.fixture
@@ -98,7 +98,7 @@ def test_missing_accelerator():
         )
 
 
-def test_accelerator_setup_callback(mock_gpu_cluster):
+def test_accelerator_setup_callback(mock_gpu_cluster, mock_runtime_context):
     """The accelerator setup callback should set the CUDA_VISIBLE_DEVICES
     on each worker properly."""
 
@@ -123,15 +123,13 @@ def test_accelerator_setup_callback(mock_gpu_cluster):
     )
 
     worker_group = WorkerGroup(
-        train_run_context=TrainRunContext(run_config=RunConfig()),
+        train_run_context=create_dummy_run_context(),
         worker_group_context=worker_group_context,
     )
-    with pytest.raises(RuntimeError):
-        setup_callback.after_worker_group_start(worker_group)
 
     worker_group._start()
 
-    setup_callback.after_worker_group_start(worker_group)
+    setup_callback.before_init_train_context(worker_group.get_workers())
 
     visible_devices_per_worker = worker_group.execute(
         lambda: os.environ["CUDA_VISIBLE_DEVICES"]

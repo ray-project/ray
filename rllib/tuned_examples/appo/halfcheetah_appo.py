@@ -6,7 +6,6 @@ parser = add_rllib_example_script_args(
     default_timesteps=100000000,
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     env="HalfCheetah-v4",
 )
 args = parser.parse_args()

@@ -1,17 +1,20 @@
 import sys
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from typing import Tuple
+from urllib.parse import urljoin
 
 import grpc
+import httpx
 import pytest
-import requests
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 from starlette.requests import Request
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.common import RequestProtocol
+from ray.serve._private.test_utils import get_application_url
 from ray.serve.exceptions import BackPressureError
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
@@ -66,7 +69,8 @@ def test_http_backpressure(serve_instance):
 
     @ray.remote(num_cpus=0)
     def do_request(msg: str) -> Tuple[int, str]:
-        r = requests.get("http://localhost:8000/", json={"msg": msg})
+        application_url = get_application_url()
+        r = httpx.request("GET", application_url, json={"msg": msg}, timeout=30.0)
         return r.status_code, r.text
 
     # First response should block. Until the signal is sent, all subsequent requests
@@ -109,7 +113,9 @@ def test_grpc_backpressure(serve_instance):
 
     @ray.remote(num_cpus=0)
     def do_request(msg: str) -> Tuple[grpc.StatusCode, str]:
-        channel = grpc.insecure_channel("localhost:9000")
+        channel = grpc.insecure_channel(
+            get_application_url(protocol=RequestProtocol.GRPC)
+        )
         stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
         try:
             response, call = stub.__call__.with_call(
@@ -131,7 +137,7 @@ def test_grpc_backpressure(serve_instance):
     _, pending = ray.wait([second_ref], timeout=0.1)
     for _ in range(10):
         status_code, text = ray.get(do_request.remote(("hi-err")))
-        assert status_code == grpc.StatusCode.UNAVAILABLE
+        assert status_code == grpc.StatusCode.RESOURCE_EXHAUSTED
         assert text.startswith("Request dropped due to backpressure")
 
     # Send the signal; the first request will be unblocked and the second should
@@ -162,7 +168,7 @@ def test_model_composition_backpressure(serve_instance):
             return await self.child.remote()
 
     def send_request():
-        return requests.get("http://localhost:8000/")
+        return httpx.get(get_application_url())
 
     serve.run(Parent.bind(child=Child.bind()))
     with ThreadPoolExecutor(max_workers=3) as exc:
@@ -234,10 +240,10 @@ def test_model_composition_backpressure_with_fastapi(serve_instance, request_typ
 
     def send_request():
         url_map = {
-            "async_non_gen": "http://localhost:8000/async_non_gen",
-            "sync_non_gen": "http://localhost:8000/sync_non_gen",
+            "async_non_gen": urljoin(get_application_url(), "async_non_gen"),
+            "sync_non_gen": urljoin(get_application_url(), "sync_non_gen"),
         }
-        resp = requests.get(url_map[request_type])
+        resp = httpx.get(url_map[request_type])
         return resp
 
     serve.run(Parent.bind(child=Child.bind()))

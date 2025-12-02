@@ -3,12 +3,22 @@ import logging
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
 from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
-from ray.data._internal.execution.autoscaler.autoscaling_actor_pool import (
+from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     AutoscalingActorPool,
 )
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -18,11 +28,22 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
+from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import StatsDict, Timer
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
+
+if TYPE_CHECKING:
+
+    from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
 
+# Timeout for getting metadata from Ray object references (in seconds)
+METADATA_GET_TIMEOUT_S = 1.0
+
+# Timeout for waiting for metadata object to become available (in seconds)
+METADATA_WAIT_TIMEOUT_S = 0.1
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
 Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
@@ -78,16 +99,28 @@ class DataOpTask(OpTask):
         self,
         task_index: int,
         streaming_gen: ObjectRefGenerator,
-        output_ready_callback: Callable[[RefBundle], None],
-        task_done_callback: Callable[[Optional[Exception]], None],
+        output_ready_callback: Callable[[RefBundle], None] = lambda bundle: None,
+        task_done_callback: Callable[[Optional[Exception]], None] = lambda exc: None,
+        block_ready_callback: Callable[
+            [ray.ObjectRef[Block]], None
+        ] = lambda block_ref: None,
+        metadata_ready_callback: Callable[
+            [ray.ObjectRef[BlockMetadata]], None
+        ] = lambda metadata_ref: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
     ):
-        """
+        """Create a DataOpTask
         Args:
+            task_index: Index of the task. Used for callbacks.
             streaming_gen: The streaming generator of this task. It should yield blocks.
             output_ready_callback: The callback to call when a new RefBundle is output
                 from the generator.
             task_done_callback: The callback to call when the task is done.
+            block_ready_callback: A callback that's invoked when a new block reference
+                is ready. This is exposed as a seam for testing.
+            metadata_ready_callback: A callback that's invoked when a new block metadata
+                reference is ready. This is exposed as a seam for testing.
+            task_resource_bundle: The execution resources of this task.
         """
         super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
@@ -97,6 +130,17 @@ class DataOpTask(OpTask):
         self._streaming_gen = streaming_gen
         self._output_ready_callback = output_ready_callback
         self._task_done_callback = task_done_callback
+        self._block_ready_callback = block_ready_callback
+        self._metadata_ready_callback = metadata_ready_callback
+
+        # If the generator hasn't produced block metadata yet, or if the block metadata
+        # object isn't available after we get a reference, we need store the pending
+        # references and wait until Ray (re)constructs the block metadata. Either case
+        # can happen if a node dies after producing a block.
+        self._pending_block_ref: ray.ObjectRef[Block] = ray.ObjectRef.nil()
+        self._pending_meta_ref: ray.ObjectRef[BlockMetadata] = ray.ObjectRef.nil()
+
+        self._has_finished = False
 
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
@@ -111,36 +155,94 @@ class DataOpTask(OpTask):
         """
         bytes_read = 0
         while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
-            try:
-                block_ref = self._streaming_gen._next_sync(0)
-                if block_ref.is_nil():
+            if self._pending_block_ref.is_nil():
+                assert self._pending_meta_ref.is_nil(), (
+                    "This method expects streaming generators to yield blocks then "
+                    "metadata. So, if we have a reference to metadata but not the "
+                    "block, it means there's an error in the implementation."
+                )
+
+                try:
+                    self._pending_block_ref = self._streaming_gen._next_sync(
+                        timeout_s=0
+                    )
+                except StopIteration:
+                    self._task_done_callback(None)
+                    self._has_finished = True
+                    break
+
+                if self._pending_block_ref.is_nil():
                     # The generator currently doesn't have new output.
                     # And it's not stopped yet.
                     break
-            except StopIteration:
-                self._task_done_callback(None)
-                break
+
+                self._block_ready_callback(self._pending_block_ref)
+
+            if self._pending_meta_ref.is_nil():
+                try:
+                    self._pending_meta_ref = self._streaming_gen._next_sync(
+                        timeout_s=METADATA_WAIT_TIMEOUT_S
+                    )
+                except StopIteration:
+                    # The generator should always yield 2 values (block and metadata)
+                    # each time. If we get a StopIteration here, it means an error
+                    # happened in the task.
+                    # And in this case, the block_ref is the exception object.
+                    # TODO(hchen): Ray Core should have a better interface for
+                    # detecting and obtaining the exception.
+                    try:
+                        ray.get(self._pending_block_ref)
+                        assert False, "Above ray.get should raise an exception."
+                    except Exception as ex:
+                        self._task_done_callback(ex)
+                        self._has_finished = True
+                        raise ex from None
+
+                if self._pending_meta_ref.is_nil():
+                    # We have a reference to the block but the metadata isn't ready
+                    # yet.
+                    break
+
+                self._metadata_ready_callback(self._pending_meta_ref)
 
             try:
-                meta = ray.get(next(self._streaming_gen))
-            except StopIteration:
-                # The generator should always yield 2 values (block and metadata)
-                # each time. If we get a StopIteration here, it means an error
-                # happened in the task.
-                # And in this case, the block_ref is the exception object.
-                # TODO(hchen): Ray Core should have a better interface for
-                # detecting and obtaining the exception.
-                try:
-                    ray.get(block_ref)
-                    assert False, "Above ray.get should raise an exception."
-                except Exception as ex:
-                    self._task_done_callback(ex)
-                    raise ex from None
+                # The timeout for `ray.get` includes the time required to ship the
+                # block metadata to this node. So, if we set the timeout to 0, `ray.get`
+                # will timeout and possible cancel the download. To avoid this issue,
+                # we set the timeout to a small non-zero value.
+                meta_with_schema: "BlockMetadataWithSchema" = ray.get(
+                    self._pending_meta_ref, timeout=METADATA_GET_TIMEOUT_S
+                )
+            except ray.exceptions.GetTimeoutError:
+                # We have a reference to the block and its metadata, but the metadata
+                # object isn't available. This can happen if the node dies.
+                logger.warning(
+                    f"Metadata object not ready for "
+                    f"ref={self._pending_meta_ref.hex()} "
+                    f"(operator={self.__class__.__name__}). "
+                    f"Metadata may still be computing or worker may have failed and "
+                    f"object is being reconstructed. Will retry in next iteration."
+                )
+                break
+
+            meta = meta_with_schema.metadata
             self._output_ready_callback(
-                RefBundle([(block_ref, meta)], owns_blocks=True)
+                RefBundle(
+                    [(self._pending_block_ref, meta)],
+                    owns_blocks=True,
+                    schema=meta_with_schema.schema,
+                ),
             )
+            self._pending_block_ref = ray.ObjectRef.nil()
+            self._pending_meta_ref = ray.ObjectRef.nil()
+
             bytes_read += meta.size_bytes
+
         return bytes_read
+
+    @property
+    def has_finished(self) -> bool:
+        return self._has_finished
 
 
 class MetadataOpTask(OpTask):
@@ -225,15 +327,16 @@ class PhysicalOperator(Operator):
         name: str,
         input_dependencies: List["PhysicalOperator"],
         data_context: DataContext,
-        target_max_block_size: Optional[int],
+        target_max_block_size_override: Optional[int] = None,
     ):
         super().__init__(name, input_dependencies)
 
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
-        self._output_block_size_option = None
-        self.set_target_max_block_size(target_max_block_size)
+        self._output_block_size_option_override = OutputBlockSizeOption.of(
+            target_max_block_size=target_max_block_size_override
+        )
         self._started = False
         self._shutdown = False
         self._in_task_submission_backpressure = False
@@ -281,33 +384,20 @@ class PhysicalOperator(Operator):
         self._logical_operators = list(logical_ops)
 
     @property
-    def target_max_block_size(self) -> Optional[int]:
+    def target_max_block_size_override(self) -> Optional[int]:
         """
         Target max block size output by this operator. If this returns None,
         then the default from DataContext should be used.
         """
-        if self._output_block_size_option is None:
+        if self._output_block_size_option_override is None:
             return None
         else:
-            return self._output_block_size_option.target_max_block_size
+            return self._output_block_size_option_override.target_max_block_size
 
-    @property
-    def actual_target_max_block_size(self) -> int:
-        """
-        The actual target max block size output by this operator.
-        """
-        target_max_block_size = self.target_max_block_size
-        if target_max_block_size is None:
-            target_max_block_size = self.data_context.target_max_block_size
-        return target_max_block_size
-
-    def set_target_max_block_size(self, target_max_block_size: Optional[int]):
-        if target_max_block_size is not None:
-            self._output_block_size_option = OutputBlockSizeOption(
-                target_max_block_size=target_max_block_size
-            )
-        elif self._output_block_size_option is not None:
-            self._output_block_size_option = None
+    def override_target_max_block_size(self, target_max_block_size: Optional[int]):
+        self._output_block_size_option_override = OutputBlockSizeOption.of(
+            target_max_block_size=target_max_block_size
+        )
 
     def mark_execution_finished(self):
         """Manually mark that this operator has finished execution."""
@@ -363,6 +453,49 @@ class PhysicalOperator(Operator):
         """Subclasses should override this method to report extra metrics
         that are specific to them."""
         return {}
+
+    def _get_logical_args(self) -> Dict[str, Dict[str, Any]]:
+        """Return the logical arguments that were translated to create this
+        PhysicalOperator."""
+        res = {}
+        for i, logical_op in enumerate(self._logical_operators):
+            logical_op_id = f"{logical_op}_{i}"
+            res[logical_op_id] = logical_op._get_args()
+        return res
+
+    # TODO(@balaji): Disambiguate this with `incremental_resource_usage`.
+    def per_task_resource_allocation(
+        self: "PhysicalOperator",
+    ) -> ExecutionResources:
+        """The amount of logical resources used by each task.
+
+        For regular tasks, these are the resources required to schedule a task. For
+        actor tasks, these are the resources required to schedule an actor divided by
+        the number of actor threads (i.e., `max_concurrency`).
+
+        Returns:
+            The resource requirement per task.
+        """
+        return ExecutionResources.zero()
+
+    def max_task_concurrency(self: "PhysicalOperator") -> Optional[int]:
+        """The maximum number of tasks that can be run concurrently.
+
+        Some operators manually configure a maximum concurrency. For example, if you
+        specify `concurrency` in `map_batches`.
+        """
+        return None
+
+    # TODO(@balaji): Disambiguate this with `base_resource_usage`.
+    def min_scheduling_resources(
+        self: "PhysicalOperator",
+    ) -> ExecutionResources:
+        """The minimum resource bundle required to schedule a worker.
+
+        For regular tasks, this is the resources required to schedule a task. For actor
+        tasks, this is the resources required to schedule an actor.
+        """
+        return ExecutionResources.zero()
 
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.
@@ -599,6 +732,18 @@ class PhysicalOperator(Operator):
             self._metrics.on_toggle_task_submission_backpressure(in_backpressure)
             self._in_task_submission_backpressure = in_backpressure
 
+    def notify_in_task_output_backpressure(self, in_backpressure: bool) -> None:
+        """Called periodically from the executor to update internal output backpressure
+        status for stats collection purposes.
+
+        Args:
+            in_backpressure: Value this operator's output backpressure should be set to.
+        """
+        # only update on change to in_backpressure
+        if self._in_task_output_backpressure != in_backpressure:
+            self._metrics.on_toggle_task_output_backpressure(in_backpressure)
+            self._in_task_output_backpressure = in_backpressure
+
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         """Return a list of `AutoscalingActorPool`s managed by this operator."""
         return []
@@ -655,9 +800,74 @@ class PhysicalOperator(Operator):
                     # In all cases, we swallow the exception.
                     pass
 
+    def upstream_op_num_outputs(self):
+        upstream_op_num_outputs = sum(
+            op.num_outputs_total() or 0 for op in self.input_dependencies
+        )
+        return upstream_op_num_outputs
+
 
 class ReportsExtraResourceUsage(abc.ABC):
     @abc.abstractmethod
     def extra_resource_usage(self: PhysicalOperator) -> ExecutionResources:
         """Returns resources used by this operator beyond standard accounting."""
         ...
+
+
+def estimate_total_num_of_blocks(
+    num_tasks_submitted: int,
+    upstream_op_num_outputs: int,
+    metrics: OpRuntimeMetrics,
+    total_num_tasks: Optional[int] = None,
+) -> Tuple[int, int, int]:
+    """This method is trying to estimate total number of blocks/rows based on
+    - How many outputs produced by the input deps
+    - How many blocks/rows produced by tasks of this operator
+    """
+
+    if (
+        upstream_op_num_outputs > 0
+        and metrics.num_inputs_received > 0
+        and metrics.num_tasks_finished > 0
+    ):
+        estimated_num_tasks = total_num_tasks
+        if estimated_num_tasks is None:
+            estimated_num_tasks = (
+                upstream_op_num_outputs
+                / metrics.num_inputs_received
+                * num_tasks_submitted
+            )
+
+        estimated_num_output_bundles = round(
+            estimated_num_tasks
+            * metrics.num_outputs_of_finished_tasks
+            / metrics.num_tasks_finished
+        )
+        estimated_output_num_rows = round(
+            estimated_num_tasks
+            * metrics.rows_task_outputs_generated
+            / metrics.num_tasks_finished
+        )
+        return (
+            estimated_num_tasks,
+            estimated_num_output_bundles,
+            estimated_output_num_rows,
+        )
+
+    return (0, 0, 0)
+
+
+def _create_sub_pb(
+    name: str, total_output_rows: Optional[int], position: int
+) -> Tuple[ProgressBar, int]:
+    progress_bar = ProgressBar(
+        name,
+        total_output_rows or 1,
+        unit="row",
+        position=position,
+    )
+    # NOTE: call `set_description` to trigger the initial print of progress
+    # bar on console.
+    progress_bar.set_description(f"  *- {name}")
+    position += 1
+    return progress_bar, position

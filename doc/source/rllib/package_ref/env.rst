@@ -21,12 +21,6 @@ gymnasium's own `vectorization feature <https://gymnasium.farama.org/api/vector/
 Use the `config.env_runners(num_envs_per_env_runner=..)` setting to vectorize your env
 beyond 1 env copy.
 
-.. note::
-
-    Unlike single-agent environments, multi-agent setups aren't vectorizable yet.
-    The Ray team is working on a solution for this restriction by using
-    the `gymnasium >= 1.x` custom vectorization feature.
-
 
 External Envs
 -------------
@@ -55,4 +49,5 @@ Environment API Reference
    env/multi_agent_env.rst
    env/multi_agent_env_runner.rst
    env/multi_agent_episode.rst
+   env/external.rst
    env/utils.rst

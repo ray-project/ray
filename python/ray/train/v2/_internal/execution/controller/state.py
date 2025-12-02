@@ -23,6 +23,7 @@ class TrainControllerStateType(Enum):
        ERRORED: A terminal state indicating that training has encountered an error and
            cannot continue.
        FINISHED: A terminal state indicating that training has completed.
+       ABORTED: A terminal state indicating that training has been aborted.
 
     Args:
         state_name: The name of the state.
@@ -40,6 +41,7 @@ class TrainControllerStateType(Enum):
     RESIZING = ("RESIZING", False, True)
     ERRORED = ("ERRORED", True, False)
     FINISHED = ("FINISHED", True, False)
+    ABORTED = ("ABORTED", True, False)
 
     def __init__(self, state_name: str, is_terminal: bool, needs_new_run_attempt: bool):
         self.state_name = state_name
@@ -88,8 +90,12 @@ class SchedulingState(TrainControllerState):
 
 
 class ReschedulingState(TrainControllerState):
-    def __init__(self):
+    def __init__(
+        self,
+        training_failed_error: TrainingFailedError,
+    ):
         super().__init__(state_type=TrainControllerStateType.RESCHEDULING)
+        self.training_failed_error = training_failed_error
 
 
 class RunningState(TrainControllerState):
@@ -129,3 +135,8 @@ class ErroredState(TrainControllerState):
 class FinishedState(TrainControllerState):
     def __init__(self):
         super().__init__(state_type=TrainControllerStateType.FINISHED)
+
+
+class AbortedState(TrainControllerState):
+    def __init__(self):
+        super().__init__(state_type=TrainControllerStateType.ABORTED)

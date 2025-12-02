@@ -5,14 +5,13 @@ import pytest
 import ray
 from ray.tests.conftest import *  # noqa
 from ray.tests.conftest_docker import *  # noqa
-from ray.tests.conftest_docker import run_in_container, NESTED_IMAGE_NAME
+from ray.tests.conftest_docker import NESTED_IMAGE_NAME, run_in_container
 from ray._private.test_utils import (
     wait_for_condition,
     check_logs_by_keyword,
 )
 from ray._private.utils import get_pyenv_path, get_ray_whl_dir
 from ray._private.runtime_env.constants import RAY_PODMAN_DEPENDENCIES_INSTALLER_PATH
-
 
 # NOTE(zcin): The actual test code are in python scripts under
 # python/ray/tests/runtime_env_container. The scripts are copied over to

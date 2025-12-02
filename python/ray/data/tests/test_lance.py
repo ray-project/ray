@@ -7,8 +7,8 @@ from pkg_resources import parse_version
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.arrow_utils import get_pyarrow_version
-from ray._private.test_utils import wait_for_condition
 from ray.data import Schema
 from ray.data.datasource.path_util import _unwrap_protocol
 
@@ -88,6 +88,22 @@ def test_lance_read_basic(fs, data_path, batch_size):
     values = [s["one"] for s in ds.take_all()]
     assert sorted(values) == [1, 2, 3, 4, 5, 6]
     assert ds.schema().names == ["one", "two", "three", "four"]
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_read_with_scanner_fragments(data_path):
+    table = pa.table({"one": [2, 1, 3, 4, 6, 5], "two": ["b", "a", "c", "e", "g", "f"]})
+    setup_data_path = _unwrap_protocol(data_path)
+    path = os.path.join(setup_data_path, "test.lance")
+    dataset = lance.write_dataset(table, path, max_rows_per_file=2)
+
+    fragments = dataset.get_fragments()
+    ds = ray.data.read_lance(path, scanner_options={"fragments": fragments[:1]})
+    values = [[s["one"], s["two"]] for s in ds.take_all()]
+    assert values == [
+        [2, "b"],
+        [1, "a"],
+    ]
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])

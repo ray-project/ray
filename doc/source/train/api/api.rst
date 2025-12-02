@@ -72,7 +72,7 @@ Hugging Face Transformers
 More Frameworks
 ---------------
 
-Tensorflow/Keras
+TensorFlow/Keras
 ~~~~~~~~~~~~~~~~
 
 .. autosummary::
@@ -104,7 +104,17 @@ LightGBM
     :toctree: doc/
 
     ~train.lightgbm.LightGBMTrainer
+    ~train.lightgbm.get_network_params
     ~train.lightgbm.RayTrainReportCallback
+
+JAX
+~~~
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~train.v2.jax.JaxTrainer
 
 
 .. _ray-train-configs-api:
@@ -134,7 +144,8 @@ Ray Train Utilities
     :toctree: doc/
 
     ~train.Checkpoint
-    ~train.v2.api.context.TrainContext
+    ~train.CheckpointUploadMode
+    ~train.TrainContext
 
 **Functions**
 
@@ -142,11 +153,20 @@ Ray Train Utilities
     :nosignatures:
     :toctree: doc/
 
+    ~train.get_all_reported_checkpoints
     ~train.get_checkpoint
     ~train.get_context
     ~train.get_dataset_shard
     ~train.report
 
+**Collective**
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~train.collective.barrier
+    ~train.collective.broadcast_from_rank_zero
 
 Ray Train Output
 ----------------
@@ -156,6 +176,7 @@ Ray Train Output
     :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
+    ~train.ReportedCheckpoint
     ~train.Result
 
 Ray Train Errors
@@ -166,7 +187,9 @@ Ray Train Errors
     :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
-    ~train.v2.api.exceptions.TrainingFailedError
+    ~train.ControllerError
+    ~train.WorkerGroupError
+    ~train.TrainingFailedError
 
 Ray Tune Integration Utilities
 ------------------------------

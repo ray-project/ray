@@ -8,7 +8,7 @@ There are two ways to start an Azure Ray cluster.
 - Deploy a cluster using Azure portal.
 
 ```{note}
-The Azure integration is community-maintained. Please reach out to the integration maintainers on Github if
+The Azure integration is community-maintained. Please reach out to the integration maintainers on GitHub if
 you run into any problems: gramhagen, eisber, ijrsvt.
 ```
 
@@ -29,31 +29,81 @@ pip install -U ray[default]
 Next, install the Azure CLI (`pip install -U azure-cli azure-identity`) and login using `az login`.
 
 ```bash
-# Install azure cli.
+# Install packages to use azure CLI.
 pip install azure-cli azure-identity
 
 # Login to azure. This will redirect you to your web browser.
 az login
 ```
 
-### Start Ray with the Ray cluster launcher
+### Install Azure SDK libraries
 
+Now, install the Azure SDK libraries that enable the Ray cluster launcher to build Azure infrastructure.
+
+```bash
+# Install azure SDK libraries.
+pip install azure-core azure-mgmt-network azure-mgmt-common azure-mgmt-resource azure-mgmt-compute msrestazure
+```
+
+### Start Ray with the Ray cluster launcher
 
 The provided [cluster config file](https://github.com/ray-project/ray/tree/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml) will create a small cluster with a Standard DS2v3 on-demand head node that is configured to autoscale to up to two Standard DS2v3 [spot-instance](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/spot-vms) worker nodes.
 
 Note that you'll need to fill in your Azure [resource_group](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L42) and [location](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L41) in those templates. You also need set the subscription to use. You can do this from the command line with `az account set -s <subscription_id>` or by filling in the [subscription_id](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L44) in the cluster config file.
 
+#### Download and configure the example configuration
 
-
-Test that it works by running the following commands from your local machine:
+Download the reference example locally:
 
 ```bash
 # Download the example-full.yaml
 wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/azure/example-full.yaml
+```
 
-# Update the example-full.yaml to update resource_group, location, and subscription_id.
-# vi example-full.yaml
 
+
+##### Automatic SSH Key Generation
+
+To connect to the provisioned head node VM, Ray has automatic SSH Key Generation if none are specified in the config. This is the simplest approach and requires no manual key management.
+
+The default configuration in `example-full.yaml` uses automatic key generation:
+
+```yaml
+auth:
+    ssh_user: ubuntu
+    # SSH keys are auto-generated if not specified
+    # Uncomment and specify custom paths if you want to use existing keys:
+    # ssh_private_key: /path/to/your/key.pem
+    # ssh_public_key: /path/to/your/key.pub
+```
+
+##### (Optional) Manual SSH Key Configuration
+
+If you prefer to use your own existing SSH keys, uncomment and specify both of the key paths in the `auth` section. 
+
+For example, to use an existing `ed25519` key pair:
+
+```yaml
+auth:
+    ssh_user: ubuntu
+    ssh_private_key: ~/.ssh/id_ed25519
+    ssh_public_key: ~/.ssh/id_ed25519.pub
+```
+
+Or for RSA keys:
+
+```yaml
+auth:
+    ssh_user: ubuntu
+    ssh_private_key: ~/.ssh/id_rsa
+    ssh_public_key: ~/.ssh/id_rsa.pub
+```
+
+Both methods inject the public key directly into the VM's `~/.ssh/authorized_keys` via Azure ARM templates.
+
+#### Launch the Ray cluster on Azure
+
+```bash
 # Create or update the cluster. When the command finishes, it will print
 # out the command that can be used to SSH into the cluster head node.
 ray up example-full.yaml

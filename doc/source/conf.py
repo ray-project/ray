@@ -113,6 +113,15 @@ myst_enable_extensions = [
 
 myst_heading_anchors = 3
 
+# Add these for attachment handling
+nb_render_key_pairs = {
+    "html": [
+        ("img", ["src", "alt"]),
+    ]
+}
+
+nb_output_folder = "_build/jupyter_execute"
+
 # Make broken internal references into build time errors.
 # See https://www.sphinx-doc.org/en/master/usage/configuration.html#confval-nitpicky
 # for more information. :py:class: references are ignored due to false positives
@@ -120,6 +129,7 @@ myst_heading_anchors = 3
 # for additional context.
 nitpicky = True
 nitpick_ignore_regex = [
+    ("py:obj", "ray.actor.T"),
     ("py:class", ".*"),
     # Workaround for https://github.com/sphinx-doc/sphinx/issues/10974
     ("py:obj", "ray\\.data\\.datasource\\.datasink\\.WriteReturnType"),
@@ -217,6 +227,11 @@ exclude_patterns = [
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
     "ray-overview/examples/**/README.md",  # Exclude .md files in examples subfolders
+    "train/examples/**/README.md",
+    "serve/tutorials/deployment-serve-llm/README.*",
+    "serve/tutorials/deployment-serve-llm/*/notebook.ipynb",
+    "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
+    "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -307,7 +322,7 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """Try Ray with $100 credit — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start now</a>.""",
+    "announcement": """Join us at Ray Summit 2025 — <a target="_blank" href="https://www.anyscale.com/ray-summit/2025?utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Register early and save.</a><button type="button" id="close-banner" aria-label="Close banner">&times;</button>""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
@@ -316,6 +331,7 @@ html_theme_options = {
         "theme-switcher",
         "version-switcher",
         "navbar-icon-links",
+        "navbar-anyscale",
     ],
     "navbar_center": ["navbar-links"],
     "navbar_align": "left",
@@ -549,11 +565,14 @@ def setup(app):
     app.add_js_file("js/custom.js", defer="defer")
     app.add_css_file("css/custom.css", priority=800)
 
-    app.add_js_file("js/csat.js")
+    app.add_js_file("js/csat.js", defer="defer")
     app.add_css_file("css/csat.css")
 
     app.add_js_file("js/assistant.js", defer="defer")
     app.add_css_file("css/assistant.css")
+
+    app.add_js_file("js/dismissable-banner.js", defer="defer")
+    app.add_css_file("css/dismissable-banner.css")
 
     base_path = pathlib.Path(__file__).parent
     github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
@@ -701,7 +720,10 @@ intersphinx_mapping = {
     "pyspark": ("https://spark.apache.org/docs/latest/api/python/", None),
     "python": ("https://docs.python.org/3", None),
     "pytorch_lightning": ("https://lightning.ai/docs/pytorch/stable/", None),
-    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
+    "scipy": (
+        "https://docs.scipy.org/doc/scipy/",
+        "https://github.com/ray-project/scipy/releases/download/object-mirror-0.1.0/objects.inv",
+    ),
     "sklearn": ("https://scikit-learn.org/stable/", None),
     "tensorflow": (
         "https://www.tensorflow.org/api_docs/python",
@@ -720,3 +742,5 @@ assert (
 ), "If ray is already imported, we will not render documentation correctly!"
 
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
+
+os.environ["RAY_DOC_BUILD"] = "1"

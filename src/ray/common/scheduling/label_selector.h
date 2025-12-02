@@ -14,19 +14,25 @@
 
 #pragma once
 
+#include <algorithm>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "google/protobuf/map.h"
+#include "ray/common/constants.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
 enum class LabelSelectorOperator {
+  LABEL_OPERATOR_UNSPECIFIED = 0,
   // This is to support equality or in semantics.
-  LABEL_IN = 0,
+  LABEL_IN = 1,
   // This is to support not equal or not in semantics.
-  LABEL_NOT_IN = 1
+  LABEL_NOT_IN = 2
 };
 
 // Defines requirements for a label key and value.
@@ -57,8 +63,18 @@ class LabelSelector {
  public:
   LabelSelector() = default;
 
-  explicit LabelSelector(
-      const google::protobuf::Map<std::string, std::string> &label_selector);
+  // Constructor for parsing user-input label selector string maps to LabelSelector class.
+  template <typename MapType>
+  explicit LabelSelector(const MapType &label_selector) {
+    // Label selector keys and values are validated before construction in
+    // `prepare_label_selector`.
+    // https://github.com/ray-project/ray/blob/feb1c6180655b69fc64c5e0c25cc56cbe96e0b26/python/ray/_raylet.pyx#L782C1-L784C70
+    for (const auto &[key, value] : label_selector) {
+      AddConstraint(key, value);
+    }
+  }
+
+  rpc::LabelSelector ToProto() const;
 
   void AddConstraint(const std::string &key, const std::string &value);
 
@@ -74,5 +90,44 @@ class LabelSelector {
  private:
   std::vector<LabelConstraint> constraints_;
 };
+
+inline bool operator==(const LabelConstraint &lhs, const LabelConstraint &rhs) {
+  return lhs.GetLabelKey() == rhs.GetLabelKey() &&
+         lhs.GetOperator() == rhs.GetOperator() &&
+         lhs.GetLabelValues() == rhs.GetLabelValues();
+}
+
+inline bool operator==(const LabelSelector &lhs, const LabelSelector &rhs) {
+  return lhs.GetConstraints() == rhs.GetConstraints();
+}
+
+template <typename H>
+H AbslHashValue(H h, const LabelSelector &label_selector) {
+  h = H::combine(std::move(h), label_selector.GetConstraints().size());
+  for (const auto &constraint : label_selector.GetConstraints()) {
+    h = H::combine(std::move(h),
+                   constraint.GetLabelKey(),
+                   static_cast<int>(constraint.GetOperator()));
+
+    for (const auto &value : constraint.GetLabelValues()) {
+      h = H::combine(std::move(h), value);
+    }
+  }
+  return h;
+}
+
+inline std::optional<absl::flat_hash_set<std::string>> GetHardNodeAffinityValues(
+    const LabelSelector &label_selector) {
+  const std::string hard_affinity_key(kLabelKeyNodeID);
+
+  for (const auto &constraint : label_selector.GetConstraints()) {
+    if (constraint.GetLabelKey() == hard_affinity_key) {
+      if (constraint.GetOperator() == LabelSelectorOperator::LABEL_IN) {
+        return constraint.GetLabelValues();
+      }
+    }
+  }
+  return std::nullopt;
+}
 
 }  // namespace ray

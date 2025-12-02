@@ -20,7 +20,7 @@ the following:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack
+`python [script file name].py
 
 You can switch off custom evaluation (and use RLlib's default evaluation procedure)
 with the `--no-custom-eval` flag.
@@ -85,7 +85,9 @@ from ray.tune.registry import get_trainable_cls
 
 
 parser = add_rllib_example_script_args(
-    default_iters=50, default_reward=0.7, default_timesteps=50000
+    default_iters=50,
+    default_reward=0.7,
+    default_timesteps=50000,
 )
 parser.add_argument("--no-custom-eval", action="store_true")
 parser.add_argument("--corridor-length-training", type=int, default=10)

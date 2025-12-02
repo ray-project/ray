@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 import ray
 import ray.cloudpickle as ray_pickle
+from ray._common.utils import try_to_create_directory
 from ray.air._internal.util import exception_cause, skip_exceptions
 from ray.air.constants import TIME_THIS_ITER_S, TIMESTAMP, TRAINING_ITERATION
 from ray.train._internal.checkpoint_manager import _TrainingResult
@@ -646,7 +647,7 @@ class Trainable:
 
         return True
 
-    def reset_config(self, new_config: Dict):
+    def reset_config(self, new_config: Dict) -> bool:
         """Resets configuration without restarting the trial.
 
         This method is optional, but can be implemented to speed up algorithms
@@ -680,7 +681,7 @@ class Trainable:
             from ray.tune.logger import UnifiedLogger
 
             logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            ray._private.utils.try_to_create_directory(DEFAULT_STORAGE_PATH)
+            try_to_create_directory(DEFAULT_STORAGE_PATH)
             self._logdir = tempfile.mkdtemp(
                 prefix=logdir_prefix, dir=DEFAULT_STORAGE_PATH
             )

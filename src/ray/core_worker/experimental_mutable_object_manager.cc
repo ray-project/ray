@@ -24,6 +24,7 @@
 #include "absl/strings/str_format.h"
 #include "ray/common/ray_config.h"
 #include "ray/object_manager/common.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace experimental {

@@ -1,13 +1,13 @@
 import asyncio
+import concurrent.futures
 import sys
 import time
-import concurrent.futures
 from collections import defaultdict
 
 import pytest
 
 import ray
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import TaskCancelledError
 from ray.util.state import list_tasks
 
@@ -227,16 +227,15 @@ def test_async_actor_cancel_restart(ray_start_cluster, monkeypatch):
         cluster.remove_node(node)
         r, ur = ray.wait([ref])
         # When cancel is called, the task won't be retried anymore.
-        # Since an actor is dead, in this case, it will raise
-        # RayActorError.
-        with pytest.raises(ray.exceptions.RayActorError):
+        # It will raise TaskCancelledError.
+        with pytest.raises(ray.exceptions.TaskCancelledError):
             ray.get(ref)
 
         # This will restart actor, but task won't be retried.
         cluster.add_node(num_cpus=1)
         # Verify actor is restarted. f should be retried
         ray.get(a.__ray_ready__.remote())
-        with pytest.raises(ray.exceptions.RayActorError):
+        with pytest.raises(ray.exceptions.TaskCancelledError):
             ray.get(ref)
 
 

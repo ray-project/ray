@@ -6,7 +6,7 @@ This example runs a modified version of the [Using Modin with the NYC Taxi Datas
 
 ## Step 1: Install KubeRay operator
 
-Follow steps 1 and 2 from [RayCluster QuickStart](kuberay-raycluster-quickstart) guide to install KubeRay operator.
+Follow [KubeRay Operator Installation](kuberay-operator-deploy) to install KubeRay operator.
 
 ## Step 2: Run the Modin example with RayJob
 

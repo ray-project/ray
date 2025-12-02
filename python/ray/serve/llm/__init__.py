@@ -1,17 +1,22 @@
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Type
 
-from ray.llm._internal.serve.configs.server_models import (
+from ray._common.deprecation import Deprecated
+from ray.llm._internal.serve.core.configs.llm_config import (
     CloudMirrorConfig as _CloudMirrorConfig,
     LLMConfig as _LLMConfig,
-    LLMServingArgs as _LLMServingArgs,
     LoraConfig as _LoraConfig,
     ModelLoadingConfig as _ModelLoadingConfig,
 )
-from ray.llm._internal.serve.deployments.llm.llm_server import (
-    LLMServer as _LLMServer,
+from ray.llm._internal.serve.core.ingress.builder import (
+    LLMServingArgs as _LLMServingArgs,
 )
-from ray.llm._internal.serve.deployments.routers.router import (
-    LLMRouter as _LLMRouter,
+from ray.llm._internal.serve.core.ingress.ingress import (
+    OpenAiIngress as _OpenAiIngress,
+)
+
+# For backward compatibility
+from ray.llm._internal.serve.core.server.llm_server import (
+    LLMServer as _LLMServer,
 )
 from ray.util.annotations import PublicAPI
 
@@ -59,6 +64,27 @@ class LoraConfig(_LoraConfig):
     pass
 
 
+#############
+# Deployments
+#############
+
+
+@Deprecated(
+    old="ray.serve.llm.LLMServer", new="ray.serve.llm.deployment.LLMServer", error=False
+)
+class LLMServer(_LLMServer):
+    pass
+
+
+@Deprecated(
+    old="ray.serve.llm.LLMRouter",
+    new="ray.serve.llm.ingress.OpenAIIngress",
+    error=False,
+)
+class LLMRouter(_OpenAiIngress):
+    pass
+
+
 ##########
 # Builders
 ##########
@@ -66,7 +92,12 @@ class LoraConfig(_LoraConfig):
 
 @PublicAPI(stability="alpha")
 def build_llm_deployment(
-    llm_config: "LLMConfig", *, name_prefix: Optional[str] = None
+    llm_config: "LLMConfig",
+    *,
+    name_prefix: Optional[str] = None,
+    bind_kwargs: Optional[dict] = None,
+    override_serve_options: Optional[dict] = None,
+    deployment_cls: Optional[Type[LLMServer]] = None,
 ) -> "Application":
     """Helper to build a single vllm deployment from the given llm config.
 
@@ -123,17 +154,28 @@ def build_llm_deployment(
     Args:
         llm_config: The llm config to build vllm deployment.
         name_prefix: Optional prefix to be used for the deployment name.
+        bind_kwargs: Optional kwargs to pass to the deployment.
+        override_serve_options: Optional serve options to override the original serve options based on the llm_config.
+        deployment_cls: Optional deployment class to use.
 
     Returns:
         The configured Ray Serve Application for vllm deployment.
     """
-    from ray.llm._internal.serve.builders import build_llm_deployment
+    from ray.llm._internal.serve.core.server.builder import (
+        build_llm_deployment,
+    )
 
-    return build_llm_deployment(llm_config=llm_config, name_prefix=name_prefix)
+    return build_llm_deployment(
+        llm_config=llm_config,
+        name_prefix=name_prefix,
+        bind_kwargs=bind_kwargs,
+        override_serve_options=override_serve_options,
+        deployment_cls=deployment_cls,
+    )
 
 
 @PublicAPI(stability="alpha")
-def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
+def build_openai_app(llm_serving_args: dict) -> "Application":
     """Helper to build an OpenAI compatible app with the llm deployment setup from
     the given llm serving args. This is the main entry point for users to create a
     Serve application serving LLMs.
@@ -225,128 +267,106 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
 
 
     Args:
-        llm_serving_args: The list of llm configs or the paths to the llm config to
-            build the app.
+        llm_serving_args: A dict that conforms to the LLMServingArgs pydantic model.
 
     Returns:
         The configured Ray Serve Application router.
     """
-    from ray.llm._internal.serve.builders import build_openai_app
+    from ray.llm._internal.serve.core.ingress.builder import (
+        build_openai_app,
+    )
 
-    return build_openai_app(llm_serving_args=llm_serving_args)
-
-
-#############
-# Deployments
-#############
+    return build_openai_app(builder_config=llm_serving_args)
 
 
 @PublicAPI(stability="alpha")
-class LLMServer(_LLMServer):
-    """The implementation of the vLLM engine deployment.
-
-    To build a Deployment object you should use `build_llm_deployment` function.
-    We also expose a lower level API for more control over the deployment class
-    through `as_deployment` method.
-
-    Examples:
-        .. testcode::
-            :skipif: True
-
-            from ray import serve
-            from ray.serve.llm import LLMConfig, LLMServer
-
-            # Configure the model
-            llm_config = LLMConfig(
-                model_loading_config=dict(
-                    served_model_name="llama-3.1-8b",
-                    model_source="meta-llama/Llama-3.1-8b-instruct",
-                ),
-                deployment_config=dict(
-                    autoscaling_config=dict(
-                        min_replicas=1,
-                        max_replicas=8,
-                    )
-                ),
-            )
-
-            # Build the deployment directly
-            LLMDeployment = LLMServer.as_deployment(llm_config.get_serve_options())
-            llm_app = LLMDeployment.bind(llm_config)
-
-            model_handle = serve.run(llm_app)
-
-            # Query the model via `chat` api
-            from ray.serve.llm.openai_api_models import ChatCompletionRequest
-            request = ChatCompletionRequest(
-                model="llama-3.1-8b",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": "Hello, world!"
-                    }
-                ]
-            )
-            response = ray.get(model_handle.chat(request))
-            print(response)
-    """
-
-    pass
-
-
-@PublicAPI(stability="alpha")
-class LLMRouter(_LLMRouter):
-
-    """The implementation of the OpenAI compatiple model router.
-
-    This deployment creates the following endpoints:
-      - /v1/chat/completions: Chat interface (OpenAI-style)
-      - /v1/completions: Text completion
-      - /v1/models: List available models
-      - /v1/models/{model}: Model information
+def build_pd_openai_app(pd_serving_args: dict) -> "Application":
+    """Build a deployable application utilizing P/D disaggregation.
 
 
     Examples:
-        .. testcode::
-            :skipif: True
-
+        .. code-block:: python
+            :caption: Example usage in code.
 
             from ray import serve
-            from ray.serve.llm import LLMConfig, LLMServer, LLMRouter
-            from ray.serve.llm.openai_api_models import ChatCompletionRequest
+            from ray.serve.llm import LLMConfig, build_pd_openai_app
 
-
-            llm_config1 = LLMConfig(
+            config = LLMConfig(
                 model_loading_config=dict(
-                    served_model_name="llama-3.1-8b",  # Name shown in /v1/models
-                    model_source="meta-llama/Llama-3.1-8b-instruct",
+                    model_id="qwen-0.5b",
+                    model_source="Qwen/Qwen2.5-0.5B-Instruct",
                 ),
                 deployment_config=dict(
                     autoscaling_config=dict(
-                        min_replicas=1, max_replicas=8,
+                        min_replicas=1, max_replicas=2,
                     )
                 ),
-            )
-            llm_config2 = LLMConfig(
-                model_loading_config=dict(
-                    served_model_name="llama-3.2-3b",  # Name shown in /v1/models
-                    model_source="meta-llama/Llama-3.2-3b-instruct",
-                ),
-                deployment_config=dict(
-                    autoscaling_config=dict(
-                        min_replicas=1, max_replicas=8,
-                    )
-                ),
+                accelerator_type="A10G",
             )
 
             # Deploy the application
-            vllm_deployment1 = LLMServer.as_deployment(llm_config1.get_serve_options()).bind(llm_config1)
-            vllm_deployment2 = LLMServer.as_deployment(llm_config2.get_serve_options()).bind(llm_config2)
-            llm_app = LLMRouter.as_deployment().bind([vllm_deployment1, vllm_deployment2])
-            serve.run(llm_app)
-    """
+            llm_app = build_pd_openai_app(
+                dict(
+                    prefill_config=config,
+                    decode_config=config,
+                )
+            )
 
-    pass
+            serve.run(llm_app)
+
+
+            # Querying the model via openai client
+            from openai import OpenAI
+
+            # Initialize client
+            client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
+
+            # Basic completion
+            response = client.chat.completions.create(
+                model="qwen-0.5b",
+                messages=[{"role": "user", "content": "Hello!"}]
+            )
+
+        .. code-block:: yaml
+            :caption: Example usage in YAML.
+
+            # config.yaml
+            applications:
+            - args:
+                prefill_config:
+                    model_loading_config:
+                        model_id: qwen-0.5b
+                        model_source: Qwen/Qwen2.5-0.5B-Instruct
+                    accelerator_type: A10G
+                    deployment_config:
+                        autoscaling_config:
+                            min_replicas: 1
+                            max_replicas: 2
+                decode_config:
+                    model_loading_config:
+                    model_id: qwen-1.5b
+                    model_source: Qwen/Qwen2.5-1.5B-Instruct
+                    accelerator_type: A10G
+                    deployment_config:
+                    autoscaling_config:
+                        min_replicas: 1
+                        max_replicas: 2
+              import_path: ray.serve.llm:build_pd_openai_app
+              name: llm_app
+              route_prefix: "/"
+
+
+    Args:
+        pd_serving_args: The dictionary containing prefill and decode configs. See PDServingArgs for more details.
+
+    Returns:
+        The configured Ray Serve Application router.
+    """
+    from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
+        build_pd_openai_app,
+    )
+
+    return build_pd_openai_app(pd_serving_args=pd_serving_args)
 
 
 __all__ = [

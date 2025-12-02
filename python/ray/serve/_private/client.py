@@ -1,3 +1,5 @@
+import asyncio
+import inspect
 import logging
 import random
 import time
@@ -13,7 +15,7 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
-    MultiplexedReplicaInfo,
+    RequestRoutingInfo,
 )
 from ray.serve._private.constants import (
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
@@ -25,6 +27,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve._private.utils import get_random_string
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
@@ -90,6 +93,21 @@ class ServeControllerClient:
             self.handle_cache[cache_key].shutdown()
             del self.handle_cache[cache_key]
 
+    async def shutdown_cached_handles_async(self):
+        """Shuts down all cached handles asynchronously.
+
+        Remove the reference to the cached handles so that they can be
+        garbage collected.
+        """
+
+        async def shutdown_task(cache_key):
+            await self.handle_cache[cache_key].shutdown_async()
+            del self.handle_cache[cache_key]
+
+        await asyncio.gather(
+            *[shutdown_task(cache_key) for cache_key in list(self.handle_cache)]
+        )
+
     def shutdown(self, timeout_s: float = 30.0) -> None:
         """Completely shut down the connected Serve instance.
 
@@ -101,6 +119,29 @@ class ServeControllerClient:
         if ray.is_initialized() and not self._shutdown:
             try:
                 ray.get(self._controller.graceful_shutdown.remote(), timeout=timeout_s)
+            except ray.exceptions.RayActorError:
+                # Controller has been shut down.
+                pass
+            except TimeoutError:
+                logger.warning(
+                    f"Controller failed to shut down within {timeout_s}s. "
+                    "Check controller logs for more details."
+                )
+            self._shutdown = True
+
+    async def shutdown_async(self, timeout_s: float = 30.0) -> None:
+        """Completely shut down the connected Serve instance.
+
+        Shuts down all processes and deletes all state associated with the
+        instance.
+        """
+        await self.shutdown_cached_handles_async()
+
+        if ray.is_initialized() and not self._shutdown:
+            try:
+                await asyncio.wait_for(
+                    self._controller.graceful_shutdown.remote(), timeout=timeout_s
+                )
             except ray.exceptions.RayActorError:
                 # Controller has been shut down.
                 pass
@@ -270,7 +311,6 @@ class ServeControllerClient:
                     deployment_config=deployment._deployment_config,
                     version=deployment._version or get_random_string(),
                     route_prefix=app.route_prefix if is_ingress else None,
-                    docs_path=deployment._docs_path,
                 )
 
                 deployment_args_proto = DeploymentArgs()
@@ -289,12 +329,13 @@ class ServeControllerClient:
                 if deployment_args["route_prefix"]:
                     deployment_args_proto.route_prefix = deployment_args["route_prefix"]
                 deployment_args_proto.ingress = deployment_args["ingress"]
-                if deployment_args["docs_path"]:
-                    deployment_args_proto.docs_path = deployment_args["docs_path"]
 
                 deployment_args_list.append(deployment_args_proto.SerializeToString())
 
             name_to_deployment_args_list[app.name] = deployment_args_list
+
+        # Validate applications before sending to controller
+        self._check_ingress_deployments(built_apps)
 
         ray.get(
             self._controller.deploy_applications.remote(name_to_deployment_args_list)
@@ -356,6 +397,29 @@ class ServeControllerClient:
             else:
                 raise TimeoutError(
                     f"Serve application isn't running after {timeout_s}s."
+                )
+
+    def _check_ingress_deployments(
+        self, built_apps: Sequence[BuiltApplication]
+    ) -> None:
+        """Check @serve.ingress of deployments across applications.
+
+        Raises: RayServeException if more than one @serve.ingress
+            is found among deployments in any single application.
+        """
+        for app in built_apps:
+            num_ingress_deployments = 0
+            for deployment in app.deployments:
+                if inspect.isclass(deployment.func_or_class) and issubclass(
+                    deployment.func_or_class, ASGIAppReplicaWrapper
+                ):
+                    num_ingress_deployments += 1
+
+            if num_ingress_deployments > 1:
+                raise RayServeException(
+                    f'Found multiple FastAPI deployments in application "{app.name}".'
+                    "Please only include one deployment with @serve.ingress "
+                    "in your application to avoid this issue."
                 )
 
     @_ensure_connected
@@ -480,14 +544,14 @@ class ServeControllerClient:
         return handle
 
     @_ensure_connected
-    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
-        """Record multiplexed replica information for replica.
+    def record_request_routing_info(self, info: RequestRoutingInfo):
+        """Record replica routing information for a replica.
 
         Args:
-            info: MultiplexedReplicaInfo including deployment name, replica tag and
-                model ids.
+            info: RequestRoutingInfo including deployment name, replica tag,
+                multiplex model ids, and routing stats.
         """
-        self._controller.record_multiplexed_replica_info.remote(info)
+        self._controller.record_request_routing_info.remote(info)
 
     @_ensure_connected
     def update_global_logging_config(self, logging_config: LoggingConfig):

@@ -216,12 +216,12 @@ class _OpenTelemetryProxy:
         try:
             return importlib.import_module(module)
         except ImportError:
-            if os.getenv("RAY_TRACING_ENABLED", "False").lower() in ["true", "1"]:
+            if _is_tracing_enabled():
                 raise ImportError(
-                    "Install opentelemetry with "
-                    "'pip install opentelemetry-api==1.0.0rc1' "
-                    "and 'pip install opentelemetry-sdk==1.0.0rc1' to enable "
-                    "tracing. See more at docs.ray.io/tracing.html"
+                    "Install OpenTelemetry with "
+                    "'pip install opentelemetry-api==1.34.1 opentelemetry-sdk==1.34.1 opentelemetry-exporter-otlp==1.34.1' "
+                    "to enable tracing. See the Ray documentation for details: "
+                    "https://docs.ray.io/en/latest/ray-observability/user-guides/ray-tracing.html#installation"
                 )
 
 
@@ -582,20 +582,18 @@ def _tracing_actor_method_invocation(method):
         **_kwargs: Any,
     ) -> Any:
         # If tracing feature flag is not on, perform a no-op
-        if not _is_tracing_enabled() or self._actor_ref()._ray_is_cross_language:
+        if not _is_tracing_enabled() or self._actor._ray_is_cross_language:
             if kwargs is not None:
                 assert "_ray_trace_ctx" not in kwargs
             return method(self, args, kwargs, *_args, **_kwargs)
 
         if (
-            self._actor_ref()._ray_actor_creation_function_descriptor.class_name
+            self._actor._ray_actor_creation_function_descriptor.class_name
             == "_ray_internal_insight_monitor"
         ):
             return method(self, args, kwargs, *_args, **_kwargs)
 
-        class_name = (
-            self._actor_ref()._ray_actor_creation_function_descriptor.class_name
-        )
+        class_name = self._actor._ray_actor_creation_function_descriptor.class_name
         method_name = self._method_name
         assert "_ray_trace_ctx" not in _kwargs
 
@@ -608,7 +606,7 @@ def _tracing_actor_method_invocation(method):
             # Inject a _ray_trace_ctx as a dictionary
             kwargs["_ray_trace_ctx"] = _DictPropagator.inject_current_context()
 
-            span.set_attribute("ray.actor_id", self._actor_ref()._ray_actor_id.hex())
+            span.set_attribute("ray.actor_id", self._actor._ray_actor_id.hex())
 
             from ray.util.insight import is_flow_insight_enabled, get_caller_info
 

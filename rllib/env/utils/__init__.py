@@ -75,8 +75,8 @@ def _gym_env_creator(
     """Tries to create a gym env given an EnvContext object and descriptor.
 
     Note: This function tries to construct the env from a string descriptor
-    only using possibly installed RL env packages (such as gym, pybullet_envs,
-    etc). These packages are no installation requirements for RLlib. In case
+    only using possibly installed RL env packages (such as gymnasium).
+    These packages are no installation requirements for RLlib. In case
     you would like to support more such env packages, add the necessary imports
     and construction logic below.
 
@@ -84,8 +84,8 @@ def _gym_env_creator(
         env_context: The env context object to configure the env.
             Note that this is a config dict, plus the properties:
             `worker_index`, `vector_index`, and `remote`.
-        env_descriptor: The env descriptor as a gym-registered string, e.g. CartPole-v1,
-            ALE/MsPacman-v5, or CartPoleContinuousBulletEnv-v0.
+        env_descriptor: The env descriptor as a gym-registered string, e.g.
+            "CartPole-v1", "ale_py:ALE/Breakout-v5".
             Alternatively, the gym.Env subclass to use.
 
     Returns:
@@ -94,15 +94,6 @@ def _gym_env_creator(
     Raises:
         gym.error.Error: If the env cannot be constructed.
     """
-    # Allow for PyBullet or envs to be used as well (via string). This allows
-    # for doing things like `env=CartPoleContinuousBulletEnv-v0`.
-    try:
-        import pybullet_envs
-
-        pybullet_envs.getList()
-    except (AttributeError, ModuleNotFoundError, ImportError):
-        pass
-
     # If env descriptor is a str, starting with "ale_py:ALE/", for now, register all ALE
     # envs from ale_py.
     if isinstance(env_descriptor, str) and env_descriptor.startswith("ale_py:ALE/"):

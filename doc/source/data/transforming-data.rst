@@ -259,9 +259,11 @@ To transform data with a Python class, complete these steps:
 1. Implement a class. Perform setup in ``__init__`` and transform data in ``__call__``.
 
 2. Call :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.map`, or
-   :meth:`~ray.data.Dataset.flat_map`. Pass the number of concurrent workers to use with the ``concurrency`` argument. Each worker transforms a partition of data in parallel.
-   Fixing the number of concurrent workers gives the most predictable performance, but you can also pass a tuple of ``(min, max)`` to allow Ray Data to automatically
-   scale the number of concurrent workers.
+   :meth:`~ray.data.Dataset.flat_map`. Pass a compute strategy with the ``compute``
+   argument to control how many workers Ray uses. Each worker transforms a partition
+   of data in parallel. Use ``ray.data.TaskPoolStrategy(size=n)`` to cap the number of
+   concurrent tasks, or ``ray.data.ActorPoolStrategy(...)`` to run callable classes on
+   a fixed or autoscaling actor pool.
 
 .. tab-set::
 
@@ -288,7 +290,10 @@ To transform data with a Python class, complete these steps:
 
             ds = (
                 ray.data.from_numpy(np.ones((32, 100)))
-                .map_batches(TorchPredictor, concurrency=2)
+                .map_batches(
+                    TorchPredictor,
+                    compute=ray.data.ActorPoolStrategy(size=2),
+                )
             )
 
         .. testcode::
@@ -322,7 +327,7 @@ To transform data with a Python class, complete these steps:
                 .map_batches(
                     TorchPredictor,
                     # Two workers with one GPU each
-                    concurrency=2,
+                    compute=ray.data.ActorPoolStrategy(size=2),
                     # Batch size is required if you're using GPUs.
                     batch_size=4,
                     num_gpus=1
@@ -355,62 +360,6 @@ memory your function uses, and prevents Ray from scheduling too many tasks on a 
 
     # Tell Ray that the function uses 1 GiB of memory
     ds.map_batches(uses_lots_of_memory, memory=1 * 1024 * 1024)
-
-
-.. _aggregations:
-
-Aggregations
-============
-
-Ray Data offers out-of-the-box methods for performing aggregations on your data.
-
-These methods include :meth:`~ray.data.Dataset.sum`, :meth:`~ray.data.Dataset.min`, :meth:`~ray.data.Dataset.max`, :meth:`~ray.data.Dataset.mean`, and more
-(see :ref:`API Reference <dataset-api>` for the full list).
-
-You can use these methods as follows:
-
-.. testcode::
-
-    import ray
-
-    ds = ray.data.range(10)
-    # Schema: {"id": int64}
-    ds.sum(on="id")
-    # 45
-
-
-You can also perform aggregations on grouped data.
-
-.. testcode::
-
-    import ray
-
-    ds = ray.data.range(10)
-    # Schema: {"id": int64}
-    ds = ds.add_column("label", lambda x: x % 3)
-    # Schema: {"id": int64, "label": int64}
-    ds.groupby("label").sum(on="id").take_all()
-    # [{'label': 0, 'sum(id)': 18},
-    #  {'label': 1, 'sum(id)': 12},
-    #  {'label': 2, 'sum(id)': 15}]
-
-Each of the preceding methods also has a corresponding :ref:`AggregateFnV2 <aggregations_api_ref>` object. These objects can be used in
-:meth:`~ray.data.Dataset.aggregate()` or :meth:`Dataset.groupby().aggregate() <ray.data.grouped_data.GroupedData.aggregate>` to compute multiple aggregations at once.
-
-
-.. testcode::
-
-    import ray
-
-    ds = ray.data.range(10)
-    # Schema: {"id": int64}
-    ds = ds.add_column("label", lambda x: x % 3)
-    # Schema: {"id": int64, "label": int64}
-    ds.aggregate(
-        ray.data.aggregate.Sum(on="id"), 
-        ray.data.aggregate.Count(on="label")
-    )
-    # {'sum(id)': 45, 'count(label)': 10}
 
 
 .. _transforming_groupby:

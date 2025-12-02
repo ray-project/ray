@@ -1,0 +1,122 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "pull_manager_test",
+    size = "small",
+    srcs = [
+        "pull_manager_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/object_manager:pull_manager",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "object_buffer_pool_test",
+    size = "small",
+    srcs = [
+        "object_buffer_pool_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//:ray_mock",
+        "//src/ray/object_manager:object_buffer_pool",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "ownership_object_directory_test",
+    size = "small",
+    srcs = [
+        "ownership_object_directory_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/core_worker_rpc_client:fake_core_worker_client",
+        "//src/ray/object_manager:ownership_object_directory",
+        "//src/ray/pubsub:fake_subscriber",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "push_manager_test",
+    size = "small",
+    srcs = [
+        "push_manager_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/object_manager:push_manager",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "spilled_object_test",
+    size = "small",
+    srcs = [
+        "spilled_object_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/object_manager:chunk_object_reader",
+        "//src/ray/object_manager:memory_object_reader",
+        "//src/ray/object_manager:spilled_object_reader",
+        "//src/ray/util:filesystem",
+        "//src/ray/util:path_utils",
+        "@boost//:endian",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "create_request_queue_test",
+    size = "small",
+    srcs = [
+        "create_request_queue_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/object_manager/plasma:plasma_store_server_lib",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "get_request_queue_test",
+    size = "small",
+    srcs = [
+        "get_request_queue_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/object_manager/plasma:plasma_store_server_lib",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "object_manager_test",
+    size = "medium",
+    srcs = [
+        "object_manager_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//:ray_mock",
+        "//src/ray/object_manager",
+        "//src/ray/object_manager/plasma:fake_plasma_client",
+        "//src/ray/object_manager_rpc_client:fake_object_manager_client",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

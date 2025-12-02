@@ -4,8 +4,8 @@ from types import FunctionType
 from typing import Any, Dict, Union
 
 import ray
-from ray._private.pydantic_compat import is_subclass_of_base_model
-from ray._private.usage import usage_lib
+from ray._common.pydantic_compat import is_subclass_of_base_model
+from ray._common.usage import usage_lib
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.constants import (

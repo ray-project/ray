@@ -14,14 +14,14 @@
 
 #include "ray/util/scoped_dup2_wrapper.h"
 
+#include <fcntl.h>
 #include <gtest/gtest.h>
 
-#include <boost/iostreams/device/file_descriptor.hpp>
 #include <iostream>
 #include <string>
 #include <string_view>
 
-#include "ray/common/test/testing.h"
+#include "ray/common/tests/testing.h"
 #include "ray/util/compat.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/temporary_directory.h"
@@ -37,13 +37,20 @@ TEST(ScopedDup2WrapperTest, BasicTest) {
   const auto dir = temp_dir.GetDirectory();
   const auto path = dir / "test_file";
   const std::string path_string = path.string();
-  boost::iostreams::file_descriptor_sink fd_sink{path_string, std::ios_base::out};
+#if defined(__APPLE__) || defined(__linux__)
+  const int file_fd = open(path_string.c_str(),
+                           O_WRONLY | O_CREAT | O_APPEND,
+                           S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+#elif defined(_WIN32)
+  const int file_fd =
+      _open(path_string.c_str(), _O_WRONLY | _O_CREAT | _O_APPEND, _S_IREAD | _S_IWRITE);
+#endif
 
   {
     auto dup2_wrapper =
-        ScopedDup2Wrapper::New(/*oldfd=*/fd_sink.handle(), /*newfd=*/GetStderrHandle());
+        ScopedDup2Wrapper::New(/*oldfd=*/file_fd, /*newfd=*/GetStderrFd());
 
-    // Write to stdout should appear in file.
+    // Write to stderr should appear in file.
     std::cerr << kContent << std::flush;
     const auto actual_content = ReadEntireFile(path_string);
     RAY_ASSERT_OK(actual_content);
@@ -59,6 +66,7 @@ TEST(ScopedDup2WrapperTest, BasicTest) {
   const auto actual_content = ReadEntireFile(path_string);
   RAY_ASSERT_OK(actual_content);
   EXPECT_EQ(*actual_content, kContent);
+  RAY_CHECK_OK(Close(file_fd));
 }
 
 }  // namespace

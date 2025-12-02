@@ -24,7 +24,6 @@
 #include "ray/common/placement_group.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/util/util.h"
 
 namespace ray {
 
@@ -84,6 +83,9 @@ class PlacementGroupResourceManager {
   /// Save `BundleSpecification` for cleaning leaked bundles after GCS restart.
   absl::flat_hash_map<BundleID, std::shared_ptr<BundleSpecification>, pair_hash>
       bundle_spec_map_;
+
+  friend bool IsBundleRegistered(const PlacementGroupResourceManager &manager,
+                                 const BundleID &bundle_id);
 };
 
 /// Associated with new scheduler.
@@ -92,8 +94,8 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
   /// Create a new placement group resource manager.
   ///
   /// \param cluster_resource_scheduler_: The resource allocator of new scheduler.
-  NewPlacementGroupResourceManager(
-      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler);
+  explicit NewPlacementGroupResourceManager(
+      ClusterResourceScheduler &cluster_resource_scheduler);
 
   virtual ~NewPlacementGroupResourceManager() = default;
 
@@ -105,12 +107,12 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
 
   Status ReturnBundle(const BundleSpecification &bundle_spec) override;
 
-  const std::shared_ptr<ClusterResourceScheduler> GetResourceScheduler() const {
+  const ClusterResourceScheduler &GetResourceScheduler() const {
     return cluster_resource_scheduler_;
   }
 
  private:
-  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+  ClusterResourceScheduler &cluster_resource_scheduler_;
 
   /// Tracking placement group bundles and their states. This mapping is the source of
   /// truth for the new scheduler.

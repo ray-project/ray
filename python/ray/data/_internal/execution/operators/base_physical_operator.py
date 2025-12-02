@@ -1,4 +1,4 @@
-import abc
+from abc import ABC, abstractmethod
 from typing import List, Optional
 
 from ray.data._internal.execution.interfaces import (
@@ -7,14 +7,15 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.interfaces.physical_operator import _create_sub_pb
+from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
 
-class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
-    @abc.abstractmethod
+class InternalQueueOperatorMixin(PhysicalOperator, ABC):
+    @abstractmethod
     def internal_queue_size(self) -> int:
         """Returns Operator's internal queue size"""
         ...
@@ -31,23 +32,25 @@ class OneToOneOperator(PhysicalOperator):
         name: str,
         input_op: PhysicalOperator,
         data_context: DataContext,
-        target_max_block_size: Optional[int],
+        target_max_block_size_override: Optional[int] = None,
     ):
         """Create a OneToOneOperator.
         Args:
             input_op: Operator generating input data for this op.
             name: The name of this operator.
-            target_max_block_size: The target maximum number of bytes to
+            target_max_block_size_override: The target maximum number of bytes to
                 include in an output block.
         """
-        super().__init__(name, [input_op], data_context, target_max_block_size)
+        super().__init__(name, [input_op], data_context, target_max_block_size_override)
 
     @property
     def input_dependency(self) -> PhysicalOperator:
         return self.input_dependencies[0]
 
 
-class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
+class AllToAllOperator(
+    InternalQueueOperatorMixin, SubProgressBarMixin, PhysicalOperator
+):
     """A blocking operator that executes once its inputs are complete.
 
     This operator implements distributed sort / shuffle operations, etc.
@@ -58,7 +61,7 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
         bulk_fn: AllToAllTransformFn,
         input_op: PhysicalOperator,
         data_context: DataContext,
-        target_max_block_size: Optional[int],
+        target_max_block_size_override: Optional[int] = None,
         num_outputs: Optional[int] = None,
         sub_progress_bar_names: Optional[List[str]] = None,
         name: str = "AllToAll",
@@ -69,6 +72,9 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
                 list of input ref bundles, and the outputs are the output ref bundles
                 and a stats dict.
             input_op: Operator generating input data for this op.
+            data_context: The DataContext instance containing configuration settings.
+            target_max_block_size_override: The target maximum number of bytes to
+                include in an output block.
             num_outputs: The number of expected output bundles for progress bar.
             sub_progress_bar_names: The names of internal sub progress bars.
             name: The name of this operator.
@@ -82,7 +88,7 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
         self._input_buffer: List[RefBundle] = []
         self._output_buffer: List[RefBundle] = []
         self._stats: StatsDict = {}
-        super().__init__(name, [input_op], data_context, target_max_block_size)
+        super().__init__(name, [input_op], data_context, target_max_block_size_override)
 
     def num_outputs_total(self) -> Optional[int]:
         return (
@@ -112,7 +118,7 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
             task_idx=self._next_task_index,
             op_name=self.name,
             sub_progress_bar_dict=self._sub_progress_bar_dict,
-            target_max_block_size=self.actual_target_max_block_size,
+            target_max_block_size_override=self.target_max_block_size_override,
         )
         # NOTE: We don't account object store memory use from intermediate `bulk_fn`
         # outputs (e.g., map outputs for map-reduce).
@@ -152,17 +158,10 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
         if self._sub_progress_bar_names is not None:
             self._sub_progress_bar_dict = {}
             for name in self._sub_progress_bar_names:
-                bar = ProgressBar(
-                    name,
-                    self.num_output_rows_total() or 1,
-                    unit="row",
-                    position=position,
+                bar, position = _create_sub_pb(
+                    name, self.num_output_rows_total(), position
                 )
-                # NOTE: call `set_description` to trigger the initial print of progress
-                # bar on console.
-                bar.set_description(f"  *- {name}")
                 self._sub_progress_bar_dict[name] = bar
-                position += 1
             return len(self._sub_progress_bar_dict)
         else:
             return 0
@@ -172,6 +171,15 @@ class AllToAllOperator(InternalQueueOperatorMixin, PhysicalOperator):
         if self._sub_progress_bar_dict is not None:
             for sub_bar in self._sub_progress_bar_dict.values():
                 sub_bar.close()
+
+    def get_sub_progress_bar_names(self) -> Optional[List[str]]:
+        return self._sub_progress_bar_names
+
+    def set_sub_progress_bar(self, name, pg):
+        # not type-checking due to circular imports
+        if self._sub_progress_bar_dict is None:
+            self._sub_progress_bar_dict = {}
+        self._sub_progress_bar_dict[name] = pg
 
     def supports_fusion(self):
         return True
@@ -199,5 +207,7 @@ class NAryOperator(PhysicalOperator):
         input_names = ", ".join([op._name for op in input_ops])
         op_name = f"{self.__class__.__name__}({input_names})"
         super().__init__(
-            op_name, list(input_ops), data_context, target_max_block_size=None
+            op_name,
+            list(input_ops),
+            data_context,
         )

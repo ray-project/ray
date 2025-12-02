@@ -4,13 +4,10 @@ set -exo pipefail
 
 # Install Python dependencies
 pip3 install --no-cache-dir \
-    "pytest>=8.3.5" \
-    "ruff>=0.11.5" \
-    "transformers>=4.51.3" \
-    "torchaudio" \
-    "datasets[audio]>=3.6.0" \
-    "accelerate" \
-    "huggingface_hub[hf_xet]" \
-    xgrammar \
-    pydantic \
-    flashinfer-python
+    accelerate==1.7.0 \
+    datasets[audio]==2.2.1 \
+    flashinfer-python==0.2.2.post1 \
+    huggingface-hub[hf_xet]==0.32.6 \
+    pydantic==2.9.2 \
+    transformers==4.52.4 \
+    xgrammar==0.1.19

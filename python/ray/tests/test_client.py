@@ -6,8 +6,8 @@ import re
 import sys
 import threading
 import time
-from unittest.mock import Mock
 from typing import Type
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -17,6 +17,7 @@ from pydantic.v1 import BaseModel as BaseModelV1
 import ray
 import ray.cloudpickle as cloudpickle
 import ray.util.client.server.server as ray_client_server
+from ray._common.network_utils import build_address
 from ray._private.client_mode_hook import (
     client_mode_should_convert,
     disable_client_hook,
@@ -48,7 +49,9 @@ from ray.util.client.ray_client_helpers import (
 
 # Client server port of the shared Ray instance
 SHARED_CLIENT_SERVER_PORT = 25555
-SHARED_CLIENT_SERVER_ADDRESS = f"ray://localhost:{SHARED_CLIENT_SERVER_PORT}"
+SHARED_CLIENT_SERVER_ADDRESS = (
+    f"ray://{build_address('localhost', SHARED_CLIENT_SERVER_PORT)}"
+)
 
 
 @pytest.fixture(scope="module")
@@ -107,8 +110,6 @@ def test_client_thread_safe(call_ray_start_shared):
         b.join()
 
 
-# @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-# @pytest.mark.skip()
 def test_client_mode_hook_thread_safe(call_ray_start_shared):
     with ray_start_client_server_for_address(call_ray_start_shared):
         with enable_client_mode():
@@ -653,7 +654,7 @@ def test_startup_retry(call_ray_start_shared):
     thread = threading.Thread(target=run_client, daemon=True)
     thread.start()
     time.sleep(3)
-    server = ray_client_server.serve("localhost:50051")
+    server = ray_client_server.serve("localhost", 50051)
     thread.join()
     server.stop(0)
     ray_client._inside_client_test = False
@@ -673,7 +674,7 @@ def test_dataclient_server_drop(call_ray_start_shared):
         time.sleep(2)
         server.stop(0)
 
-    server = ray_client_server.serve("localhost:50051")
+    server = ray_client_server.serve("localhost", 50051)
     ray_client.connect("localhost:50051")
     thread = threading.Thread(target=stop_server, args=(server,))
     thread.start()

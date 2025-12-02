@@ -3,6 +3,7 @@
 Tests that require a standalone Ray cluster (for example, testing ray.init or shutdown
 behavior) should go in test_multiprocessing_standalone.py.
 """
+import multiprocessing as mp
 import os
 import platform
 import queue
@@ -10,15 +11,13 @@ import random
 import sys
 import tempfile
 import time
-import multiprocessing as mp
 from collections import defaultdict
 
 import pytest
 
-
 import ray
-from ray._private.test_utils import SignalActor
-from ray.util.multiprocessing import Pool, TimeoutError, JoinableQueue
+from ray._common.test_utils import SignalActor
+from ray.util.multiprocessing import JoinableQueue, Pool, TimeoutError
 
 
 @pytest.fixture(scope="module")
@@ -382,24 +381,34 @@ def test_imap_fail_on_non_iterable(pool_4_processes):
 
 @pytest.mark.parametrize("use_iter", [True, False])
 def test_imap_unordered(pool_4_processes, use_iter):
-    def f(args):
-        time.sleep(0.1 * random.random())
-        index = args[0]
-        err_indices = args[1]
-        if index in err_indices:
+    signal = SignalActor.remote()
+
+    error_indices = {2, 7}
+
+    def f(index):
+        if index == 0:
+            ray.get(signal.wait.remote())
+
+        if index in error_indices:
             raise Exception("intentional failure")
+
         return index
 
-    error_indices = [2, 10, 15]
+    if use_iter:
+        imap_iterable = range(10)
+    else:
+        imap_iterable = list(range(10))
+
     in_order = []
     num_errors = 0
-    if use_iter:
-        imap_iterable = iter([(index, error_indices) for index in range(20)])
-    else:
-        imap_iterable = [(index, error_indices) for index in range(20)]
-    result_iter = pool_4_processes.imap_unordered(f, imap_iterable, chunksize=3)
-    for i in range(20):
+    result_iter = pool_4_processes.imap_unordered(f, imap_iterable, chunksize=1)
+    for i in range(10):
         result = result_iter.next()
+        if len(in_order) == 0:
+            # After the first result is back, send the signal to unblock index == 0.
+            # This guarantees that the results come in out of order.
+            ray.get(signal.send.remote())
+
         if isinstance(result, Exception):
             in_order.append(True)
             num_errors += 1
@@ -407,8 +416,8 @@ def test_imap_unordered(pool_4_processes, use_iter):
             in_order.append(result == i)
 
     # Check that the results didn't come back all in order.
-    # NOTE: this could be flaky if the calls happened to finish in order due
-    # to the random sleeps, but it's very unlikely.
+    # This is guaranteed not to happen because we blocked index == 0 until at least one
+    # other result was available.
     assert not all(in_order)
     assert num_errors == len(error_indices)
 
@@ -416,58 +425,66 @@ def test_imap_unordered(pool_4_processes, use_iter):
         result_iter.next()
 
 
-@pytest.mark.parametrize("use_iter", [True, False])
-def test_imap_timeout(pool_4_processes, use_iter):
-    def f(args):
-        index, wait_index, signal = args
-        time.sleep(0.1 * random.random())
-        if index == wait_index:
+def test_imap_timeout(pool_4_processes):
+    """Test the timeout parameter to imap."""
+    signal = SignalActor.remote()
+
+    def f(index):
+        if index == 0:
             ray.get(signal.wait.remote())
         return index
 
-    wait_index = 5
-    signal = SignalActor.remote()
-    if use_iter:
-        imap_iterable = iter([(index, wait_index, signal) for index in range(20)])
-    else:
-        imap_iterable = [(index, wait_index, signal) for index in range(20)]
-    result_iter = pool_4_processes.imap(f, imap_iterable)
-    for i in range(20):
-        if i == wait_index:
-            with pytest.raises(TimeoutError):
-                result = result_iter.next(timeout=0.1)
-            ray.get(signal.send.remote())
+    # index == 0 will block, so the first call to get a result should time out.
+    result_iter = pool_4_processes.imap(f, range(10))
+    with pytest.raises(TimeoutError):
+        result_iter.next(timeout=0.5)
 
-        result = result_iter.next()
-        assert result == i
+    # Unblock index == 0, then all results should come back in order.
+    ray.get(signal.send.remote())
+    for i in range(10):
+        assert result_iter.next() == i
 
     with pytest.raises(StopIteration):
         result_iter.next()
 
-    wait_index = 13
+
+def test_imap_unordered_timeout(pool_4_processes):
+    """Test the timeout parameter to imap_unordered."""
     signal = SignalActor.remote()
-    if use_iter:
-        imap_iterable = iter([(index, wait_index, signal) for index in range(20)])
-    else:
-        imap_iterable = [(index, wait_index, signal) for index in range(20)]
-    result_iter = pool_4_processes.imap_unordered(f, imap_iterable, chunksize=3)
-    in_order = []
-    for i in range(20):
+
+    def f(index):
+        if index == 0:
+            ray.get(signal.wait.remote())
+        return index
+
+    # index == 0 will block, but imap_unordered will return results as they're ready,
+    # so we will get some results before the timeout occurs. After unblocking
+    # index == 0, the results should all come back correctly (in an arbitrary order).
+    results = []
+    got_timeout = False
+    result_iter = pool_4_processes.imap_unordered(f, range(10), chunksize=1)
+    while len(results) < 10:
         try:
-            result = result_iter.next(timeout=0.1)
+            index = result_iter.next(timeout=0.5)
+            if not got_timeout:
+                # Prior to getting the timeout, none of the results should be
+                # index == 0, which is blocked.
+                assert index != 0
+
+            results.append(index)
         except TimeoutError:
+            # We should only get exactly one timeout and it should happen after getting
+            # other un-blocked results first.
+            assert not got_timeout
+            assert len(results) > 0
+            got_timeout = True
             ray.get(signal.send.remote())
-            result = result_iter.next()
-
-        in_order.append(result == i)
-
-    # Check that the results didn't come back all in order.
-    # NOTE: this could be flaky if the calls happened to finish in order due
-    # to the random sleeps, but it's very unlikely.
-    assert not all(in_order)
 
     with pytest.raises(StopIteration):
         result_iter.next()
+
+    # The results should not have come back in order because index == 0 was blocking.
+    assert results != list(range(10)), results
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@
 #include "ray/object_manager/plasma/plasma_generated.h"
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/util/logging.h"
+#include "ray/util/process.h"
 
 namespace plasma {
 
@@ -84,11 +85,12 @@ std::shared_ptr<Client> Client::Create(
     PlasmaStoreConnectionErrorHandler connection_error_handler,
     ray::local_stream_socket &&socket) {
   ray::MessageHandler ray_message_handler =
-      [message_handler](std::shared_ptr<ray::ClientConnection> client,
+      [message_handler](const std::shared_ptr<ray::ClientConnection> &client,
                         int64_t message_type,
                         const std::vector<uint8_t> &message) {
-        Status s = message_handler(
-            std::static_pointer_cast<Client>(client), (MessageType)message_type, message);
+        Status s = message_handler(std::static_pointer_cast<Client>(client),
+                                   static_cast<MessageType>(message_type),
+                                   message);
         if (!s.ok()) {
           if (!s.IsDisconnected()) {
             RAY_LOG(ERROR) << "Fail to process client message. " << s.ToString();
@@ -100,7 +102,7 @@ std::shared_ptr<Client> Client::Create(
       };
 
   ray::ConnectionErrorHandler ray_connection_error_handler =
-      [connection_error_handler](std::shared_ptr<ray::ClientConnection> client,
+      [connection_error_handler](const std::shared_ptr<ray::ClientConnection> &client,
                                  const boost::system::error_code &error) {
         connection_error_handler(std::static_pointer_cast<Client>(client), error);
       };
@@ -170,7 +172,11 @@ Status Client::SendFd(MEMFD_TYPE fd) {
 }
 
 StoreConn::StoreConn(ray::local_stream_socket &&socket)
-    : ray::ServerConnection(std::move(socket)) {}
+    : ray::ServerConnection(std::move(socket)), exit_on_connection_failure_(false) {}
+
+StoreConn::StoreConn(ray::local_stream_socket &&socket, bool exit_on_connection_failure)
+    : ray::ServerConnection(std::move(socket)),
+      exit_on_connection_failure_(exit_on_connection_failure) {}
 
 Status StoreConn::RecvFd(MEMFD_TYPE_NON_UNIQUE *fd) {
 #ifdef _WIN32
@@ -192,4 +198,28 @@ Status StoreConn::RecvFd(MEMFD_TYPE_NON_UNIQUE *fd) {
   return Status::OK();
 }
 
+ray::Status StoreConn::WriteBuffer(const std::vector<boost::asio::const_buffer> &buffer) {
+  auto status = ray::ServerConnection::WriteBuffer(buffer);
+  ExitIfErrorStatus(status);
+  return status;
+}
+
+ray::Status StoreConn::ReadBuffer(
+    const std::vector<boost::asio::mutable_buffer> &buffer) {
+  auto status = ray::ServerConnection::ReadBuffer(buffer);
+  ExitIfErrorStatus(status);
+  return status;
+}
+
+void StoreConn::ExitIfErrorStatus(const ray::Status &status) {
+  if (!status.ok() && exit_on_connection_failure_) {
+    RAY_LOG(WARNING) << "The connection to the plasma store is failed. Terminate the "
+                     << "process. Status: " << status;
+    ray::QuickExit();
+    RAY_LOG(FATAL)
+        << "Accessing unreachable code. This line should never be reached "
+        << "after quick process exit due to plasma store connection failure. Please "
+           "create a github issue at https://github.com/ray-project/ray.";
+  }
+}
 }  // namespace plasma

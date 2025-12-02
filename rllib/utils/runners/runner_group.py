@@ -1,19 +1,18 @@
 import abc
 import logging
-import ray
-
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
     List,
     Optional,
     Tuple,
-    TYPE_CHECKING,
     TypeVar,
     Union,
 )
 
+import ray
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.rllib.core import (
@@ -135,6 +134,7 @@ class RunnerGroup(metaclass=abc.ABCMeta):
                 runner_index=0,
                 num_runners=num_runners,
                 config=self._local_config,
+                **kwargs,
             )
 
     def add_runners(self, num_runners: int, validate: bool = False, **kwargs) -> None:

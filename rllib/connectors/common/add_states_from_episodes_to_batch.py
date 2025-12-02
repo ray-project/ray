@@ -211,7 +211,11 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         **kwargs,
     ) -> Any:
         # If not stateful OR STATE_IN already in data, early out.
-        if not rl_module.is_stateful() or Columns.STATE_IN in batch:
+        if (
+            rl_module is None
+            or not rl_module.is_stateful()
+            or Columns.STATE_IN in batch
+        ):
             return batch
 
         for sa_episode in self.single_agent_episode_iterator(
@@ -332,6 +336,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     Columns.STATE_OUT not in sa_episode.extra_model_outputs
                 ):
                     state = sa_module.get_initial_state()
+                    state = convert_to_numpy(state)
                 # Episode is already ongoing -> Use most recent STATE_OUT.
                 else:
                     state = sa_episode.get_extra_model_outputs(

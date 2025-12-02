@@ -251,6 +251,50 @@ def cleanup_security_group(ec2_client, id):
                 return
 
 
+def ensure_ssh_keys_azure():
+    """
+    Ensure that the SSH keys for Azure tests exist, and create them if they don't.
+    """
+    print("======================================")
+    print("Ensuring Azure SSH keys exist...")
+    private_key_path = os.path.expanduser("~/.ssh/ray-autoscaler-tests-ssh-key")
+    public_key_path = os.path.expanduser("~/.ssh/ray-autoscaler-tests-ssh-key.pub")
+
+    if os.path.exists(private_key_path) and os.path.exists(public_key_path):
+        print("Azure SSH keys already exist.")
+        return
+
+    print("Azure SSH keys not found. Creating new keys...")
+    ssh_dir = os.path.dirname(private_key_path)
+    if not os.path.exists(ssh_dir):
+        os.makedirs(ssh_dir, exist_ok=True)
+
+    try:
+        subprocess.run(
+            [
+                "ssh-keygen",
+                "-t",
+                "rsa",
+                "-b",
+                "4096",
+                "-f",
+                private_key_path,
+                "-N",
+                "",
+                "-C",
+                "ray-autoscaler-azure",
+            ],
+            check=True,
+            capture_output=True,
+        )
+        print("Successfully created Azure SSH keys.")
+    except subprocess.CalledProcessError as e:
+        print("Error creating SSH keys:")
+        print(f"stdout:\n{e.stdout.decode('utf-8')}")
+        print(f"stderr:\n{e.stderr.decode('utf-8')}")
+        sys.exit(1)
+
+
 def cleanup_security_groups(config):
     provider_type = config.get("provider", {}).get("type")
     if provider_type != "aws":
@@ -392,7 +436,9 @@ if __name__ == "__main__":
 
     provider_type = config_yaml.get("provider", {}).get("type")
     config_yaml["provider"]["cache_stopped_nodes"] = False
-    if provider_type == "aws":
+    if provider_type == "azure":
+        ensure_ssh_keys_azure()
+    elif provider_type == "aws":
         download_ssh_key_aws()
     elif provider_type == "gcp":
         download_ssh_key_gcp()

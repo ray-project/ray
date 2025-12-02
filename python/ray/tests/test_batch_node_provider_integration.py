@@ -1,21 +1,21 @@
 """Integration/e2e test for BatchingNodeProvider.
 Adapts FakeMultiNodeProvider tests.
 """
-from copy import deepcopy
+import logging
 import sys
+from copy import deepcopy
 
 import pytest
 
-
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
+from ray.autoscaler._private.constants import FOREGROUND_NODE_LAUNCH_KEY
+from ray.autoscaler._private.fake_multi_node.node_provider import FakeMultiNodeProvider
 from ray.autoscaler.batching_node_provider import (
     BatchingNodeProvider,
     NodeData,
     ScaleRequest,
 )
-from ray.autoscaler._private.fake_multi_node.node_provider import FakeMultiNodeProvider
-from ray.autoscaler._private.constants import FOREGROUND_NODE_LAUNCH_KEY
 from ray.autoscaler.tags import (
     NODE_KIND_WORKER,
     STATUS_UP_TO_DATE,
@@ -24,9 +24,6 @@ from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
 )
 from ray.cluster_utils import AutoscalingCluster
-
-
-import logging
 
 logger = logging.getLogger(__name__)
 

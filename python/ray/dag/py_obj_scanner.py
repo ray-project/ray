@@ -1,11 +1,9 @@
 import io
-from typing import Any, Dict, Generic, List, Tuple, Type, TypeVar, Union
-
 import pickle  # noqa: F401
+from typing import Any, Dict, Generic, List, Tuple, Type, TypeVar, Union
 
 import ray
 from ray.dag.base import DAGNodeBase
-
 
 # Used in deserialization hooks to reference scanner instances.
 _instances: Dict[int, "_PyObjScanner"] = {}

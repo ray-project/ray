@@ -68,7 +68,9 @@ class BigQueryDatasource(Datasource):
                 + "(must be mutually exclusive)."
             )
 
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+    def get_read_tasks(
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
+    ) -> List[ReadTask]:
         from google.cloud import bigquery_storage
 
         def _read_single_partition(stream) -> Block:
@@ -117,7 +119,6 @@ class BigQueryDatasource(Datasource):
             metadata = BlockMetadata(
                 num_rows=None,
                 size_bytes=None,
-                schema=None,
                 input_files=None,
                 exec_stats=None,
             )
@@ -126,6 +127,7 @@ class BigQueryDatasource(Datasource):
             read_task = ReadTask(
                 lambda stream=stream: [_read_single_partition(stream)],
                 metadata,
+                per_task_row_limit=per_task_row_limit,
             )
             read_tasks.append(read_task)
 

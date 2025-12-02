@@ -1,31 +1,29 @@
+import asyncio
 import copy
-from ray.experimental.channel.auto_transport_type import AutoTransportType
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
+import uuid
+from itertools import chain
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
+
 import ray
 from ray.dag.base import DAGNodeBase
-from ray.dag.py_obj_scanner import _PyObjScanner
-from ray.util.annotations import DeveloperAPI
-
-from itertools import chain
-
-from typing import (
-    Optional,
-    Union,
-    List,
-    Tuple,
-    Dict,
-    Any,
-    TypeVar,
-    Callable,
-    Literal,
-)
-import uuid
-import asyncio
-
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
+from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.experimental.channel import ChannelOutputType
+from ray.experimental.channel.auto_transport_type import AutoTransportType
 from ray.experimental.channel.communicator import Communicator
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.util.types import Device
+from ray.util.annotations import DeveloperAPI
 
 T = TypeVar("T")
 
@@ -151,11 +149,18 @@ class DAGNode(DAGNodeBase):
         Configure the torch tensor transport for this node.
 
         Args:
-            transport: "nccl" means that tensors will be passed via NCCL.
-                "shm" means that tensors will be passed via host shared memory and gRPC.
-                "auto" (default) means that tensor transport will be
-                automatically determined based on the sender and receiver,
-                either through NCCL or host memory.
+            transport: Specifies the tensor transport mechanism.
+                - "accelerator": Tensors are communicated using accelerator-specific backends
+                (e.g., NCCL, XLA, or vendor-provided transport). This is the recommended option
+                for most use cases, as it supports extensibility and future hardware backends.
+                - "nccl": Tensors are passed explicitly via NCCL. This option is kept for
+                backwards compatibility and may be removed in the future. Use "accelerator"
+                instead unless you have legacy requirements.
+                - "shm": Tensors are passed via host shared memory and gRPC. Typically used
+                when accelerator-based transport is unavailable or not suitable.
+                - "auto" (default): The system automatically selects the appropriate transport
+                mechanism based on the sender and receiver, usually preferring accelerator-based
+                transport when available.
             device: The target device to use for the tensor transport.
                 "default": The tensor will maintain its original device placement from the sender
                 "cpu": The tensor will be explicitly moved to CPU device in the receiver
@@ -172,9 +177,9 @@ class DAGNode(DAGNodeBase):
         try:
             device = Device(device)
         except ValueError:
+            valid_devices = ", ".join(f"'{d.value}'" for d in Device)
             raise ValueError(
-                f"Invalid device '{device}'. "
-                "Valid options are: 'default', 'cpu', 'gpu', 'cuda'."
+                f"Invalid device '{device}'. Valid options are: {valid_devices}."
             )
         if transport == "auto":
             self._type_hint = AutoTransportType(
@@ -184,7 +189,14 @@ class DAGNode(DAGNodeBase):
             )
         elif transport == "nccl":
             self._type_hint = TorchTensorType(
-                transport=transport,
+                transport="accelerator",
+                device=device,
+                _static_shape=_static_shape,
+                _direct_return=_direct_return,
+            )
+        elif transport == "accelerator":
+            self._type_hint = TorchTensorType(
+                transport == "accelerator",
                 device=device,
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
@@ -198,7 +210,8 @@ class DAGNode(DAGNodeBase):
         else:
             if not isinstance(transport, Communicator):
                 raise ValueError(
-                    "transport must be 'auto', 'nccl', 'shm' or a Communicator type"
+                    "transport must be 'auto', 'nccl', 'shm', 'accelerator' or "
+                    "a Communicator type"
                 )
             self._type_hint = TorchTensorType(
                 transport=transport,

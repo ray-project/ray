@@ -25,9 +25,9 @@
 #include <string>
 #include <utility>
 
+#include "ray/common/status.h"
 #include "ray/util/compat.h"
 #include "ray/util/stream_redirection_options.h"
-#include "ray/util/util.h"
 #include "spdlog/logger.h"
 
 namespace ray {
@@ -37,21 +37,17 @@ class RedirectionFileHandle {
  public:
   RedirectionFileHandle() = default;
 
-  // @param termination_synchronizer is used to block wait until destruction operation
-  // finishes.
-  RedirectionFileHandle(MEMFD_TYPE_NON_UNIQUE write_handle,
+  RedirectionFileHandle(int write_fd,
                         std::shared_ptr<spdlog::logger> logger,
                         std::function<void()> close_fn)
-      : write_handle_(write_handle),
-        logger_(std::move(logger)),
-        close_fn_(std::move(close_fn)) {}
+      : write_fd_(write_fd), logger_(std::move(logger)), close_fn_(std::move(close_fn)) {}
   RedirectionFileHandle(const RedirectionFileHandle &) = delete;
   RedirectionFileHandle &operator=(const RedirectionFileHandle &) = delete;
   ~RedirectionFileHandle() = default;
 
   RedirectionFileHandle(RedirectionFileHandle &&rhs) {
-    write_handle_ = rhs.write_handle_;
-    rhs.write_handle_ = INVALID_FD;
+    write_fd_ = rhs.write_fd_;
+    rhs.write_fd_ = -1;
     logger_ = std::move(rhs.logger_);
     close_fn_ = std::move(rhs.close_fn_);
   }
@@ -59,18 +55,18 @@ class RedirectionFileHandle {
     if (this == &rhs) {
       return *this;
     }
-    write_handle_ = rhs.write_handle_;
-    rhs.write_handle_ = INVALID_FD;
+    write_fd_ = rhs.write_fd_;
+    rhs.write_fd_ = -1;
     logger_ = std::move(rhs.logger_);
     close_fn_ = std::move(rhs.close_fn_);
     return *this;
   }
   void Close() {
-    if (write_handle_ != INVALID_FD) {
+    if (write_fd_ != -1) {
       close_fn_();
 
       // Destruct all resources.
-      write_handle_ = INVALID_FD;
+      write_fd_ = -1;
       logger_ = nullptr;
       close_fn_ = nullptr;
     }
@@ -83,15 +79,15 @@ class RedirectionFileHandle {
   // until logger sync over.
   void Flush() { logger_->flush(); }
 
-  MEMFD_TYPE_NON_UNIQUE GetWriteHandle() const { return write_handle_; }
+  int GetWriteFd() const { return write_fd_; }
 
   // Write the given data into redirection handle; currently only for testing usage.
   void CompleteWrite(const char *data, size_t len) {
-    RAY_CHECK_OK(::ray::CompleteWrite(write_handle_, data, len));
+    RAY_CHECK_OK(::ray::CompleteWrite(write_fd_, data, len));
   }
 
  private:
-  MEMFD_TYPE_NON_UNIQUE write_handle_;
+  int write_fd_;
 
   std::shared_ptr<spdlog::logger> logger_;
 

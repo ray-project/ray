@@ -5,15 +5,15 @@ import os
 import subprocess
 import sys
 import tempfile
+from math import ceil
+from typing import List
 
 import boto3
-from typing import List
-from math import ceil
+from ray_release.bazel import bazel_runfile
+from ray_release.configs.global_config import init_global_config
+from ray_release.test import Test, TestState
 
 import ci.ray_ci.bazel_sharding as bazel_sharding
-from ray_release.bazel import bazel_runfile
-from ray_release.test import Test, TestState
-from ray_release.configs.global_config import init_global_config
 
 GLOBAL_CONFIG_FILE = (
     os.environ.get("RAYCI_GLOBAL_CONFIG") or "ci/ray_ci/oss_config.yaml"
@@ -47,9 +47,9 @@ def shard_tests(
     return bazel_sharding.main(test_targets, index=shard_id, count=shard_count)
 
 
-def docker_login(docker_ecr: str) -> None:
+def ecr_docker_login(docker_ecr: str) -> None:
     """
-    Login to docker with AWS credentials
+    Login to ECR with AWS credentials
     """
     token = boto3.client("ecr", region_name="us-west-2").get_authorization_token()
     user, password = (

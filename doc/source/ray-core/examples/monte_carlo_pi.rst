@@ -33,9 +33,6 @@ First, let's include all modules needed for this tutorial and start a local Ray 
     :start-after: __starting_ray_start__
     :end-before: __starting_ray_end__
 
-.. note::
-
-  In recent versions of Ray (>=1.5), ``ray.init()`` is automatically called on the first use of a Ray remote API.
 
 
 Defining the Progress Actor

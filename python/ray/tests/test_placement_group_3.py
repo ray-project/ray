@@ -1,28 +1,28 @@
 import os
 import sys
 import time
+from typing import List
 
 import pytest
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 import ray.experimental.internal_kv as internal_kv
+from ray import ObjectRef
+from ray._common.test_utils import wait_for_condition
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS,
 )
-from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray._private.test_utils import (
-    convert_actor_state,
     generate_system_config_map,
     is_placement_group_removed,
     kill_actor_and_wait_for_failure,
     reset_autoscaler_v2_enabled_cache,
     run_string_as_driver,
-    wait_for_condition,
 )
 from ray.autoscaler._private.commands import debug_status
+from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray.exceptions import RaySystemError
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -53,7 +53,6 @@ def get_ray_status_output(address):
         generate_system_config_map(
             health_check_initial_delay_ms=0,
             health_check_failure_threshold=10,
-            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,
@@ -84,7 +83,6 @@ def test_create_placement_group_during_gcs_server_restart(
         generate_system_config_map(
             health_check_initial_delay_ms=0,
             health_check_failure_threshold=10,
-            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,
@@ -148,6 +146,15 @@ def test_schedule_placement_groups_at_the_same_time(shutdown_only):
     wait_for_condition(is_all_placement_group_removed)
 
 
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "include_dashboard": True,
+        }
+    ],
+    indirect=True,
+)
 def test_detached_placement_group(ray_start_cluster):
     cluster = ray_start_cluster
     for _ in range(2):
@@ -200,10 +207,8 @@ ray.shutdown()
 
     def assert_alive_num_actor(expected_num_actor):
         alive_num_actor = 0
-        for actor_info in ray._private.state.actors().values():
-            if actor_info["State"] == convert_actor_state(
-                gcs_utils.ActorTableData.ALIVE
-            ):
+        for actor_info in ray.util.state.list_actors():
+            if actor_info.state == "ALIVE":
                 alive_num_actor += 1
         return alive_num_actor == expected_num_actor
 
@@ -447,17 +452,14 @@ def test_placement_group_gpu_assigned(ray_start_cluster):
     assert len(gpu_ids_res) == 2
 
 
-@pytest.mark.repeat(3)
-def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
-    """Tests the scheduling of lots of actors will not be blocked
-    when using placement groups.
+def test_incremental_pg_and_actor_scheduling(ray_start_cluster):
+    """Tests that actors in pending PGs are scheduled as resources become available.
 
     For more detailed information please refer to:
     https://github.com/ray-project/ray/issues/15801.
     """
-
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=0)
     ray.init(address=cluster.address)
 
     @ray.remote(num_cpus=1)
@@ -465,44 +467,34 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
         def ready(self):
             pass
 
-    actor_num = 1000
-    pgs = [ray.util.placement_group([{"CPU": 1}]) for _ in range(actor_num)]
+    # Schedule a large number of placement groups and actors that should be placed in
+    # those groups. Initially, none are schedulable.
+    pgs = [ray.util.placement_group([{"CPU": 1}]) for _ in range(1000)]
+    pg_refs = [pg.ready() for pg in pgs]
     actors = [
         A.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
         ).remote()
         for pg in pgs
     ]
-    refs = [actor.ready.remote() for actor in actors]
+    actor_refs = [actor.ready.remote() for actor in actors]
 
-    expected_created_num = 1
+    ready_pgs, _ = ray.wait(pg_refs, timeout=0.1)
+    assert len(ready_pgs) == 0
+    ready_actors, _ = ray.wait(actor_refs, timeout=0.1)
+    assert len(ready_actors) == 0
 
-    def is_actor_created_number_correct():
-        ready, not_ready = ray.wait(refs, num_returns=len(refs), timeout=1)
-        return len(ready) == expected_created_num
+    def check_num_refs_ready(refs: List[ObjectRef], expected: int) -> bool:
+        ready, _ = ray.wait(refs, num_returns=expected, timeout=1)
+        return len(ready) == expected
 
-    def is_pg_created_number_correct():
-        created_pgs = [
-            pg
-            for _, pg in ray.util.placement_group_table().items()
-            if pg["state"] == "CREATED"
-        ]
-        return len(created_pgs) == expected_created_num
-
-    wait_for_condition(is_pg_created_number_correct, timeout=3)
-    wait_for_condition(is_actor_created_number_correct, timeout=30, retry_interval_ms=0)
-
-    # NOTE: we don't need to test all the actors create successfully.
-    for _ in range(20):
-        expected_created_num += 1
+    # Iteratively add nodes to the cluster so that some of the placement groups (and
+    # therefore actors) can be scheduled. Verify that the PGs and actors are scheduled
+    # incrementally as their required resources become available.
+    for i in range(5):
         cluster.add_node(num_cpus=1)
-
-        wait_for_condition(is_pg_created_number_correct, timeout=10)
-        # Make sure the node add event will cause a waiting actor
-        # to create successfully in time.
-        wait_for_condition(
-            is_actor_created_number_correct, timeout=30, retry_interval_ms=0
-        )
+        wait_for_condition(lambda: check_num_refs_ready(pg_refs, i + 1), timeout=30)
+        wait_for_condition(lambda: check_num_refs_ready(actor_refs, i + 1), timeout=30)
 
 
 def test_placement_group_gpu_unique_assigned(ray_start_cluster):

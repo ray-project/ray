@@ -14,7 +14,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack
+`python [script file name].py
 --wandb-key=[your WandB API key] --wandb-project=[some WandB project name]
 --wandb-run-name=[optional: WandB run name within --wandb-project]`
 
@@ -76,7 +76,6 @@ parser = add_rllib_example_script_args(
     default_reward=9.0,
     default_timesteps=10000,
 )
-parser.set_defaults(enable_new_api_stack=True)
 
 
 class CustomRenderedCorridorEnv(gym.Env):

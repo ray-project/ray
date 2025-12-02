@@ -38,7 +38,7 @@ Bonjour Monde!
 ```
 
 Converting this model into a Ray Serve application with FastAPI requires three changes:
-1. Import Ray Serve and Fast API dependencies
+1. Import Ray Serve and FastAPI dependencies
 2. Add decorators for Serve deployment with FastAPI: `@serve.deployment` and `@serve.ingress(app)`
 3. `bind` the `Translator` deployment to the arguments that are passed into its constructor
 
@@ -60,7 +60,7 @@ To test locally, run the script with the `serve run` CLI command. This command t
 $ serve run model:translator_app
 ```
 
-This command runs the `translator_app` application and then blocks streaming logs to the console. You can kill it with `Ctrl-C`, which tears down the application.
+This command runs the `translator_app` application and then blocks, streaming logs to the console. You can kill it with `Ctrl-C`, which tears down the application.
 
 Now test the model over HTTP. Reach it at the following default URL:
 

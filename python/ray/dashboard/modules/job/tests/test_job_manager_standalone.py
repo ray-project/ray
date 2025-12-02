@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from ray._private.test_utils import async_wait_for_condition
+from ray._common.test_utils import async_wait_for_condition
 from ray.dashboard.modules.job.tests.conftest import (
     _driver_script_path,
     create_job_manager,

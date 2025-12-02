@@ -1,16 +1,16 @@
 import logging
 import platform
-import time
 import sys
+import time
 
 import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
-    wait_for_condition,
 )
 from ray.autoscaler._private.fake_multi_node.node_provider import FakeMultiNodeProvider
 from ray.cluster_utils import AutoscalingCluster
