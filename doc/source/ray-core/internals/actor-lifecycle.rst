@@ -322,36 +322,40 @@ Actors can be terminated in several ways:
 When all ``ActorHandle`` references go out of scope:
 
 1. The reference counting system detects no live references.
-2. Core Worker notifies GCS via ``WaitForActorRefDeleted``.
-3. GCS calls `DestroyActor <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1007>`__ with ``OUT_OF_SCOPE`` death cause.
-4. For graceful shutdown, the worker receives a signal and can run cleanup (``__ray_shutdown__``).
+2. Core Worker sends `ReportActorOutOfScope <https://github.com/ray-project/ray/blob/master/src/ray/gcs/grpc_services.cc#L40>`__ RPC to GCS.
+3. `HandleReportActorOutOfScope <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L301>`__ calls `DestroyActor <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1009>`__ with ``OUT_OF_SCOPE`` death cause.
+4. For graceful shutdown, the worker receives a signal and can run cleanup (``__del__``).
 5. After worker confirms exit, actor is marked ``DEAD``.
+
+Alternatively, GCS uses ``WaitForActorRefDeleted`` to monitor when references are deleted from the owner:
+
+1. When actor is registered, GCS `calls WaitForActorRefDeleted <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L981>`__ on the owner worker.
+2. When owner deletes refs, the callback triggers `DestroyActor <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1000>`__ with ``REF_DELETED`` death cause.
 
 **Explicit termination (ray.kill)**
 
 When ``ray.kill(actor)`` is called:
 
-1. GCS `HandleKillActorViaGcs <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L662>`__ processes the request.
-2. If ``no_restart=True``: Calls ``DestroyActor`` with ``RAY_KILL`` death cause.
-3. If ``no_restart=False``: Calls ``KillActor`` which allows the actor to restart.
+1. GCS `HandleKillActorViaGcs <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L660>`__ processes the request.
+2. If `no_restart=True <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L668>`__: Calls ``DestroyActor`` with ``RAY_KILL`` death cause (permanent).
+3. If `no_restart=False <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L671>`__: Calls `KillActor <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1991>`__ which terminates the worker but allows restart.
 
 **Owner death**
 
 For non-detached actors, when the owner process dies:
 
-1. GCS detects owner death and iterates through owned actors.
+1. GCS detects owner death via ``OnWorkerDead`` and iterates through `owned actors <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1277>`__.
 2. Each owned actor is destroyed with ``OWNER_DIED`` death cause.
-3. Owned actors cannot restart even if they have remaining restarts.
+3. Owned actors don't automatically restart (owner death is an explicit termination).
 
 **Node death**
 
 When a node dies:
 
-1. `GcsActorManager::OnNodeDead <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1365>`__ is called.
-2. All actors on that node are processed:
-
-   - Owned actors whose owners were on the node are destroyed
-   - Other actors are restarted if they have remaining restarts
+1. `GcsActorManager::OnNodeDead <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1362>`__ is called.
+2. `Owned actors <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1367>`__ whose owners were on the node are destroyed with ``OWNER_DIED``.
+3. `Actors being scheduled <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1401>`__ on the dead node are rescheduled.
+4. Created actors on the dead node are handled via ``OnWorkerDead`` callbacks.
 
 
 Named actor registration
