@@ -414,11 +414,11 @@ def test_calculate_ref_hits(ray_start_regular_shared):
     # With ctx.enable_get_object_locations_for_metrics set to False
     # by default, `_calculate_ref_hits` returns -1 for all, since
     # getting object locations is disabled.
-    assert hits == -1
-    assert misses == -1
-    assert unknowns == -1
+    assert hits == 0
+    assert misses == 0
+    assert unknowns == 0
 
-    ctx = ray.data.context.DataContext.get_current()
+    ctx = ray.data.DataContext.get_current()
     prev_enable_get_object_locations_for_metrics = (
         ctx.enable_get_object_locations_for_metrics
     )

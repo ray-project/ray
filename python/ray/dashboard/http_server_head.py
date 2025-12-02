@@ -27,7 +27,7 @@ from ray._private.authentication import (
 from ray._private.authentication.http_token_authentication import (
     get_token_auth_middleware,
 )
-from ray._raylet import AuthenticationMode, get_authentication_mode
+from ray._raylet import get_authentication_mode
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 from ray.dashboard.head import DashboardHeadModule
 
@@ -171,12 +171,7 @@ class HttpServerDashboardHead:
     async def get_authentication_mode(self, req) -> aiohttp.web.Response:
         try:
             mode = get_authentication_mode()
-            if mode == AuthenticationMode.TOKEN:
-                mode_str = "token"
-            elif mode == AuthenticationMode.K8S:
-                mode_str = "k8s"
-            else:
-                mode_str = "disabled"
+            mode_str = auth_utils.get_authentication_mode_name(mode)
 
             response = aiohttp.web.json_response({"authentication_mode": mode_str})
 
