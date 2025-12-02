@@ -84,10 +84,29 @@ Zero-Copy Serialization for Read-Only Tensors
 Ray provides zero-copy serialization for read-only PyTorch tensors. 
 Ray serializes these tensors by converting them to NumPy arrays and leveraging pickle5's zero-copy buffer sharing. 
 This avoids copying the underlying tensor data, which can improve performance when passing large tensors across tasks or actors.
+However, PyTorch does not natively support read-only tensors, so this feature must be used with caution.
+
+When the feature is enabled, Ray won't copy and allow a write to shared memory.
+One process changing a tensor after `ray.get()` could be reflected in another process.
+This feature works best under the following conditions:
+
+- The tensor has `requires_grad = False` (i.e., is detached from the autograd graph).
+
+- The tensor is contiguous in memory (`tensor.is_contiguous()`).
+
+- Performance benefits from this are larger if the tensor resides in CPU memory.
+
+- You are not using Ray Direct Transport.
 
 This feature is disabled by default.
-You can enable it by setting the environment variable `RAY_ENABLE_ZERO_COPY_TORCH_TENSORS = "1"`.
-Here is an example:
+You can enable it by setting the environment variable `RAY_ENABLE_ZERO_COPY_TORCH_TENSORS`.
+Set this variable externally before running your script to enable zero-copy serialization in the driver process:
+
+.. code-block:: bash
+
+    export RAY_ENABLE_ZERO_COPY_TORCH_TENSORS=1
+
+The following example calculates the sum of a 1GiB tensor using `ray.get()`, leveraging zero-copy serialization:
 
 .. testcode::
     :hide:
@@ -96,13 +115,9 @@ Here is an example:
 
 .. testcode::
 
-    import os
-
-    # Must be set before `import ray` to ensure that the feature is enabled in driver.
-    os.environ["RAY_ENABLE_ZERO_COPY_TORCH_TENSORS"] = "1"
-
     import ray
     import torch
+    from datetime import datetime
 
     ray.init(runtime_env={"env_vars": {"RAY_ENABLE_ZERO_COPY_TORCH_TENSORS": "1"}})
 
@@ -111,24 +126,21 @@ Here is an example:
         return tensor.sum()
 
     x = torch.ones(1024, 1024, 256)
+    start_time = datetime.now()
     result = ray.get(process.remote(x))
+    time_diff = datetime.now() - start_time
+    print(f"between time: {time_diff.total_seconds()}s")
 
-Note that this should be used with caution as Ray won't copy and allow a write to shared memory.
-One process changing a tensor after `ray.get()` could be reflected in another process.
-This feature works best under the following conditions:
+    assert result == x.sum()
 
-- The tensor has `requires_grad = False` (i.e., is detached from the autograd graph).
+In this example, enabling zero-copy serialization reduces end-to-end latency by **64.5%**:
 
-- The tensor is contiguous in memory.
+.. code-block:: bash
 
-- Performance benefits from this are larger if the tensor resides in CPU memory.
-
-- You are not using Ray Direct Transport.
-
-Tensors on GPU or non-contiguous tensors are still supported.
-Ray automatically moves them to CPU and/or make them contiguous as needed.
-While this incurs an initial copy, subsequent serialization may still benefit from reduced overhead compared to the default path.
-Use with caution and ensure tensors meet the above criteria before enabling.
+    # Without Zero-Copy Serialization
+    between time: 22.837529s
+    # With Zero-Copy Serialization
+    between time: 8.110477s
 
 Customized Serialization
 ------------------------
