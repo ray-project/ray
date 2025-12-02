@@ -2,7 +2,10 @@
 
 # Deploying Ray Clusters via ArgoCD
 
-This guide provides a step-by-step approach for deploying Ray clusters on Kubernetes using ArgoCD. This example demonstrates how to deploy the KubeRay operator and a RayCluster with three different worker groups, leveraging ArgoCD's GitOps capabilities for automated cluster management.
+This guide provides a step-by-step approach for deploying Ray clusters on Kubernetes using ArgoCD. ArgoCD is a declarative GitOps tool that enables you to manage Ray cluster configurations in Git repositories with automated synchronization, version control, and rollback capabilities. This approach is particularly valuable when managing multiple Ray clusters across different environments, implementing audit trails and approval workflows, or maintaining infrastructure-as-code practices. For simpler use cases like single-cluster development or quick experimentation, direct kubectl or Helm deployments may be sufficient.
+You can read more about the benefits of ArgoCD [here](https://argo-cd.readthedocs.io/en/stable/#why-argo-cd).
+
+This example demonstrates how to deploy the KubeRay operator and a RayCluster with three different worker groups, leveraging ArgoCD's GitOps capabilities for automated cluster management.
 
 ## Prerequisites
 
