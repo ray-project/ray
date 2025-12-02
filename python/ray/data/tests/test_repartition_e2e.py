@@ -246,8 +246,7 @@ def test_streaming_repartition_write_with_operator_fusion(
     """Test that write with streaming repartition produces exact partitions
     with operator fusion.
     This test verifies:
-    1. StreamingRepartition and MapBatches operators are fused, with both orders
-    2. Skewed data is properly distributed across partitions
+    * StreamingRepartition and MapBatches operators are fused, with both orders
     """
 
     def fn(batch):
@@ -311,6 +310,55 @@ def test_streaming_repartition_write_with_operator_fusion(
 
     assert partition_0_ds.count() == 80, "Expected 80 rows in partition 0"
     assert partition_1_ds.count() == 20, "Expected 20 rows in partition 1"
+
+
+def test_streaming_repartition_fusion_output_shape(
+    ray_start_regular_shared_2_cpus,
+    tmp_path,
+    disable_fallback_to_object_extension,
+):
+    """
+    When we use `map_batches -> streaming_repartition`, the output shape should be exactly the same as batch_size.
+    """
+
+    def fn(batch):
+        # Get number of rows from the first column (batch is a dict of column_name -> array)
+        num_rows = len(batch["id"])
+        assert num_rows == 20, f"Expected batch size 20, got {num_rows}"
+        return batch
+
+    # Configure shuffle strategy
+    ctx = DataContext.get_current()
+    ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+
+    num_rows = 100
+    partition_col = "skewed_key"
+
+    # Create sample data with skewed partitioning
+    # 1 occurs for every 5th row (20 rows), 0 for others (80 rows)
+    table = [{"id": n, partition_col: 1 if n % 5 == 0 else 0} for n in range(num_rows)]
+    ds = ray.data.from_items(table)
+
+    # Repartition by key to simulate shuffle
+    ds = ds.repartition(num_blocks=2, keys=[partition_col])
+
+    # mess up with the block size
+    ds = ds.repartition(target_num_rows_per_block=30)
+
+    # Verify fusion of StreamingRepartition and MapBatches operators
+    ds = ds.map_batches(fn, batch_size=20)
+    ds = ds.repartition(target_num_rows_per_block=20)
+    planner = create_planner()
+    physical_plan = planner.plan(ds._logical_plan)
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    physical_op = physical_plan.dag
+    assert (
+        physical_op.name
+        == "MapBatches(fn)->StreamingRepartition[num_rows_per_block=20]"
+    )
+
+    for block in ds.iter_batches(batch_size=None):
+        assert len(block["id"]) == 20
 
 
 @pytest.mark.parametrize(
