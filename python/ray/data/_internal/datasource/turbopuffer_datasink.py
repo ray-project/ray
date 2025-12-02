@@ -3,6 +3,8 @@ TurbopufferDatasink - Ray Data datasink for Turbopuffer vector database
 
 Implementation following the pattern of MongoDatasink and Daft's Turbopuffer sink.
 Supports multi-namespace mode for writing data from many workspaces to separate namespaces.
+
+This is based on [Turbopuffer Write API](https://turbopuffer.com/docs/write)
 """
 
 import logging
@@ -396,10 +398,15 @@ class TurbopufferDatasink(Datasink):
             start_idx += count
 
             # Format namespace name
-            # Convert bytes to UUID string if needed
-            if isinstance(namespace_value, bytes) and len(namespace_value) == 16:
-                # This is a UUID in binary format
-                namespace_str = str(uuid.UUID(bytes=namespace_value))
+            # Convert bytes to appropriate string format
+            if isinstance(namespace_value, bytes):
+                if len(namespace_value) == 16:
+                    # This is a UUID in binary format
+                    namespace_str = str(uuid.UUID(bytes=namespace_value))
+                else:
+                    # Non-UUID bytes: convert to hex string for consistency
+                    # with _transform_to_turbopuffer_format
+                    namespace_str = namespace_value.hex()
             else:
                 namespace_str = str(namespace_value)
 
