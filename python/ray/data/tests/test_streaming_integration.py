@@ -617,8 +617,8 @@ def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared, restore_data_c
     # Test case 1: Strict resource limits
     print("Testing scenario 1: Strict resource limits")
     executor1.update_job_resource_limits(
-        min_resources=ExecutionResources(cpu=1, gpu=0, memory=1e9),
-        max_resources=ExecutionResources(cpu=4, gpu=0, memory=2e9),
+        min_resources=ExecutionResources(cpu=1, gpu=0, memory=1e6),
+        max_resources=ExecutionResources(cpu=4, gpu=0, memory=2e6),
     )
 
     # Verify that resource limits are applied correctly
@@ -635,8 +635,8 @@ def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared, restore_data_c
     # Test case 2: Loose resource limits
     print("Testing scenario 2: Loose resource limits")
     executor2.update_job_resource_limits(
-        min_resources=ExecutionResources(cpu=1, gpu=0, memory=4e9),
-        max_resources=ExecutionResources(cpu=10, gpu=0, memory=10e9),
+        min_resources=ExecutionResources(cpu=1, gpu=0, memory=2e6),
+        max_resources=ExecutionResources(cpu=10, gpu=0, memory=4e6),
     )
 
     min_res, max_res = executor2.get_job_resource_limits()
@@ -677,8 +677,8 @@ def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared, restore_data_c
     # Set the same resource limits for both executors
     for executor in [shared_executor3]:
         executor.update_job_resource_limits(
-            min_resources=ExecutionResources(cpu=1, gpu=0, memory=3e9),
-            max_resources=ExecutionResources(cpu=6, gpu=0, memory=6e9),
+            min_resources=ExecutionResources(cpu=1, gpu=0, memory=1e6),
+            max_resources=ExecutionResources(cpu=6, gpu=0, memory=2e6),
         )
 
     # Concurrent execution
