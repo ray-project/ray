@@ -374,12 +374,24 @@ class ExecutionOptions:
             A new ExecutionOptions object with overridden fields.
         """
         return ExecutionOptions(
-            resource_limits=resource_limits if resource_limits is not None else self.resource_limits,
-            exclude_resources=exclude_resources if exclude_resources is not None else self.exclude_resources,
-            locality_with_output=locality_with_output if locality_with_output is not None else self.locality_with_output,
-            preserve_order=preserve_order if preserve_order is not None else self.preserve_order,
-            actor_locality_enabled=actor_locality_enabled if actor_locality_enabled is not None else self.actor_locality_enabled,
-            verbose_progress=verbose_progress if verbose_progress is not None else self.verbose_progress,
+            resource_limits=resource_limits
+            if resource_limits is not None
+            else self.resource_limits,
+            exclude_resources=exclude_resources
+            if exclude_resources is not None
+            else self.exclude_resources,
+            locality_with_output=locality_with_output
+            if locality_with_output is not None
+            else self.locality_with_output,
+            preserve_order=preserve_order
+            if preserve_order is not None
+            else self.preserve_order,
+            actor_locality_enabled=actor_locality_enabled
+            if actor_locality_enabled is not None
+            else self.actor_locality_enabled,
+            verbose_progress=verbose_progress
+            if verbose_progress is not None
+            else self.verbose_progress,
         )
 
     def validate(self) -> None:

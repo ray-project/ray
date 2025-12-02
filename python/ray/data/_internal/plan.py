@@ -411,7 +411,9 @@ class ExecutionPlan:
             plan_copy._snapshot_operator = self._snapshot_operator
             plan_copy._snapshot_stats = self._snapshot_stats
         plan_copy._dataset_name = self._dataset_name
-        plan_copy._execution_time_expectations = self._execution_time_expectations.copy()
+        plan_copy._execution_time_expectations = (
+            self._execution_time_expectations.copy()
+        )
         return plan_copy
 
     def deep_copy(self) -> "ExecutionPlan":
