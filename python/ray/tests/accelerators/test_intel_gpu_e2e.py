@@ -1,4 +1,5 @@
 import os
+import re
 
 import pytest
 import ray
@@ -52,8 +53,7 @@ def _is_cluster_configured(address: str = "auto") -> bool:
 def _detect_available_gpu_count() -> int:
     """Return the number of GPU devices detected via dpctl."""
     try:
-        devices = dpctl.get_devices(backend="level_zero")
-        return len(devices)
+        return dpctl.SyclContext("level_zero:gpu").device_count
     except Exception:
         # If dpctl cannot enumerate devices, assume no additional GPUs.
         return 0
@@ -121,8 +121,12 @@ def _validate_gpu_binding_common(result: Dict[str, Any], label: str, selector_ke
     assert (
         "level_zero:" in selector_lower
     ), f"ONEAPI_DEVICE_SELECTOR should target GPU devices for {label}, got: {selector}."
+
+    selector_gpu_ids = {
+        int(match) for match in re.findall(r"\b\d+\b", selector_lower)
+    }
     assert (
-        str(primary_gpu_id) in selector
+        primary_gpu_id in selector_gpu_ids
     ), f"ONEAPI_DEVICE_SELECTOR does not reference bound GPU id for {label}: {selector}."
 
     return primary_gpu_id
