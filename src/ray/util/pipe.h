@@ -193,8 +193,8 @@ class Pipe {
 #else
       ssize_t n = write(write_fd_, remaining.data(), remaining.size());
 #endif
-      if (n < 0) {
-        if (errno == EINTR) continue;
+      if (n <= 0) {
+        if (n < 0 && errno == EINTR) continue;
         RAY_LOG(FATAL) << "Failed to write to pipe, errno=" << errno;
       }
       remaining.remove_prefix(static_cast<size_t>(n));
