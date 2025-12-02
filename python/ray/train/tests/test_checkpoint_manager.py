@@ -200,11 +200,19 @@ def test_nested_keep_best_checkpoint(checkpoint_paths, metrics_fn):
 
     assert len(manager.best_checkpoint_results) == 2
 
-    assert manager._get_checkpoint_score(manager.best_checkpoint_results[0])  == (True, 2.0)
-    assert manager._get_checkpoint_score(manager.best_checkpoint_results[1])  == (True, 3.0)
+    assert manager._get_checkpoint_score(manager.best_checkpoint_results[0]) == (
+        True,
+        2.0,
+    )
+    assert manager._get_checkpoint_score(manager.best_checkpoint_results[1]) == (
+        True,
+        3.0,
+    )
 
     # The latest checkpoint with the lowest score should not be deleted yet.
-    assert flatten_dict(manager.latest_checkpoint_result.metrics)["nested/sub/attr"] == 1.0
+    assert (
+        flatten_dict(manager.latest_checkpoint_result.metrics)["nested/sub/attr"] == 1.0
+    )
 
     # The latest checkpoint with the lowest score should not be deleted yet.
     assert Path(checkpoint_paths[2]).exists()
@@ -217,15 +225,23 @@ def test_nested_keep_best_checkpoint(checkpoint_paths, metrics_fn):
     )
     assert len(manager.best_checkpoint_results) == 2
 
-    assert manager._get_checkpoint_score(manager.best_checkpoint_results[0])  == (True, 2.0)
-    assert manager._get_checkpoint_score(manager.best_checkpoint_results[1])  == (True, 3.0)
+    assert manager._get_checkpoint_score(manager.best_checkpoint_results[0]) == (
+        True,
+        2.0,
+    )
+    assert manager._get_checkpoint_score(manager.best_checkpoint_results[1]) == (
+        True,
+        3.0,
+    )
 
     # A newer checkpoint came in. Even though the new one has a lower score, there are
     # already num_to_keep better checkpoints, so the previous one should be deleted.
     assert not Path(checkpoint_paths[2]).exists()
 
     # Quick sanity check to make sure that the new checkpoint is kept.
-    assert flatten_dict(manager.latest_checkpoint_result.metrics)["nested/sub/attr"] == 0.0
+    assert (
+        flatten_dict(manager.latest_checkpoint_result.metrics)["nested/sub/attr"] == 0.0
+    )
     assert Path(checkpoint_paths[3]).exists()
 
     # The original 2 checkpoints should still exist
