@@ -215,7 +215,7 @@ Choosing the right batch format
 
 When choosing the appropriate batch format for your ``map_batches`` operation, the primary consideration is the trade-off between performance and convenience.
 
-When using map_batches, Ray Data constructs batches of rows from underlying :ref:`blocks <data_key_concepts>`. Each block has a format (numpy, pandas, or pyarrow) determined by the upstream operator. The chosen batch format should ideally match the block format to avoid unnecessary data copies. A mismatch between formats (for example, when one `map_batches` uses pandas and the next `map_batches` uses numpy) introduces an additional conversion step that can impact performance.
+When using ``map_batches``, Ray Data constructs batches of rows from underlying :ref:`blocks <data_key_concepts>`. Each block has a format (``numpy``, ``pandas``, or ``pyarrow``) determined by the upstream operator. The chosen batch format should ideally match the block format to avoid unnecessary data copies. A mismatch between formats (for example, when one ``map_batches`` uses ``pandas`` and the next ``map_batches`` uses ``numpy``) introduces an additional conversion step that can impact performance.
 
 By default, most Ray Data datasources produce Arrow blocks.
 
