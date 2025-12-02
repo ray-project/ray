@@ -605,7 +605,7 @@ class DataContext:
     # This hook is known to have a race condition bug in fault tolerance.
     # I.E., after the hook is triggered and the UDF is deleted, another
     # retry task may still be scheduled to this actor and it will fail.
-    _enable_actor_pool_on_dequeue_hook: bool = False
+    _enable_actor_pool_on_exit_hook: bool = False
 
     issue_detectors_config: "IssueDetectorsConfiguration" = field(
         default_factory=_issue_detectors_config_factory

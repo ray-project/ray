@@ -155,7 +155,9 @@ class SupportsIndexing(Protocol):
 
 # TODO(Justin): What I wrote below is not ideal, and will be removed
 # once we are able to track metrics in the queues themselves (as opposed
-# to what we currently do -- track metrics in the operators)
+# to what we currently do -- track metrics in the operators). We need this method
+# to surface the original bundles to the operators so they can track the bundles
+# correctly.
 @runtime_checkable
 class SupportsRebundling(Protocol):
     """Protocol for queues that rebundle their input"""

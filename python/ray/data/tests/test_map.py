@@ -897,7 +897,7 @@ def test_actor_udf_cleanup(
     ray.shutdown()
     ray.init(num_cpus=2)
     ctx = DataContext.get_current()
-    ctx._enable_actor_pool_on_dequeue_hook = True
+    ctx._enable_actor_pool_on_exit_hook = True
 
     test_file = tmp_path / "test.txt"
 

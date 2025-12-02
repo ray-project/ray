@@ -167,7 +167,7 @@ class ActorPoolMapOperator(MapOperator):
                 or max_actor_concurrency
                 * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
             ),
-            _enable_actor_pool_on_dequeue_hook=self.data_context._enable_actor_pool_on_dequeue_hook,
+            _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
         )
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
@@ -774,7 +774,7 @@ class _ActorPool(AutoscalingActorPool):
         initial_size: int,
         max_actor_concurrency: int,
         max_tasks_in_flight_per_actor: int,
-        _enable_actor_pool_on_dequeue_hook: bool = False,
+        _enable_actor_pool_on_exit_hook: bool = False,
     ):
         """Initialize the actor pool.
 
@@ -795,7 +795,7 @@ class _ActorPool(AutoscalingActorPool):
                 passed to the operator).
             max_tasks_in_flight_per_actor: The maximum number of tasks that can
                 be submitted to a single actor at any given time.
-            _enable_actor_pool_on_dequeue_hook: Whether to enable the actor pool
+            _enable_actor_pool_on_exit_hook: Whether to enable the actor pool
                 on exit hook.
         """
 
@@ -823,7 +823,7 @@ class _ActorPool(AutoscalingActorPool):
         self._pending_actors: Dict[ObjectRef, ray.actor.ActorHandle] = {}
         # Map from actor handle to its logical ID.
         self._actor_to_logical_id: Dict[ray.actor.ActorHandle, str] = {}
-        self._enable_actor_pool_on_dequeue_hook = _enable_actor_pool_on_dequeue_hook
+        self._enable_actor_pool_on_exit_hook = _enable_actor_pool_on_exit_hook
         # Cached values for actor / task counts
         self._num_restarting_actors: int = 0
         self._num_active_actors: int = 0
@@ -1151,7 +1151,7 @@ class _ActorPool(AutoscalingActorPool):
         if actor_state.is_restarting:
             self._num_restarting_actors -= 1
 
-        if self._enable_actor_pool_on_dequeue_hook:
+        if self._enable_actor_pool_on_exit_hook:
             # Call `on_exit` to trigger `UDF.__del__` which may perform
             # cleanup operations.
             ref = actor.on_exit.remote()
