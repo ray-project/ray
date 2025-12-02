@@ -59,13 +59,13 @@ The tutorials walk through common ML workload patterns—vision, tabular, time s
   - Run parallel trials with various schedulers  
   - Add checkpoint/resume logic with [`tune.get_checkpoint`](https://docs.ray.io/en/latest/tune/api/doc/ray.tune.get_checkpoint.html)  
   - Retrieve and evaluate the best model checkpoint  
-  This tutorial is standalone, but naturally extends the Ray Train patterns preceding.
+  This tutorial is standalone but naturally extends the preceding Ray Train patterns.
 
 ---
 
 ## Key benefits
 - **Unified abstraction:** One training loop works across CPU, GPU, and multi-node clusters.
-- **Fault tolerance:** Resume from checkpoints on failures or preemptions.
+- **Fault tolerance:** Resume from checkpoints on failures or pre-emptions.
 - **Scalability:** Move from laptop prototyping to cluster-scale training without code changes.
 - **Observability:** Access metrics, logs, and checkpoints through Ray and Anyscale tooling.
 - **Flexibility:** Mix and match workload patterns for real-world ML pipelines.  

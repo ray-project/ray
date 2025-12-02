@@ -158,7 +158,7 @@ Read more about available <a href="https://docs.anyscale.com/configuration/stora
 
 Before training, let’s take a quick look at the dataset.  
 - Random sample of **9 images** from the MNIST training set.  
-- Each image is a **28×28 grayscale digit**, with its ground-truth label shown above the plot.  
+- Each image is a **28×28 grayscale digit**, with its ground-truth label preceding the plot.  
 - This simple visualization is a good sanity check to confirm that the dataset downloaded correctly and that labels align with the images.  
 
 
