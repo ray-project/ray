@@ -53,4 +53,4 @@ examples:
     use_cases:
       - document processing
       - data ingestion
-    link: examples/unstructured-data-ingestion/content/unstructured-data-ingestion
+    link: examples/unstructured_data_ingestion/content/unstructured_data_ingestion

@@ -4623,7 +4623,7 @@
   python: "3.11"
   group: ray-examples
   team: data
-  working_dir: //doc/source/data/examples/unstructured-data-ingestion  # use // to access from repo's root
+  working_dir: //doc/source/data/examples/unstructured_data_ingestion  # use // to access from repo's root
 
   cluster:
     byod:
