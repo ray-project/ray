@@ -437,6 +437,7 @@ class VLLMEngine(LLMEngine):
         transcription_response = await self._oai_serving_transcription.create_transcription(  # type: ignore[attr-defined]
             audio_data,
             request,
+            raw_request=None,
         )
 
         if isinstance(transcription_response, AsyncGenerator):
