@@ -258,21 +258,23 @@ Once an actor is ``ALIVE``, you can submit tasks to it:
 
 Actor task submission differs from regular task submission:
 
-1. `ActorMethod._remote() <https://github.com/ray-project/ray/blob/master/python/ray/actor.py#L248>`__ prepares the method call.
+1. `ActorMethod._remote() <https://github.com/ray-project/ray/blob/master/python/ray/actor.py#L792>`__ prepares the method call, then calls `_actor_method_call <https://github.com/ray-project/ray/blob/master/python/ray/actor.py#L858>`__.
 
-2. `ActorTaskSubmitter::SubmitTask <https://github.com/ray-project/ray/blob/master/src/ray/core_worker/task_submission/actor_task_submitter.cc#L166>`__:
+2. `ActorTaskSubmitter::SubmitTask <https://github.com/ray-project/ray/blob/master/src/ray/core_worker/task_submission/actor_task_submitter.cc#L167>`__:
 
-   a. Assigns a sequence number to maintain task ordering (unless ``allow_out_of_order_execution`` is true).
-   b. Resolves any ``ObjectRef`` dependencies.
-   c. Sends the task directly to the actor's worker via ``PushTask`` RPC.
+   a. Assigns a `sequence number <https://github.com/ray-project/ray/blob/master/src/ray/core_worker/task_submission/actor_task_submitter.cc#L190>`__ to maintain task ordering.
+   b. Queues the task in ``actor_submit_queue_``.
+   c. Posts a job to resolve ``ObjectRef`` dependencies.
 
-3. The actor worker receives tasks and executes them:
+3. `SendPendingTasks <https://github.com/ray-project/ray/blob/master/src/ray/core_worker/task_submission/actor_task_submitter.cc#L529>`__ pops ready tasks from the queue and calls `PushActorTask <https://github.com/ray-project/ray/blob/master/src/ray/core_worker/task_submission/actor_task_submitter.cc#L576>`__, which sends them directly to the actor's worker via `PushActorTask RPC <https://github.com/ray-project/ray/blob/master/src/ray/core_worker/task_submission/actor_task_submitter.cc#L633>`__.
+
+4. The actor worker receives tasks and executes them:
 
    a. For sync actors: Tasks execute sequentially in order.
    b. For async actors: Tasks can execute concurrently up to ``max_concurrency``.
    c. For threaded actors: Tasks can run in parallel threads up to ``max_concurrency``.
 
-4. Return values are stored in the object store and can be retrieved with ``ray.get()``.
+5. Return values are stored in the object store and can be retrieved with ``ray.get()``.
 
 
 Actor failure and restart
