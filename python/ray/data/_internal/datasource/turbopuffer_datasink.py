@@ -364,14 +364,21 @@ class TurbopufferDatasink(Datasink):
         # same namespace value together, enabling efficient slicing.
         sort_indices = pc.sort_indices(table, sort_keys=[(group_col_name, "ascending")])
         sorted_table = table.take(sort_indices)
-        sorted_namespace_col = sorted_table.column(group_col_name)
 
-        # Use PyArrow's group_by() to efficiently identify unique groups and their boundaries.
-        # The aggregate operation processes all groups in a single vectorized pass.
+        # Use PyArrow's group_by() to efficiently identify unique groups and their counts.
+        # Note: group_by().aggregate() uses hash aggregation with use_threads=True by default,
+        # which does NOT guarantee output order matches input order. We must sort the result
+        # to ensure it matches the sorted table order for correct slicing.
         grouped = sorted_table.group_by(group_col_name)
-        
-        # Count rows per group to determine boundaries
         agg_result = grouped.aggregate([(_ID_COLUMN, "count")])
+
+        # Sort the aggregate result by the group column to match the sorted table order.
+        # This is critical: without this sort, rows could be assigned to wrong namespaces.
+        agg_sort_indices = pc.sort_indices(
+            agg_result, sort_keys=[(group_col_name, "ascending")]
+        )
+        agg_result = agg_result.take(agg_sort_indices)
+
         group_keys = agg_result.column(group_col_name)
         group_counts = agg_result.column(f"{_ID_COLUMN}_count")
         num_groups = len(group_keys)
