@@ -5,10 +5,15 @@ RPC Fault Tolerance
 
 All RPCs added to Ray Core should be fault tolerant and use the retryable gRPC client. 
 Ideally, they should be idempotent, or at the very least, the lack of idempotency should be 
-documented and the client must be able to take retries into account. This guide walks you through 
-a case study of an RPC that was neither fault tolerant nor idempotent, and how it was fixed. 
-By the end of this guide, you should understand what to look for when adding new RPCs and 
-which testing methods to use to verify fault tolerance.
+documented and the client must be able to take retries into account. If you aren't familiar 
+with what idempotency is, consider a function that writes "hello" to a file. On retry,
+it writes "hello" again, resulting in "hellohello". This isn't idempotent. To make it
+idempotent, you could delete the file contents before writing "hello", ensuring that the 
+observable state after multiple identical function calls is the same as after a single call.
+
+This guide walks you through a case study of a RPC that wasn't fault tolerant or idempotent, 
+and how it was fixed. By the end of this guide, you should understand what to look for 
+when adding new RPCs and which testing methods to use to verify fault tolerance.
 
 Case study: RequestWorkerLease
 -------------------------------
@@ -16,19 +21,23 @@ Case study: RequestWorkerLease
 Problem
 ~~~~~~~
 
-``RequestWorkerLease`` was one of the most egregious examples of a non-idempotent RPC. 
-Before the fix, trivially retrying ``RequestWorkerLease`` could permanently leak raylet resources. 
-This happens because once leases are granted, they're considered occupied until ``ReturnWorker`` 
-is called. Until this RPC is called, the worker and its resources are never returned to the pool 
-of available workers and resources. The raylet assumes that the original RPC and its retry are 
-both fresh lease requests and can't deduplicate them.
+Prior to the fix described here, ``RequestWorkerLease`` could not be made retryable because 
+its handler in the Raylet was not idempotent.
 
-For example, consider this sequence of operations:
+This was because once leases are granted, they were considered occupied until ``ReturnWorker`` 
+was called. Until this RPC was called, the worker and its resources were never returned to the pool 
+of available workers and resources. The raylet assumed that the original RPC and its retry were 
+both fresh lease requests and couldn't deduplicate them. 
+
+For example, consider the following sequence of operations:
 
 1. Request a new worker lease (Owner → Raylet) through ``RequestWorkerLease``.
 2. Response is lost (Raylet → Owner).
 3. Retry ``RequestWorkerLease`` for lease (Owner → Raylet).
 4. Two sets of resources and workers are now granted, one for the original AND retry.
+
+On the retry, the raylet should detect that the lease request is a retry and forward the 
+already leased worker address to the owner so a second lease isn't granted.
 
 Solution
 ~~~~~~~~
@@ -74,66 +83,6 @@ able to deduplicate requests.
 For any long-polling RPC, you should be **particularly careful** about idempotency because the 
 client's retry won't necessarily wait for the response to be sent.
 
-Testing RPC fault tolerance
-----------------------------
-
-Ray Core has three layers of testing for RPC fault tolerance and idempotency.
-
-C++ unit tests
-~~~~~~~~~~~~~~
-
-For each RPC, there should be some form of C++ idempotency test that calls the ``HandleX`` server 
-function twice and checks that the same result is outputted each time. Different state changes 
-between the ``HandleX`` server function calls should be taken into account. For example, in 
-``RequestWorkerLease``, a C++ unit test was written to model the situation where the retry comes 
-while the initial lease request is stuck in the args pulling stage.
-
-Python integration tests
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-For each RPC, there should ideally be a Python integration test if it's straightforward. For some 
-RPCs, it's quite challenging to test them fully deterministically using Python APIs, so having 
-sufficient C++ unit testing can act as a good proxy. Hence, it's more of a nice-to-have, as 
-integration tests also act as examples of how a user could run into idempotency issues.
-
-The main testing mechanism uses the ``RAY_testing_rpc_failure`` config option, which allows 
-you to:
-
-- Trigger the RPC callback immediately with a gRPC error without sending the RPC (simulating 
-  request failure).
-- Trigger the RPC callback with a gRPC error once the response arrives from the server 
-  (simulating a response failure).
-- Trigger the RPC callback immediately with a gRPC error but send the RPC to the server as well 
-  (simulating an in-flight failure, where the retry should ideally hit the server while it's 
-  executing the server code for long-polling RPCs).
-
-For more details, see the comment in the Ray config file at 
-`ray_config_def.h <https://github.com/ray-project/ray/blob/a24e625f409a5c638414e5d104fd265547e4d1b4/src/ray/common/ray_config_def.h#L860>`_.
-
-Chaos network release tests
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-IP table blackout
-^^^^^^^^^^^^^^^^^
-
-The IP table blackout approach involves SSH-ing into each node and blacking out the IP tables
-for a small amount of time (5 seconds) to simulate transient network errors. The IP table script
-runs in the background, periodically (60 seconds) causing network blackouts while the test script
-executes.
-For core release tests, we've added the IP table blackout approach to all existing chaos release
-tests in `PR #58868 <https://github.com/ray-project/ray/pull/58868>`_.
-
-.. note::
-   Initially, Amazon FIS was considered. However, it has a 60-second minimum which caused node 
-   death due to configuration settings which was hard to debug, so the IP table approach was 
-   simpler and more flexible to use.
-
-Environment variable testing
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-We're also planning to add a variant of the release chaos tests that set the ``RAY_testing_rpc_failure`` 
-config to simulate network errors.
-
 Retryable gRPC client
 ---------------------
 
@@ -154,20 +103,23 @@ The retryable gRPC client works as follows:
   it pushes the callback into a queue.
 - Several checks are done on a periodic basis:
 
-  - **Cheap gRPC channel state check**: 
-    This checks the state of the 
+  - **Cheap gRPC channel state check**: This checks the state of the 
     `gRPC channel <https://github.com/ray-project/ray/blob/885e34f4029f8956a0440f3cdfc89c9fe8f3d395/src/ray/rpc/retryable_grpc_client.cc#L74>`_ 
-    to see whether the system can start sending messages again. This check happens every second by default, 
-    but is configurable through 
+    to see whether the system can start sending messages again. This check happens every 
+    second by default, but is configurable through 
     `check_channel_status_interval_milliseconds <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/common/ray_config_def.h#L449>`_.
-  - **Potentially expensive GCS node status check**: If the exponential backoff period has passed and the channel is still down, we call a 
+    
+  - **Potentially expensive GCS node status check**: If the exponential backoff period has 
+    passed and the channel is still down, the system calls 
     `server_unavailable_timeout_callback_ <https://github.com/ray-project/ray/blob/885e34f4029f8956a0440f3cdfc89c9fe8f3d395/src/ray/rpc/retryable_grpc_client.cc#L84>`_. 
     This callback is set in the client pool classes 
     (`raylet_client_pool <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/raylet_rpc_client/raylet_client_pool.cc#L24>`_, 
     `core_worker_client_pool <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/core_worker_rpc_client/core_worker_client_pool.cc#L28>`_). 
-    It checks if the client is subscribed for node status updates, and then checks the local subscriber cache 
-    to see whether a node death notification from the GCS has been received. If the client isn't subscribed 
-    or if there's no status for the node in the cache, it makes a RPC to the GCS.
+    It checks if the client is subscribed for node status updates, and then checks the local 
+    subscriber cache to see whether a node death notification from the GCS has been received. 
+    If the client isn't subscribed or if there's no status for the node in the cache, it 
+    makes a RPC to the GCS.
+    
   - **Per-RPC timeout check**: There's a 
     `timeout check <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/rpc/retryable_grpc_client.cc#L57>`_ 
     that's customizable per RPC, but it's functionally disabled because it's 
@@ -194,13 +146,13 @@ A few important points to keep in mind:
   fails due to a transient network error, the queue will have two items: RPC A then RPC B. 
   There isn't a separate queue on an RPC basis, but on a client basis.
 
-- **Client-level timeouts**: Each timeout needs to wait for the previous timeout to complete. If both
-  RPC A and RPC B are submitted in short succession, then RPC A will wait in total for 1 second,
-  and RPC B will wait in total for 1 + 2 = 3 seconds. Different RPCs don't matter and are treated
-  the same. The reasoning is that transient network errors aren't RPC specific. If RPC A sees a
-  network failure, you can assume that RPC B, if sent to the same client, will experience the
-  same failure. Hence, the time that an RPC waits is the sum of the timeouts of all the previous RPCs in the queue
-  and its own timeout.
+- **Client-level timeouts**: Each timeout needs to wait for the previous timeout to complete. 
+  If both RPC A and RPC B are submitted in short succession, then RPC A will wait in total 
+  for 1 second, and RPC B will wait in total for 1 + 2 = 3 seconds. Different RPCs don't 
+  matter and are treated the same. The reasoning is that transient network errors aren't RPC 
+  specific. If RPC A sees a network failure, you can assume that RPC B, if sent to the same 
+  client, will experience the same failure. Hence, the time that an RPC waits is the sum of 
+  the timeouts of all the previous RPCs in the queue and its own timeout.
 
 - **Destructor behavior**: In the destructor for ``RetryableGrpcClient``, the system fails all
   pending RPCs by posting their I/O contexts. These callbacks should ideally never modify state
@@ -209,3 +161,58 @@ A few important points to keep in mind:
   `PR #58744 <https://github.com/ray-project/ray/pull/58744>`_. The application code should
   also take into account the
   `Disconnected error <https://github.com/ray-project/ray/blob/75f8562759d4a5ef84163bb68ae9f7401b85728f/src/ray/rpc/retryable_grpc_client.cc#L32>`_.
+
+Testing RPC fault tolerance
+----------------------------
+
+Ray Core has three layers of testing for RPC fault tolerance and idempotency.
+
+C++ unit tests
+~~~~~~~~~~~~~~
+
+For each RPC, there should be some form of C++ idempotency test that calls the ``HandleX`` server 
+function twice and checks that the same result is outputted each time. Different state changes 
+between the ``HandleX`` server function calls should be taken into account. For example, in 
+``RequestWorkerLease``, a C++ unit test was written to model the situation where the retry comes 
+while the initial lease request is stuck in the args pulling stage.
+
+Python integration tests
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+For each RPC, there should ideally be a Python integration test if it's straightforward. For some 
+RPCs, it's quite challenging to test them fully deterministically using Python APIs, so having 
+sufficient C++ unit testing can act as a good proxy. Hence, it's more of a nice-to-have, as 
+integration tests also act as examples of how a user could run into idempotency issues.
+
+The main testing mechanism uses the ``RAY_testing_rpc_failure`` config option, which allows 
+you to:
+
+- Trigger the RPC callback immediately with a gRPC error without sending the RPC
+  (simulating a request failure).
+- Trigger the RPC callback with a gRPC error once the response arrives from the server 
+  (simulating a response failure).
+- Trigger the RPC callback immediately with a gRPC error but send the RPC to the server as well 
+  (simulating an in-flight failure, where the retry should ideally hit the server while it's 
+  executing the server code for long-polling RPCs).
+
+For more details, see the comment in the Ray config file at 
+`ray_config_def.h <https://github.com/ray-project/ray/blob/a24e625f409a5c638414e5d104fd265547e4d1b4/src/ray/common/ray_config_def.h#L860>`_.
+
+Chaos network release tests
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+IP table blackout
+^^^^^^^^^^^^^^^^^
+
+The IP table blackout approach involves SSH-ing into each node and blacking out the IP tables
+for a small amount of time (5 seconds) to simulate transient network errors. The IP table script
+runs in the background, periodically (60 seconds) causing network blackouts while the test script
+executes.
+
+For core release tests, we've added the IP table blackout approach to all existing chaos release
+tests in `PR #58868 <https://github.com/ray-project/ray/pull/58868>`_.
+
+.. note::
+   Initially, Amazon FIS was considered. However, it has a 60-second minimum which caused node 
+   death due to configuration settings which was hard to debug, so the IP table approach was 
+   simpler and more flexible to use.
