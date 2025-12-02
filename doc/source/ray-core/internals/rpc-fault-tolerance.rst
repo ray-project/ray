@@ -46,14 +46,14 @@ To implement idempotency, a unique identifier called ``LeaseID`` was added in
 `PR #55469 <https://github.com/ray-project/ray/pull/55469>`_, which allowed for the deduplication 
 of incoming lease requests. Once leases are granted, they're tracked in a ``leased_workers`` map 
 which maps lease IDs to workers. If the new lease request is already present in the 
-``leased_workers`` map, the system knows for sure this lease request is a retry and can simply 
-respond with the already leased worker address.
+``leased_workers`` map, the system knows this lease request is a retry and responds with the 
+already leased worker address.
 
 Hidden problem: long-polling RPCs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Network transient errors can happen at any time. For most RPCs, they finish in one I/O context 
-execution, so simply guarding against whether the request or response failed is sufficient. 
+execution, so guarding against whether the request or response failed is sufficient. 
 However, there are a few RPCs that are long-polling, meaning that once the ``HandleX`` function 
 executes, it won't immediately respond to the client but will rather depend on some state change 
 in the future to trigger the response back to the client.
@@ -180,7 +180,7 @@ Python integration tests
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 For each RPC, there should ideally be a Python integration test if it's straightforward. For some 
-RPCs, it's quite challenging to test them fully deterministically using Python APIs, so having 
+RPCs, it's challenging to test them fully deterministically using Python APIs, so having 
 sufficient C++ unit testing can act as a good proxy. Hence, it's more of a nice-to-have, as 
 integration tests also act as examples of how a user could run into idempotency issues.
 
