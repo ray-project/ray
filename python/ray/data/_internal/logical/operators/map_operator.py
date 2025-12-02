@@ -389,7 +389,7 @@ class FlatMap(AbstractUDFMap):
         return True
 
 
-class StreamingRepartition(AbstractMap):
+class StreamingRepartition(AbstractUDFMap):
     """Logical operator for streaming repartition operation.
     Args:
         target_num_rows_per_block: The target number of rows per block granularity for
@@ -404,6 +404,7 @@ class StreamingRepartition(AbstractMap):
         super().__init__(
             f"StreamingRepartition[num_rows_per_block={target_num_rows_per_block}]",
             input_op,
+            fn=lambda blocks: blocks,
         )
         self._target_num_rows_per_block = target_num_rows_per_block
 
