@@ -16,6 +16,7 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
+    SERVE_AUTOSCALING_DECISION_COUNTERS_KEY,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -749,12 +750,29 @@ class ApplicationAutoscalingState:
         """
         if self.has_policy():
             # Using app-level policy
-            autoscaling_contexts = {
-                deployment_id: state.get_autoscaling_context(
+
+            # Separate internal state from custom policy state(Internal state is used when default autoscaling is enabled over custom policies)
+            current_state = (self._policy_state or {}).copy()
+            internal_state = current_state.get(
+                SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, {}
+            )
+            current_state.pop(SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, None)
+
+            autoscaling_contexts = {}
+            for deployment_id, state in self._deployment_autoscaling_states.items():
+                ctx = state.get_autoscaling_context(
                     deployment_to_target_num_replicas[deployment_id]
                 )
-                for deployment_id, state in self._deployment_autoscaling_states.items()
-            }
+                # Populate per deployment policy state with the custom policy state and internal state corresponding
+                # to the deployment if it exists
+                policy_state = current_state.copy()
+                if deployment_id in internal_state:
+                    policy_state[
+                        SERVE_AUTOSCALING_DECISION_COUNTERS_KEY
+                    ] = internal_state[deployment_id]
+                # For custom policies without default autoscaling enabled only the custom policy state is persisted and sent back
+                ctx.policy_state = policy_state
+                autoscaling_contexts[deployment_id] = ctx
 
             # Policy returns {deployment_name -> decision}
             decisions, self._policy_state = self._policy(autoscaling_contexts)

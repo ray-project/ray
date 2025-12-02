@@ -2574,6 +2574,26 @@ def simple_app_level_policy(contexts):
     return decisions, {}
 
 
+def stateful_app_level_policy(contexts):
+    """Stateful application level policy that increments a counter in policy_state.
+    Used in tests to verify that application level autoscaling policy state
+    is persisted and passed back into subsequent policy invocations.
+    """
+
+    # Use any one deployment's context as representative for the shared app level state.
+    _, example_ctx = next(iter(contexts.items()))
+
+    prev_counter = 0
+    if example_ctx.policy_state:
+        prev_counter = example_ctx.policy_state.get("counter", 0)
+
+    # Scale all deployments to 3 replicas
+    decisions = {deployment_id: 3 for deployment_id in contexts.keys()}
+
+    # Persist updated counter for next iteration.
+    return decisions, {"counter": prev_counter + 1}
+
+
 class TestApplicationLevelAutoscaling:
     """Test application-level autoscaling policy registration, execution, and lifecycle."""
 
@@ -3181,6 +3201,44 @@ class TestApplicationLevelAutoscaling:
         assert (
             deployment_state_manager._scaling_decisions[d2_id] == 3
         )  # Our policy scales to 3
+
+    def test_app_level_autoscaling_policy_state_persistence_with_stateful_policy(
+        self, mocked_application_state_manager
+    ):
+        """Test that app-level autoscaling policy state is maintained across multiple calls."""
+
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Create app config but override to use the stateful policy.
+        app_config = self._create_app_config()
+        app_config.autoscaling_policy = {
+            "policy_function": "ray.serve.tests.unit.test_application_state:stateful_app_level_policy"
+        }
+
+        # Deploy app and register deployments with autoscaling manager.
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        # Create replicas so autoscaling runs.
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d1_replicas = [
+            ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id) for i in [1, 2]
+        ]
+        asm.update_running_replica_ids(d1_id, d1_replicas)
+
+        for _ in range(3):
+            deployment_state_manager._scaling_decisions.clear()
+            app_state_manager.update()
+            assert asm.should_autoscale_application("test_app") is True
+            assert deployment_state_manager._scaling_decisions[d1_id] == 3
+
+        # The stateful policy should have incremented its counter across calls.
+        app_autoscaling_state = asm._app_autoscaling_states["test_app"]
+        assert app_autoscaling_state._policy_state.get("counter") == 3
 
 
 def test_get_external_scaler_enabled(mocked_application_state_manager):
