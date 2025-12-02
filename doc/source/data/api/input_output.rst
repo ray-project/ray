@@ -177,6 +177,15 @@ SQL Databases
    read_sql
    Dataset.write_sql
 
+Hive
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_hive
+
 Databricks
 ----------
 

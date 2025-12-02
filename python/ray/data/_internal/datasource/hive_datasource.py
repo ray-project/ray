@@ -213,15 +213,35 @@ def _validate_storage_location(location: str) -> str:
     location = location.strip()
     if not location:
         raise ValueError("Storage location cannot be empty or whitespace-only")
+    
     # Check for dangerous patterns that could indicate path traversal
-    dangerous_patterns = ["../", "..\\", "~/", "file:///etc/", "file:///proc/"]
+    # Only reject patterns when they're actually used as path traversal operators,
+    # not when they appear as part of legitimate directory/bucket names
     location_lower = location.lower()
-    for pattern in dangerous_patterns:
-        if pattern in location_lower:
-            raise ValueError(
-                f"Storage location contains potentially dangerous pattern: {pattern!r}. "
-                "This could indicate a path traversal attempt."
-            )
+    
+    # Check for "../" or "..\\" as path traversal (after / or \ or at start of path segment)
+    # This regex matches "../" or "..\\" when preceded by / or \ or start of string,
+    # but not when part of directory names like "data../" or "user..name"
+    if re.search(r"(^|[/\\])\.\.(/|\\\\)", location):
+        raise ValueError(
+            "Storage location contains path traversal pattern '../' or '..\\'. "
+            "This could indicate a path traversal attempt."
+        )
+    
+    # Check for "~/" at start (home directory reference)
+    if location.startswith("~/"):
+        raise ValueError(
+            "Storage location starts with '~/'. "
+            "This could indicate an attempt to access home directory."
+        )
+    
+    # Check for dangerous file:// paths
+    if re.search(r"file:///(etc|proc)/", location_lower):
+        raise ValueError(
+            "Storage location contains potentially dangerous file:// path. "
+            "This could indicate an attempt to access system directories."
+        )
+    
     return location
 
 
