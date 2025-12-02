@@ -182,10 +182,10 @@ class AggregatorAgent(
         if PUBLISH_EVENTS_TO_GCS:
             self._task_metadata_buffer.merge(events_data.task_events_metadata)
 
+        num_events_received = 0
+        num_events_failed = 0
         for event in events_data.events:
-            self._open_telemetry_metric_recorder.set_metric_value(
-                self._events_received_metric_name, self._common_tags, 1
-            )
+            num_events_received += 1
             try:
                 await self._event_buffer.add_event(event)
             except Exception as e:
@@ -194,9 +194,20 @@ class AggregatorAgent(
                     "Error: %s",
                     e,
                 )
-                self._open_telemetry_metric_recorder.set_metric_value(
-                    self._events_failed_to_add_metric_name, self._common_tags, 1
-                )
+                num_events_failed += 1
+
+        if num_events_received > 0:
+            self._open_telemetry_metric_recorder.set_metric_value(
+                self._events_received_metric_name,
+                self._common_tags,
+                num_events_received,
+            )
+        if num_events_failed > 0:
+            self._open_telemetry_metric_recorder.set_metric_value(
+                self._events_failed_to_add_metric_name,
+                self._common_tags,
+                num_events_failed,
+            )
 
         return events_event_aggregator_service_pb2.AddEventsReply()
 
