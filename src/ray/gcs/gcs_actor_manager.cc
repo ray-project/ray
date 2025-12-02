@@ -1627,15 +1627,15 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
 
     // Keep for lineage reconstruction ONLY if:
     // - Death cause is OUT_OF_SCOPE (not REF_DELETED, not creation failure, etc.)
-    // - AND has remaining restarts
+    // - AND either has remaining restarts OR was preempted with max_restarts > 0
     // This matches IsActorRestartable() which only returns true for OUT_OF_SCOPE.
     // REF_DELETED means all refs including lineage refs are gone, so actor can never
     // be restarted. Creation failures are permanent __init__ errors.
-    bool is_out_of_scope =
-        death_cause.has_actor_died_error_context() &&
-        death_cause.actor_died_error_context().reason() ==
-            rpc::ActorDiedErrorContext::OUT_OF_SCOPE;
-    bool can_restart_for_lineage = is_out_of_scope && remaining_restarts != 0;
+    bool is_out_of_scope = death_cause.has_actor_died_error_context() &&
+                           death_cause.actor_died_error_context().reason() ==
+                               rpc::ActorDiedErrorContext::OUT_OF_SCOPE;
+    bool can_restart_for_lineage = is_out_of_scope && (remaining_restarts != 0 ||
+                            (max_restarts > 0 && mutable_actor_table_data->preempted()));
 
     if (!can_restart_for_lineage) {
       // Fully non-restartable: clean up completely.
@@ -1688,8 +1688,8 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
            // Only delete ActorTaskSpec if actor won't be restarted for lineage.
            // Actors kept for lineage reconstruction need ActorTaskSpec for GCS restart.
            if (!can_restart_for_lineage) {
-             gcs_table_storage_->ActorTaskSpecTable().Delete(
-                 actor_id, {[](auto) {}, io_context_});
+             gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id,
+                                                             {[](auto) {}, io_context_});
            }
            actor->WriteActorExportEvent(false);
          },
