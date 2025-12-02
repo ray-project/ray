@@ -7,9 +7,8 @@ training across multiple learners and env runners.
 
 This example:
     - shows how to use the `FrameStackingEnvToModule` and `FrameStackingLearner`
-    ConnectorV2 pieces for proper frame stacking in the new API stack
-    - demonstrates how to wrap Atari environments using `wrap_atari_for_new_api_stack`
-    for compatibility with the new API stack
+    ConnectorV2 pieces for proper frame stacking
+    - demonstrates how to wrap Atari environments for preprocessing
     - configures a CNN-based model with 4 convolutional layers suitable for
     processing stacked Atari frames
     - uses 2 aggregator actors per learner for efficient experience collection
@@ -17,16 +16,16 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py [options]`
+`python atari_appo.py [options]`
 
 To run with default settings on Pong:
-`python [script file name].py`
+`python atari_appo.py`
 
 To run on a different Atari environment:
-`python [script file name].py --env=ale_py:ALE/Breakout-v5`
+`python atari_appo.py --env=ale_py:ALE/SpaceInvaders-v5`
 
 To scale up with multiple learners:
-`python [script file name].py --num-learners=2 --num-env-runners=8`
+`python atari_appo.py --num-learners=2 --num-env-runners=8`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -39,7 +38,7 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-The algorithm should reach the default reward threshold of 18.0 on Pong
+The algorithm should reach the default reward threshold of XX on Breakout
 within 10 million timesteps (40 million frames with 4x frame stacking).
 Training performance scales with the number of learners and env runners.
 The entropy coefficient schedule (decaying from 0.01 to 0.0 over 3 million
@@ -63,6 +62,8 @@ parser = add_rllib_example_script_args(
 )
 parser.set_defaults(
     env="ale_py:ALE/Breakout-v5",
+    num_envs_per_env_runner=5,
+    num_env_runners=8,
 )
 args = parser.parse_args()
 
@@ -88,8 +89,9 @@ config = (
         clip_rewards=True,
     )
     .env_runners(
-        env_to_module_connector=partial(FrameStackingEnvToModule, num_frames=4),
+        num_env_runners=args.num_env_runners,
         num_envs_per_env_runner=args.num_envs_per_env_runner,
+        env_to_module_connector=partial(FrameStackingEnvToModule, num_frames=4),
     )
     .learners(
         num_aggregator_actors_per_learner=2,
@@ -110,7 +112,12 @@ config = (
     .rl_module(
         model_config=DefaultModelConfig(
             vf_share_layers=True,
-            conv_filters=[(16, 4, 2), (32, 4, 2), (64, 4, 2), (128, 4, 2)],
+            conv_filters=[
+                (16, 4, 2),
+                (32, 4, 2),
+                (64, 4, 2),
+                (128, 4, 2),
+            ],  # TO CONFIRM ARCHITECTURE
             conv_activation="relu",
             head_fcnet_hiddens=[256],
         )

@@ -1,7 +1,7 @@
 """Example showing how to run APPO on continuous control MuJoCo environments.
 
 This example demonstrates APPO (Asynchronous Proximal Policy Optimization) on
-the HalfCheetah-v4 environment from MuJoCo. APPO's circular replay buffer and
+the Humanoid-v4 environment from MuJoCo. APPO's circular replay buffer and
 asynchronous training make it well-suited for continuous control tasks that
 benefit from increased sample efficiency.
 
@@ -25,16 +25,16 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py [options]`
+`python mujoco_appo.py [options]`
 
 To run with default settings on HalfCheetah:
-`python [script file name].py`
+`python mujoco_appo.py`
 
 To run on a different MuJoCo environment:
-`python [script file name].py --env=Hopper-v4`
+`python mujoco_appo.py --env=Hopper-v4`
 
 To scale up training with more env runners:
-`python [script file name].py --num-env-runners=16`
+`python mujoco_appo.py --num-env-runners=16`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -49,10 +49,7 @@ Results to expect
 -----------------
 The algorithm should reach the default reward threshold of 9000.0 within
 approximately 2 million timesteps. The learning curve may show some initial
-instability before stabilizing as the KL coefficient adapts. Training time
-depends on hardware; the old API stack reported reaching 9k reward in ~2 hours
-on a Titan XP GPU with 16 workers and 8 envs per worker (though this has not
-been recently confirmed with the new API stack).
+instability before stabilizing as the KL coefficient adapts.
 """
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
@@ -63,25 +60,19 @@ parser = add_rllib_example_script_args(
 )
 parser.set_defaults(
     env="Humanoid-v4",
+    num_env_runners=4,
+    num_envs_per_env_runner=32,
 )
 args = parser.parse_args()
 
 
 config = (
-    APPOConfig().env_runners(
-        num_envs_per_env_runner=32,  # Note: Old stack yaml uses 16.
+    APPOConfig()
+    .env_runners(
+        num_env_runners=args.num_env_runners,
+        num_envs_per_env_runner=args.num_envs_per_env_runner,
         rollout_fragment_length=512,  # Note: [1] uses 1024.
     )
-    # Train on 1 (local learner) GPU.
-    .learners(num_learners=0, num_gpus_per_learner=1)
-    # TODO: The following hyperparameters have been taken from the paper. Some more
-    #  tuning might be necessary to speed up learning further, but these settings here
-    #  already show good learning behavior.
-    #  The old API stack's yaml file had this in its comment:
-    #  ```
-    #  This can reach 9k reward in 2 hours on a Titan XP GPU with 16 workers and 8
-    #  envs per worker.
-    #  ```, but we have not confirmed this in some time.
     .training(
         train_batch_size_per_learner=4096,  # Note: [1] uses 32768.
         circular_buffer_num_batches=16,  # matches [1]

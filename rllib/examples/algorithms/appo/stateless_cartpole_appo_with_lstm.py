@@ -23,13 +23,13 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py [options]`
+`python stateless_cartpole_appo_with_lstm.py [options]`
 
 To run with default settings (3 env runners):
-`python [script file name].py`
+`python stateless_cartpole_appo_with_lstm.py`
 
 To adjust the number of env runners:
-`python [script file name].py --num-env-runners=4`
+`python stateless_cartpole_appo_with_lstm.py --num-env-runners=4`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -62,6 +62,7 @@ parser = add_rllib_example_script_args(
 )
 parser.set_defaults(
     num_env_runners=3,
+    num_envs_per_env_runner=16,
 )
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
@@ -71,6 +72,10 @@ args = parser.parse_args()
 config = (
     APPOConfig()
     .environment(StatelessCartPole)
+    .env_runners(
+        num_env_runners=args.num_env_runners,
+        num_envs_per_env_runner=args.num_envs_per_env_runner,
+    )
     # TODO (sven): Need to fix the MeanStdFilter(). It seems to cause NaNs when
     #  training.
     # .env_runners(

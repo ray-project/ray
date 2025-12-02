@@ -12,13 +12,13 @@ allowing the algorithm to reuse collected experiences multiple times.
 
 How to run this script
 ----------------------
-`python [script file name].py [options]`
+`python cartpole_appo.py [options]`
 
 To run with default settings:
-`python [script file name].py`
+`python cartpole_appo.py`
 
 To scale up with distributed training:
-`python [script file name].py --num-env-runners=4 --num-learners=2`
+`python cartpole_appo.py --num-env-runners=4 --num-learners=2`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -45,6 +45,10 @@ parser = add_rllib_example_script_args(
     default_reward=450.0,
     default_timesteps=250_000,
 )
+parser.set_defaults(
+    num_env_runners=4,
+    num_envs_per_env_runner=16,
+)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
@@ -53,6 +57,10 @@ args = parser.parse_args()
 config = (
     APPOConfig()
     .environment("CartPole-v1")
+    .env_runners(
+        num_env_runners=args.num_env_runners,
+        num_envs_per_env_runner=args.num_envs_per_env_runner,
+    )
     .training(
         circular_buffer_iterations_per_batch=2,
         vf_loss_coeff=0.05,
