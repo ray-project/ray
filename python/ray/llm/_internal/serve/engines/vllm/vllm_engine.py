@@ -194,10 +194,10 @@ class VLLMEngine(LLMEngine):
 
         state = State()
         # TODO (Kourosh): There might be some variables that needs protection?
-        args = argparse.Namespace(
-            **vllm_frontend_args.__dict__,
-            **vllm_engine_args.__dict__,
-        )
+        # Merge frontend and engine args, preferring engine args for overlapping keys
+        # (e.g., tokens_only exists in both FrontendArgs and EngineArgs in vLLM 0.11.1+)
+        merged_args = {**vllm_frontend_args.__dict__, **vllm_engine_args.__dict__}
+        args = argparse.Namespace(**merged_args)
 
         await init_app_state(
             engine_client=self._engine_client,
