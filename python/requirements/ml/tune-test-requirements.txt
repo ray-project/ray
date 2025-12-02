@@ -17,3 +17,5 @@ zoopt==0.4.1
 statsforecast==1.7.0
 prophet==1.1.5
 holidays==0.39
+
+greenlet>=3.2.2

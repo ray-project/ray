@@ -923,9 +923,9 @@ propcache==0.3.0 \
     #   -c release/ray_release/byod/ray_base_extra_testdeps_py3.11.lock
     #   aiohttp
     #   yarl
-proto-plus==1.22.3 \
-    --hash=sha256:a49cd903bc0b6ab41f76bf65510439d56ca76f868adf0274e738bfdd096894df \
-    --hash=sha256:fdcd09713cbd42480740d2fe29c990f7fbd885a67efc328aa8be6ee3e9f76a6b
+proto-plus==1.26.1 \
+    --hash=sha256:13285478c2dcf2abb829db158e1047e2f1e8d63a077d94263c2b88b043c75a66 \
+    --hash=sha256:21a515a4c4c0088a773899e23c7bbade3d18f9c66c73edd4c7ee3816bc96a012
     # via
     #   -c release/ray_release/byod/ray_base_extra_testdeps_py3.11.lock
     #   google-api-core
