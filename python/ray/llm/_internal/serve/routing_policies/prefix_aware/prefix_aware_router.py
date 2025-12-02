@@ -83,8 +83,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
             eviction_interval_secs: Interval in seconds between eviction checks
                 when eviction is enabled.
             tree_actor: The actor to use for the prefix tree in a test environment.
-                If None, a detached actor will be created/retrieved using the
-                deployment name to ensure isolation between deployments.
+                If None, a detached actor will be created/retrieved.
         """
         # === Prefix-aware routing logic hyperparameters ===
         self._imbalanced_threshold = imbalanced_threshold
