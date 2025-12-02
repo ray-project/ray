@@ -52,6 +52,7 @@ class FuseOperators(Rule):
 
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
         self._op_map = plan.op_map.copy()
+        # Firstly fuse StreamingRepartition with MapBatches.
         fused_dag = self._fuse_streaming_repartition_operators_in_dag(plan.dag)
         # Do DFS fusion on compatible pairwise operators in two passes.
         # In the first pass, only fuse back-to-back map operators together.
@@ -83,6 +84,11 @@ class FuseOperators(Rule):
     def _fuse_streaming_repartition_operators_in_dag(
         self, dag: PhysicalOperator
     ) -> PhysicalOperator:
+        """Fuse (StreamingRepartition -> MapBatches) or (MapBatches -> StreamingRepartition) pairs.
+
+        Both orders will ensure the map_batch's function receive the correct number of rows.
+        For (MapBatches -> StreamingRepartition), we also ensure the output rows is `batch_size`.
+        """
         upstream_ops = dag.input_dependencies
         while (
             len(upstream_ops) == 1
@@ -98,12 +104,9 @@ class FuseOperators(Rule):
             )
             and self._can_fuse(dag, upstream_ops[0])
         ):
-            # Fuse operator with its upstream op.
             dag = self._get_fused_streaming_repartition_operator(dag, upstream_ops[0])
             upstream_ops = dag.input_dependencies
 
-        # Done fusing back-to-back map operators together here,
-        # move up the DAG to find the next map operators to fuse.
         dag._input_dependencies = [
             self._fuse_streaming_repartition_operators_in_dag(upstream_op)
             for upstream_op in upstream_ops
@@ -325,7 +328,8 @@ class FuseOperators(Rule):
             map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
-            # For now, we don't want to over-fuse StreamingRepartition with other map operators
+            # For now, we don't want to over-fuse StreamingRepartition with other map operators,
+            # so the result operator does not support further fusion.
             supports_fusion=False,
         )
         op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
@@ -334,9 +338,6 @@ class FuseOperators(Rule):
         ):
             op.add_map_task_kwargs_fn(map_task_kwargs_fn)
 
-        # Build a map logical operator to be used as a reference for further fusion.
-        # TODO(Scott): This is hacky, remove this once we push fusion to be purely based
-        # on a lower-level operator spec.
         if isinstance(up_logical_op, AbstractUDFMap):
             input_op = up_logical_op.input_dependency
         else:
@@ -366,7 +367,6 @@ class FuseOperators(Rule):
                 ray_remote_args=ray_remote_args,
             )
         self._op_map[op] = logical_op
-        # Return the fused physical operator.
         return op
 
     @classmethod

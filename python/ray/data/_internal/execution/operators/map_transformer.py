@@ -111,6 +111,7 @@ class MapTransformFn(ABC):
             or self._output_block_size_option.target_num_rows_per_block is not None
         ):
             # Do not override target_max_block_size if block shaping is disabled or target_num_rows_per_block is set
+            # StreamingRepartition dependes on target_num_rows_per_block to produce the correct number of blocks.
             return
         self._output_block_size_option = OutputBlockSizeOption.of(
             target_max_block_size=target_max_block_size
