@@ -152,25 +152,23 @@ def test_llm_serve_prefill_decode_with_data_parallelism():
     - Prefill: DP=4
     - Decode: DP=4
     """
-    base_config = {
-        "model_loading_config": {
-            "model_id": "deepseek",
-            "model_source": "deepseek-ai/DeepSeek-V2-Lite",
-        },
-        "engine_kwargs": {
-            "tensor_parallel_size": 1,
-            "enable_expert_parallel": True,
-            "load_format": "dummy",
-            "max_model_len": 512,
-            "max_num_batched_tokens": 256,
-            "enforce_eager": True,
-        },
+    model_loading_config = ModelLoadingConfig(
+        model_id="deepseek",
+        model_source="deepseek-ai/DeepSeek-V2-Lite",
+    )
+    base_engine_kwargs = {
+        "tensor_parallel_size": 1,
+        "enable_expert_parallel": True,
+        "load_format": "dummy",
+        "max_model_len": 512,
+        "max_num_batched_tokens": 256,
+        "enforce_eager": True,
     }
 
     prefill_config = LLMConfig(
-        **base_config,
+        model_loading_config=model_loading_config,
         engine_kwargs={
-            **base_config["engine_kwargs"],
+            **base_engine_kwargs,
             "data_parallel_size": 4,
             "kv_transfer_config": {
                 "kv_connector": "NixlConnector",
@@ -184,9 +182,9 @@ def test_llm_serve_prefill_decode_with_data_parallelism():
     )
 
     decode_config = LLMConfig(
-        **base_config,
+        model_loading_config=model_loading_config,
         engine_kwargs={
-            **base_config["engine_kwargs"],
+            **base_engine_kwargs,
             "data_parallel_size": 4,
             "kv_transfer_config": {
                 "kv_connector": "NixlConnector",
