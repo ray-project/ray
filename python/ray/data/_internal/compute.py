@@ -83,6 +83,7 @@ class ActorPoolStrategy(ComputeStrategy):
     actors, set max_tasks_in_flight_per_actor to 1.
 
     The `enable_true_multi_threading` argument primarily exists to prevent GPU OOM issues with multi-threaded actors.
+    It does not apply to async actors.
     - [`enable_true_multi_threading=False`, `max_concurrency=1`] = 1 actor task running per actor
     - [`enable_true_multi_threading=True`, `max_concurrency=1`] = Same as 1st bullet ^.
     - [`enable_true_multi_threading=False`, `max_concurrency>1`] = multiple tasks running per actor
