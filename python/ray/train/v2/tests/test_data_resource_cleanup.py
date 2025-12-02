@@ -102,15 +102,16 @@ def test_after_worker_group_shutdown():
 def test_split_coordinator_shutdown_executor(ray_start_4_cpus):
     """Tests that the SplitCoordinator properly requests resources for the data executor and cleans up after it is shutdown"""
 
-    def get_resources(requester, timeout=3.0):
-        """Gets resource requests, allowing for a timeout for requests to be made."""
+    def get_resources_when_updated(requester, prev_requests=None, timeout=3.0):
+        """Retrieve resource requests within the specified timeout. Returns after a new request is made or when the time expires."""
+        prev_requests = prev_requests or {}
         deadline = time.time() + timeout
         requests = {}
         while time.time() < deadline:
             requests = ray.get(
                 requester.__ray_call__.remote(lambda r: r._resource_requests)
             )
-            if len(requests) == 1:
+            if requests != prev_requests:
                 break
             time.sleep(0.05)
         return requests
@@ -132,7 +133,7 @@ def test_split_coordinator_shutdown_executor(ray_start_4_cpus):
 
     # Collect requests
     requester = get_or_create_autoscaling_requester_actor()
-    requests = get_resources(requester)
+    requests = get_resources_when_updated(requester)
 
     # One request made, with non-empty resource bundle
     assert len(requests) == 1
@@ -144,7 +145,7 @@ def test_split_coordinator_shutdown_executor(ray_start_4_cpus):
     # Shutdown data executor
     ray.get(coord.shutdown_executor.remote())
 
-    requests = get_resources(requester)
+    requests = get_resources_when_updated(requester, prev_requests=requests)
 
     # Old resource request overwritten by new cleanup request
     assert len(requests) == 1
