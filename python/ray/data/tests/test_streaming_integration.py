@@ -687,7 +687,7 @@ def test_e2e_resource_based_autoscaling(ray_start_10_cpus_shared, restore_data_c
     def run_dataset(ds):
         return list(ds.iter_batches())
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future3 = executor.submit(run_dataset, ds3)
         future4 = executor.submit(run_dataset, ds4)
 
