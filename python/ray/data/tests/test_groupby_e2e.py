@@ -644,7 +644,7 @@ def test_groupby_multi_agg_with_nans(
             Mean("B", alias_name="mean_b", ignore_nulls=ignore_nulls),
             Std("B", alias_name="std_b", ignore_nulls=ignore_nulls),
             Quantile("B", alias_name="quantile_b", ignore_nulls=ignore_nulls),
-            Unique("B", alias_name="unique_b"),
+            Unique("B", alias_name="unique_b", ignore_nulls=ignore_nulls),
         )
     )
 
@@ -664,7 +664,12 @@ def test_groupby_multi_agg_with_nans(
                     "quantile_b",
                     lambda s: s.quantile() if ignore_nulls or not s.hasnans else np.nan,
                 ),
-                ("unique_b", "unique"),
+                (
+                    "unique_b",
+                    lambda s: list(s.dropna().unique())
+                    if ignore_nulls
+                    else list(s.unique()),
+                ),
             ]
         },
     )
@@ -751,7 +756,7 @@ def test_groupby_aggregations_are_associative(
         Mean("B", alias_name="mean_b", ignore_nulls=ignore_nulls),
         Std("B", alias_name="std_b", ignore_nulls=ignore_nulls),
         Quantile("B", alias_name="quantile_b", ignore_nulls=ignore_nulls),
-        Unique("B", alias_name="unique_b"),
+        Unique("B", alias_name="unique_b", ignore_nulls=ignore_nulls),
     ]
 
     # Step 0: Prepare expected output (using Pandas)
@@ -769,7 +774,12 @@ def test_groupby_aggregations_are_associative(
                     "quantile_b",
                     lambda s: s.quantile() if ignore_nulls or not s.hasnans else np.nan,
                 ),
-                ("unique", "unique"),
+                (
+                    "unique_b",
+                    lambda s: list(s.dropna().unique())
+                    if ignore_nulls
+                    else list(s.unique()),
+                ),
             ]
         },
     )
