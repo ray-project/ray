@@ -54,15 +54,48 @@ class Pipe:
     """Anonymous pipe for passing data between processes.
 
     Example 1: Parent reads, child writes
+        # Parent process
         pipe = Pipe()
         writer_handle = pipe.make_writer_handle()
-        start_child_process(..., pass_fds=[writer_handle])
-        pipe.close_writer_handle()
+        subprocess.Popen(
+            ["python", "child.py", "--writer-handle", str(writer_handle)],
+            ...,
+        )
+        pipe.close_writer_handle()  # Close parent's copy of writer
         data = pipe.read()
+        pipe.close()
 
-    Example 2: Wrap an existing reader handle
-        pipe = Pipe.from_reader_handle(handle)
-        data = pipe.read()
+        # Child process (child.py)
+        writer_handle = int(args.writer_handle)
+        with Pipe.from_writer_handle(writer_handle) as pipe:
+            pipe.write("hello from child")
+
+    Example 2: Child B writes, child C reads (sibling communication)
+        # Parent process A
+        pipe = Pipe()
+        writer_handle = pipe.make_writer_handle()
+        reader_handle = pipe.make_reader_handle()
+        subprocess.Popen(
+            ["python", "child_b.py", "--writer-handle", str(writer_handle)],
+            ...,
+        )
+        pipe.close_writer_handle()  # Close parent's copy of writer
+
+        subprocess.Popen(
+            ["python", "child_c.py", "--reader-handle", str(reader_handle)],
+            ...,
+        )
+        pipe.close_reader_handle()  # Close parent's copy of reader
+
+        # Child process B (child_b.py)
+        writer_handle = int(args.writer_handle)
+        with Pipe.from_writer_handle(writer_handle) as pipe:
+            pipe.write("hello from child B")
+
+        # Child process C (child_c.py)
+        reader_handle = int(args.reader_handle)
+        with Pipe.from_reader_handle(reader_handle) as pipe:
+            data = pipe.read()
     """
 
     def __init__(self):

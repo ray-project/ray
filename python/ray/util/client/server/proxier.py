@@ -144,6 +144,11 @@ class ProxyManager:
         if runtime_env_agent_port_read_handle is not None:
             with Pipe.from_reader_handle(runtime_env_agent_port_read_handle) as pipe:
                 runtime_env_agent_port = int(pipe.read().strip())
+        elif runtime_env_agent_port == 0:
+            raise ValueError(
+                "runtime_env_agent_port is 0 but runtime_env_agent_port_read_handle "
+                "is not provided. Either specify a valid port or provide a pipe handle."
+            )
 
         self._runtime_env_agent_address = (
             f"http://{build_address(runtime_env_agent_ip, runtime_env_agent_port)}"

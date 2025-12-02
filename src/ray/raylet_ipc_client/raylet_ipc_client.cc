@@ -126,9 +126,8 @@ ray::Status RayletIpcClient::RegisterClient(const WorkerID &worker_id,
 
   *node_id = NodeID::FromBinary(reply_message->node_id()->str());
   *assigned_port = reply_message->port();
-  if (runtime_env_agent_port != nullptr) {
-    *runtime_env_agent_port = reply_message->runtime_env_agent_port();
-  }
+  *runtime_env_agent_port = reply_message->runtime_env_agent_port();
+
   return Status::OK();
 }
 

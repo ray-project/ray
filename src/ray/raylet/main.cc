@@ -75,7 +75,7 @@ DEFINE_int32(runtime_env_agent_port, 0, "The port of runtime env agent.");
 DEFINE_string(runtime_env_agent_port_write_handles,
               "",
               "Comma-separated list of pipe write handles to report runtime env "
-              "agent port to external consumers (e.g., ray_client_server).");
+              "agent port to external consumers.");
 DEFINE_string(node_id, "", "The id of this node.");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(gcs_address, "", "The address of the GCS server, including IP and port.");

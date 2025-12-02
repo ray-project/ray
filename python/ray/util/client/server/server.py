@@ -884,7 +884,7 @@ def main():
         type=int,
         default=0,
         help="The port of the runtime_env_agent. Only used in proxy mode. "
-        "Defaults to 0.",
+        "Either this or --runtime-env-agent-port-read-handle must be provided.",
     )
     parser.add_argument(
         "--runtime-env-agent-port-read-handle",
@@ -892,8 +892,8 @@ def main():
         type=int,
         default=None,
         help="Pipe read handle for receiving runtime env agent port. "
-        "Only used in proxy mode. If provided, reads port from pipe instead of "
-        "using --runtime-env-agent-port.",
+        "Only used in proxy mode. Either this or --runtime-env-agent-port must be "
+        "provided.",
     )
     parser.add_argument(
         "--runtime-env-agent-ip",

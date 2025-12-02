@@ -36,9 +36,6 @@ class FakeRayletIpcClient : public RayletIpcClientInterface {
                         NodeID *node_id,
                         int *assigned_port,
                         int *runtime_env_agent_port) override {
-    if (runtime_env_agent_port != nullptr) {
-      *runtime_env_agent_port = 0;
-    }
     return Status::OK();
   }
 

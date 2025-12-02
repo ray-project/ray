@@ -95,6 +95,7 @@ class RayletIpcClientInterface {
   /// \param[out] node_id The node ID for the local Raylet.
   /// \param[out] assigned_port The assigned port for the worker to listen on. If zero,
   ///             the worker should pick a port randomly.
+  /// \param[out] runtime_env_agent_port The port of the runtime env agent.
   virtual Status RegisterClient(const WorkerID &worker_id,
                                 rpc::WorkerType worker_type,
                                 const JobID &job_id,
