@@ -1,7 +1,7 @@
 import asyncio
 import os
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, overload
 
 import httpx
 import pytest
@@ -912,9 +912,8 @@ def test_status_constructor_error(serve_instance):
     # return a 503 error to reflect the failed deployment state.
     # The timeout is there to prevent the test from hanging and blocking
     # the test suite if it does fail.
-    url = get_application_url("HTTP")
-    r = httpx.post(url, timeout=10)
-    assert r.status_code == 503 and "unavailable" in r.text
+    r = httpx.post("http://localhost:8000/", timeout=10)
+    assert r.status_code == 503 and "unavailable" in r.text.lower()
 
     @serve.deployment
     class A:
@@ -1135,6 +1134,147 @@ def test_custom_request_router_kwargs(serve_instance):
 
     handle = serve.run(AppWithCustomRequestRouterAndKwargs.bind())
     assert handle.remote().result() == "Hello, world!"
+
+
+def test_overloaded_app_builder_signatures():
+    """Test that call_user_app_builder_with_args_if_necessary validates the base
+    function signature with a pydantic basemodel, rather than the overload that
+    accepts a dict (for the sake of lint permissiveness).
+    """
+
+    class Config(BaseModel):
+        name: str
+        value: int = 42
+
+    @serve.deployment
+    class MockDeployment:
+        def __call__(self):
+            return "mock"
+
+    mock_app = MockDeployment.bind()
+
+    # Overloaded function where the implementation has a pydantic annotation
+    @overload
+    def overloaded_builder(args: dict) -> Application:
+        ...
+
+    def overloaded_builder(args: Config) -> Application:
+        """Implementation with pydantic BaseModel annotation."""
+
+        assert isinstance(args, Config), f"Expected Config but got {type(args)}"
+        return mock_app
+
+    # Test 1: Valid input should work and convert to Config model
+    result = call_user_app_builder_with_args_if_necessary(
+        overloaded_builder, {"name": "test", "value": 123}
+    )
+    assert isinstance(result, Application)
+
+    # Test 2: Invalid dict input should raise validation error
+    # Missing required field 'name'
+    with pytest.raises(ValidationError):
+        call_user_app_builder_with_args_if_necessary(
+            overloaded_builder, {"value": 123}  # Missing required 'name' field
+        )
+
+    # Test 3: Wrong type should also raise validation error
+    with pytest.raises(ValidationError):
+        call_user_app_builder_with_args_if_necessary(
+            overloaded_builder,
+            {"name": "test", "value": "not_an_int"},  # 'value' should be int
+        )
+
+
+def test_max_constructor_retry_count(serve_instance):
+    @ray.remote(num_cpus=0)
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        async def increase(self):
+            self.count += 1
+
+        async def decrease(self):
+            self.count -= 1
+
+        async def get_count(self) -> int:
+            return self.count
+
+    counter = Counter.remote()
+
+    @serve.deployment(num_replicas=3, max_constructor_retry_count=7)
+    class A:
+        def __init__(self, counter):
+            counter.increase.remote()
+            raise Exception("Test exception")
+
+    try:
+        app = A.bind(counter)
+        serve.run(app)
+    except Exception:
+        pass
+
+    # we are triggering 3 replicas at once, and for understanding, let's assume then only one replica fail 7 times,
+    # hence total count should be 7(one replica with 7 failures and 2 replicas with 0 failures) = 9
+    wait_for_condition(lambda: ray.get(counter.get_count.remote()) == 9)
+
+
+def test_run_with_external_scaler_enabled(serve_instance):
+    """Test that serve.run correctly passes external_scaler_enabled parameter.
+
+    This test verifies that when serve.run is called with external_scaler_enabled=True
+    or external_scaler_enabled=False, the application state manager correctly stores
+    the external_scaler_enabled value.
+    """
+    controller = serve_instance._controller
+
+    @serve.deployment
+    class Model:
+        def __call__(self):
+            return "model response"
+
+    # Test with external_scaler_enabled=True
+    handle = serve.run(
+        Model.bind(),
+        name="app_with_scaler",
+        route_prefix="/with_scaler",
+        external_scaler_enabled=True,
+    )
+    assert handle.remote().result() == "model response"
+
+    # Verify that external_scaler_enabled is set to True
+    assert (
+        ray.get(controller.get_external_scaler_enabled.remote("app_with_scaler"))
+        is True
+    )
+
+    # Test with external_scaler_enabled=False (explicit)
+    handle = serve.run(
+        Model.bind(),
+        name="app_without_scaler",
+        route_prefix="/without_scaler",
+        external_scaler_enabled=False,
+    )
+    assert handle.remote().result() == "model response"
+
+    # Verify that external_scaler_enabled is set to False
+    assert (
+        ray.get(controller.get_external_scaler_enabled.remote("app_without_scaler"))
+        is False
+    )
+
+    # Test with default value (should be False)
+    handle = serve.run(
+        Model.bind(),
+        name="app_default",
+        route_prefix="/default",
+    )
+    assert handle.remote().result() == "model response"
+
+    # Verify that external_scaler_enabled defaults to False
+    assert (
+        ray.get(controller.get_external_scaler_enabled.remote("app_default")) is False
+    )
 
 
 if __name__ == "__main__":

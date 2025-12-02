@@ -40,8 +40,6 @@ class PlasmaStoreRunner {
 
   bool IsPlasmaObjectSpillable(const ObjectID &object_id);
 
-  int64_t GetConsumedBytes();
-
   int64_t GetCumulativeCreatedObjects() const {
     return store_->GetCumulativeCreatedObjects();
   }

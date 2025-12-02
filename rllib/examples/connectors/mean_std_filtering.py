@@ -29,7 +29,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -94,9 +94,6 @@ parser.add_argument(
     "--disable-mean-std-filter",
     action="store_true",
     help="Run w/o a mean/std env-to-module connector piece (filter).",
-)
-parser.set_defaults(
-    enable_new_api_stack=True,
 )
 
 

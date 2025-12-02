@@ -1,10 +1,12 @@
-import click
-from typing import List, Set, Dict
+from typing import Dict, List, Set
 
-from ci.ray_ci.utils import logger, ci_init
+import click
+
+from ci.ray_ci.utils import ci_init, logger
+
 from ray_release.configs.global_config import get_global_config
-from ray_release.test import Test
 from ray_release.result import ResultStatus
+from ray_release.test import Test
 from ray_release.test_automation.ci_state_machine import CITestStateMachine
 
 # The s3 prefix for the tests that run on Linux. It comes from the bazel prefix rule

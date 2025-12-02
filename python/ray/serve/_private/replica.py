@@ -20,7 +20,9 @@ from typing import (
     Callable,
     Dict,
     Generator,
+    List,
     Optional,
+    Set,
     Tuple,
     Union,
 )
@@ -33,13 +35,17 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 import ray
 from ray import cloudpickle
+from ray._common.filters import CoreContextFilter
 from ray._common.utils import get_or_create_event_loop
 from ray.actor import ActorClass, ActorHandle
+from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.common import (
+    RUNNING_REQUESTS_KEY,
     DeploymentID,
     ReplicaID,
+    ReplicaMetricReport,
     ReplicaQueueLengthInfo,
     RequestMetadata,
     ServeComponentType,
@@ -52,7 +58,8 @@ from ray.serve._private.constants import (
     HEALTH_CHECK_METHOD,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
-    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+    RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
+    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
@@ -61,6 +68,12 @@ from ray.serve._private.constants import (
     REQUEST_LATENCY_BUCKETS_MS,
     REQUEST_ROUTING_STATS_METHOD,
     SERVE_CONTROLLER_NAME,
+    SERVE_LOG_APPLICATION,
+    SERVE_LOG_COMPONENT,
+    SERVE_LOG_DEPLOYMENT,
+    SERVE_LOG_REPLICA,
+    SERVE_LOG_REQUEST_ID,
+    SERVE_LOG_ROUTE,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
@@ -82,7 +95,11 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
-from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
+from ray.serve._private.task_consumer import TaskConsumerWrapper
+from ray.serve._private.thirdparty.get_asgi_route_name import (
+    extract_route_patterns,
+)
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     Semaphore,
     get_component_file_name,  # noqa: F401
@@ -97,7 +114,8 @@ from ray.serve.exceptions import (
     DeploymentUnavailableError,
     RayServeException,
 )
-from ray.serve.schema import LoggingConfig
+from ray.serve.handle import DeploymentHandle
+from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -108,6 +126,11 @@ ReplicaMetadata = Tuple[
     Optional[float],
     Optional[int],
     Optional[str],
+    int,
+    int,
+    ReplicaRank,  # rank
+    Optional[List[str]],  # route_patterns
+    Optional[List[DeploymentID]],  # outbound_deployments
 ]
 
 
@@ -153,14 +176,22 @@ class ReplicaMetricsManager:
         ingress: bool,
     ):
         self._replica_id = replica_id
+        self._deployment_id = replica_id.deployment_id
         self._metrics_pusher = MetricsPusher()
         self._metrics_store = InMemoryMetricsStore()
-        self._autoscaling_config = autoscaling_config
         self._ingress = ingress
         self._controller_handle = ray.get_actor(
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
         self._num_ongoing_requests = 0
+        # Store event loop for scheduling async tasks from sync context
+        self._event_loop = event_loop or asyncio.get_event_loop()
+
+        # Cache user_callable_wrapper initialization state to avoid repeated runtime checks
+        self._custom_metrics_enabled = False
+        # On first call to _fetch_custom_autoscaling_metrics. Failing validation disables _custom_metrics_enabled
+        self._checked_custom_metrics = False
+        self._record_autoscaling_stats_fn = None
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
@@ -206,16 +237,20 @@ class ReplicaMetricsManager:
         )
         if self._cached_metrics_enabled:
             self._cached_latencies = defaultdict(deque)
+            self._event_loop.create_task(self._report_cached_metrics_forever())
 
         self._num_ongoing_requests_gauge = metrics.Gauge(
             "serve_replica_processing_queries",
             description="The current number of queries being processed.",
         )
 
-        self.set_autoscaling_config(autoscaling_config)
+        self.record_autoscaling_stats_failed_counter = metrics.Counter(
+            "serve_record_autoscaling_stats_failed",
+            description="The number of errored record_autoscaling_stats invocations.",
+            tag_keys=("app_name", "deployment_name", "replica_id", "exception_name"),
+        )
 
-        if self._cached_metrics_enabled:
-            event_loop.create_task(self._report_cached_metrics_forever())
+        self.set_autoscaling_config(autoscaling_config)
 
     def _report_cached_metrics(self):
         for route, count in self._cached_request_counter.items():
@@ -257,35 +292,80 @@ class ReplicaMetricsManager:
 
         await self._metrics_pusher.graceful_shutdown()
 
-    def should_collect_metrics(self) -> bool:
-        return (
-            not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
-            and self._autoscaling_config
+    def start_metrics_pusher(self):
+        self._metrics_pusher.start()
+
+        # Push autoscaling metrics to the controller periodically.
+        self._metrics_pusher.register_or_update_task(
+            self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
+            self._push_autoscaling_metrics,
+            self._autoscaling_config.metrics_interval_s,
         )
+        # Collect autoscaling metrics locally periodically.
+        self._metrics_pusher.register_or_update_task(
+            self.RECORD_METRICS_TASK_NAME,
+            self._add_autoscaling_metrics_point_async,
+            min(
+                RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
+                self._autoscaling_config.metrics_interval_s,
+            ),
+        )
+
+    def should_collect_ongoing_requests(self) -> bool:
+        """Determine if replicas should collect ongoing request metrics.
+
+        ┌────────────────────────────────────────────────────────────────┐
+        │  Replica-based metrics collection                              │
+        ├────────────────────────────────────────────────────────────────┤
+        │                                                                │
+        │      Client          Handle            Replicas                │
+        │      ┌──────┐      ┌────────┐                                  │
+        │      │  App │─────>│ Handle │────┬───>┌─────────┐              │
+        │      │      │      │ Tracks │    │    │ Replica │              │
+        │      └──────┘      │ Queued │    │    │    1    │              │
+        │                    │Requests│    │    │ Tracks  │              │
+        │                    └────────┘    │    │ Running │              │
+        │                         │        │    └─────────┘              │
+        │                         │        │         │                   │
+        │                         │        │         │                   │
+        │                         │        │    ┌─────────┐              │
+        │                         │        └───>│ Replica │              │
+        │                         │             │    2    │              │
+        │                         │             │ Tracks  │              │
+        │                         │             │ Running │              │
+        │                         │             └─────────┘              │
+        │                         │                  │                   │
+        │                         │                  │                   │
+        │                         ▼                  ▼                   │
+        │                  ┌──────────────────────────────┐              │
+        │                  │        Controller            │              │
+        │                  │  • Queued metrics (handle)   │              │
+        │                  │  • Running metrics (replica1)│              │
+        │                  │  • Running metrics (replica2)│              │
+        │                  └──────────────────────────────┘              │
+        │                                                                │
+        └────────────────────────────────────────────────────────────────┘
+        """
+        return not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
 
     def set_autoscaling_config(self, autoscaling_config: Optional[AutoscalingConfig]):
         """Dynamically update autoscaling config."""
 
         self._autoscaling_config = autoscaling_config
 
-        if self.should_collect_metrics():
-            self._metrics_pusher.start()
+        if self._autoscaling_config and self.should_collect_ongoing_requests():
+            self.start_metrics_pusher()
 
-            # Push autoscaling metrics to the controller periodically.
-            self._metrics_pusher.register_or_update_task(
-                self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
-                self._push_autoscaling_metrics,
-                self._autoscaling_config.metrics_interval_s,
-            )
-            # Collect autoscaling metrics locally periodically.
-            self._metrics_pusher.register_or_update_task(
-                self.RECORD_METRICS_TASK_NAME,
-                self._add_autoscaling_metrics_point,
-                min(
-                    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
-                    self._autoscaling_config.metrics_interval_s,
-                ),
-            )
+    def enable_custom_autoscaling_metrics(
+        self,
+        custom_metrics_enabled: bool,
+        record_autoscaling_stats_fn: Callable[[], Optional[concurrent.futures.Future]],
+    ):
+        """Runs after the user callable wrapper is initialized to enable autoscaling metrics collection."""
+        if custom_metrics_enabled:
+            self._custom_metrics_enabled = custom_metrics_enabled
+            self._record_autoscaling_stats_fn = record_autoscaling_stats_fn
+            self.start_metrics_pusher()
 
     def inc_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
         """Increment the current total queue length of requests for this replica."""
@@ -320,17 +400,98 @@ class ReplicaMetricsManager:
 
     def _push_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
-        self._controller_handle.record_autoscaling_metrics.remote(
+        self._metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
+
+        new_aggregated_metrics = {}
+        new_metrics = {**self._metrics_store.data}
+
+        if self.should_collect_ongoing_requests():
+            # Keep the legacy window_avg ongoing requests in the merged metrics dict
+            window_avg = (
+                self._metrics_store.aggregate_avg([RUNNING_REQUESTS_KEY])[0] or 0.0
+            )
+            new_aggregated_metrics.update({RUNNING_REQUESTS_KEY: window_avg})
+
+        replica_metric_report = ReplicaMetricReport(
             replica_id=self._replica_id,
-            window_avg=self._metrics_store.window_average(
-                self._replica_id, time.time() - look_back_period
-            ),
-            send_timestamp=time.time(),
+            timestamp=time.time(),
+            aggregated_metrics=new_aggregated_metrics,
+            metrics=new_metrics,
+        )
+        self._controller_handle.record_autoscaling_metrics_from_replica.remote(
+            replica_metric_report
         )
 
-    def _add_autoscaling_metrics_point(self) -> None:
+    async def _fetch_custom_autoscaling_metrics(
+        self,
+    ) -> Optional[Dict[str, Union[int, float]]]:
+        try:
+            res = await asyncio.wait_for(
+                self._record_autoscaling_stats_fn(),
+                timeout=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
+            )
+
+            # Perform validation only first call
+            if not self._checked_custom_metrics:
+                # Enforce return type to be Dict[str, Union[int, float]]
+                if not isinstance(res, dict):
+                    logger.error(
+                        f"User autoscaling stats method returned {type(res).__name__}, "
+                        f"expected Dict[str, Union[int, float]]. Disabling autoscaling stats."
+                    )
+                    self._custom_metrics_enabled = False
+                    return None
+
+                for key, value in res.items():
+                    if not isinstance(value, (int, float)):
+                        logger.error(
+                            f"User autoscaling stats method returned invalid value type "
+                            f"{type(value).__name__} for key '{key}', expected int or float. "
+                            f"Disabling autoscaling stats."
+                        )
+                        self._custom_metrics_enabled = False
+                        return None
+
+                self._checked_custom_metrics = True
+
+            return res
+        except asyncio.TimeoutError as timeout_err:
+            logger.error(
+                f"Replica autoscaling stats timed out after {RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S}s."
+            )
+            self.record_autoscaling_stats_failed_counter.inc(
+                tags={
+                    "app_name": self._deployment_id.app_name,
+                    "deployment_name": self._deployment_id.name,
+                    "replica_id": self._replica_id.unique_id,
+                    "exception_name": timeout_err.__class__.__name__,
+                }
+            )
+        except Exception as err:
+            logger.error(f"Replica autoscaling stats failed. {err}")
+            self.record_autoscaling_stats_failed_counter.inc(
+                tags={
+                    "app_name": self._deployment_id.app_name,
+                    "deployment_name": self._deployment_id.name,
+                    "replica_id": self._replica_id.unique_id,
+                    "exception_name": err.__class__.__name__,
+                }
+            )
+        return None
+
+    async def _add_autoscaling_metrics_point_async(self) -> None:
+        metrics_dict = {}
+        if self.should_collect_ongoing_requests():
+            metrics_dict = {RUNNING_REQUESTS_KEY: self._num_ongoing_requests}
+
+        # Use cached availability flag to avoid repeated runtime checks
+        if self._custom_metrics_enabled:
+            custom_metrics = await self._fetch_custom_autoscaling_metrics()
+            if custom_metrics:
+                metrics_dict.update(custom_metrics)
+
         self._metrics_store.add_metrics_point(
-            {self._replica_id: self._num_ongoing_requests},
+            metrics_dict,
             time.time(),
         )
 
@@ -374,6 +535,7 @@ class ReplicaBase(ABC):
             run_sync_methods_in_threadpool=RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
             run_user_code_in_separate_thread=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
             local_testing_mode=False,
+            deployment_config=deployment_config,
         )
         self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
 
@@ -381,6 +543,9 @@ class ReplicaBase(ABC):
         self._user_callable_initialized = False
         self._user_callable_initialized_lock = asyncio.Lock()
         self._initialization_latency: Optional[float] = None
+
+        # Track deployment handles created dynamically via get_deployment_handle()
+        self._dynamically_created_handles: Set[DeploymentID] = set()
 
         # Flipped to `True` when health checks pass and `False` when they fail. May be
         # used by replica subclass implementations.
@@ -395,7 +560,7 @@ class ReplicaBase(ABC):
 
         # Set metadata for logs and metrics.
         # servable_object will be populated in `initialize_and_get_metadata`.
-        self._set_internal_replica_context(servable_object=None)
+        self._set_internal_replica_context(servable_object=None, rank=None)
 
         self._metrics_manager = create_replica_metrics_manager(
             replica_id=replica_id,
@@ -404,8 +569,12 @@ class ReplicaBase(ABC):
             ingress=ingress,
         )
 
-        self._port: Optional[int] = None
+        self._internal_grpc_port: Optional[int] = None
         self._docs_path: Optional[str] = None
+        self._http_port: Optional[int] = None
+        self._grpc_port: Optional[int] = None
+
+        self._rank: Optional[ReplicaRank] = None
 
     @property
     def max_ongoing_requests(self) -> int:
@@ -415,19 +584,87 @@ class ReplicaBase(ABC):
         return self._metrics_manager.get_num_ongoing_requests()
 
     def get_metadata(self) -> ReplicaMetadata:
+        current_rank = ray.serve.context._get_internal_replica_context().rank
+        # Extract route patterns from ASGI app if available
+        route_patterns = None
+        if self._user_callable_asgi_app is not None:
+            # _user_callable_asgi_app is the actual ASGI app (FastAPI/Starlette)
+            # It's set when initialize_callable() returns an ASGI app
+            if hasattr(self._user_callable_asgi_app, "routes"):
+                route_patterns = extract_route_patterns(self._user_callable_asgi_app)
+
         return (
             self._version.deployment_config,
             self._version,
             self._initialization_latency,
-            self._port,
+            self._internal_grpc_port,
             self._docs_path,
+            self._http_port,
+            self._grpc_port,
+            current_rank,
+            route_patterns,
+            self.list_outbound_deployments(),
         )
 
-    def _set_internal_replica_context(self, *, servable_object: Callable = None):
+    def get_dynamically_created_handles(self) -> Set[DeploymentID]:
+        return self._dynamically_created_handles
+
+    def list_outbound_deployments(self) -> List[DeploymentID]:
+        """List all outbound deployment IDs this replica calls into.
+
+        This includes:
+        - Handles created via get_deployment_handle()
+        - Handles passed as init args/kwargs to the deployment constructor
+
+        This is used to determine which deployments are reachable from this replica.
+        The list of DeploymentIDs can change over time as new handles can be created at runtime.
+        Also its not guaranteed that the list of DeploymentIDs are identical across replicas
+        because it depends on user code.
+
+        Returns:
+            A list of DeploymentIDs that this replica calls into.
+        """
+        seen_deployment_ids: Set[DeploymentID] = set()
+
+        # First, collect dynamically created handles
+        for deployment_id in self.get_dynamically_created_handles():
+            seen_deployment_ids.add(deployment_id)
+
+        # Get the init args/kwargs
+        init_args = self._user_callable_wrapper._init_args
+        init_kwargs = self._user_callable_wrapper._init_kwargs
+
+        # Use _PyObjScanner to find all DeploymentHandle objects in:
+        # The init_args and init_kwargs (handles might be passed as init args)
+        scanner = _PyObjScanner(source_type=DeploymentHandle)
+        try:
+            handles = scanner.find_nodes((init_args, init_kwargs))
+
+            for handle in handles:
+                deployment_id = handle.deployment_id
+                seen_deployment_ids.add(deployment_id)
+        finally:
+            scanner.clear()
+
+        return list(seen_deployment_ids)
+
+    def _set_internal_replica_context(
+        self, *, servable_object: Callable = None, rank: ReplicaRank = None
+    ):
+        # Calculate world_size from deployment config instead of storing it
+        world_size = self._deployment_config.num_replicas
+
+        # Create callback for registering dynamically created handles
+        def register_handle_callback(deployment_id: DeploymentID) -> None:
+            self._dynamically_created_handles.add(deployment_id)
+
         ray.serve.context._set_internal_replica_context(
             replica_id=self._replica_id,
             servable_object=servable_object,
             _deployment_config=self._deployment_config,
+            rank=rank,
+            world_size=world_size,
+            handle_registration_callback=register_handle_callback,
         )
 
     def _configure_logger_and_profilers(
@@ -452,42 +689,39 @@ class ReplicaBase(ABC):
             component_id=self._component_id,
         )
 
+        if logging_config.encoding == EncodingType.JSON:
+            # Create logging context for access logs as a performance optimization.
+            # While logging_utils can automatically add Ray core and Serve access log context,
+            # we pre-compute it here since context evaluation is expensive and this context
+            # will be reused for multiple access log entries.
+            ray_core_logging_context = CoreContextFilter.get_ray_core_logging_context()
+            # remove task level log keys from ray core logging context, it would be nice
+            # to have task level log keys here but we are letting those go in favor of
+            # performance optimization. Also we cannot include task level log keys here because
+            # they would referance the current task (__init__) and not the task that is logging.
+            for key in CoreContextFilter.TASK_LEVEL_LOG_KEYS:
+                ray_core_logging_context.pop(key, None)
+            self._access_log_context = {
+                **ray_core_logging_context,
+                SERVE_LOG_DEPLOYMENT: self._component_name,
+                SERVE_LOG_REPLICA: self._component_id,
+                SERVE_LOG_COMPONENT: ServeComponentType.REPLICA,
+                SERVE_LOG_APPLICATION: self._deployment_id.app_name,
+                "skip_context_filter": True,
+                "serve_access_log": True,
+            }
+        else:
+            self._access_log_context = {
+                "skip_context_filter": True,
+                "serve_access_log": True,
+            }
+
     def _can_accept_request(self, request_metadata: RequestMetadata) -> bool:
         # This replica gates concurrent request handling with an asyncio.Semaphore.
         # Each in-flight request acquires the semaphore. When the number of ongoing
         # requests reaches max_ongoing_requests, the semaphore becomes locked.
         # A new request can be accepted if the semaphore is currently unlocked.
         return not self._semaphore.locked()
-
-    def _maybe_get_http_route(
-        self, request_metadata: RequestMetadata, request_args: Tuple[Any]
-    ) -> Optional[str]:
-        """Get the matched route string for ASGI apps to be used in logs & metrics.
-
-        If this replica does not wrap an ASGI app or there is no matching for the
-        request, returns the existing route from the request metadata.
-        """
-        route = request_metadata.route
-        if self._user_callable_asgi_app is not None:
-            req: StreamingHTTPRequest = request_args[0]
-            try:
-                matched_route = get_asgi_route_name(
-                    self._user_callable_asgi_app, req.asgi_scope
-                )
-            except Exception:
-                matched_route = None
-                logger.exception(
-                    "Failed unexpectedly trying to get route name for request. "
-                    "Routes in metric tags and log messages may be inaccurate. "
-                    "Please file a GitHub issue containing this traceback."
-                )
-
-            # If there is no match in the ASGI app, don't overwrite the route_prefix
-            # from the proxy.
-            if matched_route is not None:
-                route = matched_route
-
-        return route
 
     @contextmanager
     def _handle_errors_and_metrics(
@@ -537,16 +771,20 @@ class ReplicaBase(ABC):
         else:
             status_str = "ERROR"
 
-        # Set in _wrap_request.
+        # Mutating self._access_log_context is not thread safe, but since this
+        # is only called from the same thread, it is safe. Mutating the same object
+        # because creating a new dict is expensive.
+        self._access_log_context[SERVE_LOG_ROUTE] = http_route
+        self._access_log_context[SERVE_LOG_REQUEST_ID] = request_metadata.request_id
         logger.info(
             access_log_msg(
                 method=http_method or "CALL",
-                route=http_route or call_method,
+                route=http_route if self._ingress and http_route else call_method,
                 # Prefer the HTTP status code if it was populated.
                 status=status_code or status_str,
                 latency_ms=latency_ms,
             ),
-            extra={"serve_access_log": True},
+            extra=self._access_log_context,
         )
         self._metrics_manager.record_request_metrics(
             route=http_route,
@@ -571,9 +809,6 @@ class ReplicaBase(ABC):
             )
 
             request_metadata._http_method = scope.get("method", "WS")
-            request_metadata.route = self._maybe_get_http_route(
-                request_metadata, request_args
-            )
 
             request_args = (scope, receive)
         elif request_metadata.is_grpc_request:
@@ -681,7 +916,14 @@ class ReplicaBase(ABC):
     async def _on_initialized(self):
         raise NotImplementedError
 
-    async def initialize(self, deployment_config: DeploymentConfig):
+    async def initialize(
+        self, deployment_config: Optional[DeploymentConfig], rank: Optional[ReplicaRank]
+    ):
+        if rank is not None:
+            self._rank = rank
+            self._set_internal_replica_context(
+                servable_object=self._user_callable_wrapper.user_callable, rank=rank
+            )
         try:
             # Ensure that initialization is only performed once.
             # When controller restarts, it will call this method again.
@@ -698,12 +940,28 @@ class ReplicaBase(ABC):
                     await self._on_initialized()
                     self._user_callable_initialized = True
 
-                if deployment_config:
+                    if self._user_callable_wrapper is not None:
+                        initialized = (
+                            hasattr(
+                                self._user_callable_wrapper, "_user_autoscaling_stats"
+                            )
+                            and self._user_callable_wrapper._user_autoscaling_stats
+                            is not None
+                        )
+
+                        self._metrics_manager.enable_custom_autoscaling_metrics(
+                            custom_metrics_enabled=initialized,
+                            record_autoscaling_stats_fn=self._user_callable_wrapper.call_record_autoscaling_stats,
+                        )
+
+                if deployment_config is not None:
                     await self._user_callable_wrapper.set_sync_method_threadpool_limit(
                         deployment_config.max_ongoing_requests
                     )
+                    rank = ray.serve.context._get_internal_replica_context().rank
                     await self._user_callable_wrapper.call_reconfigure(
-                        deployment_config.user_config
+                        deployment_config.user_config,
+                        rank=rank,
                     )
 
             # A new replica should not be considered healthy until it passes
@@ -713,18 +971,25 @@ class ReplicaBase(ABC):
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
-    async def reconfigure(self, deployment_config: DeploymentConfig):
+    async def reconfigure(
+        self,
+        deployment_config: DeploymentConfig,
+        rank: ReplicaRank,
+        route_prefix: Optional[str] = None,
+    ):
         try:
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
             )
+            rank_changed = rank != self._rank
+            self._rank = rank
             logging_config_changed = (
                 deployment_config.logging_config
                 != self._deployment_config.logging_config
             )
             self._deployment_config = deployment_config
             self._version = DeploymentVersion.from_deployment_version(
-                self._version, deployment_config
+                self._version, deployment_config, route_prefix
             )
 
             self._metrics_manager.set_autoscaling_config(
@@ -736,16 +1001,21 @@ class ReplicaBase(ABC):
             await self._user_callable_wrapper.set_sync_method_threadpool_limit(
                 deployment_config.max_ongoing_requests
             )
-            if user_config_changed:
+            if user_config_changed or rank_changed:
                 await self._user_callable_wrapper.call_reconfigure(
-                    deployment_config.user_config
+                    deployment_config.user_config,
+                    rank=rank,
                 )
 
             # We need to update internal replica context to reflect the new
-            # deployment_config.
+            # deployment_config and rank.
             self._set_internal_replica_context(
-                servable_object=self._user_callable_wrapper.user_callable
+                servable_object=self._user_callable_wrapper.user_callable,
+                rank=rank,
             )
+
+            self._route_prefix = self._version.route_prefix
+
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
@@ -851,8 +1121,11 @@ class ReplicaBase(ABC):
 
 class Replica(ReplicaBase):
     async def _on_initialized(self):
+        # Get current rank from replica context during initialization
+        current_rank = ray.serve.context._get_internal_replica_context().rank
         self._set_internal_replica_context(
-            servable_object=self._user_callable_wrapper.user_callable
+            servable_object=self._user_callable_wrapper.user_callable,
+            rank=current_rank,
         )
 
         # Save the initialization latency if the replica is initializing
@@ -980,8 +1253,11 @@ class ReplicaActor:
             get_component_logger_file_path(),
         )
 
+    def list_outbound_deployments(self) -> Optional[List[DeploymentID]]:
+        return self._replica_impl.list_outbound_deployments()
+
     async def initialize_and_get_metadata(
-        self, deployment_config: DeploymentConfig = None, _after: Optional[Any] = None
+        self, deployment_config: DeploymentConfig = None, rank: ReplicaRank = None
     ) -> ReplicaMetadata:
         """Handles initializing the replica.
 
@@ -994,7 +1270,7 @@ class ReplicaActor:
         """
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.
-        await self._replica_impl.initialize(deployment_config)
+        await self._replica_impl.initialize(deployment_config, rank)
         return self._replica_impl.get_metadata()
 
     async def check_health(self):
@@ -1003,8 +1279,10 @@ class ReplicaActor:
     async def record_routing_stats(self) -> Dict[str, Any]:
         return await self._replica_impl.record_routing_stats()
 
-    async def reconfigure(self, deployment_config) -> ReplicaMetadata:
-        await self._replica_impl.reconfigure(deployment_config)
+    async def reconfigure(
+        self, deployment_config, rank: ReplicaRank, route_prefix: Optional[str] = None
+    ) -> ReplicaMetadata:
+        await self._replica_impl.reconfigure(deployment_config, rank, route_prefix)
         return self._replica_impl.get_metadata()
 
     def _preprocess_request_args(
@@ -1149,6 +1427,7 @@ class UserCallableWrapper:
         run_sync_methods_in_threadpool: bool,
         run_user_code_in_separate_thread: bool,
         local_testing_mode: bool,
+        deployment_config: DeploymentConfig,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
@@ -1167,9 +1446,11 @@ class UserCallableWrapper:
         self._run_user_code_in_separate_thread = run_user_code_in_separate_thread
         self._warned_about_sync_method_change = False
         self._cached_user_method_info: Dict[str, UserMethodInfo] = {}
-
+        # This is for performance optimization https://docs.python.org/3/howto/logging.html#optimization
+        self._is_enabled_for_debug = logger.isEnabledFor(logging.DEBUG)
         # Will be populated in `initialize_callable`.
         self._callable = None
+        self._deployment_config = deployment_config
 
         if self._run_user_code_in_separate_thread:
             # All interactions with user code run on this loop to avoid blocking the
@@ -1421,9 +1702,18 @@ class UserCallableWrapper:
             if isinstance(self._callable, ASGIAppReplicaWrapper):
                 await self._initialize_asgi_callable()
 
+            if isinstance(self._callable, TaskConsumerWrapper):
+                self._callable.initialize_callable(
+                    self._deployment_config.max_ongoing_requests
+                )
+                ServeUsageTag.NUM_REPLICAS_USING_ASYNCHRONOUS_INFERENCE.record("1")
+
         self._user_health_check = getattr(self._callable, HEALTH_CHECK_METHOD, None)
         self._user_record_routing_stats = getattr(
             self._callable, REQUEST_ROUTING_STATS_METHOD, None
+        )
+        self._user_autoscaling_stats = getattr(
+            self._callable, "record_autoscaling_stats", None
         )
 
         logger.info(
@@ -1464,6 +1754,14 @@ class UserCallableWrapper:
 
         return None
 
+    def call_record_autoscaling_stats(self) -> Optional[concurrent.futures.Future]:
+        self._raise_if_not_initialized("call_record_autoscaling_stats")
+
+        if self._user_autoscaling_stats is not None:
+            return self._call_user_autoscaling_stats()
+
+        return None
+
     @_run_user_code
     async def _call_user_health_check(self):
         await self._call_func_or_gen(self._user_health_check)
@@ -1474,26 +1772,47 @@ class UserCallableWrapper:
         return result
 
     @_run_user_code
-    async def call_reconfigure(self, user_config: Any):
+    async def _call_user_autoscaling_stats(self) -> Dict[str, Union[int, float]]:
+        result, _ = await self._call_func_or_gen(self._user_autoscaling_stats)
+        return result
+
+    @_run_user_code
+    async def call_reconfigure(self, user_config: Optional[Any], rank: ReplicaRank):
         self._raise_if_not_initialized("call_reconfigure")
 
         # NOTE(edoakes): there is the possibility of a race condition in user code if
         # they don't have any form of concurrency control between `reconfigure` and
         # other methods. See https://github.com/ray-project/ray/pull/42159.
-        if user_config is not None:
+
+        # NOTE(abrar): The only way to subscribe to rank changes is to provide some user config.
+        # We can relax this in the future as more use cases arise for rank. I am reluctant to
+        # introduce behavior change for a feature we might not need.
+        user_subscribed_to_rank = False
+        if not self._is_function and hasattr(self._callable, RECONFIGURE_METHOD):
+            reconfigure_method = getattr(self._callable, RECONFIGURE_METHOD)
+            params = inspect.signature(reconfigure_method).parameters
+            user_subscribed_to_rank = "rank" in params
+        if user_config is not None or user_subscribed_to_rank:
             if self._is_function:
-                raise ValueError("deployment_def must be a class to use user_config")
+                raise ValueError(
+                    "deployment_def must be a class to use user_config or rank"
+                )
             elif not hasattr(self._callable, RECONFIGURE_METHOD):
                 raise RayServeException(
-                    "user_config specified but deployment "
+                    "user_config or rank specified but deployment "
                     + self._deployment_id
                     + " missing "
                     + RECONFIGURE_METHOD
                     + " method"
                 )
+            kwargs = {}
+            if user_subscribed_to_rank:
+                # For backwards compatibility, only pass rank if it is an argument to the reconfigure method.
+                kwargs["rank"] = rank
             await self._call_func_or_gen(
                 getattr(self._callable, RECONFIGURE_METHOD),
                 args=(user_config,),
+                kwargs=kwargs,
             )
 
     async def _handle_user_method_result(
@@ -1621,10 +1940,11 @@ class UserCallableWrapper:
         """
         self._raise_if_not_initialized("_call_http_entrypoint")
 
-        logger.info(
-            f"Started executing request to method '{user_method_info.name}'.",
-            extra={"log_to_stderr": False, "serve_access_log": True},
-        )
+        if self._is_enabled_for_debug:
+            logger.debug(
+                f"Started executing request to method '{user_method_info.name}'.",
+                extra={"log_to_stderr": False, "serve_access_log": True},
+            )
 
         if user_method_info.is_asgi_app:
             request_args = (scope, receive, send)
@@ -1754,10 +2074,11 @@ class UserCallableWrapper:
             or inspect.isasyncgenfunction(callable)
         )
 
-        logger.info(
-            f"Started executing request to method '{user_method_info.name}'.",
-            extra={"log_to_stderr": False, "serve_access_log": True},
-        )
+        if self._is_enabled_for_debug:
+            logger.debug(
+                f"Started executing request to method '{user_method_info.name}'.",
+                extra={"log_to_stderr": False, "serve_access_log": True},
+            )
 
         async def _call_generator_async() -> AsyncGenerator[Any, None]:
             gen = callable(*request_args, **request_kwargs)
@@ -1813,10 +2134,11 @@ class UserCallableWrapper:
         """
         self._raise_if_not_initialized("call_user_method")
 
-        logger.info(
-            f"Started executing request to method '{request_metadata.call_method}'.",
-            extra={"log_to_stderr": False, "serve_access_log": True},
-        )
+        if self._is_enabled_for_debug:
+            logger.debug(
+                f"Started executing request to method '{request_metadata.call_method}'.",
+                extra={"log_to_stderr": False, "serve_access_log": True},
+            )
 
         user_method_info = self.get_user_method_info(request_metadata.call_method)
         result, _ = await self._call_func_or_gen(
@@ -1849,7 +2171,7 @@ class UserCallableWrapper:
         actually call the destructor.
         """
         if self._callable is None:
-            logger.info(
+            logger.debug(
                 "This replica has not yet started running user code. "
                 "Skipping __del__."
             )

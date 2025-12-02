@@ -11,13 +11,17 @@ import pytest
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.test_utils import wait_for_condition
+from ray._private import authentication_test_utils
 from ray.autoscaler.v2.schema import (
     ClusterStatus,
     LaunchRequest,
     NodeInfo,
     ResourceRequestByCount,
 )
-from ray.autoscaler.v2.sdk import get_cluster_status, request_cluster_resources
+from ray.autoscaler.v2.sdk import (
+    get_cluster_status,
+    request_cluster_resources,
+)
 from ray.autoscaler.v2.tests.util import (
     get_available_resources,
     get_cluster_resource_state,
@@ -26,15 +30,16 @@ from ray.autoscaler.v2.tests.util import (
 )
 from ray.core.generated import autoscaler_pb2, autoscaler_pb2_grpc
 from ray.core.generated.autoscaler_pb2 import ClusterResourceState, NodeStatus
+from ray.core.generated.common_pb2 import LabelSelectorOperator
 from ray.util.state.api import list_nodes
 
 
 def _autoscaler_state_service_stub():
     """Get the grpc stub for the autoscaler state service"""
+    from ray._private.grpc_utils import init_grpc_channel
+
     gcs_address = ray.get_runtime_context().gcs_address
-    gcs_channel = ray._private.utils.init_grpc_channel(
-        gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS
-    )
+    gcs_channel = init_grpc_channel(gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS)
     return autoscaler_pb2_grpc.AutoscalerStateServiceStub(gcs_channel)
 
 
@@ -247,7 +252,7 @@ def test_request_cluster_resources_basic(shutdown_only):
     gcs_address = ctx.address_info["gcs_address"]
 
     # Request one
-    request_cluster_resources(gcs_address, [{"CPU": 1}])
+    request_cluster_resources(gcs_address, [{"resources": {"CPU": 1}}])
 
     def verify():
         state = get_cluster_resource_state(stub)
@@ -257,7 +262,9 @@ def test_request_cluster_resources_basic(shutdown_only):
     wait_for_condition(verify)
 
     # Request another overrides the previous request
-    request_cluster_resources(gcs_address, [{"CPU": 2, "GPU": 1}, {"CPU": 1}])
+    request_cluster_resources(
+        gcs_address, [{"resources": {"CPU": 2, "GPU": 1}}, {"resources": {"CPU": 1}}]
+    )
 
     def verify():
         state = get_cluster_resource_state(stub)
@@ -267,11 +274,70 @@ def test_request_cluster_resources_basic(shutdown_only):
         return True
 
     # Request multiple is aggregated by shape.
-    request_cluster_resources(gcs_address, [{"CPU": 1}] * 100)
+    request_cluster_resources(gcs_address, [{"resources": {"CPU": 1}}] * 100)
 
     def verify():
         state = get_cluster_resource_state(stub)
         assert_cluster_resource_constraints(state, [{"CPU": 1}], [100])
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_request_cluster_resources_with_label_selectors(shutdown_only):
+    ctx = ray.init(num_cpus=1)
+    stub = _autoscaler_state_service_stub()
+    gcs_address = ctx.address_info["gcs_address"]
+
+    # Define two bundles, each with its own label_selector, to request.
+    bundles = [
+        {"CPU": 1},
+        {"GPU": 1, "CPU": 2},
+    ]
+    bundle_label_selectors = [
+        {"region": "us-west1"},
+        {"accelerator-type": "!in(A100)"},
+    ]
+    to_request = [
+        {"resources": b, "label_selector": s}
+        for b, s in zip(bundles, bundle_label_selectors)
+    ]
+
+    # Send the request for these resource bundles
+    request_cluster_resources(gcs_address, to_request)
+
+    def verify():
+        state = get_cluster_resource_state(stub)
+        # Validate shape and resource request count
+        assert_cluster_resource_constraints(state, bundles, [1, 1])
+
+        # Check that requests carry expected label selectors
+        requests = state.cluster_resource_constraints[0].resource_requests
+
+        # First resource request
+        label_selectors_0 = requests[0].request.label_selectors
+        selector_0 = label_selectors_0[0]
+        constraints_0 = {
+            c.label_key: list(c.label_values) for c in selector_0.label_constraints
+        }
+        assert constraints_0 == {"region": ["us-west1"]}
+        assert (
+            selector_0.label_constraints[0].operator
+            == LabelSelectorOperator.LABEL_OPERATOR_IN
+        )
+
+        # Second resource request
+        label_selectors_1 = requests[1].request.label_selectors
+        selector_1 = label_selectors_1[0]
+        constraints_1 = {
+            c.label_key: list(c.label_values) for c in selector_1.label_constraints
+        }
+        assert constraints_1 == {"accelerator-type": ["A100"]}
+        assert (
+            selector_1.label_constraints[0].operator
+            == LabelSelectorOperator.LABEL_OPERATOR_NOT_IN
+        )
+
         return True
 
     wait_for_condition(verify)
@@ -338,7 +404,6 @@ def test_pg_pending_gang_requests_basic(shutdown_only):
 
 
 def test_pg_usage_labels(shutdown_only):
-
     ray.init(num_cpus=1)
 
     # Create a pg
@@ -357,7 +422,9 @@ def test_pg_usage_labels(shutdown_only):
             state,
             [
                 ExpectedNodeState(
-                    head_node_id, NodeStatus.RUNNING, labels={f"_PG_{pg_id}": ""}
+                    head_node_id,
+                    NodeStatus.RUNNING,
+                    labels={f"_PG_{pg_id}": ""},
                 ),
             ],
         )
@@ -644,7 +711,7 @@ def test_get_cluster_status_resources(ray_start_cluster):
 
     # Request resources through SDK
     request_cluster_resources(
-        gcs_address=cluster.address, to_request=[{"GPU": 1, "CPU": 2}]
+        gcs_address=cluster.address, to_request=[{"resources": {"GPU": 1, "CPU": 2}}]
     )
 
     def verify_cluster_constraint_demand():
@@ -855,6 +922,70 @@ def test_is_autoscaler_v2_enabled(shutdown_only, monkeypatch, env_val, enabled):
             return True
 
         wait_for_condition(verify)
+
+
+@pytest.mark.parametrize(
+    "token_state,setup_token,should_fail",
+    [
+        ("valid", lambda: None, False),
+        ("invalid", lambda: _setup_invalid_token(), True),
+    ],
+)
+def test_autoscaler_api_with_token_auth(
+    setup_cluster_with_token_auth,
+    cleanup_auth_token_env,
+    token_state,
+    setup_token,
+    should_fail,
+):
+    """Parametrized test for autoscaler API with different token states.
+
+    Tests request_cluster_resources with valid, invalid, and missing tokens.
+    """
+    # Setup token state (this changes the client-side token)
+    setup_token()
+
+    if should_fail:
+        # API call should fail with invalid token
+        with pytest.raises(Exception) as exc_info:
+            request_cluster_resources(
+                ray.get_runtime_context().gcs_address,
+                [{"resources": {"CPU": 1}, "label_selector": {}}],
+            )
+
+        # Verify it's an authentication error
+        error_str = str(exc_info.value).lower()
+        assert (
+            "unauthenticated" in error_str or "invalidauthtoken" in error_str
+        ), f"request_cluster_resources with {token_state} token should return auth error, got: {exc_info.value}"
+    else:
+        # API call should succeed with valid token
+        request_cluster_resources(
+            ray.get_runtime_context().gcs_address,
+            [{"resources": {"CPU": 1}, "label_selector": {}}],
+        )
+
+        # Verify the request was successful using the autoscaler state service stub
+        stub = _autoscaler_state_service_stub()
+        state = get_cluster_resource_state(stub)
+        assert (
+            len(state.cluster_resource_constraints) > 0
+        ), f"request_cluster_resources with {token_state} token should succeed"
+
+
+def _setup_invalid_token():
+    """Helper to set up an invalid authentication token."""
+
+    invalid_token = "invalid_token_value"
+    authentication_test_utils.set_env_auth_token(invalid_token)
+    authentication_test_utils.reset_auth_token_state()
+
+
+def _clear_token():
+    """Helper to clear authentication token sources."""
+
+    authentication_test_utils.clear_auth_token_sources()
+    authentication_test_utils.reset_auth_token_state()
 
 
 if __name__ == "__main__":

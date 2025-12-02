@@ -4,6 +4,8 @@
 # action listeners are deprecated. We can switch to that if a stable solution
 # exists, e.g. https://github.com/grailbio/bazel-compilation-database
 
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
 cc_binary(
     name = "extract_compile_command",
     srcs = ["extract_compile_command.cc"],

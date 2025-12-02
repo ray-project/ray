@@ -12,7 +12,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-env_runners=
+`python [script file name].py --num-env_runners=
 [number of EnvRunners, e.g. 2] --num-gpus-per-env-runner [int or some fraction <1.0]`
 
 The following command line combinations been tested on a 4 NVIDIA T4 GPUs (16 vCPU)
@@ -58,7 +58,6 @@ parser = add_rllib_example_script_args(
     default_iters=50, default_reward=0.9, default_timesteps=100000
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_env_runners=2,
 )
 parser.add_argument("--num-gpus-per-env-runner", type=float, default=0.5)

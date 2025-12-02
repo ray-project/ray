@@ -1,7 +1,7 @@
 import itertools
 import random
 import time
-from typing import Optional
+from typing import Iterator, Optional
 
 import numpy as np
 import pandas as pd
@@ -48,7 +48,9 @@ def _sort_series_of_lists_elements(s: pd.Series):
 
 
 def test_grouped_dataset_repr(
-    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     ds = ray.data.from_items([{"key": "spam"}, {"key": "ham"}, {"key": "spam"}])
     assert repr(ds.groupby("key")) == f"GroupedData(dataset={ds!r}, key='key')"
@@ -58,6 +60,7 @@ def test_groupby_arrow(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     # Test empty dataset.
     agg_ds = ray.data.range(10).filter(lambda r: r["id"] > 10).groupby("value").count()
@@ -68,6 +71,7 @@ def test_groupby_none(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     ds = ray.data.range(10)
     assert ds.groupby(None).min().take_all() == [{"min(id)": 0}]
@@ -75,7 +79,9 @@ def test_groupby_none(
 
 
 def test_groupby_errors(
-    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     ds = ray.data.range(100)
     ds.groupby(None).count().show()  # OK
@@ -86,22 +92,99 @@ def test_groupby_errors(
 
 
 def test_map_groups_with_gpus(
-    shutdown_only, configure_shuffle_method, disable_fallback_to_object_extension
+    shutdown_only,
+    configure_shuffle_method,
+    disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     ray.shutdown()
     ray.init(num_gpus=1)
 
     rows = (
-        ray.data.range(1).groupby("id").map_groups(lambda x: x, num_gpus=1).take_all()
+        ray.data.range(1, override_num_blocks=1)
+        .groupby("id")
+        .map_groups(lambda x: x, num_gpus=1)
+        .take_all()
     )
 
     assert rows == [{"id": 0}]
+
+
+def test_groupby_with_column_expression_udf(
+    ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
+    disable_fallback_to_object_extension,
+):
+    import pyarrow.compute as pc
+
+    from ray.data.datatype import DataType
+    from ray.data.expressions import col, udf
+
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    @udf(return_dtype=DataType.int32())
+    def min_value(values: pa.Array) -> pa.Array:
+        scalar = pc.min(values)
+        if isinstance(scalar, pa.Scalar):
+            scalar = scalar.as_py()
+        return pa.array([scalar] * len(values))
+
+    rows = (
+        ds.groupby("group")
+        .with_column("min_value", min_value(col("value")))
+        .sort(["group", "value"])
+        .take_all()
+    )
+    assert rows == [
+        {"group": 1, "value": 1, "min_value": 1},
+        {"group": 1, "value": 2, "min_value": 1},
+        {"group": 2, "value": 3, "min_value": 3},
+        {"group": 2, "value": 4, "min_value": 3},
+    ]
+
+
+def test_groupby_with_column_expression_arithmetic(
+    ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
+    disable_fallback_to_object_extension,
+):
+    from ray.data.expressions import col
+
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    rows = (
+        ds.groupby("group")
+        .with_column("value_twice", col("value") * 2)
+        .sort(["group", "value"])
+        .take_all()
+    )
+    assert rows == [
+        {"group": 1, "value": 1, "value_twice": 2},
+        {"group": 1, "value": 2, "value_twice": 4},
+        {"group": 2, "value": 3, "value_twice": 6},
+        {"group": 2, "value": 4, "value_twice": 8},
+    ]
 
 
 def test_map_groups_with_actors(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     class Identity:
         def __call__(self, batch):
@@ -208,6 +291,7 @@ def test_groupby_nans(
     ds_format,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     ds = ray.data.from_items(
         [
@@ -237,6 +321,7 @@ def test_groupby_tabular_count(
     num_parts,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     # Test built-in count aggregation
     seed = int(time.time())
@@ -781,6 +866,7 @@ def test_groupby_map_groups_perf(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     data_list = [x % 100 for x in range(5000000)]
     ds = ray.data.from_pandas(pd.DataFrame({"A": data_list}))
@@ -934,7 +1020,9 @@ def test_groupby_map_groups_multiple_batch_formats(
 
 
 def test_groupby_map_groups_ray_remote_args_fn(
-    ray_start_regular_shared_2_cpus, configure_shuffle_method
+    ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
+    target_max_block_size_infinite_or_default,
 ):
     ds = ray.data.from_items(
         [
@@ -962,6 +1050,7 @@ def test_groupby_map_groups_extra_args(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
     disable_fallback_to_object_extension,
+    target_max_block_size_infinite_or_default,
 ):
     ds = ray.data.from_items(
         [
@@ -1121,6 +1210,40 @@ def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension):
         {"x_add_5": 25},
     ]
     assert "MapBatches(func)" in ds.__repr__()
+
+
+def test_map_groups_generator_udf(ray_start_regular_shared_2_cpus):
+    """
+    Tests that map_groups supports UDFs that return generators (iterators).
+    """
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "data": 10},
+            {"group": 1, "data": 20},
+            {"group": 2, "data": 30},
+        ]
+    )
+
+    def generator_udf(df: pd.DataFrame) -> Iterator[pd.DataFrame]:
+        # For each group, yield two DataFrames.
+        # 1. A DataFrame where 'data' is multiplied by 2.
+        yield df.assign(data=df["data"] * 2)
+        # 2. A DataFrame where 'data' is multiplied by 3.
+        yield df.assign(data=df["data"] * 3)
+
+    # Apply the generator UDF to the grouped data.
+    result_ds = ds.groupby("group").map_groups(generator_udf)
+
+    # The final dataset should contain all results from all yields.
+    # Group 1 -> data: [20, 40] and [30, 60]
+    # Group 2 -> data: [60] and [90]
+    expected_data = sorted([20, 40, 30, 60, 60, 90])
+
+    # Collect and sort the actual data to ensure correctness regardless of order.
+    actual_data = sorted([row["data"] for row in result_ds.take_all()])
+
+    assert actual_data == expected_data
+    assert result_ds.count() == 6
 
 
 if __name__ == "__main__":

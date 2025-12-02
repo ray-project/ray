@@ -19,7 +19,6 @@ from ray.core.generated.common_pb2 import (
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -48,9 +47,16 @@ class RayError(Exception):
         if ray_exception.language == PYTHON:
             try:
                 return pickle.loads(ray_exception.serialized_exception)
-            except Exception as e:
-                msg = "Failed to unpickle serialized exception"
-                raise RuntimeError(msg) from e
+            except Exception:
+                # formatted_exception_string is set in to_bytes() above by calling
+                # traceback.format_exception() on the original exception. It contains
+                # the string representation and stack trace of the original error.
+                original_stacktrace = getattr(
+                    ray_exception,
+                    "formatted_exception_string",
+                    "No formatted exception string available.",
+                )
+                return UnserializableException(original_stacktrace)
         else:
             return CrossLanguageError(ray_exception)
 
@@ -469,6 +475,49 @@ class RaySystemError(RayError):
         if self.traceback_str:
             error_msg += f"\ntraceback: {self.traceback_str}"
         return error_msg
+
+
+@PublicAPI
+class AuthenticationError(RayError):
+    """Indicates that an authentication error occurred.
+
+    Most commonly, this is caused by a missing or mismatching token set on the client
+    (e.g., a Ray CLI command interacting with a remote cluster).
+
+    Only applicable when `RAY_AUTH_MODE` is not set to `disabled`.
+    """
+
+    def __init__(self, message: str):
+        self.message = message
+
+        # Always hide traceback for cleaner output
+        self.__suppress_context__ = True
+        super().__init__(message)
+
+    def __str__(self) -> str:
+        # Check if RAY_AUTH_MODE is set to token and add a heads-up if not
+        auth_mode_note = ""
+
+        from ray._private.authentication.authentication_utils import (
+            get_authentication_mode_name,
+        )
+        from ray._raylet import AuthenticationMode, get_authentication_mode
+
+        current_mode = get_authentication_mode()
+        if current_mode != AuthenticationMode.TOKEN:
+            mode_name = get_authentication_mode_name(current_mode)
+            auth_mode_note = (
+                f" Note: RAY_AUTH_MODE is currently '{mode_name}' (not 'token')."
+            )
+
+        help_text = (
+            " Ensure that the token for the cluster is available in a local file (e.g., ~/.ray/auth_token or via "
+            "RAY_AUTH_TOKEN_PATH) or as the `RAY_AUTH_TOKEN` environment variable. "
+            "To generate a token for local development, use `ray get-auth-token --generate` "
+            "For remote clusters, ensure that the token is propagated to all nodes of the cluster when token authentication is enabled. "
+            "For more information, see: https://docs.ray.io/en/latest/ray-security/auth.html"
+        )
+        return self.message + "." + auth_mode_note + help_text
 
 
 @DeveloperAPI
@@ -900,6 +949,51 @@ class RayCgraphCapacityExceeded(RaySystemError):
     pass
 
 
+@PublicAPI(stability="alpha")
+class UnserializableException(RayError):
+    """Raised when there is an error deserializing a serialized exception.
+
+    This occurs when deserializing (unpickling) a previously serialized exception
+    fails. In this case, we fall back to raising the string representation of
+    the original exception along with its stack trace that was captured at the
+    time of serialization.
+
+    For more details and how to handle this with custom serializers, :ref:`configuring custom exeception serializers <custom-exception-serializer>`
+
+    Args:
+        original_stack_trace: The string representation and stack trace of the
+            original exception that was captured during serialization.
+    """
+
+    def __init__(self, original_stack_trace: str):
+        self._original_stack_trace = original_stack_trace
+
+    def __str__(self):
+        return (
+            "Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#custom-serializers-for-exceptions for more information.\n"
+            "Original exception:\n"
+            f"{self._original_stack_trace}"
+        )
+
+
+@DeveloperAPI
+class ActorAlreadyExistsError(ValueError, RayError):
+    """Raised when a named actor already exists.
+
+    Note that this error is not only a subclass of RayError, but also a subclass of ValueError, to maintain backward compatibility.
+
+    Args:
+        error_message: The error message that contains information about the actor name and namespace.
+    """
+
+    def __init__(self, error_message: str):
+        super().__init__(error_message)
+        self.error_message = error_message
+
+    def __str__(self):
+        return self.error_message
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -929,4 +1023,7 @@ RAY_EXCEPTION_TYPES = [
     RayChannelTimeoutError,
     OufOfBandObjectRefSerializationException,
     RayCgraphCapacityExceeded,
+    UnserializableException,
+    ActorAlreadyExistsError,
+    AuthenticationError,
 ]

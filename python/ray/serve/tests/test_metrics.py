@@ -15,11 +15,12 @@ from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
 import ray
-import ray.util.state as state_api
 from ray import serve
+from ray._common.network_utils import parse_address
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
-    fetch_prometheus_metrics,
+    PrometheusTimeseries,
+    fetch_prometheus_metric_timeseries,
 )
 from ray.serve._private.long_poll import LongPollHost, UpdatedObject
 from ray.serve._private.test_utils import (
@@ -29,6 +30,7 @@ from ray.serve._private.test_utils import (
 )
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.util.state import list_actors
 
 
 def extract_tags(line: str) -> Dict[str, str]:
@@ -49,23 +51,10 @@ def extract_tags(line: str) -> Dict[str, str]:
     return detected_tags
 
 
-def contains_tags(line: str, expected_tags: Optional[Dict[str, str]] = None) -> bool:
-    """Checks if the metrics line contains the expected tags.
-
-    Does nothing if expected_tags is None.
-    """
-
-    if expected_tags is not None:
-        detected_tags = extract_tags(line)
-
-        # Check if expected_tags is a subset of detected_tags
-        return expected_tags.items() <= detected_tags.items()
-    else:
-        return True
-
-
 def get_metric_float(
-    metric: str, expected_tags: Optional[Dict[str, str]] = None
+    metric: str,
+    expected_tags: Optional[Dict[str, str]],
+    timeseries: Optional[PrometheusTimeseries] = None,
 ) -> float:
     """Gets the float value of metric.
 
@@ -73,19 +62,24 @@ def get_metric_float(
 
     Returns -1 if the metric isn't available.
     """
-
-    metrics = httpx.get("http://127.0.0.1:9999").text
-    metric_value = -1
-    for line in metrics.split("\n"):
-        if metric in line and contains_tags(line, expected_tags):
-            metric_value = line.split(" ")[-1]
-    return metric_value
+    if timeseries is None:
+        timeseries = PrometheusTimeseries()
+    samples = fetch_prometheus_metric_timeseries(["localhost:9999"], timeseries).get(
+        metric, []
+    )
+    for sample in samples:
+        if expected_tags.items() <= sample.labels.items():
+            return sample.value
+    return -1
 
 
 def check_metric_float_eq(
-    metric: str, expected: float, expected_tags: Optional[Dict[str, str]] = None
+    metric: str,
+    expected: float,
+    expected_tags: Optional[Dict[str, str]],
+    timeseries: Optional[PrometheusTimeseries] = None,
 ) -> bool:
-    metric_value = get_metric_float(metric, expected_tags)
+    metric_value = get_metric_float(metric, expected_tags, timeseries)
     assert float(metric_value) == expected
     return True
 
@@ -94,11 +88,14 @@ def check_sum_metric_eq(
     metric_name: str,
     expected: float,
     tags: Optional[Dict[str, str]] = None,
+    timeseries: Optional[PrometheusTimeseries] = None,
 ) -> bool:
     if tags is None:
         tags = {}
+    if timeseries is None:
+        timeseries = PrometheusTimeseries()
 
-    metrics = fetch_prometheus_metrics(["localhost:9999"])
+    metrics = fetch_prometheus_metric_timeseries(["localhost:9999"], timeseries)
     metrics = {k: v for k, v in metrics.items() if "ray_serve_" in k}
     metric_samples = metrics.get(metric_name, None)
     if metric_samples is None:
@@ -125,7 +122,9 @@ def check_sum_metric_eq(
     return True
 
 
-def get_metric_dictionaries(name: str, timeout: float = 20) -> List[Dict]:
+def get_metric_dictionaries(
+    name: str, timeout: float = 20, timeseries: Optional[PrometheusTimeseries] = None
+) -> List[Dict]:
     """Gets a list of metric's tags from metrics' text output.
 
     Return:
@@ -148,24 +147,29 @@ def get_metric_dictionaries(name: str, timeout: float = 20) -> List[Dict]:
             }
         ]
     """
+    if timeseries is None:
+        timeseries = PrometheusTimeseries()
 
     def metric_available() -> bool:
-        metrics = httpx.get("http://127.0.0.1:9999", timeout=10).text
-        assert name in metrics
+        assert name in fetch_prometheus_metric_timeseries(
+            ["localhost:9999"], timeseries
+        )
         return True
 
     wait_for_condition(metric_available, retry_interval_ms=1000, timeout=timeout)
-
-    metrics = httpx.get("http://127.0.0.1:9999").text
-    serve_metrics = [line for line in metrics.splitlines() if "ray_serve_" in line]
-    print("metrics", "\n".join(serve_metrics))
+    serve_samples = [
+        sample
+        for sample in timeseries.metric_samples.values()
+        if "ray_serve_" in sample.name
+    ]
+    print(
+        "metrics", "\n".join([f"Labels: {sample.labels}\n" for sample in serve_samples])
+    )
 
     metric_dicts = []
-    for line in metrics.split("\n"):
-        if name + "{" in line:
-            dict_body_start, dict_body_end = line.find("{") + 1, line.rfind("}")
-            metric_dict_str = f"dict({line[dict_body_start:dict_body_end]})"
-            metric_dicts.append(eval(metric_dict_str))
+    for sample in timeseries.metric_samples.values():
+        if sample.name == name:
+            metric_dicts.append(sample.labels)
 
     print(metric_dicts)
     return metric_dicts
@@ -179,14 +183,14 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
     app_name = "app1"
     handle = serve.run(target=f.bind(), name=app_name)
 
-    http_url = f'{get_application_url("HTTP", app_name)}/metrics'
-
+    http_url = get_application_url(app_name=app_name)
     # send 10 concurrent requests
     ray.get([block_until_http_ready.remote(http_url) for _ in range(10)])
     [handle.remote(http_url) for _ in range(10)]
 
     # Ping gPRC proxy
-    channel = grpc.insecure_channel("localhost:9000")
+    grpc_url = "localhost:9000"
+    channel = grpc.insecure_channel(grpc_url)
     wait_for_condition(
         ping_grpc_list_applications, channel=channel, app_names=[app_name]
     )
@@ -250,7 +254,7 @@ def test_http_replica_gauge_metrics(metrics_start_shutdown):
     _ = handle.remote()
 
     processing_requests = get_metric_dictionaries(
-        "serve_replica_processing_queries", timeout=5
+        "ray_serve_replica_processing_queries", timeout=5
     )
     assert len(processing_requests) == 1
     assert processing_requests[0]["deployment"] == "A"
@@ -401,8 +405,9 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
 
     app_name = "app"
     serve.run(A.bind(), name=app_name)
-    httpx.get("http://127.0.0.1:8000/A/", timeout=None)
-    httpx.get("http://127.0.0.1:8000/A/", timeout=None)
+
+    httpx.get("http://localhost:8000", timeout=None)
+    httpx.get("http://localhost:8000", timeout=None)
     channel = grpc.insecure_channel("localhost:9000")
     with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name=app_name)
@@ -466,11 +471,11 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     print("Sent requests to broken URL.")
 
     # Ping gRPC proxy for not existing application.
-    channel = grpc.insecure_channel("localhost:9000")
+    channel = grpc.insecure_channel("127.0.0.1:9000")
     fake_app_name = "fake-app"
     ping_grpc_call_method(channel=channel, app_name=fake_app_name, test_not_found=True)
 
-    num_requests = get_metric_dictionaries("serve_num_http_requests")
+    num_requests = get_metric_dictionaries("ray_serve_num_http_requests_total")
     assert len(num_requests) == 1
     assert num_requests[0]["route"] == ""
     assert num_requests[0]["method"] == "GET"
@@ -478,7 +483,7 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     assert num_requests[0]["status_code"] == "404"
     print("serve_num_http_requests working as expected.")
 
-    num_requests = get_metric_dictionaries("serve_num_grpc_requests")
+    num_requests = get_metric_dictionaries("ray_serve_num_grpc_requests_total")
     assert len(num_requests) == 1
     assert num_requests[0]["route"] == ""
     assert num_requests[0]["method"] == "/ray.serve.UserDefinedService/__call__"
@@ -486,14 +491,14 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     assert num_requests[0]["status_code"] == str(grpc.StatusCode.NOT_FOUND)
     print("serve_num_grpc_requests working as expected.")
 
-    num_errors = get_metric_dictionaries("serve_num_http_error_requests")
+    num_errors = get_metric_dictionaries("ray_serve_num_http_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == ""
     assert num_errors[0]["error_code"] == "404"
     assert num_errors[0]["method"] == "GET"
     print("serve_num_http_error_requests working as expected.")
 
-    num_errors = get_metric_dictionaries("serve_num_grpc_error_requests")
+    num_errors = get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == ""
     assert num_errors[0]["error_code"] == str(grpc.StatusCode.NOT_FOUND)
@@ -523,7 +528,7 @@ def test_proxy_timeout_metrics(metrics_start_shutdown):
         name="status_code_timeout",
     )
 
-    http_url = get_application_url("HTTP", "status_code_timeout")
+    http_url = get_application_url("HTTP", app_name="status_code_timeout")
 
     r = httpx.get(http_url)
     assert r.status_code == 408
@@ -534,14 +539,14 @@ def test_proxy_timeout_metrics(metrics_start_shutdown):
     with pytest.raises(grpc.RpcError):
         ping_grpc_call_method(channel=channel, app_name="status_code_timeout")
 
-    num_errors = get_metric_dictionaries("serve_num_http_error_requests")
+    num_errors = get_metric_dictionaries("ray_serve_num_http_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "/status_code_timeout"
     assert num_errors[0]["error_code"] == "408"
     assert num_errors[0]["method"] == "GET"
     assert num_errors[0]["application"] == "status_code_timeout"
 
-    num_errors = get_metric_dictionaries("serve_num_grpc_error_requests")
+    num_errors = get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "status_code_timeout"
     assert num_errors[0]["error_code"] == str(grpc.StatusCode.DEADLINE_EXCEEDED)
@@ -568,9 +573,9 @@ def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
     )
 
     # Simulate an HTTP disconnect
-    http_url = get_application_url("HTTP", "disconnect")
+    http_url = get_application_url("HTTP", app_name="disconnect")
     ip_port = http_url.replace("http://", "").split("/")[0]  # remove the route prefix
-    ip, port = ip_port.split(":")
+    ip, port = parse_address(ip_port)
     conn = http.client.HTTPConnection(ip, int(port))
     conn.request("GET", "/disconnect")
     wait_for_condition(
@@ -579,7 +584,7 @@ def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
     conn.close()  # Forcefully close the connection
     ray.get(signal.send.remote(clear=True))
 
-    num_errors = get_metric_dictionaries("serve_num_http_error_requests")
+    num_errors = get_metric_dictionaries("ray_serve_num_http_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "/disconnect"
     assert num_errors[0]["error_code"] == "499"
@@ -630,7 +635,7 @@ def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     thread.join()
     ray.get(signal.send.remote(clear=True))
 
-    num_errors = get_metric_dictionaries("serve_num_grpc_error_requests")
+    num_errors = get_metric_dictionaries("ray_serve_num_grpc_error_requests_total")
     assert len(num_errors) == 1
     assert num_errors[0]["route"] == "disconnect"
     assert num_errors[0]["error_code"] == str(grpc.StatusCode.CANCELLED)
@@ -661,7 +666,7 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
         ping_grpc_call_method(channel=channel, app_name=real_app_name)
 
     num_deployment_errors = get_metric_dictionaries(
-        "serve_num_deployment_http_error_requests"
+        "ray_serve_num_deployment_http_error_requests_total"
     )
     assert len(num_deployment_errors) == 1
     assert num_deployment_errors[0]["deployment"] == "f"
@@ -671,7 +676,7 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     print("serve_num_deployment_http_error_requests working as expected.")
 
     num_deployment_errors = get_metric_dictionaries(
-        "serve_num_deployment_grpc_error_requests"
+        "ray_serve_num_deployment_grpc_error_requests_total"
     )
     assert len(num_deployment_errors) == 1
     assert num_deployment_errors[0]["deployment"] == "f"
@@ -682,7 +687,7 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     assert num_deployment_errors[0]["application"] == real_app_name
     print("serve_num_deployment_grpc_error_requests working as expected.")
 
-    latency_metrics = get_metric_dictionaries("serve_http_request_latency_ms_sum")
+    latency_metrics = get_metric_dictionaries("ray_serve_http_request_latency_ms_sum")
     assert len(latency_metrics) == 1
     assert latency_metrics[0]["method"] == "GET"
     assert latency_metrics[0]["route"] == "/real_route"
@@ -690,7 +695,7 @@ def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     assert latency_metrics[0]["status_code"] == "500"
     print("serve_http_request_latency_ms working as expected.")
 
-    latency_metrics = get_metric_dictionaries("serve_grpc_request_latency_ms_sum")
+    latency_metrics = get_metric_dictionaries("ray_serve_grpc_request_latency_ms_sum")
     assert len(latency_metrics) == 1
     assert latency_metrics[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     assert latency_metrics[0]["route"] == real_app_name
@@ -877,12 +882,14 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     assert "world" == httpx.get(url_g).text
 
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("serve_deployment_request_counter_total"))
+        lambda: len(
+            get_metric_dictionaries("ray_serve_deployment_request_counter_total")
+        )
         == 2,
         timeout=40,
     )
 
-    metrics = get_metric_dictionaries("serve_deployment_request_counter_total")
+    metrics = get_metric_dictionaries("ray_serve_deployment_request_counter_total")
     assert len(metrics) == 2
     expected_output = {
         ("/f", "f", "app1"),
@@ -897,7 +904,7 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         for metric in metrics
     } == expected_output
 
-    start_metrics = get_metric_dictionaries("serve_deployment_replica_starts_total")
+    start_metrics = get_metric_dictionaries("ray_serve_deployment_replica_starts_total")
     assert len(start_metrics) == 2
     expected_output = {("f", "app1"), ("g", "app2")}
     assert {
@@ -908,14 +915,14 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     # Latency metrics
     wait_for_condition(
         lambda: len(
-            get_metric_dictionaries("serve_deployment_processing_latency_ms_count")
+            get_metric_dictionaries("ray_serve_deployment_processing_latency_ms_count")
         )
         == 2,
         timeout=40,
     )
     for metric_name in [
-        "serve_deployment_processing_latency_ms_count",
-        "serve_deployment_processing_latency_ms_sum",
+        "ray_serve_deployment_processing_latency_ms_count",
+        "ray_serve_deployment_processing_latency_ms_sum",
     ]:
         latency_metrics = get_metric_dictionaries(metric_name)
         print(f"checking metric {metric_name}, {latency_metrics}")
@@ -927,9 +934,10 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         } == expected_output
 
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("serve_replica_processing_queries")) == 2
+        lambda: len(get_metric_dictionaries("ray_serve_replica_processing_queries"))
+        == 2
     )
-    processing_queries = get_metric_dictionaries("serve_replica_processing_queries")
+    processing_queries = get_metric_dictionaries("ray_serve_replica_processing_queries")
     expected_output = {("f", "app1"), ("g", "app2")}
     assert {
         (processing_query["deployment"], processing_query["application"])
@@ -944,11 +952,11 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     url_h = get_application_url("HTTP", "app3")
     assert 500 == httpx.get(url_h).status_code
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("serve_deployment_error_counter_total"))
+        lambda: len(get_metric_dictionaries("ray_serve_deployment_error_counter_total"))
         == 1,
         timeout=40,
     )
-    err_requests = get_metric_dictionaries("serve_deployment_error_counter_total")
+    err_requests = get_metric_dictionaries("ray_serve_deployment_error_counter_total")
     assert len(err_requests) == 1
     expected_output = ("/h", "h", "app3")
     assert (
@@ -958,9 +966,10 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     ) == expected_output
 
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("serve_deployment_replica_healthy")) == 3,
+        lambda: len(get_metric_dictionaries("ray_serve_deployment_replica_healthy"))
+        == 3,
     )
-    health_metrics = get_metric_dictionaries("serve_deployment_replica_healthy")
+    health_metrics = get_metric_dictionaries("ray_serve_deployment_replica_healthy")
     expected_output = {
         ("f", "app1"),
         ("g", "app2"),
@@ -1016,9 +1025,157 @@ def test_multiplexed_metrics(metrics_start_shutdown):
     )
 
 
+@pytest.mark.parametrize("use_factory_pattern", [False, True])
+def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_pattern):
+    """Test that proxy metrics use specific route patterns for FastAPI apps.
+
+    This test verifies that:
+    1. Route patterns are extracted from FastAPI apps at replica initialization
+    2. Proxy metrics use parameterized patterns (e.g., /api/users/{user_id})
+       instead of just route prefixes (e.g., /api)
+    3. Individual request paths don't appear in metrics (avoiding high cardinality)
+    4. Multiple requests to the same pattern are grouped together
+    5. Both normal pattern and factory pattern work correctly
+    """
+    if use_factory_pattern:
+        # Factory pattern: callable returns FastAPI app at runtime
+        def create_app():
+            app = FastAPI()
+
+            @app.get("/")
+            def root():
+                return {"message": "root"}
+
+            @app.get("/users/{user_id}")
+            def get_user(user_id: str):
+                return {"user_id": user_id}
+
+            @app.get("/items/{item_id}/details")
+            def get_item(item_id: str):
+                return {"item_id": item_id}
+
+            return app
+
+        @serve.deployment
+        @serve.ingress(create_app)
+        class APIServer:
+            pass
+
+    else:
+        # Normal pattern: routes defined in deployment class
+        app = FastAPI()
+
+        @serve.deployment
+        @serve.ingress(app)
+        class APIServer:
+            @app.get("/")
+            def root(self):
+                return {"message": "root"}
+
+            @app.get("/users/{user_id}")
+            def get_user(self, user_id: str):
+                return {"user_id": user_id}
+
+            @app.get("/items/{item_id}/details")
+            def get_item(self, item_id: str):
+                return {"item_id": item_id}
+
+    serve.run(APIServer.bind(), name="api_app", route_prefix="/api")
+
+    # Make requests to different route patterns with various parameter values
+    base_url = "http://localhost:8000/api"
+    assert httpx.get(f"{base_url}/").status_code == 200
+    assert httpx.get(f"{base_url}/users/123").status_code == 200
+    assert httpx.get(f"{base_url}/users/456").status_code == 200
+    assert httpx.get(f"{base_url}/users/789").status_code == 200
+    assert httpx.get(f"{base_url}/items/abc/details").status_code == 200
+    assert httpx.get(f"{base_url}/items/xyz/details").status_code == 200
+
+    # Wait for metrics to be updated
+    def metrics_available():
+        metrics = get_metric_dictionaries("ray_serve_num_http_requests_total")
+        api_metrics = [m for m in metrics if m.get("application") == "api_app"]
+        return len(api_metrics) >= 3
+
+    wait_for_condition(metrics_available, timeout=20)
+
+    # Verify metrics use route patterns, not individual paths
+    metrics = get_metric_dictionaries("ray_serve_num_http_requests_total")
+    api_metrics = [m for m in metrics if m.get("application") == "api_app"]
+
+    routes = {m["route"] for m in api_metrics}
+
+    print(f"Routes found in metrics: {routes}")
+
+    # Should contain the route patterns (parameterized), not just the prefix
+    # The root might be either "/api/" or "/api" depending on normalization
+    assert any(
+        r in routes for r in ["/api/", "/api"]
+    ), f"Root route not found. Routes: {routes}"
+
+    # Should contain parameterized user route
+    assert (
+        "/api/users/{user_id}" in routes
+    ), f"User route pattern not found. Routes: {routes}"
+
+    # Should contain nested parameterized route
+    assert (
+        "/api/items/{item_id}/details" in routes
+    ), f"Item details route pattern not found. Routes: {routes}"
+
+    # Should NOT contain individual request paths (that would be high cardinality)
+    # These should not appear as they would create unbounded cardinality
+    assert (
+        "/api/users/123" not in routes
+    ), "Individual user path found - high cardinality issue!"
+    assert (
+        "/api/users/456" not in routes
+    ), "Individual user path found - high cardinality issue!"
+    assert (
+        "/api/users/789" not in routes
+    ), "Individual user path found - high cardinality issue!"
+    assert (
+        "/api/items/abc/details" not in routes
+    ), "Individual item path found - high cardinality issue!"
+    assert (
+        "/api/items/xyz/details" not in routes
+    ), "Individual item path found - high cardinality issue!"
+
+    # Verify that multiple requests to the same pattern are grouped
+    user_route_metrics = [
+        m for m in api_metrics if m["route"] == "/api/users/{user_id}"
+    ]
+    assert (
+        len(user_route_metrics) == 1
+    ), "Multiple metrics entries for same route pattern - should be grouped!"
+
+    # Optionally verify the counter value if we can parse it from the metrics endpoint
+    metrics_text = httpx.get("http://127.0.0.1:9999").text
+    for line in metrics_text.split("\n"):
+        if "serve_num_http_requests" in line and "/api/users/{user_id}" in line:
+            # Extract the value from the prometheus format line
+            value_str = line.split()[-1]
+            user_metric_value = float(value_str)
+            assert (
+                user_metric_value == 3
+            ), f"Expected exactly 3 requests to user route, got {user_metric_value}"
+            break
+
+    # Verify error metrics also use route patterns
+    num_errors = get_metric_dictionaries("ray_serve_http_request_latency_ms_sum")
+    api_latency_metrics = [m for m in num_errors if m.get("application") == "api_app"]
+    latency_routes = {m["route"] for m in api_latency_metrics}
+
+    # Latency metrics should also use patterns
+    assert (
+        "/api/users/{user_id}" in latency_routes or "/api/" in latency_routes
+    ), f"Latency metrics should use route patterns. Found: {latency_routes}"
+
+
 def test_long_poll_host_sends_counted(serve_instance):
     """Check that the transmissions by the long_poll are counted."""
 
+    timeseries = PrometheusTimeseries()
     host = ray.remote(LongPollHost).remote(
         listen_for_change_request_timeout_s=(0.01, 0.01)
     )
@@ -1032,9 +1189,10 @@ def test_long_poll_host_sends_counted(serve_instance):
     wait_for_condition(
         check_metric_float_eq,
         timeout=15,
-        metric="serve_long_poll_host_transmission_counter",
+        metric="ray_serve_long_poll_host_transmission_counter_total",
         expected=1,
         expected_tags={"namespace_or_state": "key_1"},
+        timeseries=timeseries,
     )
 
     # Write two new values.
@@ -1049,16 +1207,18 @@ def test_long_poll_host_sends_counted(serve_instance):
     wait_for_condition(
         check_metric_float_eq,
         timeout=15,
-        metric="serve_long_poll_host_transmission_counter",
+        metric="ray_serve_long_poll_host_transmission_counter_total",
         expected=1,
         expected_tags={"namespace_or_state": "key_2"},
+        timeseries=timeseries,
     )
     wait_for_condition(
         check_metric_float_eq,
         timeout=15,
-        metric="serve_long_poll_host_transmission_counter",
+        metric="ray_serve_long_poll_host_transmission_counter_total",
         expected=2,
         expected_tags={"namespace_or_state": "key_1"},
+        timeseries=timeseries,
     )
 
     # Check that a timeout result is counted.
@@ -1067,9 +1227,10 @@ def test_long_poll_host_sends_counted(serve_instance):
     wait_for_condition(
         check_metric_float_eq,
         timeout=15,
-        metric="serve_long_poll_host_transmission_counter",
+        metric="ray_serve_long_poll_host_transmission_counter_total",
         expected=1,
         expected_tags={"namespace_or_state": "TIMEOUT"},
+        timeseries=timeseries,
     )
 
 
@@ -1079,8 +1240,8 @@ def test_actor_summary(serve_instance):
         pass
 
     serve.run(f.bind(), name="app")
-    actors = state_api.list_actors(filters=[("state", "=", "ALIVE")])
-    class_names = {actor["class_name"] for actor in actors}
+    actors = list_actors(filters=[("state", "=", "ALIVE")])
+    class_names = {actor.class_name for actor in actors}
     assert class_names.issuperset(
         {"ServeController", "ProxyActor", "ServeReplica:app:f"}
     )

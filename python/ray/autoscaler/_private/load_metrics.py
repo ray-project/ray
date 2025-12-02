@@ -73,35 +73,32 @@ class LoadMetrics:
         self.last_heartbeat_time_by_ip = {}
         self.static_resources_by_ip = {}
         self.dynamic_resources_by_ip = {}
-        self.raylet_id_by_ip = {}
+        self.node_id_by_ip = {}
         self.waiting_bundles = []
         self.infeasible_bundles = []
         self.pending_placement_groups = []
         self.resource_requests = []
-        self.cluster_full_of_actors_detected = False
         self.ray_nodes_last_used_time_by_ip = {}
 
     def __bool__(self):
         """A load metrics instance is Falsey iff the autoscaler process
         has not received a resource message from the GCS.
         """
-        return bool(self.raylet_id_by_ip)
+        return bool(self.node_id_by_ip)
 
     def update(
         self,
         ip: str,
-        raylet_id: bytes,
+        node_id: bytes,
         static_resources: Dict[str, Dict],
         dynamic_resources: Dict[str, Dict],
         node_idle_duration_s: float,
         waiting_bundles: List[Dict[str, float]] = None,
         infeasible_bundles: List[Dict[str, float]] = None,
         pending_placement_groups: List[PlacementGroupTableData] = None,
-        cluster_full_of_actors_detected: bool = False,
     ):
         self.static_resources_by_ip[ip] = static_resources
-        self.raylet_id_by_ip[ip] = raylet_id
-        self.cluster_full_of_actors_detected = cluster_full_of_actors_detected
+        self.node_id_by_ip[ip] = node_id
 
         if not waiting_bundles:
             waiting_bundles = []
@@ -131,9 +128,6 @@ class LoadMetrics:
         assert ip is not None, "IP should be known at this time"
         logger.debug("Node {} is newly setup, treating as active".format(ip))
         self.last_heartbeat_time_by_ip[ip] = time.time()
-
-    def is_active(self, ip):
-        return ip in self.last_heartbeat_time_by_ip
 
     def prune_active_ips(self, active_ips: List[str]):
         """The Raylet ips stored by LoadMetrics are obtained by polling
@@ -166,7 +160,7 @@ class LoadMetrics:
 
         prune(self.ray_nodes_last_used_time_by_ip, should_log=True)
         prune(self.static_resources_by_ip, should_log=False)
-        prune(self.raylet_id_by_ip, should_log=False)
+        prune(self.node_id_by_ip, should_log=False)
         prune(self.dynamic_resources_by_ip, should_log=False)
         prune(self.last_heartbeat_time_by_ip, should_log=False)
 

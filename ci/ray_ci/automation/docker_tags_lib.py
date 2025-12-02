@@ -1,25 +1,25 @@
-import subprocess
-import re
-from datetime import datetime
-from typing import List, Optional, Callable, Tuple
 import os
-import sys
-from dateutil import parser
 import platform
+import re
+import subprocess
+import sys
+from datetime import datetime
+from typing import Callable, List, Optional, Tuple
 
-import docker
 import requests
 import runfiles
+from dateutil import parser
 
-from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
+import docker
+from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_TAG_VERSION
 from ci.ray_ci.docker_container import (
-    GPU_PLATFORM,
-    PYTHON_VERSIONS_RAY,
-    PYTHON_VERSIONS_RAY_ML,
-    PLATFORMS_RAY,
-    PLATFORMS_RAY_ML,
     ARCHITECTURES_RAY,
     ARCHITECTURES_RAY_ML,
+    GPU_PLATFORM,
+    PLATFORMS_RAY,
+    PLATFORMS_RAY_ML,
+    PYTHON_VERSIONS_RAY,
+    PYTHON_VERSIONS_RAY_ML,
     RayType,
 )
 from ci.ray_ci.utils import logger
@@ -82,7 +82,7 @@ def list_image_tag_suffixes(
     platform_tags = [_get_platform_tag(platform)]
     architecture_tags = [_get_architecture_tag(architecture)]
 
-    if python_version == DEFAULT_PYTHON_VERSION:
+    if python_version == DEFAULT_PYTHON_TAG_VERSION:
         python_version_tags.append("")
     if platform == "cpu" and ray_type == RayType.RAY:
         platform_tags.append("")  # no tag is alias to cpu for ray image

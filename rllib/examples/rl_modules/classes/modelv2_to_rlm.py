@@ -2,16 +2,17 @@ import pathlib
 from typing import Any, Dict, Optional
 
 import tree
-from ray.rllib.core import Columns, DEFAULT_POLICY_ID
-from ray.rllib.core.rl_module.apis import ValueFunctionAPI
-from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.models.torch.torch_distributions import (
+
+from ray.rllib.core import DEFAULT_POLICY_ID, Columns
+from ray.rllib.core.distribution.torch.torch_distribution import (
     TorchCategorical,
     TorchDiagGaussian,
     TorchMultiCategorical,
     TorchMultiDistribution,
     TorchSquashedGaussian,
 )
+from ray.rllib.core.rl_module.apis import ValueFunctionAPI
+from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical as OldTorchCategorical,
     TorchDiagGaussian as OldTorchDiagGaussian,

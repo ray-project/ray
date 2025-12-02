@@ -1,24 +1,22 @@
 import logging
-import ray
-
 from pathlib import Path
 from typing import List
 
+import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.annotations import (
-    override,
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
     OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
 from ray.rllib.utils.compression import pack_if_needed
-from ray.rllib.utils.spaces.space_utils import to_jsonable_if_needed
 from ray.rllib.utils.typing import EpisodeType
-from ray.util.debug import log_once
 from ray.util.annotations import PublicAPI
+from ray.util.debug import log_once
 
 logger = logging.Logger(__file__)
 
@@ -36,11 +34,16 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         # Initialize the parent.
         super().__init__(config=config, **kwargs)
 
+        # override SingleAgentEnvRunner
+        self.episodes_to_numpy = False
+
         # Get the data context for this `EnvRunner`.
         data_context = ray.data.DataContext.get_current()
         # Limit the resources for Ray Data to the CPUs given to this `EnvRunner`.
-        data_context.execution_options.resource_limits.cpu = (
-            config.num_cpus_per_env_runner
+        data_context.execution_options.resource_limits = (
+            data_context.execution_options.resource_limits.copy(
+                cpu=config.num_cpus_per_env_runner
+            )
         )
 
         # Set the output write method.
@@ -155,6 +158,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                 )
             # Note, we serialize episodes with `msgpack` and `msgpack_numpy` to
             # ensure version compatibility.
+            assert all(eps.is_numpy is False for eps in samples)
             self._samples.extend(
                 [msgpack.packb(eps.get_state(), default=mnp.encode) for eps in samples]
             )
@@ -263,8 +267,6 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
             samples: List of episodes to be converted.
         """
         # Loop through all sampled episodes.
-        obs_space = self.env.observation_space
-        action_space = self.env.action_space
         for sample in samples:
             # Loop through all items of the episode.
             for i in range(len(sample)):
@@ -273,26 +275,18 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                     Columns.AGENT_ID: sample.agent_id,
                     Columns.MODULE_ID: sample.module_id,
                     # Compress observations, if requested.
-                    Columns.OBS: pack_if_needed(
-                        to_jsonable_if_needed(sample.get_observations(i), obs_space)
-                    )
+                    Columns.OBS: pack_if_needed(sample.get_observations(i))
                     if Columns.OBS in self.output_compress_columns
-                    else to_jsonable_if_needed(sample.get_observations(i), obs_space),
+                    else sample.get_observations(i),
                     # Compress actions, if requested.
-                    Columns.ACTIONS: pack_if_needed(
-                        to_jsonable_if_needed(sample.get_actions(i), action_space)
-                    )
+                    Columns.ACTIONS: pack_if_needed(sample.get_actions(i))
                     if Columns.ACTIONS in self.output_compress_columns
-                    else to_jsonable_if_needed(sample.get_actions(i), action_space),
+                    else sample.get_actions(i),
                     Columns.REWARDS: sample.get_rewards(i),
                     # Compress next observations, if requested.
-                    Columns.NEXT_OBS: pack_if_needed(
-                        to_jsonable_if_needed(sample.get_observations(i + 1), obs_space)
-                    )
+                    Columns.NEXT_OBS: pack_if_needed(sample.get_observations(i + 1))
                     if Columns.OBS in self.output_compress_columns
-                    else to_jsonable_if_needed(
-                        sample.get_observations(i + 1), obs_space
-                    ),
+                    else sample.get_observations(i + 1),
                     Columns.TERMINATEDS: False
                     if i < len(sample) - 1
                     else sample.is_terminated,

@@ -1,88 +1,83 @@
-import weakref
 import asyncio
+import logging
+import threading
+import time
+import traceback
+import uuid
+import weakref
 from collections import defaultdict
 from contextlib import nullcontext
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from typing import (
     Any,
     Dict,
     List,
-    Tuple,
-    Union,
     Optional,
     Set,
+    Tuple,
+    Union,
 )
-import logging
-import threading
-import time
-import uuid
-import traceback
 
-from ray.experimental.channel.auto_transport_type import (
-    AutoTransportType,
-    TypeHintResolver,
-)
+import ray
 import ray.exceptions
-from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
-from ray.experimental.channel.cached_channel import CachedChannel
-from ray.experimental.channel.communicator import Communicator
 from ray.dag.constants import (
     RAY_CGRAPH_ENABLE_NVTX_PROFILING,
     RAY_CGRAPH_ENABLE_TORCH_PROFILING,
     RAY_CGRAPH_VISUALIZE_SCHEDULE,
 )
-import ray
-from ray.exceptions import (
-    RayCgraphCapacityExceeded,
-    RayTaskError,
-    RayChannelError,
-    RayChannelTimeoutError,
-)
-from ray.experimental.compiled_dag_ref import (
-    CompiledDAGRef,
-    CompiledDAGFuture,
-    _process_return_vals,
-)
-from ray.experimental.channel import (
-    ChannelContext,
-    ChannelInterface,
-    ChannelOutputType,
-    ReaderInterface,
-    SynchronousReader,
-    WriterInterface,
-    SynchronousWriter,
-    AwaitableBackgroundReader,
-    AwaitableBackgroundWriter,
-    CompiledDAGArgs,
-    CompositeChannel,
-    IntraProcessChannel,
-)
-from ray.util.annotations import DeveloperAPI
-
-from ray.experimental.channel.shared_memory_channel import (
-    SharedMemoryType,
-)
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
-
-from ray.experimental.channel.torch_tensor_accelerator_channel import (
-    _init_communicator,
-    _destroy_communicator,
-)
-
 from ray.dag.dag_node_operation import (
+    _build_dag_node_operation_graph,
     _DAGNodeOperation,
     _DAGNodeOperationType,
     _DAGOperationGraphNode,
-    _build_dag_node_operation_graph,
     _extract_execution_schedule,
     _generate_actor_to_execution_schedule,
     _generate_overlapped_execution_schedule,
     _visualize_execution_schedule,
 )
-
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
+from ray.dag.dag_operation_future import DAGOperationFuture, GPUFuture, ResolvedFuture
+from ray.exceptions import (
+    RayCgraphCapacityExceeded,
+    RayChannelError,
+    RayChannelTimeoutError,
+    RayTaskError,
+)
+from ray.experimental.channel import (
+    AwaitableBackgroundReader,
+    AwaitableBackgroundWriter,
+    ChannelContext,
+    ChannelInterface,
+    ChannelOutputType,
+    CompiledDAGArgs,
+    CompositeChannel,
+    IntraProcessChannel,
+    ReaderInterface,
+    SynchronousReader,
+    SynchronousWriter,
+    WriterInterface,
+)
 from ray.experimental.channel.accelerator_context import AcceleratorContext
+from ray.experimental.channel.auto_transport_type import (
+    AutoTransportType,
+    TypeHintResolver,
+)
+from ray.experimental.channel.cached_channel import CachedChannel
+from ray.experimental.channel.communicator import Communicator
+from ray.experimental.channel.shared_memory_channel import (
+    SharedMemoryType,
+)
+from ray.experimental.channel.torch_tensor_accelerator_channel import (
+    _destroy_communicator,
+    _init_communicator,
+)
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
+from ray.experimental.compiled_dag_ref import (
+    CompiledDAGFuture,
+    CompiledDAGRef,
+    _process_return_vals,
+)
+from ray.util.annotations import DeveloperAPI
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -370,6 +365,7 @@ def _device_context_manager():
         return nullcontext()
 
     import torch
+
     from ray.experimental.channel.accelerator_context import AcceleratorContext
 
     device = ChannelContext.get_current().torch_device
@@ -1091,9 +1087,9 @@ class CompiledDAG:
         This function is idempotent.
         """
         from ray.dag import (
-            DAGNode,
             ClassMethodNode,
             CollectiveOutputNode,
+            DAGNode,
             FunctionNode,
             InputAttributeNode,
             InputNode,
@@ -1491,8 +1487,8 @@ class CompiledDAG:
         Check if there are leaf nodes in the DAG and raise an error if there are.
         """
         from ray.dag import (
-            DAGNode,
             ClassMethodNode,
+            DAGNode,
         )
 
         leaf_nodes: List[DAGNode] = []
@@ -1565,11 +1561,11 @@ class CompiledDAG:
         outputs for the DAG.
         """
         from ray.dag import (
-            DAGNode,
-            InputNode,
-            InputAttributeNode,
-            MultiOutputNode,
             ClassMethodNode,
+            DAGNode,
+            InputAttributeNode,
+            InputNode,
+            MultiOutputNode,
         )
 
         if self.input_task_idx is None:
@@ -2789,11 +2785,11 @@ class CompiledDAG:
         """
 
         from ray.dag import (
+            ClassMethodNode,
+            DAGNode,
             InputAttributeNode,
             InputNode,
             MultiOutputNode,
-            ClassMethodNode,
-            DAGNode,
         )
 
         # Check that the DAG has been compiled
@@ -3097,11 +3093,11 @@ class CompiledDAG:
                 "You can install it by running `pip install graphviz`."
             )
         from ray.dag import (
+            ClassMethodNode,
+            DAGNode,
             InputAttributeNode,
             InputNode,
             MultiOutputNode,
-            ClassMethodNode,
-            DAGNode,
         )
 
         # Check that the DAG has been compiled

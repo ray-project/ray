@@ -22,6 +22,15 @@ option java_outer_classname = "ServeProtos";
 
 option java_multiple_files = true;
 
+// Configuration options for Serve's autoscaling policy
+message AutoscalingPolicy {
+  // Policy function needs to be a string import path.
+  string policy_function = 1;
+
+  // The cloudpickled policy definition.
+  bytes _serialized_policy_def = 2;
+}
+
 // Configuration options for Serve's replica autoscaler.
 message AutoscalingConfig {
   // Minimal number of replicas, must be a non-negative integer.
@@ -31,7 +40,10 @@ message AutoscalingConfig {
   // to min_replicas.
   uint32 max_replicas = 2;
 
-  // The frequency of how long does each replica sending metrics to autoscaler.
+  // [DEPRECATED] The frequency of how long does each replica sending metrics to
+  // autoscaler, but this will be replaced by the environment variables
+  // RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S and
+  // RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S in a future release.
   double metrics_interval_s = 3;
 
   // The window (in seconds) for autoscaler to calculate rolling average of metrics on.
@@ -55,23 +67,25 @@ message AutoscalingConfig {
   // [DEPRECATED] Use `downscaling_factor` instead.
   optional double downscale_smoothing_factor = 10;
 
-  // The cloudpickled policy definition.
-  bytes _serialized_policy_def = 11;
-
-  // The import path of the policy if user passed a string. Will be the concatenation
-  // of the policy module and the policy name if user passed a callable.
-  string _policy = 12;
+  // The autoscaling policy definition.
+  AutoscalingPolicy policy = 11;
 
   // Target number of in flight requests per replica. This is the primary configuration
   // knob for replica autoscaler. Lower the number, the more rapidly the replicas
   // scales up. Must be a non-negative integer.
-  double target_ongoing_requests = 13;
+  double target_ongoing_requests = 12;
 
   // The multiplicative "gain" factor to limit upscale.
-  optional double upscaling_factor = 14;
+  optional double upscaling_factor = 13;
 
   // The multiplicative "gain" factor to limit downscale.
-  optional double downscaling_factor = 15;
+  optional double downscaling_factor = 14;
+
+  // How long to wait before scaling down replicas from 1 to 0
+  optional double downscale_to_zero_delay_s = 15;
+
+  // How metrics are aggregated for autoscaling. One of "mean", "max", "min".
+  string aggregation_function = 16;
 }
 
 //[Begin] LOGGING CONFIG
@@ -158,6 +172,9 @@ message DeploymentConfig {
 
   // The deployment's routing configuration.
   RequestRouterConfig request_router_config = 19;
+
+  // The maximum number of retries in case the deployment constructor results in failure
+  int32 max_constructor_retry_count = 20;
 }
 
 // Deployment language.
@@ -207,7 +224,7 @@ message EndpointSet {
   map<string, EndpointInfo> endpoints = 1;
 }
 
-// Now Actor handle can be transfered across language through ray call, but the list of
+// Now Actor handle can be transferred across language through ray call, but the list of
 // Actor handles can't. So we use this message wrapped a Actor name list to pass actor
 // list across language. When Actor handle list supports across language, this message can
 // be replaced.
@@ -412,4 +429,8 @@ message DeploymentArgs {
   optional string route_prefix = 5;
   bool ingress = 6;
   optional string docs_path = 7;
+}
+
+message ApplicationArgs {
+  bool external_scaler_enabled = 1;
 }

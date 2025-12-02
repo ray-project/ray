@@ -1,4 +1,6 @@
-from typing import Dict, Union, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Optional, Union
+
+from ray._raylet import NodeID
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -70,6 +72,33 @@ class NodeAffinitySchedulingStrategy:
         self.soft = soft
         self._spill_on_unavailable = _spill_on_unavailable
         self._fail_on_unavailable = _fail_on_unavailable
+
+        self._validate_attributes()
+
+    def _validate_attributes(self):
+        invalid_node_id_error = ValueError(
+            f"Invalid node_id '{self.node_id}'. Node ID must be a valid "
+            "hex string. To get a list of all nodes and their IDs in your cluster, "
+            "use ray.nodes(). See https://docs.ray.io/en/latest/ray-core/miscellaneous.html#node-information for more details."
+        )
+        try:
+            node_id = NodeID.from_hex(self.node_id)
+        except Exception as e:
+            raise invalid_node_id_error from e
+
+        if node_id.is_nil():
+            raise invalid_node_id_error
+
+        if self._spill_on_unavailable and not self.soft:
+            raise ValueError(
+                "_spill_on_unavailable cannot be set when soft is "
+                "False. Please set soft to True to use _spill_on_unavailable."
+            )
+        if self._fail_on_unavailable and self.soft:
+            raise ValueError(
+                "_fail_on_unavailable cannot be set when soft is "
+                "True. Please set soft to False to use _fail_on_unavailable."
+            )
 
 
 def _validate_label_match_operator_values(values, operator):

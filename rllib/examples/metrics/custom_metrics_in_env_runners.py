@@ -42,7 +42,7 @@ episodes.
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --wandb-key [your WandB key]
+`python [script file name].py --wandb-key [your WandB key]
 --wandb-project [some project name]`
 
 For debugging, use the following additional command line options
@@ -79,8 +79,8 @@ from typing import Optional, Sequence
 
 import gymnasium as gym
 import matplotlib.pyplot as plt
-from matplotlib.colors import Normalize
 import numpy as np
+from matplotlib.colors import Normalize
 
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
@@ -302,7 +302,6 @@ class MsPacmanHeatmapCallback(RLlibCallback):
 
 
 parser = add_rllib_example_script_args(default_reward=450.0)
-parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":

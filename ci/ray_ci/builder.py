@@ -2,19 +2,19 @@ from typing import List
 
 import click
 
-from ci.ray_ci.builder_container import (
+from ci.ray_ci.anyscale_docker_container import AnyscaleDockerContainer
+from ci.ray_ci.builder_container import BuilderContainer
+from ci.ray_ci.configs import (
+    ARCHITECTURE,
+    BUILD_TYPES,
     DEFAULT_PYTHON_VERSION,
     PYTHON_VERSIONS,
-    BUILD_TYPES,
-    ARCHITECTURE,
-    BuilderContainer,
 )
-from ci.ray_ci.windows_builder_container import WindowsBuilderContainer
-from ci.ray_ci.docker_container import PLATFORMS_RAY
-from ci.ray_ci.ray_docker_container import RayDockerContainer
-from ci.ray_ci.anyscale_docker_container import AnyscaleDockerContainer
 from ci.ray_ci.container import _DOCKER_ECR_REPO
-from ci.ray_ci.utils import logger, docker_login, ci_init
+from ci.ray_ci.docker_container import PLATFORMS_RAY, RayType
+from ci.ray_ci.ray_docker_container import RayDockerContainer
+from ci.ray_ci.utils import ci_init, ecr_docker_login, logger
+from ci.ray_ci.windows_builder_container import WindowsBuilderContainer
 
 
 @click.command()
@@ -25,8 +25,8 @@ from ci.ray_ci.utils import logger, docker_login, ci_init
 )
 @click.option(
     "--image-type",
-    default="ray",
-    type=click.Choice(["ray", "ray-llm", "ray-ml"]),
+    default=RayType.RAY.value,
+    type=click.Choice([v.value for v in list(RayType)]),
 )
 @click.option(
     "--build-type",
@@ -84,7 +84,7 @@ def main(
     """
     Build a wheel or jar artifact
     """
-    docker_login(_DOCKER_ECR_REPO.split("/")[0])
+    ecr_docker_login(_DOCKER_ECR_REPO.split("/")[0])
     ci_init()
     if artifact_type == "wheel":
         logger.info(f"Building wheel for {python_version}")
@@ -172,7 +172,7 @@ def build_anyscale(
     for p in platform:
         RayDockerContainer(
             python_version, p, image_type, architecture, canonical_tag, upload=False
-        ).run()
+        ).run(base="base-extra-testdeps")
         AnyscaleDockerContainer(
             python_version, p, image_type, architecture, canonical_tag, upload
         ).run()

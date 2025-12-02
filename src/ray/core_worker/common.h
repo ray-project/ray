@@ -22,9 +22,9 @@
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
+#include "ray/common/scheduling/fallback_strategy.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/raylet_client/raylet_client.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -74,8 +74,9 @@ struct TaskOptions {
       std::string serialized_runtime_env_info_p = "{}",
       bool enable_task_events_p = kDefaultTaskEventEnabled,
       std::unordered_map<std::string, std::string> labels_p = {},
-      std::unordered_map<std::string, std::string> label_selector_p = {},
-      rpc::TensorTransport tensor_transport_p = rpc::TensorTransport::OBJECT_STORE)
+      LabelSelector label_selector_p = {},
+      rpc::TensorTransport tensor_transport_p = rpc::TensorTransport::OBJECT_STORE,
+      std::vector<FallbackOption> fallback_strategy_p = {})
       : name(std::move(name_p)),
         num_returns(num_returns_p),
         resources(resources_p),
@@ -85,6 +86,7 @@ struct TaskOptions {
         enable_task_events(enable_task_events_p),
         labels(std::move(labels_p)),
         label_selector(std::move(label_selector_p)),
+        fallback_strategy(std::move(fallback_strategy_p)),
         tensor_transport(tensor_transport_p) {}
 
   /// The name of this task.
@@ -108,7 +110,9 @@ struct TaskOptions {
   bool enable_task_events = kDefaultTaskEventEnabled;
   std::unordered_map<std::string, std::string> labels;
   // The label constraints of the node to schedule this task.
-  std::unordered_map<std::string, std::string> label_selector;
+  LabelSelector label_selector;
+  // A list of fallback options defining scheduling strategies.
+  std::vector<FallbackOption> fallback_strategy;
   // The tensor transport (e.g., NCCL, GLOO, etc.) to use for this task.
   rpc::TensorTransport tensor_transport;
 };
@@ -129,11 +133,13 @@ struct ActorCreationOptions {
                        rpc::SchedulingStrategy scheduling_strategy_p,
                        std::string serialized_runtime_env_info_p = "{}",
                        std::vector<ConcurrencyGroup> concurrency_groups_p = {},
-                       bool execute_out_of_order_p = false,
+                       bool allow_out_of_order_execution_p = false,
                        int32_t max_pending_calls_p = -1,
+                       bool enable_tensor_transport_p = false,
                        bool enable_task_events_p = kDefaultTaskEventEnabled,
                        std::unordered_map<std::string, std::string> labels_p = {},
-                       std::unordered_map<std::string, std::string> label_selector_p = {})
+                       LabelSelector label_selector_p = {},
+                       std::vector<FallbackOption> fallback_strategy_p = {})
       : max_restarts(max_restarts_p),
         max_task_retries(max_task_retries_p),
         max_concurrency(max_concurrency_p),
@@ -147,12 +153,14 @@ struct ActorCreationOptions {
         is_asyncio(is_asyncio_p),
         serialized_runtime_env_info(std::move(serialized_runtime_env_info_p)),
         concurrency_groups(std::move(concurrency_groups_p)),
-        execute_out_of_order(execute_out_of_order_p),
+        allow_out_of_order_execution(allow_out_of_order_execution_p),
         max_pending_calls(max_pending_calls_p),
+        enable_tensor_transport(enable_tensor_transport_p),
         scheduling_strategy(std::move(scheduling_strategy_p)),
         enable_task_events(enable_task_events_p),
         labels(std::move(labels_p)),
-        label_selector(std::move(label_selector_p)) {
+        label_selector(std::move(label_selector_p)),
+        fallback_strategy(std::move(fallback_strategy_p)) {
     // Check that resources is a subset of placement resources.
     for (auto &resource : resources) {
       auto it = this->placement_resources.find(resource.first);
@@ -199,9 +207,10 @@ struct ActorCreationOptions {
   /// methods concurrently.
   const std::vector<ConcurrencyGroup> concurrency_groups;
   /// Whether the actor execute tasks out of order.
-  const bool execute_out_of_order = false;
+  const bool allow_out_of_order_execution = false;
   /// The maximum actor call pending count.
   const int max_pending_calls = -1;
+  const bool enable_tensor_transport = false;
   // The strategy about how to schedule this actor.
   rpc::SchedulingStrategy scheduling_strategy;
   /// True if task events (worker::TaskEvent) from this creation task should be reported
@@ -209,7 +218,9 @@ struct ActorCreationOptions {
   const bool enable_task_events = kDefaultTaskEventEnabled;
   const std::unordered_map<std::string, std::string> labels;
   // The label constraints of the node to schedule this actor.
-  const std::unordered_map<std::string, std::string> label_selector;
+  const LabelSelector label_selector;
+  // A list of scheduling options defining fallback strategies for scheduling.
+  const std::vector<FallbackOption> fallback_strategy;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;
@@ -220,39 +231,35 @@ struct PlacementGroupCreationOptions {
       PlacementStrategy strategy,
       std::vector<std::unordered_map<std::string, double>> bundles,
       bool is_detached_p,
-      double max_cpu_fraction_per_node,
       NodeID soft_target_node_id = NodeID::Nil(),
       std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector =
           {})
-      : name(std::move(name)),
-        strategy(strategy),
-        bundles(std::move(bundles)),
-        is_detached(is_detached_p),
-        max_cpu_fraction_per_node(max_cpu_fraction_per_node),
-        soft_target_node_id(soft_target_node_id),
-        bundle_label_selector(std::move(bundle_label_selector)) {
-    RAY_CHECK(soft_target_node_id.IsNil() || strategy == PlacementStrategy::STRICT_PACK)
+      : name_(std::move(name)),
+        strategy_(strategy),
+        bundles_(std::move(bundles)),
+        is_detached_(is_detached_p),
+        soft_target_node_id_(soft_target_node_id),
+        bundle_label_selector_(std::move(bundle_label_selector)) {
+    RAY_CHECK(soft_target_node_id_.IsNil() || strategy_ == PlacementStrategy::STRICT_PACK)
         << "soft_target_node_id only works with STRICT_PACK now";
   }
 
   /// The name of the placement group.
-  const std::string name;
+  const std::string name_;
   /// The strategy to place the bundle in Placement Group.
-  const PlacementStrategy strategy = rpc::PACK;
+  const PlacementStrategy strategy_ = rpc::PACK;
   /// The resource bundles in this placement group.
-  const std::vector<std::unordered_map<std::string, double>> bundles;
+  const std::vector<std::unordered_map<std::string, double>> bundles_;
   /// Whether to keep the placement group persistent after its creator dead.
-  const bool is_detached = false;
-  /// The maximum fraction of CPU cores this placement group can take up on each node.
-  const double max_cpu_fraction_per_node;
+  const bool is_detached_ = false;
   /// ID of the target node where bundles should be placed
   /// iff the target node has enough available resources and alive.
   /// Otherwise, the bundles can be placed elsewhere.
   /// Nil means there is no target node.
   /// This only applies to STRICT_PACK pg.
-  const NodeID soft_target_node_id;
+  const NodeID soft_target_node_id_;
   /// The label selectors to apply per-bundle in this placement group.
-  const std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector;
+  const std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector_;
 };
 
 class ObjectLocation {
@@ -312,13 +319,13 @@ namespace std {
 template <>
 struct hash<ray::rpc::LineageReconstructionTask> {
   size_t operator()(const ray::rpc::LineageReconstructionTask &task) const {
-    size_t hash = std::hash<std::string>()(task.name());
-    hash ^= std::hash<ray::rpc::TaskStatus>()(task.status());
+    size_t hash_value = std::hash<std::string>()(task.name());
+    hash_value ^= std::hash<ray::rpc::TaskStatus>()(task.status());
     for (const auto &label : task.labels()) {
-      hash ^= std::hash<std::string>()(label.first);
-      hash ^= std::hash<std::string>()(label.second);
+      hash_value ^= std::hash<std::string>()(label.first);
+      hash_value ^= std::hash<std::string>()(label.second);
     }
-    return hash;
+    return hash_value;
   }
 };
 }  // namespace std

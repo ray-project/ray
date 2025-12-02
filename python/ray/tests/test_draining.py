@@ -1,15 +1,18 @@
 import sys
+import time
+from collections import Counter
+
 import pytest
 
 import ray
-import time
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._raylet import GcsClient
 from ray.core.generated import autoscaler_pb2, common_pb2
-from ray._common.test_utils import wait_for_condition
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
+from ray.util.state import list_tasks
 
 
 def test_idle_termination(ray_start_cluster):
@@ -424,14 +427,209 @@ def test_draining_reason(ray_start_cluster, graceful):
 
     # Simulate autoscaler terminates the worker node after the draining deadline.
     cluster.remove_node(node2, graceful)
-    try:
-        ray.get(actor.ping.remote())
-        raise
-    except ray.exceptions.ActorDiedError as e:
-        assert e.preempted
-        if graceful:
-            assert "The actor died because its node has died." in str(e)
-            assert "the actor's node was preempted: " + drain_reason_message in str(e)
+
+    def check_actor_died_error():
+        try:
+            ray.get(actor.ping.remote())
+            return False
+        except ray.exceptions.ActorDiedError as e:
+            assert e.preempted
+            if graceful:
+                assert "The actor died because its node has died." in str(e)
+                assert "the actor's node was preempted: " + drain_reason_message in str(
+                    e
+                )
+        return True
+
+    wait_for_condition(check_actor_died_error)
+
+
+def test_drain_node_actor_restart(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, resources={"head": 1})
+    ray.init(address=cluster.address)
+
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    @ray.remote(max_restarts=1)
+    class Actor:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+    # Prepare the first worker node for the actor.
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+    cluster.wait_for_nodes()
+
+    actor = Actor.options(num_cpus=0, resources={"worker": 1}).remote()
+
+    def actor_started():
+        node_id = ray.get(actor.get_node_id.remote())
+        return node_id == cur_worker.node_id
+
+    wait_for_condition(actor_started, timeout=5)
+
+    # Kill the current worker node.
+    cluster.remove_node(cur_worker, True)
+
+    # Prepare a new worker node for the actor to be restarted on later.
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+    cluster.wait_for_nodes()
+
+    # Make sure the actor is restarted on the new worker node.
+    # This should be counted into the max_restarts of the actor.
+    wait_for_condition(actor_started, timeout=5)
+
+    # Preemption the current worker node.
+    is_accepted, _ = gcs_client.drain_node(
+        cur_worker.node_id,
+        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+        "preemption",
+        1,
+    )
+    assert is_accepted
+    cluster.remove_node(cur_worker, True)
+
+    # Prepare a new worker node for the actor to be restarted on later.
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+    cluster.wait_for_nodes()
+
+    # Make sure the actor is restarted on the new worker node.
+    # This should not be counted into the max_restarts of the actor because the actor was preempted.
+    wait_for_condition(actor_started, timeout=5)
+
+    # Kill the current worker node.
+    cluster.remove_node(cur_worker, True)
+
+    # Prepare a new worker node, however, the actor should not be restarted on this node, since
+    # the max_restarts is reached.
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+    cluster.wait_for_nodes()
+
+    # The actor should not be restarted, thus an exception should be raised.
+    with pytest.raises(RuntimeError):
+        wait_for_condition(actor_started, timeout=5)
+
+
+def test_drain_node_task_retry(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, resources={"head": 100})
+    ray.init(address=cluster.address)
+
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+    cluster.wait_for_nodes()
+    node_ids = Counter()
+
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    @ray.remote(resources={"head": 1})
+    class NodeTracker:
+        def __init__(self):
+            self._node_ids = Counter()
+
+        def add_node(self, node_id):
+            self._node_ids.update([node_id])
+
+        def nodes(self):
+            return self._node_ids
+
+    @ray.remote(max_retries=1, resources={"worker": 1})
+    def func(signal, nodes):
+        node_id = ray.get_runtime_context().get_node_id()
+        ray.get(nodes.add_node.remote(node_id))
+        ray.get(signal.wait.remote())
+        return node_id
+
+    signal = SignalActor.options(resources={"head": 1}).remote()
+    node_tracker = NodeTracker.remote()
+    r1 = func.remote(signal, node_tracker)
+
+    # Verify the first node is added to the counter by the func.remote task.
+    node_ids.update([cur_worker.node_id])
+    wait_for_condition(lambda: ray.get(node_tracker.nodes.remote()) == node_ids)
+
+    # Remove the current worker node and add a new one to trigger a retry.
+    cluster.remove_node(cur_worker, True)
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+
+    # Verify the second node is added to the counter by the task after a retry.
+    node_ids.update([cur_worker.node_id])
+    wait_for_condition(lambda: ray.get(node_tracker.nodes.remote()) == node_ids)
+
+    # Preempt the second node and add a new one to trigger a retry.
+    is_accepted, _ = gcs_client.drain_node(
+        cur_worker.node_id,
+        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+        "preemption",
+        1,
+    )
+    assert is_accepted
+    cluster.remove_node(cur_worker, True)
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+
+    # Verify the third node is added to the counter after a preemption retry.
+    node_ids.update([cur_worker.node_id])
+    wait_for_condition(lambda: ray.get(node_tracker.nodes.remote()) == node_ids)
+
+    # Remove the third node and add a new one, but the task should not retry.
+    cluster.remove_node(cur_worker, True)
+    cur_worker = cluster.add_node(num_cpus=1, resources={"worker": 1})
+
+    # max_retries is reached, the task should fail.
+    with pytest.raises(ray.exceptions.NodeDiedError):
+        ray.get(r1)
+
+
+def test_leases_rescheduling_during_draining(ray_start_cluster):
+    """Test that when a node is being drained, leases inside local lease manager
+    will be cancelled and re-added to the cluster lease manager for rescheduling
+    instead of being marked as permanently infeasible.
+
+    This is regression test for https://github.com/ray-project/ray/pull/57834/
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+
+    worker1 = cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def ping(self):
+            pass
+
+    actor = Actor.remote()
+    ray.get(actor.ping.remote())
+
+    @ray.remote(num_cpus=1)
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
+
+    obj_ref = get_node_id.options(name="f1").remote()
+
+    def verify_f1_pending_node_assignment():
+        tasks = list_tasks(filters=[("name", "=", "f1")])
+        assert len(tasks) == 1
+        assert tasks[0]["state"] == "PENDING_NODE_ASSIGNMENT"
+        return True
+
+    # f1 should be in the local lease manager of worker1,
+    # waiting for resource to be available.
+    wait_for_condition(verify_f1_pending_node_assignment)
+
+    is_accepted, _ = gcs_client.drain_node(
+        worker1.node_id,
+        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+        "preemption",
+        2**63 - 1,
+    )
+    assert is_accepted
+
+    # The task should be rescheduled on another node.
+    worker2 = cluster.add_node(num_cpus=1)
+    assert ray.get(obj_ref) == worker2.node_id
 
 
 if __name__ == "__main__":

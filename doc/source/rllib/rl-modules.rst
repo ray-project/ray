@@ -12,12 +12,10 @@ models, including highly complex multi-network setups often found in multi-agent
 
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is the main neural network class and exposes
 three public methods, each corresponding to a distinct phase in the reinforcement learning cycle:
-- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` handles the computation of actions during data collection
-if RLlib uses the data for a succeeding training step, balancing exploration and exploitation.
+
+- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` handles the computation of actions during data collection if RLlib uses the data for a succeeding training step, balancing exploration and exploitation.
 - :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` computes actions for evaluation and production, which often need to be greedy or less stochastic.
-- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` manages the training phase, performing calculations required to
-compute losses, such as Q-values in a DQN model, value function predictions in a PG-style setup,
-or world-model predictions in model-based algorithms.
+- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` manages the training phase, performing calculations required to compute losses, such as Q-values in a DQN model, value function predictions in a PG-style setup, or world-model predictions in model-based algorithms.
 
 
 .. figure:: images/rl_modules/rl_module_overview.svg
@@ -569,7 +567,7 @@ If you don't return the ``actions`` key from your forward method:
                 def _forward_exploration(self, batch):
                     ...
                     return {
-                        Columns.ACTIONS: ...  # RLlib uses these actions as-is (no sampling step!)
+                        Columns.ACTIONS: ...,  # RLlib uses these actions as-is (no sampling step!)
                         Columns.ACTION_DIST_INPUTS: ...  # If provided, RLlib uses these dist inputs to compute probs and logp.
                     }
 
@@ -790,6 +788,8 @@ You implement the main action sampling logic in the ``_forward_...()`` methods:
   Note that since masking introduces ``tf.float32.min`` values into the model output, this technique might not work with all algorithm options. For example, algorithms might crash if they incorrectly process the ``tf.float32.min`` values. The cartpole example has working configurations for DQN (must set ``hiddens=[]``), PPO (must disable running mean and set ``model.vf_share_layers=True``), and several other algorithms. Not all algorithms support parametric actions; see the `algorithm overview <rllib-algorithms.html#available-algorithms-overview>`__.
 
 
+
+.. _implementing-custom-multi-rl-modules:
 
 Implementing custom MultiRLModules
 ----------------------------------

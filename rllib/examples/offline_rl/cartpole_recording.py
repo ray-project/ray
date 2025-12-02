@@ -48,7 +48,6 @@ Number of experiences recorded: 26644
 """
 
 import ray
-
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.core.columns import Columns
@@ -65,7 +64,10 @@ parser = add_rllib_example_script_args(
     default_timesteps=200000,
     default_reward=350.0,
 )
-parser.set_defaults(checkpoint_at_end=True, max_concurrent_trials=1)
+parser.set_defaults(
+    checkpoint_at_end=True,
+    max_concurrent_trials=1,
+)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()

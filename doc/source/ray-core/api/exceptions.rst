@@ -39,3 +39,5 @@ Exceptions
     ray.exceptions.CrossLanguageError
     ray.exceptions.RaySystemError
     ray.exceptions.NodeDiedError
+    ray.exceptions.UnserializableException
+    ray.exceptions.AuthenticationError

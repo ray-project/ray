@@ -16,7 +16,7 @@ limit of 14 to make it almost impossible for a non-curiosity based policy to lea
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 Use the `--no-curiosity` flag to disable curiosity learning and force your policy
 to be trained on the task w/o the use of intrinsic rewards. With this option, the
@@ -68,7 +68,6 @@ from ray.tune.registry import get_trainable_cls
 parser = add_rllib_example_script_args(
     default_reward=0.99, default_iters=200, default_timesteps=1000000
 )
-parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
     "--intrinsic-reward-coeff",
     type=float,

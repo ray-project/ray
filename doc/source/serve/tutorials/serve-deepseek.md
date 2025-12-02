@@ -13,8 +13,10 @@ This example shows how to deploy DeepSeek R1 or V3 with Ray Serve LLM.
 To run this example, install the following:
 
 ```bash
-pip install "ray[llm]"
+pip install "ray[llm]==2.46.0"
 ```
+
+Note: Deploying DeepSeek-R1 requires at least 720GB of free disk space per worker node to store model weights.
 
 ## Deployment
 
@@ -51,7 +53,6 @@ llm_config = LLMConfig(
         "max_model_len": 16384,
         "enable_chunked_prefill": True,
         "enable_prefix_caching": True,
-        "trust_remote_code": True,
     },
 )
 
@@ -89,7 +90,6 @@ applications:
           max_model_len: 16384
           enable_chunked_prefill: true
           enable_prefix_caching: true
-          trust_remote_code: true
   import_path: ray.serve.llm:build_openai_app
   name: llm_app
   route_prefix: "/"

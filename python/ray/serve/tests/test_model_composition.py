@@ -9,6 +9,7 @@ import pytest
 import starlette.requests
 
 from ray import serve
+from ray.serve._private.test_utils import get_application_url
 from ray.serve.handle import DeploymentHandle
 
 NESTED_HANDLE_KEY = "nested_handle"
@@ -122,8 +123,9 @@ def test_single_func_no_input(serve_instance):
     serve_dag = NoargDriver.bind(dag)
 
     handle = serve.run(serve_dag)
+    url = get_application_url()
     assert handle.remote().result() == "hello"
-    assert httpx.get("http://127.0.0.1:8000/").text == "hello"
+    assert httpx.get(url).text == "hello"
 
 
 async def json_resolver(request: starlette.requests.Request):
@@ -136,8 +138,9 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
     serve_dag = Combine.bind(m1, m2=m2)
 
     handle = serve.run(serve_dag)
+    url = get_application_url()
     assert handle.predict.remote(1).result() == 5
-    assert httpx.post("http://127.0.0.1:8000/", json=1).json() == 5
+    assert httpx.post(url, json=1).json() == 5
 
 
 def test_shared_deployment_handle(serve_instance):
@@ -145,8 +148,9 @@ def test_shared_deployment_handle(serve_instance):
     serve_dag = Combine.bind(m, m2=m)
 
     handle = serve.run(serve_dag)
+    url = get_application_url()
     assert handle.predict.remote(1).result() == 4
-    assert httpx.post("http://127.0.0.1:8000/", json=1).json() == 4
+    assert httpx.post(url, json=1).json() == 4
 
 
 def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
@@ -155,16 +159,17 @@ def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance):
     serve_dag = Combine.bind(m1, m2={NESTED_HANDLE_KEY: m2})
 
     handle = serve.run(serve_dag)
+    url = get_application_url()
     assert handle.predict.remote(1).result() == 5
-    assert httpx.post("http://127.0.0.1:8000/", json=1).json() == 5
+    assert httpx.post(url, json=1).json() == 5
 
 
 def test_class_factory(serve_instance):
     serve_dag = serve.deployment(class_factory()).bind(3)
-
     handle = serve.run(serve_dag)
+    url = get_application_url()
     assert handle.get.remote().result() == 3
-    assert httpx.get("http://127.0.0.1:8000/").text == "3"
+    assert httpx.get(url).text == "3"
 
 
 @serve.deployment
@@ -199,8 +204,9 @@ def test_passing_handle(serve_instance):
     child = Adder.bind(1)
     parent = TakeHandle.bind(child)
     handle = serve.run(parent)
+    url = get_application_url()
     assert handle.predict.remote(1).result() == 2
-    assert httpx.post("http://127.0.0.1:8000/", json=1).json() == 2
+    assert httpx.post(url, json=1).json() == 2
 
 
 @serve.deployment
@@ -293,8 +299,9 @@ def func():
 def test_single_functional_node_base_case(serve_instance):
     # Base case should work
     handle = serve.run(func.bind())
+    url = get_application_url()
     assert handle.remote().result() == 1
-    assert httpx.get("http://127.0.0.1:8000/").text == "1"
+    assert httpx.get(url).text == "1"
 
 
 def test_unsupported_remote():

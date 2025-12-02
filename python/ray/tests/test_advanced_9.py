@@ -1,24 +1,25 @@
 import os
-import psutil
 import subprocess
 import sys
 
 import pytest
 
 import ray
-import ray.util.state
 import ray._private.ray_constants as ray_constants
+from ray._common.network_utils import parse_address
+from ray._common.test_utils import Semaphore, wait_for_condition
 from ray._private.test_utils import (
-    external_redis_test_enabled,
     client_test_enabled,
-    run_string_as_driver,
+    external_redis_test_enabled,
     get_gcs_memory_used,
+    run_string_as_driver,
     run_string_as_driver_nonblocking,
 )
-from ray._common.test_utils import Semaphore, wait_for_condition
+from ray._raylet import GCS_PID_KEY, GcsClient
 from ray.experimental.internal_kv import _internal_kv_list
 from ray.tests.conftest import call_ray_start
-from ray._raylet import GcsClient, GCS_PID_KEY
+
+import psutil
 
 
 @pytest.fixture
@@ -395,7 +396,7 @@ def test_redis_full(ray_start_cluster_head):
 
     gcs_address = ray_start_cluster_head.gcs_address
     redis_addr = os.environ["RAY_REDIS_ADDRESS"]
-    host, port = redis_addr.split(":")
+    host, port = parse_address(redis_addr)
     if os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1") != "1":
         cli = redis.RedisCluster(host, int(port))
     else:

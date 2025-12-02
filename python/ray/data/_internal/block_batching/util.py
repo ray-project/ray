@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 import threading
 from contextlib import nullcontext
@@ -8,6 +9,7 @@ from ray.actor import ActorHandle
 from ray.data._internal.batcher import Batcher, ShufflingBatcher
 from ray.data._internal.block_batching.interfaces import (
     Batch,
+    BatchMetadata,
     BlockPrefetcher,
     CollatedBatch,
 )
@@ -23,10 +25,10 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
     """Given a list of object references, returns how many are already on the local
     node, how many require fetching from another node, and how many have unknown
     locations. If `DataContext.get_current().enable_get_object_locations_for_metrics` is
-    False, this will return `(-1, -1, -1)` as getting object locations is disabled."""
+    False, this will return `(0, 0, 0)` as getting object locations is disabled."""
     current_node_id = ray.get_runtime_context().get_node_id()
 
-    ctx = ray.data.context.DataContext.get_current()
+    ctx = ray.data.DataContext.get_current()
     if ctx.enable_get_object_locations_for_metrics:
         locs = ray.experimental.get_object_locations(refs)
         nodes: List[List[str]] = [loc["node_ids"] for loc in locs.values()]
@@ -35,7 +37,7 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
         misses = len(nodes) - hits - unknowns
         return hits, misses, unknowns
 
-    return -1, -1, -1
+    return 0, 0, 0
 
 
 def resolve_block_refs(
@@ -120,7 +122,7 @@ def blocks_to_batches(
         while batcher.has_batch():
             with get_iter_next_batch_s_timer():
                 batch = batcher.next_batch()
-            yield Batch(global_counter, batch)
+            yield Batch(metadata=BatchMetadata(batch_idx=global_counter), data=batch)
             global_counter += 1
 
     # Signal to the batcher that there are no more blocks to add.
@@ -130,38 +132,38 @@ def blocks_to_batches(
     while batcher.has_batch():
         with get_iter_next_batch_s_timer():
             batch = batcher.next_batch()
-        yield Batch(global_counter, batch)
+        yield Batch(metadata=BatchMetadata(batch_idx=global_counter), data=batch)
         global_counter += 1
 
     # Get any remaining data.
     if not drop_last and batcher.has_any():
         with get_iter_next_batch_s_timer():
             batch = batcher.next_batch()
-        yield Batch(global_counter, batch)
+        yield Batch(metadata=BatchMetadata(batch_idx=global_counter), data=batch)
         global_counter += 1
 
 
 def format_batches(
-    block_iter: Iterator[Batch],
+    batch_iter: Iterator[Batch],
     batch_format: Optional[str],
     stats: Optional[DatasetStats] = None,
 ) -> Iterator[Batch]:
     """Given an iterator of blocks, returns an iterator of formatted batches.
 
     Args:
-        block_iter: An iterator over blocks.
+        batch_iter: An iterator over batches.
         batch_format: The batch format to use.
         stats: An optional stats object to record formatting times.
 
     Returns:
         An iterator over batch index and the formatted batch.
     """
-    for batch in block_iter:
+    for batch in batch_iter:
         with stats.iter_format_batch_s.timer() if stats else nullcontext():
             formatted_batch = BlockAccessor.for_block(batch.data).to_batch_format(
                 batch_format
             )
-        yield Batch(batch.batch_idx, formatted_batch)
+        yield dataclasses.replace(batch, data=formatted_batch)
 
 
 def collate(
@@ -180,7 +182,7 @@ def collate(
     for batch in batch_iter:
         with stats.iter_collate_batch_s.timer() if stats else nullcontext():
             collated_batch = collate_fn(batch.data)
-        yield CollatedBatch(batch.batch_idx, collated_batch)
+        yield CollatedBatch(metadata=batch.metadata, data=collated_batch)
 
 
 def finalize_batches(
@@ -204,7 +206,7 @@ def finalize_batches(
     for batch in batch_iter:
         with stats.iter_finalize_batch_s.timer() if stats else nullcontext():
             finalized_batch = finalize_fn(batch.data)
-        yield CollatedBatch(batch.batch_idx, finalized_batch)
+        yield dataclasses.replace(batch, data=finalized_batch)
 
 
 def extract_data_from_batch(batch_iter: Iterator[Batch]) -> Iterator[Any]:
@@ -230,21 +232,29 @@ class WaitBlockPrefetcher(BlockPrefetcher):
         self._thread.start()
 
     def _run(self):
-        while True:
+        while not self._stopped:
             try:
-                blocks_to_wait = []
                 with self._condition:
-                    if len(self._blocks) > 0:
-                        blocks_to_wait, self._blocks = self._blocks[:], []
-                    else:
-                        if self._stopped:
-                            return
-                        blocks_to_wait = []
+                    if len(self._blocks) == 0:
+                        # Park, waiting for notification that prefetching
+                        # should resume
                         self._condition.wait()
-                if len(blocks_to_wait) > 0:
-                    ray.wait(blocks_to_wait, num_returns=1, fetch_local=True)
+
+                    blocks_to_fetch, self._blocks = self._blocks[:], []
+
+                if len(blocks_to_fetch) > 0:
+                    ray.wait(
+                        blocks_to_fetch,
+                        num_returns=1,
+                        # NOTE: We deliberately setting timeout to 0 to avoid
+                        #       blocking the fetching thread unnecessarily
+                        timeout=0,
+                        fetch_local=True,
+                    )
             except Exception:
                 logger.exception("Error in prefetcher thread.")
+
+        logger.info("Exiting prefetcher's background thread")
 
     def prefetch_blocks(self, blocks: List[ObjectRef[Block]]):
         with self._condition:

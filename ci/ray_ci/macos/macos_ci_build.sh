@@ -3,15 +3,16 @@
 set -ex
 
 export CI="true"
-export PYTHON="3.9"
+export PYTHON="3.10"
+export RAY_BUILD_ENV="macos-py${PYTHON}"
 export RAY_USE_RANDOM_PORTS="1"
 export RAY_DEFAULT_BUILD="1"
 export LC_ALL="en_US.UTF-8"
 export LANG="en_US.UTF-8"
 export BUILD="1"
 export DL="1"
-export TORCH_VERSION=2.0.1
-export TORCHVISION_VERSION=0.15.2
+export TORCH_VERSION=2.3.0
+export TORCHVISION_VERSION=0.18.0
 
 
 build() {
@@ -32,14 +33,13 @@ build() {
   export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home
   java -version
   # Build wheels
-  export UPLOAD_WHEELS_AS_ARTIFACTS=1
   export MAC_WHEELS=1
   export MAC_JARS=1
   export RAY_INSTALL_JAVA=1
   export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
-  ./ci/ci.sh build_wheels_and_jars
+  ./ci/ci.sh build_macos_wheels_and_jars
   # Test wheels
   ./ci/ci.sh test_macos_wheels
   # Build jars

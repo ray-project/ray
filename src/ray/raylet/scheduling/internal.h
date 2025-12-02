@@ -17,10 +17,9 @@
 #include <memory>
 #include <utility>
 
-#include "ray/common/ray_object.h"
+#include "ray/common/lease/lease.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
-#include "ray/common/task/task.h"
-#include "ray/common/task/task_common.h"
+#include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray::raylet::internal {
@@ -51,29 +50,37 @@ enum class UnscheduledWorkCause {
 };
 
 /// Work represents all the information needed to make a scheduling decision.
-/// This includes the task, the information we need to communicate to
-/// dispatch/spillback and the callback to trigger it.
+/// This includes the lease, the information we need to communicate to
+/// dispatch/spillback and the callbacks to trigger it.
+struct ReplyCallback {
+  ReplyCallback(rpc::SendReplyCallback send_reply_callback,
+                rpc::RequestWorkerLeaseReply *reply)
+      : send_reply_callback_(std::move(send_reply_callback)), reply_(reply) {}
+  rpc::SendReplyCallback send_reply_callback_;
+  rpc::RequestWorkerLeaseReply *reply_;
+};
+
 class Work {
  public:
-  RayTask task;
-  bool grant_or_reject;
-  bool is_selected_based_on_locality;
-  rpc::RequestWorkerLeaseReply *reply;
-  std::function<void(void)> callback;
-  std::shared_ptr<TaskResourceInstances> allocated_instances;
-  Work(RayTask task,
+  RayLease lease_;
+  bool grant_or_reject_;
+  bool is_selected_based_on_locality_;
+  // All the callbacks will be triggered when the lease is scheduled.
+  std::vector<ReplyCallback> reply_callbacks_;
+  std::shared_ptr<TaskResourceInstances> allocated_instances_;
+
+  Work(RayLease lease,
        bool grant_or_reject,
        bool is_selected_based_on_locality,
-       rpc::RequestWorkerLeaseReply *reply,
-       std::function<void(void)> callback,
+       std::vector<ReplyCallback> reply_callbacks,
        WorkStatus status = WorkStatus::WAITING)
-      : task(std::move(task)),
-        grant_or_reject(grant_or_reject),
-        is_selected_based_on_locality(is_selected_based_on_locality),
-        reply(reply),
-        callback(std::move(callback)),
-        allocated_instances(nullptr),
+      : lease_(std::move(lease)),
+        grant_or_reject_(grant_or_reject),
+        is_selected_based_on_locality_(is_selected_based_on_locality),
+        reply_callbacks_(std::move(reply_callbacks)),
+        allocated_instances_(nullptr),
         status_(status){};
+
   Work(const Work &Work) = delete;
   Work &operator=(const Work &work) = delete;
   ~Work() = default;
@@ -95,7 +102,7 @@ class Work {
   UnscheduledWorkCause GetUnscheduledCause() const { return unscheduled_work_cause_; }
 
   bool PrioritizeLocalNode() const {
-    return grant_or_reject || is_selected_based_on_locality;
+    return grant_or_reject_ || is_selected_based_on_locality_;
   }
 
  private:
@@ -104,6 +111,7 @@ class Work {
       UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION;
 };
 
-using NodeInfoGetter = std::function<const rpc::GcsNodeInfo *(const NodeID &node_id)>;
+using NodeInfoGetter =
+    std::function<std::optional<rpc::GcsNodeAddressAndLiveness>(const NodeID &node_id)>;
 
 }  // namespace ray::raylet::internal

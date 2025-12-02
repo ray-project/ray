@@ -1,18 +1,16 @@
-from typing import Dict, List, Optional, Union
 import threading
 import uuid
+from typing import Dict, List, Optional, Union
 
 import ray
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
+import ray.experimental.internal_kv as internal_kv
 from ray.experimental.collective.communicator import CommunicatorHandle
 from ray.experimental.collective.util import get_address_and_port
-import ray.experimental.internal_kv as internal_kv
-from ray.util.collective.types import Backend
+from ray.util.annotations import PublicAPI
 from ray.util.collective.collective_group.torch_gloo_collective_group import (
     get_master_address_metadata_key,
 )
-from ray.util.annotations import PublicAPI
-
+from ray.util.collective.types import Backend
 
 _remote_communicator_manager: "Optional[RemoteCommunicatorManager]" = None
 _remote_communicator_manager_lock = threading.Lock()
@@ -77,10 +75,6 @@ def _do_init_collective_group(
     ray.util.collective.init_collective_group(
         world_size, rank, backend, group_name=name
     )
-    # Register a custom serializer for torch.Tensor. This allows torch.Tensors
-    # to use the created collective for communication between actors, instead of
-    # the normal serialize -> object store -> deserialize codepath.
-    TorchTensorType().register_custom_serializer()
 
 
 def _do_destroy_collective_group(self, name):
@@ -156,7 +150,7 @@ def create_collective_group(
         raise ValueError(f"All actors must be unique, got: {actors}")
 
     metadata_key = None
-    if backend == Backend.TORCH_GLOO:
+    if backend == Backend.GLOO:
         # Perform extra setup for torch.distributed.
         # torch.distributed requires a master address and port. Find a suitable
         # port on one of the actors.
@@ -184,7 +178,9 @@ def create_collective_group(
             internal_kv._internal_kv_del(metadata_key)
 
     # Group was successfully created.
-    comm = CommunicatorHandle(actors, name, backend)
+    # Register GLOO groups under TORCH_GLOO since GLOO uses torch.distributed.
+    registration_backend = Backend.TORCH_GLOO if backend == Backend.GLOO else backend
+    comm = CommunicatorHandle(actors, name, registration_backend)
     manager.add_remote_communicator(comm)
     return comm
 
@@ -211,10 +207,15 @@ def destroy_collective_group(group_or_name: Union[CommunicatorHandle, str]):
     group = manager.remove_remote_communicator(name)
     if group is not None:
         destroy_tasks = [
-            actor.__ray_call__.remote(_do_destroy_collective_group, name)
+            actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+                _do_destroy_collective_group, name
+            )
             for actor in group.actors
         ]
-        ray.get(destroy_tasks)
+        try:
+            ray.get(destroy_tasks)
+        except ray.exceptions.ActorDiedError:
+            pass
     else:
         raise ValueError(f"No group with name {name} found.")
 

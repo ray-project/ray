@@ -1,8 +1,8 @@
-import copy
 import json
 import logging
 import os
 import platform
+import shutil
 import signal
 import subprocess
 import sys
@@ -10,34 +10,36 @@ import time
 import urllib
 import urllib.parse
 import warnings
-import shutil
 from datetime import datetime
-from typing import Optional, Set, List, Tuple
-from ray._common.utils import load_class
-from ray.dashboard.modules.metrics import install_and_start_prometheus
-from ray.util.check_open_ports import check_open_ports
-import requests
+from typing import List, Optional, Set, Tuple
 
 import click
 import colorama
-import psutil
+import requests
 import yaml
 
 import ray
+import ray._common.usage.usage_constants as usage_constant
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-from ray._private.label_utils import (
-    parse_node_labels_json,
-    parse_node_labels_from_yaml_file,
-    parse_node_labels_string,
-)
-from ray._private.utils import (
-    check_ray_client_dependencies_installed,
-    parse_resources_json,
+from ray._common.network_utils import build_address, parse_address
+from ray._common.usage import usage_lib
+from ray._common.utils import load_class
+from ray._private.authentication.authentication_token_setup import (
+    ensure_token_if_auth_enabled,
 )
 from ray._private.internal_api import memory_summary
-from ray._private.usage import usage_lib
-import ray._private.usage.usage_constants as usage_constant
+from ray._private.label_utils import (
+    parse_node_labels_from_yaml_file,
+    parse_node_labels_json,
+    parse_node_labels_string,
+)
+from ray._private.log import format_returncode, setup_process_exit_logger
+from ray._private.resource_isolation_config import ResourceIsolationConfig
+from ray._private.utils import (
+    get_ray_client_dependency_error,
+    parse_resources_json,
+)
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.autoscaler._private.commands import (
     RUN_ENV_TYPES,
@@ -56,16 +58,19 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
-from ray.util.annotations import PublicAPI
 from ray.core.generated import autoscaler_pb2
-from ray._private.resource_isolation_config import ResourceIsolationConfig
+from ray.dashboard.modules.metrics import install_and_start_prometheus
+from ray.scripts.symmetric_run import symmetric_run
+from ray.util.annotations import PublicAPI
+from ray.util.check_open_ports import check_open_ports
 
+import psutil
 
 logger = logging.getLogger(__name__)
 
 
 def _check_ray_version(gcs_client):
-    import ray._private.usage.usage_lib as ray_usage_lib
+    import ray._common.usage.usage_lib as ray_usage_lib
 
     cluster_metadata = ray_usage_lib.get_cluster_metadata(gcs_client)
     if cluster_metadata and cluster_metadata["ray_version"] != ray.__version__:
@@ -196,7 +201,7 @@ def continue_debug_session(live_jobs: Set[str]):
                             key, namespace=ray_constants.KV_NAMESPACE_PDB
                         )
                         return
-                    host, port = session["pdb_address"].split(":")
+                    host, port = parse_address(session["pdb_address"])
                     ray.util.rpdb._connect_pdb_client(host, int(port))
                     ray.experimental.internal_kv._internal_kv_del(
                         key, namespace=ray_constants.KV_NAMESPACE_PDB
@@ -337,7 +342,7 @@ def debug(address: str, verbose: bool):
                     active_sessions[index], namespace=ray_constants.KV_NAMESPACE_PDB
                 )
             )
-            host, port = session["pdb_address"].split(":")
+            host, port = parse_address(session["pdb_address"])
             ray.util.rpdb._connect_pdb_client(host, int(port))
 
 
@@ -524,7 +529,8 @@ Windows powershell users need additional escaping:
     "--block",
     is_flag=True,
     default=False,
-    help="provide this argument to block forever in this command",
+    help="provide this argument to block forever in this command."
+    "Process exit logs will be saved to ray_process_exit.log in the logs directory.",
 )
 @click.option(
     "--plasma-directory",
@@ -646,20 +652,20 @@ Windows powershell users need additional escaping:
     "--system-reserved-cpu",
     required=False,
     type=float,
-    help="The amount of cpu cores to reserve for ray system processes. Cores can be "
-    "fractional i.e. 0.5 means half a cpu core. "
-    "By default, the min of 20% and 1 core will be reserved."
-    "Must be >= 0.5 and < total number of available cores. "
-    "This option only works if --enable-resource-isolation is set.",
+    help=" The number of cpu cores to reserve for ray system processes. "
+    "Cores can be fractional i.e. 1.5 means one and a half a cpu core. "
+    "By default, the value will be atleast 1 core, and at maximum 3 cores. The default value "
+    "is calculated using the formula min(3.0, max(1.0, 0.05 * num_cores_on_the_system)) "
+    "This option only works if --enable_resource_isolation is set.",
 )
 @click.option(
     "--system-reserved-memory",
     required=False,
     type=int,
     help="The amount of memory (in bytes) to reserve for ray system processes. "
-    "By default, the min of 10% and 25GB plus object_store_memory will be reserved. "
-    "Must be >= 100MB and system-reserved-memory + object-store-bytes < total available memory "
-    "This option only works if --enable-resource-isolation is set.",
+    "By default, the value will be atleast 500MB, and at most 10GB. The default value is  "
+    "calculated using the formula min(10GB, max(500MB, 0.10 * memory_available_on_the_system)) "
+    "This option only works if --enable_resource_isolation is set.",
 )
 @click.option(
     "--cgroup-path",
@@ -668,9 +674,9 @@ Windows powershell users need additional escaping:
     type=str,
     help="The path for the cgroup the raylet should use to enforce resource isolation. "
     "By default, the cgroup used for resource isolation will be /sys/fs/cgroup. "
-    "The raylet must have read/write permissions to this path. "
+    "The process starting ray must have read/write permissions to this path.  "
     "Cgroup memory and cpu controllers be enabled for this cgroup. "
-    "This option only works if --enable-resource-isolation is set.",
+    "This option only works if enable_resource_isolation is True.",
 )
 @add_click_logging_options
 @PublicAPI
@@ -788,7 +794,7 @@ def start(
     # no  port, has client -> default to 10001
     # has port, no  client -> value error
     # has port, has client -> ok, check port validity
-    has_ray_client = check_ray_client_dependencies_installed()
+    has_ray_client = get_ray_client_dependency_error() is None
     if has_ray_client and ray_client_server_port is None:
         ray_client_server_port = 10001
 
@@ -920,7 +926,7 @@ def start(
 
         # Fail early when starting a new cluster when one is already running
         if address is None:
-            default_address = f"{ray_params.node_ip_address}:{port}"
+            default_address = build_address(ray_params.node_ip_address, port)
             bootstrap_address = services.find_bootstrap_address(temp_dir)
             if (
                 default_address == bootstrap_address
@@ -934,6 +940,9 @@ def start(
                     "Please specify a different port using the `--port`"
                     " flag of `ray start` command."
                 )
+
+        # Ensure auth token is available if authentication mode is token
+        ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
 
         node = ray._private.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block
@@ -982,7 +991,7 @@ def start(
                 cli_logger.print("To submit a Ray job using the Ray Jobs CLI:")
                 cli_logger.print(
                     cf.bold(
-                        "  RAY_ADDRESS='http://{}' ray job submit "
+                        "  RAY_API_SERVER_ADDRESS='http://{}' ray job submit "
                         "--working-dir . "
                         "-- python my_script.py"
                     ),
@@ -1092,13 +1101,13 @@ def start(
 
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
 
+        # Ensure auth token is available if authentication mode is token
+        ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
+
         node = ray._private.node.Node(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
         )
         temp_dir = node.get_temp_dir_path()
-
-        # TODO(hjiang): Validate whether specified resource is true for physical
-        # resource.
 
         # Ray and Python versions should probably be checked before
         # initializing Node.
@@ -1118,6 +1127,8 @@ def start(
     ray._private.utils.write_ray_address(ray_params.gcs_address, temp_dir)
 
     if block:
+        logs_dir = node.get_logs_dir_path()
+        process_exit_log_path = os.path.join(logs_dir, "ray_process_exit.log")
         cli_logger.newline()
         with cli_logger.group(cf.bold("--block")):
             cli_logger.print(
@@ -1128,7 +1139,15 @@ def start(
                 "printed if any of them terminate unexpectedly. Subprocesses "
                 "exit with SIGTERM will be treated as graceful, thus NOT reported."
             )
+            cli_logger.print(
+                "Process exit logs will be saved to: {}", cf.bold(process_exit_log_path)
+            )
             cli_logger.flush()
+            try:
+                process_exit_logger = setup_process_exit_logger(process_exit_log_path)
+            except Exception as e:
+                cli_logger.warning("Failed to init process exit logger: {}", e)
+                process_exit_logger = None
 
         while True:
             time.sleep(1)
@@ -1155,6 +1174,7 @@ def start(
                 cli_logger.newline()
                 cli_logger.error("Some Ray subprocesses exited unexpectedly:")
 
+                lines_for_file = []
                 with cli_logger.indented():
                     for process_type, process in unexpected_deceased:
                         cli_logger.error(
@@ -1162,9 +1182,21 @@ def start(
                             cf.bold(str(process_type)),
                             _tags={"exit code": str(process.returncode)},
                         )
+                        rc = getattr(process, "returncode", None)
+                        rc_str = format_returncode(rc)
+                        lines_for_file.append(f"  {process_type} [exit code={rc_str}]")
+                try:
+                    file_msg = (
+                        "Some Ray subprocesses exited unexpectedly:\n"
+                        + "\n".join(lines_for_file)
+                    )
+                    process_exit_logger.error("%s", file_msg)
+                except Exception as e:
+                    cli_logger.warning("Failed to write process exit log: {}", e)
 
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
+
                 # explicitly kill all processes since atexit handlers
                 # will not exit with errors.
                 node.kill_all_processes(check_alive=False, allow_graceful=False)
@@ -2600,8 +2632,8 @@ def install_nightly(verbose, dryrun):
 def cpp(show_library_path, generate_bazel_project_template_to):
     """Show the cpp library path and generate the bazel project template."""
     if sys.platform == "win32":
-        cli_logger.error("Ray C++ API is not supported on Windows currently.")
-        sys.exit(1)
+        raise click.ClickException("Ray C++ API is not supported on Windows currently.")
+
     if not show_library_path and not generate_bazel_project_template_to:
         raise ValueError(
             "Please input at least one option of '--show-library-path'"
@@ -2618,33 +2650,45 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         cli_logger.print("Ray C++ include path {} ", cf.bold(f"{include_dir}"))
         cli_logger.print("Ray C++ library path {} ", cf.bold(f"{lib_dir}"))
     if generate_bazel_project_template_to:
+        out_dir = generate_bazel_project_template_to
         # copytree expects that the dst dir doesn't exist
         # so we manually delete it if it exists.
-        if os.path.exists(generate_bazel_project_template_to):
-            shutil.rmtree(generate_bazel_project_template_to)
-        shutil.copytree(cpp_templete_dir, generate_bazel_project_template_to)
-        out_include_dir = os.path.join(
-            generate_bazel_project_template_to, "thirdparty/include"
-        )
-        if os.path.exists(out_include_dir):
-            shutil.rmtree(out_include_dir)
+        if os.path.exists(out_dir):
+            shutil.rmtree(out_dir)
+
+        shutil.copytree(cpp_templete_dir, out_dir)
+        for filename in ["_WORKSPACE", "_BUILD.bazel", "_.bazelrc"]:
+            # Renames the bazel related files by removing the leading underscore.
+            dest_name = os.path.join(out_dir, filename[1:])
+            shutil.move(os.path.join(out_dir, filename), dest_name)
+
+        out_include_dir = os.path.join(out_dir, "thirdparty/include")
         shutil.copytree(include_dir, out_include_dir)
-        out_lib_dir = os.path.join(generate_bazel_project_template_to, "thirdparty/lib")
-        if os.path.exists(out_lib_dir):
-            shutil.rmtree(out_lib_dir)
+        out_lib_dir = os.path.join(out_dir, "thirdparty/lib")
         shutil.copytree(lib_dir, out_lib_dir)
 
         cli_logger.print(
             "Project template generated to {}",
-            cf.bold(f"{os.path.abspath(generate_bazel_project_template_to)}"),
+            cf.bold(f"{os.path.abspath(out_dir)}"),
         )
         cli_logger.print("To build and run this template, run")
-        cli_logger.print(
-            cf.bold(
-                f"    cd {os.path.abspath(generate_bazel_project_template_to)}"
-                " && bash run.sh"
-            )
-        )
+        cli_logger.print(cf.bold(f"    cd {os.path.abspath(out_dir)} && bash run.sh"))
+
+
+@cli.command(hidden=True)
+def sanity_check():
+    """Run a sanity check to check that the Ray installation works.
+
+    This is not a public API and is intended to be used by Ray developers only.
+    """
+
+    @ray.remote
+    def get_version() -> str:
+        return ray.__version__
+
+    v = ray.get(get_version.remote())
+    assert v == ray.__version__
+    cli_logger.success(f"Success! Ray version: {v}")
 
 
 @click.group(name="metrics")
@@ -2666,10 +2710,45 @@ def shutdown_prometheus():
         sys.exit(1)
 
 
-def add_command_alias(command, name, hidden):
-    new_command = copy.deepcopy(command)
-    new_command.hidden = hidden
-    cli.add_command(new_command, name=name)
+@cli.command(name="get-auth-token")
+@click.option(
+    "--generate",
+    is_flag=True,
+    default=False,
+    help="Generate a new token if none exists",
+)
+def get_auth_token(generate):
+    """Prints the Ray authentication token to stdout.
+
+    If --generate is specified, a new token is created and saved to ~/.ray/auth_token if one does not exist.
+    """
+    from ray._private.authentication.authentication_token_setup import (
+        generate_and_save_token,
+    )
+    from ray._raylet import (
+        AuthenticationTokenLoader,
+    )
+
+    # Try to load existing token
+    loader = AuthenticationTokenLoader.instance()
+
+    if not loader.has_token(ignore_auth_mode=True):
+        if generate:
+            click.echo("Generating new authentication token...", err=True)
+            generate_and_save_token()
+            loader.reset_cache()
+        else:
+            raise click.ClickException(
+                "No authentication token found. Use ray `get-auth-token --generate` to create one.",
+            )
+
+    # Get raw token value (ignore auth mode - explicitly loading token)
+    token = loader.get_raw_token(ignore_auth_mode=True)
+
+    # Print token to stdout (for piping) without newline
+    click.echo(token, nl=False)
+    # Print newline to stderr for clean terminal display (doesn't affect piping)
+    click.echo("", err=True)
 
 
 cli.add_command(dashboard)
@@ -2677,17 +2756,11 @@ cli.add_command(debug)
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(up)
-add_command_alias(up, name="create_or_update", hidden=True)
 cli.add_command(attach)
 cli.add_command(exec)
-add_command_alias(exec, name="exec_cmd", hidden=True)
-add_command_alias(rsync_down, name="rsync_down", hidden=True)
-add_command_alias(rsync_up, name="rsync_up", hidden=True)
 cli.add_command(submit)
 cli.add_command(down)
-add_command_alias(down, name="teardown", hidden=True)
 cli.add_command(kill_random_node)
-add_command_alias(get_head_ip, name="get_head_ip", hidden=True)
 cli.add_command(get_worker_ips)
 cli.add_command(microbenchmark)
 cli.add_command(stack)
@@ -2704,19 +2777,22 @@ cli.add_command(enable_usage_stats)
 cli.add_command(metrics_group)
 cli.add_command(drain_node)
 cli.add_command(check_open_ports)
+cli.add_command(sanity_check)
+cli.add_command(symmetric_run, name="symmetric-run")
+cli.add_command(get_auth_token)
 
 try:
     from ray.util.state.state_cli import (
+        logs_state_cli_group,
         ray_get,
         ray_list,
-        logs_state_cli_group,
         summary_state_cli_group,
     )
 
     cli.add_command(ray_list, name="list")
     cli.add_command(ray_get, name="get")
-    add_command_alias(summary_state_cli_group, name="summary", hidden=False)
-    add_command_alias(logs_state_cli_group, name="logs", hidden=False)
+    cli.add_command(summary_state_cli_group, name="summary")
+    cli.add_command(logs_state_cli_group, name="logs")
 except ImportError as e:
     logger.debug(f"Integrating ray state command line tool failed: {e}")
 
@@ -2724,7 +2800,7 @@ except ImportError as e:
 try:
     from ray.dashboard.modules.job.cli import job_cli_group
 
-    add_command_alias(job_cli_group, name="job", hidden=False)
+    cli.add_command(job_cli_group, name="job")
 except Exception as e:
     logger.debug(f"Integrating ray jobs command line tool failed with {e}")
 

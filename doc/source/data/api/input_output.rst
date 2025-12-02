@@ -32,7 +32,6 @@ Parquet
    :toctree: doc/
 
    read_parquet
-   read_parquet_bulk
    Dataset.write_parquet
 
 CSV
@@ -186,6 +185,16 @@ Databricks
 
    read_databricks_tables
 
+Snowflake
+---------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_snowflake
+   Dataset.write_snowflake
+
 Unity Catalog
 -------------
 
@@ -241,6 +250,15 @@ Lance
 
    read_lance
    Dataset.write_lance
+
+MCAP (Message Capture)
+----------------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_mcap
 
 ClickHouse
 ----------
@@ -349,6 +367,15 @@ WebDataset
 
 .. _data_source_api:
 
+Kafka
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_kafka
+
 Datasource API
 --------------
 
@@ -400,7 +427,6 @@ MetadataProvider API
    datasource.FileMetadataProvider
    datasource.BaseFileMetadataProvider
    datasource.DefaultFileMetadataProvider
-   datasource.ParquetMetadataProvider
    datasource.FastFileMetadataProvider
 
 Shuffling API

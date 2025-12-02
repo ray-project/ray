@@ -20,7 +20,7 @@ the following:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack
+`python [script file name].py
 
 You can switch off custom evaluation (and use RLlib's default evaluation procedure)
 with the `--no-custom-eval` flag.
@@ -65,15 +65,14 @@ Training iteration 1 -> evaluation round 2
 """
 from typing import Tuple
 
-from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.examples.envs.classes.simple_corridor import SimpleCorridor
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
-    EVALUATION_RESULTS,
     EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.test_utils import (
@@ -82,10 +81,12 @@ from ray.rllib.utils.test_utils import (
 )
 from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import get_trainable_cls
-
+from ray.tune.result import TRAINING_ITERATION
 
 parser = add_rllib_example_script_args(
-    default_iters=50, default_reward=0.7, default_timesteps=50000
+    default_iters=50,
+    default_reward=0.7,
+    default_timesteps=50000,
 )
 parser.add_argument("--no-custom-eval", action="store_true")
 parser.add_argument("--corridor-length-training", type=int, default=10)

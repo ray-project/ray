@@ -18,7 +18,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-agents=[0 or 2]
+`python [script file name].py --num-agents=[0 or 2]
 --stop-reward-first-config=[return at which the algo on 1st config should stop training]
 --stop-reward=[the final return to achieve after restoration from the checkpoint with
 the 2nd config]
@@ -80,8 +80,8 @@ And if you are using the `--as-test` option, you should see a finel message:
 `env_runners/episode_return_mean` of 450.0 reached! ok
 ```
 """
-from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.policy import PolicySpec
@@ -98,7 +98,6 @@ from ray.rllib.utils.test_utils import (
 )
 from ray.tune.registry import register_env
 
-
 parser = add_rllib_example_script_args(
     default_reward=450.0, default_timesteps=10000000, default_iters=2000
 )
@@ -111,7 +110,6 @@ parser.add_argument(
 )
 # By default, set `args.checkpoint_freq` to 1 and `args.checkpoint_at_end` to True.
 parser.set_defaults(
-    enable_new_api_stack=True,
     checkpoint_freq=1,
     checkpoint_at_end=True,
 )

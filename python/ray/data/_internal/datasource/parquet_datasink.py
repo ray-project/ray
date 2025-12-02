@@ -2,10 +2,10 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
+from ray._common.retry import call_with_retry
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
 from ray.data._internal.savemode import SaveMode
-from ray.data._internal.util import call_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import _resolve_kwargs
 from ray.data.datasource.file_datasink import _FileDatasink
@@ -22,7 +22,7 @@ WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 # Docs: https://arrow.apache.org/docs/python/generated/pyarrow.dataset.write_dataset.html
 EXISTING_DATA_BEHAVIOR_MAP = {
     SaveMode.APPEND: "overwrite_or_ignore",
-    SaveMode.OVERWRITE: "delete_matching",
+    SaveMode.OVERWRITE: "overwrite_or_ignore",  # delete_matching is not a suitable choice for parallel writes.
     SaveMode.IGNORE: "overwrite_or_ignore",
     SaveMode.ERROR: "error",
 }
@@ -229,13 +229,8 @@ class ParquetDatasink(_FileDatasink):
             # No extension and not templatized, add extension and template
             basename_template = f"{filename}-{{i}}.{FILE_FORMAT}"
         else:
-            # Has extension but not templatized, add template while preserving extension
-            logger.warning(
-                "FilenameProvider have to provide proper filename template including '{{i}}' "
-                "macro to ensure unique filenames when writing multiple files. Appending '{{i}}' "
-                "macro to the end of the file. For more details on the expected filename template checkout "
-                "PyArrow's `write_to_dataset` API"
-            )
+            # TODO(@goutamvenkat-anyscale): Add a warning if you pass in a custom
+            # filename provider and it isn't templatized.
             # Use pathlib.Path to properly handle filenames with dots
             filename_path = Path(filename)
             stem = filename_path.stem  # filename without extension

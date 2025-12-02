@@ -13,7 +13,7 @@ This example
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 Control the number of environments per `EnvRunner` via `--num-envs-per-env-runner`.
 This will increase sampling speed.
@@ -27,17 +27,18 @@ For logging to your WandB account, use:
 `--wandb-key=[your WandB API key] --wandb-project=[some project name]
 --wandb-run-name=[optional: WandB run name (within the defined project)]`
 """
-import gymnasium as gym
 import sys
 
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    run_rllib_example_script_experiment,
-)
+import gymnasium as gym
+
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     TRAINING_ITERATION_TIMER,
+)
+from ray.rllib.utils.test_utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls, register_env
 

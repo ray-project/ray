@@ -1,0 +1,136 @@
+load("@python3_9//:defs.bzl", python39 = "interpreter")
+load("@python3_10//:defs.bzl", python310 = "interpreter")
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_runtime", "py_runtime_pair")
+
+exports_files([
+    "pytest_wrapper.py",
+    "default_doctest_pytest_plugin.py",
+])
+
+py_binary(
+    name = "pyzip",
+    srcs = ["pyzip.py"],
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "gen_extract",
+    srcs = ["gen_extract.py"],
+    deps = [
+        ci_require("bazel-runfiles"),
+    ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "linux_x86_64_config",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+config_setting(
+    name = "linux_arm64_config",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:arm64",
+    ],
+)
+
+config_setting(
+    name = "osx_x86_64_config",
+    constraint_values = [
+        "@platforms//os:osx",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+config_setting(
+    name = "osx_arm64_config",
+    constraint_values = [
+        "@platforms//os:osx",
+        "@platforms//cpu:arm64",
+    ],
+)
+
+config_setting(
+    name = "windows_x86_64_config",
+    constraint_values = [
+        "@platforms//os:windows",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+# Hermetic python environment, currently only used for CI infra and scripts.
+
+py_runtime(
+    name = "py39_runtime",
+    interpreter = python39,
+    python_version = "PY3",
+    visibility = ["//visibility:private"],
+)
+
+py_runtime_pair(
+    name = "py39_runtime_pair",
+    py2_runtime = None,
+    py3_runtime = ":py39_runtime",
+    visibility = ["//visibility:private"],
+)
+
+toolchain(
+    name = "py39_toolchain",
+    exec_compatible_with = [":py39"],
+    toolchain = ":py39_runtime_pair",
+    toolchain_type = "@bazel_tools//tools/python:toolchain_type",
+)
+
+py_runtime(
+    name = "py310_runtime",
+    interpreter = python310,
+    python_version = "PY3",
+    visibility = ["//visibility:private"],
+)
+
+py_runtime_pair(
+    name = "py310_runtime_pair",
+    py2_runtime = None,
+    py3_runtime = ":py310_runtime",
+    visibility = ["//visibility:private"],
+)
+
+toolchain(
+    name = "py310_toolchain",
+    exec_compatible_with = [":py310"],
+    toolchain = ":py310_runtime_pair",
+    toolchain_type = "@bazel_tools//tools/python:toolchain_type",
+)
+
+constraint_setting(name = "python_version")
+
+constraint_value(
+    name = "py39",
+    constraint_setting = ":python_version",
+    visibility = ["//visibility:public"],
+)
+
+constraint_value(
+    name = "py310",
+    constraint_setting = ":python_version",
+    visibility = ["//visibility:public"],
+)
+
+platform(
+    name = "py39_platform",
+    constraint_values = [":py39"],
+    parents = ["@local_config_platform//:host"],
+    visibility = ["//visibility:private"],
+)
+
+platform(
+    name = "py310_platform",
+    constraint_values = [":py310"],
+    parents = ["@local_config_platform//:host"],
+    visibility = ["//visibility:private"],
+)

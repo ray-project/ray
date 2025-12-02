@@ -2,11 +2,17 @@
 import logging
 
 import pytest
+
 import ray
-from ray.util.collective.collective_group.nccl_collective_group import (
-    _get_comm_key_from_devices,
-    _get_comm_key_send_recv,
-)
+
+try:
+    from ray.util.collective.collective_group.nccl_collective_group import (
+        _get_comm_key_from_devices,
+        _get_comm_key_send_recv,
+    )
+except Exception:  # Cupy/NCCL may be unavailable on CPU-only setups
+    _get_comm_key_from_devices = None
+    _get_comm_key_send_recv = None
 from ray.util.collective.const import get_store_name
 
 logger = logging.getLogger(__name__)
@@ -15,6 +21,9 @@ logger.setLevel("INFO")
 
 # TODO (Hao): remove this clean_up function as it sometimes crashes Ray.
 def clean_up():
+    # If NCCL helpers are unavailable (e.g., no cupy), skip cleanup.
+    if _get_comm_key_from_devices is None or _get_comm_key_send_recv is None:
+        return
     group_names = ["default", "test", "123?34!", "default2", "random"]
     group_names.extend([str(i) for i in range(10)])
     max_world_size = 4
@@ -88,4 +97,10 @@ def ray_start_distributed_2_nodes():
     # no GPUs!
     ray.init("auto")
     yield
+    ray.shutdown()
+
+
+@pytest.fixture
+def shutdown_only():
+    yield None
     ray.shutdown()

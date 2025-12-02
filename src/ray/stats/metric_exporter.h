@@ -13,18 +13,14 @@
 // limitations under the License.
 
 #pragma once
+
 #include <boost/asio.hpp>
 
 #include "absl/memory/memory.h"
 #include "opencensus/stats/stats.h"
-#include "opencensus/tags/tag_key.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
-#include "ray/rpc/client_call.h"
 #include "ray/rpc/metrics_agent_client.h"
-#include "ray/stats/metric.h"
-#include "ray/util/logging.h"
-#include "ray/util/util.h"
 
 namespace ray {
 namespace stats {
@@ -37,31 +33,26 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
  public:
   OpenCensusProtoExporter(const int port,
                           instrumented_io_context &io_service,
-                          const std::string address,
                           const WorkerID &worker_id,
                           size_t report_batch_size,
                           size_t max_grpc_payload_size);
 
+  // This constructor is only used for testing
   OpenCensusProtoExporter(std::shared_ptr<rpc::MetricsAgentClient> agent_client,
                           const WorkerID &worker_id,
                           size_t report_batch_size,
                           size_t max_grpc_payload_size);
 
-  ~OpenCensusProtoExporter() = default;
+  ~OpenCensusProtoExporter() override = default;
 
   static void Register(const int port,
                        instrumented_io_context &io_service,
-                       const std::string address,
                        const WorkerID &worker_id,
                        size_t report_batch_size,
                        size_t max_grpc_payload_size) {
     opencensus::stats::StatsExporter::RegisterPushHandler(
-        absl::make_unique<OpenCensusProtoExporter>(port,
-                                                   io_service,
-                                                   address,
-                                                   worker_id,
-                                                   report_batch_size,
-                                                   max_grpc_payload_size));
+        absl::make_unique<OpenCensusProtoExporter>(
+            port, io_service, worker_id, report_batch_size, max_grpc_payload_size));
   }
 
   void ExportViewData(
@@ -106,6 +97,7 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
   /// Lock to protect the client
   mutable absl::Mutex mu_;
   /// Client to call a metrics agent gRPC server.
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::shared_ptr<rpc::MetricsAgentClient> client_ ABSL_GUARDED_BY(&mu_);
   /// The worker ID of the current component.
   WorkerID worker_id_;

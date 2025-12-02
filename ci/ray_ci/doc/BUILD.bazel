@@ -1,5 +1,5 @@
-load("@rules_python//python:defs.bzl", "py_library", "py_test")
-load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_binary(
     name = "cmd_check_api_discrepancy",
@@ -10,8 +10,11 @@ py_binary(
 py_binary(
     name = "cmd_build",
     srcs = ["cmd_build.py"],
-    deps = [":doc"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py310"],
+    deps = [
+        ci_require("click"),
+        ":doc",
+    ],
 )
 
 py_library(
@@ -23,9 +26,8 @@ py_library(
             "cmd_*.py",
         ],
     ),
-    visibility = ["//ci/ray_ci/doc:__subpackages__"],
     deps = [
-        "//ci/ray_ci:ray_ci_lib",
+        ci_require("boto3"),
         ci_require("sphinx"),
         ci_require("myst_parser"),
         ci_require("myst-nb"),
@@ -37,8 +39,12 @@ py_library(
 py_test(
     name = "test_module",
     size = "small",
-    srcs = ["test_module.py", "mock/__init__.py", "mock/mock_module.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    srcs = [
+        "mock/__init__.py",
+        "mock/mock_module.py",
+        "test_module.py",
+    ],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -52,8 +58,12 @@ py_test(
 py_test(
     name = "test_api",
     size = "small",
-    srcs = ["test_api.py", "mock/__init__.py", "mock/mock_module.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    srcs = [
+        "mock/__init__.py",
+        "mock/mock_module.py",
+        "test_api.py",
+    ],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -67,8 +77,12 @@ py_test(
 py_test(
     name = "test_autodoc",
     size = "small",
-    srcs = ["test_autodoc.py", "mock/__init__.py", "mock/mock_module.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    srcs = [
+        "mock/__init__.py",
+        "mock/mock_module.py",
+        "test_autodoc.py",
+    ],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -83,7 +97,7 @@ py_test(
     name = "test_build_cache",
     size = "small",
     srcs = ["test_build_cache.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",

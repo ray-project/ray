@@ -14,7 +14,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --env [env name e.g. 'ALE/Pong-v5']
+`python [script file name].py --env [env name e.g. 'ALE/Pong-v5']
 --wandb-key=[your WandB API key] --wandb-project=[some WandB project name]
 --wandb-run-name=[optional: WandB run name within --wandb-project]`
 
@@ -57,10 +57,12 @@ Your terminal output should look similar to this:
 |                   4000 |                   4000 |                     24 |
 +------------------------+------------------------+------------------------+
 """
-import gymnasium as gym
-import numpy as np
 from typing import Optional, Sequence
 
+import gymnasium as gym
+import numpy as np
+
+from ray import tune
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.vector.vector_multi_agent_env import VectorMultiAgentEnv
@@ -71,11 +73,9 @@ from ray.rllib.utils.test_utils import (
     run_rllib_example_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls, register_env
-from ray import tune
 
 parser = add_rllib_example_script_args(default_reward=20.0)
 parser.set_defaults(
-    enable_new_api_stack=True,
     env="ale_py:ALE/Pong-v5",
 )
 

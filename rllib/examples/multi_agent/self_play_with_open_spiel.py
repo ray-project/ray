@@ -23,19 +23,18 @@ import functools
 import numpy as np
 import torch
 
-from ray.tune.result import TRAINING_ITERATION
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
+from ray.rllib.env.utils import try_import_open_spiel, try_import_pyspiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
-from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
+from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.examples.multi_agent.utils import (
-    ask_user_for_action,
     SelfPlayCallback,
     SelfPlayCallbackOldAPIStack,
+    ask_user_for_action,
 )
-from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
+from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.rllib.utils.test_utils import (
@@ -43,13 +42,13 @@ from ray.rllib.utils.test_utils import (
     run_rllib_example_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls, register_env
+from ray.tune.result import TRAINING_ITERATION
 
 open_spiel = try_import_open_spiel(error=True)
 pyspiel = try_import_pyspiel(error=True)
 
 # Import after try_import_open_spiel, so we can error out with hints.
 from open_spiel.python.rl_environment import Environment  # noqa: E402
-
 
 parser = add_rllib_example_script_args(default_timesteps=2000000)
 parser.set_defaults(
@@ -103,6 +102,9 @@ if __name__ == "__main__":
         return "main" if hash(episode.id_) % 2 == agent_id else "random"
 
     def policy_mapping_fn(agent_id, episode, worker, **kwargs):
+        # e.g. episode ID = 10234
+        # -> agent `0` -> main (b/c epsID % 2 == 0)
+        # -> agent `1` -> random (b/c epsID % 2 == 1)
         return "main" if episode.episode_id % 2 == agent_id else "random"
 
     config = (
@@ -116,7 +118,7 @@ if __name__ == "__main__":
             functools.partial(
                 (
                     SelfPlayCallback
-                    if args.enable_new_api_stack
+                    if not args.old_api_stack
                     else SelfPlayCallbackOldAPIStack
                 ),
                 win_rate_threshold=args.win_rate_threshold,
@@ -124,7 +126,7 @@ if __name__ == "__main__":
         )
         .env_runners(
             num_env_runners=(args.num_env_runners or 2),
-            num_envs_per_env_runner=1 if args.enable_new_api_stack else 5,
+            num_envs_per_env_runner=1 if not args.old_api_stack else 5,
         )
         .multi_agent(
             # Initial policy map: Random and default algo one. This will be expanded
@@ -138,7 +140,7 @@ if __name__ == "__main__":
                     # An initial random opponent to play against.
                     "random": PolicySpec(policy_class=RandomPolicy),
                 }
-                if not args.enable_new_api_stack
+                if args.old_api_stack
                 else {"main", "random"}
             ),
             # Assign agent 0 and 1 randomly to the "main" policy or
@@ -147,7 +149,7 @@ if __name__ == "__main__":
             # another "main").
             policy_mapping_fn=(
                 agent_to_module_mapping_fn
-                if args.enable_new_api_stack
+                if not args.old_api_stack
                 else policy_mapping_fn
             ),
             # Always just train the "main" policy.
@@ -195,7 +197,7 @@ if __name__ == "__main__":
                 raise ValueError("No last checkpoint found in results!")
             algo.restore(checkpoint)
 
-        if args.enable_new_api_stack:
+        if not args.old_api_stack:
             rl_module = algo.get_module("main")
 
         # Play from the command line against the trained agent
@@ -212,7 +214,7 @@ if __name__ == "__main__":
                     action = ask_user_for_action(time_step)
                 else:
                     obs = np.array(time_step.observations["info_state"][player_id])
-                    if args.enable_new_api_stack:
+                    if not args.old_api_stack:
                         action = np.argmax(
                             rl_module.forward_inference(
                                 {"obs": torch.from_numpy(obs).unsqueeze(0).float()}

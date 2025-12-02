@@ -27,7 +27,6 @@ PeriodicalRunner::PeriodicalRunner(instrumented_io_context &io_service)
     : io_service_(io_service) {}
 
 PeriodicalRunner::~PeriodicalRunner() {
-  RAY_LOG(DEBUG) << "PeriodicalRunner is destructed";
   absl::MutexLock lock(&mutex_);
   for (const auto &timer : timers_) {
     timer->cancel();
@@ -106,7 +105,8 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
   // NOTE: We add the timer period to the enqueue time in order only measure the time in
   // which the handler was elgible to execute on the event loop but was queued by the
   // event loop.
-  auto stats_handle = io_service_.stats().RecordStart(name, period.total_nanoseconds());
+  auto stats_handle =
+      io_service_.stats()->RecordStart(name, false, period.total_nanoseconds());
   timer->async_wait(
       [weak_self = weak_from_this(),
        fn = std::move(fn),
@@ -115,7 +115,7 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
        stats_handle = std::move(stats_handle),
        name = std::move(name)](const boost::system::error_code &error) mutable {
         if (auto self = weak_self.lock(); self) {
-          self->io_service_.stats().RecordExecution(
+          self->io_service_.stats()->RecordExecution(
               [self,
                fn = std::move(fn),
                error,

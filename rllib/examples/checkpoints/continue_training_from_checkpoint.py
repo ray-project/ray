@@ -18,7 +18,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-agents=[0 or 2]
+`python [script file name].py --num-agents=[0 or 2]
 --stop-reward-crash=[the episode return after which the algo should crash]
 --stop-reward=[the final episode return to achieve after(!) restoration from the
 checkpoint]
@@ -85,6 +85,7 @@ import re
 import time
 
 from ray import tune
+from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
@@ -98,8 +99,6 @@ from ray.rllib.utils.test_utils import (
     check_learning_achieved,
 )
 from ray.tune.registry import get_trainable_cls, register_env
-from ray.air.integrations.wandb import WandbLoggerCallback
-
 
 parser = add_rllib_example_script_args(
     default_reward=500.0, default_timesteps=10000000, default_iters=2000
@@ -111,7 +110,10 @@ parser.add_argument(
     help="Mean episode return after which the Algorithm should crash.",
 )
 # By default, set `args.checkpoint_freq` to 1 and `args.checkpoint_at_end` to True.
-parser.set_defaults(checkpoint_freq=1, checkpoint_at_end=True)
+parser.set_defaults(
+    checkpoint_freq=1,
+    checkpoint_at_end=True,
+)
 
 
 class CrashAfterNIters(RLlibCallback):
@@ -148,10 +150,6 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        .api_stack(
-            enable_rl_module_and_learner=args.enable_new_api_stack,
-            enable_env_runner_and_connector_v2=args.enable_new_api_stack,
-        )
         .environment("CartPole-v1" if args.num_agents == 0 else "ma_cart")
         .env_runners(create_env_on_local_worker=True)
         .training(lr=0.0001)

@@ -15,7 +15,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --stop-reward=200.0`
+`python [script file name].py --stop-reward=200.0`
 
 Use the `--use-onnx-for-inference` option to perform action computations after training
 through an ONNX runtime session.
@@ -87,11 +87,11 @@ from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.numpy import convert_to_numpy, softmax
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
 )
+from ray.rllib.utils.numpy import convert_to_numpy, softmax
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -125,8 +125,6 @@ parser.set_defaults(
     checkpoint_at_end=True,
     # Use CartPole-v1 by default.
     env="CartPole-v1",
-    # Script only runs on new API stack.
-    enable_new_api_stack=True,
 )
 
 

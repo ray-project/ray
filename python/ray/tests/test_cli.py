@@ -18,6 +18,7 @@ Note: config cache does not work with AWS mocks since the AWS resource ids are
       randomized each time.
 """
 import glob
+import json
 import multiprocessing as mp
 import multiprocessing.connection
 import os
@@ -25,10 +26,10 @@ import re
 import sys
 import tempfile
 import threading
-import json
 import time
 import uuid
 from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Optional
 from unittest import mock
@@ -42,16 +43,16 @@ from testfixtures import Replacer
 from testfixtures.popen import MockPopen, PopenBehaviour
 
 import ray
+import ray._private.ray_constants as ray_constants
 import ray.autoscaler._private.aws.config as aws_config
 import ray.autoscaler._private.constants as autoscaler_constants
-import ray._private.ray_constants as ray_constants
 import ray.scripts.scripts as scripts
-import ray._private.utils as utils
-from ray.util.check_open_ports import check_open_ports
+from ray._common.network_utils import build_address, parse_address
 from ray._common.test_utils import wait_for_condition
+from ray._common.utils import get_ray_temp_dir
 from ray.cluster_utils import cluster_not_supported
+from ray.util.check_open_ports import check_open_ports
 from ray.util.state import list_nodes
-from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import psutil
 
@@ -339,27 +340,6 @@ def test_ray_start(configure_lang, monkeypatch, tmp_path, cleanup_ray):
     )
 
 
-def test_ray_start_invalid_resource_isolation_config(cleanup_ray):
-    runner = CliRunner()
-    result = runner.invoke(
-        scripts.start,
-        ["--cgroup-path=/doesnt/matter"],
-    )
-    assert result.exit_code != 0
-    assert isinstance(result.exception, ValueError)
-
-
-def test_ray_start_resource_isolation_config_default_values(monkeypatch, cleanup_ray):
-    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 16)
-    runner = CliRunner()
-    result = runner.invoke(
-        scripts.start,
-        ["--head", "--enable-resource-isolation"],
-    )
-    # TODO(irabbani): Use log-capture from the raylet to add more extensive validation
-    _die_on_error(result)
-
-
 @pytest.mark.skipif(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
@@ -492,6 +472,20 @@ def test_ray_start_head_block_and_signals(
     # NOTE(rickyyx): The wait here is needed for the `head_proc`
     # process to exit
     head_proc.join(5)
+
+    exit_log = Path(
+        os.path.join(
+            get_ray_temp_dir(),
+            ray_constants.SESSION_LATEST,
+            "logs",
+            "ray_process_exit.log",
+        )
+    )
+    assert exit_log.exists(), f"ray_process_exit.log not found at {exit_log}"
+    content = exit_log.read_text(encoding="utf-8")
+    assert (
+        "Some Ray subprocesses exited unexpectedly:" in content
+    ), "Expected message not found in ray_process_exit.log."
 
     # Process with "--block" should be dead with a subprocess killed
     if head_proc.is_alive() or head_proc.exitcode == 0:
@@ -1034,7 +1028,7 @@ def start_open_port_check_server():
 
     yield (
         OpenPortCheckServer,
-        f"http://{server.server_address[0]}:{server.server_address[1]}",
+        f"http://{build_address(server.server_address[0], server.server_address[1])}",
     )
 
     server.shutdown()
@@ -1057,7 +1051,7 @@ def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
     )
     assert result.exit_code == 0
     assert (
-        int(context.address_info["gcs_address"].split(":")[1])
+        int(parse_address(context.address_info["gcs_address"])[1])
         in open_port_check_server.request_ports
     )
     assert "[🟢] No open ports detected" in result.output

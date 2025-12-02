@@ -3,32 +3,31 @@ import os
 import signal
 import subprocess
 import sys
-import time
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from typing import Any, Tuple
 
-from filelock import FileLock
 import pytest
+from filelock import FileLock
 
 import ray
+from ray._common.network_utils import parse_address
 from ray._common.test_utils import wait_for_condition
-from ray.autoscaler.v2.sdk import get_cluster_status
-from ray.util.placement_group import placement_group
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-import ray._private.gcs_utils as gcs_utils
 from ray._private import ray_constants
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import (
-    convert_actor_state,
     external_redis_test_enabled,
     generate_system_config_map,
-    wait_for_pid_to_exit,
-    run_string_as_driver,
     redis_sentinel_replicas,
+    run_string_as_driver,
+    wait_for_pid_to_exit,
 )
-from ray.job_submission import JobSubmissionClient, JobStatus
 from ray._raylet import GcsClient
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray.autoscaler.v2.sdk import get_cluster_status
+from ray.job_submission import JobStatus, JobSubmissionClient
+from ray.util.placement_group import placement_group
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import list_placement_groups
 
 import psutil
@@ -56,15 +55,6 @@ def cluster_kill_gcs_wait(cluster):
     wait_for_pid_to_exit(gcs_server_pid, 300)
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis",
-    [
-        generate_system_config_map(
-            gcs_rpc_server_reconnect_timeout_s=60,
-        )
-    ],
-    indirect=True,
-)
 def test_gcs_server_restart(ray_start_regular_with_external_redis):
     actor1 = Increase.remote()
     result = ray.get(actor1.method.remote(1))
@@ -87,15 +77,6 @@ def test_gcs_server_restart(ray_start_regular_with_external_redis):
     assert result == 9
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis",
-    [
-        generate_system_config_map(
-            gcs_rpc_server_reconnect_timeout_s=60,
-        )
-    ],
-    indirect=True,
-)
 @pytest.mark.skip(
     reason="GCS pubsub may lose messages after GCS restarts. Need to "
     "implement re-fetching state in GCS client.",
@@ -127,7 +108,6 @@ def test_gcs_server_restart_during_actor_creation(
     "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
-            gcs_rpc_server_reconnect_timeout_s=60,
             health_check_initial_delay_ms=0,
             health_check_period_ms=1000,
             health_check_failure_threshold=3,
@@ -164,7 +144,6 @@ def test_autoscaler_init(
     "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
-            gcs_rpc_server_reconnect_timeout_s=60,
             health_check_initial_delay_ms=0,
             health_check_period_ms=1000,
             health_check_failure_threshold=3,
@@ -221,15 +200,6 @@ def test_node_failure_detector_when_gcs_server_restart(
     wait_for_condition(condition, timeout=10)
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis",
-    [
-        generate_system_config_map(
-            gcs_rpc_server_reconnect_timeout_s=60,
-        )
-    ],
-    indirect=True,
-)
 def test_actor_raylet_resubscription(ray_start_regular_with_external_redis):
     # stat an actor
     @ray.remote
@@ -257,15 +227,6 @@ def test_actor_raylet_resubscription(ray_start_regular_with_external_redis):
         ray.get(actor.ready.remote())
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis",
-    [
-        generate_system_config_map(
-            gcs_rpc_server_reconnect_timeout_s=60,
-        )
-    ],
-    indirect=True,
-)
 def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redis):
     actor = Increase.options(name="abc").remote()
     result = ray.get(actor.method.remote(1))
@@ -278,8 +239,8 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redi
     del actor
 
     def condition():
-        actor_status = ray._private.state.actors(actor_id=actor_id)
-        if actor_status["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD):
+        actor_status = ray.util.state.get_actor(id=actor_id)
+        if actor_status.state == "DEAD":
             return True
         else:
             return False
@@ -293,76 +254,64 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redi
         ray.get_actor("abc")
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis",
-    [
-        generate_system_config_map(
-            gcs_rpc_server_reconnect_timeout_s=60,
-        )
-    ],
-    indirect=True,
-)
-def test_worker_raylet_resubscription(tmp_path, ray_start_regular_with_external_redis):
-    # This test is to make sure resubscription in raylet is working.
-    # When subscription failed, raylet will not get worker failure error
-    # and thus, it won't kill the worker which is fate sharing with the failed
-    # one.
+def test_raylet_resubscribe_to_worker_death(
+    tmp_path, ray_start_regular_with_external_redis
+):
+    """Verify that the Raylet resubscribes to worker death notifications on GCS restart."""
 
-    @ray.remote
-    def blocking_child():
-        (tmp_path / "blocking_child.pid").write_text(str(os.getpid()))
-        time.sleep(10000)
+    child_task_pid_path = tmp_path / "blocking_child.pid"
 
-    @ray.remote
-    def bar():
-        return (
-            os.getpid(),
-            # Use runtime env to make sure task is running in a different
-            # ray worker
-            blocking_child.options(runtime_env={"env_vars": {"P": ""}}).remote(),
-        )
+    @ray.remote(num_cpus=0)
+    def child():
+        print("Child worker ID:", ray.get_runtime_context().get_worker_id())
+        child_task_pid_path.write_text(str(os.getpid()))
+        while True:
+            time.sleep(0.1)
+            print("Child still running...")
 
-    (parent_pid, obj_ref) = ray.get(bar.remote())
+    @ray.remote(num_cpus=0)
+    def parent() -> Tuple[int, int, ray.ObjectRef]:
+        print("Parent worker ID:", ray.get_runtime_context().get_worker_id())
+        child_obj_ref = child.remote()
 
-    blocking_child_pid = None
+        # Wait for the child to be running and report back its PID.
+        wait_for_condition(lambda: child_task_pid_path.exists(), timeout=10)
+        child_pid = int(child_task_pid_path.read_text())
+        return os.getpid(), child_pid, child_obj_ref
 
-    def condition():
-        nonlocal blocking_child_pid
-        blocking_child_pid = int((tmp_path / "blocking_child.pid").read_text())
-        return True
+    parent_pid, child_pid, child_obj_ref = ray.get(parent.remote())
+    print(f"Parent PID: {parent_pid}, child PID: {child_pid}")
+    assert parent_pid != child_pid
 
-    wait_for_condition(condition, timeout=5)
-
-    # Kill and restart the GCS to trigger resubscription.
+    # Kill and restart the GCS.
     ray._private.worker._global_node.kill_gcs_server()
     ray._private.worker._global_node.start_gcs_server()
 
-    # Make an internal KV request to ensure the GCS is back alive.
+    # Schedule an actor to ensure that the GCS is back alive and the Raylet is
+    # reconnected to it.
     # TODO(iycheng): this shouldn't be necessary, but the current resubscription
     # implementation can lose the worker failure message because we don't ask for
     # the snapshot of worker statuses.
-    gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = ray._raylet.GcsClient(address=gcs_address)
-    gcs_client.internal_kv_put(b"a", b"b", True, None)
+    @ray.remote
+    class A:
+        pass
 
-    # Kill the parent task, which should cause the blocking child task to exit.
+    ray.get(A.remote().__ray_ready__.remote())
+
+    # Kill the parent task and verify that the child task is killed due to fate sharing
+    # with its parent.
+    print("Killing parent process.")
     p = psutil.Process(parent_pid)
     p.kill()
     p.wait()
+    print("Parent process exited.")
 
-    # The blocking child task should exit.
-    wait_for_pid_to_exit(blocking_child_pid, 5)
+    # The child task should exit.
+    wait_for_pid_to_exit(child_pid, 20)
+    with pytest.raises(ray.exceptions.OwnerDiedError):
+        ray.get(child_obj_ref)
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis",
-    [
-        generate_system_config_map(
-            gcs_rpc_server_reconnect_timeout_s=60,
-        )
-    ],
-    indirect=True,
-)
 def test_core_worker_resubscription(tmp_path, ray_start_regular_with_external_redis):
     # This test is to ensure core worker will resubscribe to GCS after GCS
     # restarts.
@@ -392,15 +341,6 @@ def test_core_worker_resubscription(tmp_path, ray_start_regular_with_external_re
     ray.get(r, timeout=5)
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_with_external_redis",
-    [
-        generate_system_config_map(
-            gcs_rpc_server_reconnect_timeout_s=60,
-        )
-    ],
-    indirect=True,
-)
 def test_detached_actor_restarts(ray_start_regular_with_external_redis):
     # Detached actors are owned by GCS. This test is to ensure detached actors
     # can restart even GCS restarts.
@@ -569,7 +509,6 @@ def test_pg_actor_workloads(ray_start_regular_with_external_redis):
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            gcs_rpc_server_reconnect_timeout_s=60,
             gcs_server_request_timeout_seconds=10,
         )
     ],
@@ -598,7 +537,6 @@ def test_get_actor_when_gcs_is_down(ray_start_regular_with_external_redis):
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            gcs_rpc_server_reconnect_timeout_s=60,
             gcs_server_request_timeout_seconds=10,
         )
     ],
@@ -641,7 +579,6 @@ def redis_replicas(monkeypatch):
     "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
-            gcs_rpc_server_reconnect_timeout_s=60,
             gcs_server_request_timeout_seconds=10,
             redis_db_connect_retries=50,
         )
@@ -662,7 +599,7 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
     import redis
 
     redis_addr = os.environ.get("RAY_REDIS_ADDRESS")
-    ip, port = redis_addr.split(":")
+    ip, port = parse_address(redis_addr)
     redis_cli = redis.Redis(ip, port)
 
     def get_connected_nodes():
@@ -678,7 +615,7 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
     leader_cli = None
     follower_cli = []
     for addr in nodes:
-        ip, port = addr.split(":")
+        ip, port = parse_address(addr)
         cli = redis.Redis(ip, port)
         meta = nodes[addr]
         flags = meta["flags"].split(",")
@@ -769,7 +706,6 @@ print("DONE")
     "ray_start_cluster_head_with_external_redis_sentinel",
     [
         generate_system_config_map(
-            gcs_rpc_server_reconnect_timeout_s=60,
             gcs_server_request_timeout_seconds=10,
             redis_db_connect_retries=50,
         )
@@ -793,7 +729,7 @@ def test_redis_with_sentinel_failureover(
     import redis
 
     redis_addr = os.environ.get("RAY_REDIS_ADDRESS")
-    ip, port = redis_addr.split(":")
+    ip, port = parse_address(redis_addr)
     redis_cli = redis.Redis(ip, port)
     print(redis_cli.info("sentinel"))
     redis_name = redis_cli.info("sentinel")["master0"]["name"]
@@ -948,7 +884,6 @@ def test_session_name(ray_start_cluster):
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            gcs_rpc_server_reconnect_timeout_s=60,
             gcs_server_request_timeout_seconds=10,
             raylet_liveness_self_check_interval_ms=3000,
         )
@@ -973,7 +908,7 @@ def test_redis_data_loss_no_leak(ray_start_regular_with_external_redis):
     redis_addr = os.environ.get("RAY_REDIS_ADDRESS")
     import redis
 
-    ip, port = redis_addr.split(":")
+    ip, port = parse_address(redis_addr)
     cli = redis.Redis(ip, port)
     cli.flushall()
     raylet_proc = ray._private.worker._global_node.all_processes[
@@ -1007,6 +942,7 @@ def test_redis_logs(external_redis):
         # assert "redis_context.cc" not in result.output
     finally:
         from click.testing import CliRunner
+
         import ray.scripts.scripts as scripts
 
         runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
@@ -1255,7 +1191,6 @@ class HangPlugin(RuntimeEnvPlugin):
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            gcs_rpc_server_reconnect_timeout_s=60,
             testing_asio_delay_us="NodeManagerService.grpc_server.CancelResourceReserve=500000000:500000000",  # noqa: E501
         ),
     ],
@@ -1323,11 +1258,10 @@ def test_mark_job_finished_rpc_retry_and_idempotency(shutdown_only, monkeypatch)
     Uses RPC failure injection to simulate network retry scenarios.
     """
     # Inject RPC failures for MarkJobFinished - simulate network failures
-    # Format: method_name=max_failures:request_failure_prob:response_failure_prob
     # We inject request failures to force retries and test idempotency
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "ray::rpc::JobInfoGcsService.grpc_client.MarkJobFinished=3:50:0",
+        "ray::rpc::JobInfoGcsService.grpc_client.MarkJobFinished=3:50:0:0",
     )
 
     ray.init(num_cpus=1)

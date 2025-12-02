@@ -6,20 +6,20 @@ _common/ (not in tests/) to be accessible in the Ray package distribution.
 """
 
 import asyncio
-from collections.abc import Awaitable
-from contextlib import contextmanager
 import inspect
 import os
 import time
 import traceback
-from typing import Any, Callable, Dict, Iterator, List, Optional, Set
 import uuid
+from collections.abc import Awaitable
+from contextlib import contextmanager
 from enum import Enum
-
+from typing import Any, Callable, Dict, Iterator, List, Optional, Set
 
 import ray
+import ray._common.usage.usage_lib as ray_usage_lib
 import ray._private.utils
-import ray._private.usage.usage_lib as ray_usage_lib
+from ray._common.network_utils import build_address
 
 
 @ray.remote(num_cpus=0)
@@ -174,7 +174,7 @@ def simulate_s3_bucket(
     os.environ["AWS_SECURITY_TOKEN"] = "testing"
     os.environ["AWS_SESSION_TOKEN"] = "testing"
 
-    s3_server = f"http://localhost:{port}"
+    s3_server = f"http://{build_address('localhost', port)}"
     server = ThreadedMotoServer(port=port)
     server.start()
     url = f"s3://{uuid.uuid4().hex}?region={region}&endpoint_override={s3_server}"
@@ -247,3 +247,14 @@ def check_library_usage_telemetry(
         assert all(
             [extra_usage_tags[k] == v for k, v in expected_extra_usage_tags.items()]
         ), extra_usage_tags
+
+
+def is_named_tuple(cls):
+    """Return True if cls is a namedtuple and False otherwise."""
+    b = cls.__bases__
+    if len(b) != 1 or b[0] is not tuple:
+        return False
+    f = getattr(cls, "_fields", None)
+    if not isinstance(f, tuple):
+        return False
+    return all(type(n) is str for n in f)

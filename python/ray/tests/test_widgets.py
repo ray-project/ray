@@ -6,7 +6,7 @@ from unittest import mock
 import pytest
 
 import ray
-from ray.widgets.util import repr_with_fallback, _can_display_ipywidgets
+from ray.widgets.util import _can_display_ipywidgets, repr_with_fallback
 
 
 @pytest.fixture

@@ -4,7 +4,7 @@ from .logical_operator import LogicalOperator
 from .plan import Plan
 
 if TYPE_CHECKING:
-    from ray.data import DataContext
+    from ray.data.context import DataContext
 
 
 class LogicalPlan(Plan):
