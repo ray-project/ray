@@ -260,7 +260,7 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
       scheduling::NodeID(id),
       local_node_resources,
       /*is_node_available_fn*/ [&gcs_client](scheduling::NodeID node_id) {
-        return gcs_client.Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
+        return gcs_client.Nodes().IsNodeAlive(NodeID::FromBinary(node_id.Binary()));
       });
 
   return scheduler;
@@ -349,9 +349,10 @@ class LocalLeaseManagerTest : public ::testing::Test {
             /*get_time=*/[this]() { return current_time_ms_; })) {}
 
   void SetUp() override {
-    static rpc::GcsNodeInfo node_info;
-    ON_CALL(*gcs_client_->mock_node_accessor, Get(::testing::_, ::testing::_))
-        .WillByDefault(::testing::Return(&node_info));
+    static rpc::GcsNodeAddressAndLiveness node_info;
+    ON_CALL(*gcs_client_->mock_node_accessor,
+            GetNodeAddressAndLiveness(::testing::_, ::testing::_))
+        .WillByDefault(::testing::Return(node_info));
   }
 
   RayObject *MakeDummyArg() {
