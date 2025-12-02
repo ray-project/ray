@@ -2,7 +2,8 @@
 
 # Asyncio and concurrency best practices in Ray Serve
 
-Ray Serve is built on top of Python's asyncio event loop. Your handler code runs inside that loop, so whether your code is *blocking* or *non-blocking* directly affects latency and throughput.
+The code that runs inside of each replica in a Ray Serve deployment runs on an asyncio event loop.
+Asyncio enables efficient I/O bound concurrency but requires following a few best practices for optimal performance.
 
 This guide explains:
 
@@ -30,8 +31,6 @@ Use this decision table as a starting point:
 | Streaming responses | `async def` generator | Integrates with backpressure and non-blocking iteration. |
 | FastAPI ingress (`@serve.ingress`) | `def` or `async def` | FastAPI runs `def` endpoints in a threadpool, so they don't block the loop. |
 
-You can always mix styles inside a deployment. For example, use `async def` for request handling and offload CPU-heavy parts to a threadpool.
-
 ## How Ray Serve executes your code
 
 At a high level, requests go through a router to a replica actor that runs your code:
@@ -51,7 +50,7 @@ The following are the key ideas to consider when deciding to use `async def` or 
 
 - Serve uses asyncio event loops for routing and for running replicas.
 - By default, user code runs on a separate event loop from the replica's main/control loop, so blocking user code doesn't interfere with health checks and autoscaling.
-- Depending on the configuration, `def` handlers may run directly on the user event loop (blocking) or in a threadpool (non-blocking for the loop).
+- Depending on the value of `RAY_SERVE_RUN_SYNC_IN_THREADPOOL`, `def` handlers may run directly on the user event loop (blocking) or in a threadpool (non-blocking for the loop).
 
 ### Pure Serve deployments (no FastAPI ingress)
 
@@ -286,7 +285,7 @@ export RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=1  # default
 This isolation:
 
 - Protects system tasks (health checks, controller communication) from being blocked by user code.
-- Adds some amount of overhead to cross-loop communication.
+- Adds some amount of overhead to cross-loop communication, resulting in higher latency in request. For throughput-optimized configurations, see [High throughput optimization](serve-high-throughput). 
 
 You can disable this behavior:
 
@@ -314,7 +313,7 @@ Disabling this:
 export RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0
 ```
 
-makes the router share an event loop with other work. This can reduce overhead in advanced, highly optimized scenarios, but makes the system more sensitive to blocking operations.
+makes the router share an event loop with other work. This can reduce overhead in advanced, highly optimized scenarios, but makes the system more sensitive to blocking operations. See [High throughput optimization](serve-high-throughput). 
 
 For most production deployments, you should keep the defaults (`1`) for both separate-loop flags.
 
@@ -347,6 +346,20 @@ The batch handler runs on the user event loop:
 ```
 
 This keeps the event loop responsive while the model runs in a thread.
+
+#### `max_concurrent_batches` and event loop yielding
+
+The `@serve.batch` decorator accepts a `max_concurrent_batches` argument that controls how many batches can be processed concurrently. However, this argument only works effectively if your batch handler yields control back to the event loop during processing.
+
+If your batch handler blocks the event loop (for example, by doing heavy CPU work without awaiting or offloading), `max_concurrent_batches` won't provide the concurrency you expect. The event loop can only start processing a new batch when the current batch yields control.
+
+To get the benefit of `max_concurrent_batches`:
+
+- Use `async def` for your batch handler and `await` I/O operations or offloaded CPU work.
+- Offload CPU-heavy batch processing to a threadpool with `asyncio.to_thread()` or `loop.run_in_executor()`.
+- Avoid blocking operations that prevent the event loop from scheduling other batches.
+
+In the offloaded batch example above, the handler yields to the event loop when awaiting the threadpool executor, which allows multiple batches to be in flight simultaneously (up to the `max_concurrent_batches` limit).
 
 ### Streaming
 
