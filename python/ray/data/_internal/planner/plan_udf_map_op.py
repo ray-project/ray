@@ -267,7 +267,7 @@ def plan_udf_map_op(
     enable_true_multi_threading: bool = (
         compute.enable_true_multi_threading
         if isinstance(compute, ActorPoolStrategy)
-        else False
+        else True
     )
     fn, init_fn = _get_udf(
         op._fn,
