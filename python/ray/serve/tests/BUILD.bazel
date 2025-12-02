@@ -388,7 +388,8 @@ AUTOSCALING_METRIC_ENV_VARIANTS = {
     "metr_disab": {
         "env": {
             "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
-            # Make sure queued metrics are cleared out quickly.
+            # Speed up Serve replica and handle autoscaling metrics pushes,
+            # so that we can test autoscaling more quickly.
             "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
             "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
         },
@@ -397,7 +398,8 @@ AUTOSCALING_METRIC_ENV_VARIANTS = {
     "metr_agg_at_controller": {
         "env": {
             "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
-            # Make sure queued metrics are cleared out quickly.
+            # Speed up Serve replica and handle autoscaling metrics pushes,
+            # so that we can test autoscaling more quickly.
             "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
             "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
         },
@@ -407,7 +409,8 @@ AUTOSCALING_METRIC_ENV_VARIANTS = {
         "env": {
             "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER": "1",
             "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
-            # Make sure queued metrics are cleared out quickly.
+            # Speed up Serve replica and handle autoscaling metrics pushes,
+            # so that we can test autoscaling more quickly.
             "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
             "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
         },

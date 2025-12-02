@@ -721,7 +721,7 @@ def test_update_autoscaling_config(serve_instance):
                 "autoscaling_config": {
                     "target_ongoing_requests": 1,
                     "min_replicas": 1,
-                    "max_replicas": 10,
+                    "max_replicas": 1,
                     "upscale_delay_s": 0.5,
                     "downscale_delay_s": 0.5,
                     "look_back_period_s": 2,
@@ -741,14 +741,19 @@ def test_update_autoscaling_config(serve_instance):
     signal.send.remote()
     h.remote().result()
 
-    print(time.ctime(), "Sending 5 blocked requests. Deployment should NOT scale up.")
+    print(
+        time.ctime(),
+        "Sending 5 blocked requests. Deployment should NOT scale up because max_replicas is 1.",
+    )
     signal.send.remote(clear=True)
     [h.remote() for _ in range(5)]
     with pytest.raises(RuntimeError, match="timeout"):
         wait_for_condition(check_num_replicas_gte, name="A", target=2)
 
-    print(time.ctime(), "Redeploying with `look_back_period_s` updated to 0.5s.")
-    config_template["deployments"][0]["autoscaling_config"]["look_back_period_s"] = 0.5
+    print(
+        time.ctime(), "Redeploying with max_replicas updated to 5 to allow upscaling."
+    )
+    config_template["deployments"][0]["autoscaling_config"]["max_replicas"] = 5
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
 
     wait_for_condition(check_num_replicas_gte, name="A", target=2)
