@@ -417,15 +417,22 @@ Detached actor semantics
 
 Detached actors have special lifecycle handling:
 
-1. **No owner tracking**: Detached actors aren't added to the owner's children list.
+1. **No owner tracking**: `PollOwnerForActorRefDeleted <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L963>`__ is `only called for non-detached actors <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L762>`__. Detached actors skip owner-based lifecycle tracking.
 
-2. **Persist across driver exit**: The actor continues running when its creator exits.
+2. **Persist across driver exit**: Since detached actors don't have owner tracking, they survive when the creator driver exits. The actor continues running independently.
 
-3. **Must be explicitly killed**: Use ``ray.kill(actor)`` to terminate.
+3. **Explicit termination required**: Detached actors `must be explicitly destroyed <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1678>`__ via ``ray.kill(actor)``. They don't automatically terminate when references go out of scope.
 
-4. **Root detached actor ID**: Non-detached actors created by a detached actor inherit the root detached actor ID for lifecycle tracking.
+4. **Root detached actor ID**: The `ShouldLoadActor <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L183>`__ function shows the lifecycle hierarchy:
 
-5. **Name required for retrieval**: Since detached actors outlive their creator, you typically give them names to retrieve later:
+   - Non-detached actors inherit the root detached actor ID from their creator
+   - If root is nil: actor dies with its job
+   - If root is itself: actor lives independently (true detached actor)
+   - Otherwise: actor dies when its root detached actor dies
+
+5. **Runtime env tracking**: For detached actors, GCS `registers the runtime env <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L768>`__ for garbage collection instead of owner tracking.
+
+6. **Name recommended for retrieval**: Since detached actors outlive their creator, naming them enables retrieval from other processes:
 
 .. testcode::
   :skipif: True
