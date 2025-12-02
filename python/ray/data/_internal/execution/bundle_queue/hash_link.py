@@ -169,7 +169,7 @@ class HashLinkedQueue(BaseBundleQueue, SupportsIndexing, SupportsDeque):
         return node
 
     @override
-    def done_adding_bundles(self, key: Optional[int] = None):
+    def finalize(self, key: Optional[int] = None):
         pass
 
     def __iter__(self) -> Iterator[RefBundle]:

@@ -142,7 +142,7 @@ class ExactRebundleQueue(BaseBundleQueue, SupportsRebundling):
         return self._ready_bundles[0]
 
     @override
-    def done_adding_bundles(self, **kwargs: Any):
+    def finalize(self, **kwargs: Any):
         if len(self._pending_bundles) > 0:
             self._try_build_ready_bundle(flush_remaining=True)
 

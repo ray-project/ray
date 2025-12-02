@@ -122,7 +122,7 @@ class RebundleQueue(BaseBundleQueue, SupportsRebundling):
         return pack
 
     @override
-    def done_adding_bundles(self, **kwargs: Any):
+    def finalize(self, **kwargs: Any):
         self._finalized = True
 
     @override

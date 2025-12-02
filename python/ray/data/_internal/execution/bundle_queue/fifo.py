@@ -72,7 +72,7 @@ class FIFOBundleQueue(BaseBundleQueue, SupportsDeque):
         return len(self) > 0
 
     @override
-    def done_adding_bundles(self, **kwargs: Any):
+    def finalize(self, **kwargs: Any):
         pass
 
     def __iter__(self) -> Iterator[RefBundle]:

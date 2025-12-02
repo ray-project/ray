@@ -61,7 +61,7 @@ class OrderedBundleQueue(BaseBundleQueue):
         return self._inner[self._current_index][0]
 
     @override
-    def done_adding_bundles(self, key: int):
+    def finalize(self, key: int):
         assert key is not None and key >= self._current_index
         self._completed_keys.add(key)
         if key == self._current_index:

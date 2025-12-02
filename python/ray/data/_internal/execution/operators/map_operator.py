@@ -457,7 +457,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
-            self._output_queue.done_adding_bundles(key=task_index)
+            self._output_queue.finalize(key=task_index)
             if task_done_callback:
                 task_done_callback()
 
@@ -488,7 +488,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         return list(self._metadata_tasks.values()) + list(self._data_tasks.values())
 
     def all_inputs_done(self):
-        self._block_ref_bundler.done_adding_bundles()
+        self._block_ref_bundler.finalize()
         if self._block_ref_bundler.has_next():
             # Handle any leftover bundles in the bundler.
             bundled_input = self._block_ref_bundler.get_next()

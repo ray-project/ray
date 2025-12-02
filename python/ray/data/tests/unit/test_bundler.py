@@ -86,7 +86,7 @@ def test_streaming_repartition_ref_bundler(target, in_bundles, expected_row_coun
             out_bundle = bundler.get_next()
             out_bundles.append(out_bundle)
 
-    bundler.done_adding_bundles()
+    bundler.finalize()
 
     while bundler.has_next():
         out_bundle = bundler.get_next()

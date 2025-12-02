@@ -76,7 +76,7 @@ class BaseBundleQueue(_QueueMetricRecorderMixin):
         Args:
             bundle: The bundle to add.
             **kwargs: Additional queue-specific parameters (e.g., `key` for ordered queues).
-                This is used for `done_adding_bundles`.
+                This is used for `finalize`.
         """
         ...
 
@@ -113,7 +113,7 @@ class BaseBundleQueue(_QueueMetricRecorderMixin):
         ...
 
     @abc.abstractmethod
-    def done_adding_bundles(self, **kwargs: Any):
+    def finalize(self, **kwargs: Any):
         """Signal that no additional bundles will be added to the bundler so
         the bundler can be finalized. The keys of kwargs provided should be the same
         as the ones passed into the `add()` method. This is important for ordered
