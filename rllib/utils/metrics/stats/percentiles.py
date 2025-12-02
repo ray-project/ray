@@ -2,11 +2,9 @@ from collections import deque
 from itertools import chain
 from typing import Any, Dict, List, Optional, Union
 
-import numpy as np
-
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics.stats.base import StatsBase
-from ray.rllib.utils.metrics.stats.utils import batch_values_to_cpu
+from ray.rllib.utils.metrics.stats.utils import batch_values_to_cpu, safe_isnan
 from ray.util.annotations import DeveloperAPI
 
 torch, _ = try_import_torch()
@@ -131,9 +129,7 @@ class PercentilesStats(StatsBase):
         # Convert TensorFlow tensors to CPU immediately, keep PyTorch tensors as-is
         if tf and tf.is_tensor(value):
             value = value.numpy()
-        if (torch and torch.is_tensor(value) and torch.isnan(value)) or (
-            isinstance(value, float) and np.isnan(value)
-        ):
+        if safe_isnan(value):
             raise ValueError("NaN values are not allowed in PercentilesStats")
 
         if torch and isinstance(value, torch.Tensor):

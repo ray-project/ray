@@ -5,7 +5,7 @@ import numpy as np
 
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics.stats.base import StatsBase
-from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
+from ray.rllib.utils.metrics.stats.utils import safe_isnan, single_value_to_cpu
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
@@ -92,10 +92,7 @@ class EmaStats(StatsBase):
             value = value.numpy()
 
         # If incoming value is NaN, do nothing
-        if torch and torch.is_tensor(value):
-            if torch.isnan(value):
-                return
-        elif np.isnan(value):
+        if safe_isnan(value):
             return
 
         if torch and isinstance(value, torch.Tensor):
@@ -103,9 +100,7 @@ class EmaStats(StatsBase):
             value = value.detach()
 
         # If internal value is NaN, replace it with the incoming value
-        if (
-            torch and torch.is_tensor(self._value) and torch.isnan(self._value)
-        ) or np.isnan(self._value):
+        if safe_isnan(self._value):
             self._value = value
         else:
             # Otherwise, update the internal value using the EMA formula

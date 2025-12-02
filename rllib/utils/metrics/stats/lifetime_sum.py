@@ -1,11 +1,9 @@
 import time
 from typing import Any, Dict, List, Union
 
-import numpy as np
-
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics.stats.base import StatsBase
-from ray.rllib.utils.metrics.stats.utils import single_value_to_cpu
+from ray.rllib.utils.metrics.stats.utils import safe_isnan, single_value_to_cpu
 from ray.util.annotations import DeveloperAPI
 
 torch, _ = try_import_torch()
@@ -153,9 +151,7 @@ class LifetimeSumStats(StatsBase):
         # Convert TensorFlow tensors to CPU immediately
         if tf and tf.is_tensor(value):
             value = value.numpy()
-        if (torch and torch.is_tensor(value) and torch.isnan(value)) or (
-            isinstance(value, float) and np.isnan(value)
-        ):
+        if safe_isnan(value):
             return
 
         if torch and isinstance(value, torch.Tensor):

@@ -1,11 +1,30 @@
 from collections import deque
 from typing import Any, List, Union
 
+import numpy as np
+
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.util.annotations import DeveloperAPI
 
 torch, _ = try_import_torch()
 _, tf, _ = try_import_tf()
+
+
+@DeveloperAPI
+def safe_isnan(value):
+    """Check if a value is NaN.
+
+    Args:
+        value: The value to check.
+
+    Returns:
+        True if the value is NaN, False otherwise.
+    """
+    if torch and torch.is_tensor(value):
+        return torch.isnan(value)
+    if tf and tf.is_tensor(value):
+        return tf.math.is_nan(value)
+    return np.isnan(value)
 
 
 @DeveloperAPI
