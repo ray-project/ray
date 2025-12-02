@@ -488,33 +488,35 @@ Summary diagram
   └──────────────┘    │
                       ▼
   ┌───────────────────────────────────────────────────────────────────────┐
-  │                           Core Worker                                  │
+  │                           Core Worker                                 │
   │                                                                       │
   │  1. Generate ActorID                                                  │
   │  2. Build TaskSpec                                                    │
   │  3. Register with GCS (sync for named, async for unnamed)             │
-  │  4. Submit creation task                                              │
+  │  4. Submit creation task via ActorTaskSubmitter                       │
   └───────────────────────────────────────────────────────────────────────┘
                       │
                       ▼
   ┌───────────────────────────────────────────────────────────────────────┐
-  │                              GCS                                       │
+  │                              GCS                                      │
   │                                                                       │
-  │  ┌─────────────────────┐    ┌────────────────────────────────────┐   │
-  │  │   GcsActorManager   │    │      GcsActorScheduler              │   │
-  │  │                     │    │                                     │   │
-  │  │ • Register actor    │───►│ • Select node (GCS or Raylet)      │   │
-  │  │ • Track states      │    │ • Lease worker                      │   │
-  │  │ • Handle failures   │◄───│ • Handle spillback                  │   │
-  │  │ • Manage restarts   │    │ • Create actor on worker           │   │
-  │  └─────────────────────┘    └────────────────────────────────────┘   │
-  └───────────────────────────────────────────────────────────────────────┘
-                      │
-                      ▼
-  ┌───────────────────────────────────────────────────────────────────────┐
-  │                        Raylet (Node Manager)                           │
-  │                                                                       │
-  │  • Handle worker lease requests                                       │
+  │  ┌─────────────────────┐    ┌────────────────────────────────────┐    │
+  │  │   GcsActorManager   │    │      GcsActorScheduler             │    │
+  │  │                     │    │                                    │    │
+  │  │ • Register actor    │───►│ • Select node (GCS or Raylet)      │    │
+  │  │ • Track states      │    │ • Lease worker from Raylet         │    │
+  │  │ • Handle failures   │◄───│ • Handle spillback/rejection       │    │
+  │  │ • Manage restarts   │    │ • Create actor on worker           │    │
+  │  └─────────────────────┘    └────────────────────────────────────┘    │
+  │                 ▲                                                     │
+  │                 │ AsyncReportWorkerFailure                            │
+  └─────────────────│─────────────────────────────────────────────────────┘
+                    │
+                    │
+  ┌─────────────────│─────────────────────────────────────────────────────┐
+  │                 │           Raylet (Node Manager)                     │
+  │                 │                                                     │
+  │  • Handle worker lease requests (HandleRequestWorkerLease)            │
   │  • Manage local resources                                             │
   │  • Start/stop workers                                                 │
   │  • Report worker deaths to GCS                                        │
@@ -522,10 +524,10 @@ Summary diagram
                       │
                       ▼
   ┌───────────────────────────────────────────────────────────────────────┐
-  │                         Actor Worker                                   │
+  │                         Actor Worker                                  │
   │                                                                       │
-  │  • Execute __init__                                                   │
-  │  • Receive and execute actor tasks                                    │
+  │  • Execute __init__ (via task_execution_handler)                      │
+  │  • Receive and execute actor tasks (HandlePushTask)                   │
   │  • Maintain actor state                                               │
   │  • Handle graceful shutdown                                           │
   └───────────────────────────────────────────────────────────────────────┘
