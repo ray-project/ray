@@ -3874,13 +3874,16 @@ class TestAutoscaling:
                 )
                 asm.record_request_metrics_for_replica(replica_metric_report)
 
+        # Record time before scale-up
+        time_before_scale_up = timer.time()
+
         # Trigger autoscaling decision
         self.scale(dsm, asm, [TEST_DEPLOYMENT_ID])
 
-        # After scale-up, last_scale_up_time should be set
+        # After scale-up, last_scale_up_time should be set and greater than the time before
         ctx_after_scale_up = dep_autoscaling_state.get_autoscaling_context(5)
         assert ctx_after_scale_up.last_scale_up_time is not None
-        assert ctx_after_scale_up.last_scale_up_time > 0
+        assert ctx_after_scale_up.last_scale_up_time >= time_before_scale_up
         assert ctx_after_scale_up.last_scale_down_time is None
 
         scale_up_time = ctx_after_scale_up.last_scale_up_time
@@ -3937,15 +3940,19 @@ class TestAutoscaling:
                 )
                 asm.record_request_metrics_for_replica(replica_metric_report)
 
+        # Record time before scale-down
+        time_before_scale_down = timer.time()
+
         # Trigger autoscaling decision for scale-down
         self.scale(dsm, asm, [TEST_DEPLOYMENT_ID])
 
-        # After scale-down, last_scale_down_time should be set
+        # After scale-down, last_scale_down_time should be set and greater than the time before
         ctx_after_scale_down = dep_autoscaling_state.get_autoscaling_context(1)
         assert (
             ctx_after_scale_down.last_scale_up_time == scale_up_time
         )  # Should remain unchanged
         assert ctx_after_scale_down.last_scale_down_time is not None
+        assert ctx_after_scale_down.last_scale_down_time >= time_before_scale_down
         assert ctx_after_scale_down.last_scale_down_time > scale_up_time
 
 
