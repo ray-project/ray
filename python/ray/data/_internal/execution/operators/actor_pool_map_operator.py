@@ -180,6 +180,9 @@ class ActorPoolMapOperator(MapOperator):
         self._locality_hits = 0
         self._locality_misses = 0
 
+        # Track actor init retry count
+        self._actor_init_retry_count = 0
+
     @staticmethod
     def _create_task_selector(actor_pool: "_ActorPool") -> "_ActorTaskSelector":
         return _ActorTaskSelectorImpl(actor_pool)
@@ -291,7 +294,19 @@ class ActorPoolMapOperator(MapOperator):
         def _task_done_callback(res_ref):
             # res_ref is a future for a now-ready actor; move actor from pending to the
             # active actor pool.
-            has_actor = self._actor_pool.pending_to_running(res_ref)
+            try:
+                has_actor = self._actor_pool.pending_to_running(res_ref)
+            except Exception:
+                # Check if we should retry this initialization failure based on DataContext settings.
+                if self.data_context.actor_init_retry_on_errors:
+                    self._actor_init_retry_count += 1
+                    max_retries = self.data_context.actor_init_max_retries
+                    # -1 means infinite retries
+                    if max_retries < 0 or self._actor_init_retry_count <= max_retries:
+                        return
+                # Non-retryable error or max retries exceeded, let it propagate.
+                raise
+
             if not has_actor:
                 # Actor has already been killed.
                 return

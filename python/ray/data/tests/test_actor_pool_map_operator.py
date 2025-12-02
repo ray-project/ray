@@ -904,6 +904,77 @@ def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context)
     assert sorted(res, key=lambda x: x["id"]) == [{"id": i} for i in range(num_items)]
 
 
+@pytest.mark.parametrize(
+    "retry_on_errors,max_retries,should_succeed",
+    [
+        (True, 3, True),  # Retry enabled, enough retries
+        (True, 2, False),  # Retry enabled, but not enough retries
+        (False, 3, False),  # Retry disabled
+    ],
+)
+def test_actor_init_failure_retry(
+    ray_start_regular_shared,
+    restore_data_context,
+    retry_on_errors,
+    max_retries,
+    should_succeed,
+):
+    """Tests that actor initialization failures are retried based on
+    actor_init_retry_on_errors and actor_init_max_retries settings.
+
+    When an actor's __init__ fails, the _task_done_callback in ActorPoolMapOperator
+    catches the ActorDiedError and checks actor_init_retry_on_errors to decide
+    whether to retry or propagate the error.
+    """
+    from ray.exceptions import ActorDiedError
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self._count = 0
+
+        def increment(self):
+            self._count += 1
+            return self._count
+
+    init_counter = Counter.remote()
+
+    class FailingInitMapper:
+        def __init__(self):
+            # Fail the first 3 initialization attempts, succeed on 4th
+            count = ray.get(init_counter.increment.remote())
+            if count <= 3:
+                raise ValueError("init_failed")
+
+        def __call__(self, batch):
+            return batch
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.actor_init_retry_on_errors = retry_on_errors
+    ctx.actor_init_max_retries = max_retries
+    # Set to 0 so actors start asynchronously and retry callback can work
+    ctx.wait_for_min_actors_s = 0
+
+    if should_succeed:
+        # With retry enabled and enough retries, operation should eventually succeed
+        result = (
+            ray.data.range(10)
+            .map_batches(
+                FailingInitMapper,
+                batch_size=1,
+            )
+            .take_all()
+        )
+        assert len(result) == 10
+    else:
+        # Without retry or not enough retries, should raise ActorDiedError
+        with pytest.raises(ActorDiedError, match="init_failed"):
+            ray.data.range(10).map_batches(
+                FailingInitMapper,
+                batch_size=1,
+            ).take_all()
+
+
 if __name__ == "__main__":
     import sys
 
