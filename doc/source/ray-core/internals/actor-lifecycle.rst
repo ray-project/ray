@@ -216,26 +216,30 @@ Executing the actor creation task
 
 Once a worker is assigned, the actor creation task executes:
 
-1. GCS sends a `CreateActor RPC <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_scheduler.cc#L439>`__ to the worker.
+1. GCS `CreateActorOnWorker <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_scheduler.cc#L441>`__ sends a ``PushNormalTask`` RPC to the worker with the actor creation task spec.
 
-2. The worker's `CoreWorker <https://github.com/ray-project/ray/blob/master/src/ray/core_worker/core_worker.cc#L2903>`__ handles the request:
+2. The worker's `CoreWorker::HandlePushTask <https://github.com/ray-project/ray/blob/master/src/ray/core_worker/core_worker.cc#L3391>`__ receives the request:
 
-   a. Deserializes the actor handle and task specification.
-   b. Fetches the pickled class definition from GCS key-value store.
-   c. Unpickles and instantiates the actor class.
-   d. Calls the ``__init__`` method with the provided arguments.
+   a. For actor creation tasks, `sets the actor context <https://github.com/ray-project/ray/blob/master/src/ray/core_worker/core_worker.cc#L3402>`__ (actor ID, job info).
+   b. Queues the task for execution via ``task_receiver_->HandleTask``.
 
-3. On success, `GcsActorManager::OnActorCreationSuccess <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1761>`__:
+3. The `task_execution_handler <https://github.com/ray-project/ray/blob/master/python/ray/_raylet.pyx#L2131>`__ (Python/Cython) executes the task:
 
-   a. Updates actor state to ``ALIVE``.
-   b. Records the worker and node IDs.
-   c. Publishes the actor info so subscribers can learn the actor's address.
-   d. Invokes the creation callback to notify the creator.
+   a. Fetches the pickled class definition from GCS key-value store.
+   b. Unpickles and instantiates the actor class.
+   c. Calls the ``__init__`` method with the provided arguments.
 
-4. On failure (e.g., ``__init__`` raises an exception), the actor may be:
+4. On success, the ``PushNormalTask`` RPC reply triggers `schedule_success_handler <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_scheduler.cc#L489>`__ which calls `GcsActorManager::OnActorCreationSuccess <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1748>`__:
 
-   - Marked as ``DEAD`` if it's a permanent failure
-   - Rescheduled if it's a transient failure and restarts are available
+   a. `Updates actor state to ALIVE <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1781>`__.
+   b. Records the worker and node IDs in ``created_actors_``.
+   c. Persists to storage and publishes actor info so subscribers learn the actor's address.
+   d. Invokes creation callbacks to notify the creator.
+
+5. On failure (e.g., ``__init__`` raises an exception):
+
+   - The worker returns a ``CreationTaskError`` status.
+   - GCS marks the actor as ``DEAD`` (creation task failures are permanent and don't trigger restarts).
 
 
 Submitting actor tasks
