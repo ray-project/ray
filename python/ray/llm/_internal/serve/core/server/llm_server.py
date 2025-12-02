@@ -293,6 +293,7 @@ class LLMServer(LLMServerProtocol):
         *,
         engine_method: str,
         batch_output_stream: bool = False,
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[Any, None]:
         """Run the engine method on the request + perform batching when stream=True.
 
@@ -300,6 +301,7 @@ class LLMServer(LLMServerProtocol):
             request: The request to run.
             engine_method: The method to call on the engine.
             batch_output_stream: Whether to batch the output stream.
+            raw_request_headers: Optional HTTP headers from the original request.
 
         Returns:
             An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the non-streaming response from engine directly.
@@ -309,7 +311,9 @@ class LLMServer(LLMServerProtocol):
         await self._maybe_resolve_lora_from_multiplex()
 
         is_stream = hasattr(request, "stream") and request.stream
-        engine_stream = getattr(self.engine, engine_method)(request)
+        engine_stream = getattr(self.engine, engine_method)(
+            request, raw_request_headers
+        )
 
         if is_stream and batch_output_stream:
             stream = self._batch_output_stream(engine_stream)
@@ -330,17 +334,18 @@ class LLMServer(LLMServerProtocol):
         Args:
             request: A ChatCompletionRequest object.
             raw_request_headers: Optional HTTP headers from the original request.
-                Retained for custom ingress/router implementations that need
-                access to the headers. The core server does not forward them
-                to the engine.
 
         Returns:
-            An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of chat streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the ChatCompletionResponse object directly.
+            An AsyncGenerator of the response. If stream is True and batching
+            is enabled, then the generator will yield a list of chat streaming
+            responses (strings of the format data: {response_json}\\n\\n).
+            Otherwise, it will yield the ChatCompletionResponse object directly.
         """
         return await self._run_request(
             request,
             engine_method="chat",
             batch_output_stream=True,
+            raw_request_headers=raw_request_headers,
         )
 
     async def completions(
@@ -355,15 +360,18 @@ class LLMServer(LLMServerProtocol):
         Args:
             request: A CompletionRequest object.
             raw_request_headers: Optional HTTP headers from the original request.
-                Available for custom routers; not forwarded to the engine.
 
         Returns:
-            An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of completion streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the CompletionResponse object directly.
+            An AsyncGenerator of the response. If stream is True and batching
+            is enabled, then the generator will yield a list of completion
+            streaming responses (strings of the format data: {response_json}\\n\\n).
+            Otherwise, it will yield the CompletionResponse object directly.
         """
         return await self._run_request(
             request,
             engine_method="completions",
             batch_output_stream=True,
+            raw_request_headers=raw_request_headers,
         )
 
     async def embeddings(
@@ -378,7 +386,6 @@ class LLMServer(LLMServerProtocol):
         Args:
             request: An EmbeddingRequest object.
             raw_request_headers: Optional HTTP headers from the original request.
-                Available for custom routers; not forwarded to the engine.
 
         Returns:
             An AsyncGenerator over the EmbeddingResponse object.
@@ -388,6 +395,7 @@ class LLMServer(LLMServerProtocol):
             request,
             engine_method="embeddings",
             batch_output_stream=False,
+            raw_request_headers=raw_request_headers,
         )
 
     async def transcriptions(
@@ -402,9 +410,8 @@ class LLMServer(LLMServerProtocol):
         Returns an AsyncGenerator over the TranscriptionResponse object. This is so that the caller can have a consistent interface across all the methods of chat, completions, embeddings and transcriptions.
 
         Args:
-            request: An TranscriptionRequest object.
+            request: A TranscriptionRequest object.
             raw_request_headers: Optional HTTP headers from the original request.
-                Available for custom routers; not forwarded to the engine.
 
         Returns:
             An AsyncGenerator over the TranscriptionResponse object.
@@ -413,6 +420,7 @@ class LLMServer(LLMServerProtocol):
             request,
             engine_method="transcriptions",
             batch_output_stream=True,
+            raw_request_headers=raw_request_headers,
         )
 
     async def score(
@@ -427,7 +435,6 @@ class LLMServer(LLMServerProtocol):
         Args:
             request: A ScoreRequest object.
             raw_request_headers: Optional HTTP headers from the original request.
-                Available for custom routers; not forwarded to the engine.
 
         Returns:
             An AsyncGenerator over the ScoreResponse object.
@@ -437,6 +444,7 @@ class LLMServer(LLMServerProtocol):
             request,
             engine_method="score",
             batch_output_stream=False,
+            raw_request_headers=raw_request_headers,
         )
 
     async def check_health(self) -> None:
