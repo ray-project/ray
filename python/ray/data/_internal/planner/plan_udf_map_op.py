@@ -218,7 +218,7 @@ def plan_filter_op(
             op._fn_kwargs,
             op._fn_constructor_args if udf_is_callable_class else None,
             op._fn_constructor_kwargs if udf_is_callable_class else None,
-            single_threaded=False,
+            single_threaded=op._compute.single_threaded,
         )
 
         transform_fn = RowMapTransformFn(

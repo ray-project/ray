@@ -161,6 +161,7 @@ class ActorPoolStrategy(ComputeStrategy):
             self.min_size == other.min_size
             and self.max_size == other.max_size
             and self.initial_size == other.initial_size
+            and self.single_threaded == other.single_threaded
             and self.max_tasks_in_flight_per_actor
             == other.max_tasks_in_flight_per_actor
         )
