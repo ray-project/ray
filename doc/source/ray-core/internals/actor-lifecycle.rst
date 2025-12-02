@@ -380,18 +380,36 @@ Lineage reconstruction
 
 Actors with ``max_restarts > 0`` can be reconstructed when their outputs are needed:
 
-1. When an ``ObjectRef`` from a dead actor is accessed, the object is re-computed.
+**Client-side trigger:**
 
-2. `HandleRestartActorForLineageReconstruction <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L360>`__ handles restart requests:
+1. When a task is `submitted to a DEAD actor <https://github.com/ray-project/ray/blob/master/src/ray/core_worker/task_submission/actor_task_submitter.cc#L181>`__ that is owned and restartable:
 
-   a. Verifies the actor is in ``registered_actors_`` (not fully cleaned up).
-   b. Checks ``IsActorRestartable`` returns true.
-   c. Calls ``RestartActor`` with ``need_reschedule=true`` to restart the actor.
+   a. `ActorTaskSubmitter::RestartActorForLineageReconstruction <https://github.com/ray-project/ray/blob/master/src/ray/core_worker/task_submission/actor_task_submitter.cc#L347>`__ is called.
+   b. Sets local state to ``RESTARTING``.
+   c. Sends ``RestartActorForLineageReconstruction`` RPC to GCS.
 
-3. Actors are kept in ``registered_actors_`` for lineage reconstruction if:
+2. Also triggered when actor `becomes DEAD with pending tasks <https://github.com/ray-project/ray/blob/master/src/ray/core_worker/task_submission/actor_task_submitter.cc#L417>`__.
 
-   - Death cause is ``OUT_OF_SCOPE`` (not ``REF_DELETED``)
-   - Has remaining restarts OR was preempted with ``max_restarts > 0``
+**GCS-side handling:**
+
+3. `HandleRestartActorForLineageReconstruction <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L360>`__ handles restart requests:
+
+   a. `Verifies actor exists <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L367>`__ in ``registered_actors_`` (not fully cleaned up).
+   b. `Checks IsActorRestartable <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L414>`__ returns true.
+   c. `Calls RestartActor <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L420>`__ with ``need_reschedule=true`` to restart the actor (transition 9 in state machine).
+
+**Restartability conditions:**
+
+4. `IsActorRestartable <https://github.com/ray-project/ray/blob/master/src/ray/common/protobuf_utils.cc#L164>`__ returns true only if:
+
+   - Death cause is ``OUT_OF_SCOPE`` (not ``REF_DELETED``, not creation failure)
+   - AND one of:
+
+     - ``max_restarts == -1`` (infinite restarts)
+     - OR ``max_restarts > 0 && preempted``
+     - OR has remaining restarts (accounting for preemption restarts)
+
+5. Actors are kept in ``registered_actors_`` for lineage reconstruction based on the same conditions.
 
 
 Detached actor semantics
