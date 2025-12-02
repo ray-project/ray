@@ -43,12 +43,20 @@ def get_token_auth_middleware(
         ):
             return await handler(request)
 
-        # Check Authorization header first (for API clients)
+        # Try to get authentication token from multiple sources (in priority order):
+        # 1. Standard "Authorization" header (for API clients, SDKs)
+        # 2. Fallback "X-Ray-Authorization" header (for proxies and KubeRay)
+        # 3. Cookie (for web dashboard sessions)
+
         auth_header = request.headers.get(
             authentication_constants.AUTHORIZATION_HEADER_NAME, ""
         )
 
-        # If no Authorization header, check cookie (for web dashboard)
+        if not auth_header:
+            auth_header = request.headers.get(
+                authentication_constants.RAY_AUTHORIZATION_HEADER_NAME, ""
+            )
+
         if not auth_header:
             token = request.cookies.get(
                 authentication_constants.AUTHENTICATION_TOKEN_COOKIE_NAME
@@ -109,13 +117,13 @@ def format_authentication_http_error(status: int, body: str) -> Optional[str]:
     if status == 401:
         return "Authentication required: {body}\n\n{details}".format(
             body=body,
-            details=authentication_constants.HTTP_REQUEST_MISSING_TOKEN_ERROR_MESSAGE,
+            details=authentication_constants.TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
         )
 
     if status == 403:
         return "Authentication failed: {body}\n\n{details}".format(
             body=body,
-            details=authentication_constants.HTTP_REQUEST_INVALID_TOKEN_ERROR_MESSAGE,
+            details=authentication_constants.TOKEN_INVALID_ERROR_MESSAGE,
         )
 
     return None
