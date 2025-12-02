@@ -341,7 +341,7 @@ class ResourceManager:
             not op.throttling_disabled()
             # As long as the op has finished execution, even if there are still
             # non-taken outputs, we don't need to allocate resources for it.
-            and not op.execution_finished()
+            and not op.has_execution_finished()
         )
 
     def get_eligible_ops(self) -> List[PhysicalOperator]:
@@ -553,7 +553,7 @@ class OpResourceAllocator(ABC):
             not op.throttling_disabled()
             # As long as the op has finished execution, even if there are still
             # non-taken outputs, we don't need to allocate resources for it.
-            and not op.execution_finished()
+            and not op.has_execution_finished()
         )
 
     def _get_downstream_eligible_ops(
@@ -674,9 +674,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         ops_to_exclude_from_reservation = []
         # Traverse operator tree collecting all operators that have already finished
         for op in self._topology:
-            if not op.execution_finished():
+            if not op.has_execution_finished():
                 for dep in op.input_dependencies:
-                    if dep.execution_finished():
+                    if dep.has_execution_finished():
                         last_completed_ops.append(dep)
 
         # In addition to completed operators,

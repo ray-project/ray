@@ -33,12 +33,14 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/test_utils.h"
 #include "ray/ray_syncer/node_state.h"
 #include "ray/ray_syncer/ray_syncer.h"
 #include "ray/ray_syncer/ray_syncer_client.h"
 #include "ray/ray_syncer/ray_syncer_server.h"
 #include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/grpc_server.h"
+#include "ray/util/env.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/raii.h"
@@ -63,6 +65,7 @@ RaySyncMessage MakeMessage(MessageType cid, int64_t version, const NodeID &id) {
   msg.set_version(version);
   msg.set_message_type(cid);
   msg.set_node_id(id.Binary());
+
   return msg;
 }
 
@@ -91,7 +94,7 @@ class RaySyncerTest : public ::testing::Test {
     }
     thread_ = std::make_unique<std::thread>([this]() { io_context_.run(); });
     local_id_ = NodeID::FromRandom();
-    syncer_ = std::make_unique<RaySyncer>(io_context_, local_id_.Binary());
+    syncer_ = std::make_unique<RaySyncer>(io_context_, local_id_.Binary(), 1, 0);
   }
 
   MockReporterInterface *GetReporter(MessageType cid) {
@@ -160,9 +163,9 @@ TEST_F(RaySyncerTest, NodeStateConsume) {
 }
 
 struct MockReactor {
-  void StartRead(RaySyncMessage *) { ++read_cnt; }
+  void StartRead(RaySyncMessageBatch *) { ++read_cnt; }
 
-  void StartWrite(const RaySyncMessage *,
+  void StartWrite(const RaySyncMessageBatch *,
                   grpc::WriteOptions opts = grpc::WriteOptions()) {
     ++write_cnt;
   }
@@ -178,9 +181,14 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   auto node_id = NodeID::FromRandom();
 
   MockRaySyncerBidiReactorBase<MockReactor> sync_reactor(
-      io_context_,
-      node_id.Binary(),
-      [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {});
+      /* io_context */ io_context_,
+      /* remote_node_id */ node_id.Binary(),
+      /* message_processor */
+      [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
+      /* max_batch_size */ 1,
+      /* max_batch_delay_ms */ 0);
+  sync_reactor.SetSelfRef(std::shared_ptr<MockRaySyncerBidiReactorBase<MockReactor>>(
+      &sync_reactor, [](auto *) {}));
   auto from_node_id = NodeID::FromRandom();
   auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
   auto msg_ptr1 = std::make_shared<RaySyncMessage>(msg);
@@ -192,7 +200,8 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   // First push will succeed and the second one will be deduplicated.
   ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr1));
   ASSERT_FALSE(sync_reactor.PushToSendingQueue(msg_ptr1));
-  ASSERT_EQ(0, sync_reactor.sending_buffer_.size());
+  EXPECT_TRUE(WaitForCondition(
+      [&sync_reactor]() { return sync_reactor.sending_buffer_.size() == 0; }, 1000));
 
   ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr2));
   ASSERT_EQ(1, sync_reactor.sending_buffer_.size());
@@ -207,6 +216,75 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
   ASSERT_EQ(3, sync_reactor.sending_buffer_.begin()->second->version());
   ASSERT_EQ(
       3, sync_reactor.node_versions_[from_node_id.Binary()][MessageType::RESOURCE_VIEW]);
+}
+
+TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend) {
+  auto node_id = NodeID::FromRandom();
+
+  MockRaySyncerBidiReactorBase<MockReactor> sync_reactor(
+      /* io_context */ io_context_,
+      /* remote_node_id */ node_id.Binary(),
+      /* message_processor */
+      [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
+      /* max_batch_size */ 3,
+      /* max_batch_delay_ms */ 100);
+  sync_reactor.SetSelfRef(std::shared_ptr<MockRaySyncerBidiReactorBase<MockReactor>>(
+      &sync_reactor, [](auto *) {}));
+
+  auto from_node_id1 = NodeID::FromRandom();
+  auto from_node_id2 = NodeID::FromRandom();
+  auto msg1 = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id1);
+  auto msg2 = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id2);
+  auto msg3 = MakeMessage(MessageType::COMMANDS, 0, from_node_id2);
+  auto msg_ptr1 = std::make_shared<RaySyncMessage>(msg1);
+  auto msg_ptr2 = std::make_shared<RaySyncMessage>(msg2);
+  auto msg_ptr3 = std::make_shared<RaySyncMessage>(msg3);
+
+  // First message will be batched
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr1));
+  ASSERT_EQ(1, sync_reactor.sending_buffer_.size());
+
+  // Second message will be batched
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr2));
+  ASSERT_EQ(2, sync_reactor.sending_buffer_.size());
+
+  // Third message will trigger sending
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr3));
+  ASSERT_EQ(0, sync_reactor.sending_buffer_.size());
+
+  // Wait for sending to complete
+  EXPECT_TRUE(WaitForCondition(
+      [&sync_reactor]() { return sync_reactor.sending_buffer_.size() == 0; }, 1000));
+
+  ASSERT_EQ(2, sync_reactor.node_versions_.size());
+}
+
+TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchTimeoutTriggerSend) {
+  auto node_id = NodeID::FromRandom();
+
+  MockRaySyncerBidiReactorBase<MockReactor> sync_reactor(
+      /* io_context */ io_context_,
+      /* remote_node_id */ node_id.Binary(),
+      /* message_processor */
+      [](std::shared_ptr<const ray::rpc::syncer::RaySyncMessage>) {},
+      /* max_batch_size */ 3,
+      /* max_batch_delay_ms */ 100);
+  sync_reactor.SetSelfRef(std::shared_ptr<MockRaySyncerBidiReactorBase<MockReactor>>(
+      &sync_reactor, [](auto *) {}));
+
+  auto from_node_id = NodeID::FromRandom();
+  auto msg = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id);
+  auto msg_ptr = std::make_shared<RaySyncMessage>(msg);
+
+  // First message will be batched
+  ASSERT_TRUE(sync_reactor.PushToSendingQueue(msg_ptr));
+  ASSERT_EQ(1, sync_reactor.sending_buffer_.size());
+
+  // Wait for batch delay to trigger sending
+  EXPECT_TRUE(WaitForCondition(
+      [&sync_reactor]() { return sync_reactor.sending_buffer_.size() == 0; }, 1000));
+
+  ASSERT_EQ(1, sync_reactor.node_versions_.size());
 }
 
 struct SyncerServerTest {
@@ -226,7 +304,7 @@ struct SyncerServerTest {
     }
     // Setup syncer and grpc server
     syncer = std::make_unique<RaySyncer>(
-        io_context, node_id.Binary(), std::move(ray_sync_observer));
+        io_context, node_id.Binary(), 1, 0, std::move(ray_sync_observer));
     thread = std::make_unique<std::thread>([this] { io_context.run(); });
 
     auto server_address = BuildAddress("0.0.0.0", port);
@@ -266,8 +344,8 @@ struct SyncerServerTest {
           return std::nullopt;
         } else {
           auto msg = RaySyncMessage();
-          msg.set_message_type(static_cast<MessageType>(cid));
           msg.set_version(local_versions[cid]);
+          msg.set_message_type(static_cast<MessageType>(cid));
           msg.set_node_id(syncer->GetLocalNodeID());
           snapshot_taken++;
           return std::make_optional(std::move(msg));
@@ -288,11 +366,11 @@ struct SyncerServerTest {
       io_context.post(
           [&p, this]() mutable {
             for (const auto &[node_id, conn] : syncer->sync_reactors_) {
-              auto ptr = dynamic_cast<RayServerBidiReactor *>(conn);
+              auto ptr = dynamic_cast<RayServerBidiReactor *>(conn.get());
               size_t remainings = 0;
               if (ptr == nullptr) {
-                remainings =
-                    dynamic_cast<RayClientBidiReactor *>(conn)->sending_buffer_.size();
+                remainings = dynamic_cast<RayClientBidiReactor *>(conn.get())
+                                 ->sending_buffer_.size();
               } else {
                 remainings = ptr->sending_buffer_.size();
               }
@@ -839,14 +917,16 @@ struct MockRaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackServic
         cleanup_cb(_cleanup_cb),
         node_id(NodeID::FromRandom()),
         io_context(_io_context) {}
-  grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage> *StartSync(
+  grpc::ServerBidiReactor<RaySyncMessageBatch, RaySyncMessageBatch> *StartSync(
       grpc::CallbackServerContext *context) override {
     reactor = new RayServerBidiReactor(context,
                                        io_context,
                                        node_id.Binary(),
                                        message_processor,
                                        cleanup_cb,
-                                       std::nullopt);
+                                       std::nullopt,
+                                       /*max_batch_size=*/1,
+                                       /*max_batch_delay_ms=*/0);
     return reactor;
   }
 
@@ -886,7 +966,9 @@ class SyncerReactorTest : public ::testing::Test {
             [this](RaySyncerBidiReactor *reactor, bool r) {
               client_cleanup.set_value(std::make_pair(reactor->GetRemoteNodeID(), r));
             },
-            std::move(cli_stub))
+            std::move(cli_stub),
+            /* max_batch_size */ 1,
+            /* max_batch_delay_ms */ 0)
             .release();
     cli_reactor->StartCall();
 
@@ -993,15 +1075,15 @@ class SyncerAuthenticationTest : public ::testing::Test {
  protected:
   void SetUp() override {
     // Clear any existing environment variables and reset state
-    unsetenv("RAY_AUTH_TOKEN");
+    ray::UnsetEnv("RAY_AUTH_TOKEN");
     ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
-    RayConfig::instance().auth_mode() = "disabled";
+    RayConfig::instance().AUTH_MODE() = "disabled";
   }
 
   void TearDown() override {
-    unsetenv("RAY_AUTH_TOKEN");
+    ray::UnsetEnv("RAY_AUTH_TOKEN");
     ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
-    RayConfig::instance().auth_mode() = "disabled";
+    RayConfig::instance().AUTH_MODE() = "disabled";
   }
 
   struct AuthenticatedSyncerServerTest {
@@ -1016,7 +1098,8 @@ class SyncerAuthenticationTest : public ::testing::Test {
     AuthenticatedSyncerServerTest(const std::string &port, const std::string &token)
         : server_port(port), work_guard(io_context.get_executor()) {
       // Setup syncer and grpc server
-      syncer = std::make_unique<RaySyncer>(io_context, NodeID::FromRandom().Binary());
+      syncer =
+          std::make_unique<RaySyncer>(io_context, NodeID::FromRandom().Binary(), 1, 0);
       thread = std::make_unique<std::thread>([this] { io_context.run(); });
 
       // Create service with authentication token
@@ -1057,7 +1140,8 @@ class SyncerAuthenticationTest : public ::testing::Test {
     ClientSyncer()
         : work_guard(boost::asio::make_work_guard(io_context.get_executor())),
           thread([this]() { io_context.run(); }) {
-      syncer = std::make_unique<RaySyncer>(io_context, NodeID::FromRandom().Binary());
+      syncer =
+          std::make_unique<RaySyncer>(io_context, NodeID::FromRandom().Binary(), 1, 0);
       remote_node_id = NodeID::FromRandom().Binary();
     }
 
@@ -1083,9 +1167,9 @@ TEST_F(SyncerAuthenticationTest, MatchingTokens) {
   const std::string test_token = "matching-test-token-12345";
 
   // Set client token via environment variable
-  setenv("RAY_AUTH_TOKEN", test_token.c_str(), 1);
+  ray::SetEnv("RAY_AUTH_TOKEN", test_token);
   // Enable token authentication
-  RayConfig::instance().auth_mode() = "token";
+  RayConfig::instance().AUTH_MODE() = "token";
   ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
 
   // Create authenticated server
@@ -1110,9 +1194,9 @@ TEST_F(SyncerAuthenticationTest, MismatchedTokens) {
   const std::string client_token = "different-client-token";
 
   // Set client token via environment variable
-  setenv("RAY_AUTH_TOKEN", client_token.c_str(), 1);
+  ray::SetEnv("RAY_AUTH_TOKEN", client_token);
   // Enable token authentication
-  RayConfig::instance().auth_mode() = "token";
+  RayConfig::instance().AUTH_MODE() = "token";
   ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
 
   // Create authenticated server with different token
@@ -1136,7 +1220,7 @@ TEST_F(SyncerAuthenticationTest, ServerHasTokenClientDoesNot) {
   const std::string server_token = "server-token-12345";
 
   // Client has no token - auth mode is disabled (default from SetUp)
-  unsetenv("RAY_AUTH_TOKEN");
+  ray::UnsetEnv("RAY_AUTH_TOKEN");
   ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
 
   // Create authenticated server
@@ -1161,9 +1245,9 @@ TEST_F(SyncerAuthenticationTest, ClientHasTokenServerDoesNotRequire) {
   const std::string client_token = "different-client-token";
 
   // Set client token
-  setenv("RAY_AUTH_TOKEN", client_token.c_str(), 1);
+  ray::SetEnv("RAY_AUTH_TOKEN", client_token);
   // Enable token authentication
-  RayConfig::instance().auth_mode() = "token";
+  RayConfig::instance().AUTH_MODE() = "token";
   ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
 
   // Create server without authentication (empty token)

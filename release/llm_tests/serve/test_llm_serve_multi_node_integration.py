@@ -3,13 +3,11 @@ import pytest
 import ray
 from ray import serve
 from ray.serve.llm import (
+    build_dp_deployment,
+    build_openai_app,
     LLMConfig,
     LLMServingArgs,
     ModelLoadingConfig,
-    build_openai_app,
-)
-from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
-    build_dp_deployment,
 )
 
 
@@ -94,11 +92,14 @@ def test_llm_serve_data_parallelism():
         engine_kwargs=dict(
             tensor_parallel_size=1,
             pipeline_parallel_size=1,
-            data_parallel_size=2,  # 2 DP replicas
+            data_parallel_size=4,  # 4 DP replicas, need to fill 2x4GPU workers
             distributed_executor_backend="ray",
             max_model_len=512,
             max_num_batched_tokens=256,
             enforce_eager=True,
+        ),
+        experimental_configs=dict(
+            dp_size_per_node=2,
         ),
         placement_group_config=placement_group_config,
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
