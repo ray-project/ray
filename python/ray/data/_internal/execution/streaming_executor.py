@@ -212,11 +212,24 @@ class StreamingExecutor(Executor, threading.Thread):
             self._resource_manager,
             execution_id=self._dataset_id,
         )
-        self._actor_autoscaler = create_actor_autoscaler(
-            self._topology,
-            self._resource_manager,
-            config=self._data_context.autoscaling_config,
-        )
+
+        data_context = DataContext.get_current()
+        if data_context.enable_resource_based_autoscaling:
+            from ray.data._internal.actor_autoscaler.resource_based_actor_autoscaler import (
+                ResourceBasedActorAutoscaler
+            )
+
+            self._actor_autoscaler = ResourceBasedActorAutoscaler(
+                topology=self._topology,
+                resource_manager=self._resource_manager,
+                config=data_context.autoscaling_config,
+            )
+        else:
+            self._actor_autoscaler = create_actor_autoscaler(
+                self._topology,
+                self._resource_manager,
+                config=data_context.autoscaling_config,
+            )
 
         self._has_op_completed = dict.fromkeys(self._topology, False)
 
@@ -687,6 +700,53 @@ class StreamingExecutor(Executor, threading.Thread):
                 )
             return False
         return True
+
+    def update_job_resource_limits(
+        self,
+        min_resources: Optional[ExecutionResources] = None,
+        max_resources: Optional[ExecutionResources] = None
+    ) -> None:
+        """更新 job 级别的资源限制,自动计算所有 actor pools 的 size
+
+        Args:
+            min_resources: Job 级别的最小资源(可选)
+            max_resources: Job 级别的最大资源(可选)
+
+        Raises:
+            ValueError: 如果当前 autoscaler 不支持资源调整
+        """
+        from ray.data._internal.actor_autoscaler.resource_based_actor_autoscaler import (
+            ResourceBasedActorAutoscaler
+        )
+
+        if not isinstance(self._actor_autoscaler,
+                          ResourceBasedActorAutoscaler):
+            raise ValueError(
+                "Current autoscaler does not support resource-based sizing. "
+                "Please enable resource_based_autoscaling in DataContext."
+            )
+
+        self._actor_autoscaler.update_job_resource_limits(
+            min_resources=min_resources,
+            max_resources=max_resources
+        )
+
+    def get_job_resource_limits(
+        self
+    ) -> tuple[Optional[ExecutionResources], Optional[ExecutionResources]]:
+        """获取当前的 job 级别资源限制
+
+        Returns:
+            (min_resources, max_resources) 元组
+        """
+        from ray.data._internal.actor_autoscaler.resource_based_actor_autoscaler import (
+            ResourceBasedActorAutoscaler
+        )
+
+        if isinstance(self._actor_autoscaler, ResourceBasedActorAutoscaler):
+            return self._actor_autoscaler.get_current_job_resource_limits()
+        else:
+            return (None, None)
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:

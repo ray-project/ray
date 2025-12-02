@@ -489,6 +489,10 @@ class DataContext:
 
     autoscaling_config: AutoscalingConfig = field(default_factory=AutoscalingConfig)
 
+    # 新增配置:启用节点感知的 actor 移除策略
+    enable_node_aware_actor_removal: bool = False
+    enable_resource_based_autoscaling: bool = False
+
     ################################################################
     # Sort-based shuffling configuration
     ################################################################
