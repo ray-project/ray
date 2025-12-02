@@ -454,15 +454,26 @@ Actor data persistence
 
 Actor metadata is persisted to survive GCS restarts:
 
-1. **ActorTable**: Stores ``ActorTableData`` including state, address, death cause.
+**Storage tables:**
 
-2. **ActorTaskSpecTable**: Stores ``TaskSpec`` for actor creation, needed to reconstruct actors.
+1. **ActorTable**: Stores ``ActorTableData`` including state, address, death cause. `Written on state changes <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1179>`__.
 
-3. On GCS startup, `GcsActorManager::Initialize <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L256>`__ loads persisted actors:
+2. **ActorTaskSpecTable**: Stores ``TaskSpec`` for actor creation, `written during registration <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L773>`__. Needed to reconstruct actors after GCS restart. `Deleted <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1692>`__ when actor is permanently dead and not restartable.
 
-   - ``ALIVE`` actors are tracked and their workers are expected to reconnect.
-   - ``DEAD`` actors that are restartable are kept for lineage reconstruction.
-   - Detached actors in non-DEAD states are restored.
+**GCS restart recovery:**
+
+3. On GCS startup, `GcsActorManager::Initialize <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1827>`__ loads persisted actors using `OnInitializeActorShouldLoad <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L167>`__:
+
+   - `ALIVE actors <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1856>`__: Added to ``created_actors_``, workers expected to reconnect.
+   - `DEPENDENCIES_UNREADY actors <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1849>`__: Added to ``unresolved_actors_``.
+   - `PENDING_CREATION/RESTARTING actors <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1896>`__: Rescheduled via ``gcs_actor_scheduler_->Reschedule``.
+   - DEAD but restartable actors: Kept in ``registered_actors_`` for lineage reconstruction.
+   - Non-detached actors: `PollOwnerForActorRefDeleted <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1864>`__ is called to resume owner tracking.
+
+4. Actors that fail `OnInitializeActorShouldLoad <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L162>`__ (dead job, dead root owner, non-restartable DEAD):
+
+   - Added to ``destroyed_actors_`` cache.
+   - Their `ActorTaskSpec is batch deleted <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1881>`__.
 
 
 Summary diagram
