@@ -184,7 +184,8 @@ def test_delay_in_rewriting_environment(shutdown_only):
         "localhost",
         25010,
         ray_instance["address"],
-        "127.0.0.1",
+        "localhost",
+        40631,
         session_dir=ray_instance["session_dir"],
     )
 
@@ -225,6 +226,7 @@ def test_startup_error_yields_clean_result(shutdown_only):
         25030,
         ray_instance["address"],
         "127.0.0.1",
+        40631,
         session_dir=ray_instance["session_dir"],
     )
 
