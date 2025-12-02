@@ -303,6 +303,9 @@ class ActorPoolMapOperator(MapOperator):
                     max_retries = self.data_context.actor_init_max_retries
                     # -1 means infinite retries
                     if max_retries < 0 or self._actor_init_retry_count <= max_retries:
+                        # Don't spawn replacement actors if shutting down
+                        if self._actor_pool._shutting_down:
+                            return
                         # Spawn a replacement actor
                         new_actor, new_ready_ref = self._actor_pool._create_actor()
                         self._actor_pool.add_pending_actor(new_actor, new_ready_ref)
@@ -313,7 +316,9 @@ class ActorPoolMapOperator(MapOperator):
             if not has_actor:
                 # Actor has already been killed.
                 return
-            # A new actor has started, we try to dispatch queued tasks.
+            # A new actor has started successfully, reset retry count.
+            self._actor_init_retry_count = 0
+            # Try to dispatch queued tasks.
             self._dispatch_tasks()
 
         self._submit_metadata_task(
@@ -854,6 +859,8 @@ class _ActorPool(AutoscalingActorPool):
         self._num_restarting_actors: int = 0
         self._num_active_actors: int = 0
         self._total_num_tasks_in_flight: int = 0
+        # Flag to indicate if the pool is shutting down
+        self._shutting_down: bool = False
 
     # === Overriding methods of AutoscalingActorPool ===
 
@@ -1040,8 +1047,10 @@ class _ActorPool(AutoscalingActorPool):
         actor = self._pending_actors.pop(ready_ref)
         try:
             actor_location = ray.get(ready_ref)
-        except ray.exceptions.RayError:
+        except Exception:
             # Actor init failed - clean up the actor from _actor_to_logical_id
+            # This must happen for all exceptions, not just RayError, to prevent
+            # memory leaks where dead actor handles remain in _actor_to_logical_id.
             self._actor_to_logical_id.pop(actor, None)
             raise
         self._running_actors[actor] = _ActorState(
@@ -1124,6 +1133,7 @@ class _ActorPool(AutoscalingActorPool):
 
         This is called once the operator is shutting down.
         """
+        self._shutting_down = True
         self._release_pending_actors(force=force)
         self._release_running_actors(force=force)
 

@@ -416,8 +416,9 @@ class DataContext:
         actor_init_retry_on_errors: Whether to retry when actor initialization fails.
             Default to `False` to not retry on any errors. Set to `True` to retry
             all errors.
-        actor_init_max_retries: Maximum number of retries for actor initialization
-            failures. Default is 3. Set to -1 for infinite retries.
+        actor_init_max_retries: Maximum number of consecutive retries for actor
+            initialization failures. The counter resets when an actor successfully
+            initializes. Default is 3. Set to -1 for infinite retries.
         op_resource_reservation_enabled: Whether to enable resource reservation for
             operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
