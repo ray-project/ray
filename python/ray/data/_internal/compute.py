@@ -184,6 +184,7 @@ class ActorPoolStrategy(ComputeStrategy):
             f"initial_size={self.initial_size}, "
             f"max_tasks_in_flight_per_actor={self.max_tasks_in_flight_per_actor})"
             f"num_workers={self.num_workers}, "
+            f"enable_true_multi_threading={self.enable_true_multi_threading}, "
             f"ready_to_total_workers_ratio={self.ready_to_total_workers_ratio})"
         )
 
