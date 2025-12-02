@@ -1,8 +1,6 @@
-# Model Registry
+# Model Registry integration
 
-Ray Serve is Python-native, which means it integrates seamlessly with the broader MLOps ecosystem. You can easily connect Ray Serve deployments to Model Registry, enabling production-ready ML workflows without complex configuration or glue code.
-
-This guide shows you how to integrate Ray Serve with Model Registry to build end-to-end ML serving pipelines, including production considerations such as model versioning, performance optimization, and infrastructure setup.
+Ray Serve is Python-native, which means it integrates seamlessly with the broader MLOps ecosystem. You can easily connect Ray Serve deployments to Model Registry, enabling production-ready ML workflows without complex configuration or glue code. This guide shows you how to integrate Ray Serve with Model Registry to build end-to-end ML serving pipelines.
 
 ## Why Python-native integration matters
 
