@@ -91,7 +91,7 @@ class ActorPoolStrategy(ComputeStrategy):
         max_size: Optional[int] = None,
         initial_size: Optional[int] = None,
         max_tasks_in_flight_per_actor: Optional[int] = None,
-        single_threaded: bool = True,
+        enable_true_multi_threading: bool = False,
     ):
         """Construct ActorPoolStrategy for a Dataset transform.
 
@@ -107,7 +107,7 @@ class ActorPoolStrategy(ComputeStrategy):
                 opportunities for pipelining task dependency prefetching with
                 computation and avoiding actor startup delays, but will also increase
                 queueing delay.
-            single_threaded: If single_threded=True, then no more than 1 actor task
+            enable_true_multi_threading: If enable_true_multi_threading=True, then no more than 1 actor task
                 will be run per actor. Otherwise, will respect the `max_concurrency` argument.
         """
         if size is not None:
@@ -154,14 +154,14 @@ class ActorPoolStrategy(ComputeStrategy):
         self.max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
         self.num_workers = 0
         self.ready_to_total_workers_ratio = 0.8
-        self.single_threaded = single_threaded
+        self.enable_true_multi_threading = enable_true_multi_threading
 
     def __eq__(self, other: Any) -> bool:
         return isinstance(other, ActorPoolStrategy) and (
             self.min_size == other.min_size
             and self.max_size == other.max_size
             and self.initial_size == other.initial_size
-            and self.single_threaded == other.single_threaded
+            and self.enable_true_multi_threading == other.enable_true_multi_threading
             and self.max_tasks_in_flight_per_actor
             == other.max_tasks_in_flight_per_actor
         )

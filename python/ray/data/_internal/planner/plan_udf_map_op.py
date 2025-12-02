@@ -212,13 +212,14 @@ def plan_filter_op(
         )
     else:
         udf_is_callable_class = isinstance(op._fn, CallableClass)
+        assert isinstance(compute, ActorPoolStrategy)
         filter_fn, init_fn = _get_udf(
             op._fn,
             op._fn_args,
             op._fn_kwargs,
             op._fn_constructor_args if udf_is_callable_class else None,
             op._fn_constructor_kwargs if udf_is_callable_class else None,
-            single_threaded=op._compute.single_threaded,
+            enable_true_multi_threading=compute.enable_true_multi_threading,
         )
 
         transform_fn = RowMapTransformFn(
@@ -259,9 +260,9 @@ def plan_udf_map_op(
 
     compute = get_compute(op._compute)
     udf_is_callable_class = isinstance(op._fn, CallableClass)
-    singled_threaded: bool = (
-        op._compute.single_threaded
-        if isinstance(op._compute, ActorPoolStrategy)
+    enable_true_multi_threading: bool = (
+        compute.enable_true_multi_threading
+        if isinstance(compute, ActorPoolStrategy)
         else False
     )
     fn, init_fn = _get_udf(
@@ -270,7 +271,7 @@ def plan_udf_map_op(
         op._fn_kwargs,
         op._fn_constructor_args if udf_is_callable_class else None,
         op._fn_constructor_kwargs if udf_is_callable_class else None,
-        single_threaded=singled_threaded,
+        enable_true_multi_threading=enable_true_multi_threading,
     )
 
     if isinstance(op, MapBatches):
@@ -318,7 +319,7 @@ def _get_udf(
     op_fn_kwargs: Dict[str, Any],
     op_fn_constructor_args: Optional[Tuple[Any, ...]],
     op_fn_constructor_kwargs: Optional[Dict[str, Any]],
-    single_threaded: bool,
+    enable_true_multi_threading: bool,
 ):
     # Note, it's important to define these standalone variables.
     # So the parsed functions won't need to capture the entire operator, which may not
@@ -333,10 +334,8 @@ def _get_udf(
 
         is_async_udf = _is_async_udf(udf.__call__)
 
-        if not is_async_udf:
-            # TODO(ak) this constrains concurrency for user UDFs to run in a single
-            #          thread irrespective of max_concurrency. Remove
-            udf = make_callable_class_concurrent(udf, single_threaded=single_threaded)
+        if not is_async_udf and not enable_true_multi_threading:
+            udf = make_callable_class_concurrent(udf)
 
         def init_fn():
             if ray.data._map_actor_context is None:

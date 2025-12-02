@@ -55,9 +55,7 @@ def locality_string(locality_hits: int, locality_misses) -> str:
     return f"[{locality_hits}/{locality_hits + locality_misses} objects local]"
 
 
-def make_callable_class_concurrent(
-    callable_cls: CallableClass, single_threaded: bool
-) -> CallableClass:
+def make_callable_class_concurrent(callable_cls: CallableClass) -> CallableClass:
     """Returns a thread-safe CallableClass with the same logic as the provided
     `callable_cls`.
 
@@ -77,12 +75,8 @@ def make_callable_class_concurrent(
             return super().__repr__()
 
         def __call__(self, *args, **kwargs):
-            if single_threaded:
-                # ThreadPoolExecutor will reuse the same thread for every submit call.
-                future = self.thread_pool_executor.submit(
-                    super().__call__, *args, **kwargs
-                )
-                return future.result()
-            return super().__call__(*args, **kwargs)
+            # ThreadPoolExecutor will reuse the same thread for every submit call.
+            future = self.thread_pool_executor.submit(super().__call__, *args, **kwargs)
+            return future.result()
 
     return _Wrapper
