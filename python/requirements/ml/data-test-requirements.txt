@@ -3,13 +3,14 @@
 
 python-snappy
 tensorflow-datasets==4.9.3
+tensorflow-metadata>=1.17.2
 datasets>=3.0.2
 pytest-repeat
 soundfile
 fastavro
-google-cloud-bigquery
+google-cloud-bigquery>=3.27.0
 google-cloud-core
-google-cloud-bigquery-storage
+google-cloud-bigquery-storage>=2.27.0
 google-api-core>=2.24.2
 webdataset
 raydp==1.7.0b20250423.dev0

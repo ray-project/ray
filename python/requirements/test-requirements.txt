@@ -39,7 +39,7 @@ openpyxl==3.0.10
 opentelemetry-api
 opentelemetry-sdk
 pexpect==4.8.0
-Pillow>=10.4.0; platform_system != "Windows"
+pillow>=10.4.0; platform_system != "Windows"
 proxy.py==2.4.3
 pydantic>=2.10.0
 pydot==1.4.2
@@ -132,7 +132,7 @@ pyopenssl>=25.0.0
 starlette>=0.40.0
 requests>=2.32.3
 docker>=7.1.0
-protobuf>=4,<5
+protobuf>=4,<6.30.0
 fastrlock>=0.8.3; sys_platform != "darwin"
 
 # TODO(aslonnie): remove this
