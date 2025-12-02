@@ -1634,7 +1634,8 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
     bool is_out_of_scope = death_cause.has_actor_died_error_context() &&
                            death_cause.actor_died_error_context().reason() ==
                                rpc::ActorDiedErrorContext::OUT_OF_SCOPE;
-    bool can_restart_for_lineage = is_out_of_scope && (remaining_restarts != 0 ||
+    bool can_restart_for_lineage =
+        is_out_of_scope && (remaining_restarts != 0 ||
                             (max_restarts > 0 && mutable_actor_table_data->preempted()));
 
     if (!can_restart_for_lineage) {
