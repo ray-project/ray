@@ -187,25 +187,28 @@ GCS Actor Scheduler is responsible for finding a node and worker to run the acto
 
 1. `GcsActorScheduler::Schedule <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_scheduler.cc#L55>`__ chooses between GCS-based or Raylet-based scheduling:
 
-   - **GCS-based scheduling** (when ``gcs_actor_scheduling_enabled`` is true): GCS directly selects a node based on resource availability using the cluster lease manager.
-   - **Raylet-based scheduling**: GCS forwards the scheduling decision to a raylet (typically the owner's node).
+   - **GCS-based scheduling** (when ``gcs_actor_scheduling_enabled`` is true): GCS directly selects a node based on resource availability using the cluster lease manager, then calls ``LeaseWorkerFromNode``.
+   - **Raylet-based scheduling** (default): GCS forwards the scheduling decision to a raylet.
 
 2. For Raylet-based scheduling, `ScheduleByRaylet <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_scheduler.cc#L114>`__:
 
-   a. Selects an initial node (usually the owner's node or one with data locality).
-   b. Sends a ``RequestWorkerLease`` RPC to that node's raylet.
+   a. Calls `SelectForwardingNode <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_scheduler.cc#L142>`__ to pick an initial node (owner's node if it has resources, otherwise random).
+   b. Calls ``LeaseWorkerFromNode`` to request a worker from that node.
 
-3. `LeaseWorkerFromNode <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_scheduler.cc#L293>`__ requests a worker:
+3. `LeaseWorkerFromNode <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_scheduler.cc#L293>`__ sends a ``RequestWorkerLease`` RPC to the target raylet with the actor's resource requirements.
 
-   a. Creates a lease request with resource requirements.
-   b. The raylet either grants a worker, rejects, or suggests a spillback node.
+4. `HandleWorkerLeaseReply <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_scheduler.cc#L578>`__ processes the raylet's response:
 
-4. On successful lease, `HandleWorkerLeaseGrantedReply <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_scheduler.cc#L355>`__:
+   - If **rejected** (insufficient resources): Calls `HandleWorkerLeaseRejectedReply <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_scheduler.cc#L660>`__ which reschedules the actor.
+   - If **spillback** (worker_address empty but retry_at_raylet_address set): `HandleWorkerLeaseGrantedReply <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_scheduler.cc#L355>`__ retries on the suggested node.
+   - If **granted** (worker_address set): Proceeds to create the actor on the leased worker.
 
-   a. Records the resource mapping.
-   b. Calls `CreateActorOnWorker <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_scheduler.cc#L439>`__ to start the actor on the leased worker.
+5. On successful lease, `HandleWorkerLeaseGrantedReply <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_scheduler.cc#L355>`__:
 
-5. The worker receives a ``CreateActor`` RPC and executes the actor's ``__init__`` method.
+   a. Records the resource mapping on the actor.
+   b. Creates a ``GcsLeasedWorker`` and calls `CreateActorOnWorker <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_scheduler.cc#L441>`__.
+
+6. `CreateActorOnWorker <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_scheduler.cc#L441>`__ sends a ``PushNormalTask`` RPC to the worker with the actor creation task. The worker executes the actor's ``__init__`` method.
 
 
 Executing the actor creation task
