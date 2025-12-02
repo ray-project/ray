@@ -1,15 +1,17 @@
 import os
 import re
+from typing import Any, Dict, List
 
 import pytest
-import ray
 
-from typing import Any, Dict, List
+import ray
 
 try:
     import dpctl
 except ImportError:
-    pytest.skip("dpctl is not installed, skipping Intel GPU tests.", allow_module_level=True)
+    pytest.skip(
+        "dpctl is not installed, skipping Intel GPU tests.", allow_module_level=True
+    )
 
 DEFAULT_SCALE_OUT_NODES = 2
 DEFAULT_SCALE_UP_DEVICES = 2
@@ -107,7 +109,9 @@ def assert_valid_gpu_binding(result: Dict[str, Any], label: str) -> None:
     ), f"Expected {label} to bind to a valid GPU, got {result.get('gpu_ids')}"
 
 
-def _validate_gpu_binding_common(result: Dict[str, Any], label: str, selector_key: str = "oneapi_selector") -> int:
+def _validate_gpu_binding_common(
+    result: Dict[str, Any], label: str, selector_key: str = "oneapi_selector"
+) -> int:
     """Validate basic GPU binding properties shared by single- and multi-GPU tests."""
 
     gpu_ids = result.get("gpu_ids")
@@ -122,9 +126,7 @@ def _validate_gpu_binding_common(result: Dict[str, Any], label: str, selector_ke
         "level_zero:" in selector_lower
     ), f"ONEAPI_DEVICE_SELECTOR should target GPU devices for {label}, got: {selector}."
 
-    selector_gpu_ids = {
-        int(match) for match in re.findall(r"\b\d+\b", selector_lower)
-    }
+    selector_gpu_ids = {int(match) for match in re.findall(r"\b\d+\b", selector_lower)}
     assert (
         primary_gpu_id in selector_gpu_ids
     ), f"ONEAPI_DEVICE_SELECTOR does not reference bound GPU id for {label}: {selector}."
