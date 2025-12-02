@@ -84,7 +84,7 @@ When Ray Serve scales down a deployment, it intelligently selects which replicas
 
 ## APIs for controlling replica placement
 
-Ray Serve provides several options to control where replicas are scheduled. These parameters are configured through the [`@serve.deployment`](serve-deployment-api) decorator. For the full API reference, see the [deployment decorator documentation](../api/doc/ray.serve.deployment_decorator.rst).
+Ray Serve provides several options to control where replicas are scheduled. These parameters are configured through the [`@serve.deployment`](serve-configure-deployment) decorator. For the full API reference, see the [deployment decorator documentation](../api/doc/ray.serve.deployment_decorator.rst).
 
 ### Limit replicas per node with `max_replicas_per_node`
 
@@ -271,4 +271,4 @@ This ensures that replicas requiring high-priority resources are scheduled first
 
 - [Resource allocation](serve-resource-allocation) for configuring CPU, GPU, and other resources
 - [Autoscaling](serve-autoscaling) for automatically adjusting replica count
-- [Ray placement groups](placement-group-doc) for advanced resource co-location
+- [Ray placement groups](ray-placement-group-doc-ref) for advanced resource co-location
