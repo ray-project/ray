@@ -24,6 +24,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Reserved column names for Turbopuffer
+_ID_COLUMN = "id"
+_VECTOR_COLUMN = "vector"
+
 
 class TurbopufferDatasink(Datasink):
     """Turbopuffer Ray Datasink.
@@ -256,6 +260,43 @@ class TurbopufferDatasink(Datasink):
             # Single namespace mode
             self._write_single_namespace(client, table, self.namespace)
 
+    def _rename_column_if_needed(
+        self,
+        table: pa.Table,
+        source_column: str,
+        target_column: str,
+        column_type: str,
+    ) -> pa.Table:
+        """
+        Rename a column in the table if it differs from the target name.
+
+        Args:
+            table: The Arrow table to modify.
+            source_column: The current column name in the table.
+            target_column: The required column name for Turbopuffer.
+            column_type: Human-readable type for error messages (e.g., "ID", "Vector").
+
+        Returns:
+            The table with the column renamed, or the original table if no rename needed.
+
+        Raises:
+            ValueError: If source column is missing or target column already exists.
+        """
+        if source_column == target_column:
+            return table
+
+        if source_column not in table.column_names:
+            raise ValueError(
+                f"{column_type} column '{source_column}' not found in table"
+            )
+        if target_column in table.column_names:
+            raise ValueError(
+                f"Table already has a '{target_column}' column; cannot also rename "
+                f"'{source_column}' to '{target_column}'. Please disambiguate your schema."
+            )
+
+        return table.rename_columns({source_column: target_column})
+
     def _prepare_arrow_table(self, table: pa.Table) -> pa.Table:
         """
         Prepare Arrow table for Turbopuffer write.
@@ -264,33 +305,16 @@ class TurbopufferDatasink(Datasink):
         2. Rename vector column to "vector" if needed
         3. Filter out rows with null IDs
         """
-        if self.id_column != "id":
-            if self.id_column not in table.column_names:
-                raise ValueError(f"ID column '{self.id_column}' not found in table")
-            if "id" in table.column_names:
-                raise ValueError(
-                    "Table already has an 'id' column; cannot also rename "
-                    f"'{self.id_column}' to 'id'. Please disambiguate your schema."
-                )
-
-            table = table.rename_columns({self.id_column: "id"})
-
-        if self.vector_column != "vector":
-            if self.vector_column not in table.column_names:
-                raise ValueError(
-                    f"Vector column '{self.vector_column}' not found in table"
-                )
-            if "vector" in table.column_names:
-                raise ValueError(
-                    "Table already has a 'vector' column; cannot also rename "
-                    f"'{self.vector_column}' to 'vector'. Please disambiguate your schema."
-                )
-
-            table = table.rename_columns({self.vector_column: "vector"})
+        table = self._rename_column_if_needed(
+            table, self.id_column, _ID_COLUMN, "ID"
+        )
+        table = self._rename_column_if_needed(
+            table, self.vector_column, _VECTOR_COLUMN, "Vector"
+        )
 
         # Filter out rows with null IDs
-        if "id" in table.column_names:
-            table = table.filter(pc.is_valid(table.column("id")))
+        if _ID_COLUMN in table.column_names:
+            table = table.filter(pc.is_valid(table.column(_ID_COLUMN)))
 
         return table
 
@@ -308,18 +332,18 @@ class TurbopufferDatasink(Datasink):
         # If the namespace column is the configured id_column and that was
         # renamed to "id", use "id" for grouping.
         if (
-            self.id_column != "id"
+            self.id_column != _ID_COLUMN
             and self.namespace_column == self.id_column
-            and "id" in table.column_names
+            and _ID_COLUMN in table.column_names
         ):
-            group_col_name = "id"
+            group_col_name = _ID_COLUMN
         # Likewise for the vector column.
         elif (
-            self.vector_column != "vector"
+            self.vector_column != _VECTOR_COLUMN
             and self.namespace_column == self.vector_column
-            and "vector" in table.column_names
+            and _VECTOR_COLUMN in table.column_names
         ):
-            group_col_name = "vector"
+            group_col_name = _VECTOR_COLUMN
 
         if group_col_name not in table.column_names:
             raise ValueError(
@@ -347,9 +371,9 @@ class TurbopufferDatasink(Datasink):
         grouped = sorted_table.group_by(group_col_name)
         
         # Count rows per group to determine boundaries
-        agg_result = grouped.aggregate([("id", "count")])
+        agg_result = grouped.aggregate([(_ID_COLUMN, "count")])
         group_keys = agg_result.column(group_col_name)
-        group_counts = agg_result.column("id_count")
+        group_counts = agg_result.column(f"{_ID_COLUMN}_count")
         num_groups = len(group_keys)
         
         logger.debug(f"Writing to {num_groups} namespaces")
@@ -409,8 +433,8 @@ class TurbopufferDatasink(Datasink):
         Converts binary UUID fields (16 bytes) to string format.
         """
         # Validate table has ID column by checking schema before conversion.
-        if "id" not in table.column_names:
-            raise ValueError("Table must have 'id' column")
+        if _ID_COLUMN not in table.column_names:
+            raise ValueError(f"Table must have '{_ID_COLUMN}' column")
 
         # Convert to list of row dictionaries
         rows = table.to_pylist()

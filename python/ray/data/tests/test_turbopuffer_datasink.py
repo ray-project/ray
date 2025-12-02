@@ -139,7 +139,7 @@ def test_prepare_arrow_table_raises_on_conflicting_id_column_name():
     table = pa.table({"id": [1, 2], "doc_id": [10, 20]})
     sink = make_sink(id_column="doc_id")
 
-    with pytest.raises(ValueError, match="already has an 'id' column"):
+    with pytest.raises(ValueError, match="already has.*'id' column"):
         sink._prepare_arrow_table(table)
 
 
@@ -154,7 +154,7 @@ def test_prepare_arrow_table_raises_on_conflicting_vector_column_name():
     )
     sink = make_sink(vector_column="emb")
 
-    with pytest.raises(ValueError, match="already has a 'vector' column"):
+    with pytest.raises(ValueError, match="already has.*'vector' column"):
         sink._prepare_arrow_table(table)
 
 
