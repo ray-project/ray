@@ -282,31 +282,33 @@ Actor failure and restart
 
 When an actor worker dies, Ray can automatically restart it if ``max_restarts > 0``:
 
-1. `GcsActorManager::OnWorkerDead <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1249>`__ is called when a worker exits:
+1. `GcsActorManager::OnWorkerDead <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1251>`__ is called when a worker exits:
 
-   a. Determines the death cause (crash, intentional exit, node failure, etc.).
-   b. Checks if the actor should be rescheduled based on ``disconnect_type``.
+   a. Determines `need_reconstruct <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1274>`__ based on ``disconnect_type`` (false for ``INTENDED_USER_EXIT`` or ``USER_ERROR``).
+   b. Destroys all actors owned by the dead worker.
+   c. `Finds the actor <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1311>`__ in ``created_actors_`` or via ``CancelOnWorker``.
+   d. Marks actor state to ``DEAD`` immediately (transition 6 in state machine).
+   e. Determines death cause and calls ``RestartActor``.
 
-2. `RestartActor <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1516>`__ handles the restart decision:
+2. `RestartActor <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1519>`__ handles the restart decision:
 
-   a. Calculates remaining restarts (node preemption restarts don't count).
-   b. Checks if restart is blocked (e.g., explicit termination like ``OUT_OF_SCOPE`` or ``REF_DELETED``).
-   c. If ``should_restart`` is true:
+   a. `Calculates remaining_restarts <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1559>`__ (node preemption restarts don't count toward max).
+   b. Checks if restart is blocked by explicit termination (``OUT_OF_SCOPE``, ``REF_DELETED``) or creation failure.
+   c. If `should_restart <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1591>`__ is true:
 
-      - Updates state to ``RESTARTING``
+      - `Updates state to RESTARTING <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1602>`__ (transition 3)
       - Increments ``num_restarts``
       - Calls ``GcsActorScheduler::Schedule`` to find a new worker
 
-   d. If not restartable:
+   d. If not restartable (`else branch at line 1621 <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1621>`__):
 
-      - Updates state to ``DEAD``
-      - Cleans up from ``registered_actors_`` (unless kept for lineage reconstruction)
-      - Removes actor name registration
+      - `Updates state to DEAD <https://github.com/ray-project/ray/blob/master/src/ray/gcs/gcs_actor_manager.cc#L1622>`__ (transition 5)
+      - If not kept for lineage: removes from ``registered_actors_``, removes actor name
       - Publishes the final state
 
-3. `IsActorRestartable <https://github.com/ray-project/ray/blob/master/src/ray/common/protobuf_utils.cc#L164>`__ determines if a DEAD actor can be restarted for lineage reconstruction:
+3. `IsActorRestartable <https://github.com/ray-project/ray/blob/master/src/ray/common/protobuf_utils.cc#L164>`__ determines if a ``DEAD`` actor can be restarted for lineage reconstruction:
 
-   - Must be ``OUT_OF_SCOPE`` death cause
+   - Must have ``OUT_OF_SCOPE`` death cause (not ``REF_DELETED`` or creation failure)
    - Must have remaining restarts OR be preempted with ``max_restarts > 0``
 
 
