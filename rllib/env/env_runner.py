@@ -1,6 +1,6 @@
 import abc
 import logging
-from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 import gymnasium as gym
 import tree  # pip install dm_tree
@@ -15,7 +15,7 @@ from ray.rllib.utils.metrics import ENV_RESET_TIMER, ENV_STEP_TIMER
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import StateDict, TensorType
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.metrics import Counter
 
 if TYPE_CHECKING:
@@ -258,12 +258,10 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         except Exception as e:
             self.metrics.log_value(NUM_ENV_STEP_FAILURES_LIFETIME, 1, reduce="sum")
 
-            # @OldAPIStack (config.restart_failed_sub_environments)
             if self.config.restart_failed_sub_environments:
                 if not isinstance(e, StepFailedRecreateEnvError):
                     logger.exception(
-                        "Stepping the env resulted in an error! The original error "
-                        f"is: {e}"
+                        f"RLlib {self.__class__.__name__}: Environment step failed. Will force reset env(s) in this EnvRunner. The original error is: {e}"
                     )
                 # Recreate the env.
                 self.make_env()
@@ -272,11 +270,16 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                 # data and repeating the step attempt).
                 return ENV_STEP_FAILURE
             else:
-                if isinstance(e, StepFailedRecreateEnvError):
-                    raise ValueError(
-                        "Environment raised StepFailedRecreateEnvError but config.restart_failed_sub_environments is False."
-                    ) from e
-                raise e
+                logger.exception(
+                    f"RLlib {self.__class__.__name__}: Environment step failed and "
+                    "'config.restart_failed_sub_environments' is False. "
+                    "This env will not be recreated. "
+                    "Consider setting 'fault_tolerance(restart_failed_sub_environments=True)' in your AlgorithmConfig "
+                    "in order to automatically re-create and force-reset an env."
+                    f"The original error type: {type(e)}. "
+                    f"{e}"
+                )
+                raise RuntimeError from e
 
     def _convert_to_tensor(self, struct) -> TensorType:
         """Converts structs to a framework-specific tensor."""

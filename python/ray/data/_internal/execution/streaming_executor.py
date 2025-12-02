@@ -8,6 +8,7 @@ from ray.data._internal.actor_autoscaler import (
     create_actor_autoscaler,
 )
 from ray.data._internal.cluster_autoscaler import create_cluster_autoscaler
+from ray.data._internal.execution import create_ranker
 from ray.data._internal.execution.backpressure_policy import (
     BackpressurePolicy,
     get_backpressure_policies,
@@ -44,7 +45,7 @@ from ray.data._internal.logging import (
 )
 from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetStats, StatsManager, Timer
+from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.util.debug import log_once
 from ray.util.metrics import Gauge
@@ -71,24 +72,20 @@ class StreamingExecutor(Executor, threading.Thread):
     a way that maximizes throughput under resource constraints.
     """
 
+    UPDATE_METRICS_INTERVAL_S: float = 5.0
+
     def __init__(
         self,
         data_context: DataContext,
         dataset_id: str = "unknown_dataset",
     ):
         self._data_context = data_context
+        self._ranker = create_ranker()
         self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
         self._global_info: Optional[ProgressBar] = None
         self._progress_manager: Optional[RichExecutionProgressManager] = None
-
-        if not self._use_rich_progress() and log_once("rich_progress_disabled"):
-            logger.info(
-                "A new progress UI is available. To enable, set "
-                "`ray.data.DataContext.get_current()."
-                "enable_rich_progress_bars = True`."
-            )
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
@@ -114,6 +111,11 @@ class StreamingExecutor(Executor, threading.Thread):
         self._data_context.set_dataset_logger_id(
             register_dataset_logger(self._dataset_id)
         )
+
+        # This stores the last time we updated the metrics.
+        # This allows us to update metrics on some interval,
+        # by comparing it with the current timestamp.
+        self._metrics_last_updated: float = 0.0
 
         self._sched_loop_duration_s = Gauge(
             "data_sched_loop_duration_s",
@@ -223,7 +225,7 @@ class StreamingExecutor(Executor, threading.Thread):
         op_to_id = {
             op: self._get_operator_id(op, i) for i, op in enumerate(self._topology)
         }
-        StatsManager.register_dataset_to_stats_actor(
+        _StatsManager.register_dataset_to_stats_actor(
             self._dataset_id,
             self._get_operator_tags(),
             TopologyMetadata.create_topology_metadata(dag, op_to_id),
@@ -271,9 +273,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 else DatasetState.FAILED.name,
                 force_update=True,
             )
-            # Once Dataset execution completes, mark it as complete
-            # and remove last cached execution stats.
-            StatsManager.clear_last_execution_stats(self._dataset_id)
             # Freeze the stats and save it.
             self._final_stats = self._generate_stats()
             stats_summary_string = self._final_stats.to_summary().to_string(
@@ -486,6 +485,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 # If consumer is idling (there's nothing for it to consume)
                 # enforce liveness, ie that at least a single task gets scheduled
                 ensure_liveness=self._consumer_idling(),
+                ranker=self._ranker,
             )
 
             if op is None:
@@ -652,7 +652,7 @@ class StreamingExecutor(Executor, threading.Thread):
                     "total_rows": op.num_output_rows_total(),
                     "queued_blocks": op_state.total_enqueued_input_blocks(),
                     "state": DatasetState.FINISHED.name
-                    if op.execution_finished()
+                    if op.has_execution_finished()
                     else state,
                 }
                 for i, (op, op_state) in enumerate(self._topology.items())
@@ -660,16 +660,33 @@ class StreamingExecutor(Executor, threading.Thread):
         }
 
     def _update_stats_metrics(self, state: str, force_update: bool = False):
-        StatsManager.update_execution_metrics(
-            self._dataset_id,
-            [op.metrics for op in self._topology],
-            self._get_operator_tags(),
-            self._get_state_dict(state=state),
-            force_update=force_update,
-        )
+        now = time.time()
+        if (
+            force_update
+            or (now - self._metrics_last_updated) > self.UPDATE_METRICS_INTERVAL_S
+        ):
+            _StatsManager.update_execution_metrics(
+                self._dataset_id,
+                [op.metrics for op in self._topology],
+                self._get_operator_tags(),
+                self._get_state_dict(state=state),
+            )
+            self._metrics_last_updated = now
 
     def _use_rich_progress(self):
-        return self._data_context.enable_rich_progress_bars
+        rich_enabled = self._data_context.enable_rich_progress_bars
+        use_ray_tqdm = self._data_context.use_ray_tqdm
+
+        if not rich_enabled or use_ray_tqdm:
+            if log_once("ray_data_rich_progress_disabled"):
+                logger.info(
+                    "[dataset]: A new progress UI is available. To enable, "
+                    "set `ray.data.DataContext.get_current()."
+                    "enable_rich_progress_bars = True` and `ray.data."
+                    "DataContext.get_current().use_ray_tqdm = False`."
+                )
+            return False
+        return True
 
 
 def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:

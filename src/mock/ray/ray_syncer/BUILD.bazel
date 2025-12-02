@@ -1,0 +1,6 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "mock_ray_syncer",
+    hdrs = ["ray_syncer.h"],
+)

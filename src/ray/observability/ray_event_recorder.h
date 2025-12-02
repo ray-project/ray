@@ -18,7 +18,6 @@
 
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/periodical_runner.h"
-#include "ray/common/ray_config.h"
 #include "ray/observability/metric_interface.h"
 #include "ray/observability/ray_event_interface.h"
 #include "ray/observability/ray_event_recorder_interface.h"
@@ -41,18 +40,19 @@ class RayEventRecorder : public RayEventRecorderInterface {
                    size_t max_buffer_size,
                    std::string_view metric_source,
                    ray::observability::MetricInterface &dropped_events_counter);
-  virtual ~RayEventRecorder() = default;
 
   // Start exporting events to the event aggregator by periodically sending events to
   // the event aggregator. This should be called only once. Subsequent calls will be
   // ignored.
-  void StartExportingEvents();
+  void StartExportingEvents() override;
 
   // Add a vector of data to the internal buffer. Data in the buffer will be sent to
   // the event aggregator periodically.
-  void AddEvents(std::vector<std::unique_ptr<RayEventInterface>> &&data_list);
+  void AddEvents(std::vector<std::unique_ptr<RayEventInterface>> &&data_list) override;
 
  private:
+  using RayEventKey = std::pair<std::string, rpc::events::RayEvent::EventType>;
+
   rpc::EventAggregatorClient &event_aggregator_client_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   // Lock for thread safety when modifying the buffer.

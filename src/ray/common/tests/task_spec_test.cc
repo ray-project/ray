@@ -27,42 +27,82 @@ TEST(TaskSpecTest, TestSchedulingClassDescriptor) {
   ResourceSet resources(absl::flat_hash_map<std::string, double>({{"a", 1.0}}));
   rpc::SchedulingStrategy scheduling_strategy;
   scheduling_strategy.mutable_spread_scheduling_strategy();
-  SchedulingClassDescriptor descriptor1(
-      resources, LabelSelector(), descriptor, 0, scheduling_strategy);
-  SchedulingClassDescriptor descriptor2(
-      resources, LabelSelector(), descriptor, 1, scheduling_strategy);
+  SchedulingClassDescriptor descriptor1(resources,
+                                        LabelSelector(),
+                                        descriptor,
+                                        0,
+                                        scheduling_strategy,
+                                        std::vector<FallbackOption>());
+  SchedulingClassDescriptor descriptor2(resources,
+                                        LabelSelector(),
+                                        descriptor,
+                                        1,
+                                        scheduling_strategy,
+                                        std::vector<FallbackOption>());
   scheduling_strategy.mutable_default_scheduling_strategy();
-  SchedulingClassDescriptor descriptor3(
-      resources, LabelSelector(), descriptor, 0, scheduling_strategy);
+  SchedulingClassDescriptor descriptor3(resources,
+                                        LabelSelector(),
+                                        descriptor,
+                                        0,
+                                        scheduling_strategy,
+                                        std::vector<FallbackOption>());
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id("x");
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(true);
-  SchedulingClassDescriptor descriptor4(
-      resources, LabelSelector(), descriptor, 0, scheduling_strategy);
+  SchedulingClassDescriptor descriptor4(resources,
+                                        LabelSelector(),
+                                        descriptor,
+                                        0,
+                                        scheduling_strategy,
+                                        std::vector<FallbackOption>());
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id("y");
-  SchedulingClassDescriptor descriptor5(
-      resources, LabelSelector(), descriptor, 0, scheduling_strategy);
-  SchedulingClassDescriptor descriptor6(
-      resources, LabelSelector(), descriptor, 0, scheduling_strategy);
+  SchedulingClassDescriptor descriptor5(resources,
+                                        LabelSelector(),
+                                        descriptor,
+                                        0,
+                                        scheduling_strategy,
+                                        std::vector<FallbackOption>());
+  SchedulingClassDescriptor descriptor6(resources,
+                                        LabelSelector(),
+                                        descriptor,
+                                        0,
+                                        scheduling_strategy,
+                                        std::vector<FallbackOption>());
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()
       ->set_spill_on_unavailable(true);
-  SchedulingClassDescriptor descriptor10(
-      resources, LabelSelector(), descriptor, 0, scheduling_strategy);
+  SchedulingClassDescriptor descriptor10(resources,
+                                         LabelSelector(),
+                                         descriptor,
+                                         0,
+                                         scheduling_strategy,
+                                         std::vector<FallbackOption>());
   scheduling_strategy.mutable_placement_group_scheduling_strategy()
       ->set_placement_group_id("o");
   scheduling_strategy.mutable_placement_group_scheduling_strategy()
       ->set_placement_group_bundle_index(0);
   scheduling_strategy.mutable_placement_group_scheduling_strategy()
       ->set_placement_group_capture_child_tasks(true);
-  SchedulingClassDescriptor descriptor7(
-      resources, LabelSelector(), descriptor, 0, scheduling_strategy);
+  SchedulingClassDescriptor descriptor7(resources,
+                                        LabelSelector(),
+                                        descriptor,
+                                        0,
+                                        scheduling_strategy,
+                                        std::vector<FallbackOption>());
   scheduling_strategy.mutable_placement_group_scheduling_strategy()
       ->set_placement_group_bundle_index(1);
-  SchedulingClassDescriptor descriptor8(
-      resources, LabelSelector(), descriptor, 0, scheduling_strategy);
+  SchedulingClassDescriptor descriptor8(resources,
+                                        LabelSelector(),
+                                        descriptor,
+                                        0,
+                                        scheduling_strategy,
+                                        std::vector<FallbackOption>());
   scheduling_strategy.mutable_placement_group_scheduling_strategy()
       ->set_placement_group_bundle_index(0);
-  SchedulingClassDescriptor descriptor9(
-      resources, LabelSelector(), descriptor, 0, scheduling_strategy);
+  SchedulingClassDescriptor descriptor9(resources,
+                                        LabelSelector(),
+                                        descriptor,
+                                        0,
+                                        scheduling_strategy,
+                                        std::vector<FallbackOption>());
   ASSERT_TRUE(descriptor1 == descriptor1);
   ASSERT_TRUE(absl::Hash<SchedulingClassDescriptor>()(descriptor1) ==
               absl::Hash<SchedulingClassDescriptor>()(descriptor1));

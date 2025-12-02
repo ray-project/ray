@@ -1,15 +1,31 @@
+import logging
 import posixpath
+import urllib.parse
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Type,
+    Union,
+)
+
+import numpy as np
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow
 
+    from ray.data.expressions import Expr
+
 
 PartitionDataType = Type[Union[int, float, str, bool]]
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -253,6 +269,67 @@ class PathPartitionParser:
 
         return partitions
 
+    def evaluate_predicate_on_partition(self, path: str, predicate: "Expr") -> bool:
+        """Evaluate a predicate expression against partition values from a path.
+
+        This method enables partition pruning by evaluating predicates that reference
+        partition columns against the partition values parsed from file paths.
+
+        Args:
+            path: File path to parse partition values from.
+            predicate: Expression that references partition columns.
+
+        Returns:
+            True if the partition satisfies the predicate (should read the file),
+            False if it doesn't (can skip the file for partition pruning).
+        """
+        import pyarrow as pa
+
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            NativeExpressionEvaluator,
+        )
+
+        # Parse partition values from the file path
+        partition_values = self(path)
+
+        if not partition_values:
+            # Unpartitioned file - exclude it when filtering on partition columns
+            # If the predicate references partition columns and the file doesn't have
+            # partition values in its path, we can't determine if it matches
+            return False
+
+        try:
+            # Create a single-row table with partition values
+            partition_table = pa.table(
+                {col: [val] for col, val in partition_values.items()}
+            )
+
+            # Evaluate using Ray Data's native evaluator
+            evaluator = NativeExpressionEvaluator(partition_table)
+            result = evaluator.visit(predicate)
+
+            # Extract boolean result from array-like types
+            # Check for specific array types to avoid issues with strings (which are iterable)
+            if isinstance(result, (pa.Array, pa.ChunkedArray, np.ndarray)):
+                return bool(result[0])
+
+            # Import pandas here to avoid circular dependencies
+            import pandas as pd
+
+            if isinstance(result, pd.Series):
+                return bool(result.iloc[0])
+
+            # Scalar result (shouldn't happen with table evaluation, but handle conservatively)
+            return bool(result)
+        except Exception:
+            logger.debug(
+                "Failed to evaluate predicate on partition for path %s, "
+                "conservatively including file.",
+                path,
+                exc_info=True,
+            )
+            return True
+
     @property
     def scheme(self) -> Partitioning:
         """Returns the partitioning for this parser."""
@@ -278,6 +355,11 @@ class PathPartitionParser:
         """
         dirs = [d for d in dir_path.split("/") if d and (d.count("=") == 1)]
         kv_pairs = [d.split("=") for d in dirs] if dirs else []
+        # NOTE: PyArrow URL-encodes partition values when writing to cloud storage. To
+        #       ensure the values are consistent when you read them back, we need to
+        #       URL-decode them. See https://github.com/apache/arrow/issues/34905.
+        kv_pairs = [[key, urllib.parse.unquote(value)] for key, value in kv_pairs]
+
         field_names = self._scheme.field_names
         if field_names and kv_pairs:
             if len(kv_pairs) != len(field_names):
