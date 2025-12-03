@@ -61,6 +61,14 @@ class AsyncAuthenticationServerInterceptor(aiogrpc.ServerInterceptor):
         if handler is None:
             return None
 
+        async def _abort_if_unauthenticated(context):
+            """Abort the RPC if authentication fails."""
+            if not _authenticate_request(context.invocation_metadata()):
+                await context.abort(
+                    grpc.StatusCode.UNAUTHENTICATED,
+                    "Invalid or missing authentication token",
+                )
+
         # Wrap the RPC behavior with authentication check
         def wrap_unary_response(behavior):
             """Wrap a unary response RPC method to validate authentication first."""
@@ -68,11 +76,7 @@ class AsyncAuthenticationServerInterceptor(aiogrpc.ServerInterceptor):
                 return None
 
             async def wrapped(request_or_iterator, context):
-                if not _authenticate_request(context.invocation_metadata()):
-                    await context.abort(
-                        grpc.StatusCode.UNAUTHENTICATED,
-                        "Invalid or missing authentication token",
-                    )
+                await _abort_if_unauthenticated(context)
                 return await behavior(request_or_iterator, context)
 
             return wrapped
@@ -83,11 +87,7 @@ class AsyncAuthenticationServerInterceptor(aiogrpc.ServerInterceptor):
                 return None
 
             async def wrapped(request_or_iterator, context):
-                if not _authenticate_request(context.invocation_metadata()):
-                    await context.abort(
-                        grpc.StatusCode.UNAUTHENTICATED,
-                        "Invalid or missing authentication token",
-                    )
+                await _abort_if_unauthenticated(context)
                 async for response in behavior(request_or_iterator, context):
                     yield response
 

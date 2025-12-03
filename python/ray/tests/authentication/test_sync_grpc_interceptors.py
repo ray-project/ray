@@ -180,6 +180,33 @@ def test_sync_streaming_response_with_valid_token(create_sync_test_server):
             server.stop(grace=1)
 
 
+def test_sync_streaming_response_without_token_fails(create_sync_test_server):
+    """Test sync server streaming response fails without token."""
+    token = generate_new_authentication_token()
+
+    with authentication_env_guard():
+        set_auth_mode("token")
+        set_env_auth_token(token)
+        reset_auth_token_state()
+
+        server, port = create_sync_test_server(with_auth=True)
+
+        try:
+            # Client without auth token
+            channel = grpc.insecure_channel(f"localhost:{port}")
+            stub = reporter_pb2_grpc.LogServiceStub(channel)
+            request = reporter_pb2.StreamLogRequest(log_file_name="test.log")
+
+            # Should fail with UNAUTHENTICATED when trying to iterate
+            with pytest.raises(grpc.RpcError) as exc_info:
+                for _ in stub.StreamLog(request, timeout=5):
+                    pass
+
+            assert exc_info.value.code() == grpc.StatusCode.UNAUTHENTICATED
+        finally:
+            server.stop(grace=1)
+
+
 if __name__ == "__main__":
     import sys
 
