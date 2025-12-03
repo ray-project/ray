@@ -2568,7 +2568,7 @@ std::string NodeManager::DebugString() const {
   }
 
   // Event stats.
-  result << "\nEvent stats:" << io_service_.stats().StatsString();
+  result << "\nEvent stats:" << io_service_.stats()->StatsString();
 
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
   return result.str();
@@ -3022,8 +3022,6 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
   std::string serialized_commands_sync_msg;
   syncer::CommandsSyncMessage commands_sync_message;
   commands_sync_message.set_should_global_gc(true);
-  commands_sync_message.set_cluster_full_of_actors_detected(resource_deadlock_warned_ >=
-                                                            1);
   RAY_CHECK(commands_sync_message.SerializeToString(&serialized_commands_sync_msg));
 
   // Populate the sync message.

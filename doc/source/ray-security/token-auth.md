@@ -93,10 +93,7 @@ $ export RAY_AUTH_MODE=token
 # First attempt - an error is raised if no token exists.
 $ ray start --head
 ...
-RuntimeError: Token authentication is enabled but no authentication token was found. Please provide an authentication token using one of these methods:
-  1. Set the RAY_AUTH_TOKEN environment variable
-  2. Set the RAY_AUTH_TOKEN_PATH environment variable (pointing to a token file)
-  3. Create a token file at the default location: ~/.ray/auth_token
+ray.exceptions.AuthenticationError: Token authentication is enabled but no authentication token was found. Ensure that the token for the cluster is available in a local file (e.g., ~/.ray/auth_token or via RAY_AUTH_TOKEN_PATH) or as the `RAY_AUTH_TOKEN` environment variable. To generate a token for local development, use `ray get-auth-token --generate` For remote clusters, ensure that the token is propagated to all nodes of the cluster when token authentication is enabled. For more information, see: https://docs.ray.io/en/latest/ray-security/token-auth.html
 
 # Generate a token.
 $ ray get-auth-token --generate
