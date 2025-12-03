@@ -13,6 +13,8 @@ COPTS_TESTS = select({
     ],
     "//conditions:default": [
         "-Wunused-result",
+        # TODO(andrew): -Wconversion-null can be moved to cxxopts for related rules_cc targets once rules_cc upgraded.
+        # This will fix info warning when building src/ray/thirdparty/aligned_alloc.c
         "-Wconversion-null",
         "-Wno-misleading-indentation",
         "-Wimplicit-fallthrough",
