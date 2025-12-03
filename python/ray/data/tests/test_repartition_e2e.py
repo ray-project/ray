@@ -261,8 +261,6 @@ def test_streaming_repartition_write_no_operator_fusion(
     # Further rebalance to meet target row size
     ds = ds.repartition(target_num_rows_per_block=20)
 
-    import pdb; pdb.set_trace()
-
     # Verify non-fusion of map_batches with repartition
     ds = ds.map_batches(lambda x: x)
     planner = create_planner()
