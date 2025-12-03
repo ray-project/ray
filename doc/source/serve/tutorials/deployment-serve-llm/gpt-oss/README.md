@@ -231,7 +231,7 @@ You can customize the container by building your own Dockerfile. In your Anyscal
 ```yaml
 # service.yaml
 # Replace:
-# image_uri: anyscale/ray-llm:2.49.0-py311-cu128
+# image_uri: anyscale/ray-llm:2.52.0-py311-cu128
 
 # with:
 containerfile: ./Dockerfile
