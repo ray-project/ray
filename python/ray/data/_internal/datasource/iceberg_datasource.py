@@ -20,11 +20,12 @@ from ray.data.expressions import (
     BinaryExpr,
     DownloadExpr,
     LiteralExpr,
-    NamedExpr,
     Operation,
+    ResolvedColumnExpr,
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UnresolvedColumnExpr,
 )
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
@@ -96,8 +97,18 @@ class _IcebergExpressionVisitor(
         >>> # iceberg_expr can now be used with PyIceberg's filter APIs
     """
 
-    def visit_column(self, expr: "NamedExpr") -> "UnboundTerm[Any]":
-        """Convert a column reference to an Iceberg reference."""
+    def visit_resolved_column(self, expr: "ResolvedColumnExpr") -> "UnboundTerm[Any]":
+        """Convert a resolved column reference to an Iceberg reference."""
+        # TODO(Justin): Iceberg has BoundReference, which contains a reference to a schema. I need
+        # to research what's the difference, if any, but I know that Daft actually has 3 types of columns,
+        # Unresolved, Resolved, and Bound, Bound meaning it references an actual physical schema
+        # (as opposed to logical).
+        return Reference(expr.name)
+
+    def visit_unresolved_column(
+        self, expr: "UnresolvedColumnExpr"
+    ) -> "UnboundTerm[Any]":
+        """Convert an unresolved column reference to an Iceberg reference."""
         return Reference(expr.name)
 
     def visit_literal(self, expr: "LiteralExpr") -> "Literal[Any]":

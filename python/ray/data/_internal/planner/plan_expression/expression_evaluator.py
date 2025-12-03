@@ -21,11 +21,12 @@ from ray.data.expressions import (
     DownloadExpr,
     Expr,
     LiteralExpr,
-    NamedExpr,
     Operation,
+    ResolvedColumnExpr,
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UnresolvedColumnExpr,
     _ExprVisitor,
     col,
 )
@@ -503,8 +504,15 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
         elif isinstance(node.value, ast.Attribute):
             # Recursively handle nested attributes
             left_expr = self.visit(node.value)
-            if isinstance(left_expr, NamedExpr):
-                return col(f"{left_expr.name}.{node.attr}")
+            if isinstance(left_expr, (ResolvedColumnExpr)):
+                return ResolvedColumnExpr(
+                    _data_type=left_expr.data_type,
+                    _name=f"{left_expr.name}.{node.attr}",
+                )
+            if isinstance(left_expr, (ResolvedColumnExpr, UnresolvedColumnExpr)):
+                return UnresolvedColumnExpr(
+                    _name=f"{left_expr.name}.{node.attr}",
+                )
 
         raise ValueError(
             f"Unsupported attribute access: {node.attr}. Node details: {ast.dump(node)}"
@@ -570,11 +578,26 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         else:
             raise TypeError(f"Unsupported block type: {block_type}")
 
-    def visit_column(self, expr: NamedExpr) -> Union[BlockColumn, ScalarType]:
-        """Visit a column expression and return the column data.
+    def visit_resolved_column(
+        self, expr: "ResolvedColumnExpr"
+    ) -> Union[BlockColumn, ScalarType]:
+        """Visit a resolved column expression and return the column data.
 
         Args:
-            expr: The column expression.
+            expr: The resolved column expression.
+
+        Returns:
+            The column data as a BlockColumn.
+        """
+        return self.block[expr.name]
+
+    def visit_unresolved_column(
+        self, expr: "UnresolvedColumnExpr"
+    ) -> Union[BlockColumn, ScalarType]:
+        """Visit an unresolved column expression and return the column data.
+
+        Args:
+            expr: The unresolved column expression.
 
         Returns:
             The column data as a BlockColumn.

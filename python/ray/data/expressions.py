@@ -190,28 +190,35 @@ class _ExprVisitor(ABC, Generic[T]):
     """Base visitor with generic dispatch for Ray Data expressions."""
 
     def visit(self, expr: "Expr") -> T:
-        # TODO(Justin): Need this to handle Unresolved and Resolved explicitly
-        if isinstance(expr, NamedExpr):
-            return self.visit_column(expr)
+        # Check for specific column types before checking parent classes
+        # to avoid incorrect routing (AliasExpr and StarExpr inherit from NamedExpr)
+        if isinstance(expr, AliasExpr):
+            return self.visit_alias(expr)
+        elif isinstance(expr, StarExpr):
+            return self.visit_star(expr)
+        elif isinstance(expr, ResolvedColumnExpr):
+            return self.visit_resolved_column(expr)
+        elif isinstance(expr, UnresolvedColumnExpr):
+            return self.visit_unresolved_column(expr)
         elif isinstance(expr, LiteralExpr):
             return self.visit_literal(expr)
         elif isinstance(expr, BinaryExpr):
             return self.visit_binary(expr)
         elif isinstance(expr, UnaryExpr):
             return self.visit_unary(expr)
-        elif isinstance(expr, AliasExpr):
-            return self.visit_alias(expr)
         elif isinstance(expr, UDFExpr):
             return self.visit_udf(expr)
         elif isinstance(expr, DownloadExpr):
             return self.visit_download(expr)
-        elif isinstance(expr, StarExpr):
-            return self.visit_star(expr)
         else:
             raise TypeError(f"Unsupported expression type for conversion: {type(expr)}")
 
     @abstractmethod
-    def visit_column(self, expr: "ResolvedColumnExpr") -> T:
+    def visit_resolved_column(self, expr: "ResolvedColumnExpr") -> T:
+        pass
+
+    @abstractmethod
+    def visit_unresolved_column(self, expr: "UnresolvedColumnExpr") -> T:
         pass
 
     @abstractmethod
@@ -246,8 +253,14 @@ class _ExprVisitor(ABC, Generic[T]):
 class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
     """Visitor that converts Ray Data expressions to PyArrow compute expressions."""
 
-    def visit_column(self, expr: "ResolvedColumnExpr") -> "pyarrow.compute.Expression":
+    def visit_resolved_column(
+        self, expr: "ResolvedColumnExpr"
+    ) -> "pyarrow.compute.Expression":
+        return pc.field(expr.name)
 
+    def visit_unresolved_column(
+        self, expr: "UnresolvedColumnExpr"
+    ) -> "pyarrow.compute.Expression":
         return pc.field(expr.name)
 
     def visit_literal(self, expr: "LiteralExpr") -> "pyarrow.compute.Expression":
@@ -1322,7 +1335,9 @@ def download(uri_column_name: str | NamedExpr) -> DownloadExpr:
 __all__ = [
     "Operation",
     "Expr",
+    "NamedExpr",
     "ResolvedColumnExpr",
+    "UnresolvedColumnExpr",
     "LiteralExpr",
     "BinaryExpr",
     "UnaryExpr",
