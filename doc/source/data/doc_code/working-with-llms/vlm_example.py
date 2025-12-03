@@ -22,7 +22,7 @@ subprocess.check_call([sys.executable, "-m", "pip", "install", "numpy==1.26.4"])
 import ray
 from PIL import Image
 from io import BytesIO
-from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
+from ray.data.llm import vLLMEngineProcessorConfig, build_processor
 
 # Load "LMMs-Eval-Lite" dataset from Hugging Face
 import datasets as datasets_lib
@@ -126,7 +126,7 @@ def vision_postprocess(row: dict) -> dict:
     }
 
 
-vision_processor = build_llm_processor(
+vision_processor = build_processor(
     vision_processor_config,
     preprocess=vision_preprocess,
     postprocess=vision_postprocess,
@@ -190,7 +190,7 @@ def run_vlm_example():
 
     if vision_dataset:
         # Build processor with preprocessing
-        processor = build_llm_processor(config, preprocess=vision_preprocess)
+        processor = build_processor(config, preprocess=vision_preprocess)
 
         print("VLM processor configured successfully")
         print(f"Model: {config.model_source}")
