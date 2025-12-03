@@ -574,11 +574,14 @@ def setup(app):
     app.add_js_file("js/csat.js", defer="defer")
     app.add_css_file("css/csat.css")
 
-    app.add_js_file("js/assistant.js", defer="defer")
-    app.add_css_file("css/assistant.css")
+    # Disabled: Custom "Ask AI" widget (replaced with runLLM widget)
+    # app.add_js_file("js/assistant.js", defer="defer")
+    # app.add_css_file("css/assistant.css")
 
     app.add_js_file("js/dismissable-banner.js", defer="defer")
     app.add_css_file("css/dismissable-banner.css")
+
+    app.add_js_file("js/runllm-widget.js", defer="defer")
 
     base_path = pathlib.Path(__file__).parent
     github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
