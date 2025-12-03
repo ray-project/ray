@@ -164,8 +164,7 @@ class SlicePlacementGroup:
             topology: The TPU topology string (e.g. "2x2x2").
             accelerator_version: The TPU accelerator generation (e.g. "v6e", "v5p", "v4").
             resources_per_bundle: Optionally specify the resources to include in every worker bundle.
-            strategy: PlacementGroup parameter. The strategy to create the placement group.
-                Currently default to "SPREAD"
+            strategy: PlacementGroup parameter. The strategy to create the placement group. Currently default to "SPREAD"
 
              - "PACK": Packs Bundles into as few nodes as possible.
              - "SPREAD": Places Bundles across distinct nodes as even as possible.
