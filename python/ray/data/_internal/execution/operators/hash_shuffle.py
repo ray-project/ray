@@ -28,7 +28,6 @@ import pyarrow as pa
 import ray
 from ray import ObjectRef
 from ray._private.ray_constants import (
-    DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
     env_integer,
 )
 from ray.actor import ActorHandle
@@ -1181,12 +1180,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         #   - No more than 4 CPUs per aggregator
         #
         cap = min(4.0, total_available_cluster_resources.cpu * 0.25 / num_aggregators)
-
-        worker_heap_memory_proportion = 1 - DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
         target_num_cpus = min(
             cap,
-            estimated_aggregator_memory_required
-            / (4 * GiB * worker_heap_memory_proportion),
+            estimated_aggregator_memory_required / (4 * GiB),
         )
 
         # Round resource to 2d decimal point (for readability)
