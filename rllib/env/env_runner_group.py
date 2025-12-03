@@ -658,7 +658,7 @@ class EnvRunnerGroup:
                 if policies is not None
                 else [COMPONENT_RL_MODULE]
             )
-            # LearnerGroup has-a Learner, which has-a RLModule.
+            # LearnerGroup has a Learner, which has an RLModule.
             if isinstance(weights_src, LearnerGroup):
                 rl_module_state = weights_src.get_state(
                     components=[COMPONENT_LEARNER + "/" + m for m in modules],
@@ -666,7 +666,7 @@ class EnvRunnerGroup:
                 )[COMPONENT_LEARNER]
             # EnvRunner (new API stack).
             elif self._remote_config.enable_env_runner_and_connector_v2:
-                # EnvRunner (remote) has-a RLModule.
+                # EnvRunner (remote) has an RLModule.
                 # TODO (sven): Replace this with a new ActorManager API:
                 #  try_remote_request_till_success("get_state") -> tuple(int,
                 #  remoteresult)
@@ -680,7 +680,7 @@ class EnvRunnerGroup:
                             inference_only=inference_only,
                         )
                     )
-                # EnvRunner (local) has-a RLModule.
+                # EnvRunner (local) has an RLModule.
                 else:
                     rl_module_state = weights_src.get_state(
                         components=modules,

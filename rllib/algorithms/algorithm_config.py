@@ -396,7 +396,7 @@ class AlgorithmConfig(_Config):
         #  the main AlgorithmConfig. We should not require the user to provide those
         #  settings in both, the AlgorithmConfig (as property) AND the model config
         #  dict. We should generally move to a world, in which there exists an
-        #  AlgorithmConfig that a) has-a user provided model config object and b)
+        #  AlgorithmConfig that a) has a user provided model config object and b)
         #  is given a chance to compile a final model config (dict or object) that is
         #  then passed into the RLModule/Catalog. This design would then match our
         #  "compilation" pattern, where we compile automatically those settings that
