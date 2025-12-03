@@ -342,12 +342,12 @@ class Expr(ABC):
         >>> # Create an expression tree: (col("x") + 5) * col("y")
         >>> expr = (col("x") + lit(5)) * col("y")
         >>> # This creates a BinaryExpr with operation=MUL
-        >>> # left=BinaryExpr(op=ADD, left=ColumnExpr("x"), right=LiteralExpr(5))
-        >>> # right=ColumnExpr("y")
+        >>> # left=BinaryExpr(op=ADD, left=UnresolvedColumnExpr("x"), right=LiteralExpr(5))
+        >>> # right=UnresolvedColumnExpr("y")
 
     Note:
         This class should not be instantiated directly. Use the concrete
-        subclasses like ColumnExpr, LiteralExpr, etc.
+        subclasses like ResolvedColumnExpr, UnresolvedColumnExpr, LiteralExpr, etc.
     """
 
     # data_type: DataType
@@ -358,7 +358,7 @@ class Expr(ABC):
     #     """Get the name associated with this expression.
     #
     #     Returns:
-    #         The name for expressions that have one (ColumnExpr, AliasExpr),
+    #         The name for expressions that have one (ResolvedColumnExpr, UnresolvedColumnExpr, AliasExpr),
     #         None otherwise.
     #     """
     #     return None
@@ -670,7 +670,7 @@ class UnresolvedColumnExpr(NamedExpr):
     Example:
         >>> from ray.data.expressions import col
         >>> # Reference the "age" column
-        >>> age_expr = col("age") # Creates ColumnExpr(name="age")
+        >>> age_expr = col("age") # Creates UnresolvedColumnExpr(name="age")
     """
 
     @override
@@ -706,7 +706,7 @@ class ResolvedColumnExpr(NamedExpr):
     Example:
         >>> from ray.data.expressions import col
         >>> # Reference the "age" column
-        >>> age_expr = col("age") # Creates ColumnExpr(name="age")
+        >>> age_expr = col("age") # Creates ResolvedColumnExpr(name="age")
     """
 
     _data_type: DataType = field(default_factory=lambda: DataType(object))
@@ -1234,7 +1234,7 @@ def col(name: str) -> UnresolvedColumnExpr:
         name: The name of the column to reference
 
     Returns:
-        A ColumnExpr that references the specified column
+        An UnresolvedColumnExpr that references the specified column
 
     Example:
         >>> from ray.data.expressions import col
