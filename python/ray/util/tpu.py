@@ -390,7 +390,7 @@ def slice_placement_group(
             When unspecified, SlicePlacementGroup defaults to reserving 1 bundle per TPU host in
             a topology, with the bundle resources set to the number of TPU in a host.
             Ex: Specifying {"TPU": 1} for a 4x4 topology would result in 16 bundles, each with 1 TPU.
-                If resources_per_bundle=None for the same topology, there would be 4 bundles with 4 TPU each.
+            If resources_per_bundle=None for the same topology, there would be 4 bundles with 4 TPU each.
         num_slices: The number of tpu slices within the placement group
         **kwargs: Additional arguments for the placement group, such as 'name', 'lifetime', or 'strategy'.
 
