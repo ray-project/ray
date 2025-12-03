@@ -2139,9 +2139,9 @@ referencing==0.36.2 \
     #   -c release/ray_release/byod/ray_base_extra_testdeps_py3.11.lock
     #   jsonschema
     #   jsonschema-specifications
-requests==2.32.3 \
-    --hash=sha256:55365417734eb18255590a9ff9eb97e9e1da868d4ccd6402399eaf68af20a760 \
-    --hash=sha256:70761cfe03c773ceb22aa2f671b4757976145175cdfca038c02654d061d6dcc6
+requests==2.32.5 \
+    --hash=sha256:2462f94637a34fd532264295e186976db0f5d453d1cdd31473c85a6a161affb6 \
+    --hash=sha256:dbba0bac56e100853db0ea71b82b4dfd5fe2bf6d3754a8893c3af500cec7d7cf
     # via
     #   -c release/ray_release/byod/ray_base_extra_testdeps_py3.11.lock
     #   anyscale
@@ -2167,9 +2167,9 @@ rfc3986-validator==0.1.1 \
     #   -c release/ray_release/byod/ray_base_extra_testdeps_py3.11.lock
     #   jsonschema
     #   jupyter-events
-rich==13.3.2 \
-    --hash=sha256:91954fe80cfb7985727a467ca98a7618e5dd15178cc2da10f553b36a93859001 \
-    --hash=sha256:a104f37270bf677148d8acb07d33be1569eeee87e2d1beb286a4e9113caf6f2f
+rich==13.3.3 \
+    --hash=sha256:540c7d6d26a1178e8e8b37e9ba44573a3cd1464ff6348b99ee7061b95d1c6333 \
+    --hash=sha256:dc84400a9d842b3a9c5ff74addd8eb798d155f36c1c91303888e0a66850d2a15
     # via
     #   -c release/ray_release/byod/ray_base_extra_testdeps_py3.11.lock
     #   anyscale
