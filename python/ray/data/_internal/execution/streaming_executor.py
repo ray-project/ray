@@ -795,6 +795,7 @@ class _ClosingIterator(OutputIterator):
                 self._executor._global_info.update(
                     bundle.num_rows(), op.num_output_rows_total()
                 )
+                self._executor._refresh_progress_bars(self._executor._topology)
             elif using_rich and self._executor._progress_manager:
                 self._executor._progress_manager.update_total_progress(
                     bundle.num_rows() or 0, op.num_output_rows_total()
