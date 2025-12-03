@@ -458,7 +458,7 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_
     // already had this node as ALIVE (meaning polling saw it first), pass
     // is_initializing=false.  Intention being to articulate that there's been
     // an advancement in state, HOWEVER we should remove his logic once it's guaranteed
-    // that initialization callbacks are triggered before streaming callb
+    // that initialization callbacks are triggered before streaming callbacks
     bool effective_is_initializing = is_initializing && !is_alive_to_dead_transition;
     node_change_callback_address_and_liveness_(
         node_id, node_cache_address_and_liveness_[node_id], effective_is_initializing);
