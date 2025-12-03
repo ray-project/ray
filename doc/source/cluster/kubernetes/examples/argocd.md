@@ -152,10 +152,8 @@ spec:
       kind: RayCluster
       name: raycluster-kuberay
       namespace: ray-cluster
-      jsonPointers:
-        - /spec/workerGroupSpecs/0/replicas
-        - /spec/workerGroupSpecs/1/replicas
-        - /spec/workerGroupSpecs/2/replicas
+      jqPathExpressions:
+        - .spec.workerGroupSpecs[].replicas
   source:
     repoURL: https://ray-project.github.io/kuberay-helm/
     chart: ray-cluster
@@ -315,7 +313,27 @@ If you see repeated differences in fields that should be managed by controllers 
 
 ### Configuring ignoreDifferences
 
-The `ignoreDifferences` section in the RayCluster Application configuration tells ArgoCD which fields to ignore:
+The `ignoreDifferences` section in the RayCluster Application configuration tells ArgoCD which fields to ignore. Without this setting, ArgoCD and the Ray Autoscaler may conflict, resulting in unexpected behavior when requesting workers dynamically (for example, using `ray.autoscaler.sdk.request_resources`). Specifically, when requesting N workers, the Autoscaler might not spin up the expected number of workers because ArgoCD could revert the replica count back to the original value defined in the Application manifest.
+
+The recommended approach is to use `jqPathExpressions`, which automatically handles any number of worker groups:
+
+```yaml
+ignoreDifferences:
+  - group: ray.io
+    kind: RayCluster
+    name: raycluster-kuberay
+    namespace: ray-cluster
+    jqPathExpressions:
+      - .spec.workerGroupSpecs[].replicas
+```
+
+This configuration tells ArgoCD to ignore differences in the `replicas` field for all worker groups. The `jqPathExpressions` field uses JQ syntax with array wildcards (`[]`), which means you don't need to update the configuration when adding or removing worker groups.
+
+**Note**: The `name` and `namespace` must match your RayCluster resource name and namespace. Verify these values separately if you've customized them.
+
+**Alternative: Using jsonPointers**
+
+If you prefer explicit configuration, you can use `jsonPointers` instead:
 
 ```yaml
 ignoreDifferences:
@@ -329,34 +347,14 @@ ignoreDifferences:
       - /spec/workerGroupSpecs/2/replicas
 ```
 
-This configuration tells ArgoCD to ignore differences in the `replicas` field for each worker group. Without this setting, ArgoCD and the Ray Autoscaler may conflict, resulting in unexpected behavior when requesting workers dynamically (for example, using `ray.autoscaler.sdk.request_resources`). Specifically, when requesting N workers, the Autoscaler might not spin up the expected number of workers because ArgoCD could revert the replica count back to the original value defined in the Application manifest.
-
-Note the `name` and `namespace` may be different depending on the values you used. It's best to check this separately.
-
-**Important**: The `jsonPointers` list must match the number of worker groups in your deployment:
+With `jsonPointers`, you must explicitly list each worker group by index:
 - `/spec/workerGroupSpecs/0/replicas` - First worker group (the default `worker` group)
 - `/spec/workerGroupSpecs/1/replicas` - Second worker group (`additional-worker-group1`)
 - `/spec/workerGroupSpecs/2/replicas` - Third worker group (`additional-worker-group2`)
 
-If you add or remove worker groups, you **must** update this list accordingly. For example:
-- If you only have one worker group, use only `/spec/workerGroupSpecs/0/replicas`
-- If you have five worker groups, add entries for indices 0 through 4
+If you add or remove worker groups, you **must** update this list accordingly. The index corresponds to the order of worker groups as they appear in the RayCluster spec, with the default `worker` group at index 0 and `additionalWorkerGroups` following in the order they are defined.
 
-The index corresponds to the order of worker groups as they appear in the RayCluster spec, with the default `worker` group at index 0 and `additionalWorkerGroups` following in the order they are defined.
-
-Alternatively, you may leverage the `jqPathExpressions` instead for a more dynamic approach:
-
-```yaml
-ignoreDifferences:
-  - group: ray.io
-    kind: RayCluster
-    name: raycluster-kuberay
-    namespace: ray-cluster
-    jqPathExpressions:
-      - .spec.workerGroupSpecs[].replicas
-```
-
-This approach automatically handles any number of worker groups without requiring explicit index entries. See the [ArgoCD diff customization documentation](https://argo-cd.readthedocs.io/en/stable/user-guide/diffing/) for more details.
+See the [ArgoCD diff customization documentation](https://argo-cd.readthedocs.io/en/stable/user-guide/diffing/) for more details on both approaches.
 
 By ignoring these differences, ArgoCD allows the Ray Autoscaler to dynamically manage worker replicas without interference.
 
