@@ -2717,7 +2717,7 @@ cdef class CoreWorker:
         # aggregation is enabled by default in Ray.
         if self.is_driver:
             self._task_prepare_time_ms_histogram = Histogram(
-                "ray.task_prepare_time_ms",
+                "task_prepare_time_ms",
                 "Time spent in Python preparing a task before C++ submission in ms.",
                 [1.0, 10.0, 100.0, 1000.0, 10000.0],
                 [])
