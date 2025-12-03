@@ -3328,23 +3328,12 @@ std::pair<std::unique_ptr<AgentManager>, int> NodeManager::CreateRuntimeEnvAgent
     }
   }
 
-  std::vector<Pipe> external_pipes;
-  std::vector<intptr_t> handles;
-  for (intptr_t handle : config.runtime_env_agent_port_write_handles) {
-    external_pipes.push_back(Pipe::FromWriterHandle(handle));
-    handles.push_back(external_pipes.back().MakeWriterHandle());
-  }
-
   std::unique_ptr<Pipe> node_manager_pipe;
-  if (config.runtime_env_agent_port == 0) {
+  if (runtime_env_agent_port == 0) {
     node_manager_pipe = std::make_unique<Pipe>();
-    // MakeWriterHandle also ensures the handle is inheritable.
-    handles.push_back(node_manager_pipe->MakeWriterHandle());
-  }
-
-  if (!handles.empty()) {
-    agent_command_line.emplace_back("--runtime-env-agent-port-write-handles=" +
-                                    Pipe::FormatHandles(handles));
+    agent_command_line.emplace_back(
+        "--runtime-env-agent-port-write-handles=" +
+        Pipe::FormatHandles({node_manager_pipe->MakeWriterHandle()}));
   }
 
   std::string agent_name = "runtime_env_agent";
@@ -3364,12 +3353,16 @@ std::pair<std::unique_ptr<AgentManager>, int> NodeManager::CreateRuntimeEnvAgent
       true,
       add_process_to_system_cgroup_hook_);
 
-  for (auto &pipe : external_pipes) {
-    pipe.CloseWriterHandle();
-  }
   if (node_manager_pipe) {
     node_manager_pipe->CloseWriterHandle();
     runtime_env_agent_port = std::stoi(node_manager_pipe->Read());
+    node_manager_pipe->Close();
+  }
+
+  for (intptr_t handle : config.runtime_env_agent_port_write_handles) {
+    Pipe pipe = Pipe::FromWriterHandle(handle);
+    pipe.Write(std::to_string(runtime_env_agent_port));
+    pipe.Close();
   }
 
   return {std::move(agent_manager), runtime_env_agent_port};
