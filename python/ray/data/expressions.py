@@ -109,7 +109,7 @@ class BinaryOperation(Operation, Enum):
     NOT_IN = "not_in"
 
     @override
-    def _infer_dtype(self, l_dtype: DataType, r_dtype: DataType) -> DataType:
+    def infer_dtype(self, l_dtype: DataType, r_dtype: DataType) -> DataType:
         import pyarrow as pa
 
         match self:
@@ -1100,7 +1100,7 @@ class DownloadExpr(Expr):
 
     @classmethod
     def from_uri(cls, uri_column_name: str) -> "DownloadExpr":
-        cls(uri_column=col(uri_column_name))
+        cls(uri_column=UnresolvedColumnExpr(_name=uri_column_name))
 
     @override
     def _is_resolved(self) -> bool:
@@ -1130,9 +1130,7 @@ class AliasExpr(NamedExpr):
 
     def alias(self, name: str) -> "Expr":
         # Always unalias before creating new one
-        return AliasExpr(
-            self.expr.data_type, self.expr, _name=name, _is_rename=self._is_rename
-        )
+        return AliasExpr(_name=name, expr=self.expr, _is_rename=self._is_rename)
 
     @override
     def _is_resolved(self) -> bool:
@@ -1159,7 +1157,7 @@ class AliasExpr(NamedExpr):
             isinstance(other, AliasExpr)
             and self.expr.structurally_equals(other.expr)
             and self.name == other.name
-            and self._is_rename == self._is_rename
+            and self._is_rename == other._is_rename
         )
 
 
@@ -1282,7 +1280,7 @@ def star() -> StarExpr:
 
 
 @PublicAPI(stability="alpha")
-def download(uri_column_name: str) -> DownloadExpr:
+def download(uri_column_name: str | NamedExpr) -> DownloadExpr:
     """
     Create a download expression that downloads content from URIs.
 
@@ -1296,7 +1294,7 @@ def download(uri_column_name: str) -> DownloadExpr:
         A DownloadExpr that will download content from the specified URI column
 
     Example:
-        >>> from ray.data.expressions import download
+        >>> from ray.data.expressions import download, col
         >>> import ray
         >>> # Create dataset with URIs
         >>> ds = ray.data.from_items([
@@ -1304,9 +1302,14 @@ def download(uri_column_name: str) -> DownloadExpr:
         ...     {"uri": "s3://bucket/file2.jpg", "id": "2"}
         ... ])
         >>> # Add downloaded bytes column
-        >>> ds_with_bytes = ds.with_column("bytes", download("uri"))
+        >>> ds_with_bytes = ds.with_column("bytes", download("uri")) # OR
+        >>> ds_with_bytes = ds.with_column("bytes", download(col("uri")))
     """
-    return DownloadExpr.from_uri(uri_column_name=uri_column_name)
+    if isinstance(uri_column_name, str):
+        return DownloadExpr.from_uri(uri_column_name=uri_column_name)
+    if not isinstance(uri_column_name, NamedExpr):
+        raise ValueError("You can only download a col or alias expressions")
+    return DownloadExpr(uri_column=uri_column_name)
 
 
 # ──────────────────────────────────────

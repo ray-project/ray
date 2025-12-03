@@ -70,10 +70,12 @@ class ResolveAttributes(Rule):
             case UDFExpr(fn=fn, args=args, kwargs=kwargs, data_type=dtype):
                 new_args = [self.apply(arg, schema) for arg in args]
                 new_kwargs = {k: self.apply(v, schema) for k, v in kwargs.items()}
-                return UDFExpr(fn=fn, args=new_args, kwargs=new_kwargs, data_type=dtype)
+                return UDFExpr(
+                    fn=fn, args=new_args, kwargs=new_kwargs, _data_type=dtype
+                )
 
             case DownloadExpr(uri_column=uri_column):
-                new_uri = self.apply(uri_column, schema)
+                new_uri = self.resolve_attributes(uri_column, schema)
                 return DownloadExpr(uri_column=new_uri)
 
         return expr
@@ -105,7 +107,7 @@ class ResolveStar(Rule):
                     else:
                         # Existing column
                         existing_cols.add(expr.get_root_name())
-                        existing_exprs.add(expr)
+                        existing_exprs.append(expr)
 
                 assert len(existing_cols) == len(existing_exprs)
 
@@ -115,7 +117,7 @@ class ResolveStar(Rule):
                         non_existing_exprs.append(ResolvedColumnExpr(_name=col_name))
 
                 op = cp.copy(op)
-                op._exprs = existing_exprs + non_existing_exprs
+                op._exprs = existing_exprs + non_existing_exprs + additional_exprs
                 return op
 
             # TODO(Justin): Can filter contain stars?
