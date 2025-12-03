@@ -11,7 +11,7 @@ click>=7.0
 cupy-cuda12x; sys_platform != 'darwin'
 filelock
 jsonschema
-msgpack<2.0.0,>=1.0.0
+msgpack<2.0.0,>=1.1.1
 packaging
 protobuf>=3.20.3
 pyyaml
@@ -29,12 +29,11 @@ pyarrow >= 9.0.0
 # ray[all]
 smart_open
 lz4
-numpy>=1.20
 aiorwlock
-scipy
+scipy>=1.14.1
 colorful
 rich
-opentelemetry-sdk>=1.30.0
+opentelemetry-sdk
 opentelemetry-api
 opentelemetry-exporter-prometheus
 opentelemetry-proto

@@ -31,7 +31,7 @@ requests
 rich
 six>=1.10
 tabulate
-urllib3>=1.26.17
+urllib3>=2.0.0
 wrapt
 pyyaml
 smart_open
