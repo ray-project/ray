@@ -513,7 +513,7 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
                     _data_type=left_expr.data_type,
                     _name=f"{left_expr.name}.{node.attr}",
                 )
-            if isinstance(left_expr, (ResolvedColumnExpr, UnresolvedColumnExpr)):
+            if isinstance(left_expr, (UnresolvedColumnExpr)):
                 return UnresolvedColumnExpr(
                     _name=f"{left_expr.name}.{node.attr}",
                 )

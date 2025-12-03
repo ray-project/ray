@@ -83,7 +83,7 @@ class _ExprVisitorBase(_ExprVisitor[None]):
         """Visit a star expression (no columns to collect)."""
         pass
 
-    def visit_download(self, expr: "Expr") -> None:
+    def visit_download(self, expr: "DownloadExpr") -> None:
         """Visit a download expression (no columns to collect)."""
         pass
 
@@ -136,6 +136,9 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
             None (only collects columns as a side effect).
         """
         self.visit(expr.expr)
+
+    def visit_download(self, expr: "DownloadExpr") -> None:
+        self.visit(expr.uri_column)
 
 
 class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
@@ -252,7 +255,7 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
             _is_rename=expr._is_rename and _is_col_expr(visited),
         )
 
-    def visit_download(self, expr: "Expr") -> Expr:
+    def visit_download(self, expr: "DownloadExpr") -> Expr:
         """Visit a download expression (no rewriting needed).
 
         Args:
@@ -261,7 +264,7 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         Returns:
             The original download expression.
         """
-        return expr
+        return self.visit(expr.uri_column)
 
     def visit_star(self, expr: StarExpr) -> Expr:
         """Visit a star expression (no rewriting needed).
