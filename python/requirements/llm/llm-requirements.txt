@@ -4,6 +4,8 @@
 # on future releases in setup.py.
 vllm[audio]>=0.11.0
 nixl>=0.6.1
+# TODO(llm): remove after next vLLM version bump
+transformers>=4.57.3
 # For json mode
 jsonref>=1.1.0
 jsonschema

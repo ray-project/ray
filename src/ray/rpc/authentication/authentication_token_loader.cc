@@ -40,7 +40,8 @@ AuthenticationTokenLoader &AuthenticationTokenLoader::instance() {
   return instance;
 }
 
-std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken() {
+std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken(
+    bool ignore_auth_mode) {
   std::lock_guard<std::mutex> lock(token_mutex_);
 
   // If already loaded, return cached value
@@ -48,29 +49,31 @@ std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken() {
     return cached_token_;
   }
 
-  // If token or k8s auth is not enabled, return std::nullopt
-  if (!RequiresTokenAuthentication()) {
+  // If token or k8s auth is not enabled, return std::nullopt (unless ignoring auth mode)
+  if (!ignore_auth_mode && !RequiresTokenAuthentication()) {
     cached_token_ = std::nullopt;
     return std::nullopt;
   }
 
-  // Token auth is enabled, try to load from sources
+  // Token auth is enabled (or we're ignoring auth mode), try to load from sources
   AuthenticationToken token = LoadTokenFromSources();
 
   // If no token found and auth is enabled, fail with RAY_CHECK
-  RAY_CHECK(!token.empty())
-      << "Ray Setup Error: Token authentication is enabled but Ray couldn't find an "
-         "authentication token. "
-      << "Set the RAY_AUTH_TOKEN environment variable, or set RAY_AUTH_TOKEN_PATH to "
-         "point to a file with the token, "
-      << "or create a token file at ~/.ray/auth_token.";
+  if (token.empty() && !ignore_auth_mode) {
+    RAY_LOG(FATAL)
+        << "Token authentication is enabled but Ray couldn't find an "
+           "authentication token. "
+        << "Create a token file at ~/.ray/auth_token, "
+           "or store the token in any file and set RAY_AUTH_TOKEN_PATH to point to it, "
+           "or set the RAY_AUTH_TOKEN environment variable.";
+  }
 
   // Cache and return the loaded token
   cached_token_ = std::move(token);
   return *cached_token_;
 }
 
-bool AuthenticationTokenLoader::HasToken() {
+bool AuthenticationTokenLoader::HasToken(bool ignore_auth_mode) {
   std::lock_guard<std::mutex> lock(token_mutex_);
 
   // If already loaded, check if it's a valid token
@@ -78,13 +81,13 @@ bool AuthenticationTokenLoader::HasToken() {
     return !cached_token_->empty();
   }
 
-  // If token or k8s auth is not enabled, no token needed
-  if (!RequiresTokenAuthentication()) {
+  // If token or k8s auth is not enabled, no token needed (unless ignoring auth mode)
+  if (!ignore_auth_mode && !RequiresTokenAuthentication()) {
     cached_token_ = std::nullopt;
     return false;
   }
 
-  // Token auth is enabled, try to load from sources
+  // Token auth is enabled (or we're ignoring auth mode), try to load from sources
   AuthenticationToken token = LoadTokenFromSources();
 
   // Cache the result
@@ -116,8 +119,8 @@ AuthenticationToken AuthenticationTokenLoader::LoadTokenFromSources() {
   if (env_token != nullptr) {
     std::string token_str(env_token);
     if (!token_str.empty()) {
-      RAY_LOG(DEBUG) << "Loaded authentication token from RAY_AUTH_TOKEN environment "
-                        "variable";
+      RAY_LOG(INFO) << "Loaded authentication token from RAY_AUTH_TOKEN environment "
+                       "variable";
       return AuthenticationToken(TrimWhitespace(token_str));
     }
   }
@@ -128,10 +131,13 @@ AuthenticationToken AuthenticationTokenLoader::LoadTokenFromSources() {
     std::string path_str(env_token_path);
     if (!path_str.empty()) {
       std::string token_str = TrimWhitespace(ReadTokenFromFile(path_str));
-      RAY_CHECK(!token_str.empty()) << "Ray Setup Error: RAY_AUTH_TOKEN_PATH is set "
-                                       "but file cannot be opened or is empty: "
-                                    << path_str;
-      RAY_LOG(DEBUG) << "Loaded authentication token from file: " << path_str;
+      if (token_str.empty()) {
+        RAY_LOG(FATAL) << "RAY_AUTH_TOKEN_PATH is set "
+                          "but file cannot be opened or is empty: "
+                       << path_str;
+      }
+      RAY_LOG(INFO) << "Loaded authentication token from file (RAY_AUTH_TOKEN_PATH): "
+                    << path_str;
       return AuthenticationToken(token_str);
     }
   }
@@ -140,7 +146,7 @@ AuthenticationToken AuthenticationTokenLoader::LoadTokenFromSources() {
   if (GetAuthenticationMode() == AuthenticationMode::K8S) {
     std::string token_str = TrimWhitespace(ReadTokenFromFile(k8s::kK8sSaTokenPath));
     if (!token_str.empty()) {
-      RAY_LOG(DEBUG)
+      RAY_LOG(INFO)
           << "Loaded authentication token from Kubernetes service account path: "
           << k8s::kK8sSaTokenPath;
       return AuthenticationToken(token_str);
@@ -153,7 +159,7 @@ AuthenticationToken AuthenticationTokenLoader::LoadTokenFromSources() {
   std::string default_path = GetDefaultTokenPath();
   std::string token_str = TrimWhitespace(ReadTokenFromFile(default_path));
   if (!token_str.empty()) {
-    RAY_LOG(DEBUG) << "Loaded authentication token from default path: " << default_path;
+    RAY_LOG(INFO) << "Loaded authentication token from default path: " << default_path;
     return AuthenticationToken(token_str);
   }
 
