@@ -272,7 +272,7 @@ Quantizing your model (for example, to FP8) reduces the model's memory footprint
 **Use Tensor Parallelism**  
 Distribute the model across multiple GPUs with `tensor_parallel_size > 1`.
 
-**Note:** Latency may rise if GPUs don’t have strong GPU interconnect like NVLink.
+**Note:** Latency may rise if GPUs don’t have high-bandwidth GPU interconnect technology like NVLink.
 
 **Upgrade to GPUs with more memory**  
 Some GPUs provide significantly more room for KV cache and allow for higher concurrency out of the box.
