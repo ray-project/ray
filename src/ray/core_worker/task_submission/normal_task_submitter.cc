@@ -771,6 +771,8 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
           // ResolveDependencies callback will never be called if dependency resolution
           // was successfully cancelled, so need to remove from the set here.
           cancelled_tasks_.erase(task_id);
+          // Clean up timestamp tracking for preprocessing metric.
+          task_submission_time_ms_.erase(task_id);
         }
         task_manager_.FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED);
       }
