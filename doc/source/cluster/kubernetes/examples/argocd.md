@@ -344,7 +344,7 @@ If you add or remove worker groups, you **must** update this list accordingly. F
 
 The index corresponds to the order of worker groups as they appear in the RayCluster spec, with the default `worker` group at index 0 and `additionalWorkerGroups` following in the order they are defined.
 
-Alternatively, you can leverage the `jqPathExpressions` instead for a more dynamic approach:
+Alternatively, you may leverage the `jqPathExpressions` instead for a more dynamic approach:
 
 ```yaml
 ignoreDifferences:
