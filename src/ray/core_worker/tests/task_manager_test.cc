@@ -89,10 +89,10 @@ rpc::ReportGeneratorItemReturnsRequest GetIntermediateTaskReturn(
   request.mutable_worker_addr()->CopyFrom(addr);
   request.set_item_index(idx);
   request.set_generator_id(generator_id.Binary());
-  auto dynamic_return_object = request.add_dynamic_return_objects();
-  dynamic_return_object->set_object_id(dynamic_return_id.Binary());
-  dynamic_return_object->set_data(data->Data(), data->Size());
-  dynamic_return_object->set_in_plasma(set_in_plasma);
+  rpc::ReturnObject *returned_object = request.mutable_returned_object();
+  returned_object->set_object_id(dynamic_return_id.Binary());
+  returned_object->set_data(data->Data(), data->Size());
+  returned_object->set_in_plasma(set_in_plasma);
   return request;
 }
 
