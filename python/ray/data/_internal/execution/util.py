@@ -55,7 +55,7 @@ def locality_string(locality_hits: int, locality_misses) -> str:
     return f"[{locality_hits}/{locality_hits + locality_misses} objects local]"
 
 
-def make_callable_class_concurrent(callable_cls: CallableClass) -> CallableClass:
+def make_callable_class_single_threaded(callable_cls: CallableClass) -> CallableClass:
     """Returns a thread-safe CallableClass with the same logic as the provided
     `callable_cls`.
 

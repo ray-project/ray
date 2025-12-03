@@ -93,9 +93,8 @@ class ActorPoolStrategy(ComputeStrategy):
     By default, it is set to `False`, so at most 1 actor UDF is running at a time per actor. The `max_concurrency`
     flag on `ray.remote` affects steps 1 and 3. Below is a matrix summary:
 
-    - [`enable_true_multi_threading=False`, `max_concurrency=1`] = 1 actor task running per actor. So at most 1
+    - [`enable_true_multi_threading=False or True`, `max_concurrency=1`] = 1 actor task running per actor. So at most 1
         of steps 1, 2, or 3 is running at any point in time.
-    - [`enable_true_multi_threading=True`, `max_concurrency=1`] = Same as bullet #1 ^.
     - [`enable_true_multi_threading=False`, `max_concurrency>1`] = multiple tasks running per actor
       (respecting GIL) but UDF runs 1 at a time. This is useful for doing CPU and GPU work,
       where you want to use a large batch size but want to hide the overhead of *batching*
@@ -104,7 +103,7 @@ class ActorPoolStrategy(ComputeStrategy):
     - [`enable_true_multi_threading=True`, `max_concurrency>1`] = multiple tasks running per actor.
       Unlike bullet #3 ^, the UDF runs concurrently (respecting GIL). No restrictions on steps 1, 2, or 3
 
-    NOTE: `enable_true_multi_threading` does not apply to async actors:
+    NOTE: `enable_true_multi_threading` does not apply to async actors
     """
 
     def __init__(

@@ -63,7 +63,7 @@ def plan_download_op(
     if not upstream_op_is_download:
         # PartitionActor is a callable class, so we need ActorPoolStrategy
         partition_compute = ActorPoolStrategy(
-            size=1
+            size=1, enable_true_multi_threading=True
         )  # Use single actor for partitioning
 
         fn, init_fn = _get_udf(
@@ -72,7 +72,7 @@ def plan_download_op(
             {},
             (uri_column_names, data_context),
             {},
-            enable_true_multi_threading=True,
+            compute=partition_compute,
         )
         block_fn = _generate_transform_fn_for_map_batches(fn)
 
@@ -112,7 +112,6 @@ def plan_download_op(
         {},
         None,
         None,
-        enable_true_multi_threading=True,
     )
 
     download_transform_fn = _generate_transform_fn_for_map_batches(fn)
