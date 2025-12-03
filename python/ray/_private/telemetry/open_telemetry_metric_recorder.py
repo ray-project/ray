@@ -74,7 +74,7 @@ class OpenTelemetryMetricRecorder:
         Args:
             name: The metric name
             is_cumulative: If True, don't clear observations after collection (for counters/sums)
-        
+
         Returns:
             A callback function that can be used to record metric values.
         """
