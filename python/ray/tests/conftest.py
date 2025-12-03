@@ -1556,6 +1556,5 @@ def set_debug_info():
     old_env = os.environ.copy()
     os.environ["RAY_BACKEND_LOG_LEVEL"] = "debug"
     yield
-    os.environ.pop("RAY_BACKEND_LOG_LEVEL", None)
+    os.environ.clear()
     os.environ.update(old_env)
-    
