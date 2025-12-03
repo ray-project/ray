@@ -119,8 +119,8 @@ dictionaries that have the same type as the input, for example:
 Transforming batches
 ====================
 
-If your transformation is vectorized like most NumPy or pandas operations, transforming
-batches is more performant than transforming rows.
+If your transformation could be vectorized using NumPy, Pyarrow or Pandas operations, transforming
+batches will be considerably more performant than transforming individual rows.
 
 .. testcode::
 
@@ -146,6 +146,14 @@ Ray Data represents batches as dicts of NumPy ndarrays, pandas DataFrames or Arr
 default, Ray Data represents batches as dicts of NumPy ndarrays. To configure the batch type,
 specify ``batch_format`` in :meth:`~ray.data.Dataset.map_batches`. You can return either
 format from your function, but ``batch_format`` should match the input of your function.
+
+When applying transformations to batches of rows, Ray Data could represent these batches as either Numpy's ``ndarrays``,
+Pandas ``DataFrame`` or Pyarrow ``Table``.
+
+When using
+    * ``batch_format=numpy`` returned batch will be a dictionary where keys correspond to column names and values to column column values are represented as ``ndarrays``.
+    * ``batch_format=pyarrow`` returned batch will be Pyarrow ``Table``.
+    * ``batch_format=pandas`` returned batch will be Pandas ``DataFrame``.
 
 .. tab-set::
 
@@ -213,26 +221,26 @@ In this case, your function would look like:
 Choosing the right batch format
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-When choosing the appropriate batch format for your ``map_batches`` operation, the primary consideration is the trade-off between performance and convenience.
+When choosing appropriate batch format for your ``map_batches`` primary consideration is a trade-off of convenience vs performance:
 
-When using ``map_batches``, Ray Data constructs batches of rows from underlying :ref:`blocks <data_key_concepts>`. Each block has a format (``numpy``, ``pandas``, or ``pyarrow``) determined by the upstream operator. The chosen batch format should ideally match the block format to avoid unnecessary data copies. A mismatch between formats (for example, when one ``map_batches`` uses ``pandas`` and the next ``map_batches`` uses ``numpy``) introduces an additional conversion step that can impact performance.
+1. Batches are just a sliding window into the underlying block: UDF is invoked with a subset of rows of the underlying block that make up the current batch of specified ``batch_size``. Specifying ``batch_size=None`` makes batch include all rows of the block in a single batch.
 
-By default, most Ray Data datasources produce Arrow blocks.
+2. Depending on the batch format, such view can either be a *zero-copy* (when batch format matches
+block type of either ``pandas`` or ``pyarrow``) or copying one (when using batch format differing from the block type).
 
-Once performance implications are understood, the choice of batch format largely depends on the desired programming interface:
+For ex, if you prefer to work with Panda's or Numpy batches you can specify either ``batch_format="numpy"`` (default) or ``batch_format="pandas"`` which might copy the underlying data when converting it from the underlying block type (for ex, if the underlying block type is Arrow).
 
-    * Use ``numpy`` in ``map_batches`` when your batch function needs fast numeric or tensor-style operations .
-    * Use ``pandas`` in ``map_batches`` when your batch function needs a DataFrame API, such as for tabular cleaning, joins, grouping, or row/column-wise transforms.
-    * Use ``pyarrow`` in ``map_batches`` when your batch function benefits from columnar processing, high-performance I/O, or zero-copy conversion to other systems.
+Note that, by default block type is Arrow (what most Ray Data readers are producing). However, Ray Data strives to minimize amount of data conversions: for ex, if your ``map_batches`` operation returns Panda's batches then these batches will be combined into blocks *without* conversion and propagated further as Panda's blocks.
 
 
 Configuring batch size
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Increasing ``batch_size`` improves the performance of vectorized transformations like
-NumPy functions and model inference. However, if your batch size is too large, your
-program might run out of memory. If you encounter an out-of-memory error, decrease your
-``batch_size``.
+Increasing ``batch_size`` improves the performance of vectorized transformations as well
+as performance of model inference. However, if your batch size is too large, your
+program might run into out-of-memory (OOM) errors.
+
+If you encounter an OOM errors, try decreasing your ``batch_size``.
 
 .. _ordering_of_rows:
 
