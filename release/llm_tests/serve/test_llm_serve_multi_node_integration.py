@@ -92,7 +92,7 @@ def test_llm_serve_data_parallelism():
         engine_kwargs=dict(
             tensor_parallel_size=1,
             pipeline_parallel_size=1,
-            data_parallel_size=2,  # 2 DP replicas
+            data_parallel_size=4,  # 4 DP replicas, need to fill 2x4GPU workers
             distributed_executor_backend="ray",
             max_model_len=512,
             max_num_batched_tokens=256,

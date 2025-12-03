@@ -152,6 +152,12 @@ TensorFlowTensorBatchType = Union["tf.Tensor", Dict[str, "tf.Tensor"]]
 CollatedData = TypeVar("CollatedData")
 TorchBatchType = Union[Dict[str, "torch.Tensor"], CollatedData]
 
+TorchDeviceType = Union[str, "torch.device", int]
+"""
+A device identifier, which can be a string (e.g. 'cpu', 'cuda:0'),
+a torch.device object, or an integer (e.g. 0 for 'cuda:0').
+"""
+
 BT_API_GROUP = "Basic Transformations"
 SSR_API_GROUP = "Sorting, Shuffling and Repartitioning"
 SMJ_API_GROUP = "Splitting, Merging, Joining datasets"
@@ -1243,7 +1249,9 @@ class Dataset:
     @PublicAPI(api_group=BT_API_GROUP)
     def flat_map(
         self,
-        fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
+        fn: UserDefinedFunction[
+            Dict[str, Any], Union[List[Dict[str, Any]], Dict[str, Any]]
+        ],
         *,
         compute: Optional[ComputeStrategy] = None,
         fn_args: Optional[Iterable[Any]] = None,
@@ -1685,7 +1693,6 @@ class Dataset:
             raise ValueError(
                 "`shuffle` must be False when `target_num_rows_per_block` is set."
             )
-
         plan = self._plan.copy()
         if target_num_rows_per_block is not None:
             op = StreamingRepartition(
@@ -5318,7 +5325,7 @@ class Dataset:
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: str = "auto",
+        device: Union[TorchDeviceType, Literal["auto"]] = "auto",
         collate_fn: Optional[Callable[[Dict[str, np.ndarray]], CollatedData]] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,

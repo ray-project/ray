@@ -1,5 +1,4 @@
 import errno
-import io
 import logging
 import os
 import pathlib
@@ -378,6 +377,8 @@ if setup_spec.type == SetupType.RAY:
             [
                 "vllm[audio]>=0.11.0",
                 "nixl>=0.6.1",
+                # TODO(llm): remove after next vLLM version bump
+                "transformers>=4.57.3",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
@@ -773,15 +774,24 @@ if __name__ == "__main__":
     if os.path.isdir(build_dir):
         shutil.rmtree(build_dir)
 
+    with open(
+        os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
+    ) as f:
+        long_readme = f.read()
+
+    with open(os.path.join(ROOT_DIR, "LICENSE.txt"), "r", encoding="utf-8") as f:
+        license_text = f.read().strip()
+    if "\n" in license_text:
+        # If the license text has multiple lines, add an ending endline.
+        license_text += "\n"
+
     setuptools.setup(
         name=setup_spec.name,
         version=setup_spec.version,
         author="Ray Team",
         author_email="ray-dev@googlegroups.com",
         description=(setup_spec.description),
-        long_description=io.open(
-            os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
-        ).read(),
+        long_description=long_readme,
         url="https://github.com/ray-project/ray",
         keywords=(
             "ray distributed parallel machine-learning hyperparameter-tuning"
@@ -797,8 +807,9 @@ if __name__ == "__main__":
         ],
         packages=setup_spec.get_packages(),
         cmdclass={"build_ext": build_ext},
-        # The BinaryDistribution argument triggers build_ext.
-        distclass=BinaryDistribution,
+        distclass=(  # Avoid building extensions for deps-only builds.
+            BinaryDistribution if setup_spec.build_type != BuildType.DEPS_ONLY else None
+        ),
         install_requires=setup_spec.install_requires,
         setup_requires=["cython >= 3.0.12", "pip", "wheel"],
         extras_require=setup_spec.extras,
@@ -823,5 +834,5 @@ if __name__ == "__main__":
             "": ["BUILD", "BUILD.bazel"],
         },
         zip_safe=False,
-        license="Apache 2.0",
+        license=license_text,
     )
