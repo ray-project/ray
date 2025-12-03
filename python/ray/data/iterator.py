@@ -9,6 +9,7 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Literal,
     Optional,
     Tuple,
     TypeVar,
@@ -47,6 +48,7 @@ if TYPE_CHECKING:
         Schema,
         TensorFlowTensorBatchType,
         TorchBatchType,
+        TorchDeviceType,
     )
 
 
@@ -179,6 +181,7 @@ class DataIterator(abc.ABC):
 
         def _create_iterator() -> Iterator[DataBatch]:
             time_start = time.perf_counter()
+
             # Iterate through the dataset from the start each time
             # _iterator_gen is called.
             # This allows multiple iterations of the dataset without
@@ -272,7 +275,7 @@ class DataIterator(abc.ABC):
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: str = "auto",
+        device: Union["TorchDeviceType", Literal["auto"]] = "auto",
         collate_fn: Optional[
             Union[Callable[[Dict[str, np.ndarray]], "CollatedData"], CollateFn]
         ] = None,
