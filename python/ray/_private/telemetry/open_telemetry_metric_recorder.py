@@ -68,7 +68,7 @@ class OpenTelemetryMetricRecorder:
             metrics.set_meter_provider(provider)
             self._metrics_initialized = True
 
-    def _create_observable_callback(self, name: str, is_cumulative: bool = False) -> Callable[[ObserverResult], None]:
+    def _create_observable_callback(self, name: str, is_cumulative: bool = False):
         """Create a callback for observable metrics (gauges and counters).
 
         Args:
