@@ -234,8 +234,7 @@ Ray Data also strives to minimize the amount of data conversions: for example, i
 
 Most Ray Data datasources produce Arrow blocks, so using batch format ``pyarrow`` can avoid unnecessary data conversions.
 
-If you'd like to use a more ergonomic API for transformations but avoid performance overhads, you can consider using ``polars`` inside
-your ``map_batches`` operation with ``batch_format="pyarrow"`` as follows:
+If you'd like to use a more ergonomic API for transformations but avoid performance overhads, you can consider using ``polars`` inside your ``map_batches`` operation with ``batch_format="pyarrow"`` as follows:
 
 .. testcode::
 
