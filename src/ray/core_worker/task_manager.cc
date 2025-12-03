@@ -811,10 +811,10 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     execution_signal_callback(Status::NotFound("Stream is already deleted"), -1);
     return false;
   }
+  size_t num_objects_written = 0;
 
   if (request.has_returned_object()) {
     const rpc::ReturnObject &returned_object = request.returned_object();
-    size_t num_objects_written = 0;
     const auto object_id = ObjectID::FromBinary(returned_object.object_id());
 
     RAY_LOG(DEBUG) << "Write an object " << object_id
