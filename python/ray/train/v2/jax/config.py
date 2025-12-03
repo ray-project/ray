@@ -31,14 +31,11 @@ class JaxConfig(BackendConfig):
 
 def _setup_jax_distributed_environment(
     master_addr_with_port: str,
-   
     num_workers: int,
-   
     index: int,
-   
     use_tpu: bool,
     use_gpu: bool,
-    resources_per_worker: dict,,
+    resources_per_worker: dict,
     jax_env_vars: dict = None,
 ):
     """Set up distributed Jax training information.
