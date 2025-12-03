@@ -416,6 +416,7 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_
   bool is_alive = (node_info.state() == rpc::GcsNodeInfo::ALIVE);
   auto entry = node_cache_address_and_liveness_.find(node_id);
   bool is_notif_new;
+  bool is_alive_to_dead_transition = false;
   if (entry == node_cache_address_and_liveness_.end()) {
     // If the entry is not in the cache, then the notification is new.
     is_notif_new = true;
@@ -424,6 +425,7 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_
     // was alive and is now dead.
     bool was_alive = (entry->second.state() == rpc::GcsNodeInfo::ALIVE);
     is_notif_new = was_alive && !is_alive;
+    is_alive_to_dead_transition = is_notif_new;
 
     // Handle the same logic as in HandleNotification for preventing re-adding removed
     // nodes
@@ -452,8 +454,14 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_
 
   // If the notification is new, call registered callback.
   if (is_notif_new && node_change_callback_address_and_liveness_ != nullptr) {
+    // If we're seeing a DEAD notification during initialization, but the cache
+    // already had this node as ALIVE (meaning polling saw it first), pass
+    // is_initializing=false.  Intention being to articulate that there's been
+    // an advancement in state, HOWEVER we should remove his logic once it's guaranteed
+    // that initialization callbacks are triggered be
+    bool effective_is_initializing = is_initializing && !is_alive_to_dead_transition;
     node_change_callback_address_and_liveness_(
-        node_id, node_cache_address_and_liveness_[node_id], is_initializing);
+        node_id, node_cache_address_and_liveness_[node_id], effective_is_initializing);
   }
 }
 

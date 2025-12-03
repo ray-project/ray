@@ -60,6 +60,66 @@ TEST(NodeInfoAccessorTest, TestHandleNotification) {
   ASSERT_EQ(num_notifications, 2);
 }
 
+TEST(NodeInfoAccessorTest, TestHandleNotificationIsInitializingOverride) {
+  // Test that when a DEAD notification comes during initialization, but the cache
+  // already has the node as ALIVE (meaning polling saw it first), the callback
+  // receives is_initializing=false so that counters get decremented correctly.
+  //
+  // This fixes a bug where:
+  // 1. Poll returns ALIVE → counter increments
+  // 2. Init returns DEAD with is_initializing=true → counter skips decrement (BUG)
+  // 3. Later poll DEAD is filtered by cache
+  // 4. Counter stuck at wrong value
+
+  NodeInfoAccessor accessor;
+  std::vector<bool> is_initializing_values;
+  accessor.node_change_callback_address_and_liveness_ =
+      [&](NodeID, const rpc::GcsNodeAddressAndLiveness &, const bool is_initializing) {
+        is_initializing_values.push_back(is_initializing);
+      };
+  NodeID node_id = NodeID::FromRandom();
+
+  rpc::GcsNodeAddressAndLiveness node_info;
+  node_info.set_node_id(node_id.Binary());
+
+  // Simulate poll seeing ALIVE first (is_initializing=false)
+  node_info.set_state(rpc::GcsNodeInfo::ALIVE);
+  accessor.HandleNotification(rpc::GcsNodeAddressAndLiveness(node_info), false);
+  ASSERT_EQ(is_initializing_values.size(), 1);
+  ASSERT_EQ(is_initializing_values[0], false);
+
+  // Simulate init seeing DEAD (passed is_initializing=true, but should be overridden)
+  node_info.set_state(rpc::GcsNodeInfo::DEAD);
+  accessor.HandleNotification(rpc::GcsNodeAddressAndLiveness(node_info), true);
+  ASSERT_EQ(is_initializing_values.size(), 2);
+  // Key assertion: even though we passed is_initializing=true, the callback should
+  // receive false because the cache had ALIVE and we're transitioning to DEAD
+  ASSERT_EQ(is_initializing_values[1], false);
+}
+
+TEST(NodeInfoAccessorTest, TestHandleNotificationIsInitializingPreserved) {
+  // Test that when a DEAD notification comes during initialization and the cache
+  // does NOT have the node (no prior ALIVE), is_initializing=true is preserved.
+
+  NodeInfoAccessor accessor;
+  std::vector<bool> is_initializing_values;
+  accessor.node_change_callback_address_and_liveness_ =
+      [&](NodeID, const rpc::GcsNodeAddressAndLiveness &, const bool is_initializing) {
+        is_initializing_values.push_back(is_initializing);
+      };
+  NodeID node_id = NodeID::FromRandom();
+
+  rpc::GcsNodeAddressAndLiveness node_info;
+  node_info.set_node_id(node_id.Binary());
+
+  // Simulate init seeing DEAD first (no prior ALIVE in cache)
+  node_info.set_state(rpc::GcsNodeInfo::DEAD);
+  accessor.HandleNotification(rpc::GcsNodeAddressAndLiveness(node_info), true);
+  ASSERT_EQ(is_initializing_values.size(), 1);
+  // is_initializing should be preserved as true since there was no ALIVE→DEAD transition
+  ASSERT_EQ(is_initializing_values[0], true);
+}
+
 TEST(NodeInfoAccessorTest, TestHandleNotificationDeathInfo) {
   NodeInfoAccessor accessor;
   rpc::GcsNodeAddressAndLiveness node_info;

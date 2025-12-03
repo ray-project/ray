@@ -299,6 +299,8 @@ class NodeInfoAccessor {
   // TODO(dayshah): Need to refactor gcs client / accessor to avoid this.
   // https://github.com/ray-project/ray/issues/54805
   FRIEND_TEST(NodeInfoAccessorTest, TestHandleNotification);
+  FRIEND_TEST(NodeInfoAccessorTest, TestHandleNotificationIsInitializingOverride);
+  FRIEND_TEST(NodeInfoAccessorTest, TestHandleNotificationIsInitializingPreserved);
 };
 
 /// \class NodeResourceInfoAccessor
