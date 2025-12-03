@@ -283,18 +283,13 @@ The *Serve LLM dashboard* offers deep visibility into model performance, latency
 * Latency metrics: Time To First Token (TTFT), Time Per Output Token (TPOT)
 * KV cache utilization
 
-To enable these metrics, go to your LLM config and set `log_engine_metrics: true`. Ensure vLLM V1 is active with `VLLM_USE_V1: "1"`. 
-**Note:** `VLLM_USE_V1: "1"` is the default value with `ray >= 2.48.0` and can be omitted.
+To enable these metrics, go to your LLM config and set `log_engine_metrics: true`. 
 ```yaml
 applications:
 - ...
   args:
     llm_configs:
       - ...
-        runtime_env:
-          env_vars:
-            VLLM_USE_V1: "1"
-        ...
         log_engine_metrics: true
 ```
 
