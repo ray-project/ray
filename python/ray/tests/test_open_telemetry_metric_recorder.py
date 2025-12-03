@@ -2,10 +2,11 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-from opentelemetry.metrics import NoOpCounter, NoOpHistogram, NoOpUpDownCounter
+from opentelemetry.metrics import NoOpHistogram
 
 from ray._private.metrics_agent import Gauge, Record
 from ray._private.telemetry.open_telemetry_metric_recorder import (
+    MetricType,
     OpenTelemetryMetricRecorder,
 )
 
@@ -21,6 +22,9 @@ def test_register_gauge_metric(mock_get_meter, mock_set_meter_provider):
     mock_get_meter.return_value = MagicMock()
     recorder = OpenTelemetryMetricRecorder()
     recorder.register_gauge_metric(name="test_gauge", description="Test Gauge")
+
+    # Verify metric type is registered
+    assert recorder._metric_name_to_type["test_gauge"] == MetricType.GAUGE
 
     # Record a value for the gauge
     recorder.set_metric_value(
@@ -43,28 +47,45 @@ def test_register_counter_metric(
 ):
     """
     Test the register_counter_metric method of OpenTelemetryMetricRecorder.
-    - Test that it registers a counter metric with the correct name and description.
-    - Test that a value can be set for the counter metric successfully without warnings.
+    - Test that it registers an observable counter metric.
+    - Test that values are accumulated (not replaced) for counters.
+    - Test that unregistered metrics log a warning.
     """
     mock_meter = MagicMock()
-    mock_meter.create_counter.return_value = NoOpCounter(name="test_counter")
     mock_get_meter.return_value = mock_meter
     recorder = OpenTelemetryMetricRecorder()
     recorder.register_counter_metric(name="test_counter", description="Test Counter")
+
+    # Verify observable counter was created (not synchronous counter)
+    mock_meter.create_observable_counter.assert_called_once()
     assert "test_counter" in recorder._registered_instruments
+    assert recorder._metric_name_to_type["test_counter"] == MetricType.COUNTER
+
+    # Record values - should accumulate
     recorder.set_metric_value(
         name="test_counter",
         tags={"label_key": "label_value"},
         value=10.0,
     )
+    recorder.set_metric_value(
+        name="test_counter",
+        tags={"label_key": "label_value"},
+        value=5.0,
+    )
+    # Values should be accumulated (10 + 5 = 15)
+    assert recorder._observations_by_name["test_counter"] == {
+        frozenset({("label_key", "label_value")}): 15.0,
+    }
     mock_logger_warning.assert_not_called()
+
+    # Test unregistered metric warning
     recorder.set_metric_value(
         name="test_counter_unregistered",
         tags={"label_key": "label_value"},
         value=10.0,
     )
     mock_logger_warning.assert_called_once_with(
-        "Unsupported synchronous instrument type for metric: test_counter_unregistered."
+        "Metric not registered: test_counter_unregistered"
     )
 
 
@@ -76,20 +97,34 @@ def test_register_sum_metric(
 ):
     """
     Test the register_sum_metric method of OpenTelemetryMetricRecorder.
-    - Test that it registers a sum metric with the correct name and description.
-    - Test that a value can be set for the sum metric successfully without warnings.
+    - Test that it registers an observable up-down counter.
+    - Test that values are accumulated for sum metrics.
     """
     mock_meter = MagicMock()
-    mock_meter.create_up_down_counter.return_value = NoOpUpDownCounter(name="test_sum")
     mock_get_meter.return_value = mock_meter
     recorder = OpenTelemetryMetricRecorder()
     recorder.register_sum_metric(name="test_sum", description="Test Sum")
+
+    # Verify observable up-down counter was created
+    mock_meter.create_observable_up_down_counter.assert_called_once()
     assert "test_sum" in recorder._registered_instruments
+    assert recorder._metric_name_to_type["test_sum"] == MetricType.SUM
+
+    # Record values - should accumulate (including negative values)
     recorder.set_metric_value(
         name="test_sum",
         tags={"label_key": "label_value"},
         value=10.0,
     )
+    recorder.set_metric_value(
+        name="test_sum",
+        tags={"label_key": "label_value"},
+        value=-3.0,
+    )
+    # Values should be accumulated (10 + (-3) = 7)
+    assert recorder._observations_by_name["test_sum"] == {
+        frozenset({("label_key", "label_value")}): 7.0,
+    }
     mock_logger_warning.assert_not_called()
 
 
@@ -101,24 +136,40 @@ def test_register_histogram_metric(
 ):
     """
     Test the register_histogram_metric method of OpenTelemetryMetricRecorder.
-    - Test that it registers a histogram metric with the correct name and description.
-    - Test that a value can be set for the histogram metric successfully without warnings.
+    - Test that it registers a histogram metric.
+    - Test that recordings are sent to OTEL SDK synchronously.
+    - Test bucket midpoint calculation.
     """
+    mock_histogram = MagicMock()
     mock_meter = MagicMock()
-    mock_meter.create_histogram.return_value = NoOpHistogram(name="test_histogram")
+    mock_meter.create_histogram.return_value = mock_histogram
     mock_get_meter.return_value = mock_meter
     recorder = OpenTelemetryMetricRecorder()
     recorder.register_histogram_metric(
         name="test_histogram", description="Test Histogram", buckets=[1.0, 2.0, 3.0]
     )
+
     assert "test_histogram" in recorder._registered_instruments
+    assert recorder._metric_name_to_type["test_histogram"] == MetricType.HISTOGRAM
+
+    # Record values - should be recorded synchronously to OTEL SDK
     recorder.set_metric_value(
         name="test_histogram",
         tags={"label_key": "label_value"},
-        value=10.0,
+        value=1.5,
     )
+    recorder.set_metric_value(
+        name="test_histogram",
+        tags={"label_key": "label_value"},
+        value=2.5,
+    )
+    # Verify recordings were sent to SDK immediately
+    assert mock_histogram.record.call_count == 2
+    mock_histogram.record.assert_any_call(1.5, attributes={"label_key": "label_value"})
+    mock_histogram.record.assert_any_call(2.5, attributes={"label_key": "label_value"})
     mock_logger_warning.assert_not_called()
 
+    # Test negative first boundary bucket midpoints
     mock_meter.create_histogram.return_value = NoOpHistogram(name="neg_histogram")
     recorder.register_histogram_metric(
         name="neg_histogram",
@@ -212,6 +263,82 @@ def test_record_and_export(mock_get_meter, mock_set_meter_provider):
             ): 20.0,
         },
     }
+
+
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_counter_accumulation_multiple_tags(mock_get_meter, mock_set_meter_provider):
+    """
+    Test that counters correctly accumulate values across multiple tag sets.
+    """
+    mock_meter = MagicMock()
+    mock_get_meter.return_value = mock_meter
+    recorder = OpenTelemetryMetricRecorder()
+    recorder.register_counter_metric(name="test_counter", description="Test Counter")
+
+    # Record values with different tags
+    recorder.set_metric_value(
+        name="test_counter",
+        tags={"label": "a"},
+        value=10.0,
+    )
+    recorder.set_metric_value(
+        name="test_counter",
+        tags={"label": "b"},
+        value=20.0,
+    )
+    recorder.set_metric_value(
+        name="test_counter",
+        tags={"label": "a"},
+        value=5.0,
+    )
+
+    # Each tag set should accumulate independently
+    assert recorder._observations_by_name["test_counter"] == {
+        frozenset({("label", "a")}): 15.0,  # 10 + 5
+        frozenset({("label", "b")}): 20.0,
+    }
+
+
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_metric_type_routing(mock_get_meter, mock_set_meter_provider):
+    """
+    Test that set_metric_value correctly routes to different storage based on metric type.
+    """
+    mock_histogram = MagicMock()
+    mock_meter = MagicMock()
+    mock_meter.create_histogram.return_value = mock_histogram
+    mock_get_meter.return_value = mock_meter
+    recorder = OpenTelemetryMetricRecorder()
+
+    # Register different metric types
+    recorder.register_gauge_metric(name="gauge", description="Gauge")
+    recorder.register_counter_metric(name="counter", description="Counter")
+    recorder.register_sum_metric(name="sum", description="Sum")
+    recorder.register_histogram_metric(
+        name="histogram", description="Histogram", buckets=[1.0]
+    )
+
+    tags = {"key": "value"}
+    tag_key = frozenset(tags.items())
+
+    # Record same value for all metrics
+    for metric_name in ["gauge", "counter", "sum", "histogram"]:
+        recorder.set_metric_value(name=metric_name, tags=tags, value=10.0)
+        recorder.set_metric_value(name=metric_name, tags=tags, value=5.0)
+
+    # Gauge: last value wins
+    assert recorder._observations_by_name["gauge"][tag_key] == 5.0
+
+    # Counter: accumulated
+    assert recorder._observations_by_name["counter"][tag_key] == 15.0
+
+    # Sum: accumulated
+    assert recorder._observations_by_name["sum"][tag_key] == 15.0
+
+    # Histogram: recorded synchronously (2 SDK calls)
+    assert mock_histogram.record.call_count == 2
 
 
 if __name__ == "__main__":
