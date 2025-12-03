@@ -56,6 +56,7 @@ class ExactRebundleQueue(BaseBundleQueue, SupportsRebundling):
         self._consumed_input_bundles: List[RefBundle] = []
 
     def _merge_and_clear(self) -> RefBundle:
+        """Merge and clear all pending bundles into a ready bundle"""
 
         from ray.data._internal.execution.interfaces import RefBundle
 
@@ -64,8 +65,8 @@ class ExactRebundleQueue(BaseBundleQueue, SupportsRebundling):
         merged_bundle = RefBundle.merge_ref_bundles(list(self._pending_bundles))
         self._pending_bundles.clear()
         self._total_pending_rows = 0
-
-        return merged_bundle
+        self._ready_bundles.append(merged_bundle)
+        self._on_enqueue(merged_bundle)
 
     def _try_build_ready_bundle(self, flush_remaining: bool = False):
         if self._total_pending_rows >= self._target_num_rows:
@@ -88,10 +89,7 @@ class ExactRebundleQueue(BaseBundleQueue, SupportsRebundling):
                 self._pending_bundles.append(sliced_bundle)
                 self._on_enqueue(sliced_bundle)  # Enter the sliced portion
 
-            # Merge and clear all pending bundles
-            merged_bundle = self._merge_and_clear()
-            self._ready_bundles.append(merged_bundle)
-            self._on_enqueue(merged_bundle)
+            self._merge_and_clear()
 
             if remaining_bundle and remaining_bundle.num_rows() > 0:
                 self._pending_bundles.append(remaining_bundle)
@@ -99,9 +97,7 @@ class ExactRebundleQueue(BaseBundleQueue, SupportsRebundling):
                 self._total_pending_rows += remaining_bundle.num_rows()
 
         if flush_remaining and self._total_pending_rows > 0:
-            merged_bundle = self._merge_and_clear()
-            self._ready_bundles.append(merged_bundle)
-            self._on_enqueue(merged_bundle)
+            self._merge_and_clear()
 
     # TODO: remove this once we transition from op runtime metrics to
     # inner queue metrics.

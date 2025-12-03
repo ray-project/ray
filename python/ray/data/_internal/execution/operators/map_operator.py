@@ -24,7 +24,6 @@ from ray.data._internal.compute import (
     TaskPoolStrategy,
 )
 from ray.data._internal.execution.bundle_queue import (
-    BaseBundleQueue,
     BlockRefBundler,
     FIFOBundleQueue,
     OrderedBundleQueue,
@@ -113,7 +112,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._remote_args_for_metrics = copy.deepcopy(self._ray_remote_args)
 
         # Bundles block references up to the min_rows_per_bundle target.
-        self._block_ref_bundler = ref_bundler or BlockRefBundler(min_rows_per_bundle)
+        self._block_ref_bundler = ref_bundler
+        if self._block_ref_bundler is None:
+            self._block_ref_bundler = BlockRefBundler(min_rows_per_bundle)
 
         # Queue for task outputs, either ordered or unordered (this is set by start()).
         self._output_queue: Optional[QueueWithRebundling] = None
@@ -180,7 +181,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # config and not contain implementation code.
         compute_strategy: Optional[ComputeStrategy] = None,
         min_rows_per_bundle: Optional[int] = None,
-        ref_bundler: Optional[BaseBundleQueue] = None,
+        ref_bundler: Optional[QueueWithRebundling] = None,
         supports_fusion: bool = True,
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
@@ -233,7 +234,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             map_transformer = _wrap_transformer_with_limit(
                 map_transformer, per_block_limit
             )
-
         if isinstance(compute_strategy, TaskPoolStrategy):
             from ray.data._internal.execution.operators.task_pool_map_operator import (
                 TaskPoolMapOperator,
@@ -343,7 +343,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
     def _add_input_inner(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
-
+        if "StreamingRepartition" in self.name:
+            print(f"refs is {refs}, {self._block_ref_bundler}")
         # Add RefBundle to the bundler.
         self._block_ref_bundler.add(refs)
         self._metrics.on_input_queued(refs)

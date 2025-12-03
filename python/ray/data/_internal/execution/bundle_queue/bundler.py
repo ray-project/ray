@@ -94,8 +94,8 @@ class RebundleQueue(BaseBundleQueue, SupportsRebundling):
             ):
                 output_buffer.append(bundle)
                 output_buffer_size += bundle_size
-                self._on_dequeue(bundle)
                 self._bundle_buffer.popleft()
+                self._on_dequeue(bundle)
             else:
                 break
 

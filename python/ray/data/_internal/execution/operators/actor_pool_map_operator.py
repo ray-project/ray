@@ -24,6 +24,7 @@ from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.bundle_queue import (
     BaseBundleQueue,
     QueueWithIndexing,
+    QueueWithRebundling,
     create_bundle_queue,
 )
 from ray.data._internal.execution.interfaces import (
@@ -82,7 +83,7 @@ class ActorPoolMapOperator(MapOperator):
         compute_strategy: ActorPoolStrategy,
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
-        ref_bundler: Optional[BaseBundleQueue] = None,
+        ref_bundler: Optional[QueueWithRebundling] = None,
         supports_fusion: bool = True,
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
