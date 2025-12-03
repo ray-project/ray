@@ -121,6 +121,8 @@ const MainNavBar = () => {
     toggleTheme,
   } = useContext(GlobalContext);
 
+  const urlTheme = new URLSearchParams(window.location.search).get("theme");
+
   let navItems = NAV_ITEMS;
   if (!metricsContextLoaded || grafanaHost === "DISABLED") {
     navItems = navItems.filter(({ id }) => id !== "metrics");
@@ -172,15 +174,17 @@ const MainNavBar = () => {
       ))}
       <Box sx={{ flexGrow: 1 }}></Box>
       <Box sx={{ marginRight: 2 }}>
-        <Tooltip title={themeMode === "light" ? "Dark mode" : "Light mode"}>
-          <IconButton
-            onClick={toggleTheme}
-            sx={(theme) => ({ color: theme.palette.text.secondary })}
-            size="large"
-          >
-            {themeMode === "light" ? <RiMoonLine /> : <RiSunLine />}
-          </IconButton>
-        </Tooltip>
+        {!urlTheme && (
+          <Tooltip title={themeMode === "light" ? "Dark mode" : "Light mode"}>
+            <IconButton
+              onClick={toggleTheme}
+              sx={(theme) => ({ color: theme.palette.text.secondary })}
+              size="large"
+            >
+              {themeMode === "light" ? <RiMoonLine /> : <RiSunLine />}
+            </IconButton>
+          </Tooltip>
+        )}
         <Tooltip title="Docs">
           <IconButton
             sx={(theme) => ({ color: theme.palette.text.secondary })}
