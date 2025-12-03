@@ -442,7 +442,17 @@ class OpenAiIngress(DeploymentProtocol):
         None,
     ]:
         """Calls the model deployment and returns the stream."""
-        model: str = body.model
+        model: Optional[str] = body.model
+        # Default to the only configured model if no model specified
+        if model is None:
+            if len(self._llm_configs) == 1:
+                model = next(iter(self._llm_configs.keys()))
+            else:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    "Model parameter is required when multiple models are configured. "
+                    f"Available models: {list(self._llm_configs.keys())}",
+                )
         base_model_id = get_base_model_id(model)
         if base_model_id not in self._llm_configs:
             raise HTTPException(
