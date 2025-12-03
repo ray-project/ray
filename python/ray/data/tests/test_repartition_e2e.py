@@ -426,7 +426,7 @@ def test_streaming_repartition_with_partial_last_block(
     ctx = DataContext.get_current()
     ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
-    num_rows = 110
+    num_rows = 101
 
     table = [{"id": n} for n in range(num_rows)]
     ds = ray.data.from_items(table)
@@ -445,8 +445,8 @@ def test_streaming_repartition_with_partial_last_block(
     # Verify that all blocks have 20 rows except one block with 10 rows
     # The block with 10 rows should be the last one
     assert (
-        block_row_counts[-1] == 10
-    ), f"Expected last block to have 10 rows, got {block_row_counts[-1]}"
+        block_row_counts[-1] == 1
+    ), f"Expected last block to have 1 row, got {block_row_counts[-1]}"
     assert all(
         count == 20 for count in block_row_counts[:-1]
     ), f"Expected all blocks except last to have 20 rows, got {block_row_counts}"
