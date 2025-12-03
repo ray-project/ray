@@ -207,7 +207,7 @@ Create your Anyscale Service configuration in a new `service.yaml` file:
 ```yaml
 # service.yaml
 name: deploy-gpt-oss
-image_uri: anyscale/ray-llm:2.52.0-py311-cu128 # Anyscale Ray Serve LLM image. Use `containerfile: ./Dockerfile` to use a custom Dockerfile.
+image_uri: anyscale/ray-llm:2.52.0-py311-cu128 # Anyscale Ray Serve LLM image. To build an image from a custom Dockerfile, set `containerfile: ./Dockerfile`
 compute_config:
   auto_select_worker_config: true 
 working_dir: .
@@ -226,7 +226,7 @@ anyscale service deploy -f service.yaml
 ```
 
 **Custom Dockerfile**  
-You can customize the container by building your own Dockerfile. In your Anyscale Service config, reference the Dockerfile with `containerfile` (instead of `image_uri`):
+You can customize the container by building your own Dockerfile. In your Anyscale Service config file `service.yaml`, reference the Dockerfile with `containerfile` (instead of `image_uri`):
 
 ```yaml
 # service.yaml

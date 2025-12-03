@@ -167,7 +167,7 @@ Create your Anyscale service configuration in a new `service.yaml` file:
 ```yaml
 # service.yaml
 name: deploy-llama-3-70b
-image_uri: anyscale/ray-llm:2.52.0-py311-cu128 # Anyscale Ray Serve LLM image. Use `containerfile: ./Dockerfile` to use a custom Dockerfile.
+image_uri: anyscale/ray-llm:2.52.0-py311-cu128 # Anyscale Ray Serve LLM image. To build an image from a custom Dockerfile, set `containerfile: ./Dockerfile`
 compute_config:
   auto_select_worker_config: true 
 working_dir: .
