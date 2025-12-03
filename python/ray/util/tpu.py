@@ -128,6 +128,24 @@ def get_tpu_worker_resources(
 
 
 @PublicAPI(stability="alpha")
+def get_tpu_coordinator_env_vars(
+    coordinator_address: str,
+    num_slices: int,
+    slice_id: int,
+    coordinator_port: str = "8081",
+) -> Dict[str, str]:
+    """
+    Returns the environment variables required for JAX multi-slice coordination.
+    """
+    return {
+        "MEGASCALE_COORDINATOR_ADDRESS": coordinator_address,
+        "MEGASCALE_PORT": coordinator_port,
+        "MEGASCALE_NUM_SLICES": str(num_slices),
+        "MEGASCALE_SLICE_ID": str(slice_id),
+    }
+
+
+@PublicAPI(stability="alpha")
 class SlicePlacementGroup:
     """
     A handle to a placement group reservation for a TPU slice.

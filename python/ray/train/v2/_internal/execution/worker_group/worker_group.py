@@ -62,7 +62,7 @@ from ray.train.v2._internal.util import (
     ray_get_safe,
     time_monotonic,
 )
-from ray.train.v2.api.config import TPUAcceleratorConfig
+from ray.train.v2.api.config import ScalingConfig
 from ray.types import ObjectRef
 from ray.util.placement_group import (
     PlacementGroup,
@@ -73,7 +73,11 @@ from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
-from ray.util.tpu import SlicePlacementGroup, get_tpu_version_from_type
+from ray.util.tpu import (
+    SlicePlacementGroup,
+    get_current_pod_name,
+    get_tpu_version_from_type,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -262,14 +266,13 @@ class WorkerGroup(BaseWorkerGroup):
         scaling_config = self._train_run_context.scaling_config
         pg: Optional[PlacementGroup] = None
 
-        if isinstance(scaling_config.accelerator_config, TPUAcceleratorConfig):
-            if scaling_config.accelerator_config.topology:
-                # Utilize SlicePlacementGroup scheduling logic when a specific TPU
-                # topology is specified.
-                pg, worker_group_context = self._setup_tpu_placement_group(
-                    scaling_config.accelerator_config, worker_group_context
-                )
-                self._worker_group_context = worker_group_context
+        if scaling_config.use_tpu and scaling_config.topology:
+            # Utilize SlicePlacementGroup scheduling logic when a specific TPU
+            # topology is specified.
+            pg, worker_group_context = self._setup_tpu_placement_group(
+                scaling_config, worker_group_context
+            )
+            self._worker_group_context = worker_group_context
 
         WorkerGroup._check_cluster_resources_and_raise_if_insufficient(
             worker_group_context.resources_per_worker,
@@ -459,7 +462,7 @@ class WorkerGroup(BaseWorkerGroup):
 
     def _setup_tpu_placement_group(
         self,
-        tpu_config: TPUAcceleratorConfig,
+        scaling_config: ScalingConfig,
         worker_group_context: WorkerGroupContext,
     ) -> Tuple[PlacementGroup, WorkerGroupContext]:
         """
@@ -470,19 +473,21 @@ class WorkerGroup(BaseWorkerGroup):
         resolving the values of `num_workers` and `resources_per_worker` if unspecified.
         """
         logger.info(
-            f"Using SlicePlacementGroup utility to reserve {tpu_config.num_slices} "
-            f"slice(s) with topology '{tpu_config.topology}'..."
+            f"Using SlicePlacementGroup utility to reserve {scaling_config.num_slices} "
+            f"slice(s) with topology '{scaling_config.topology}'..."
         )
 
         scaling_config = self._train_run_context.scaling_config
         resources_per_bundle = scaling_config.resources_per_worker
 
         try:
-            accelerator_version = get_tpu_version_from_type(tpu_config.accelerator_type)
+            accelerator_version = get_tpu_version_from_type(
+                scaling_config.accelerator_type
+            )
             spg_handle = SlicePlacementGroup(
-                topology=tpu_config.topology,
+                topology=scaling_config.topology,
                 accelerator_version=accelerator_version,
-                num_slices=tpu_config.num_slices,
+                num_slices=scaling_config.num_slices,
                 resources_per_bundle=resources_per_bundle,
                 strategy=worker_group_context.placement_strategy,
             )
@@ -807,6 +812,25 @@ class WorkerGroup(BaseWorkerGroup):
     #########################################################################################
 
     @staticmethod
+    def _sort_workers_by_tpu_pod_name(workers: List[Worker]) -> List[Worker]:
+        """
+        Sort workers by their TPU Pod name to ensure deterministic
+        topology mapping for TPU multi-slice. The TPU Pod name is based on
+        TPU_NAME env var, which is unique and indexed within the Ray worker group
+        requesting TPUs.
+        """
+        pod_name_refs = [
+            worker.execute_async(get_current_pod_name) for worker in workers
+        ]
+        pod_names = ray_get_safe(pod_name_refs)
+
+        # Zip workers with names and sort by name.
+        worker_name_pairs = list(zip(workers, pod_names))
+        worker_name_pairs.sort(key=lambda pair: pair[1] or "")
+
+        return [w for w, name in worker_name_pairs]
+
+    @staticmethod
     def _assign_worker_ranks(workers: List[Worker]) -> List[Worker]:
         """Assign world ranks to workers by increasing node id and GPU id.
 
@@ -816,7 +840,15 @@ class WorkerGroup(BaseWorkerGroup):
             workers: Workers sorted by increasing world rank,
                 with the `DistributedContext` set.
         """
-        workers = WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(workers)
+        is_tpu = False
+        if len(workers) > 0:
+            is_tpu = workers[0].resources.get("TPU", 0) > 0
+
+        if is_tpu:
+            # Use deterministic sort for TPU to align with actual slice IDs.
+            workers = WorkerGroup._sort_workers_by_tpu_pod_name(workers)
+        else:
+            workers = WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(workers)
 
         node_ip_to_workers = collections.defaultdict(list)
         for worker in workers:
