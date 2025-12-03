@@ -2976,7 +2976,7 @@ class Dataset:
         Returns:
             A list with unique elements in the given column.
         """  # noqa: E501
-        ret = self._aggregate_on(Unique, column)
+        ret = self._aggregate_on(Unique, column, ignore_nulls=False)
         return self._aggregate_result(ret)
 
     @AllToAllAPI
