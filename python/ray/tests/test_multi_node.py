@@ -420,6 +420,56 @@ print("success")
         process_handle.kill()
 
 
+def test_core_worker_alive_node(ray_start_cluster, set_debug_info):
+    cluster = ray_start_cluster
+    _ = cluster.add_node(node_name="head", resources={"head": 10}, num_cpus=10)
+    context = ray.init("auto")
+    log_dir = os.path.join(context.address_info["session_dir"], "logs")
+
+    driver_path = None
+    for file in os.listdir(log_dir):
+        if file.startswith("python-core-driver-01000000ffffffffffffffffffffffffffffffffffffffffffffffff"):
+            driver_path = os.path.join(log_dir, file)
+            break
+    assert driver_path is not None
+
+    def get_alive_node_number(file_name):
+        alive_node_number = -1
+        with open(file_name, "r") as f:
+            for line in f.readlines():
+                if "Number of alive nodes:" not in line:
+                    continue
+                try:
+                    alive_node_number = int(line.rsplit("Number of alive nodes:", 1)[1])
+                except Exception:
+                    pass
+        return alive_node_number
+
+    _ = cluster.add_node(node_name="worker_0", resources={"worker": 10}, num_cpus=10)
+    worker_1 = cluster.add_node(node_name="worker_1", resources={"worker": 10}, num_cpus=10)
+
+    wait_for_condition(lambda: get_alive_node_number(driver_path) == 3)
+    cluster.remove_node(worker_1)
+    wait_for_condition(lambda: get_alive_node_number(driver_path) == 2)
+
+    @ray.remote(resources={"worker": 1})
+    class A:
+        def getpid(self):
+            return os.getpid()
+    a = A.remote()
+    a_pid = ray.get(a.getpid.remote())
+
+    a_log_path = None
+    for file in os.listdir(log_dir):
+        if file.startswith("python-core-worker-") and file.endswith(
+            f"_{a_pid}.log"
+        ):
+            a_log_path = os.path.join(log_dir, file)
+            break
+    assert a_log_path is not None
+    assert get_alive_node_number(a_log_path) == 2
+    
+
 if __name__ == "__main__":
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"

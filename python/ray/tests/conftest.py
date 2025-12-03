@@ -1549,3 +1549,13 @@ def setup_cluster_without_token_auth(cleanup_auth_token_env):
     finally:
         ray.shutdown()
         cluster.shutdown()
+
+
+@pytest.fixture
+def set_debug_info():
+    old_env = os.environ.copy()
+    os.environ["RAY_BACKEND_LOG_LEVEL"] = "debug"
+    yield
+    os.environ.pop("RAY_BACKEND_LOG_LEVEL", None)
+    os.environ.update(old_env)
+    
