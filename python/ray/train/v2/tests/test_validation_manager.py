@@ -38,7 +38,6 @@ def test_before_controller_shutdown(mock_wait, monkeypatch):
     task2 = create_autospec(ray.ObjectRef, instance=True)
     task3 = create_autospec(ray.ObjectRef, instance=True)
     vm = validation_manager.ValidationManager(checkpoint_manager=checkpoint_manager)
-    # modoru: many in queue too
     vm._pending_validations = {
         task1: checkpoint1,
         task2: checkpoint2,
