@@ -198,9 +198,11 @@ const App = () => {
   useEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const handleChange = (e: MediaQueryListEvent) => {
-      // Only update if user hasn't explicitly set a preference
+      // Only update if user hasn't explicitly set a preference via localStorage or URL
       const stored = localStorage.getItem("themeMode");
-      if (!stored) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlTheme = urlParams.get("theme");
+      if (!stored && !urlTheme) {
         setThemeMode(e.matches ? "dark" : "light");
       }
     };
