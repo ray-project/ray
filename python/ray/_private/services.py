@@ -968,7 +968,10 @@ def start_ray_process(
         if fate_share and sys.platform.startswith("linux"):
             ray._private.utils.set_kill_on_parent_death_linux()
 
-    win32_fate_sharing = fate_share and sys.platform == "win32"
+    # IMPORTANT: CREATE_SUSPENDED breaks handle inheritance on Windows.
+    # When handles need to be passed to child process, we cannot use
+    # CREATE_SUSPENDED because the child won't inherit the handles properly.
+    win32_fate_sharing = fate_share and sys.platform == "win32" and not pass_handles
     # With Windows fate-sharing, we need special care:
     # The process must be added to the job before it is allowed to execute.
     # Otherwise, there's a race condition: the process might spawn children

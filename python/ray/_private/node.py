@@ -1228,15 +1228,19 @@ class Node:
 
         if self._ray_params.runtime_env_agent_port == 0:
             runtime_env_agent_port_pipe_for_raylet = Pipe()
-            if self._runtime_env_agent_port_pipe_for_ray_client is None:
-                self._runtime_env_agent_port_pipe_for_ray_client = Pipe()
-
-            runtime_env_agent_port_write_handles.append(
+            handle_for_raylet = (
                 runtime_env_agent_port_pipe_for_raylet.make_writer_handle()
             )
-            runtime_env_agent_port_write_handles.append(
-                self._runtime_env_agent_port_pipe_for_ray_client.make_writer_handle()
-            )
+            runtime_env_agent_port_write_handles.append(handle_for_raylet)
+
+            # Only create pipe for ray_client if ray_client_server will be started
+            if self._ray_params.ray_client_server_port:
+                if self._runtime_env_agent_port_pipe_for_ray_client is None:
+                    self._runtime_env_agent_port_pipe_for_ray_client = Pipe()
+                handle_for_ray_client = (
+                    self._runtime_env_agent_port_pipe_for_ray_client.make_writer_handle()
+                )
+                runtime_env_agent_port_write_handles.append(handle_for_ray_client)
 
         process_info = ray._private.services.start_raylet(
             self.redis_address,

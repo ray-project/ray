@@ -83,7 +83,12 @@ class RuntimeEnvContext:
 
             cmd = [*self.command_prefix, *executable, *passthrough_args]
             logger.debug(f"Exec'ing worker with command: {cmd}")
-            subprocess.Popen(cmd, shell=True).wait()
+            # Use shell=False and close_fds=False to ensure handle inheritance
+            # works properly on Windows. With shell=True, a cmd.exe process is
+            # created as an intermediary, which can break handle inheritance.
+            # close_fds=False is required for inheritable handles to propagate
+            # to the child process.
+            subprocess.Popen(cmd, shell=False, close_fds=False).wait()
         else:
             # We use shlex to do the necessary shell escape
             # of special characters in passthrough_args.
