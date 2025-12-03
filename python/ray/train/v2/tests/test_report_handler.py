@@ -62,7 +62,9 @@ def generate_worker_group_poll_status(num_workers, num_ckpt, num_dummy, num_none
         (10, 1, 8, 1, 0),  # one worker with checkpoint, one worker with None
     ],
 )
-def test_report_handler(tmp_path, num_workers, num_ckpt, num_dummy, num_none, expected):
+async def test_report_handler(
+    tmp_path, num_workers, num_ckpt, num_dummy, num_none, expected
+):
     """`expected` is the number of times that the
     CheckpointManager.register_checkpoint is called.
     """
