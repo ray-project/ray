@@ -59,6 +59,24 @@ Before starting, ensure you have:
 - [ ] A Python environment with Ray Data and document processing libraries
 - [ ] Access to S3 or other cloud storage for document sources
 
+### Install system dependencies
+
+Install the following system dependencies. Make sure to include them in your worker image:
+
+```bash
+sudo apt-get update && \
+    sudo apt-get install -y libgl1-mesa-glx libmagic1 poppler-utils tesseract-ocr libreoffice && \
+    sudo rm -rf /var/lib/apt/lists/*
+```
+
+### Install Python dependencies
+
+Install the required Python packages (these can also be included in your image):
+
+```bash
+pip install --force-reinstall --no-cache-dir "unstructured[all-docs]==0.18.21" "pandas==2.3.3"
+```
+
 Setup and initialize Ray Data:
 
 
@@ -84,14 +102,15 @@ ctx = ray.data.DataContext.get_current()
 ctx.enable_progress_bars = False
 ctx.enable_operator_progress_bars = False
 
-# Initialize Ray cluster connection to set the Ray Data context
-# Use runtime env to install dependencies across all workers
+# Use runtime env to install pip dependencies across all workers
+# You can skip this if your custom image already has these dependencies installed
 runtime_env = dict(
     pip= {
         "packages": ["unstructured[all-docs]==0.18.21", "pandas==2.3.3"],
         "pip_install_options": ["--force-reinstall", "--no-cache-dir"]
     }
 )
+# Initialize Ray cluster connection to set the Ray Data context
 ray.init(ignore_reinit_error=True, runtime_env= runtime_env)
 ```
 
