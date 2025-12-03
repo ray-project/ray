@@ -119,9 +119,8 @@ class _JaxBackend(Backend):
         num_slices = backend_config.num_slices
 
         # Set up JAX distributed environment on all workers
-        # This sets JAX_PLATFORMS env var and initializes JAX distributed.
         num_workers_total = len(worker_group)
-        num_workers_per_slice = num_workers_total // num_slices
+        num_workers_per_slice = max(1, num_workers_total // num_slices)
         setup_futures = []
         for i in range(num_workers_total):
             env_vars = {}
