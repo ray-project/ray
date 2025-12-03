@@ -4238,8 +4238,7 @@ def read_delta(
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to HIVE partitioning.
         shuffle: If setting to "files", randomly shuffle input files order before read.
-            Defaults to not shuffle with ``None``. Note: FileShuffleConfig and
-            FileShuffleConfig are not supported for Delta tables.
+            Defaults to not shuffle with ``None``.
         include_paths: If ``True``, include the path to each file. File paths are
             stored in the ``'path'`` column.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
