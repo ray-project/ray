@@ -1,5 +1,7 @@
 import sys
 
+import os
+
 import pytest
 
 import ray
@@ -9,7 +11,6 @@ from ray.train.v2._internal.constants import (
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
     is_v2_enabled,
 )
-from ray.train.v2.api.config import TPUAcceleratorConfig
 from ray.train.v2.jax import JaxTrainer
 
 assert is_v2_enabled()
@@ -21,7 +22,9 @@ def ray_tpu_single_host(monkeypatch):
     with _ray_start_cluster() as cluster:
         # Simulate one node with 8 TPU chips.
         cluster.add_node(
-            num_cpus=4, resources={"TPU": 8}, env_vars={"TPU_ACCELERATOR_TYPE": "v6e-8"}
+            num_cpus=4,
+            resources={"TPU": 8, "accelerator_type:TPU-V6E": 1},
+            env_vars={"TPU_ACCELERATOR_TYPE": "v6e-8"},
         )
 
         ray.init(address=cluster.address)
@@ -133,12 +136,23 @@ def train_func():
     devices = jax.devices()
     node_labels = ray.get_runtime_context().get_node_labels()
     slice_name = node_labels.get("ray.io/tpu-slice-name")
+    current_ip = ray.util.get_node_ip_address()
+
+    megascale_vars = {
+        "MEGASCALE_SLICE_ID": os.environ.get("MEGASCALE_SLICE_ID"),
+        "MEGASCALE_NUM_SLICES": os.environ.get("MEGASCALE_NUM_SLICES"),
+        "MEGASCALE_COORDINATOR_ADDRESS": os.environ.get(
+            "MEGASCALE_COORDINATOR_ADDRESS"
+        ),
+    }
 
     train.report(
         {
             "worker_id": rank,
             "slice_name": slice_name,
+            "node_ip": current_ip,
             "devices": [str(d) for d in devices],
+            **megascale_vars,
         }
     )
 
@@ -191,11 +205,10 @@ def test_tpu_single_host(ray_tpu_single_host, tmp_path):
     trainer = JaxTrainer(
         train_loop_per_worker=train_func,
         scaling_config=ScalingConfig(
+            use_tpu=True,
             num_workers=1,
             resources_per_worker={"TPU": 8},
-            accelerator_config=TPUAcceleratorConfig(
-                accelerator_type="TPU-V6E",
-            ),
+            accelerator_type="TPU-V6E",
         ),
         run_config=RunConfig(
             storage_path=str(tmp_path),
@@ -214,6 +227,12 @@ def test_tpu_single_host(ray_tpu_single_host, tmp_path):
     report = reports[0]
     assert report["worker_id"] == 0
 
+    # Validate we do not automatically set megascale vars for single-slice.
+    for r in reports:
+        assert r.get("MEGASCALE_SLICE_ID") is None
+        assert r.get("MEGASCALE_NUM_SLICES") is None
+        assert r.get("MEGASCALE_COORDINATOR_ADDRESS") is None
+
 
 @pytest.mark.skipif(
     sys.version_info >= (3, 12),
@@ -231,12 +250,10 @@ def test_tpu_single_slice_multi_host(ray_tpu_multi_host, tmp_path):
     trainer = JaxTrainer(
         train_loop_per_worker=train_func,
         scaling_config=ScalingConfig(
-            accelerator_config=TPUAcceleratorConfig(
-                accelerator_type="TPU-V4",
-                topology="2x2x2",
-                num_slices=1,
-            ),
-            placement_strategy="SPREAD",
+            use_tpu=True,
+            accelerator_type="TPU-V4",
+            topology="2x2x2",
+            num_slices=1,
         ),
         run_config=RunConfig(
             storage_path=str(tmp_path),
@@ -260,6 +277,12 @@ def test_tpu_single_slice_multi_host(ray_tpu_multi_host, tmp_path):
     assert len(slices_used) == 1, "Expected workers to be scheduled to 1 slice."
     assert next(iter(slices_used)) in ("slice-A", "slice-B")
 
+    # Validate we do not automatically set megascale vars for single-slice.
+    for r in reports:
+        assert r.get("MEGASCALE_SLICE_ID") is None
+        assert r.get("MEGASCALE_NUM_SLICES") is None
+        assert r.get("MEGASCALE_COORDINATOR_ADDRESS") is None
+
 
 def test_tpu_multi_slice_multi_host(ray_tpu_multi_host, tmp_path):
     """
@@ -273,11 +296,10 @@ def test_tpu_multi_slice_multi_host(ray_tpu_multi_host, tmp_path):
     trainer = JaxTrainer(
         train_loop_per_worker=train_func,
         scaling_config=ScalingConfig(
-            accelerator_config=TPUAcceleratorConfig(
-                accelerator_type="TPU-V4",
-                topology="2x2x2",
-                num_slices=2,
-            ),
+            use_tpu=True,
+            accelerator_type="TPU-V4",
+            topology="2x2x2",
+            num_slices=2,
         ),
         run_config=RunConfig(
             storage_path=str(tmp_path),
@@ -302,6 +324,21 @@ def test_tpu_multi_slice_multi_host(ray_tpu_multi_host, tmp_path):
     assert "slice-A" in slices_used
     assert "slice-B" in slices_used
 
+    # Verify megascale coordinator address set to IP of worker 0.
+    worker_0_report = next(r for r in reports if r["worker_id"] == 0)
+    expected_coordinator_ip = worker_0_report["node_ip"]
+
+    for r in reports:
+        assert r["MEGASCALE_COORDINATOR_ADDRESS"] == expected_coordinator_ip
+        assert r["MEGASCALE_NUM_SLICES"] == "2"
+
+    # Validate MEGASCALE_SLICE_ID set based on indexed TPU Pod name.
+    slice_a_reports = [r for r in reports if r["slice_name"] == "slice-A"]
+    slice_b_reports = [r for r in reports if r["slice_name"] == "slice-B"]
+
+    assert list({r["MEGASCALE_SLICE_ID"] for r in slice_a_reports}) == ["0"]
+    assert list({r["MEGASCALE_SLICE_ID"] for r in slice_b_reports}) == ["1"]
+
 
 def test_multi_slice_manual_resources(ray_tpu_multi_host, tmp_path):
     """
@@ -315,9 +352,10 @@ def test_multi_slice_manual_resources(ray_tpu_multi_host, tmp_path):
     trainer = JaxTrainer(
         train_loop_per_worker=train_func,
         scaling_config=ScalingConfig(
-            accelerator_config=TPUAcceleratorConfig(
-                accelerator_type="TPU-V4", topology="2x2x2", num_slices=2
-            ),
+            use_tpu=True,
+            accelerator_type="TPU-V4",
+            topology="2x2x2",
+            num_slices=2,
             resources_per_worker={"TPU": 1},  # 1 CPU added by default per-bundle.
         ),
         run_config=RunConfig(
@@ -342,6 +380,21 @@ def test_multi_slice_manual_resources(ray_tpu_multi_host, tmp_path):
     assert len(slices_used) == 2, "Expected workers to span 2 slices."
     assert "slice-A" in slices_used
     assert "slice-B" in slices_used
+
+    # Verify megascale coordinator address set to IP of worker 0.
+    worker_0_report = next(r for r in reports if r["worker_id"] == 0)
+    expected_coordinator_ip = worker_0_report["node_ip"]
+
+    for r in reports:
+        assert r["MEGASCALE_COORDINATOR_ADDRESS"] == expected_coordinator_ip
+        assert r["MEGASCALE_NUM_SLICES"] == "2"
+
+    # Validate MEGASCALE_SLICE_ID set based on indexed TPU Pod name.
+    slice_a_reports = [r for r in reports if r["slice_name"] == "slice-A"]
+    slice_b_reports = [r for r in reports if r["slice_name"] == "slice-B"]
+
+    assert list({r["MEGASCALE_SLICE_ID"] for r in slice_a_reports}) == ["0"]
+    assert list({r["MEGASCALE_SLICE_ID"] for r in slice_b_reports}) == ["1"]
 
 
 def test_scaling_config_validation():
