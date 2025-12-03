@@ -7,13 +7,9 @@ from typing import (
     AsyncGenerator,
     List,
     Optional,
-    Union,
-    Dict,
 )
 
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
-
-
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -84,7 +80,7 @@ class SGLangServer:
     async def chat(
         self, request: ChatCompletionRequest
     ) -> AsyncGenerator[ChatCompletionResponse, None]:
-        
+
         # Format prompts (handles dicts or objects in request.messages)
         prompt_string = format_messages_to_prompt(request.messages)
 
@@ -113,7 +109,9 @@ class SGLangServer:
 
         if isinstance(raw, list):
             if not raw:
-                raise RuntimeError("SGLang engine returned an empty response list during chat generation.")
+                raise RuntimeError(
+                    "SGLang engine returned an empty response list during chat generation."
+                )
             raw = raw[0]
 
         text: str = raw.get("text", "")
@@ -137,10 +135,7 @@ class SGLangServer:
 
         choice_data = {
             "index": 0,
-            "message": {
-                "role": ChatRole.assistant.value,
-                "content": text.strip()
-            },
+            "message": {"role": ChatRole.assistant.value, "content": text.strip()},
             "finish_reason": finish_reason,
         }
 
@@ -152,11 +147,12 @@ class SGLangServer:
             choices=[choice_data],
             usage=usage_data,
         )
-        
 
         yield resp
 
-    async def completions(self, request: CompletionRequest) -> AsyncGenerator[CompletionResponse, None]:
+    async def completions(
+        self, request: CompletionRequest
+    ) -> AsyncGenerator[CompletionResponse, None]:
         prompt_input = request.prompt
 
         if isinstance(prompt_input, list):
@@ -193,7 +189,9 @@ class SGLangServer:
 
         if isinstance(raw, list):
             if not raw:
-                raise RuntimeError("SGLang engine returned an empty response list during text completion.")
+                raise RuntimeError(
+                    "SGLang engine returned an empty response list during text completion."
+                )
             raw = raw[0]
 
         text: str = raw.get("text", "")
@@ -262,7 +260,7 @@ class SGLangServer:
         ray_actor_options = deployment_options.get("ray_actor_options", {})
 
         runtime_env = ray_actor_options.setdefault("runtime_env", {})
-        
+
         # set as default without checking ENABLE_WORKER_PROCESS_SETUP_HOOK
         runtime_env.setdefault(
             "worker_process_setup_hook",
