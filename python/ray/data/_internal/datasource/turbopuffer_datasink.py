@@ -16,7 +16,9 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray._common.retry import call_with_retry
+from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink
@@ -297,7 +299,7 @@ class TurbopufferDatasink(Datasink):
                 f"'{source_column}' to '{target_column}'. Please disambiguate your schema."
             )
 
-        return table.rename_columns({source_column: target_column})
+        return BlockAccessor.for_block(table).rename_columns({source_column: target_column})
 
     def _prepare_arrow_table(self, table: pa.Table) -> pa.Table:
         """
@@ -364,8 +366,9 @@ class TurbopufferDatasink(Datasink):
 
         # Sort the table by the grouping column. This groups all rows with the
         # same namespace value together, enabling efficient slicing.
-        sort_indices = pc.sort_indices(table, sort_keys=[(group_col_name, "ascending")])
-        sorted_table = table.take(sort_indices)
+        # Using transform_pyarrow.sort with SortKey for better extension array handling.
+        sort_key = SortKey(key=group_col_name, descending=False)
+        sorted_table = transform_pyarrow.sort(table, sort_key)
 
         # Use PyArrow's group_by() to efficiently identify unique groups and their counts.
         # Note: group_by().aggregate() uses hash aggregation with use_threads=True by default,
