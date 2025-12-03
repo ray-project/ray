@@ -75,7 +75,6 @@ class ScalingConfig(ScalingConfigV1):
     topology: Optional[str] = None
     accelerator_type: Optional[str] = None
     num_slices: int = 1
-    bundle_label_selector: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None
 
     def __post_init__(self):
         if self.trainer_resources is not None:
@@ -83,8 +82,6 @@ class ScalingConfig(ScalingConfigV1):
 
         # Auto-detect TPU resources when both topology and accelerator type are specified.
         if self.use_tpu and self.topology and self.accelerator_type:
-            if not self.use_tpu:
-                self.use_tpu = True  # Set automatically if unspecified.
             try:
                 tpu_num_workers, tpu_resources = get_tpu_worker_resources(
                     topology=self.topology,
