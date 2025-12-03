@@ -172,7 +172,7 @@ class ScalingConfig(ScalingConfigV1):
     def _resources_per_worker_not_none(self):
         if self.resources_per_worker is None:
             if self.use_tpu:
-                return {}
+                return {"TPU": 1}
 
         return super()._resources_per_worker_not_none
 
