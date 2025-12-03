@@ -1151,6 +1151,8 @@ class AlgorithmConfig(_Config):
                             "'__env_single__': ([env obs. space, env act. space])}`.\n"
                         )
                     val_ = self._module_to_env_connector(env)
+                else:
+                    raise e
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -1374,7 +1376,7 @@ class AlgorithmConfig(_Config):
             spaces: An optional dict mapping ModuleIDs to
                 (observation-space, action-space)-tuples for the to-be-constructed
                 RLModule inside the Learner. Note that if RLlib cannot infer any
-                space information either from this `spces` arg, from the optional
+                space information either from this `spaces` arg, from the optional
                 `env` arg or from `self`, the Learner cannot be created.
 
         Returns:
@@ -2220,40 +2222,37 @@ class AlgorithmConfig(_Config):
         if recreate_failed_workers != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.env_runners(recreate_failed_workers=..)",
-                new="AlgorithmConfig.fault_tolerance(recreate_failed_workers=..)",
+                new="AlgorithmConfig.fault_tolerance(restart_failed_env_runners=..)",
                 error=True,
             )
         if restart_failed_sub_environments != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.env_runners(restart_failed_sub_environments=..)",
                 new=(
-                    "AlgorithmConfig.fault_tolerance("
-                    "restart_failed_sub_environments=..)"
+                    "AlgorithmConfig.fault_tolerance(restart_failed_sub_environments=..)"
                 ),
                 error=True,
             )
         if num_consecutive_worker_failures_tolerance != DEPRECATED_VALUE:
             deprecation_warning(
                 old=(
-                    "AlgorithmConfig.env_runners("
-                    "num_consecutive_worker_failures_tolerance=..)"
+                    "AlgorithmConfig.env_runners(num_consecutive_worker_failures_tolerance=..)"
                 ),
                 new=(
-                    "AlgorithmConfig.fault_tolerance("
-                    "num_consecutive_worker_failures_tolerance=..)"
+                    "AlgorithmConfig.fault_tolerance(num_consecutive_env_runner_failures_tolerance=..)"
                 ),
                 error=True,
             )
         if worker_health_probe_timeout_s != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.env_runners(worker_health_probe_timeout_s=..)",
-                new="AlgorithmConfig.fault_tolerance(worker_health_probe_timeout_s=..)",
+                new="AlgorithmConfig.fault_tolerance(env_runner_health_probe_timeout_s=..)",
                 error=True,
             )
         if worker_restore_timeout_s != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.env_runners(worker_restore_timeout_s=..)",
-                new="AlgorithmConfig.fault_tolerance(worker_restore_timeout_s=..)",
+                new="AlgorithmConfig.fault_tolerance(env_runner_restore_timeout_s=..)",
                 error=True,
             )
 
@@ -2269,6 +2268,15 @@ class AlgorithmConfig(_Config):
         max_requests_in_flight_per_aggregator_actor: Optional[float] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
         max_requests_in_flight_per_learner: Optional[int] = NotProvided,
+        learner_class: Optional[Type["Learner"]] = NotProvided,
+        learner_connector: Optional[
+            Callable[
+                [gym.spaces.Space, gym.spaces.Space],
+                Union["ConnectorV2", List["ConnectorV2"]],
+            ]
+        ] = NotProvided,
+        add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
+        learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
     ) -> Self:
         """Sets LearnerGroup and Learner worker related configurations.
 
@@ -2313,6 +2321,29 @@ class AlgorithmConfig(_Config):
                 updates a policy has undergone on the Learner vs the EnvRunners.
                 See the `ray.rllib.utils.actor_manager.FaultTolerantActorManager` class
                 for more details.
+            learner_class: The `Learner` class to use for (distributed) updating of the
+                RLModule.
+            learner_connector: A callable taking an env observation space and an env
+                action space as inputs and returning a learner ConnectorV2 (might be
+                a pipeline) object.
+            add_default_connectors_to_learner_pipeline: If True (default), RLlib's
+                Learners automatically add the default Learner ConnectorV2
+                pieces to the LearnerPipeline. These automatically perform:
+                a) adding observations from episodes to the train batch, if this has not
+                already been done by a user-provided connector piece
+                b) if RLModule is stateful, add a time rank to the train batch, zero-pad
+                the data, and add the correct state inputs, if this has not already been
+                done by a user-provided connector piece.
+                c) add all other information (actions, rewards, terminateds, etc..) to
+                the train batch, if this has not already been done by a user-provided
+                connector piece.
+                Only if you know exactly what you are doing, you
+                should set this setting to False.
+            learner_config_dict: A dict to insert any settings accessible from within
+                the Learner instance. This should only be used in connection with custom
+                Learner subclasses and in case the user doesn't want to write an extra
+                `AlgorithmConfig` subclass just to add a few settings to the base Algo's
+                own config class.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2333,6 +2364,16 @@ class AlgorithmConfig(_Config):
             self.local_gpu_idx = local_gpu_idx
         if max_requests_in_flight_per_learner is not NotProvided:
             self.max_requests_in_flight_per_learner = max_requests_in_flight_per_learner
+        if learner_class is not NotProvided:
+            self._learner_class = learner_class
+        if learner_connector is not NotProvided:
+            self._learner_connector = learner_connector
+        if add_default_connectors_to_learner_pipeline is not NotProvided:
+            self.add_default_connectors_to_learner_pipeline = (
+                add_default_connectors_to_learner_pipeline
+            )
+        if learner_config_dict is not NotProvided:
+            self.learner_config_dict.update(learner_config_dict)
 
         return self
 
