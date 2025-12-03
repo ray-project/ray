@@ -206,7 +206,7 @@ Create your Anyscale Service configuration in a new `service.yaml` file:
 
 ```yaml
 # service.yaml
-name: deploy-llama-3-8b
+name: deploy-gpt-oss
 image_uri: anyscale/ray-llm:2.52.0-py311-cu128 # Anyscale Ray Serve LLM image. Use `containerfile: ./Dockerfile` to use a custom Dockerfile.
 compute_config:
   auto_select_worker_config: true 
@@ -214,7 +214,7 @@ working_dir: .
 cloud:
 applications:
   # Point to your app in your Python module
-  - import_path: serve_llama_3_1_8b:app
+  - import_path: serve_gpt_oss:app
 ```
 
 
