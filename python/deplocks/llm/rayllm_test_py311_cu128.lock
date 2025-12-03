@@ -1087,6 +1087,9 @@ filelock==3.17.0 \
     #   transformers
     #   virtualenv
     #   vllm
+flashinfer-cubin==0.5.2 \
+    --hash=sha256:9e236522372b6a1ebb03f25028cf69f30a977249cf638ba09448d15802db04ca
+    # via -r python/requirements/llm/llm-requirements.txt
 flashinfer-python==0.5.2 \
     --hash=sha256:739c27d86d5ff4e3ad1ea41dcb90bda08e44c332549bf696f9c9c5c57f608e63 \
     --hash=sha256:99d097a28be1e98c7f85e4a767e9e9a4794374f9318c27db14d21e367149063f
