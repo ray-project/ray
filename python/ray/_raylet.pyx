@@ -2718,8 +2718,7 @@ cdef class CoreWorker:
         if self.is_driver:
             self._task_prepare_time_ms_histogram = Histogram(
                 b"ray.task_prepare_time_ms",
-                b"Time spent in Python preparing a task before C++ submission.",
-                b"ms",
+                b"Time spent in Python preparing a task before C++ submission in ms.",
                 [1.0, 10.0, 100.0, 1000.0, 10000.0],
                 [])
         else:
