@@ -83,17 +83,28 @@ class ActorPoolStrategy(ComputeStrategy):
     actors, set max_tasks_in_flight_per_actor to 1.
 
     The `enable_true_multi_threading` argument primarily exists to prevent GPU OOM issues with multi-threaded actors.
-    It does not apply to async actors:
+    The life cycle of an actor task involves 3 main steps:
 
-    - [`enable_true_multi_threading=False`, `max_concurrency=1`] = 1 actor task running per actor
-    - [`enable_true_multi_threading=True`, `max_concurrency=1`] = Same as 1st bullet ^.
+        1. Batching Inputs
+        2. Running actor UDF
+        3. Batching Outputs
+
+    The `enable_true_multi_threading` flag affects step 2. If set to `True`, then the UDF can be run concurrently.
+    By default, it is set to `False`, so at most 1 actor UDF is running at a time per actor. The `max_concurrency`
+    flag on `ray.remote` affects steps 1 and 3. Below is a matrix summary:
+
+    - [`enable_true_multi_threading=False`, `max_concurrency=1`] = 1 actor task running per actor. So at most 1
+        of steps 1, 2, or 3 is running at any point in time.
+    - [`enable_true_multi_threading=True`, `max_concurrency=1`] = Same as bullet #1 ^.
     - [`enable_true_multi_threading=False`, `max_concurrency>1`] = multiple tasks running per actor
       (respecting GIL) but UDF runs 1 at a time. This is useful for doing CPU and GPU work,
       where you want to use a large batch size but want to hide the overhead of *batching*
       the inputs. In this case, CPU *batching* is done concurrently, while GPU *inference*
-      is done 1 at a time.
+      is done 1 at a time. Concretely, steps 1 and 3 can have multiple threads, while step 2 is done serially.
     - [`enable_true_multi_threading=True`, `max_concurrency>1`] = multiple tasks running per actor.
-      Unlike bullet #3 ^, the UDF runs concurrently (respecting GIL)
+      Unlike bullet #3 ^, the UDF runs concurrently (respecting GIL). No restrictions on steps 1, 2, or 3
+
+    NOTE: `enable_true_multi_threading` does not apply to async actors:
     """
 
     def __init__(
