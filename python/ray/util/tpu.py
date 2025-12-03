@@ -22,14 +22,17 @@ logger = logging.getLogger(__name__)
 @PublicAPI(stability="alpha")
 def get_tpu_version_from_type(accelerator_type: str) -> str:
     """Extracts the version (e.g. "v6e") from the accelerator type (e.g. "TPU-V6E")."""
-    if not accelerator_type.startswith("TPU-"):
-        if accelerator_type in VALID_TPU_TYPES:
-            return accelerator_type
-        raise ValueError(
-            f"Invalid accelerator_type: {accelerator_type}. Must be one of "
-            f"{VALID_TPU_TYPES} or start with 'TPU-'"
-        )
-    return accelerator_type[len("TPU-") :].lower()
+    lower_type = accelerator_type.lower()
+    if lower_type.startswith("tpu-"):
+        return lower_type[len("tpu-") :]
+
+    if lower_type in VALID_TPU_TYPES:
+        return lower_type
+
+    raise ValueError(
+        f"Invalid accelerator_type: {accelerator_type}. Must be one of "
+        f"{list(VALID_TPU_TYPES)} or start with 'TPU-'"
+    )
 
 
 @PublicAPI(stability="alpha")
