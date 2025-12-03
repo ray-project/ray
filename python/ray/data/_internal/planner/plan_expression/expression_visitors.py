@@ -424,11 +424,13 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
 
     def visit_resolved_column(self, expr: "ResolvedColumnExpr") -> str:
         """Visit a resolved column expression and return its inline representation."""
-        return f"resolved_col({expr.name!r})"
+        # TODO(Justin): Check with team if this is the display we want.
+        return f"col({expr.name!r})"
 
     def visit_unresolved_column(self, expr: "UnresolvedColumnExpr") -> str:
         """Visit an unresolved column expression and return its inline representation."""
-        return f"unresolved_col({expr.name!r})"
+        # TODO(Justin): Check with team if this is the display we want.
+        return f"col({expr.name!r})"
 
     def visit_literal(self, expr: "LiteralExpr") -> str:
         """Visit a literal expression and return its inline representation."""

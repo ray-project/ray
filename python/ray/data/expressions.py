@@ -649,8 +649,8 @@ class NamedExpr(Expr, ABC):
         aliases or renames. For example
             >>> from ray.data.expressions import col
             >>> col("a").get_root_name() == "a"
-            >>> col("a").alias("b").get_root_name() == "b"
-            >>> col("a").alias("b").alias("c").get_root_name() == "c"
+            >>> col("a").alias("b").get_root_name() == "a"
+            >>> col("a").alias("b").alias("c").get_root_name() == "a"
         """
         return self._name
 
@@ -1135,7 +1135,9 @@ class DownloadExpr(Expr):
         return DataType.binary()
 
     def structurally_equals(self, other: Any) -> bool:
-        return isinstance(other, DownloadExpr) and self.uri_column.structurally_equals(other.uri_column)
+        return isinstance(other, DownloadExpr) and self.uri_column.structurally_equals(
+            other.uri_column
+        )
 
 
 @DeveloperAPI(stability="alpha")
@@ -1308,7 +1310,7 @@ def download(uri_column_name: str | NamedExpr) -> DownloadExpr:
 
     Args:
         uri_column_name: The name of the column containing URIs to download from,
-        or a named expressions. A named expression is one of col() or alias().
+            or a named expressions. A named expression is one of col() or alias().
     Returns:
         A DownloadExpr that will download content from the specified URI column
 
