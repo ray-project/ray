@@ -149,7 +149,13 @@ export const GlobalContext = React.createContext<GlobalContextType>({
 const App = () => {
   const [currentTimeZone, setCurrentTimeZone] = useState<string>();
   const [themeMode, setThemeMode] = useState<"light" | "dark">(() => {
-    // Check localStorage first
+    // Check URL query param first (for embedded views)
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlTheme = urlParams.get("theme");
+    if (urlTheme === "dark" || urlTheme === "light") {
+      return urlTheme;
+    }
+    // Then check localStorage
     const stored = localStorage.getItem("themeMode");
     if (stored === "dark" || stored === "light") {
       return stored;
