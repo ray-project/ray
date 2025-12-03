@@ -504,6 +504,11 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
         error_info.set_error_type(error_type);
         while (!tasks_to_fail.empty()) {
           auto &task_spec = tasks_to_fail.front();
+          {
+            absl::MutexLock lock(&mu_);
+            // Clean up timestamp tracking for preprocessing metric.
+            task_submission_time_ms_.erase(task_spec.TaskId());
+          }
           task_manager_.FailPendingTask(
               task_spec.TaskId(), error_type, &error_status, &error_info);
           tasks_to_fail.pop_front();
@@ -743,6 +748,8 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
         if (spec->TaskId() == task_id) {
           scheduling_tasks.erase(spec);
           CancelWorkerLeaseIfNeeded(scheduling_key);
+          // Clean up timestamp tracking for preprocessing metric.
+          task_submission_time_ms_.erase(task_id);
           task_manager_.FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED);
           return;
         }
