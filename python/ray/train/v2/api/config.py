@@ -45,6 +45,9 @@ class ScalingConfig(ScalingConfigV1):
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
+        bundle_label_selector: A list of label selectors for Ray Train worker placement.
+            If a single label selector is provided, it will be applied to all Ray Train workers.
+            If a list is provided, it must be the same length as the max number of Ray Train workers.
         accelerator_type: [Experimental] If specified, Ray Train will launch the
             training coordinator and workers on the nodes with the specified type
             of accelerators.
@@ -72,6 +75,7 @@ class ScalingConfig(ScalingConfigV1):
     topology: Optional[str] = None
     accelerator_type: Optional[str] = None
     num_slices: int = 1
+    bundle_label_selector: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None
 
     def __post_init__(self):
         if self.trainer_resources is not None:

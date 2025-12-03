@@ -485,6 +485,8 @@ class RLModule(Checkpointable, abc.ABC):
         except AttributeError as e:
             if "'NoneType' object has no attribute " in e.args[0]:
                 raise (self._catalog_ctor_error or e)
+            raise e
+
         self._is_setup = True
         # Cache value for returning from `is_stateful` so we don't have to call
         # the module's `get_initial_state()` method all the time (might be expensive).

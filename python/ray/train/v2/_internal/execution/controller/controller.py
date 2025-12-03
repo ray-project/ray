@@ -304,13 +304,26 @@ class TrainController:
 
         # Check for `bundle_label_selector` to influence WorkerGroup scheduling.
         bundle_label_selector = None
+        if isinstance(scaling_config.bundle_label_selector, list):
+            bundle_label_selector = scaling_config.bundle_label_selector[:num_workers]
+        elif isinstance(scaling_config.bundle_label_selector, dict):
+            bundle_label_selector = [
+                scaling_config.bundle_label_selector.copy() for _ in range(num_workers)
+            ]
         try:
             for callback in self._controller_callbacks:
                 selector = callback.on_controller_start_worker_group(
                     scaling_config=scaling_config, num_workers=num_workers
                 )
                 if selector:
-                    bundle_label_selector = selector
+                    if bundle_label_selector:
+                        logger.warning(
+                            f"Overriding `ScalingConfig.bundle_label_selector` {bundle_label_selector} "
+                            f"with bundle_label_selector returned by user-specified callback {selector}"
+                        )
+                    bundle_label_selector = [
+                        selector.copy() for _ in range(num_workers)
+                    ]
                     break
         except Exception as e:
             return ControllerError(e)

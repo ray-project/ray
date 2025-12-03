@@ -49,7 +49,7 @@ from ray._raylet import (
     PythonFunctionDescriptor,
     raise_sys_exit_with_custom_error_message,
 )
-from ray.exceptions import AsyncioActorExit
+from ray.exceptions import ActorAlreadyExistsError, AsyncioActorExit
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import (
@@ -1532,9 +1532,10 @@ class ActorClass(Generic[T]):
                 updated_options["get_if_exists"] = False  # prevent infinite loop
                 try:
                     return self._remote(args, kwargs, **updated_options)
-                except ValueError:
-                    # We lost the creation race, ignore.
+                except ActorAlreadyExistsError:
                     pass
+                # The actor was created between the first and second get_actor calls.
+                # Try to get it again to see if it's there.
                 return ray.get_actor(name, namespace=namespace)
 
         # We pop the "concurrency_groups" coming from "@ray.remote" here. We no longer
@@ -1606,7 +1607,7 @@ class ActorClass(Generic[T]):
             except ValueError:  # Name is not taken.
                 pass
             else:
-                raise ValueError(
+                raise ActorAlreadyExistsError(
                     f"The name {name} (namespace={namespace}) is already "
                     "taken. Please use "
                     "a different name or get the existing actor using "

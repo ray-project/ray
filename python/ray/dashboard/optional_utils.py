@@ -130,21 +130,31 @@ def aiohttp_cache(
 def is_browser_request(req: Request) -> bool:
     """Best-effort detection if the request was made by a browser.
 
-    Uses two heuristics:
+    Uses three heuristics:
         1) If the `User-Agent` header starts with 'Mozilla'. This heuristic is weak,
         but hard for a browser to bypass e.g., fetch/xhr and friends cannot alter the
         user agent, but requests made with an HTTP library can stumble into this if
         they choose to user a browser-like user agent. At the time of writing, all
         common browsers' user agents start with 'Mozilla'.
         2) If any of the `Sec-Fetch-*` headers are present.
+        3) If any of the various CORS headers are present
     """
     return req.headers.get("User-Agent", "").startswith("Mozilla") or any(
         h in req.headers
         for h in (
+            # Origin and Referer are sent by browser user agents to give
+            # information about the requesting origin
+            "Referer",
+            "Origin",
+            # Sec-Fetch headers are sent with many but not all `fetch`
+            # requests, and will eventually be sent on all requests.
             "Sec-Fetch-Mode",
             "Sec-Fetch-Dest",
             "Sec-Fetch-Site",
             "Sec-Fetch-User",
+            # CORS headers specifying which other headers are modified
+            "Access-Control-Request-Method",
+            "Access-Control-Request-Headers",
         )
     )
 

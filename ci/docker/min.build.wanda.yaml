@@ -5,6 +5,7 @@ srcs:
   - ci/env/install-dependencies.sh
   - ci/env/install-core-prerelease-dependencies.sh
   - python/setup.py
+  - python/LICENSE.txt
   - python/ray/_version.py
   - README.rst
 build_args:

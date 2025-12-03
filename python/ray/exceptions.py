@@ -976,6 +976,24 @@ class UnserializableException(RayError):
         )
 
 
+@DeveloperAPI
+class ActorAlreadyExistsError(ValueError, RayError):
+    """Raised when a named actor already exists.
+
+    Note that this error is not only a subclass of RayError, but also a subclass of ValueError, to maintain backward compatibility.
+
+    Args:
+        error_message: The error message that contains information about the actor name and namespace.
+    """
+
+    def __init__(self, error_message: str):
+        super().__init__(error_message)
+        self.error_message = error_message
+
+    def __str__(self):
+        return self.error_message
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -1006,5 +1024,6 @@ RAY_EXCEPTION_TYPES = [
     OufOfBandObjectRefSerializationException,
     RayCgraphCapacityExceeded,
     UnserializableException,
+    ActorAlreadyExistsError,
     AuthenticationError,
 ]

@@ -81,10 +81,9 @@ OpenTelemetryMetricRecorder &OpenTelemetryMetricRecorder::GetInstance() {
   return *instance;
 }
 
-void OpenTelemetryMetricRecorder::RegisterGrpcExporter(
-    const std::string &endpoint,
-    std::chrono::milliseconds interval,
-    std::chrono::milliseconds timeout) {
+void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
+                                        std::chrono::milliseconds interval,
+                                        std::chrono::milliseconds timeout) {
   // Create an OTLP exporter
   opentelemetry::exporter::otlp::OtlpGrpcMetricExporterOptions exporter_options;
   exporter_options.endpoint = endpoint;
@@ -103,6 +102,16 @@ void OpenTelemetryMetricRecorder::RegisterGrpcExporter(
   auto reader =
       std::make_unique<opentelemetry::sdk::metrics::PeriodicExportingMetricReader>(
           std::move(exporter), reader_options);
+  // Reset the is_shutdown_ flag to false to ensure the newly added metric reader will
+  // be shut down correctly.
+  //
+  // In most cases, OpenTelemetryMetricRecorder is initialized and shut down only once
+  // per process, so setting this to false is effectively a no-op. However, in the driver
+  // process, the recorder may be initialized and shut down multiple times (e.g., repeated
+  // calls to ray.init() and ray.shutdown()). In such cases, is_shutdown_ may already be
+  // true when we reach this point (leaking from the previous ray cluster). Resetting it
+  // to false ensures that the newly added metric reader will be shut down correctly.
+  is_shutdown_ = false;
   meter_provider_->AddMetricReader(std::move(reader));
 }
 

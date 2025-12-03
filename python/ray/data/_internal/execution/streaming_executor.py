@@ -117,6 +117,14 @@ class StreamingExecutor(Executor, threading.Thread):
         # by comparing it with the current timestamp.
         self._metrics_last_updated: float = 0.0
 
+        self._initialize_metrics_gauges()
+
+        Executor.__init__(self, self._data_context.execution_options)
+        thread_name = f"StreamingExecutor-{self._dataset_id}"
+        threading.Thread.__init__(self, daemon=True, name=thread_name)
+
+    def _initialize_metrics_gauges(self) -> None:
+        """Initialize all Prometheus-style metrics gauges for monitoring execution."""
         self._sched_loop_duration_s = Gauge(
             "data_sched_loop_duration_s",
             description="Duration of the scheduling loop in seconds",
@@ -148,10 +156,6 @@ class StreamingExecutor(Executor, threading.Thread):
             description="Maximum bytes to read from streaming generator buffer.",
             tag_keys=("dataset", "operator"),
         )
-
-        Executor.__init__(self, self._data_context.execution_options)
-        thread_name = f"StreamingExecutor-{self._dataset_id}"
-        threading.Thread.__init__(self, daemon=True, name=thread_name)
 
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
@@ -791,6 +795,7 @@ class _ClosingIterator(OutputIterator):
                 self._executor._global_info.update(
                     bundle.num_rows(), op.num_output_rows_total()
                 )
+                self._executor._refresh_progress_bars(self._executor._topology)
             elif using_rich and self._executor._progress_manager:
                 self._executor._progress_manager.update_total_progress(
                     bundle.num_rows() or 0, op.num_output_rows_total()
