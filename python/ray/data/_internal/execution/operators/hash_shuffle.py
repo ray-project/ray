@@ -1272,7 +1272,7 @@ class HashShuffleOperator(HashShufflingOperatorBase):
             # Output (object store)
             output_object_store_memory_required
         )
-        total_with_skew = aggregator_total_memory_required * SKEW_FACTOR
+        total_with_skew = math.ceil(aggregator_total_memory_required * SKEW_FACTOR)
         logger.info(
             f"Estimated memory requirement for shuffling aggregator "
             f"(partitions={num_partitions}, "
