@@ -77,6 +77,9 @@ class TV_SquaredExp(Kernel):
     def diag(self, X):
         return np.full(X.shape[0], self.variance, dtype=np.float64)
 
+    def is_stationary(self):
+        return False
+
     @property
     def theta(self):
         return np.log([self.variance, self.lengthscale, self.epsilon])
