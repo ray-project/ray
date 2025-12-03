@@ -288,6 +288,7 @@ class ParquetDatasink(_FileDatasink):
             max_rows_per_group=max_rows_per_group,
             max_rows_per_file=max_rows_per_file,
             file_options=ds.ParquetFileFormat().make_write_options(**write_kwargs),
+            create_dir=False,  # Directory is already created by _FileDatasink.on_write_start()
         )
 
     @property
