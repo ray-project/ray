@@ -38,8 +38,6 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
     return [this, reply, resource_ids = resource_ids](
                const TaskSpecification &accepted_task_spec,
                const rpc::SendReplyCallback &accepted_send_reply_callback) mutable {
-      RAY_LOG(DEBUG).WithField(accepted_task_spec.TaskId())
-          << "accept_callback invoked, about to execute task_handler_";
       auto num_returns = accepted_task_spec.NumReturns();
       RAY_CHECK(num_returns >= 0);
 
@@ -56,8 +54,6 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
                                   reply->mutable_borrowed_refs(),
                                   &is_retryable_error,
                                   &application_error);
-      RAY_LOG(DEBUG).WithField(accepted_task_spec.TaskId())
-          << "task_handler_ completed, status=" << status.ToString();
       reply->set_is_retryable_error(is_retryable_error);
       reply->set_is_application_error(!application_error.empty());
       std::string task_execution_error;
@@ -157,8 +153,6 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
           status.IsDisconnected()) {
         reply->set_worker_exiting(true);
         if (objects_valid) {
-          RAY_LOG(DEBUG).WithField(accepted_task_spec.TaskId())
-              << "Sending successful task reply with worker_exiting=true";
           accepted_send_reply_callback(Status::OK(), nullptr, nullptr);
         } else {
           accepted_send_reply_callback(status, nullptr, nullptr);
@@ -168,8 +162,6 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
         RAY_CHECK(objects_valid)
             << num_returns << " return objects expected, " << return_objects.size()
             << " returned. Object at idx " << empty_object_idx << " was not stored.";
-        RAY_LOG(DEBUG).WithField(accepted_task_spec.TaskId())
-            << "Sending successful task reply";
         accepted_send_reply_callback(Status::OK(), nullptr, nullptr);
       }
     };

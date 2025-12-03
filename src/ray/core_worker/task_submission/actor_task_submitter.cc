@@ -402,9 +402,6 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
     // restarted.
     DisconnectRpcClient(queue->second);
     inflight_task_callbacks = std::move(queue->second.inflight_task_callbacks_);
-    RAY_LOG(DEBUG).WithField(actor_id)
-        << "Clearing " << inflight_task_callbacks.size()
-        << " inflight task callbacks due to actor disconnect";
     queue->second.inflight_task_callbacks_.clear();
 
     if (dead) {
@@ -612,10 +609,6 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   queue.inflight_task_callbacks_.emplace(task_attempt, std::move(reply_callback));
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
       [this, task_attempt, actor_id](const Status &status, rpc::PushTaskReply &&reply) {
-        RAY_LOG(DEBUG).WithField(task_attempt.first).WithField(actor_id)
-            << "Received task reply, status=" << status.ToString()
-            << ", was_cancelled=" << reply.was_cancelled_before_running()
-            << ", worker_exiting=" << reply.worker_exiting();
         rpc::ClientCallback<rpc::PushTaskReply> push_task_reply_callback;
         {
           absl::MutexLock lock(&mu_);
@@ -624,8 +617,8 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
           auto &client_queue = it->second;
           auto callback_it = client_queue.inflight_task_callbacks_.find(task_attempt);
           if (callback_it == client_queue.inflight_task_callbacks_.end()) {
-            RAY_LOG(DEBUG).WithField(task_attempt.first).WithField(actor_id)
-                << "Task already marked failed, ignoring reply";
+            RAY_LOG(DEBUG).WithField(task_attempt.first)
+                << "The task has already been marked as failed. Ignore the reply.";
             return;
           }
           push_task_reply_callback = std::move(callback_it->second);
