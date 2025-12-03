@@ -35,6 +35,8 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
         io_context_(io_context),
         gcs_publisher_(gcs_publisher) {}
 
+  void Initialize(void);
+
   void HandleReportWorkerFailure(rpc::ReportWorkerFailureRequest request,
                                  rpc::ReportWorkerFailureReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
@@ -86,6 +88,9 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
 
   /// Tracks the number of occurrences of worker crash due to OOM
   int32_t worker_crash_oom_count_ = 0;
+
+  /// The workers are sorted according to the timestamp.
+  std::list<std::pair<WorkerID, int64_t>> sorted_dead_worker_list_;
 
   /// Ray metrics
   ray::stats::Count ray_metric_unintentional_worker_failures_{
