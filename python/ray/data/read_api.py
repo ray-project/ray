@@ -3937,9 +3937,9 @@ def read_lance(
     storage_options: Optional[Dict[str, str]] = None,
     scanner_options: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
-    num_cpus: Optional[int] = None,
-    num_gpus: Optional[int] = None,
-    memory: Optional[int] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
