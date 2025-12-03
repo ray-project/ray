@@ -1,26 +1,27 @@
-import os
-from typing import Tuple
-from pathlib import Path
-import sys
-import shutil
 import json
+import os
+import shutil
+import sys
+from pathlib import Path
+from typing import Tuple
+
 import click
 
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import (
+    get_frequency,
     get_pipeline_settings,
     get_test_filters,
-    get_frequency,
-)
-from ray_release.config import (
-    read_and_validate_release_test_collection,
-    RELEASE_TEST_CONFIG_FILES,
 )
 from ray_release.buildkite.step import generate_block_step, get_step_for_test_group
+from ray_release.config import (
+    RELEASE_TEST_CONFIG_FILES,
+    read_and_validate_release_test_collection,
+)
 from ray_release.configs.global_config import init_global_config
-from ray_release.exception import ReleaseTestConfigError, ReleaseTestCLIError
-from ray_release.logger import logger
 from ray_release.custom_byod_build_init_helper import create_custom_build_yaml
+from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
+from ray_release.logger import logger
 
 _bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
