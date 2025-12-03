@@ -200,33 +200,21 @@ For production deployment, use Anyscale services to deploy the Ray Serve app to 
 
 ### Launch the service
 
-Anyscale provides out-of-the-box images (`anyscale/ray-llm`), which come pre-loaded with Ray Serve LLM, vLLM, and all required GPU and runtime dependencies. See the [Anyscale base images](https://docs.anyscale.com/reference/base-images) for details on what each image includes.
+Anyscale provides out-of-the-box images (`anyscale/ray-llm`) which come pre-loaded with Ray Serve LLM, vLLM, and all required GPU/runtime dependencies. This makes it easy to get started without building a custom image.
 
-Build a minimal Dockerfile:
-```Dockerfile
-FROM anyscale/ray:2.49.0-slim-py312-cu128
-
-# C compiler for Triton’s runtime build step (vLLM V1 engine)
-# https://github.com/vllm-project/vllm/issues/2997
-RUN sudo apt-get update && \
-    sudo apt-get install -y --no-install-recommends build-essential
-
-RUN pip install vllm==0.10.1
-```
-
-Create your Anyscale service configuration in a new `service.yaml` file and reference the Dockerfile with `containerfile`:
+Create your Anyscale Service configuration in a new `service.yaml` file:
 
 ```yaml
 # service.yaml
-name: deploy-gpt-oss
-containerfile: ./Dockerfile # Build Ray Serve LLM with vllm==0.10.1
+name: deploy-llama-3-8b
+image_uri: anyscale/ray-llm:2.52.0-py311-cu128 # Anyscale Ray Serve LLM image. Use `containerfile: ./Dockerfile` to use a custom Dockerfile.
 compute_config:
   auto_select_worker_config: true 
 working_dir: .
 cloud:
 applications:
   # Point to your app in your Python module
-  - import_path: serve_gpt_oss:app
+  - import_path: serve_llama_3_1_8b:app
 ```
 
 
@@ -237,6 +225,19 @@ Deploy your service:
 anyscale service deploy -f service.yaml
 ```
 
+**Custom Dockerfile**  
+You can customize the container by building your own Dockerfile. In your Anyscale Service config, reference the Dockerfile with `containerfile` (instead of `image_uri`):
+
+```yaml
+# service.yaml
+# Replace:
+# image_uri: anyscale/ray-llm:2.49.0-py311-cu128
+
+# with:
+containerfile: ./Dockerfile
+```
+
+See the [Anyscale base images](https://docs.anyscale.com/reference/base-images) for details on what each image includes.
 
 ---
 

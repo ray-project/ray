@@ -1,6 +1,6 @@
 # service.yaml
 name: deploy-gpt-oss
-containerfile: ./Dockerfile # Build Ray Serve LLM with vllm==0.10.1
+image_uri: anyscale/ray-llm:2.52.0-py311-cu128 # Anyscale Ray Serve LLM image. Use `containerfile: ./Dockerfile` to use a custom Dockerfile.
 compute_config:
   auto_select_worker_config: true 
 working_dir: .
