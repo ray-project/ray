@@ -179,7 +179,7 @@ class BinaryOperation(Operation, Enum):
                 | self.AND
                 | self.OR
                 | self.IN
-                | self.NOT_IN,
+                | self.NOT_IN
             ):
                 return DataType.bool()
 
@@ -680,7 +680,7 @@ class UnresolvedColumnExpr(NamedExpr):
         raise ValueError("Cannot infer data type for unresolved column")
 
     def _rename(self, name: str):
-        return AliasExpr(self, name, _is_rename=True)
+        return AliasExpr(_name=name, expr=self, _is_rename=True)
 
     @override
     def structurally_equals(self, other: Any) -> bool:
@@ -718,7 +718,7 @@ class ResolvedColumnExpr(NamedExpr):
         return self._data_type
 
     def _rename(self, name: str):
-        return AliasExpr(self, name, _is_rename=True)
+        return AliasExpr(_name=name, expr=self, _is_rename=True)
 
     @override
     def structurally_equals(self, other: Any) -> bool:
