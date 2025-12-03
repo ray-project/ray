@@ -38,6 +38,7 @@ def test_before_controller_shutdown(mock_wait, monkeypatch):
     task2 = create_autospec(ray.ObjectRef, instance=True)
     task3 = create_autospec(ray.ObjectRef, instance=True)
     vm = validation_manager.ValidationManager(checkpoint_manager=checkpoint_manager)
+    # modoru: many in queue too
     vm._pending_validations = {
         task1: checkpoint1,
         task2: checkpoint2,
@@ -92,17 +93,23 @@ def test_checkpoint_validation_management_reordering(tmp_path):
         ),
         metrics={},
     )
+
+    # Assert ValidationManager state after each poll
+    assert vm._poll_validations() == 1
     ray.wait(
         list(vm._pending_validations.keys()),
-        num_returns=2,
+        num_returns=1,
         # Pick high timeout to guarantee completion but ray.wait should finish much earlier
         timeout=100,
     )
-
-    # Assert ValidationManager state after each poll
-    assert vm._poll_validations() == 0
+    assert vm._poll_validations() == 1
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
         {low_initial_high_final_training_result.checkpoint: {"score": 200}}
+    )
+    ray.wait(
+        list(vm._pending_validations.keys()),
+        num_returns=1,
+        timeout=100,
     )
     assert vm._poll_validations() == 0
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_with(
@@ -135,6 +142,7 @@ def test_checkpoint_validation_management_failure(tmp_path):
         ),
         metrics={},
     )
+    assert vm._poll_validations() == 1
     ray.wait(
         list(vm._pending_validations.keys()),
         num_returns=1,
