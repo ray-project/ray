@@ -743,7 +743,7 @@ class ActorReplicaWrapper:
                 replica_ready_check_func = (
                     self._actor_handle.initialize_and_get_metadata
                 )
-                # this guaranteed that node_id is set before rank is assigned
+                # this guarantees that node_id is set before rank is assigned
                 self._rank = self._assign_rank_callback(
                     self._replica_id.unique_id, self._node_id
                 )
