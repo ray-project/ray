@@ -32,6 +32,9 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 
+# TODO(Justin): I'm going to assume this is annoying for users to use if they want
+# to find all their options. So I'm going to add registry for all operations later.
+# This TODO is a reminder.
 @DeveloperAPI(stability="alpha")
 class Operation:
     """Mixin for operations that provide dtype inference."""
@@ -63,7 +66,7 @@ class UnaryOperation(Operation, Enum):
     def infer_dtype(self, dtype: DataType) -> DataType:
         match self:
             case self.NOT | self.IS_NULL | self.IS_NOT_NULL:
-                return DataType.binary()
+                return DataType.bool()
         raise RuntimeError(f"Unreachable {self}")
 
 
@@ -270,7 +273,7 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
     def visit_binary(self, expr: "BinaryExpr") -> "pyarrow.compute.Expression":
         import pyarrow as pa
 
-        if expr.op in (Operation.IN, Operation.NOT_IN):
+        if expr.op in (BinaryOperation.IN, BinaryOperation.NOT_IN):
             left = self.visit(expr.left)
             if isinstance(expr.right, LiteralExpr):
                 right_value = expr.right.value
@@ -285,7 +288,7 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
                     f"literal list, got {type(expr.right).__name__}."
                 )
             result = pc.is_in(left, right)
-            return pc.invert(result) if expr.op == Operation.NOT_IN else result
+            return pc.invert(result) if expr.op == BinaryOperation.NOT_IN else result
 
         left = self.visit(expr.left)
         right = self.visit(expr.right)
@@ -433,102 +436,102 @@ class Expr(ABC):
     # arithmetic
     def __add__(self, other: Any) -> "Expr":
         """Addition operator (+)."""
-        return self._bin(other, Operation.ADD)
+        return self._bin(other, BinaryOperation.ADD)
 
     def __radd__(self, other: Any) -> "Expr":
         """Reverse addition operator (for literal + expr)."""
-        return LiteralExpr(other)._bin(self, Operation.ADD)
+        return LiteralExpr(other)._bin(self, BinaryOperation.ADD)
 
     def __sub__(self, other: Any) -> "Expr":
         """Subtraction operator (-)."""
-        return self._bin(other, Operation.SUB)
+        return self._bin(other, BinaryOperation.SUB)
 
     def __rsub__(self, other: Any) -> "Expr":
         """Reverse subtraction operator (for literal - expr)."""
-        return LiteralExpr(other)._bin(self, Operation.SUB)
+        return LiteralExpr(other)._bin(self, BinaryOperation.SUB)
 
     def __mul__(self, other: Any) -> "Expr":
         """Multiplication operator (*)."""
-        return self._bin(other, Operation.MUL)
+        return self._bin(other, BinaryOperation.MUL)
 
     def __rmul__(self, other: Any) -> "Expr":
         """Reverse multiplication operator (for literal * expr)."""
-        return LiteralExpr(other)._bin(self, Operation.MUL)
+        return LiteralExpr(other)._bin(self, BinaryOperation.MUL)
 
     def __truediv__(self, other: Any) -> "Expr":
         """Division operator (/)."""
-        return self._bin(other, Operation.DIV)
+        return self._bin(other, BinaryOperation.DIV)
 
     def __rtruediv__(self, other: Any) -> "Expr":
         """Reverse division operator (for literal / expr)."""
-        return LiteralExpr(other)._bin(self, Operation.DIV)
+        return LiteralExpr(other)._bin(self, BinaryOperation.DIV)
 
     def __floordiv__(self, other: Any) -> "Expr":
         """Floor division operator (//)."""
-        return self._bin(other, Operation.FLOORDIV)
+        return self._bin(other, BinaryOperation.FLOORDIV)
 
     def __rfloordiv__(self, other: Any) -> "Expr":
         """Reverse floor division operator (for literal // expr)."""
-        return LiteralExpr(other)._bin(self, Operation.FLOORDIV)
+        return LiteralExpr(other)._bin(self, BinaryOperation.FLOORDIV)
 
     # comparison
     def __gt__(self, other: Any) -> "Expr":
         """Greater than operator (>)."""
-        return self._bin(other, Operation.GT)
+        return self._bin(other, BinaryOperation.GT)
 
     def __lt__(self, other: Any) -> "Expr":
         """Less than operator (<)."""
-        return self._bin(other, Operation.LT)
+        return self._bin(other, BinaryOperation.LT)
 
     def __ge__(self, other: Any) -> "Expr":
         """Greater than or equal operator (>=)."""
-        return self._bin(other, Operation.GE)
+        return self._bin(other, BinaryOperation.GE)
 
     def __le__(self, other: Any) -> "Expr":
         """Less than or equal operator (<=)."""
-        return self._bin(other, Operation.LE)
+        return self._bin(other, BinaryOperation.LE)
 
     def __eq__(self, other: Any) -> "Expr":
         """Equality operator (==)."""
-        return self._bin(other, Operation.EQ)
+        return self._bin(other, BinaryOperation.EQ)
 
     def __ne__(self, other: Any) -> "Expr":
         """Not equal operator (!=)."""
-        return self._bin(other, Operation.NE)
+        return self._bin(other, BinaryOperation.NE)
 
     # boolean
     def __and__(self, other: Any) -> "Expr":
         """Logical AND operator (&)."""
-        return self._bin(other, Operation.AND)
+        return self._bin(other, BinaryOperation.AND)
 
     def __or__(self, other: Any) -> "Expr":
         """Logical OR operator (|)."""
-        return self._bin(other, Operation.OR)
+        return self._bin(other, BinaryOperation.OR)
 
     def __invert__(self) -> "Expr":
         """Logical NOT operator (~)."""
-        return UnaryExpr(Operation.NOT, self)
+        return UnaryExpr(UnaryOperation.NOT, self)
 
     # predicate methods
     def is_null(self) -> "Expr":
         """Check if the expression value is null."""
-        return UnaryExpr(Operation.IS_NULL, self)
+        return UnaryExpr(UnaryOperation.IS_NULL, self)
 
     def is_not_null(self) -> "Expr":
         """Check if the expression value is not null."""
-        return UnaryExpr(Operation.IS_NOT_NULL, self)
+        return UnaryExpr(UnaryOperation.IS_NOT_NULL, self)
 
     def is_in(self, values: Union[List[Any], "Expr"]) -> "Expr":
         """Check if the expression value is in a list of values."""
         if not isinstance(values, Expr):
             values = LiteralExpr(values)
-        return self._bin(values, Operation.IN)
+        return self._bin(values, BinaryOperation.IN)
 
     def not_in(self, values: Union[List[Any], "Expr"]) -> "Expr":
         """Check if the expression value is not in a list of values."""
         if not isinstance(values, Expr):
             values = LiteralExpr(values)
-        return self._bin(values, Operation.NOT_IN)
+        return self._bin(values, BinaryOperation.NOT_IN)
 
     def alias(self, name: str) -> "Expr":
         """Rename the expression.
@@ -788,9 +791,9 @@ class BinaryExpr(Expr):
         right: The right operand expression
 
     Example:
-        >>> from ray.data.expressions import col, lit, Operation
+        >>> from ray.data.expressions import col, lit, BinaryOperation
         >>> # Manually create a binary expression (usually done via operators)
-        >>> expr = BinaryExpr(Operation.ADD, col("x"), lit(5))
+        >>> expr = BinaryExpr(BinaryOperation.ADD, col("x"), lit(5))
         >>> # This is equivalent to: col("x") + lit(5)
     """
 
@@ -1132,10 +1135,7 @@ class DownloadExpr(Expr):
         return DataType.binary()
 
     def structurally_equals(self, other: Any) -> bool:
-        return (
-            isinstance(other, DownloadExpr)
-            and self.uri_column == other.uri_column
-        )
+        return isinstance(other, DownloadExpr) and self.uri_column.structurally_equals(other.uri_column)
 
 
 @DeveloperAPI(stability="alpha")

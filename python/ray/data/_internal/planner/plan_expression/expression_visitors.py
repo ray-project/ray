@@ -13,6 +13,7 @@ from ray.data.expressions import (
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UnaryOperation,
     UnresolvedColumnExpr,
     _ExprVisitor,
 )
@@ -459,11 +460,11 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
             operand_str = f"({operand_str})"
 
         # Map operations to symbols/functions
-        if expr.op == Operation.NOT:
+        if expr.op == UnaryOperation.NOT:
             return f"~{operand_str}"
-        elif expr.op == Operation.IS_NULL:
+        elif expr.op == UnaryOperation.IS_NULL:
             return f"{operand_str}.is_null()"
-        elif expr.op == Operation.IS_NOT_NULL:
+        elif expr.op == UnaryOperation.IS_NOT_NULL:
             return f"{operand_str}.is_not_null()"
         else:
             return f"{expr.op.name.lower()}({operand_str})"

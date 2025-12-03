@@ -55,7 +55,7 @@ from ray.data.datasource.partitioning import (
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
 )
-from ray.data.expressions import BinaryExpr, Expr, Operation
+from ray.data.expressions import BinaryExpr, BinaryOperation, Expr
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
@@ -249,7 +249,7 @@ def _split_predicate_by_columns(
         return _SplitPredicateResult(data_predicate=None, partition_predicate=predicate)
 
     # Mixed predicate - try to split if it's an AND chain
-    if isinstance(predicate, BinaryExpr) and predicate.op == Operation.AND:
+    if isinstance(predicate, BinaryExpr) and predicate.op == BinaryOperation.AND:
         # Recursively split left and right sides
         left_result = _split_predicate_by_columns(predicate.left, partition_columns)
         right_result = _split_predicate_by_columns(predicate.right, partition_columns)
