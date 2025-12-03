@@ -41,13 +41,13 @@ class SyncActor:
 
     def long_running_method(self):
         """A sync actor method that checks for cancellation periodically."""
-        for i in range(1000):
+        for i in range(100):
             # For sync actor tasks, is_canceled() can be checked in the task body
             if ray.get_runtime_context().is_canceled():
                 self.is_canceled = True
                 print("Actor task canceled, cleaning up...")
                 return "canceled"
-            time.sleep(0.01)
+            time.sleep(0.1)
         return "completed"
 
     def get_cancel_status(self):
@@ -58,6 +58,8 @@ class SyncActor:
 actor = SyncActor.remote()
 actor_task_ref = actor.long_running_method.remote()
 
+# Wait until task is scheduled.
+time.sleep(1)
 ray.cancel(actor_task_ref)
 
 # The TaskCancelledError will be raised when calling ray.get
