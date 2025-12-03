@@ -6,6 +6,8 @@ vllm[audio]>=0.11.2
 nixl>=0.6.1
 # TODO(llm): remove after next vLLM version bump
 transformers>=4.57.3
+# Match flashinfer-python version required by vLLM 0.11.2
+flashinfer-cubin==0.5.2
 # For json mode
 jsonref>=1.1.0
 jsonschema
