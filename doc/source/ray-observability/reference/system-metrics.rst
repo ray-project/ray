@@ -6,7 +6,17 @@ Ray exports a number of system metrics, which provide introspection into the sta
 
 .. note::
 
-   Certain labels are common across all metrics, such as `SessionName` (uniquely identifies a Ray cluster instance), `instance` (per-node label applied by Prometheus), and `JobId` (Ray job ID, as applicable).
+  Certain labels are common across all metrics, such as `SessionName` (uniquely identifies a Ray cluster instance), `instance` (per-node label applied by Prometheus), and `JobId` (Ray job ID, as applicable).
+
+  Starting with Ray 2.53+, the `WorkerId` label is no longer exported by default due to its high cardinality. 
+  We do not expect this to be a breaking change, as none of Ray’s built-in components rely on this label. 
+  However, if you have custom tooling that depends on `WorkerId` label, please take note.
+
+  You can restore or adjust label behavior using the environment variable `RAY_metric_cardinality_level`:
+
+  - `legacy`: Preserve all labels. (This was the default behavior before Ray 2.53)
+  - `recommended`: Drop high-cardinality labels. The specific labels are determined internally by Ray; currently this includes only `WorkerId`. (This is the default behavior since Ray 2.53)
+  - `low`: Same as `recommended`, but also drops the Name label for tasks and actors.
 
 .. list-table:: Ray System Metrics
    :header-rows: 1
