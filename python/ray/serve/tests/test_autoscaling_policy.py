@@ -5,6 +5,7 @@ import sys
 import tempfile
 import time
 import zipfile
+from asyncio import gather
 from typing import Dict, Iterable, List
 from unittest import mock
 
@@ -642,7 +643,7 @@ def test_e2e_bursty(serve_instance_with_signal, aggregation_function):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_e2e_intermediate_downscaling(serve_instance_with_signal):
+async def test_e2e_intermediate_downscaling(serve_instance_with_signal):
     """
     Scales up, then down, and up again.
     """
@@ -673,20 +674,22 @@ def test_e2e_intermediate_downscaling(serve_instance_with_signal):
     )
     start_time = get_deployment_start_time(controller, "A")
 
-    [handle.remote() for _ in range(50)]
+    calls = [handle.remote() for _ in range(50)]
 
     wait_for_condition(check_num_replicas_gte, name="A", target=20, timeout=30)
     signal.send.remote()
 
     wait_for_condition(check_num_replicas_lte, name="A", target=1, timeout=30)
     signal.send.remote(clear=True)
+    await gather(*calls)
 
-    [handle.remote() for _ in range(50)]
+    calls = [handle.remote() for _ in range(50)]
     wait_for_condition(check_num_replicas_gte, name="A", target=20, timeout=30)
 
     signal.send.remote()
     # As the queue is drained, we should scale back down.
     wait_for_condition(check_num_replicas_eq, name="A", target=0, timeout=30)
+    await gather(*calls)
 
     # Make sure start time did not change for the deployment
     assert get_deployment_start_time(controller, "A") == start_time
