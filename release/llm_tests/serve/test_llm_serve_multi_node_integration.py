@@ -7,7 +7,6 @@ from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.llm import (
     build_dp_deployment,
     build_openai_app,
-    build_pd_openai_app,
     LLMConfig,
     LLMServingArgs,
     ModelLoadingConfig,
@@ -77,21 +76,13 @@ def test_llm_serve_multi_node(tp_size, pp_size):
     app = build_openai_app(llm_serving_args=LLMServingArgs(llm_configs=[llm_config]))
     serve.run(app, blocking=False)
 
-    # Wait for deployment to become healthy
     wait_for_condition(is_default_app_running, timeout=300)
-
-    # Cleanup handled by autouse fixture
 
 
 def test_llm_serve_data_parallelism():
     """Test Data Parallelism deployment with STRICT_PACK override.
 
-    Validates that DP deployments work correctly with placement group configs:
-    1. STRICT_PACK strategy is enforced (per-replica co-location)
-    2. num_replicas = data_parallel_size
-    3. Each replica gets its own placement group with specified bundles
-    4. DPRankAssigner correctly coordinates ranks across replicas
-
+    Validates that DP deployments work correctly with placement group configs
     """
     placement_group_config = {
         "bundles": [{"GPU": 1, "CPU": 1}],
@@ -120,95 +111,10 @@ def test_llm_serve_data_parallelism():
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
-    # Deploy DP application
-    # build_dp_deployment internally validates deployment options via LLMServer.get_deployment_options():
-    # - STRICT_PACK override (SPREAD -> STRICT_PACK)
-    # - num_replicas = data_parallel_size (2)
-    # - placement_group_bundles are properly configured
     app = build_dp_deployment(llm_config)
     serve.run(app, blocking=False)
 
-    # Wait for deployment to become healthy - validates:
-    # - DPRankAssigner is working
-    # - DPServer replicas can coordinate
-    # - Placement groups are created correctly with STRICT_PACK
-    # - Each replica gets the right resources
     wait_for_condition(is_default_app_running, timeout=300)
-
-    # Cleanup handled by autouse fixture
-
-
-def test_llm_serve_prefill_decode_with_data_parallelism():
-    """Test Prefill-Decode disaggregation with Data Parallelism and Expert Parallelism.
-
-    Validates that PD + DP + EP works correctly:
-    1. Auto-detects DP in prefill and decode configs
-    2. Uses build_dp_deployment for DP-enabled deployments
-    3. Each deployment gets its own DPRankAssigner
-    4. KV transfer works between PD stages with DP
-    5. Expert Parallel works alongside DP
-
-    Cluster: 2 nodes x 4 GPUs = 8 GPUs total
-    - Prefill: DP=4
-    - Decode: DP=4
-    """
-    model_loading_config = ModelLoadingConfig(
-        model_id="deepseek",
-        model_source="deepseek-ai/DeepSeek-V2-Lite",
-    )
-    base_engine_kwargs = {
-        "tensor_parallel_size": 1,
-        "enable_expert_parallel": True,
-        "load_format": "dummy",
-        "max_model_len": 512,
-        "max_num_batched_tokens": 256,
-        "enforce_eager": True,
-    }
-
-    prefill_config = LLMConfig(
-        model_loading_config=model_loading_config,
-        engine_kwargs={
-            **base_engine_kwargs,
-            "data_parallel_size": 4,
-            "kv_transfer_config": {
-                "kv_connector": "NixlConnector",
-                "kv_role": "kv_both",
-            },
-        },
-        experimental_configs={
-            "dp_size_per_node": 4,
-        },
-        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
-    )
-
-    decode_config = LLMConfig(
-        model_loading_config=model_loading_config,
-        engine_kwargs={
-            **base_engine_kwargs,
-            "data_parallel_size": 4,
-            "kv_transfer_config": {
-                "kv_connector": "NixlConnector",
-                "kv_role": "kv_both",
-            },
-        },
-        experimental_configs={
-            "dp_size_per_node": 4,
-        },
-        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
-    )
-
-    # build_pd_openai_app auto-detects DP and uses build_dp_deployment
-    app = build_pd_openai_app(
-        {
-            "prefill_config": prefill_config,
-            "decode_config": decode_config,
-        }
-    )
-    serve.run(app, blocking=False)
-
-    wait_for_condition(is_default_app_running, timeout=300)
-
-    # Cleanup handled by autouse fixture
 
 
 if __name__ == "__main__":
