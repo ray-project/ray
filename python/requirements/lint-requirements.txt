@@ -5,7 +5,7 @@ mypy==1.7.0
 mypy-extensions==1.0.0
 types-PyYAML==6.0.12.2
 black==22.10.0
-semgrep>=1.138.0
+semgrep
 shellcheck-py==0.7.1.1
 yq
 types-pycurl==7.45.3.20240421

@@ -381,7 +381,7 @@ configspace==0.7.1 ; python_version < "3.12"
     #   hpbandster
 contextlib2==21.6.0
     # via ml-collections
-contourpy==1.1.1
+contourpy==1.3.0
     # via matplotlib
 cramjam==2.8.3
     # via python-snappy
@@ -510,6 +510,8 @@ evaluate==0.4.3
     # via -r python/requirements/ml/train-test-requirements.txt
 everett==3.1.0
     # via comet-ml
+exceptiongroup==1.2.2
+    # via semgrep
 execnet==2.1.1
     # via pytest-shutil
 executing==2.0.1
@@ -690,9 +692,9 @@ googleapis-common-protos==1.69.0
     #   tensorflow-metadata
 gpytorch==1.10
     # via botorch
-gradio==3.50.2 ; platform_system != "Windows"
+gradio==4.33.0 ; platform_system != "Windows"
     # via -r python/requirements/test-requirements.txt
-gradio-client==0.6.1
+gradio-client==0.17.0
     # via gradio
 graphene==3.4.3
     # via mlflow
@@ -924,6 +926,22 @@ jsonpointer==2.4
     # via
     #   jsonpatch
     #   jsonschema
+jsonschema==4.25.1
+    # via
+    #   -r python/requirements.txt
+    #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/test-requirements.txt
+    #   altair
+    #   aws-sam-translator
+    #   cfn-lint
+    #   comet-ml
+    #   jupyter-events
+    #   jupyterlab-server
+    #   nbformat
+    #   openapi-schema-validator
+    #   openapi-spec-validator
+    #   ray
+    #   semgrep
 jsonschema-path==0.3.4
     # via openapi-spec-validator
 jsonschema-specifications==2024.10.1
@@ -994,6 +1012,8 @@ kubernetes==24.2.0
     # via -r python/requirements/test-requirements.txt
 labmaze==1.0.6
     # via dm-control
+lark==1.3.1
+    # via rfc3987-syntax
 lazy-loader==0.4
     # via scikit-image
 lazy-object-proxy==1.9.0
@@ -1010,7 +1030,7 @@ linear-operator==0.4.0
     #   gpytorch
 linkify-it-py==2.0.3
     # via markdown-it-py
-llvmlite==0.42.0
+llvmlite==0.45.1
     # via
     #   -r python/requirements/test-requirements.txt
     #   numba
@@ -1217,11 +1237,15 @@ notebook==6.5.7
     # via jupyterlab
 notebook-shim==0.2.3
     # via nbclassic
+nsx-policy-python-sdk @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automation-sdk_df604064fc874b61bf96bb6291aa19a1/lib/nsx-policy-python-sdk/nsx_policy_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
     # via vsphere-automation-sdk
+nsx-python-sdk @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automation-sdk_df604064fc874b61bf96bb6291aa19a1/lib/nsx-python-sdk/nsx_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
     # via vsphere-automation-sdk
+nsx-vmc-aws-integration-python-sdk @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automation-sdk_df604064fc874b61bf96bb6291aa19a1/lib/nsx-vmc-aws-integration-python-sdk/nsx_vmc_aws_integration_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
     # via vsphere-automation-sdk
+nsx-vmc-policy-python-sdk @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automation-sdk_df604064fc874b61bf96bb6291aa19a1/lib/nsx-vmc-policy-python-sdk/nsx_vmc_policy_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
     # via vsphere-automation-sdk
-numba==0.59.1
+numba==0.62.1
     # via
     #   -r python/requirements/test-requirements.txt
     #   statsforecast
@@ -1229,7 +1253,7 @@ numexpr==2.8.4
     # via
     #   -r python/requirements/test-requirements.txt
     #   pymars
-numpy==1.26.4
+numpy==2.2.6
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1349,6 +1373,45 @@ openlineage-python==1.40.0
     # via -r python/requirements/cloud-requirements.txt
 openpyxl==3.0.10
     # via -r python/requirements/test-requirements.txt
+opentelemetry-api==1.39.0
+    # via
+    #   -r python/requirements.txt
+    #   -r python/requirements/test-requirements.txt
+    #   mlflow-skinny
+    #   opentelemetry-exporter-prometheus
+    #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
+opentelemetry-exporter-prometheus==0.60b0
+    # via -r python/requirements.txt
+opentelemetry-instrumentation==0.60b0
+    # via
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-asgi==0.60b0
+    # via opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-fastapi==0.60b0
+    # via -r python/requirements/test-requirements.txt
+opentelemetry-proto==1.39.0
+    # via -r python/requirements.txt
+opentelemetry-sdk==1.39.0
+    # via
+    #   -r python/requirements.txt
+    #   -r python/requirements/test-requirements.txt
+    #   mlflow-skinny
+    #   opentelemetry-exporter-prometheus
+opentelemetry-semantic-conventions==0.60b0
+    # via
+    #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
+    #   opentelemetry-sdk
+opentelemetry-util-http==0.60b0
+    # via
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
 opt-einsum==3.3.0
     # via
     #   jax
@@ -1618,7 +1681,7 @@ pycparser==2.21
     # via cffi
 pycurl==7.45.3
     # via -r python/requirements/cloud-requirements.txt
-pydantic==2.11.7
+pydantic==2.12.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1629,7 +1692,7 @@ pydantic==2.11.7
     #   mlflow-skinny
     #   pyiceberg
     #   wandb
-pydantic-core==2.33.2
+pydantic-core==2.41.1
     # via pydantic
 pydot==1.4.2
     # via -r python/requirements/test-requirements.txt
@@ -1791,9 +1854,7 @@ python-jose==3.3.0
     # via moto
 python-json-logger==2.0.7
     # via jupyter-events
-python-lsp-jsonrpc==1.0.0
-    # via semgrep
-python-multipart==0.0.6
+python-multipart==0.0.20
     # via gradio
 python-snappy==0.7.2
     # via -r python/requirements/ml/data-test-requirements.txt
@@ -1894,8 +1955,6 @@ requests==2.32.5
     #   google-auth
     #   google-cloud-bigquery
     #   google-cloud-storage
-    #   gradio
-    #   gradio-client
     #   huggingface-hub
     #   jsonschema-path
     #   jupyterlab-server
@@ -1947,6 +2006,8 @@ rfc3986-validator==0.1.1
     # via
     #   jsonschema
     #   jupyter-events
+rfc3987-syntax==1.1.0
+    # via jsonschema
 rich==13.3.3
     # via
     #   -r python/requirements.txt
@@ -1975,6 +2036,8 @@ ruamel-yaml==0.17.40
     #   yahp
 ruamel-yaml-clib==0.2.8
     # via ruamel-yaml
+ruff==0.14.7
+    # via gradio
 s3fs==2023.12.1
     # via -r python/requirements/ml/core-requirements.txt
 s3torchconnector==1.4.3
@@ -1992,7 +2055,7 @@ sarif-om==1.0.4
     # via cfn-lint
 scikit-image==0.24.0
     # via -r python/requirements.txt
-scikit-learn==1.3.2
+scikit-learn==1.7.2
     # via
     #   -r python/requirements/test-requirements.txt
     #   ax-platform
@@ -2032,7 +2095,7 @@ semantic-version==2.10.0
     # via
     #   comet-ml
     #   gradio
-semgrep==1.32.0
+semgrep==1.79.0
     # via -r python/requirements/lint-requirements.txt
 send2trash==1.8.3
     # via
@@ -2257,8 +2320,9 @@ toml==0.10.2
     # via tensorflow-datasets
 tomli==2.0.1
     # via semgrep
-tomlkit==0.13.0
+tomlkit==0.12.0
     # via
+    #   gradio
     #   snowflake-connector-python
     #   yq
 toolz==0.12.1
@@ -2267,7 +2331,7 @@ toolz==0.12.1
     #   dask
     #   distributed
     #   partd
-torch==2.3.0
+torch==2.3.0+cpu
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   accelerate
@@ -2286,26 +2350,26 @@ torch==2.3.0
     #   torchmetrics
     #   torchtext
     #   torchvision
-torch-cluster==1.6.3
+torch-cluster==1.6.3+pt23cpu
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 torch-geometric==2.5.3
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 torch-optimizer==0.1.0
     # via mosaicml
-torch-scatter==2.1.2
+torch-scatter==2.1.2+pt23cpu
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-torch-sparse==0.6.18
+torch-sparse==0.6.18+pt23cpu
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-torch-spline-conv==1.2.2
+torch-spline-conv==1.2.2+pt23cpu
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 torchmetrics==0.10.3
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   mosaicml
     #   pytorch-lightning
-torchtext==0.18.0
+torchtext==0.18.0+cpu
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-torchvision==0.18.0
+torchvision==0.18.0+cpu
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   mosaicml
@@ -2378,7 +2442,9 @@ trustme==0.9.0
 typeguard==2.13.3
     # via ax-platform
 typer==0.12.3
-    # via -r python/requirements.txt
+    # via
+    #   -r python/requirements.txt
+    #   gradio
 types-pycurl==7.45.3.20240421
     # via -r python/requirements/lint-requirements.txt
 types-python-dateutil==2.9.0.20240316
@@ -2391,7 +2457,7 @@ types-setuptools==80.9.0.20250822
     # via -r python/requirements/lint-requirements.txt
 types-urllib3==1.26.25.14
     # via types-requests
-typing-extensions==4.12.2
+typing-extensions==4.14.1
     # via
     #   -r python/requirements/test-requirements.txt
     #   alembic
@@ -2432,7 +2498,7 @@ typing-extensions==4.12.2
     #   typer
     #   typing-inspection
     #   wandb
-typing-inspection==0.4.1
+typing-inspection==0.4.2
     # via pydantic
 tzdata==2025.2
     # via kombu
@@ -2440,13 +2506,11 @@ tzlocal==5.3
     # via -r python/requirements/cloud-requirements.txt
 uc-micro-py==1.0.3
     # via linkify-it-py
-ujson==5.10.0
-    # via python-lsp-jsonrpc
 uri-template==1.3.0
     # via jsonschema
 uritemplate==4.1.1
     # via google-api-python-client
-urllib3==1.26.19
+urllib3==2.0.7
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   botocore
@@ -2455,6 +2519,7 @@ urllib3==1.26.19
     #   distributed
     #   docker
     #   dulwich
+    #   gradio
     #   kubernetes
     #   requests
     #   responses
@@ -2474,6 +2539,7 @@ uvicorn==0.22.0
     #   mlflow-skinny
 uvloop==0.21.0
     # via pymars
+vapi-common-client @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automation-sdk_df604064fc874b61bf96bb6291aa19a1/lib/vapi-common-client/vapi_common_client-2.40.0-py2.py3-none-any.whl
     # via
     #   nsx-policy-python-sdk
     #   nsx-python-sdk
@@ -2482,6 +2548,7 @@ uvloop==0.21.0
     #   vmc-client-bindings
     #   vmc-draas-client-bindings
     #   vsphere-automation-sdk
+vapi-runtime @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automation-sdk_df604064fc874b61bf96bb6291aa19a1/lib/vapi-runtime/vapi_runtime-2.40.0-py2.py3-none-any.whl
     # via
     #   nsx-policy-python-sdk
     #   nsx-python-sdk
@@ -2492,6 +2559,7 @@ uvloop==0.21.0
     #   vmc-client-bindings
     #   vmc-draas-client-bindings
     #   vsphere-automation-sdk
+vcenter-bindings @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automation-sdk_df604064fc874b61bf96bb6291aa19a1/lib/vcenter-bindings/vcenter_bindings-4.1.0-py2.py3-none-any.whl
     # via vsphere-automation-sdk
 vine==5.1.0
     # via
@@ -2504,7 +2572,9 @@ virtualenv==20.29.1
     #   -r python/requirements/test-requirements.txt
     #   pre-commit
     #   pytest-virtualenv
+vmc-client-bindings @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automation-sdk_df604064fc874b61bf96bb6291aa19a1/lib/vmc-client-bindings/vmc_client_bindings-1.62.0-py2.py3-none-any.whl
     # via vsphere-automation-sdk
+vmc-draas-client-bindings @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automation-sdk_df604064fc874b61bf96bb6291aa19a1/lib/vmc-draas-client-bindings/vmc_draas_client_bindings-1.21.0-py2.py3-none-any.whl
     # via vsphere-automation-sdk
 vsphere-automation-sdk @ git+https://github.com/vmware/vsphere-automation-sdk-python.git@v8.0.1.0
     # via -r python/requirements/test-requirements.txt
@@ -2534,7 +2604,6 @@ websockets==11.0.3
     # via
     #   -r python/requirements/test-requirements.txt
     #   aim
-    #   gradio
     #   gradio-client
 werkzeug==2.3.8
     # via
