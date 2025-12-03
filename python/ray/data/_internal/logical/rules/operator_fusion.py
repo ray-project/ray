@@ -255,7 +255,7 @@ class FuseOperators(Rule):
                 and up_logical_op._batch_size
                 == down_logical_op.target_num_rows_per_block
             )
-        # We currently limit fusion to MapBatches -> StreamingRepartition.
+        # Other operators cannot fuse with StreamingRepartition.
         if isinstance(up_logical_op, StreamingRepartition):
             return False
 
@@ -270,7 +270,6 @@ class FuseOperators(Rule):
             f"{type(up_op).__name__} -> {type(down_op).__name__}"
         )
 
-        # Fuse operator names.
         name = up_op.name + "->" + down_op.name
 
         down_logical_op = self._op_map.pop(down_op)
@@ -285,19 +284,16 @@ class FuseOperators(Rule):
         )
         assert compute is not None
 
-        # Merge map task kwargs
         map_task_kwargs = {**up_op._map_task_kwargs, **down_op._map_task_kwargs}
 
         ray_remote_args = up_logical_op._ray_remote_args
         ray_remote_args_fn = (
             up_logical_op._ray_remote_args_fn or down_logical_op._ray_remote_args_fn
         )
-        # Make the upstream operator's inputs the new, fused operator's inputs.
         input_deps = up_op.input_dependencies
         assert len(input_deps) == 1
         input_op = input_deps[0]
 
-        # Fused physical map operator.
         assert up_op.data_context is down_op.data_context
         op = MapOperator.create(
             up_op.get_map_transformer().fuse(down_op.get_map_transformer()),
