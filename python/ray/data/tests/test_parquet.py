@@ -1277,8 +1277,7 @@ def test_seed_file_shuffle(
         # Write dummy Parquet files
         write_parquet_file(path, i)
 
-    # Read with deterministic shuffling using the original FileShuffleConfig
-    shuffle_config = FileShuffleConfig(seed=42)
+    shuffle_config = FileShuffleConfig(seed=42, reseed_after_epoch=False)
     ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
     ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
 
@@ -1303,13 +1302,12 @@ def test_seed_file_shuffle_with_epoch_update(
     ctx.execution_options.preserve_order = True
 
     # Create temporary Parquet files for testing in the current directory
-    paths = [os.path.join(tmp_path, f"test_file_{i}.parquet") for i in range(5)]
+    paths = [os.path.join(tmp_path, f"test_file_{i}.parquet") for i in range(15)]
     for i, path in enumerate(paths):
         # Write dummy Parquet files
         write_parquet_file(path, i)
 
-    # Read with deterministic epoch-aware shuffling using base_seed
-    shuffle_config = FileShuffleConfig(base_seed=42)
+    shuffle_config = FileShuffleConfig(seed=42)
     ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
     ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
 
@@ -1335,10 +1333,10 @@ def test_seed_file_shuffle_with_epoch_update(
     ds2_hashable_results = {make_hashable(result) for result in ds2_epoch_results}
 
     assert (
-        len(ds1_hashable_results) > 1
+        len(ds1_hashable_results) == 5
     ), "ds1 should produce different results across epochs"
     assert (
-        len(ds2_hashable_results) > 1
+        len(ds2_hashable_results) == 5
     ), "ds2 should produce different results across epochs"
 
 
@@ -1364,8 +1362,7 @@ def test_seed_file_shuffle_with_epoch_no_effect(
         # Write dummy Parquet files
         write_parquet_file(path, i)
 
-    # Use regular FileShuffleConfig which ignores epoch_idx and always returns same seed
-    shuffle_config = FileShuffleConfig(seed=42)
+    shuffle_config = FileShuffleConfig(seed=42, reseed_after_epoch=False)
     ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
     ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
 

@@ -67,70 +67,57 @@ class FileShuffleConfig:
     """Configuration for file shuffling.
 
     This configuration object controls how files are shuffled while reading file-based
-    datasets. You can configure either a fixed seed for consistent shuffling across
-    epochs, or a base seed for different shuffling in each epoch.
+    datasets. The random seed behavior is determined by the combination of ``seed``
+    and ``reseed_after_epoch``:
+
+    - If ``seed`` is None, the random seed is always None (non-deterministic shuffling).
+    - If ``seed`` is not None and ``reseed_after_epoch`` is False, the random seed is
+      constantly ``seed`` across epochs.
+    - If ``seed`` is not None and ``reseed_after_epoch`` is True, the random seed is
+      ``seed + epoch_idx``.
 
     .. note::
-        Even if you provided a seed or base_seed, you might still observe a
-        non-deterministic row order. This is because tasks are executed in parallel
-        and their completion order might vary. If you need to preserve the order of
-        rows, set ``DataContext.get_current().execution_options.preserve_order``.
+        Even if you provided a seed, you might still observe a non-deterministic row
+        order. This is because tasks are executed in parallel and their completion
+        order might vary. If you need to preserve the order of rows, set
+        ``DataContext.get_current().execution_options.preserve_order``.
 
     Args:
-        seed: An optional integer seed for the file shuffler. If provided, Ray Data
-            shuffles files deterministically with the same order across all epochs.
-            Cannot be set together with ``base_seed``.
-        base_seed: An optional integer base seed for the file shuffler. If provided,
-            Ray Data shuffles files deterministically but with different orders across
-            epochs. The actual seed used for each epoch is computed as
-            ``base_seed + epoch_idx``. Cannot be set together with ``seed``.
+        seed: An optional integer seed for the file shuffler. If None, shuffling is
+            non-deterministic. If provided, shuffling is deterministic based on this
+            seed and the ``reseed_after_epoch`` setting.
+        reseed_after_epoch: If True, the random seed is ``seed + epoch_idx``, resulting
+            in different shuffling orders across epochs. If False, the random seed is
+            constantly ``seed``, resulting in the same shuffling order across epochs.
+            Only takes effect when ``seed`` is not None. Defaults to True.
 
     Example:
         >>> import ray
         >>> from ray.data import FileShuffleConfig
         >>> # Fixed seed - same shuffle across epochs
-        >>> shuffle = FileShuffleConfig(seed=42)
+        >>> shuffle = FileShuffleConfig(seed=42, reseed_after_epoch=False)
         >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/batoidea", shuffle=shuffle)
         >>>
-        >>> # Base seed - different shuffle per epoch
-        >>> shuffle = FileShuffleConfig(base_seed=42)
+        >>> # Seed with reseed_after_epoch - different shuffle per epoch
+        >>> shuffle = FileShuffleConfig(seed=42, reseed_after_epoch=True)
         >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/batoidea", shuffle=shuffle)
     """  # noqa: E501
 
     seed: Optional[int] = None
-    base_seed: Optional[int] = None
+    reseed_after_epoch: bool = True
 
     def __post_init__(self):
-        """Ensure that seed and base_seed are valid and mutually exclusive."""
-        if self.seed is not None and self.base_seed is not None:
-            raise ValueError(
-                "Cannot set both 'seed' and 'base_seed'. Use 'seed' for consistent "
-                "shuffling across epochs, or 'base_seed' for different shuffling per epoch."
-            )
-
+        """Ensure that the seed is either None or an integer."""
         if self.seed is not None and not isinstance(self.seed, int):
-            raise ValueError("seed must be an integer or None.")
-
-        if self.base_seed is not None and not isinstance(self.base_seed, int):
-            raise ValueError("base_seed must be an integer or None.")
+            raise ValueError("Seed must be an integer or None.")
 
     def get_seed(self, epoch_idx: int = 0) -> Optional[int]:
-        """Get the seed for a given epoch.
-
-        Args:
-            epoch_idx: The epoch index (only used when base_seed is set).
-
-        Returns:
-            The seed to use for shuffling. If ``seed`` is set, returns that value.
-            If ``base_seed`` is set, returns ``base_seed + epoch_idx``.
-            If neither is set, returns None (no deterministic shuffling).
-        """
-        if self.seed is not None:
-            return self.seed
-        elif self.base_seed is not None:
-            return self.base_seed + epoch_idx
-        else:
+        if self.seed is None:
             return None
+        elif self.reseed_after_epoch:
+            return self.seed + epoch_idx
+        else:
+            return self.seed
 
 
 @DeveloperAPI

@@ -249,7 +249,7 @@ def test_parquet_file_shuffle_with_epochs(
     """
     NUM_WORKERS = 2
     NUM_EPOCHS = 5
-    NUM_FILES = 10
+    NUM_FILES = 15
 
     # Create temporary directory for test files
     with tempfile.TemporaryDirectory() as tmp_path:
@@ -277,11 +277,9 @@ def test_parquet_file_shuffle_with_epochs(
 
         # Create shuffle config based on parameter
         if different_seeds_across_epochs:
-            # FileShuffleConfig with base_seed: seed = base_seed + epoch_idx
-            shuffle_config = FileShuffleConfig(base_seed=42)
-        else:
-            # FileShuffleConfig with seed: seed remains constant across epochs
             shuffle_config = FileShuffleConfig(seed=42)
+        else:
+            shuffle_config = FileShuffleConfig(seed=42, reseed_after_epoch=False)
 
         # Create two datasets with the same shuffle config
         ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
@@ -329,17 +327,17 @@ def test_parquet_file_shuffle_with_epochs(
             # Assertion 2: Different epochs produce different results vs same results
             # based on whether seed varies by epoch_idx
             if different_seeds_across_epochs:
-                # With FileShuffleConfig(base_seed=X), seed varies by epoch, so expect variation
-                assert len(ds1_hashable_results) > 1, (
+                # seed varies by epoch, so expect variation
+                assert len(ds1_hashable_results) == NUM_EPOCHS, (
                     f"ds1 should produce different results across epochs, "
                     f"but got {len(ds1_hashable_results)} unique results out of {NUM_EPOCHS}"
                 )
-                assert len(ds2_hashable_results) > 1, (
+                assert len(ds2_hashable_results) == NUM_EPOCHS, (
                     f"ds2 should produce different results across epochs, "
                     f"but got {len(ds2_hashable_results)} unique results out of {NUM_EPOCHS}"
                 )
             else:
-                # With FileShuffleConfig(seed=X), seed is constant, so expect no variation
+                # seed is constant, so expect no variation
                 assert len(ds1_hashable_results) == 1, (
                     f"ds1 should produce the same results across all epochs, "
                     f"but got {len(ds1_hashable_results)} unique results out of {NUM_EPOCHS}"

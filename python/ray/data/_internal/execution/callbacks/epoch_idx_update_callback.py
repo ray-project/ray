@@ -11,4 +11,4 @@ if TYPE_CHECKING:
 class EpochIdxUpdateCallback(ExecutionCallback):
     def after_execution_succeeds(self, executor: "StreamingExecutor"):
         dataset_context = executor._data_context
-        dataset_context.epoch_idx += 1
+        dataset_context._epoch_idx += 1

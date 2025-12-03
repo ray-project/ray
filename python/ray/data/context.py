@@ -628,10 +628,6 @@ class DataContext:
 
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
 
-    # The current epoch index.
-    # This is updated at the end of each execution.
-    epoch_idx: int = 0
-
     def __post_init__(self):
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
@@ -655,6 +651,10 @@ class DataContext:
         self._max_num_blocks_in_streaming_gen_buffer = (
             DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER
         )
+
+        # The current epoch index.
+        # This is updated at the end of each execution.
+        self._epoch_idx = 0
 
         is_ray_job = os.environ.get("RAY_JOB_ID") is not None
         if is_ray_job:
