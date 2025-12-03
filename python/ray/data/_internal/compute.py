@@ -83,16 +83,17 @@ class ActorPoolStrategy(ComputeStrategy):
     actors, set max_tasks_in_flight_per_actor to 1.
 
     The `enable_true_multi_threading` argument primarily exists to prevent GPU OOM issues with multi-threaded actors.
-    It does not apply to async actors.
+    It does not apply to async actors:
+
     - [`enable_true_multi_threading=False`, `max_concurrency=1`] = 1 actor task running per actor
     - [`enable_true_multi_threading=True`, `max_concurrency=1`] = Same as 1st bullet ^.
     - [`enable_true_multi_threading=False`, `max_concurrency>1`] = multiple tasks running per actor
-        (respecting GIL) but UDF runs 1 at a time. This is useful for doing CPU and GPU work,
-        where you want to use a large batch size but want to hide the overhead of *batching*
-        the inputs. In this case, CPU *batching* is done concurrently, while GPU *inference*
-        is done 1 at a time.
+      (respecting GIL) but UDF runs 1 at a time. This is useful for doing CPU and GPU work,
+      where you want to use a large batch size but want to hide the overhead of *batching*
+      the inputs. In this case, CPU *batching* is done concurrently, while GPU *inference*
+      is done 1 at a time.
     - [`enable_true_multi_threading=True`, `max_concurrency>1`] = multiple tasks running per actor.
-        Unlike bullet #3 ^, the UDF runs concurrently (respecting GIL)
+      Unlike bullet #3 ^, the UDF runs concurrently (respecting GIL)
     """
 
     def __init__(
