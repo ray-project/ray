@@ -129,6 +129,10 @@ class ScalingConfig(ScalingConfigV1):
                 "`resources_per_worker."
             )
 
+        # Default num_workers if not set by user or auto-detected for a topology.
+        if self.num_workers is None:
+            self.num_workers = 1
+
         if self.use_tpu and self.num_workers > 1:
             if not self.topology:
                 raise ValueError(
