@@ -4003,8 +4003,13 @@ def read_lance(
     cleaned_scanner_options = scanner_options.copy() if scanner_options else None
     fragment_ids = None
     if cleaned_scanner_options and "fragments" in cleaned_scanner_options:
-        fragments = cleaned_scanner_options.pop("fragments") or []
-        fragment_ids = [fragment.metadata.id for fragment in fragments]
+        fragments = cleaned_scanner_options.pop("fragments")
+        if fragments is None:
+            fragment_ids = None
+        elif len(fragments) == 0:
+            fragment_ids = []
+        else:
+            fragment_ids = [fragment.metadata.id for fragment in fragments]
 
     ray_remote_args = merge_resources_to_ray_remote_args(
         num_cpus,
