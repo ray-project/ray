@@ -1673,9 +1673,9 @@ oauth2client==4.1.3 \
     # via
     #   -c release/ray_release/byod/ray_base_extra_testdeps_py3.11.lock
     #   anyscale
-packaging==23.0 \
-    --hash=sha256:714ac14496c3e68c99c29b00845f7a2b85f3bb6f1078fd9f72fd20f0570002b2 \
-    --hash=sha256:b6ad297f8907de0fa2fe1ccbd26fdaf387f5f47c7275fedf8cce89f99446cf97
+packaging==24.2 \
+    --hash=sha256:09abb1bccd265c01f4a3aa3f7a7db064b36514d2cba19a2f694fe6150451a759 \
+    --hash=sha256:c228a6dc5e932d346bc5739379109d49e8853dd8223571c7c5b55260edc0b97f
     # via
     #   -c release/ray_release/byod/ray_base_extra_testdeps_py3.11.lock
     #   anyscale
@@ -2465,9 +2465,9 @@ types-python-dateutil==2.9.0.20240316 \
     # via
     #   -c release/ray_release/byod/ray_base_extra_testdeps_py3.11.lock
     #   arrow
-typing-extensions==4.12.2 \
-    --hash=sha256:04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d \
-    --hash=sha256:1a7ead55c7e559dd4dee8856e3a88b41225abfe1ce8df57b7c13915fe121ffb8
+typing-extensions==4.15.0 \
+    --hash=sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466 \
+    --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
     # via
     #   -c release/ray_release/byod/ray_base_extra_testdeps_py3.11.lock
     #   anyscale
