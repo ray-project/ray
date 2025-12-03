@@ -20,15 +20,6 @@ from ray.rllib.utils.test_utils import (
 )
 from ray.tune.registry import register_env
 
-# Detect platform and choose appropriate binary
-if platform.system() == "Darwin":
-    binary_to_download = "mac_headless"
-elif platform.system() == "Linux":
-    binary_to_download = "linux_server"
-else:
-    raise RuntimeError(f"Unsupported platform: {platform.system()}")
-
-
 parser = add_rllib_example_script_args(
     default_iters=500,
     default_timesteps=5_000_000,
@@ -58,6 +49,12 @@ parser.add_argument(
     help="Directory to extract Footsies binaries (default: /tmp/ray/binaries/footsies)",
 )
 parser.add_argument(
+    "--render",
+    action="store_true",
+    default=False,
+    help="Whether to render the Footsies environment. Default is False.",
+)
+parser.add_argument(
     "--win-rate-threshold",
     type=float,
     default=0.55,
@@ -81,15 +78,30 @@ parser.add_argument(
     help="The length of each rollout fragment to be collected by the EnvRunners when sampling.",
 )
 parser.add_argument(
-    "--suppress-unity-output",
+    "--log-unity-output",
     action="store_true",
-    help="Whether to suppress Unity output. Default is True.",
-    default=True,
+    help="Whether to log Unity output (from the game engine). Default is False.",
+    default=False,
 )
 
 args = parser.parse_args()
 register_env(name="FootsiesEnv", env_creator=env_creator)
 stop["mix_size"] = args.target_mix_size
+
+# Detect platform and choose appropriate binary
+if platform.system() == "Darwin":
+    if args.render:
+        binary_to_download = "mac_windowed"
+    else:
+        binary_to_download = "mac_headless"
+elif platform.system() == "Linux":
+    if args.render:
+        binary_to_download = "linux_windowed"
+    else:
+        binary_to_download = "linux_server"
+else:
+    raise RuntimeError(f"Unsupported platform: {platform.system()}")
+
 
 config.environment(
     env="FootsiesEnv",
@@ -99,7 +111,7 @@ config.environment(
         "binary_download_dir": args.binary_download_dir,
         "binary_extract_dir": args.binary_extract_dir,
         "binary_to_download": binary_to_download,
-        "suppress_unity_output": args.suppress_unity_output,
+        "suppress_unity_output": not args.log_unity_output,
     },
 ).training(
     train_batch_size_per_learner=args.rollout_fragment_length
