@@ -119,8 +119,8 @@ dictionaries that have the same type as the input, for example:
 Transforming batches
 ====================
 
-If your transformation could be vectorized using NumPy, Pyarrow or Pandas operations, transforming
-batches will be considerably more performant than transforming individual rows.
+If your transformation could be vectorized using NumPy, PyArrow or Pandas operations, transforming
+batches is considerably more performant than transforming individual rows.
 
 .. testcode::
 
@@ -147,8 +147,8 @@ default, Ray Data represents batches as dicts of NumPy ndarrays. To configure th
 specify ``batch_format`` in :meth:`~ray.data.Dataset.map_batches`. You can return either
 format from your function, but ``batch_format`` should match the input of your function.
 
-When applying transformations to batches of rows, Ray Data could represent these batches as either Numpy's ``ndarrays``,
-Pandas ``DataFrame`` or Pyarrow ``Table``.
+When applying transformations to batches of rows, Ray Data could represent these batches as either NumPy's ``ndarrays``,
+Pandas ``DataFrame`` or PyArrow ``Table``.
 
 When using
     * ``batch_format=numpy`` returned batch will be a dictionary where keys correspond to column names and values to column column values are represented as ``ndarrays``.
@@ -228,9 +228,9 @@ When choosing appropriate batch format for your ``map_batches`` primary consider
 2. Depending on the batch format, such view can either be a *zero-copy* (when batch format matches
 block type of either ``pandas`` or ``pyarrow``) or copying one (when using batch format differing from the block type).
 
-For ex, if you prefer to work with Panda's or Numpy batches you can specify either ``batch_format="numpy"`` (default) or ``batch_format="pandas"`` which might copy the underlying data when converting it from the underlying block type (for ex, if the underlying block type is Arrow).
+For example, if you prefer to work with Panda's or NumPy batches you can specify either ``batch_format="numpy"`` (default) or ``batch_format="pandas"`` which might copy the underlying data when converting it from the underlying block type (for example, if the underlying block type is Arrow).
 
-Note that, by default block type is Arrow (what most Ray Data readers are producing). However, Ray Data strives to minimize amount of data conversions: for ex, if your ``map_batches`` operation returns Panda's batches then these batches will be combined into blocks *without* conversion and propagated further as Panda's blocks.
+Note that, by default block type is Arrow (what most Ray Data readers are producing). However, Ray Data strives to minimize amount of data conversions: for example, if your ``map_batches`` operation returns Pandas batches then these batches are combined into blocks *without* conversion and propagated further as Pandas blocks.
 
 
 Configuring batch size
