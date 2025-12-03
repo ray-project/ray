@@ -52,7 +52,9 @@ class FuseOperators(Rule):
 
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
         self._op_map = plan.op_map.copy()
-        # Firstly fuse StreamingRepartition with MapBatches.
+        # TODO(xgui): Currently we have to fuse streaming_repartition before map fusion
+        # because the result of map fusion loses the batch_size information.
+        # We should fix this by not losing the batch_size information when fusing map operators.
         fused_dag = self._fuse_streaming_repartition_operators_in_dag(plan.dag)
         # Do DFS fusion on compatible pairwise operators in two passes.
         # In the first pass, only fuse back-to-back map operators together.
@@ -84,24 +86,16 @@ class FuseOperators(Rule):
     def _fuse_streaming_repartition_operators_in_dag(
         self, dag: PhysicalOperator
     ) -> PhysicalOperator:
-        """Fuse (StreamingRepartition -> MapBatches) or (MapBatches -> StreamingRepartition) pairs.
+        """Fuse (MapBatches -> StreamingRepartition) pair.
 
-        Both orders will ensure the map_batch's function receive the correct number of rows.
-        For (MapBatches -> StreamingRepartition), we also ensure the output rows is `batch_size`.
+        This will ensure the map_batch's function receive the correct number of rows.
+        We also ensure the output rows is `batch_size`.
         """
         upstream_ops = dag.input_dependencies
         while (
             len(upstream_ops) == 1
-            and (
-                (
-                    isinstance(self._op_map[dag], StreamingRepartition)
-                    and isinstance(self._op_map[upstream_ops[0]], MapBatches)
-                )
-                or (
-                    isinstance(self._op_map[dag], MapBatches)
-                    and isinstance(self._op_map[upstream_ops[0]], StreamingRepartition)
-                )
-            )
+            and isinstance(self._op_map[dag], StreamingRepartition)
+            and isinstance(self._op_map[upstream_ops[0]], MapBatches)
             and self._can_fuse(dag, upstream_ops[0])
         ):
             dag = self._get_fused_streaming_repartition_operator(dag, upstream_ops[0])
@@ -254,19 +248,16 @@ class FuseOperators(Rule):
         ):
             return False
 
-        # StreamingRepartition can only fuse with MapBatches and the target_num_rows_per_block matches
-        if isinstance(up_logical_op, StreamingRepartition):
-            return (
-                isinstance(down_logical_op, MapBatches)
-                and up_logical_op.target_num_rows_per_block
-                == down_logical_op._batch_size
-            )
+        # only allow fusion of MapBatches -> StreamingRepartition
         if isinstance(down_logical_op, StreamingRepartition):
             return (
                 isinstance(up_logical_op, MapBatches)
                 and up_logical_op._batch_size
                 == down_logical_op.target_num_rows_per_block
             )
+        # We currently limit fusion to MapBatches -> StreamingRepartition.
+        if isinstance(up_logical_op, StreamingRepartition):
+            return False
 
         # Otherwise, ops are compatible for fusion.
         return True
@@ -275,7 +266,7 @@ class FuseOperators(Rule):
         self, down_op: PhysicalOperator, up_op: PhysicalOperator
     ) -> PhysicalOperator:
         assert self._can_fuse(down_op, up_op), (
-            "Current rule supports fusing StreamingRepartition->MapBatches or MapBatches->StreamingRepartition, but received: "
+            "Current rule supports fusing MapBatches->StreamingRepartition, but received: "
             f"{type(up_op).__name__} -> {type(down_op).__name__}"
         )
 
@@ -284,20 +275,10 @@ class FuseOperators(Rule):
 
         down_logical_op = self._op_map.pop(down_op)
         up_logical_op = self._op_map.pop(up_op)
-        batch_size = None
-        if isinstance(up_logical_op, StreamingRepartition):
-            assert isinstance(down_logical_op, MapBatches)
-            assert (
-                up_logical_op.target_num_rows_per_block == down_logical_op._batch_size
-            )
-            batch_size = up_logical_op.target_num_rows_per_block
-        else:
-            assert isinstance(up_logical_op, MapBatches)
-            assert isinstance(down_logical_op, StreamingRepartition)
-            assert (
-                up_logical_op._batch_size == down_logical_op.target_num_rows_per_block
-            )
-            batch_size = down_logical_op.target_num_rows_per_block
+        assert isinstance(up_logical_op, MapBatches)
+        assert isinstance(down_logical_op, StreamingRepartition)
+        assert up_logical_op._batch_size == down_logical_op.target_num_rows_per_block
+        batch_size = up_logical_op._batch_size
 
         compute = self._fuse_compute_strategy(
             up_logical_op._compute, down_logical_op._compute
@@ -339,19 +320,14 @@ class FuseOperators(Rule):
             op.add_map_task_kwargs_fn(map_task_kwargs_fn)
 
         input_op = up_logical_op.input_dependency
-        udf_logical_op = None
-        if isinstance(down_logical_op, AbstractUDFMap):
-            udf_logical_op = down_logical_op
-        else:
-            udf_logical_op = up_logical_op
         logical_op = AbstractUDFMap(
             name,
             input_op,
-            udf_logical_op._fn,
-            fn_args=udf_logical_op._fn_args,
-            fn_kwargs=udf_logical_op._fn_kwargs,
-            fn_constructor_args=udf_logical_op._fn_constructor_args,
-            fn_constructor_kwargs=udf_logical_op._fn_constructor_kwargs,
+            up_logical_op._fn,
+            fn_args=up_logical_op._fn_args,
+            fn_kwargs=up_logical_op._fn_kwargs,
+            fn_constructor_args=up_logical_op._fn_constructor_args,
+            fn_constructor_kwargs=up_logical_op._fn_constructor_kwargs,
             min_rows_per_bundled_input=batch_size,
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,

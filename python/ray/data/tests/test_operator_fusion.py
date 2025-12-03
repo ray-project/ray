@@ -749,10 +749,8 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
         ("map_then_sr", 20, 20, True),
         ("map_then_sr", 20, 10, False),
         ("map_then_sr", 20, None, False),
-        # streaming_repartition -> map_batches: fuse when target_num_rows == batch_size
-        ("sr_then_map", 20, 20, True),
-        ("sr_then_map", 20, 10, False),
-        ("sr_then_map", 20, None, False),
+        # streaming_repartition -> map_batches: not fused
+        ("sr_then_map", 20, 20, False),
     ],
 )
 def test_streaming_repartition_map_batches_fusion_order_and_params(
@@ -794,20 +792,17 @@ def test_streaming_repartition_no_further_fuse(
 ):
     """Test that fused streaming_repartition operators don't fuse further.
 
-    Case 1: map_batches -> streaming_repartition -> map_batches -> map_batches
-            Result: map -> (s_r->map) -> map
-            The fused (s_r->map) doesn't fuse further with surrounding maps.
-
-    Case 2: map_batches -> map_batches -> streaming_repartition -> map_batches
-            Result: map -> (s_r->map)
-            The first map fuses with the second map, fused blocks don't merge with each other.
+    Case 1: map_batches -> map_batches -> streaming_repartition -> map_batches -> map_batches
+            Result: map -> (map -> s_r)-> (map -> map)
+            The fused (map -> s_r) doesn't fuse further with surrounding maps.
     """
     n = 100
     target_rows = 20
 
-    # Case 1: map_batches -> streaming_repartition -> map_batches -> map_batches
-    # Result: map -> (s_r->map) -> map
+    # Case 1: map_batches -> map_batches -> streaming_repartition -> map_batches -> map_batches
+    # Result: map -> (map -> s_r)-> (map -> map)
     ds1 = ray.data.range(n, override_num_blocks=2)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
     ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
     ds1 = ds1.repartition(target_num_rows_per_block=target_rows)
     ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
@@ -816,104 +811,11 @@ def test_streaming_repartition_no_further_fuse(
     assert len(ds1.take_all()) == n
     stats1 = ds1.stats()
 
-    # The streaming_repartition fuses with second map: (s_r->map)
     assert (
-        f"StreamingRepartition[num_rows_per_block={target_rows}]->MapBatches(<lambda>)"
+        f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows}]"
         in stats1
     ), stats1
-    # The first map and third map stay separate, don't fuse further
-    assert "MapBatches(<lambda>)->MapBatches(<lambda>)" not in stats1, stats1
-
-    # Case 2: map_batches -> map_batches -> streaming_repartition -> map_batches
-    # Result: (map->map) -> (s_r->map)
-    # First two maps fuse (batch_size=None doesn't block fusion), s_r fuses with third map
-    ds2 = ray.data.range(n, override_num_blocks=2)
-    ds2 = ds2.map_batches(lambda x: x, batch_size=None)
-    ds2 = ds2.map_batches(lambda x: x, batch_size=target_rows)
-    ds2 = ds2.repartition(target_num_rows_per_block=target_rows)
-    ds2 = ds2.map_batches(lambda x: x, batch_size=target_rows)
-
-    assert len(ds2.take_all()) == n
-    stats2 = ds2.stats()
-
-    # The first two maps fuse: (map->map)
-    assert "MapBatches(<lambda>)->MapBatches(<lambda>)" in stats2, stats2
-    # The streaming_repartition fuses with third map: (s_r->map)
-    assert (
-        f"StreamingRepartition[num_rows_per_block={target_rows}]->MapBatches(<lambda>)"
-        in stats2
-    ), stats2
-
-
-@pytest.mark.parametrize(
-    "first_block,second_block",
-    [
-        ("sr_map", "sr_map"),  # (s_r -> map) -> (s_r -> map)
-        ("sr_map", "map_sr"),  # (s_r -> map) -> (map -> s_r)
-        ("map_sr", "sr_map"),  # (map -> s_r) -> (s_r -> map)
-        ("map_sr", "map_sr"),  # (map -> s_r) -> (map -> s_r)
-    ],
-)
-def test_streaming_repartition_map_chain_fusion_combinations(
-    ray_start_regular_shared_2_cpus,
-    first_block,
-    second_block,
-):
-    """Test fusion behavior with 4 operators in chain.
-    Each block is either (s_r -> map) or (map -> s_r).
-
-    This verifies the 4 combinations produce correct results and expected fusion.
-    """
-    n = 100
-    target_rows = 20
-
-    ds = ray.data.range(n, override_num_blocks=2)
-
-    if first_block == "sr_map":
-        ds = ds.repartition(target_num_rows_per_block=target_rows)
-        ds = ds.map_batches(lambda x: x, batch_size=target_rows)
-    else:  # map_sr
-        ds = ds.map_batches(lambda x: x, batch_size=target_rows)
-        ds = ds.repartition(target_num_rows_per_block=target_rows)
-
-    if second_block == "sr_map":
-        ds = ds.repartition(target_num_rows_per_block=target_rows)
-        ds = ds.map_batches(lambda x: x, batch_size=target_rows)
-    else:  # map_sr
-        ds = ds.map_batches(lambda x: x, batch_size=target_rows)
-        ds = ds.repartition(target_num_rows_per_block=target_rows)
-
-    result_ids = set(extract_values("id", ds.take_all()))
-    assert result_ids == set(range(n))
-    assert len(result_ids) == n
-
-    stats = ds.stats()
-
-    sr_map = (
-        f"StreamingRepartition[num_rows_per_block={target_rows}]->MapBatches(<lambda>)"
-    )
-    map_sr = (
-        f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows}]"
-    )
-
-    if first_block == "sr_map" and second_block == "sr_map":
-        # (s_r -> map) -> (s_r -> map)
-        # Result: (s_r->map) -> (s_r->map)
-        assert stats.count(sr_map) == 2, stats
-    elif first_block == "sr_map" and second_block == "map_sr":
-        # (s_r -> map) -> (map -> s_r)
-        # Result: (s_r->map) -> (map->s_r)
-        assert sr_map in stats, stats
-        assert map_sr in stats, stats
-    elif first_block == "map_sr" and second_block == "sr_map":
-        # (map -> s_r) -> (s_r -> map)
-        # Result: (map->s_r) -> (s_r->map)
-        assert map_sr in stats, stats
-        assert sr_map in stats, stats
-    else:  # map_sr and map_sr
-        # (map -> s_r) -> (map -> s_r)
-        # Result: (map->s_r) -> (map->s_r)
-        assert stats.count(map_sr) == 2, stats
+    assert "MapBatches(<lambda>)->MapBatches(<lambda>)" in stats1
 
 
 if __name__ == "__main__":
