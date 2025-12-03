@@ -112,7 +112,7 @@ def plan_download_op(
         {},
         None,
         None,
-        None
+        None,
     )
 
     download_transform_fn = _generate_transform_fn_for_map_batches(fn)
