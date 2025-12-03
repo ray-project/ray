@@ -152,7 +152,7 @@ class ParquetDatasink(_FileDatasink):
         super().__init__(
             path,
             filesystem=filesystem,
-            try_create_dir=try_create_dir,
+            try_create_dir=False,
             open_stream_args=open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=dataset_uuid,
@@ -288,7 +288,6 @@ class ParquetDatasink(_FileDatasink):
             max_rows_per_group=max_rows_per_group,
             max_rows_per_file=max_rows_per_file,
             file_options=ds.ParquetFileFormat().make_write_options(**write_kwargs),
-            create_dir=False,  # Directory is already created by _FileDatasink.on_write_start()
         )
 
     @property
