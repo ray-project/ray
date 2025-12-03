@@ -85,6 +85,8 @@ class ResolveAttributes(Rule):
                 new_uri = self.resolve_attributes(uri_column, schema)
                 return DownloadExpr(uri_column=new_uri)
 
+        assert expr._is_resolved()
+
         return expr
 
 

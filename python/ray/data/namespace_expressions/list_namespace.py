@@ -79,7 +79,7 @@ class _ListNamespace:
         """
         # Infer return type from the list's value type
         return_dtype = DataType(object)  # fallback
-        if self._expr.data_type.is_arrow_type():
+        if self._expr._is_resolved() and self._expr.data_type.is_arrow_type():
             arrow_type = self._expr.data_type.to_arrow_dtype()
             if pyarrow.types.is_list(arrow_type) or pyarrow.types.is_large_list(
                 arrow_type
