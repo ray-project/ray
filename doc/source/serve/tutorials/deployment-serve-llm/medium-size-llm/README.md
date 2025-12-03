@@ -299,12 +299,12 @@ deployment_config:
 
 ## Troubleshooting
 
-**Hugging Face auth errors**  
+**Hugging Face authentication errors**  
 Some models, such as Llama-3.1, are gated and require prior authorization from the organization. See your model’s documentation for instructions on obtaining access.
 
 **Out-of-memory errors**  
 Out-of-memory (OOM) errors are one of the most common failure modes when deploying LLMs, especially as model sizes and context length increase.  
-See this [Troubleshooting Guide](https://docs.anyscale.com/overview) for common errors and how to fix them.
+See this [Troubleshooting Guide](https://docs.anyscale.com/llm/serving/troubleshooting) for common errors and how to fix them.
 
 ---
 
