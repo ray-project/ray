@@ -299,6 +299,9 @@ RAY_DEDUP_LOGS_ALLOW_REGEX = os.environ.get(
 # Regex for log messages to always skip / suppress, or None.
 RAY_DEDUP_LOGS_SKIP_REGEX = os.environ.get("RAY_DEDUP_LOGS_SKIP_REGEX")
 
+AGENT_PROCESS_TYPE_DASHBOARD_AGENT = "ray::DashboardAgent"
+AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT = "ray::RuntimeEnvAgent"
+
 WORKER_PROCESS_TYPE_IDLE_WORKER = "ray::IDLE"
 WORKER_PROCESS_TYPE_SPILL_WORKER_NAME = "SpillWorker"
 WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME = "RestoreWorker"
