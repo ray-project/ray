@@ -358,6 +358,7 @@ def test_get_tpu_version_valid(accelerator_type, expected_version):
     [
         "A100",  # GPU type
         "random-invalid-type",  # Random string
+        "TPU-invalid",  # TPU prefix
         "",  # Empty string
     ],
 )

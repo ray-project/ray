@@ -6,6 +6,7 @@ from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.accelerators.tpu import (
     VALID_TPU_TYPES,
     get_chips_per_host,
+    get_num_chips_from_topology,
     reserve_tpu_slice,
 )
 from ray._private.client_mode_hook import client_mode_wrap
@@ -22,17 +23,20 @@ logger = logging.getLogger(__name__)
 @PublicAPI(stability="alpha")
 def get_tpu_version_from_type(accelerator_type: str) -> str:
     """Extracts the version (e.g. "v6e") from the accelerator type (e.g. "TPU-V6E")."""
-    lower_type = accelerator_type.lower()
-    if lower_type.startswith("tpu-"):
-        return lower_type[len("tpu-") :]
+    accel_type_lower = accelerator_type.lower()
 
-    if lower_type in VALID_TPU_TYPES:
-        return lower_type
+    if accel_type_lower.startswith("tpu-"):
+        version = accel_type_lower[4:]
+    else:
+        version = accel_type_lower
 
-    raise ValueError(
-        f"Invalid accelerator_type: {accelerator_type}. Must be one of "
-        f"{list(VALID_TPU_TYPES)} or start with 'TPU-'"
-    )
+    if version not in VALID_TPU_TYPES:
+        raise ValueError(
+            f"Invalid accelerator_type: {accelerator_type}. "
+            f"Must be one of {list(VALID_TPU_TYPES)} or start with 'TPU-' followed by a valid type."
+        )
+
+    return version
 
 
 @PublicAPI(stability="alpha")
@@ -92,15 +96,10 @@ def get_tpu_worker_resources(
         - num_workers: Total workers required.
         - unit_resources: The resource dictionary for a single worker.
     """
-    if accelerator_type.upper().startswith("TPU-"):
-        accelerator_version = get_tpu_version_from_type(accelerator_type)
-    else:
-        accelerator_version = accelerator_type.lower()
+    accelerator_version = get_tpu_version_from_type(accelerator_type)
 
     chips_per_host = get_chips_per_host(topology, accelerator_version)
-    total_chips_per_slice = 1
-    for dim in topology.split("x"):
-        total_chips_per_slice *= int(dim)
+    total_chips_per_slice = get_num_chips_from_topology(topology)
 
     total_chips_available = total_chips_per_slice * num_slices
 
@@ -238,9 +237,7 @@ class SlicePlacementGroup:
             self._topology, self._accelerator_version
         )
 
-        total_chips = 1
-        for dim in self._topology.split("x"):
-            total_chips *= int(dim)
+        total_chips = get_num_chips_from_topology(self._topology)
         hosts_per_slice = max(1, total_chips // self._chips_per_host)
         self._num_hosts = hosts_per_slice * self._num_slices
 
@@ -302,7 +299,9 @@ class SlicePlacementGroup:
                 # the unique name of an available TPU slice.
                 selector = {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name}
                 self._bundle_label_selector.extend([selector] * bundles_per_slice)
-                bundles += [self._bundle_resources.copy()] * bundles_per_slice
+                bundles += [
+                    self._bundle_resources.copy() for _ in range(bundles_per_slice)
+                ]
 
             pg = placement_group(
                 bundles=bundles,
@@ -313,7 +312,7 @@ class SlicePlacementGroup:
             )
 
             return pg
-        except Exception as e:
+        except Exception:
             logger.warning(
                 f"Failed to reserve all TPU slices, cleaning up {len(self._head_pgs)} reserved TPU heads."
             )
@@ -321,7 +320,7 @@ class SlicePlacementGroup:
                 remove_placement_group(head_pg)
             self._head_pgs = []
             # Re-raise the original exception to notify the caller.
-            raise e
+            raise
 
     @property
     def placement_group(self) -> PlacementGroup:

@@ -149,6 +149,17 @@ def get_tpu_cores_per_chip(accelerator_type: str) -> int:
     return DEFAULT_TPU_NUM_CORES_PER_CHIP
 
 
+def get_num_chips_from_topology(topology: str) -> int:
+    """
+    Calculates the total number of chips in a TPU topology.
+    Ex: "2x2x2" -> 8
+    """
+    total_chips = 1
+    for dim in topology.strip().lower().split("x"):
+        total_chips *= int(dim)
+    return total_chips
+
+
 def infer_tpu_pod_type_from_topology(
     topology: str, accelerator_type: str
 ) -> Optional[str]:
@@ -156,9 +167,7 @@ def infer_tpu_pod_type_from_topology(
     if not topology or not accelerator_type:
         return None
     try:
-        num_chips = 1
-        for value in topology.strip().lower().split("x"):
-            num_chips *= int(value)
+        num_chips = get_num_chips_from_topology(topology)
         generation = accelerator_type.lower().replace("tpu-", "")
         num_cores = num_chips * get_tpu_cores_per_chip(generation)
 
@@ -201,9 +210,7 @@ def get_chips_per_host(topology: str, accelerator_version: str) -> int:
     Returns:
         A int representing the number of chips per host
     """
-    total_chips = 1
-    for value in topology.strip().lower().split("x"):
-        total_chips *= int(value)
+    total_chips = get_num_chips_from_topology(topology)
 
     # Check for 8-chip host types (v5litepod, v6e)
     if accelerator_version.strip().lower() in SINGLE_HOST_8_CHIPS_TPU_TYPES:
