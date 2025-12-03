@@ -16,6 +16,7 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
+from ray.data._internal.execution.bundle_queue.bundler import BlockRefBundler
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
@@ -31,7 +32,6 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import (
-    BlockRefBundler,
     MapOperator,
     _per_block_limit_fn,
 )
@@ -1254,15 +1254,15 @@ def test_block_ref_bundler_basic(target, in_bundles, expected_bundles):
     bundles = _make_ref_bundles(in_bundles)
     out_bundles = []
     for bundle in bundles:
-        bundler.add_bundle(bundle)
-        while bundler.has_bundle():
-            out_bundle = _get_bundles(bundler.get_next_bundle()[1])
+        bundler.add(bundle)
+        while bundler.has_next():
+            out_bundle = _get_bundles(bundler.get_next())
             out_bundles.append(out_bundle)
 
-    bundler.done_adding_bundles()
+    bundler.finalize()
 
-    if bundler.has_bundle():
-        out_bundle = _get_bundles(bundler.get_next_bundle()[1])
+    if bundler.has_next():
+        out_bundle = _get_bundles(bundler.get_next())
         out_bundles.append(out_bundle)
 
     # Assert expected output
@@ -1291,15 +1291,15 @@ def test_block_ref_bundler_uniform(
     data = np.arange(n)
     pre_bundles = [arr.tolist() for arr in np.array_split(data, num_bundles)]
     bundles = make_ref_bundles(pre_bundles)
-    out_bundles = []
+    out_bundles: List[RefBundle] = []
     for bundle in bundles:
-        bundler.add_bundle(bundle)
-        while bundler.has_bundle():
-            _, out_bundle = bundler.get_next_bundle()
+        bundler.add(bundle)
+        while bundler.has_next():
+            _, out_bundle = bundler.get_next_with_original()
             out_bundles.append(out_bundle)
-    bundler.done_adding_bundles()
-    if bundler.has_bundle():
-        _, out_bundle = bundler.get_next_bundle()
+    bundler.finalize()
+    if bundler.has_next():
+        _, out_bundle = bundler.get_next_with_original()
         out_bundles.append(out_bundle)
     assert len(out_bundles) == num_out_bundles
     for out_bundle in out_bundles:

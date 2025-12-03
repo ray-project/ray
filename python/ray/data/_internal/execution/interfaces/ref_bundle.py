@@ -7,7 +7,13 @@ from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 import ray
 from .common import NodeIdStr
 from ray.data._internal.memory_tracing import trace_deallocation
-from ray.data.block import Block, BlockAccessor, BlockMetadata, Schema
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+    Schema,
+    _take_first_non_empty_schema,
+)
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
@@ -309,7 +315,9 @@ class RefBundle:
         merged_slices = list(itertools.chain(*[bundle.slices for bundle in bundles]))
         return cls(
             blocks=tuple(merged_blocks),
-            schema=bundles[0].schema,  # Assume all bundles have the same schema
+            schema=_take_first_non_empty_schema(
+                bundle.schema for bundle in bundles
+            ),  # Assume all bundles have the same schema
             owns_blocks=bundles[
                 0
             ].owns_blocks,  # Assume all bundles have the same ownership
