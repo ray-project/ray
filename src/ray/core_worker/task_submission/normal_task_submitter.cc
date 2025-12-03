@@ -776,7 +776,12 @@ void NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
           }
         });
   };
-  SendCancelLocalTask(gcs_client_, node_id, std::move(do_cancel_local_task));
+  auto failure_callback = [this, task_id]() {
+    absl::MutexLock inner_lock(&mu_);
+    cancelled_tasks_.erase(task_id);
+  };
+  SendCancelLocalTask(
+      gcs_client_, node_id, std::move(do_cancel_local_task), std::move(failure_callback));
 }
 
 void NormalTaskSubmitter::RequestOwnerToCancelTask(const ObjectID &object_id,

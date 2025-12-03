@@ -38,26 +38,31 @@ namespace core {
 /// \param node_id The local node ID of where the task is executing on
 /// \param cancel_callback Callback containing CancelLocalTask RPC to invoke if the node
 /// is alive.
-inline void SendCancelLocalTask(
-    std::shared_ptr<gcs::GcsClient> gcs_client,
-    const NodeID &node_id,
-    std::function<void(const rpc::Address &)> cancel_callback) {
+/// \param failure_callback Callback invoked when CancelLocalTask RPC cannot be sent.
+/// Used for cleanup.
+inline void SendCancelLocalTask(std::shared_ptr<gcs::GcsClient> gcs_client,
+                                const NodeID &node_id,
+                                std::function<void(const rpc::Address &)> cancel_callback,
+                                std::function<void()> failure_callback) {
   // Check GCS node cache. If node info is not in the cache, query the GCS instead.
   auto node_info =
       gcs_client->Nodes().GetNodeAddressAndLiveness(node_id,
                                                     /*filter_dead_nodes=*/false);
   if (!node_info) {
     gcs_client->Nodes().AsyncGetAllNodeAddressAndLiveness(
-        [cancel_callback = std::move(cancel_callback), node_id](
-            const Status &status,
-            std::vector<rpc::GcsNodeAddressAndLiveness> &&nodes) mutable {
+        [cancel_callback = std::move(cancel_callback),
+         failure_callback = std::move(failure_callback),
+         node_id](const Status &status,
+                  std::vector<rpc::GcsNodeAddressAndLiveness> &&nodes) mutable {
           if (!status.ok()) {
             RAY_LOG(INFO) << "Failed to get node info from GCS";
+            failure_callback();
             return;
           }
           if (nodes.empty() || nodes[0].state() != rpc::GcsNodeInfo::ALIVE) {
             RAY_LOG(INFO).WithField(node_id)
                 << "Not sending CancelLocalTask because node is dead";
+            failure_callback();
             return;
           }
           auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
@@ -71,6 +76,7 @@ inline void SendCancelLocalTask(
   if (node_info->state() == rpc::GcsNodeInfo::DEAD) {
     RAY_LOG(INFO).WithField(node_id)
         << "Not sending CancelLocalTask because node is dead";
+    failure_callback();
     return;
   }
   auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(

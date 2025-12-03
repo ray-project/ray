@@ -1046,7 +1046,7 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
               }
             });
       };
-  SendCancelLocalTask(gcs_client_, node_id, std::move(do_cancel_local_task));
+  SendCancelLocalTask(gcs_client_, node_id, std::move(do_cancel_local_task), []() {});
 }
 
 bool ActorTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spec) {
