@@ -46,7 +46,6 @@ from ray.data._internal.datasource.kafka_datasource import (
     KafkaAuthConfig,
     KafkaDatasource,
 )
-from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
@@ -415,7 +414,7 @@ def read_datasource(
         num_cpus,
         num_gpus,
         memory,
-        ray_remote_args,
+        ray_remote_args or {},
     )
 
     datasource_or_legacy_reader = _get_datasource_or_legacy_reader(
@@ -3938,9 +3937,9 @@ def read_lance(
     storage_options: Optional[Dict[str, str]] = None,
     scanner_options: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
-    num_cpus: Optional[float] = None,
-    num_gpus: Optional[float] = None,
-    memory: Optional[float] = None,
+    num_cpus: Optional[int] = None,
+    num_gpus: Optional[int] = None,
+    memory: Optional[int] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
@@ -3991,21 +3990,38 @@ def read_lance(
     Returns:
         A :class:`~ray.data.Dataset` producing records read from the Lance dataset.
     """  # noqa: E501
-    datasource = LanceDatasource(
+    try:
+        import lance_ray
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(
+            "lance-ray is required for `ray.data.read_lance`. "
+            "Install it with: pip install lance-ray"
+        ) from exc
+
+    # Map legacy parameters to the lance-ray API.
+    dataset_options = {"version": version} if version is not None else None
+    cleaned_scanner_options = scanner_options.copy() if scanner_options else None
+    fragment_ids = None
+    if cleaned_scanner_options and "fragments" in cleaned_scanner_options:
+        fragments = cleaned_scanner_options.pop("fragments") or []
+        fragment_ids = [fragment.metadata.id for fragment in fragments]
+
+    ray_remote_args = merge_resources_to_ray_remote_args(
+        num_cpus,
+        num_gpus,
+        memory,
+        ray_remote_args or {},
+    )
+
+    return lance_ray.read_lance(
         uri=uri,
-        version=version,
         columns=columns,
         filter=filter,
         storage_options=storage_options,
-        scanner_options=scanner_options,
-    )
-
-    return read_datasource(
-        datasource=datasource,
+        scanner_options=cleaned_scanner_options,
+        dataset_options=dataset_options,
+        fragment_ids=fragment_ids,
         ray_remote_args=ray_remote_args,
-        num_cpus=num_cpus,
-        num_gpus=num_gpus,
-        memory=memory,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )

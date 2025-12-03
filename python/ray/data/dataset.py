@@ -43,7 +43,6 @@ from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
 from ray.data._internal.datasource.json_datasink import JSONDatasink
-from ray.data._internal.datasource.lance_datasink import LanceDatasink
 from ray.data._internal.datasource.mongo_datasink import MongoDatasink
 from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
@@ -5117,7 +5116,16 @@ class Dataset:
                 for more details.
             storage_options: The storage options for the writer. Default is None.
         """
-        datasink = LanceDatasink(
+        try:
+            import lance_ray
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "lance-ray is required for `Dataset.write_lance`. "
+                "Install it with: pip install lance-ray"
+            ) from exc
+
+        return lance_ray.write_lance(
+            self,
             path,
             schema=schema,
             mode=mode,
@@ -5125,10 +5133,6 @@ class Dataset:
             max_rows_per_file=max_rows_per_file,
             data_storage_version=data_storage_version,
             storage_options=storage_options,
-        )
-
-        self.write_datasink(
-            datasink,
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
         )
