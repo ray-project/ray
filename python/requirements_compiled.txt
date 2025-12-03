@@ -1012,7 +1012,7 @@ kubernetes==24.2.0
     # via -r python/requirements/test-requirements.txt
 labmaze==1.0.6
     # via dm-control
-lark==1.3.1
+lark==1.2.2
     # via rfc3987-syntax
 lazy-loader==0.4
     # via scikit-image
@@ -1237,13 +1237,9 @@ notebook==6.5.7
     # via jupyterlab
 notebook-shim==0.2.3
     # via nbclassic
-nsx-policy-python-sdk @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automation-sdk_df604064fc874b61bf96bb6291aa19a1/lib/nsx-policy-python-sdk/nsx_policy_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
     # via vsphere-automation-sdk
-nsx-python-sdk @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automation-sdk_df604064fc874b61bf96bb6291aa19a1/lib/nsx-python-sdk/nsx_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
     # via vsphere-automation-sdk
-nsx-vmc-aws-integration-python-sdk @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automation-sdk_df604064fc874b61bf96bb6291aa19a1/lib/nsx-vmc-aws-integration-python-sdk/nsx_vmc_aws_integration_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
     # via vsphere-automation-sdk
-nsx-vmc-policy-python-sdk @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automation-sdk_df604064fc874b61bf96bb6291aa19a1/lib/nsx-vmc-policy-python-sdk/nsx_vmc_policy_python_sdk-4.1.0.1.0-py2.py3-none-any.whl
     # via vsphere-automation-sdk
 numba==0.62.1
     # via
@@ -2331,7 +2327,7 @@ toolz==0.12.1
     #   dask
     #   distributed
     #   partd
-torch==2.3.0+cpu
+torch==2.3.0
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   accelerate
@@ -2350,26 +2346,26 @@ torch==2.3.0+cpu
     #   torchmetrics
     #   torchtext
     #   torchvision
-torch-cluster==1.6.3+pt23cpu
+torch-cluster==1.6.3
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 torch-geometric==2.5.3
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 torch-optimizer==0.1.0
     # via mosaicml
-torch-scatter==2.1.2+pt23cpu
+torch-scatter==2.1.2
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-torch-sparse==0.6.18+pt23cpu
+torch-sparse==0.6.18
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-torch-spline-conv==1.2.2+pt23cpu
+torch-spline-conv==1.2.2
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 torchmetrics==0.10.3
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   mosaicml
     #   pytorch-lightning
-torchtext==0.18.0+cpu
+torchtext==0.18.0
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-torchvision==0.18.0+cpu
+torchvision==0.18.0
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   mosaicml
@@ -2539,7 +2535,6 @@ uvicorn==0.22.0
     #   mlflow-skinny
 uvloop==0.21.0
     # via pymars
-vapi-common-client @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automation-sdk_df604064fc874b61bf96bb6291aa19a1/lib/vapi-common-client/vapi_common_client-2.40.0-py2.py3-none-any.whl
     # via
     #   nsx-policy-python-sdk
     #   nsx-python-sdk
@@ -2548,7 +2543,6 @@ vapi-common-client @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automati
     #   vmc-client-bindings
     #   vmc-draas-client-bindings
     #   vsphere-automation-sdk
-vapi-runtime @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automation-sdk_df604064fc874b61bf96bb6291aa19a1/lib/vapi-runtime/vapi_runtime-2.40.0-py2.py3-none-any.whl
     # via
     #   nsx-policy-python-sdk
     #   nsx-python-sdk
@@ -2559,7 +2553,6 @@ vapi-runtime @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automation-sdk
     #   vmc-client-bindings
     #   vmc-draas-client-bindings
     #   vsphere-automation-sdk
-vcenter-bindings @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automation-sdk_df604064fc874b61bf96bb6291aa19a1/lib/vcenter-bindings/vcenter_bindings-4.1.0-py2.py3-none-any.whl
     # via vsphere-automation-sdk
 vine==5.1.0
     # via
@@ -2572,9 +2565,7 @@ virtualenv==20.29.1
     #   -r python/requirements/test-requirements.txt
     #   pre-commit
     #   pytest-virtualenv
-vmc-client-bindings @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automation-sdk_df604064fc874b61bf96bb6291aa19a1/lib/vmc-client-bindings/vmc_client_bindings-1.62.0-py2.py3-none-any.whl
     # via vsphere-automation-sdk
-vmc-draas-client-bindings @ file://localhost//tmp/pip-resolve-mwbob2m6/vsphere-automation-sdk_df604064fc874b61bf96bb6291aa19a1/lib/vmc-draas-client-bindings/vmc_draas_client_bindings-1.21.0-py2.py3-none-any.whl
     # via vsphere-automation-sdk
 vsphere-automation-sdk @ git+https://github.com/vmware/vsphere-automation-sdk-python.git@v8.0.1.0
     # via -r python/requirements/test-requirements.txt
