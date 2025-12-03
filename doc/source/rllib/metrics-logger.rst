@@ -105,10 +105,10 @@ Other available reduction methods can be found in the dictionary ``ray.rllib.uti
 
 .. note::
     You can also provide your own reduction methods by extending ``ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP`` 
-    and passing it to :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.logging`.
+    and passing it to :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.reporting`.
     These new reduction methods will then be available by their key when logging values during runtime. For example, 
     you can use ``reduce="my_custom_reduce_method"`` when when extending the dictionary with a key ``"my_custom_reduce_method"`` 
-    and passing it to :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.logging`.
+    and passing it to :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.reporting`.
 
 Specifying a ``window`` causes the reduction to take place over the last ``window`` logged values.
 For example, you can continue logging new values under the ``loss`` key:
