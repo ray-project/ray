@@ -211,11 +211,26 @@ class _BatchQueue:
         """
 
         batch = []
-        batch.append(await self.queue.get())
+        first_item = await self.queue.get()  # Block until first item arrives
 
         # Cache current max_batch_size and batch_wait_timeout_s for this batch.
         max_batch_size = self.max_batch_size
         batch_wait_timeout_s = self.batch_wait_timeout_s
+
+        # Check if first item alone exceeds max_batch_size (only with batch_size_fn)
+        if self.batch_size_fn is not None:
+            first_item_size = self._compute_batch_size([first_item])
+            if first_item_size > max_batch_size:
+                exc = RuntimeError(
+                    "Size of item is greater than max_batch_size. "
+                    "Please increase the max_batch_size or check the "
+                    "implementation of the batch_size_fn."
+                )
+                # Set exception on the future so the caller receives it
+                first_item.future.set_exception(exc)
+                return []
+
+        batch.append(first_item)
 
         # Wait self.timeout_s seconds for new queue arrivals.
         batch_start_time = time.time()
@@ -256,7 +271,12 @@ class _BatchQueue:
 
             # Put deferred item back in queue for next batch
             if deferred_item is not None:
+                # NOTE: The deferred item goes to the back of the queue (FIFO),
+                # so newer requests may be processed before it. Consider using
+                # asyncio.PriorityQueue if strict ordering is required.
                 self.queue.put_nowait(deferred_item)
+                # break the loop early because the deferred item is too large to fit in the batch
+                break
 
             # Only clear the put event if the queue is empty. If it's not empty
             # we can start constructing a new batch immediately in the next loop.

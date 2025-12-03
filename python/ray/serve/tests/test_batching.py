@@ -8,6 +8,7 @@ from typing import List, Optional
 
 import httpx
 import pytest
+from fastapi import FastAPI, Request
 from starlette.responses import StreamingResponse
 
 from ray import serve
@@ -267,42 +268,68 @@ async def test_observability_helpers(
         math.ceil(n_requests / max_batch_size), max_concurrent_batches
     )
 
-    await send_k_requests(
-        signal_actor, n_requests, min_num_batches, app_name="app_name"
-    )
-    prev_iter_times = await handle._get_curr_iteration_start_times.remote()
-    await signal_actor.send.remote()  # unblock the batch handler now that we have the iter times
+    async with httpx.AsyncClient() as client:
+        tasks1 = await send_k_requests(
+            signal_actor,
+            n_requests,
+            min_num_batches,
+            app_name="app_name",
+            client=client,
+        )
+        prev_iter_times = await handle._get_curr_iteration_start_times.remote()
+        await signal_actor.send.remote()  # unblock the batch handler now that we have the iter times
 
-    assert len(prev_iter_times.start_times) >= min_num_batches
-    assert len(await handle._get_handling_task_stack.remote()) is not None
-    assert await handle._is_batching_task_alive.remote()
+        assert len(prev_iter_times.start_times) >= min_num_batches
+        assert len(await handle._get_handling_task_stack.remote()) is not None
+        assert await handle._is_batching_task_alive.remote()
 
-    await send_k_requests(
-        signal_actor, n_requests, min_num_batches, app_name="app_name"
-    )
-    new_iter_times = await handle._get_curr_iteration_start_times.remote()
-    await signal_actor.send.remote()  # unblock the batch handler now that we have the iter times
+        tasks2 = await send_k_requests(
+            signal_actor,
+            n_requests,
+            min_num_batches,
+            app_name="app_name",
+            client=client,
+        )
+        new_iter_times = await handle._get_curr_iteration_start_times.remote()
+        await signal_actor.send.remote()  # unblock the batch handler now that we have the iter times
 
-    assert len(new_iter_times.start_times) >= min_num_batches
-    assert len(await handle._get_handling_task_stack.remote()) is not None
-    assert await handle._is_batching_task_alive.remote()
+        assert len(new_iter_times.start_times) >= min_num_batches
+        assert len(await handle._get_handling_task_stack.remote()) is not None
+        assert await handle._is_batching_task_alive.remote()
 
-    assert new_iter_times.min_start_time > prev_iter_times.max_start_time
+        assert new_iter_times.min_start_time > prev_iter_times.max_start_time
+
+        # Cancel and await all tasks to avoid "Task exception was never retrieved" warning.
+        # We don't need the HTTP responses, just need to clean up the tasks properly.
+        for task in tasks1 + tasks2:
+            task.cancel()
+        await asyncio.gather(*tasks1, *tasks2, return_exceptions=True)
 
 
 async def send_k_requests(
-    signal_actor: SignalActor, k: int, min_num_batches: float, app_name: str
-) -> None:
-    """Send k requests and wait until at least min_num_batches are waiting."""
+    signal_actor: SignalActor,
+    k: int,
+    min_num_batches: float,
+    app_name: str,
+    client: httpx.AsyncClient,
+) -> List[asyncio.Task]:
+    """Send k requests and wait until at least min_num_batches are waiting.
+
+    Returns the list of request tasks so they can be awaited by the caller
+    after unblocking the batch handler.
+    """
     await signal_actor.send.remote(True)  # type: ignore[attr-defined]
-    async with httpx.AsyncClient() as client:
-        for _ in range(k):
+    tasks = []
+    for _ in range(k):
+        tasks.append(
             asyncio.create_task(
                 client.get(f"{get_application_url(app_name=app_name)}/")
             )
-        await wait_for_n_waiters(
-            signal_actor, lambda num_waiters: num_waiters >= min_num_batches
         )
+    await wait_for_n_waiters(
+        signal_actor, lambda num_waiters: num_waiters >= min_num_batches
+    )
+    return tasks
 
 
 async def wait_for_n_waiters(
@@ -576,6 +603,146 @@ def test_batch_size_fn_default_behavior(serve_instance):
 
     # Verify all results are correct
     assert results == [i * 2 for i in range(10)]
+
+
+def test_batch_size_fn_oversized_item_raises_error(serve_instance):
+    app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class OversizedItemBatcher:
+        @serve.batch(
+            max_batch_size=10,
+            batch_wait_timeout_s=0.5,
+            batch_size_fn=lambda items: sum(item["size"] for item in items),
+        )
+        async def handle_batch(self, requests: List):
+            return [req["value"] for req in requests]
+
+        @app.post("/")
+        async def f(self, request: Request):
+            body = await request.json()
+            return await self.handle_batch(body)
+
+    serve.run(OversizedItemBatcher.bind())
+
+    # Send a request with size > max_batch_size (15 > 10)
+    # This should return a 500 error with RuntimeError message
+    url = f"{get_application_url(use_localhost=True)}/"
+    response = httpx.post(url, json={"size": 15, "value": "too_large"}, timeout=5)
+
+    assert response.status_code == 500
+
+
+def test_batch_size_fn_deferred_item_processed(serve_instance):
+    @serve.deployment
+    class DeferredItemBatcher:
+        def __init__(self):
+            self.batch_sizes = []
+
+        @serve.batch(
+            max_batch_size=10,
+            batch_wait_timeout_s=0.5,
+            batch_size_fn=lambda items: sum(item["size"] for item in items),
+        )
+        async def handle_batch(self, requests: List):
+            # Record actual batch sizes for verification
+            total_size = sum(req["size"] for req in requests)
+            self.batch_sizes.append(total_size)
+            return [req["value"] for req in requests]
+
+        async def __call__(self, request):
+            return await self.handle_batch(request)
+
+        def get_batch_sizes(self):
+            return self.batch_sizes
+
+    handle = serve.run(DeferredItemBatcher.bind())
+
+    # Send requests where some will need to be deferred:
+    # Request 1: size=6 (fits)
+    # Request 2: size=6 (would make total 12 > 10, deferred)
+    # Request 3: size=3 (fits with request 1, total 9)
+    # Request 4: size=4 (would make total 13 > 10, deferred)
+    requests = [
+        {"size": 6, "value": "a"},
+        {"size": 6, "value": "b"},
+        {"size": 3, "value": "c"},
+        {"size": 4, "value": "d"},
+    ]
+
+    result_futures = [handle.remote(req) for req in requests]
+    results = [future.result() for future in result_futures]
+
+    # All requests should be processed successfully
+    assert set(results) == {"a", "b", "c", "d"}
+
+    # Verify total size processed equals sum of all request sizes
+    batch_sizes = handle.get_batch_sizes.remote().result()
+    total_processed = sum(batch_sizes)
+    expected_total = sum(req["size"] for req in requests)  # 6 + 6 + 3 + 4 = 19
+    assert (
+        total_processed == expected_total
+    ), f"Total processed {total_processed} != expected {expected_total}"
+
+
+def test_batch_size_fn_mixed_normal_and_large_items(serve_instance):
+    @serve.deployment
+    class MixedSizeBatcher:
+        def __init__(self):
+            self.batches_processed = []
+
+        @serve.batch(
+            max_batch_size=100,
+            batch_wait_timeout_s=0.5,
+            batch_size_fn=lambda items: sum(item["tokens"] for item in items),
+        )
+        async def handle_batch(self, requests: List):
+            batch_info = {
+                "total_tokens": sum(req["tokens"] for req in requests),
+                "num_items": len(requests),
+            }
+            self.batches_processed.append(batch_info)
+            return [f"processed_{req['id']}" for req in requests]
+
+        async def __call__(self, request):
+            return await self.handle_batch(request)
+
+        def get_batches(self):
+            return self.batches_processed
+
+    handle = serve.run(MixedSizeBatcher.bind())
+
+    # Mix of small and larger items
+    requests = [
+        {"id": 1, "tokens": 10},  # Small
+        {"id": 2, "tokens": 20},  # Small
+        {"id": 3, "tokens": 50},  # Medium
+        {"id": 4, "tokens": 15},  # Small
+        {"id": 5, "tokens": 90},  # Large (near limit)
+        {"id": 6, "tokens": 5},  # Small
+    ]
+
+    result_futures = [handle.remote(req) for req in requests]
+    results = [future.result() for future in result_futures]
+
+    # All requests should be processed
+    expected_results = [f"processed_{i}" for i in range(1, 7)]
+    assert set(results) == set(expected_results)
+
+    # Verify total tokens processed equals sum of all request tokens
+    batches = handle.get_batches.remote().result()
+    total_tokens_processed = sum(batch["total_tokens"] for batch in batches)
+    expected_total = sum(req["tokens"] for req in requests)  # 10+20+50+15+90+5 = 190
+    assert (
+        total_tokens_processed == expected_total
+    ), f"Total tokens {total_tokens_processed} != expected {expected_total}"
+
+    # Verify total items processed equals number of requests
+    total_items = sum(batch["num_items"] for batch in batches)
+    assert total_items == len(
+        requests
+    ), f"Total items {total_items} != expected {len(requests)}"
 
 
 if __name__ == "__main__":

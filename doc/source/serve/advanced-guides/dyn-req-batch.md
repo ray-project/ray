@@ -69,7 +69,7 @@ The following example shows how to batch graph data by total node count:
 ---
 start-after: __batch_size_fn_begin__
 end-before: __batch_size_fn_end__
-emphasize-lines: 14-17
+emphasize-lines: 20
 ---
 ```
 
@@ -83,7 +83,7 @@ The following example shows how to batch text sequences by total token count:
 ---
 start-after: __batch_size_fn_nlp_begin__
 end-before: __batch_size_fn_nlp_end__
-emphasize-lines: 7-10
+emphasize-lines: 12
 ---
 ```
 
