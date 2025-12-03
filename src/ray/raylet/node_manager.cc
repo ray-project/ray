@@ -3490,7 +3490,7 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
         *replied = true;
         reply->set_attempt_succeeded(cancel_task_reply.attempt_succeeded());
         reply->set_requested_task_running(cancel_task_reply.requested_task_running());
-        send_reply_callback(Status::OK(), nullptr, nullptr);
+        send_reply_callback(status, nullptr, nullptr);
         if (timer) {
           timer->cancel();
         }
