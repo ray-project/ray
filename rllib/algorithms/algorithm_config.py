@@ -2324,8 +2324,8 @@ class AlgorithmConfig(_Config):
             learner_class: The `Learner` class to use for (distributed) updating of the
                 RLModule.
             learner_connector: A callable taking an env observation space and an env
-                action space as inputs and returning a learner ConnectorV2 (might be
-                a pipeline) object.
+                action space as inputs and returning a learner ConnectorV2 or
+                list of ConnectorV2's as part of pipeline object.
             add_default_connectors_to_learner_pipeline: If True (default), RLlib's
                 Learners automatically add the default Learner ConnectorV2
                 pieces to the LearnerPipeline. These automatically perform:
