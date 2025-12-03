@@ -42,8 +42,8 @@ from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(
-    default_reward=450.0,
-    default_timesteps=250_000,
+    default_reward=450.0,  # TODO: Can we reliably achieve this?
+    default_timesteps=10_000_000,  # TODO: I believe this should be achievable in 250k
 )
 parser.set_defaults(
     num_env_runners=4,

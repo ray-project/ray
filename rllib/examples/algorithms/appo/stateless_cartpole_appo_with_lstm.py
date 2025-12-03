@@ -57,11 +57,11 @@ from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(
-    default_reward=300.0,
-    default_timesteps=2_000_000,
+    default_reward=300.0,  # TODO: Test if correct
+    default_timesteps=2_000_000,  # TODO: Test if correct
 )
 parser.set_defaults(
-    num_env_runners=3,
+    num_env_runners=4,
     num_envs_per_env_runner=16,
 )
 # Use `parser` to add your own custom command line options to this script

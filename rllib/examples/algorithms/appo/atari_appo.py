@@ -45,10 +45,9 @@ The entropy coefficient schedule (decaying from 0.01 to 0.0 over 3 million
 timesteps) is crucial for achieving good final performance - removing this
 schedule will likely result in suboptimal policies.
 """
-from functools import partial
-
 import gymnasium as gym
 
+import ray
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.connectors.env_to_module.frame_stacking import FrameStackingEnvToModule
 from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
@@ -57,13 +56,13 @@ from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(
-    default_reward=18.0,
+    default_reward=18.0,  # TODO: Determine accurate reward scale
     default_timesteps=10_000_000,  # 40 million frames
 )
 parser.set_defaults(
     env="ale_py:ALE/Breakout-v5",
+    num_env_runners=4,
     num_envs_per_env_runner=5,
-    num_env_runners=8,
 )
 args = parser.parse_args()
 
@@ -76,10 +75,19 @@ def env_creator(cfg):
     )
 
 
+def make_frame_stacking_env_to_module(env, spaces, device):
+    return FrameStackingEnvToModule(num_frames=4)
+
+def make_frame_stacking_learner(input_obs_space, input_action_space):
+    return FrameStackingLearner(num_frames=4)
+
+
+ray.tune.register_env("atari-env", env_creator)
+
 config = (
     APPOConfig()
     .environment(
-        env_creator,
+        "atari-env",
         env_config={
             # Make analogous to old v4 + NoFrameskip.
             "frameskip": 1,
@@ -91,13 +99,13 @@ config = (
     .env_runners(
         num_env_runners=args.num_env_runners,
         num_envs_per_env_runner=args.num_envs_per_env_runner,
-        env_to_module_connector=partial(FrameStackingEnvToModule, num_frames=4),
+        env_to_module_connector=make_frame_stacking_env_to_module,
     )
     .learners(
         num_aggregator_actors_per_learner=2,
     )
     .training(
-        learner_connector=partial(FrameStackingLearner, num_frames=4),
+        learner_connector=make_frame_stacking_learner,
         train_batch_size_per_learner=500,
         target_network_update_freq=2,
         lr=0.0005 * ((args.num_learners or 1) ** 0.5),

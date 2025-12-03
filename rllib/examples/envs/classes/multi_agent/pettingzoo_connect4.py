@@ -112,40 +112,18 @@ class MultiAgentConnect4(MultiAgentEnv):
             self.env = connect_four_v3()
         else:
             self.env = env
-        self.env.reset()
-
-        # If these important attributes are not set, try to infer them.
-        if not self.agents:
-            self.agents = list(self._agent_ids)
-        if not self.possible_agents:
-            self.possible_agents = self.agents.copy()
 
         self.config = config
-        # Get first observation space, assuming all agents have equal space
-        self.observation_space = self.env.observation_space(self.env.agents[0])
 
-        # Get first action space, assuming all agents have equal space
-        self.action_space = self.env.action_space(self.env.agents[0])
-
-        assert all(
-            self.env.observation_space(agent) == self.observation_space
-            for agent in self.env.agents
-        ), (
-            "Observation spaces for all agents must be identical. Perhaps "
-            "SuperSuit's pad_observations wrapper can help (useage: "
-            "`supersuit.aec_wrappers.pad_observations(env)`"
-        )
-
-        assert all(
-            self.env.action_space(agent) == self.action_space
-            for agent in self.env.agents
-        ), (
-            "Action spaces for all agents must be identical. Perhaps "
-            "SuperSuit's pad_action_space wrapper can help (usage: "
-            "`supersuit.aec_wrappers.pad_action_space(env)`"
-        )
-
-        self._agent_ids = set(self.env.agents)
+        self.agents = self.possible_agents = self.env.agents
+        self.observation_spaces = {
+            agent_id: self.env.observation_space(agent_id)
+            for agent_id in self.possible_agents
+        }
+        self.action_spaces = {
+            agent_id: self.env.action_space(agent_id)
+            for agent_id in self.possible_agents
+        }
 
     def observe(self):
         return {

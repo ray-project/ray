@@ -55,7 +55,7 @@ from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(
-    default_reward=8000.0,
+    default_reward=8000.0,  # TODO: Determine true default_reward
     default_timesteps=2_000_000,
 )
 parser.set_defaults(
