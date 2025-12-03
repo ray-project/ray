@@ -343,8 +343,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
     def _add_input_inner(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
-        if "StreamingRepartition" in self.name:
-            print(f"refs is {refs}, {self._block_ref_bundler}")
         # Add RefBundle to the bundler.
         self._block_ref_bundler.add(refs)
         self._metrics.on_input_queued(refs)
