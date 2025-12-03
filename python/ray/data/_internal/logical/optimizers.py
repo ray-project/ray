@@ -20,6 +20,7 @@ from ray.data._internal.logical.rules.operator_fusion import FuseOperators
 from ray.data._internal.logical.rules.predicate_pushdown import PredicatePushdown
 from ray.data._internal.logical.rules.projection_pushdown import ProjectionPushdown
 from ray.data._internal.logical.rules.set_read_parallelism import SetReadParallelismRule
+from ray.data._internal.planner.plan_expression.expression_analyzer import Analyzer
 from ray.util.annotations import DeveloperAPI
 
 _LOGICAL_RULESET = Ruleset(
@@ -83,6 +84,7 @@ def get_plan_conversion_fns() -> List[Callable[[Plan], Plan]]:
     from ray.data._internal.planner import create_planner
 
     return [
+        Analyzer.analyze,
         LogicalOptimizer().optimize,  # Logical optimization
         create_planner().plan,  # Planning
         PhysicalOptimizer().optimize,  # Physical optimization
@@ -92,23 +94,27 @@ def get_plan_conversion_fns() -> List[Callable[[Plan], Plan]]:
 def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
     """Get the physical execution plan for the provided logical plan.
 
-    This process has 3 steps:
-    (1) logical optimization: optimize logical operators.
-    (2) planning: convert logical to physical operators.
-    (3) physical optimization: optimize physical operators.
+    This process has 4 steps:
+    (1) analysis: resolve unresolved column references.
+    (2) logical optimization: optimize logical operators.
+    (3) planning: convert logical to physical operators.
+    (4) physical optimization: optimize physical operators.
     """
 
     # 1. Get planning functions
-    optimize_logical, plan, optimize_physical = get_plan_conversion_fns()
+    analyze, optimize_logical, plan, optimize_physical = get_plan_conversion_fns()
 
-    # 2. Logical -> Logical (Optimized)
-    optimized_logical_plan = optimize_logical(logical_plan)
+    # 2. Logical -> Logical (Analyzed)
+    analyzed_logical_plan = analyze(logical_plan)
 
-    # 3. Rewire Logical -> Logical (Optimized)
+    # 3. Logical (Analyzed) -> Logical (Optimized)
+    optimized_logical_plan = optimize_logical(analyzed_logical_plan)
+
+    # 4. Rewire Logical -> Logical (Optimized)
     logical_plan._dag = optimized_logical_plan.dag
 
-    # 4. Logical (Optimized) -> Physical
+    # 5. Logical (Optimized) -> Physical
     physical_plan = plan(optimized_logical_plan)
 
-    # 5. Physical (Optimized) -> Physical
+    # 6. Physical -> Physical (Optimized)
     return optimize_physical(physical_plan)

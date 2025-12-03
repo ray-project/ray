@@ -706,7 +706,7 @@ class ResolvedColumnExpr(NamedExpr):
         >>> age_expr = col("age") # Creates ColumnExpr(name="age")
     """
 
-    _data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
+    _data_type: DataType = field(default_factory=lambda: DataType(object))
 
     @property
     def _is_resolved(self) -> bool:

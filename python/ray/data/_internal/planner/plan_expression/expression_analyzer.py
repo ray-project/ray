@@ -1,9 +1,11 @@
-import copy as cp
-from typing import List, Set, Type
+from __future__ import annotations
 
-from ray.data import Schema
+import copy as cp
+from typing import TYPE_CHECKING, List, Set, Type
+
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
 from ray.data._internal.logical.operators.map_operator import Filter, Project
+from ray.data._internal.logical.ruleset import Ruleset
 from ray.data.expressions import (
     AliasExpr,
     BinaryExpr,
@@ -15,6 +17,9 @@ from ray.data.expressions import (
     UnaryExpr,
     UnresolvedColumnExpr,
 )
+
+if TYPE_CHECKING:
+    from ray.data import Schema
 
 
 class ResolveAttributes(Rule):
@@ -55,21 +60,23 @@ class ResolveAttributes(Rule):
                 index = schema.names.index(name)
                 return ResolvedColumnExpr(_name=name, _data_type=schema.types[index])
             case BinaryExpr(op=op, left=left, right=right):
-                new_left = self.apply(left, schema)
-                new_right = self.apply(right, schema)
+                new_left = self.resolve_attributes(left, schema)
+                new_right = self.resolve_attributes(right, schema)
                 return BinaryExpr(op=op, left=new_left, right=new_right)
 
             case UnaryExpr(op=op, operand=operand):
-                new_operand = self.apply(operand, schema)
+                new_operand = self.resolve_attributes(operand, schema)
                 return UnaryExpr(op=op, operand=new_operand)
 
             case AliasExpr(expr=child, _name=name, _is_rename=is_rename):
-                new_child = self.apply(child, schema)
+                new_child = self.resolve_attributes(child, schema)
                 return AliasExpr(expr=new_child, _name=name, _is_rename=is_rename)
 
             case UDFExpr(fn=fn, args=args, kwargs=kwargs, data_type=dtype):
-                new_args = [self.apply(arg, schema) for arg in args]
-                new_kwargs = {k: self.apply(v, schema) for k, v in kwargs.items()}
+                new_args = [self.resolve_attributes(arg, schema) for arg in args]
+                new_kwargs = {
+                    k: self.resolve_attributes(v, schema) for k, v in kwargs.items()
+                }
                 return UDFExpr(
                     fn=fn, args=new_args, kwargs=new_kwargs, _data_type=dtype
                 )
@@ -112,9 +119,13 @@ class ResolveStar(Rule):
                 assert len(existing_cols) == len(existing_exprs)
 
                 non_existing_exprs: List[Expr] = []
-                for col_name in op_schema.names:
+                for i, col_name in enumerate(op_schema.names):
                     if col_name not in existing_cols:
-                        non_existing_exprs.append(ResolvedColumnExpr(_name=col_name))
+                        non_existing_exprs.append(
+                            ResolvedColumnExpr(
+                                _name=col_name, _data_type=op_schema.types[i]
+                            )
+                        )
 
                 op = cp.copy(op)
                 op._exprs = existing_exprs + non_existing_exprs + additional_exprs
@@ -130,20 +141,20 @@ class ResolveStar(Rule):
         return [ResolveAttributes]
 
 
-_RULES = [ResolveAttributes]
+_RULES = Ruleset([ResolveAttributes, ResolveStar])
 
 
 class Analyzer:
     """Resolves expressions using rules"""
 
     @classmethod
-    def analyze(cls, expr: Expr, schema: Schema) -> Expr:
+    def analyze(cls, plan: LogicalPlan) -> LogicalPlan:
         while True:
-            new_expr = expr
+            curr_plan = plan
             for rule in _RULES:
-                new_expr = rule.apply(new_expr, schema)
+                curr_plan = rule().apply(curr_plan)
 
-            if new_expr.structurally_equals(expr):
+            if curr_plan is plan:
                 break
-            expr = new_expr
-        return expr
+            plan = curr_plan
+        return plan
