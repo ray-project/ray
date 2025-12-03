@@ -1,5 +1,9 @@
 # SGLang Compatibility
 
+:::{warning}
+This is an example only and isn't in active maintenance. Use it as a reference for your own implementations.
+:::
+
 Ray Serve LLM provides an OpenAI-compatible API that aligns with SGLang's OpenAI-compatible server. Most of the `engine_kwargs` that work with `sglang serve` work with Ray Serve LLM, giving you access to SGLang's feature set through Ray Serve's distributed deployment capabilities.
 
 This compatibility means you can:
