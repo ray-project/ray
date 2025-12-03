@@ -8,6 +8,7 @@ actual object store size.
 
 import inspect
 import sys
+from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -77,7 +78,9 @@ def get_actual_object_store_size(block_ref: ray.ObjectRef) -> int:
     return object_size
 
 
-def _log_size_estimation(block, tolerance=None):
+def _log_size_estimation(
+    block: Union[pd.DataFrame, pa.Table], tolerance: Optional[float] = None
+) -> None:
     """Helper function to log size estimation comparison for blocks.
 
     Works with both Pandas DataFrames and Arrow Tables.
@@ -211,7 +214,7 @@ class TestPandasBlockSizeBytes:
         bytes_per_row_estimate = 8 + 8 + 50 + 128  # int, float, string, bytes
         num_rows = TARGET_SIZE_BYTES // bytes_per_row_estimate
         data = {
-            "integers": [i for i in range(num_rows)],
+            "integers": list(range(num_rows)),
             "floats": [float(i) for i in range(num_rows)],
             "strings": [
                 "apple" if i % 3 == 0 else "banana" if i % 3 == 1 else "cherry"
@@ -902,7 +905,7 @@ class TestArrowBlockSizeBytes:
         num_rows = TARGET_SIZE_BYTES // bytes_per_row_estimate
         block = pa.table(
             {
-                "integers": [i for i in range(num_rows)],
+                "integers": list(range(num_rows)),
                 "floats": [float(i) for i in range(num_rows)],
                 "strings": [
                     "apple" if i % 3 == 0 else "banana" if i % 3 == 1 else "cherry"
