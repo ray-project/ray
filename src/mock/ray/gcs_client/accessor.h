@@ -80,11 +80,6 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
                int64_t timeout_ms,
                const std::vector<NodeID> &node_ids),
               (override));
-  MOCK_METHOD(void,
-              AsyncSubscribeToNodeChange,
-              (std::function<void(NodeID, const rpc::GcsNodeInfo &)> subscribe,
-               StatusCallback done),
-              (override));
   MOCK_METHOD(
       void,
       AsyncSubscribeToNodeAddressAndLivenessChange,
@@ -92,19 +87,11 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
            subscribe,
        StatusCallback done),
       (override));
-  MOCK_METHOD(const rpc::GcsNodeInfo *,
-              Get,
-              (const NodeID &node_id, bool filter_dead_nodes),
-              (const, override));
-  MOCK_METHOD(const rpc::GcsNodeAddressAndLiveness *,
+  MOCK_METHOD(std::optional<rpc::GcsNodeAddressAndLiveness>,
               GetNodeAddressAndLiveness,
               (const NodeID &node_id, bool filter_dead_nodes),
               (const, override));
-  MOCK_METHOD((const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &),
-              GetAll,
-              (),
-              (const, override));
-  MOCK_METHOD((const absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> &),
+  MOCK_METHOD((absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness>),
               GetAllNodeAddressAndLiveness,
               (),
               (const, override));
@@ -115,6 +102,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
                std::vector<bool> &nodes_alive),
               (override));
   MOCK_METHOD(bool, IsNodeDead, (const NodeID &node_id), (const, override));
+  MOCK_METHOD(bool, IsNodeAlive, (const NodeID &node_id), (const, override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
 };
 

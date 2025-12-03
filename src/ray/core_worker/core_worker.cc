@@ -453,10 +453,10 @@ CoreWorker::CoreWorker(
     periodical_runner_->RunFnPeriodically(
         [this] {
           RAY_LOG(INFO) << "Event stats:\n\n"
-                        << io_service_.stats().StatsString() << "\n\n"
+                        << io_service_.stats()->StatsString() << "\n\n"
                         << "-----------------\n"
                         << "Task execution event stats:\n"
-                        << task_execution_service_.stats().StatsString() << "\n\n"
+                        << task_execution_service_.stats()->StatsString() << "\n\n"
                         << "-----------------\n"
                         << "Task Event stats:\n"
                         << task_event_buffer_->DebugString() << "\n";
@@ -3171,10 +3171,11 @@ Status CoreWorker::ReportGeneratorItemReturns(
   request.set_attempt_number(attempt_number);
   auto client = core_worker_client_pool_->GetOrConnect(caller_address);
 
+  // This means it is the last report when the task has finished executing.
   if (!dynamic_return_object.first.IsNil()) {
-    auto return_object_proto = request.add_dynamic_return_objects();
-    SerializeReturnObject(
-        dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
+    SerializeReturnObject(dynamic_return_object.first,
+                          dynamic_return_object.second,
+                          request.mutable_returned_object());
     std::vector<ObjectID> deleted;
     // When we allocate a dynamic return ID (AllocateDynamicReturnId),
     // we borrow the object. When the object value is allocatd, the
