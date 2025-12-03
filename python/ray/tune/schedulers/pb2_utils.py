@@ -10,9 +10,6 @@ class TV_SquaredExp(Kernel):
     """Time varying squared exponential kernel.
     For more info see the TV-GP-UCB paper:
     http://proceedings.mlr.press/v51/bogunovic16.pdf
-
-    This is a sklearn-compatible kernel that implements the time-varying
-    squared exponential kernel from the PB2 paper.
     """
 
     def __init__(
@@ -44,31 +41,10 @@ class TV_SquaredExp(Kernel):
         return Hyperparameter("epsilon", "numeric", self.epsilon_bounds)
 
     def __call__(self, X, Y=None, eval_gradient=False):
-        """Compute the kernel matrix K(X, Y) and optionally its gradient.
-
-        Parameters
-        ----------
-        X : array-like of shape (n_samples_X, n_features)
-            Left argument of the returned kernel k(X, Y)
-        Y : array-like of shape (n_samples_Y, n_features), default=None
-            Right argument of the returned kernel k(X, Y). If None, k(X, X)
-            is evaluated.
-        eval_gradient : bool, default=False
-            Determines whether the gradient with respect to the log of
-            the kernel hyperparameter is computed.
-
-        Returns
-        -------
-        K : ndarray of shape (n_samples_X, n_samples_Y)
-            Kernel k(X, Y)
-        K_gradient : ndarray of shape (n_samples_X, n_samples_X, n_dims), optional
-            Only returned when `eval_gradient` is True.
-        """
         X = np.atleast_2d(X)
         if Y is None:
             Y = X
 
-        # Clip epsilon to valid range
         epsilon = np.clip(self.epsilon, 1e-5, 0.5)
 
         # Time must be in the first column
@@ -87,20 +63,11 @@ class TV_SquaredExp(Kernel):
         K = rbf * timekernel
 
         if eval_gradient:
-            # Gradient computation for hyperparameter optimization
-            # Gradient w.r.t. log(variance)
-            K_gradient_variance = K  # d/d(log(variance)) = variance * dK/dvariance = K
-
-            # Gradient w.r.t. log(lengthscale)
+            K_gradient_variance = K
             dist2 = np.square(euclidean_distances(X_spatial, Y_spatial))
-            K_gradient_lengthscale = (
-                K * dist2 / (self.lengthscale**2)
-            )  # * lengthscale for log
-
-            # Gradient w.r.t. log(epsilon)
+            K_gradient_lengthscale = K * dist2 / (self.lengthscale**2)
             n = dists / 2
-            K_gradient_epsilon = -K * n * epsilon / (1 - epsilon)  # * epsilon for log
-
+            K_gradient_epsilon = -K * n * epsilon / (1 - epsilon)
             return K, np.dstack(
                 [K_gradient_variance, K_gradient_lengthscale, K_gradient_epsilon]
             )
@@ -108,52 +75,26 @@ class TV_SquaredExp(Kernel):
         return K
 
     def diag(self, X):
-        """Returns the diagonal of the kernel k(X, X)."""
         return np.full(X.shape[0], self.variance, dtype=np.float64)
-
-    def is_stationary(self):
-        """Returns whether the kernel is stationary."""
-        return False
-
-    def clone_with_theta(self, theta):
-        """Returns a clone of self with given hyperparameters theta."""
-        cloned = TV_SquaredExp(
-            variance=np.exp(theta[0]),
-            lengthscale=np.exp(theta[1]),
-            epsilon=np.exp(theta[2]),
-            variance_bounds=self.variance_bounds,
-            lengthscale_bounds=self.lengthscale_bounds,
-            epsilon_bounds=self.epsilon_bounds,
-        )
-        return cloned
 
     @property
     def theta(self):
-        """Returns the log-transformed hyperparameters."""
         return np.log([self.variance, self.lengthscale, self.epsilon])
 
     @theta.setter
     def theta(self, theta):
-        """Sets the hyperparameters from log-transformed values."""
         self.variance = np.exp(theta[0])
         self.lengthscale = np.exp(theta[1])
         self.epsilon = np.exp(theta[2])
 
     @property
     def bounds(self):
-        """Returns the log-transformed bounds on hyperparameters."""
         return np.log(
             [
                 list(self.variance_bounds),
                 list(self.lengthscale_bounds),
                 list(self.epsilon_bounds),
             ]
-        )
-
-    def __repr__(self):
-        return (
-            f"TV_SquaredExp(variance={self.variance:.3g}, "
-            f"lengthscale={self.lengthscale:.3g}, epsilon={self.epsilon:.3g})"
         )
 
 
