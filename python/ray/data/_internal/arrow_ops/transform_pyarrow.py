@@ -519,10 +519,6 @@ def _align_struct_fields(
     # Extract all struct column types from the provided schema
     unified_struct_types = _extract_unified_struct_types(schema)
 
-    # If there are no struct columns in the schema, return blocks as is
-    if not unified_struct_types:
-        return blocks
-
     aligned_blocks = []
 
     # Iterate over each block (table) in the list
@@ -742,12 +738,8 @@ def concat(
     for col_name in schema.names:
         col_type = schema.field(col_name).type
 
-        col_chunked_arrays = []
-        for block in blocks:
-            if col_name in block.schema.names:
-                col_chunked_arrays.append(block.column(col_name))
-            else:
-                col_chunked_arrays.append(pa.nulls(block.num_rows, type=col_type))
+        # _align_struct_fields guarantees the existence of the column
+        col_chunked_arrays = [block.column(col_name) for block in blocks]
 
         if col_name in cols_with_null_list:
             concatenated_cols[col_name] = _concat_cols_with_null_list(
