@@ -266,7 +266,11 @@ class WorkerGroup(BaseWorkerGroup):
         scaling_config = self._train_run_context.scaling_config
         pg: Optional[PlacementGroup] = None
 
-        if scaling_config.use_tpu and scaling_config.topology:
+        if (
+            scaling_config.use_tpu
+            and scaling_config.topology
+            and scaling_config.accelerator_type
+        ):
             # Utilize SlicePlacementGroup scheduling logic when a specific TPU
             # topology is specified.
             pg, worker_group_context = self._setup_tpu_placement_group(
