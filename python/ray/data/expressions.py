@@ -1113,7 +1113,12 @@ class DownloadExpr(Expr):
 
     @classmethod
     def from_uri(cls, uri_column_name: str) -> "DownloadExpr":
-        cls(uri_column=UnresolvedColumnExpr(_name=uri_column_name))
+        return cls(uri_column=UnresolvedColumnExpr(_name=uri_column_name))
+
+    @property
+    def uri_column_name(self) -> str:
+        """Get the name of the URI column for backward compatibility."""
+        return self.uri_column.get_root_name()
 
     @override
     def _is_resolved(self) -> bool:
@@ -1129,7 +1134,7 @@ class DownloadExpr(Expr):
     def structurally_equals(self, other: Any) -> bool:
         return (
             isinstance(other, DownloadExpr)
-            and self.uri_column_name == other.uri_column_name
+            and self.uri_column == other.uri_column
         )
 
 
@@ -1302,7 +1307,8 @@ def download(uri_column_name: str | NamedExpr) -> DownloadExpr:
     and return the downloaded bytes.
 
     Args:
-        uri_column_name: The name of the column containing URIs to download from
+        uri_column_name: The name of the column containing URIs to download from,
+        or a named expressions. A named expression is one of col() or alias().
     Returns:
         A DownloadExpr that will download content from the specified URI column
 
@@ -1320,8 +1326,6 @@ def download(uri_column_name: str | NamedExpr) -> DownloadExpr:
     """
     if isinstance(uri_column_name, str):
         return DownloadExpr.from_uri(uri_column_name=uri_column_name)
-    if not isinstance(uri_column_name, NamedExpr):
-        raise ValueError("You can only download a col or alias expressions")
     return DownloadExpr(uri_column=uri_column_name)
 
 
