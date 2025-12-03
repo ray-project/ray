@@ -31,7 +31,7 @@ import {
 import rowStyles from "../common/RowStyles";
 import { sliceToPage } from "../common/util";
 import { getSumGpuUtilization, WorkerGpuRow } from "../pages/node/GPUColumn";
-import { getSumVRAMUsage, WorkerVRAM } from "../pages/node/VRAMColumn";
+import { getSumGRAMUsage, WorkerGRAM } from "../pages/node/GRAMColumn";
 import { ActorDetail, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
 import { memoryConverter } from "../util/converter";
@@ -112,7 +112,7 @@ const ActorTable = ({
     const actorList = Object.values(actors || {}).filter(filterFunc);
     let actorsSortedUserKey = actorList;
     if (aggregateUserSortKeys.includes(sorterKey)) {
-      // Uptime, GPU utilization, and VRAM usage are user specified sort keys but require an aggregate function
+      // Uptime, GPU utilization, and GRAM usage are user specified sort keys but require an aggregate function
       // over the actor attribute, so sorting with sortBy
       actorsSortedUserKey = _.sortBy(actorList, (actor) => {
         const descMultiplier = descVal ? 1 : -1;
@@ -137,8 +137,8 @@ const ActorTable = ({
             );
             return sumGpuUtilization * descMultiplier;
           case gramUsageSorterKey:
-            const sumVRAMUsage = getSumVRAMUsage(actor.pid, actor.gpus);
-            return sumVRAMUsage * descMultiplier;
+            const sumGRAMUsage = getSumGRAMUsage(actor.pid, actor.gpus);
+            return sumGRAMUsage * descMultiplier;
           default:
             return 0;
         }
@@ -285,10 +285,10 @@ const ActorTable = ({
       ),
     },
     {
-      label: "VRAM",
+      label: "GRAM",
       helpInfo: (
         <Typography>
-          Actor's VRAM usage (from Worker Process). <br />
+          Actor's GRAM usage (from Worker Process). <br />
         </Typography>
       ),
     },
@@ -535,9 +535,9 @@ const ActorTable = ({
               ["mem[0]", "Total Memory"],
               ["processStats.cpuPercent", "CPU"],
               // Fake attribute key used when sorting by GPU utilization and
-              // VRAM usage because aggregate function required on actor key before sorting.
+              // GRAM usage because aggregate function required on actor key before sorting.
               [gpuUtilizationSorterKey, "GPU Utilization"],
-              [gramUsageSorterKey, "VRAM Usage"],
+              [gramUsageSorterKey, "GRAM Usage"],
             ]}
             onChange={(val) => setSortKey(val)}
             showAllOption={false}
@@ -751,7 +751,7 @@ const ActorTable = ({
                     <WorkerGpuRow workerPID={pid} gpus={gpus} />
                   </TableCell>
                   <TableCell>
-                    <WorkerVRAM workerPID={pid} gpus={gpus} />
+                    <WorkerGRAM workerPID={pid} gpus={gpus} />
                   </TableCell>
                   <TableCell
                     align="center"

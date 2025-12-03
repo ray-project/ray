@@ -26,7 +26,7 @@ import { NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
 import { NodeGPUView, WorkerGpuRow } from "./GPUColumn";
-import { NodeVRAM, WorkerVRAM } from "./VRAMColumn";
+import { NodeGRAM, WorkerGRAM } from "./GRAMColumn";
 
 const TEXT_COL_MIN_WIDTH = 100;
 
@@ -161,7 +161,7 @@ export const NodeRow = ({
         <NodeGPUView node={node} />
       </TableCell>
       <TableCell>
-        <NodeVRAM node={node} />
+        <NodeGRAM node={node} />
       </TableCell>
       <TableCell>
         {raylet && objectStoreTotalMemory && (
@@ -301,7 +301,7 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
         <WorkerGpuRow workerPID={pid} gpus={node.gpus} />
       </TableCell>
       <TableCell>
-        <WorkerVRAM workerPID={pid} gpus={node.gpus} />
+        <WorkerGRAM workerPID={pid} gpus={node.gpus} />
       </TableCell>
       <TableCell>N/A</TableCell>
       <TableCell>N/A</TableCell>

@@ -232,7 +232,7 @@ describe("ActorTable", () => {
       - Used memory: Actor 1 memory > Actor 2 memory --> Actor 1 row before Actor 2 row
       - Uptime: Actor 2 uptime < Actor 1 uptime --> Actor 2 row before Actor 1 row
       - GPU Utilization: Actor 1 GPU > Actor 2 GPU --> Actor 1 row before Actor 2 row
-      - VRAM Utilization: Actor 2 VRAM > Actor 1 VRAM --> Actor 2 row before Actor 1 row
+      - GRAM Utilization: Actor 2 GRAM > Actor 1 GRAM --> Actor 2 row before Actor 1 row
     */
     const RUNNING_ACTORS = {
       ...MOCK_ACTORS,
@@ -373,18 +373,18 @@ describe("ActorTable", () => {
       Node.DOCUMENT_POSITION_FOLLOWING,
     ); // actor1Row appear before actor2Row
 
-    // Sort by VRAM usage
+    // Sort by GRAM usage
     await user.click(screen.getByRole("combobox", { name: /Sort By/ }));
-    await user.click(screen.getByRole("option", { name: /VRAM Usage/ }));
-    const actor1VRAMRow = screen.getByRole("row", {
+    await user.click(screen.getByRole("option", { name: /GRAM Usage/ }));
+    const actor1GRAMRow = screen.getByRole("row", {
       name: /ACTOR_1/,
     });
-    const actor2VRAMRow = screen.getByRole("row", {
+    const actor2GRAMRow = screen.getByRole("row", {
       name: /ACTOR_2/,
     });
-    expect(within(actor1VRAMRow).getByText("ACTOR_1")).toBeInTheDocument();
-    expect(within(actor2VRAMRow).getByText("ACTOR_2")).toBeInTheDocument();
-    expect(actor2VRAMRow.compareDocumentPosition(actor1VRAMRow)).toBe(
+    expect(within(actor1GRAMRow).getByText("ACTOR_1")).toBeInTheDocument();
+    expect(within(actor2GRAMRow).getByText("ACTOR_2")).toBeInTheDocument();
+    expect(actor2GRAMRow.compareDocumentPosition(actor1GRAMRow)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     ); // actor2Row appear before actor1Row
   });
