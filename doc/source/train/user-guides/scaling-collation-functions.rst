@@ -108,25 +108,17 @@ Use ``repartition`` after ``map_batches`` when your collate function produces th
 
 .. code-block:: python
 
-    dataset = (
-        dataset
-        .map_batches(collate_fn, batch_size=BATCH_SIZE)
-        .repartition(target_num_rows_per_block=BATCH_SIZE)
-    )
+    dataset = dataset.map_batches(collate_fn, batch_size=BATCH_SIZE).repartition(target_num_rows_per_block=BATCH_SIZE)
 
 This ensures the collate function receives batches of size ``BATCH_SIZE``, and the output blocks also contain ``BATCH_SIZE`` rows.
 
 **Mode 2: Output row count differs from input row count**
 
-Use ``repartition`` before ``map_batches`` when you don't need to ensure output block sizes:
+Use ``repartition`` before ``map_batches`` when you don't need to ensure output block sizes. See :ref:`Advanced: Handling custom data types <train-tensor-serialization-utility>` for an example where batches are serialized into single rows.
 
 .. code-block:: python
 
-    dataset = (
-        dataset
-        .repartition(target_num_rows_per_block=BATCH_SIZE)
-        .map_batches(collate_fn, batch_size=BATCH_SIZE)
-    )
+    dataset = dataset.repartition(target_num_rows_per_block=BATCH_SIZE).map_batches(collate_fn, batch_size=BATCH_SIZE)
 
 Implementation
 --------------
