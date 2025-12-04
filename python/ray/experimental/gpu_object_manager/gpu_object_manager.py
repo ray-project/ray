@@ -242,9 +242,9 @@ class GPUObjectManager:
 
         # isinstance does an implicit cast and makes communicator_name inaccessible
         # so we have to get communicator_name before the cast.
-        collective_group_name = ref_info.communicator_meta.communicator_name
         if isinstance(ref_info.communicator_meta, CollectiveCommunicatorMetadata):
             try:
+                collective_group_name = ref_info.communicator_meta.communicator_name
                 destroy_collective_group(collective_group_name)
                 logger.error(
                     "Destroyed collective group %s due to a hanging/failed RDT transfer",
