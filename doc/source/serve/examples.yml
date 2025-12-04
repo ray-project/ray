@@ -155,3 +155,10 @@ examples:
       - time series forecasting
     link: tutorials/model_multiplexing_forecast/content/README
     related_technology: deployment patterns
+
+  - title: Model Composition for Recommendation Systems
+    skill_level: intermediate
+    use_cases:
+      - recommendation systems
+    link: tutorials/model_composition_recsys/content/README
+    related_technology: deployment patterns

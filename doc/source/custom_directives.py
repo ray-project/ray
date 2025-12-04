@@ -453,6 +453,7 @@ class UseCase(ExampleEnum):
     COMPUTER_VISION = "Computer Vision"
     NATURAL_LANGUAGE_PROCESSING = "Natural Language Processing"
     TIME_SERIES_FORECASTING = "Time Series Forecasting"
+    RECOMMENDATION_SYSTEMS = "Recommendation Systems"
     ETL = "ETL"
     DATA_INGESTION = "Data Ingestion"
     DATA_WAREHOUSING = "Data Warehousing"
