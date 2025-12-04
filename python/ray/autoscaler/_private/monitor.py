@@ -268,19 +268,6 @@ class Monitor:
             self.autoscaler.provider._set_nodes(new_nodes)
 
         mirror_node_types = {}
-        legacy_cluster_full_detected = any(
-            getattr(entry, "cluster_full_of_actors_detected", False)
-            for entry in resources_batch_data.batch
-        )
-        cluster_full = legacy_cluster_full_detected or getattr(
-            response, "cluster_full_of_actors_detected_by_gcs", False
-        )
-        if (
-            hasattr(response, "cluster_full_of_actors_detected_by_gcs")
-            and response.cluster_full_of_actors_detected_by_gcs
-        ):
-            # GCS has detected the cluster full of actors.
-            cluster_full = True
         for resource_message in cluster_resource_state.node_states:
             node_id = resource_message.node_id
             # Generate node type config based on GCS reported node list.
@@ -341,7 +328,6 @@ class Monitor:
                 waiting_bundles,
                 infeasible_bundles,
                 pending_placement_groups,
-                cluster_full,
             )
         if self.readonly_config:
             self.readonly_config["available_node_types"].update(mirror_node_types)
