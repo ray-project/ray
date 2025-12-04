@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 import pyarrow as pa
@@ -453,6 +453,67 @@ def _dtype_aggregators_for_dataset(
     )
 
 
+def _format_stats(
+    agg: AggregateFnV2, value: Any, agg_type: pa.DataType
+) -> Dict[str, Tuple[Any, pa.DataType]]:
+    """Format aggregation result into stat entries.
+
+    Takes the raw aggregation result and formats it into one or more stat
+    entries. For scalar results, returns a single entry. For list results,
+    expands into multiple indexed entries.
+
+    Args:
+        agg: The aggregator instance
+        value: The aggregation result value
+        agg_type: PyArrow type of the aggregation result
+
+    Returns:
+        Dictionary mapping stat names to (value, type) tuples
+    """
+    from ray.data.datatype import DataType
+
+    agg_name = agg.get_agg_name()
+
+    # Handle list results: expand into separate indexed stats
+    # If the value is None but the type is list, it means we got a null result
+    # for a list-type aggregator (e.g., ignore_nulls=True and all nulls).
+    labels = agg.get_result_labels()
+    is_list_type = (
+        pa.types.is_list(agg_type)
+        or (labels is not None and len(labels) > 0)
+        or DataType.from_arrow(agg_type).is_list_type()
+    )
+
+    if isinstance(value, list) or (value is None and is_list_type):
+        scalar_type = (
+            agg_type.value_type
+            if DataType.from_arrow(agg_type).is_list_type()
+            else agg_type
+        )
+        if value is None:
+            # If we have explicit labels, expand to Nones for each label.
+            # Otherwise, return as is (unexpanded) since we can't determine expansion size.
+            if labels is not None:
+                return {f"{agg_name}[{label}]": (None, scalar_type) for label in labels}
+        else:
+            if not labels:
+                labels = [str(idx) for idx in range(len(value))]
+            elif len(labels) != len(value):
+                raise ValueError(
+                    f"Aggregator {agg.__class__.__name__} returned {len(value)} values "
+                    f"but get_result_labels() returned {len(labels)} labels. "
+                    f"These must match to properly format statistics."
+                )
+
+            return {
+                f"{agg_name}[{label}]": (list_val, scalar_type)
+                for label, list_val in zip(labels, value)
+            }
+
+    # Fallback to scalar result for non-list values or unexpandable Nones
+    return {agg_name: (value, agg_type)}
+
+
 def _parse_summary_stats(
     agg_result: Dict[str, any],
     original_schema: pa.Schema,
@@ -491,10 +552,10 @@ def _parse_summary_stats(
             # Skip aggregations without a target column (e.g., Count())
             continue
 
-        # Let the aggregator format its own results
+        # Format the aggregation results
         agg_type = agg_schema.field(key).type
         original_type = original_schema.field(col_name).type
-        formatted_stats = agg.format_stats(value, agg_type)
+        formatted_stats = _format_stats(agg, value, agg_type)
 
         for stat_name, (stat_value, stat_type) in formatted_stats.items():
             # Add formatted stats to appropriate dict based on schema matching
