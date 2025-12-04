@@ -16,6 +16,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray._common.retry import call_with_retry
+from ray.data._internal.arrow_block import ArrowBlockAccessor, ArrowBlockColumnAccessor
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -368,38 +369,29 @@ class TurbopufferDatasink(Datasink):
 
         # Sort the table by the grouping column. This groups all rows with the
         # same namespace value together, enabling efficient slicing.
-        # Using transform_pyarrow.sort with SortKey for better extension array handling.
         sort_key = SortKey(key=group_col_name, descending=False)
         sorted_table = transform_pyarrow.sort(table, sort_key)
 
-        # Use PyArrow's group_by() to efficiently identify unique groups and their counts.
-        # Note: group_by().aggregate() uses hash aggregation with use_threads=True by default,
-        # which does NOT guarantee output order matches input order. We must sort the result
-        # to ensure it matches the sorted table order for correct slicing.
-        grouped = sorted_table.group_by(group_col_name)
-        agg_result = grouped.aggregate([(_ID_COLUMN, "count")])
+        block_accessor = ArrowBlockAccessor(sorted_table)
+        group_col = sorted_table.column(group_col_name)
+        col_accessor = ArrowBlockColumnAccessor(group_col)
+        counts_dict = col_accessor.value_counts()
 
-        # Sort the aggregate result by the group column to match the sorted table order.
-        # This is critical: without this sort, rows could be assigned to wrong namespaces.
-        agg_sort_indices = pc.sort_indices(
-            agg_result, sort_keys=[(group_col_name, "ascending")]
+        if not counts_dict:
+            logger.debug("No groups found in table")
+            return
+
+        groups = sorted(
+            zip(counts_dict["values"], counts_dict["counts"]),
+            key=lambda x: x[0],
         )
-        agg_result = agg_result.take(agg_sort_indices)
 
-        group_keys = agg_result.column(group_col_name)
-        group_counts = agg_result.column(f"{_ID_COLUMN}_count")
-        num_groups = len(group_keys)
-        
+        num_groups = len(groups)
         logger.debug(f"Writing to {num_groups} namespaces")
 
-        # Process each group by slicing the sorted table at group boundaries
         start_idx = 0
-        for i in range(num_groups):
-            namespace_value = group_keys[i].as_py()
-            count = group_counts[i].as_py()
-            
-            # Slice the sorted table to get this group's rows
-            group_table = sorted_table.slice(start_idx, count)
+        for namespace_value, count in groups:
+            group_table = block_accessor.slice(start_idx, start_idx + count)
             start_idx += count
 
             # Format namespace name
