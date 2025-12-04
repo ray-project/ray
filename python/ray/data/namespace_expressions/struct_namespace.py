@@ -25,11 +25,11 @@ class _StructNamespace:
     Example:
         >>> from ray.data.expressions import col
         >>> # Access a field using method
-        >>> # expr = col("user_record").struct.field("age")
+        >>> expr = col("user_record").struct.field("age")
         >>> # Access a field using bracket notation
-        >>> # expr = col("user_record").struct["age"]
+        >>> expr = col("user_record").struct["age"]
         >>> # Access nested field
-        >>> # expr = col("user_record").struct["address"].struct["city"]
+        >>> expr = col("user_record").struct["address"].struct["city"]
     """
 
     _expr: Expr
