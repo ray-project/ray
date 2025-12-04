@@ -129,7 +129,7 @@ def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
     return None
 
 
-def _validate_num_returns(num_returns: str | int, func: Any) -> Optional[str]:
+def _validate_num_returns(num_returns: Union[str, int], func: Any) -> Optional[str]:
     """The number of returned values from a task can only be "streaming", "dynamic" or an int > 0."""
 
     error_msg: str = "The keyword 'num_returns' only accepts a non-negative integer, 'streaming', or 'dynamic' (for generators)."
