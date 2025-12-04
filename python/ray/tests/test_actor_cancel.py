@@ -472,6 +472,7 @@ def test_concurrent_submission_and_cancellation(shutdown_only):
 
 def test_is_canceled_sync_actor_task(shutdown_only):
     """Test that is_canceled() works correctly for sync actor tasks."""
+
     @ray.remote
     class Actor:
         def __init__(self):
@@ -496,9 +497,7 @@ def test_is_canceled_sync_actor_task(shutdown_only):
     ref = actor.task_with_cancel_check.remote(sig)
 
     # Wait for the task to be actively waiting on the signal
-    wait_for_condition(
-        lambda: ray.get(sig.cur_num_waiters.remote()) == 1
-    )
+    wait_for_condition(lambda: ray.get(sig.cur_num_waiters.remote()) == 1)
 
     # Cancel the task while it's blocked on the signal
     ray.cancel(ref, recursive=False)
@@ -514,6 +513,7 @@ def test_is_canceled_sync_actor_task(shutdown_only):
 
 def test_is_canceled_concurrent_actor_task(shutdown_only):
     """Test that is_canceled() works correctly for concurrent actor tasks."""
+
     @ray.remote
     class ConcurrentActor:
         def __init__(self):
@@ -539,9 +539,7 @@ def test_is_canceled_concurrent_actor_task(shutdown_only):
     refs = [actor.task_with_cancel_check.remote(i, sig) for i in range(3)]
 
     # Wait for all tasks to be waiting on the signal
-    wait_for_condition(
-        lambda: ray.get(sig.cur_num_waiters.remote()) == 3
-    )
+    wait_for_condition(lambda: ray.get(sig.cur_num_waiters.remote()) == 3)
 
     # Cancel one of the task
     ray.cancel(refs[1], recursive=False)
@@ -565,6 +563,7 @@ def test_is_canceled_concurrent_actor_task(shutdown_only):
 
 def test_is_canceled_not_supported_in_async_actor(shutdown_only):
     """Test is_canceled() for async actors."""
+
     @ray.remote
     class AsyncActor:
         def __init__(self):

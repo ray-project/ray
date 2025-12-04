@@ -642,9 +642,7 @@ def test_is_canceled_with_keyboard_interrupt(ray_start_regular):
     sig = SignalActor.remote()
     ref = task_handling_keyboard_interrupt.remote(sig)
 
-    wait_for_condition(
-        lambda: ray.get(sig.cur_num_waiters.remote()) == 1
-    )
+    wait_for_condition(lambda: ray.get(sig.cur_num_waiters.remote()) == 1)
 
     ray.cancel(ref)
 
