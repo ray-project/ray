@@ -452,6 +452,7 @@ class UseCase(ExampleEnum):
     GENERATIVE_AI = "Generative AI"
     COMPUTER_VISION = "Computer Vision"
     NATURAL_LANGUAGE_PROCESSING = "Natural Language Processing"
+    TIME_SERIES_FORECASTING = "Time Series Forecasting"
     ETL = "ETL"
     DATA_INGESTION = "Data Ingestion"
     DATA_WAREHOUSING = "Data Warehousing"
@@ -515,6 +516,7 @@ class RelatedTechnology(ExampleEnum):
     LLM_APPLICATIONS = "LLM Applications"
     INTEGRATIONS = "Integrations"
     AI_ACCELERATORS = "AI Accelerators"
+    DEPLOYMENT_PATTERNS = "Deployment Patterns"
 
     @classmethod
     def formatted_name(cls):

@@ -149,3 +149,9 @@ examples:
     skill_level: advanced
     link: tutorials/java
     related_technology: integrations
+  - title: Model Multiplexing with Forecasting Models
+    skill_level: intermediate
+    use_cases:
+      - time series forecasting
+    link: tutorials/model_multiplexing_forecast/content/README
+    related_technology: deployment patterns
