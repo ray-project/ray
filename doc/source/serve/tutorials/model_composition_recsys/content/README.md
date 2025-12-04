@@ -539,7 +539,7 @@ ranked = await self.ranking_model.rank_items.options(
 
 If you observe high latency and low throughput between deployments:
 
-1. **Check for `.result()` usage**: Make sure you're using `await` instead of `.result()` when calling deployment handles. Using `.result()` blocks the replica from processing other requests, which severely impacts performance. See [Use async operations](#use-async-operations) for the correct pattern.
+1. **Check for `.result()` usage**: Make sure you're using `await` instead of `.result()` when calling deployment handles. Using `.result()` blocks the replica from processing other requests, which severely impacts performance. See [Use co-routines for blocking operations](#use-co-routines-for-blocking-operations) for the correct pattern.
 2. **Check replica placement**: Ensure replicas are on the same nodes when possible.
 3. **Monitor queue depth**: High queue depth indicates insufficient replicas.
 4. **Profile each component**: Identify which stage is the bottleneck.
