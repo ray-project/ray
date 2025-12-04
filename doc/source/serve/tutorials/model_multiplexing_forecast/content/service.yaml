@@ -6,3 +6,4 @@ compute_config:
 working_dir: .
 applications:
   - import_path: serve_forecast_multiplex:app
+  

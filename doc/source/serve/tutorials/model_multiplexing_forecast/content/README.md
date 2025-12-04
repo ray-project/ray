@@ -228,7 +228,7 @@ print(f"\nSent {len(random_requests)} requests total")
 What happens:
 1. First request for each customer triggers model loading (~100&nbsp;ms).
 2. Subsequent requests use the cached model (<5&nbsp;ms).
-3. When cache fills (>10 models per replica), least recently used models evict.
+3. When cache fills (>4 models per replica), least recently used models evict.
 
 You can also send requests using the deployment handle:
 
@@ -261,6 +261,7 @@ compute_config:
 working_dir: .
 applications:
   - import_path: serve_forecast_multiplex:app
+
 ```
 
 ### Launch
@@ -297,7 +298,7 @@ response = requests.post(
         "Authorization": f"Bearer {TOKEN}",
         "serve_multiplexed_model_id": "customer_123"
     },
-    json={"historical_values": [100, 102, 98, 105, 110]}
+    json={"sequence_data": [100, 102, 98, 105, 110]}
 )
 
 print(response.json())
@@ -397,12 +398,11 @@ A high cache hit rate (>90%) means most requests use cached models. A low rate s
 If your models hold resources (GPU memory, database connections), implement `__del__` in the object returned by your loading model function (the one decorated by `serve.multiplexed()`):
 
 ```python
-
 @serve.deployment
 class ForecastingService:
     ...
     @serve.multiplexed()
-    async def load_model(self):
+    async def load_model(self, model_id: str):
         ...
         return ForecastModel()
 
