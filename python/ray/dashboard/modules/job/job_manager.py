@@ -80,7 +80,7 @@ class JobManager:
         self._cluster_id_hex = gcs_client.cluster_id.hex()
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
-        self._timer = timeout_check_timer or Timer()
+        self._timeout_check_timer = timeout_check_timer or Timer()
         self.monitored_jobs = set()
         try:
             self.event_logger = get_event_logger(Event.SourceType.JOBS, logs_dir)
@@ -188,7 +188,7 @@ class JobManager:
                             job_id, timeout=None
                         )
 
-                    if self._timer.time() - job_info.start_time / 1000 > timeout:
+                    if self._timeout_check_timer.time() - job_info.start_time / 1000 > timeout:
                         err_msg = (
                             "Job supervisor actor failed to start within "
                             f"{timeout} seconds. This timeout can be "
