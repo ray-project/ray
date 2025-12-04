@@ -521,34 +521,35 @@ def test_is_canceled_concurrent_actor_task(shutdown_only):
         def __init__(self):
             self.canceled_tasks = set()
 
-        def task_with_cancel_check(self, task_id):
-            import time
+        def task_with_cancel_check(self, task_id, signal_actor):
+            ray.get(signal_actor.wait.remote())
 
-            for _ in range(100):
-                if ray.get_runtime_context().is_canceled():
-                    self.canceled_tasks.add(task_id)
-                    return f"task_{task_id}_canceled"
-                time.sleep(0.1)
+            # Check if the task was cancelled
+            if ray.get_runtime_context().is_canceled():
+                self.canceled_tasks.add(task_id)
+                return f"task_{task_id}_canceled"
+
             return f"task_{task_id}_completed"
 
         def get_canceled_tasks(self):
             return self.canceled_tasks
 
+    sig = SignalActor.remote()
     actor = ConcurrentActor.options(max_concurrency=3).remote()
 
     # Submit multiple tasks concurrently
-    refs = [actor.task_with_cancel_check.remote(i) for i in range(3)]
+    refs = [actor.task_with_cancel_check.remote(i, sig) for i in range(3)]
 
-    # Wait for tasks to start running
-    for ref in refs:
-        task_id = ref.task_id().hex()
-        wait_for_condition(
-            lambda: len(list_tasks(filters=[("task_id", "=", task_id)])) > 0
-            and list_tasks(filters=[("task_id", "=", task_id)])[0].state == "RUNNING"
-        )
+    # Wait for all tasks to be waiting on the signal
+    wait_for_condition(
+        lambda: ray.get(sig.cur_num_waiters.remote()) == 3
+    )
 
     # Cancel one of the task
-    ray.cancel(refs[1])
+    ray.cancel(refs[1], recursive=False)
+
+    # Send signal to unblock all tasks
+    ray.get(sig.send.remote())
 
     # Canceled tasks should raise TaskCancelledError
     with pytest.raises(TaskCancelledError):
