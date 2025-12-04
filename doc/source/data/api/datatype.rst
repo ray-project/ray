@@ -10,3 +10,9 @@ Class
 
 .. autoclass:: DataType
     :members:
+
+Enum
+----
+
+.. autoclass:: TypeCategory
+    :members:
