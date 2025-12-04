@@ -258,7 +258,10 @@ const App = () => {
         try {
           const { authentication_mode } = await getAuthenticationMode();
           authMode = authentication_mode;
-          sessionStorage.setItem("ray-authentication-mode", authentication_mode);
+          sessionStorage.setItem(
+            "ray-authentication-mode",
+            authentication_mode,
+          );
         } catch (error) {
           console.error("Failed to check authentication mode:", error);
           return;
