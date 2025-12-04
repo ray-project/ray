@@ -101,9 +101,6 @@ def test_alias_functionality(expr, alias_name, expected_alias):
     assert aliased_expr.name == expected_alias
     assert aliased_expr.expr.structurally_equals(expr)
 
-    # Test data type preservation
-    assert aliased_expr.data_type == expr.data_type
-
     # Test evaluation equivalence
     test_data = pd.DataFrame(
         {

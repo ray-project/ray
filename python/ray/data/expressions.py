@@ -648,9 +648,9 @@ class NamedExpr(Expr, ABC):
         """The root name of a NamedExpr is the original source name after
         aliases or renames. For example
             >>> from ray.data.expressions import col
-            >>> col("a").get_root_name() == "a"
-            >>> col("a").alias("b").get_root_name() == "a"
-            >>> col("a").alias("b").alias("c").get_root_name() == "a"
+            >>> assert col("a").get_root_name() == "a"
+            >>> assert col("a").alias("b").get_root_name() == "a"
+            >>> assert col("a").alias("b").alias("c").get_root_name() == "a"
         """
         return self._name
 
