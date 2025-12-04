@@ -225,6 +225,12 @@ def add_rllib_example_script_args(
             "automatically be uploaded to WandB."
         ),
     )
+    parser.add_argument(
+        "--cli-max-report-freq",
+        type=int,
+        default=5,  # tune default to 5
+        help="The frequency (in seconds) at which to log the training performance.",
+    )
 
     # WandB logging options.
     parser.add_argument(
@@ -1333,6 +1339,7 @@ def run_rllib_example_script_experiment(
                     for pid in config.policies
                 },
             },
+            max_report_frequency=args.cli_max_report_freq,
         )
 
     # Force Tuner to use old progress output as the new one silently ignores our custom
