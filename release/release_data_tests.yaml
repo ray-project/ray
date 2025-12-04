@@ -20,7 +20,7 @@
 ###############
 
 - name: "read_parquet_{{scaling}}"
-
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -36,7 +36,7 @@
       --iter-bundles
 
 - name: "read_large_parquet_{{scaling}}"
-
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -52,7 +52,7 @@
       --iter-bundles
 
 - name: "read_images_{{scaling}}"
-
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -76,7 +76,7 @@
       --iter-bundles
 
 - name: "read_from_uris_{{scaling}}"
-
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
