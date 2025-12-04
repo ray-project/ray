@@ -213,56 +213,58 @@ class TurbopufferDatasink(Datasink):
         ctx: TaskContext,
     ) -> None:
         """
-        Write blocks to Turbopuffer.
+        Write blocks to Turbopuffer in a streaming fashion.
 
-        Main write logic:
-        1. Aggregate blocks into single Arrow table
-        2. Prepare table (rename columns, filter nulls)
-        3. Group by namespace if multi-namespace mode
-        4. Write each group with batching and retry logic
+        For memory efficiency, blocks are processed one at a time rather than
+        concatenating all blocks into a single large table. This follows the
+        pattern used by ClickHouseDatasink.
+
+        Single-namespace mode:
+            Each block is prepared, then written in batches of `batch_size`.
+
+        Multi-namespace mode:
+            Each block is prepared, grouped by namespace column, and each
+            namespace group is written in batches. This processes one block
+            at a time to avoid memory blowup while still handling multi-tenant
+            writes correctly.
         """
         # Initialize client
         client = self._get_client()
 
-        # Aggregate all blocks into a single Arrow table
-        blocks_list = list(blocks)
-        if not blocks_list:
-            logger.debug("No blocks to write")
-            return
+        total_rows_written = 0
+        block_count = 0
 
-        # Convert blocks to Arrow and concatenate
-        tables = []
-        for block in blocks_list:
+        for block in blocks:
+            block_count += 1
             accessor = BlockAccessor.for_block(block)
             table = accessor.to_arrow()
-            tables.append(table)
 
-        if not tables:
-            logger.debug("No tables to write")
-            return
+            if table.num_rows == 0:
+                continue
 
-        # Concatenate all tables
-        table = pa.concat_tables(tables)
+            # Prepare table (rename columns, filter nulls)
+            table = self._prepare_arrow_table(table)
 
-        if len(table) == 0:
-            logger.debug("Empty table, skipping write")
-            return
+            if table.num_rows == 0:
+                continue
 
-        logger.debug(f"Writing {len(table)} rows from {len(blocks_list)} blocks")
+            # Multi-namespace mode: group by namespace column
+            if self.namespace_column:
+                self._write_multi_namespace(client, table)
+            else:
+                # Single namespace mode
+                self._write_single_namespace(client, table, self.namespace)
 
-        # Prepare table (rename columns, filter nulls)
-        table = self._prepare_arrow_table(table)
+            total_rows_written += table.num_rows
 
-        if len(table) == 0:
-            logger.debug("No rows after filtering null IDs")
-            return
-
-        # Multi-namespace mode: group by namespace column
-        if self.namespace_column:
-            self._write_multi_namespace(client, table)
+        if block_count == 0:
+            logger.debug("No blocks to write")
+        elif total_rows_written == 0:
+            logger.debug("No rows written after filtering")
         else:
-            # Single namespace mode
-            self._write_single_namespace(client, table, self.namespace)
+            logger.debug(
+                f"Wrote {total_rows_written} rows from {block_count} blocks"
+            )
 
     def _rename_column_if_needed(
         self,
