@@ -2,6 +2,8 @@ import pytest
 
 import ray
 from ray import serve
+from ray._common.test_utils import wait_for_condition
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.llm import (
     build_dp_deployment,
     build_openai_app,
@@ -9,6 +11,7 @@ from ray.serve.llm import (
     LLMServingArgs,
     ModelLoadingConfig,
 )
+from ray.serve.schema import ApplicationStatus
 
 
 @pytest.fixture(autouse=True)
@@ -19,18 +22,27 @@ def cleanup_ray_resources():
     ray.shutdown()
 
 
+def is_default_app_running():
+    """Check if the default application is running successfully."""
+    try:
+        default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        return default_app.status == ApplicationStatus.RUNNING
+    except (KeyError, AttributeError):
+        return False
+
+
 @pytest.mark.parametrize(
     "tp_size,pp_size",
     [
-        (2, 4),  # TP×PP=8 > 4 GPUs/node, FORCES cross-node placement
-        (4, 2),  # TP×PP=8 > 4 GPUs/node, FORCES cross-node placement
+        (2, 4),  # TPxPP=8 > 4 GPUs/node, FORCES cross-node placement
+        (4, 2),  # TPxPP=8 > 4 GPUs/node, FORCES cross-node placement
     ],
 )
 def test_llm_serve_multi_node(tp_size, pp_size):
     """Test multi-node Ray Serve LLM deployment with custom placement groups.
 
-    Cluster: 2 nodes × 4 GPUs = 8 total GPUs
-    TP×PP=8 exceeds per-node capacity, forcing cross-node deployment.
+    Cluster: 2 nodes x 4 GPUs = 8 total GPUs
+    TPxPP=8 exceeds per-node capacity, forcing cross-node deployment.
     """
     total_gpus = tp_size * pp_size
     placement_group_config = {
@@ -64,19 +76,13 @@ def test_llm_serve_multi_node(tp_size, pp_size):
     app = build_openai_app(llm_serving_args=LLMServingArgs(llm_configs=[llm_config]))
     serve.run(app, blocking=False)
 
-    # Basic deployment validation - serve.run will raise if deployment fails
-    # Cleanup handled by autouse fixture
+    wait_for_condition(is_default_app_running, timeout=300)
 
 
 def test_llm_serve_data_parallelism():
     """Test Data Parallelism deployment with STRICT_PACK override.
 
-    Validates that DP deployments work correctly with placement group configs:
-    1. STRICT_PACK strategy is enforced (per-replica co-location)
-    2. num_replicas = data_parallel_size
-    3. Each replica gets its own placement group with specified bundles
-    4. DPRankAssigner correctly coordinates ranks across replicas
-
+    Validates that DP deployments work correctly with placement group configs
     """
     placement_group_config = {
         "bundles": [{"GPU": 1, "CPU": 1}],
@@ -92,7 +98,7 @@ def test_llm_serve_data_parallelism():
         engine_kwargs=dict(
             tensor_parallel_size=1,
             pipeline_parallel_size=1,
-            data_parallel_size=2,  # 2 DP replicas
+            data_parallel_size=4,  # 4 DP replicas, need to fill 2x4GPU workers
             distributed_executor_backend="ray",
             max_model_len=512,
             max_num_batched_tokens=256,
@@ -105,20 +111,10 @@ def test_llm_serve_data_parallelism():
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
-    # Deploy DP application
-    # build_dp_deployment internally validates deployment options via LLMServer.get_deployment_options():
-    # - STRICT_PACK override (SPREAD -> STRICT_PACK)
-    # - num_replicas = data_parallel_size (2)
-    # - placement_group_bundles are properly configured
     app = build_dp_deployment(llm_config)
     serve.run(app, blocking=False)
 
-    # Deployment starting successfully validates:
-    # - DPRankAssigner is working
-    # - DPServer replicas can coordinate
-    # - Placement groups are created correctly with STRICT_PACK
-    # - Each replica gets the right resources
-    # Cleanup handled by autouse fixture
+    wait_for_condition(is_default_app_running, timeout=300)
 
 
 if __name__ == "__main__":
