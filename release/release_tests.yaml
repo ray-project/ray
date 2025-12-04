@@ -1928,7 +1928,6 @@
     script: python torch_local_mode_launcher.py
 
 - name: torch_lightning
-  python: "3.10"
   group: Train tests
   working_dir: train_tests/pytorch_lightning
 
