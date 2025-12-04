@@ -25,6 +25,7 @@ from ray_release.exception import (
     PrepareCommandTimeout,
     TestCommandError,
     TestCommandTimeout,
+    LogsError,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
 from ray_release.job_manager import AnyscaleJobManager
@@ -71,11 +72,10 @@ class AnyscaleJobRunner(CommandRunner):
         sdk: Optional["AnyscaleSDK"] = None,
         artifact_path: Optional[str] = None,
     ):
-        super().__init__(
-            cluster_manager=cluster_manager,
-            file_manager=file_manager,
-            working_dir=working_dir,
-        )
+        super().__init__()
+        self.cluster_manager = cluster_manager
+        self.file_manager = file_manager
+        self.working_dir = working_dir
         self.sdk = sdk or get_anyscale_sdk()
         self.job_manager = AnyscaleJobManager(cluster_manager)
 
@@ -437,3 +437,9 @@ class AnyscaleJobRunner(CommandRunner):
         # ourselves. We find many cases where users want the data to be available
         # for a short-while for debugging purpose.
         pass
+
+    def get_last_logs_ex(self, scd_id: Optional[str] = None):
+        try:
+            return self.job_manager.get_last_logs()
+        except Exception as e:
+            raise LogsError(f"Could not get last logs: {e}") from e
