@@ -657,7 +657,6 @@
 #################################################
 
 - name: "cross_az_map_batches_autoscaling"
-  python: "3.10"
   frequency: manual
   env: gce
   cluster:
