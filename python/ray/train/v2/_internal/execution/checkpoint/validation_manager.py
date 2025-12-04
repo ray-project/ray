@@ -109,9 +109,12 @@ class ValidationManager(ControllerCallback, ReportCallback):
             if not self._training_report_queue:
                 break
             training_report = self._training_report_queue.popleft()
-            validate_task = run_validate_fn.remote(
-                training_report.validation_spec, training_report.checkpoint
-            )
+            # TODO: handle timeouts - ray.remote() does not have them
+            validate_task_config = training_report.validation_spec.validate_task_config
+            validate_task = run_validate_fn.options(
+                max_retries=validate_task_config.max_retries,
+                retry_exceptions=validate_task_config.retry_exceptions or False,
+            ).remote(training_report.validation_spec, training_report.checkpoint)
             self._pending_validations[validate_task] = training_report.checkpoint
             logger.info(
                 f"Launched async validation task for checkpoint {training_report.checkpoint}"
@@ -129,7 +132,6 @@ class ValidationManager(ControllerCallback, ReportCallback):
         except (ray.exceptions.RayTaskError, ray.exceptions.TaskCancelledError):
             checkpoint_to_metrics[checkpoint] = {}
             logger.exception(f"Validation failed for checkpoint {checkpoint}")
-            # TODO: retry validations and time out appropriately.
             # TODO: track failed validations - see ed45912bb6ed435de06ac1cd58e9918e6825b4fe
         return checkpoint_to_metrics
 

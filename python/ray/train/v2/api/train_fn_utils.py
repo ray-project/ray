@@ -7,6 +7,7 @@ from ray.train.v2.api.context import TrainContext
 from ray.train.v2.api.report_config import (
     CheckpointConsistencyMode,
     CheckpointUploadMode,
+    ValidateTaskConfig,
 )
 from ray.util.annotations import PublicAPI
 
@@ -27,6 +28,7 @@ def report(
     checkpoint_upload_fn: Optional[Callable[["Checkpoint", str], "Checkpoint"]] = None,
     validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
     validate_config: Optional[Dict] = None,
+    validate_task_config: Optional[ValidateTaskConfig] = None,
 ):
     """Report metrics and optionally save a checkpoint.
 
@@ -105,6 +107,8 @@ def report(
             this function.
         validate_config: Configuration passed to the validate_fn. Can contain info
             like the validation dataset.
+        validate_task_config: Configuration for the validation task retries.
+            See :class:`~ray.train.ValidateTaskConfig` for more details.
     """
     if delete_local_checkpoint_after_upload is None:
         delete_local_checkpoint_after_upload = (
@@ -115,6 +119,11 @@ def report(
     if validate_config and not validate_fn:
         raise ValueError("validate_fn must be provided together with validate_config")
 
+    if validate_task_config and not validate_fn:
+        raise ValueError(
+            "validate_fn must be provided together with validate_task_config"
+        )
+
     get_train_fn_utils().report(
         metrics=metrics,
         checkpoint=checkpoint,
@@ -124,6 +133,7 @@ def report(
         checkpoint_upload_fn=checkpoint_upload_fn,
         validate_fn=validate_fn,
         validate_config=validate_config or {},
+        validate_task_config=validate_task_config or ValidateTaskConfig(),
     )
 
 

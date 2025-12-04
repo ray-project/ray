@@ -7,7 +7,13 @@ import pytest
 import ray
 import ray.cloudpickle as ray_pickle
 from ray.tests.client_test_utils import create_remote_signal_actor
-from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
+from ray.train import (
+    Checkpoint,
+    CheckpointConfig,
+    RunConfig,
+    ScalingConfig,
+    ValidateTaskConfig,
+)
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.exceptions import WorkerGroupError
@@ -237,7 +243,30 @@ def test_report_validate_config_without_validate_fn():
         train_fn,
         scaling_config=ScalingConfig(num_workers=2),
     )
-    with pytest.raises(WorkerGroupError) as exc_info:
+    with pytest.raises(
+        WorkerGroupError,
+        match="validate_fn must be provided together with validate_config",
+    ) as exc_info:
+        trainer.fit()
+    assert isinstance(exc_info.value.worker_failures[0]._base_exc, ValueError)
+
+
+def test_report_validate_task_config_without_validate_fn():
+    def train_fn():
+        ray.train.report(
+            metrics={},
+            checkpoint=None,
+            validate_task_config=ValidateTaskConfig(max_retries=1),
+        )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    with pytest.raises(
+        WorkerGroupError,
+        match="validate_fn must be provided together with validate_task_config",
+    ) as exc_info:
         trainer.fit()
     assert isinstance(exc_info.value.worker_failures[0]._base_exc, ValueError)
 
@@ -332,6 +361,42 @@ def test_report_validate_fn_error():
     assert result.error is None
     assert result.checkpoint == result.best_checkpoints[1][0]
     assert len(result.best_checkpoints) == 2
+
+
+def test_report_validate_fn_success_after_retry():
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self):
+            self.value += 1
+            return self.value
+
+    counter = Counter.remote()
+
+    def validate_fn(checkpoint, config):
+        if ray.get(counter.increment.remote()) < 2:
+            raise ValueError("validation failed")
+        return {"score": 100}
+
+    def train_fn():
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={},
+                checkpoint=cp,
+                validate_fn=validate_fn,
+                validate_task_config=ValidateTaskConfig(
+                    retry_exceptions=[ValueError],
+                ),
+            )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=1),
+    )
+    result = trainer.fit()
+    assert result.best_checkpoints[0][1] == {"score": 100}
 
 
 def test_report_checkpoint_upload_fn(tmp_path):

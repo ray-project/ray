@@ -1,4 +1,6 @@
+from dataclasses import dataclass
 from enum import Enum
+from typing import List, Optional
 
 from ray.util.annotations import PublicAPI
 
@@ -34,3 +36,23 @@ class CheckpointConsistencyMode(Enum):
 
     COMMITTED = "COMMITTED"
     VALIDATED = "VALIDATED"
+
+
+@dataclass
+@PublicAPI(stability="alpha")
+class ValidateTaskConfig:
+    """Configuration for the validation task.
+
+    This configuration is used when running validation functions asynchronously
+    via :meth:`ray.train.report` with a ``validate_fn``.
+
+    Args:
+        max_retries: The maximum number of times to retry validation if it fails.
+            Defaults to 3.
+        retry_exceptions: A list of exception types to retry validation on.
+            By default, only Ray errors are retried, not user exceptions.
+            If you want to retry on specific user exceptions, provide them here.
+    """
+
+    max_retries: int = 3
+    retry_exceptions: Optional[List[Exception]] = None

@@ -5,6 +5,7 @@ from unittest.mock import create_autospec
 import pytest
 
 import ray
+from ray.train import ValidateTaskConfig
 from ray.train._checkpoint import Checkpoint
 from ray.train.v2._internal.execution.checkpoint import validation_manager
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
@@ -77,6 +78,7 @@ def test_checkpoint_validation_management_reordering(tmp_path):
             validation_spec=_ValidationSpec(
                 validate_fn=lambda checkpoint, config: {"score": 200},
                 validate_config={},
+                validate_task_config=ValidateTaskConfig(max_retries=0),
             ),
         ),
         metrics={},
@@ -88,6 +90,7 @@ def test_checkpoint_validation_management_reordering(tmp_path):
             validation_spec=_ValidationSpec(
                 validate_fn=lambda checkpoint, config: config,
                 validate_config={"score": 100},
+                validate_task_config=ValidateTaskConfig(max_retries=0),
             ),
         ),
         metrics={},
@@ -137,6 +140,10 @@ def test_checkpoint_validation_management_failure(tmp_path):
             validation_spec=_ValidationSpec(
                 validate_fn=failing_validate_fn,
                 validate_config={},
+                validate_task_config=ValidateTaskConfig(
+                    max_retries=1,
+                    retry_exceptions=[ValueError],
+                ),
             ),
         ),
         metrics={},
@@ -150,6 +157,61 @@ def test_checkpoint_validation_management_failure(tmp_path):
     assert vm._poll_validations() == 0
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
         {failing_training_result.checkpoint: {}}
+    )
+
+
+def test_checkpoint_validation_management_success_after_retry(tmp_path):
+    checkpoint_manager = create_autospec(CheckpointManager, instance=True)
+    vm = validation_manager.ValidationManager(checkpoint_manager=checkpoint_manager)
+    training_result = create_dummy_training_results(
+        num_results=1,
+        storage_context=StorageContext(
+            storage_path=tmp_path,
+            experiment_dir_name="checkpoint_validation_management_success_after_retry_experiment",
+        ),
+    )[0]
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self):
+            self.value += 1
+            return self.value
+
+    counter = Counter.remote()
+
+    def one_time_failing_validate_fn(checkpoint, config):
+        print("one_time_failing_validate_fn called")
+        if ray.get(counter.increment.remote()) < 2:
+            raise ValueError("Fail on first attempt")
+        return {"score": 100}
+
+    vm.after_report(
+        training_report=_TrainingReport(
+            metrics=training_result.metrics,
+            checkpoint=training_result.checkpoint,
+            validation_spec=_ValidationSpec(
+                validate_fn=one_time_failing_validate_fn,
+                validate_config={},
+                validate_task_config=ValidateTaskConfig(
+                    max_retries=1,
+                    retry_exceptions=[ValueError],
+                ),
+            ),
+        ),
+        metrics={},
+    )
+    assert vm._poll_validations() == 1
+    ray.wait(
+        list(vm._pending_validations.keys()),
+        num_returns=1,
+        timeout=100,
+    )
+    assert vm._poll_validations() == 0
+    checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
+        {training_result.checkpoint: {"score": 100}}
     )
 
 
@@ -175,6 +237,7 @@ def test_checkpoint_validation_management_slow_validate_fn(tmp_path):
             validation_spec=_ValidationSpec(
                 validate_fn=infinite_waiting_validate_fn,
                 validate_config={},
+                validate_task_config=ValidateTaskConfig(max_retries=0),
             ),
         ),
         metrics={},

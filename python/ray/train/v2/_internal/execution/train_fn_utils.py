@@ -17,6 +17,7 @@ from ray.train.v2.api.context import (
 from ray.train.v2.api.report_config import (
     CheckpointConsistencyMode,
     CheckpointUploadMode,
+    ValidateTaskConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ class TrainFnUtils(ABC):
         ] = None,
         validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
         validate_config: Optional[Dict] = None,
+        validate_task_config: Optional[ValidateTaskConfig] = None,
     ) -> None:
         """Upload checkpoint to remote storage and put a training result on the result queue.
 
@@ -68,6 +70,7 @@ class TrainFnUtils(ABC):
                 this function.
             validate_config: Configuration passed to the validate_fn. Can contain info
                 like the validation dataset.
+            validate_task_config: Configuration for the validation task itself e.g. retries.
         """
         pass
 
@@ -156,6 +159,7 @@ class DistributedTrainFnUtils(TrainFnUtils):
         ] = None,
         validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
         validate_config: Optional[Dict] = None,
+        validate_task_config: Optional[ValidateTaskConfig] = None,
     ) -> None:
         return get_internal_train_context().report(
             metrics,
@@ -166,6 +170,7 @@ class DistributedTrainFnUtils(TrainFnUtils):
             checkpoint_upload_fn,
             validate_fn,
             validate_config,
+            validate_task_config,
         )
 
     def get_checkpoint(self):
@@ -230,6 +235,7 @@ class LocalTrainFnUtils(TrainFnUtils):
         ] = None,
         validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
         validate_config: Optional[Dict] = None,
+        validate_task_config: Optional[ValidateTaskConfig] = None,
     ) -> None:
         self._last_metrics = metrics
         self._last_checkpoint = checkpoint
