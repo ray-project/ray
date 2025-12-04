@@ -41,6 +41,9 @@ def convert_notebook(
                 # Convert to serve.shutdown()
                 out.write("from ray import serve\n")
                 out.write("serve.shutdown()\n\n")
+            # Check for the client_anyscale_service script
+            elif lines[0].lstrip().startswith("# client_anyscale_service.py"):
+                continue
             else:   
                 # Dump regular Python cell as-is
                 out.write(cell.source.rstrip() + "\n\n")
