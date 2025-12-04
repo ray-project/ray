@@ -1,4 +1,5 @@
 """Manage, parse and validate options for Ray tasks, actors and actor methods."""
+import inspect
 import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple, Union
@@ -25,11 +26,11 @@ class Option:
     # Value constraint of an option.
     # The callable should return None if there is no error.
     # Otherwise, return the error message.
-    value_constraint: Optional[Callable[[Any], Optional[str]]] = None
+    value_constraint: Optional[Callable[..., Optional[str]]] = None
     # Default value.
     default_value: Any = None
 
-    def validate(self, keyword: str, value: Any):
+    def validate(self, keyword: str, value: Any, func_or_class: Optional[Any] = None):
         """Validate the option."""
         if self.type_constraint is not None:
             if not isinstance(value, self.type_constraint):
@@ -38,7 +39,7 @@ class Option:
                     f"but received type {type(value)}"
                 )
         if self.value_constraint is not None:
-            possible_error_message = self.value_constraint(value)
+            possible_error_message = self.value_constraint(value, func_or_class)
             if possible_error_message:
                 raise ValueError(possible_error_message)
 
@@ -57,7 +58,7 @@ def _counting_option(name: str, infinite: bool = True, default_value: Any = None
     if infinite:
         return Option(
             (int, type(None)),
-            lambda x: None
+            lambda x, func_or_class=None: None
             if (x is None or x >= -1)
             else f"The keyword '{name}' only accepts None, 0, -1"
             " or a positive integer, where -1 represents infinity.",
@@ -65,7 +66,7 @@ def _counting_option(name: str, infinite: bool = True, default_value: Any = None
         )
     return Option(
         (int, type(None)),
-        lambda x: None
+        lambda x, func_or_class=None: None
         if (x is None or x >= 0)
         else f"The keyword '{name}' only accepts None, 0 or a positive integer.",
         default_value=default_value,
@@ -103,7 +104,9 @@ def _resource_option(name: str, default_value: Any = None):
     """This is used for resource related options."""
     return Option(
         (float, int, type(None)),
-        lambda x: None if (x is None) else _validate_resource_quantity(name, x),
+        lambda x, func_or_class=None: None
+        if (x is None)
+        else _validate_resource_quantity(name, x),
         default_value=default_value,
     )
 
@@ -126,10 +129,31 @@ def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
     return None
 
 
+def _validate_num_returns(num_returns: str | int, func: Any) -> Optional[str]:
+    """The number of returned values from a task can only be "streaming" or an int > 0."""
+
+    error_msg: str = "The keyword 'num_returns' only accepts a non-negative integer or 'streaming' (for generators)."
+    is_generator_function: bool = inspect.isgeneratorfunction(func)
+
+    if isinstance(num_returns, int) and num_returns >= 0:
+        return
+
+    if (
+        isinstance(num_returns, str)
+        and num_returns == "streaming"
+        and is_generator_function
+    ):
+        return
+
+    return error_msg
+
+
 _common_options = {
-    "label_selector": Option((dict, type(None)), lambda x: validate_label_selector(x)),
+    "label_selector": Option(
+        (dict, type(None)), lambda x, func_or_class=None: validate_label_selector(x)
+    ),
     "fallback_strategy": Option(
-        (list, type(None)), lambda x: validate_fallback_strategy(x)
+        (list, type(None)), lambda x, func_or_class=None: validate_fallback_strategy(x)
     ),
     "accelerator_type": Option((str, type(None))),
     "memory": _resource_option("memory"),
@@ -145,7 +169,9 @@ _common_options = {
     ),
     "placement_group_bundle_index": Option(int, default_value=-1),
     "placement_group_capture_child_tasks": Option((bool, type(None))),
-    "resources": Option((dict, type(None)), lambda x: _validate_resources(x)),
+    "resources": Option(
+        (dict, type(None)), lambda x, func_or_class=None: _validate_resources(x)
+    ),
     "runtime_env": Option((dict, type(None))),
     "scheduling_strategy": Option(
         (
@@ -179,27 +205,18 @@ _task_only_options = {
     "num_cpus": _resource_option("num_cpus", default_value=1),
     "num_returns": Option(
         (int, str, type(None)),
-        lambda x: None
-        if (x is None or x == "dynamic" or x == "streaming" or x >= 0)
-        else "Default None. When None is passed, "
-        "The default value is 1 for a task and actor task, and "
-        "'streaming' for generator tasks and generator actor tasks. "
-        "The keyword 'num_returns' only accepts None, "
-        "a non-negative integer, "
-        "'streaming' (for generators), or 'dynamic'. 'dynamic' flag "
-        "will be deprecated in the future, and it is recommended to use "
-        "'streaming' instead.",
+        _validate_num_returns,
         default_value=None,
     ),
     "object_store_memory": Option(  # override "_common_options"
         (int, type(None)),
-        lambda x: None
+        lambda x, func_or_class=None: None
         if (x is None)
         else "Setting 'object_store_memory' is not implemented for tasks",
     ),
     "retry_exceptions": Option(
         (bool, list, tuple),
-        lambda x: None
+        lambda x, func_or_class=None: None
         if (
             isinstance(x, bool)
             or (
@@ -212,7 +229,7 @@ _task_only_options = {
     ),
     "_generator_backpressure_num_objects": Option(
         (int, type(None)),
-        lambda x: None
+        lambda x, func_or_class=None: None
         if x != 0
         else (
             "_generator_backpressure_num_objects=0 is not allowed. "
@@ -228,7 +245,7 @@ _actor_only_options = {
     "enable_tensor_transport": Option((bool, type(None)), default_value=None),
     "lifetime": Option(
         (str, type(None)),
-        lambda x: None
+        lambda x, func_or_class=None: None
         if x in (None, "detached", "non_detached")
         else "actor `lifetime` argument must be one of 'detached', "
         "'non_detached' and 'None'.",
@@ -316,13 +333,14 @@ def _warn_if_using_deprecated_placement_group(
         )
 
 
-def validate_task_options(options: Dict[str, Any], in_options: bool):
+def validate_task_options(options: Dict[str, Any], in_options: bool, func: Any):
     """Options check for Ray tasks.
 
     Args:
         options: Options for Ray tasks.
         in_options: If True, we are checking the options under the context of
             ".options()".
+        func: the function definition for the task.
     """
     for k, v in options.items():
         if k not in task_options:
@@ -330,7 +348,7 @@ def validate_task_options(options: Dict[str, Any], in_options: bool):
                 f"Invalid option keyword {k} for remote functions. "
                 f"Valid ones are {list(task_options)}."
             )
-        task_options[k].validate(k, v)
+        task_options[k].validate(k, v, func)
     if in_options and "max_calls" in options:
         raise ValueError("Setting 'max_calls' is not supported in '.options()'.")
     _check_deprecate_placement_group(options)
