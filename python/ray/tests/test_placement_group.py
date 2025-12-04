@@ -685,6 +685,30 @@ def test_omp_num_threads_in_pg(ray_start_cluster):
     assert ray.get(ref) == 3
 
 
+def test_placement_group_creation_with_fallback(ray_start_regular):
+    """Test that we can create a placement group with a fallback strategy."""
+
+    fallback_strategy = [
+        {"bundles": [{"CPU": 1}]},
+        {
+            "bundles": [{"CPU": 1}],
+            "bundle_label_selector": [{"cpu-family": "intel"}],
+        },
+    ]
+
+    pg = ray.util.placement_group(
+        name="fallback_pg",
+        bundles=[{"CPU": 2}],
+        fallback_strategy=fallback_strategy,
+    )
+
+    assert pg.id is not None
+    assert not pg.id.is_nil()
+
+    ray.util.remove_placement_group(pg)
+    placement_group_assert_no_leak([pg])
+
+
 class TestPlacementGroupValidation:
     def test_strategy_validation(self):
         """Test strategy validation when creating a placement group."""
@@ -756,6 +780,75 @@ class TestPlacementGroupValidation:
         # Invalid label key or value syntax (delegated to validate_label_selector).
         with pytest.raises(ValueError, match="Invalid label selector provided"):
             _validate_bundle_label_selector([{"INVALID key!": "value"}])
+
+    def test_fallback_strategy_validation(self):
+        """Test validation for the fallback_strategy argument."""
+
+        # Valid fallback strategy passes validation.
+        valid_strategy = [
+            {"bundles": [{"CPU": 1}]},
+            {
+                "bundles": [{"CPU": 1}],
+                "bundle_label_selector": [{"accelerator-type": "A100"}],
+            },
+        ]
+        validate_placement_group(bundles=[{"CPU": 1}], fallback_strategy=valid_strategy)
+
+        # Top level type check for List type.
+        with pytest.raises(ValueError, match="must be a list"):
+            validate_placement_group(
+                bundles=[{"CPU": 1}], fallback_strategy="string-value"
+            )
+
+        # Item type check within List. Each item should be a dict of fallback options.
+        with pytest.raises(ValueError, match="must be a dict"):
+            validate_placement_group(
+                bundles=[{"CPU": 1}], fallback_strategy=["string-value"]
+            )
+
+        # Required key check. Each strategy must specify bundles to fallback on.
+        with pytest.raises(ValueError, match="must contain 'bundles'"):
+            validate_placement_group(
+                bundles=[{"CPU": 1}], fallback_strategy=[{"bundle_label_selector": []}]
+            )
+
+        # Unsupported key check. Supported keys are 'bundles' and 'bundle_label_selector'.
+        with pytest.raises(ValueError, match="invalid options"):
+            validate_placement_group(
+                bundles=[{"CPU": 1}],
+                fallback_strategy=[{"bundles": [{"CPU": 1}], "invalid_key": 1}],
+            )
+
+        # Number of bundles not equal to bundle_label_selector length in fallback option.
+        with pytest.raises(ValueError, match="must equal length of `bundles`"):
+            validate_placement_group(
+                bundles=[{"CPU": 1}],
+                fallback_strategy=[
+                    {
+                        "bundles": [{"CPU": 1}],
+                        "bundle_label_selector": [{}, {}],
+                    }
+                ],
+            )
+
+        # Invalid bundle inside fallback.
+        with pytest.raises(ValueError, match="only 0 values"):
+            validate_placement_group(
+                bundles=[{"CPU": 1}],
+                fallback_strategy=[{"bundles": [{"CPU": 0}]}],
+            )
+
+        # Invalid label selector syntax inside fallbacl.
+        with pytest.raises(ValueError, match="Invalid label selector"):
+            validate_placement_group(
+                bundles=[{"CPU": 1}],
+                fallback_strategy=[
+                    {
+                        "bundles": [{"CPU": 1}],
+                        "bundle_label_selector": [{"!!invalid-key": "val"}],
+                    }
+                ],
+            )
 
 
 if __name__ == "__main__":
