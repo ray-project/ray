@@ -86,6 +86,19 @@ class DatasetSummary:
 
             return pd.DataFrame(result_data)
 
+    def _set_statistic_index(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Set the statistic column as index if it exists, else return empty DataFrame.
+
+        Args:
+            df: DataFrame to set index on
+
+        Returns:
+            DataFrame with statistic column as index, or empty DataFrame if column missing
+        """
+        if self.STATISTIC_COLUMN in df.columns:
+            return df.set_index(self.STATISTIC_COLUMN)
+        return pd.DataFrame()
+
     def to_pandas(self):
         """Convert summary to a single pandas DataFrame.
 
@@ -98,12 +111,16 @@ class DatasetSummary:
         Returns:
             DataFrame with all statistics, where rows are unique statistics from both tables
         """
-        df_matching = self._safe_convert_table(
-            self._stats_matching_column_dtype
-        ).set_index(self.STATISTIC_COLUMN)
-        df_changing = self._safe_convert_table(
-            self._stats_mismatching_column_dtype
-        ).set_index(self.STATISTIC_COLUMN)
+        df_matching = self._set_statistic_index(
+            self._safe_convert_table(self._stats_matching_column_dtype)
+        )
+        df_changing = self._set_statistic_index(
+            self._safe_convert_table(self._stats_mismatching_column_dtype)
+        )
+
+        # Handle case where both are empty
+        if df_matching.empty and df_changing.empty:
+            return pd.DataFrame(columns=[self.STATISTIC_COLUMN])
 
         # Combine tables: prefer schema_matching values, fill with schema_changing
         result = df_matching.combine_first(df_changing)

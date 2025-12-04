@@ -3364,6 +3364,16 @@ class Dataset:
             columns=columns,
             dtype_agg_mapping=override_dtype_agg_mapping,
         )
+
+        if not dtype_aggs.aggregators:
+            raise ValueError(
+                "summary() requires at least one column with a supported type. "
+                f"Columns provided: {columns if columns is not None else 'all'}. "
+                "Check that the specified columns exist and have supported types "
+                "(numeric, string, binary, or temporal). Columns with None or "
+                "object types are skipped."
+            )
+
         aggs_dataset = self.groupby(None).aggregate(*dtype_aggs.aggregators)
         agg_result = aggs_dataset.take(1)[0]
 
