@@ -333,6 +333,14 @@ def _get_udf(
             and isinstance(compute, ActorPoolStrategy)
             and not compute.enable_true_multi_threading
         ):
+            # We protect the actor UDF with a single-thread. In this
+            # case, the `max_concurrency` will not be respected
+            # for their UDF, but will be respected for everything else (
+            # batching, etc...). This is only relevant for Threaded Actors
+            # because Aync Actors explicity request async IO. A common scenario
+            # for setting `enable_true_multi_threading=True` would be to
+            # CPU batch inputs/outputs, but run one GPU forward pass at a time.
+            # This allows the GPU to run on large batch_sizes without OOMing.
             udf = make_callable_class_single_threaded(udf)
 
         def init_fn():
