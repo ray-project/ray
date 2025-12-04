@@ -1,6 +1,6 @@
 from ray.serve.llm import LLMConfig, build_openai_app
 
-llm_config = LLMConfig(
+lllm_config = LLMConfig(
     model_loading_config=dict(
         # The name your clients will use in the OpenAI-compatible API.
         model_id="Qwen/Qwen3-4B-Instruct-2507-FP8",
@@ -11,8 +11,7 @@ llm_config = LLMConfig(
     accelerator_type="L4",
     deployment_config=dict(
         autoscaling_config=dict(
-            min_replicas=1,
-            max_replicas=2,
+            num_replicas=1, # use 1 replica for now
         )
     ),
     # vLLM engine flags.
