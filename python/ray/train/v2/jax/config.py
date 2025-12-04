@@ -1,6 +1,7 @@
 import logging
 import os
 from dataclasses import dataclass
+from typing import Any, Dict
 
 import ray
 from ray._private import ray_constants
@@ -11,6 +12,7 @@ from ray.train.constants import (
     DEFAULT_JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S,
     JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S,
 )
+from ray.train.v2._internal.callbacks.state_manager import TrainingFramework
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -25,6 +27,17 @@ class JaxConfig(BackendConfig):
     @property
     def backend_cls(self):
         return _JaxBackend
+
+    def to_dict(self) -> Dict[str, Any]:
+        config_dict = super().to_dict()
+        config_dict["framework"] = TrainingFramework.JAX.value
+        config_dict.update(
+            {
+                "use_tpu": self.use_tpu,
+                "use_gpu": self.use_gpu,
+            }
+        )
+        return config_dict
 
 
 def _setup_jax_distributed_environment(

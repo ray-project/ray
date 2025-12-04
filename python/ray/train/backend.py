@@ -1,6 +1,6 @@
 import logging
 from contextlib import nullcontext
-from typing import TypeVar
+from typing import Any, Dict, TypeVar
 
 from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train._internal.utils import Singleton
@@ -26,6 +26,11 @@ class BackendConfig:
 
     def _repr_html_(self) -> str:
         return make_table_html_repr(obj=self, title=type(self).__name__)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "framework": None,
+        }
 
 
 @DeveloperAPI

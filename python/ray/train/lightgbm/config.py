@@ -8,6 +8,7 @@ from ray._common.network_utils import build_address
 from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train._internal.utils import get_address_and_port
 from ray.train.backend import Backend, BackendConfig
+from ray.train.v2._internal.callbacks.state_manager import TrainingFramework
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,11 @@ class LightGBMConfig(BackendConfig):
     @property
     def backend_cls(self):
         return _LightGBMBackend
+
+    def to_dict(self) -> Dict[str, Any]:
+        config_dict = super().to_dict()
+        config_dict["framework"] = TrainingFramework.LIGHTGBM.value
+        return config_dict
 
 
 class _LightGBMBackend(Backend):
