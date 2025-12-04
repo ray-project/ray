@@ -556,12 +556,7 @@ def test_arrow_block_concat():
     table1 = pa.table(
         {
             "a": [1, 2, 3],
-            "s": [
-                {
-                    "x": 1,
-                }
-                for _ in range(3)
-            ],
+            "s": [{"x": 1} for _ in range(3)],
         }
     )
     table2 = pa.table(
@@ -569,8 +564,16 @@ def test_arrow_block_concat():
             "b": [4, 5, 6],
         }
     )
-    table = concat([table1, table2])
-    assert set(table.column_names) == {"a", "s", "b"}
+    concatenated = concat([table1, table2])
+    assert set(concatenated.column_names) == {"a", "s", "b"}
+    expected = pa.table(
+        {
+            "a": [1, 2, 3, None, None, None],
+            "s": [{"x": 1} for _ in range(3)] + [None] * 3,
+            "b": [None, None, None, 4, 5, 6],
+        }
+    )
+    assert concatenated.select(["a", "s", "b"]) == expected
 
 
 if __name__ == "__main__":
