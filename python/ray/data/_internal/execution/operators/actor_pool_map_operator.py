@@ -296,7 +296,11 @@ class ActorPoolMapOperator(MapOperator):
             # active actor pool.
             try:
                 has_actor = self._actor_pool.pending_to_running(res_ref)
-            except ray.exceptions.RayError:
+            except ray.exceptions.RayActorError as e:
+                # Only retry if this was a UDF initialization failure,
+                # not a scheduling failure.
+                if not e.actor_init_failed:
+                    raise
                 # Check if we should retry this initialization failure based on DataContext settings.
                 if self.data_context.actor_init_retry_on_errors:
                     self._actor_init_retry_count += 1
