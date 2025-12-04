@@ -3387,8 +3387,8 @@ class Dataset:
         )
 
         return DatasetSummary(
-            _schema_matching_stats=schema_matching_table,
-            _schema_changing_stats=schema_changing_table,
+            _stats_matching_column_dtype=schema_matching_table,
+            _stats_mismatching_column_dtype=schema_changing_table,
             dataset_schema=original_schema,
             columns=list(all_columns),
         )

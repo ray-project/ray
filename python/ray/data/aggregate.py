@@ -1,6 +1,7 @@
 import abc
 import math
 import pickle
+import re
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -53,6 +54,8 @@ SupportsRichComparisonType = TypeVar(
     "SupportsRichComparisonType", bound=_SupportsRichComparison
 )
 AggOutputType = TypeVar("AggOutputType")
+
+_AGGREGATION_NAME_PATTERN = re.compile(r"^([^(]+)(?:\(.*\))?$")
 
 
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
@@ -202,12 +205,13 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         self._target_col_name = on
         self._ignore_nulls = ignore_nulls
 
-        # Extract and store the stat name (e.g., "sum" from "sum(col)")
+        # Extract and store the agg name (e.g., "sum" from "sum(col)")
         # This avoids string parsing later
-        if "(" in name:
-            self._stat_name = name[: name.index("(")]
+        match = _AGGREGATION_NAME_PATTERN.match(name)
+        if match:
+            self._agg_name = match.group(1)
         else:
-            self._stat_name = name
+            self._agg_name = name
 
         _safe_combine = _null_safe_combine(self.combine, ignore_nulls)
         _safe_aggregate = _null_safe_aggregate(self.aggregate_block, ignore_nulls)
@@ -226,13 +230,13 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
     def get_target_column(self) -> Optional[str]:
         return self._target_col_name
 
-    def get_stat_name(self) -> str:
-        """Return the stat name (e.g., 'sum', 'mean', 'count').
+    def get_agg_name(self) -> str:
+        """Return the agg name (e.g., 'sum', 'mean', 'count').
 
         Returns the aggregation type extracted from the name during initialization.
         For example, returns 'sum' for an aggregator named 'sum(col)'.
         """
-        return self._stat_name
+        return self._agg_name
 
     def get_result_labels(self) -> Optional[List[str]]:
         """Return labels for list-valued results.
@@ -247,7 +251,7 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         return None
 
     def format_stats(
-        self, value: Any, agg_type: "pa.DataType", original_type: "pa.DataType"
+        self, value: Any, agg_type: "pa.DataType"
     ) -> Dict[str, Tuple[Any, "pa.DataType"]]:
         """Format aggregation result into stat entries.
 
@@ -258,14 +262,13 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         Args:
             value: The aggregation result value
             agg_type: PyArrow type of the aggregation result
-            original_type: PyArrow type of the original column
 
         Returns:
             Dictionary mapping stat names to (value, type) tuples
         """
         import pyarrow as pa
 
-        stat_name = self.get_stat_name()
+        agg_name = self.get_agg_name()
 
         # Handle list results: expand into separate indexed stats
         # If the value is None but the type is list, it means we got a null result
@@ -290,7 +293,7 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
                 # Otherwise, return as is (unexpanded) since we can't determine expansion size.
                 if labels is not None:
                     return {
-                        f"{stat_name}[{label}]": (None, scalar_type) for label in labels
+                        f"{agg_name}[{label}]": (None, scalar_type) for label in labels
                     }
             else:
                 if not labels:
@@ -303,12 +306,12 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
                     )
 
                 return {
-                    f"{stat_name}[{label}]": (list_val, scalar_type)
+                    f"{agg_name}[{label}]": (list_val, scalar_type)
                     for label, list_val in zip(labels, value)
                 }
 
         # Fallback to scalar result for non-list values or unexpandable Nones
-        return {stat_name: (value, agg_type)}
+        return {agg_name: (value, agg_type)}
 
     @abc.abstractmethod
     def combine(

@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union
 
 import pandas as pd
 import pyarrow as pa
@@ -22,7 +22,7 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.dataset import Schema
-    from ray.data.datatype import DataType
+    from ray.data.datatype import DataType, TypeCategory
 
 
 logger = logging.getLogger(__name__)
@@ -41,8 +41,17 @@ class DatasetSummary:
 
     STATISTIC_COLUMN = "statistic"
 
-    _schema_matching_stats: pa.Table
-    _schema_changing_stats: pa.Table
+    # PyArrow requires tables whereby each column's value conforms to the column's dtype as defined by the schema.
+    # However, aggregation results might produce statistics with types different from
+    # the original column (e.g., 'count' is int64 even for string columns).
+    # To handle this, we split statistics into two tables:
+    # 1. _stats_matching_column_dtype: Statistics that share the same type as the
+    #    original column (e.g., min/max for numerical columns). These preserve
+    #    the original column's dtype.
+    # 2. _stats_mismatching_column_dtype: Statistics with different types (e.g., count,
+    #    missing_pct). These use inferred types (e.g., float64 for count).
+    _stats_matching_column_dtype: pa.Table
+    _stats_mismatching_column_dtype: pa.Table
     dataset_schema: pa.Schema
     columns: list[str]
 
@@ -89,12 +98,12 @@ class DatasetSummary:
         Returns:
             DataFrame with all statistics, where rows are unique statistics from both tables
         """
-        df_matching = self._safe_convert_table(self._schema_matching_stats).set_index(
-            self.STATISTIC_COLUMN
-        )
-        df_changing = self._safe_convert_table(self._schema_changing_stats).set_index(
-            self.STATISTIC_COLUMN
-        )
+        df_matching = self._safe_convert_table(
+            self._stats_matching_column_dtype
+        ).set_index(self.STATISTIC_COLUMN)
+        df_changing = self._safe_convert_table(
+            self._stats_mismatching_column_dtype
+        ).set_index(self.STATISTIC_COLUMN)
 
         # Combine tables: prefer schema_matching values, fill with schema_changing
         result = df_matching.combine_first(df_changing)
@@ -134,7 +143,10 @@ class DatasetSummary:
         """
         dfs = [
             df
-            for table in [self._schema_matching_stats, self._schema_changing_stats]
+            for table in [
+                self._stats_matching_column_dtype,
+                self._stats_mismatching_column_dtype,
+            ]
             if (df := self._extract_column_from_table(table, column)) is not None
         ]
 
@@ -249,14 +261,14 @@ def _basic_aggregators(column: str) -> List[AggregateFnV2]:
 
 
 def _default_dtype_aggregators() -> Dict[
-    "DataType", Callable[[str], List[AggregateFnV2]]
+    Union["DataType", "TypeCategory"], Callable[[str], List[AggregateFnV2]]
 ]:
     """Get default mapping from Ray Data DataType to aggregator factory functions.
 
     This function returns factory functions that create aggregators for specific columns.
 
     Returns:
-        Dict mapping DataType to factory functions that take a column name
+        Dict mapping DataType or TypeCategory to factory functions that take a column name
         and return a list of aggregators for that column.
 
     Examples:
@@ -266,7 +278,7 @@ def _default_dtype_aggregators() -> Dict[
         >>> factory = mapping.get(DataType.int32())
         >>> aggs = factory("my_column")  # Creates aggregators for "my_column"
     """
-    from ray.data.datatype import DataType
+    from ray.data.datatype import DataType, TypeCategory
 
     # Use pattern-matching types for cleaner mapping
     return {
@@ -286,7 +298,7 @@ def _default_dtype_aggregators() -> Dict[
         DataType.string(): _basic_aggregators,
         DataType.binary(): _basic_aggregators,
         # Temporal types - pattern matches all temporal types (timestamp, date, time, duration)
-        DataType.temporal(): _temporal_aggregators,
+        TypeCategory.TEMPORAL: _temporal_aggregators,
         # Note: Complex types like lists, structs, maps use fallback logic
         # in _get_aggregators_for_dtype since they can't be easily enumerated
     }
@@ -327,7 +339,9 @@ def _get_fallback_aggregators(column: str, dtype: "DataType") -> List[AggregateF
 def _get_aggregators_for_dtype(
     column: str,
     dtype: "DataType",
-    dtype_agg_mapping: Dict["DataType", Callable[[str], List[AggregateFnV2]]],
+    dtype_agg_mapping: Dict[
+        Union["DataType", "TypeCategory"], Callable[[str], List[AggregateFnV2]]
+    ],
 ) -> List[AggregateFnV2]:
     """Get aggregators for a specific column based on its DataType.
 
@@ -342,11 +356,13 @@ def _get_aggregators_for_dtype(
     Returns:
         List of aggregators with the column name properly set
     """
-    from ray.data.datatype import _matches_dtype
+    from ray.data.datatype import DataType, TypeCategory
 
     # Try to find a match in the mapping
     for mapping_key, factory in dtype_agg_mapping.items():
-        if _matches_dtype(dtype, mapping_key):
+        if isinstance(mapping_key, DataType) and dtype == mapping_key:
+            return factory(column)
+        elif isinstance(mapping_key, (TypeCategory, str)) and dtype.is_of(mapping_key):
             return factory(column)
 
     # Fallback: Use heuristic-based selection
@@ -357,7 +373,7 @@ def _dtype_aggregators_for_dataset(
     schema: Optional["Schema"],
     columns: Optional[List[str]] = None,
     dtype_agg_mapping: Optional[
-        Dict["DataType", Callable[[str], List[AggregateFnV2]]]
+        Dict[Union["DataType", "TypeCategory"], Callable[[str], List[AggregateFnV2]]]
     ] = None,
 ) -> _DtypeAggregators:
     """Generate aggregators for columns in a dataset based on their DataTypes.
@@ -461,7 +477,7 @@ def _parse_summary_stats(
         # Let the aggregator format its own results
         agg_type = agg_schema.field(key).type
         original_type = original_schema.field(col_name).type
-        formatted_stats = agg.format_stats(value, agg_type, original_type)
+        formatted_stats = agg.format_stats(value, agg_type)
 
         for stat_name, (stat_value, stat_type) in formatted_stats.items():
             # Add formatted stats to appropriate dict based on schema matching

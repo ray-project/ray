@@ -298,7 +298,7 @@ class TestDefaultDtypeAggregators:
         self, dtype_factory, expected_agg_types, uses_pattern_matching
     ):
         """Test that default mappings return correct aggregators."""
-        from ray.data.datatype import _matches_dtype
+        from ray.data.datatype import TypeCategory
 
         mapping = _default_dtype_aggregators()
         dtype = dtype_factory()
@@ -307,7 +307,9 @@ class TestDefaultDtypeAggregators:
             # For pattern-matched types (like temporal), find the matching factory
             factory = None
             for mapping_key, mapping_factory in mapping.items():
-                if _matches_dtype(dtype, mapping_key):
+                if isinstance(mapping_key, (TypeCategory, str)) and dtype.is_of(
+                    mapping_key
+                ):
                     factory = mapping_factory
                     break
             assert (
