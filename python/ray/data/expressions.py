@@ -406,9 +406,9 @@ class Expr(ABC):
             >>> print(expr)
             MUL
                 ├── left: ADD
-                │   ├── left: COL('x')
+                │   ├── left: UNRESOLVED_COL('x')
                 │   └── right: LIT(5)
-                └── right: COL('y')
+                └── right: UNRESOLVED_COL('y')
         """
         from ray.data._internal.planner.plan_expression.expression_visitors import (
             _TreeReprVisitor,

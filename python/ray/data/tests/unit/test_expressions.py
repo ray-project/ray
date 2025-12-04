@@ -648,7 +648,7 @@ class TestIcebergExpressionVisitor:
             fn=dummy_fn,
             args=[col("x")],
             kwargs={},
-            data_type=DataType(int),
+            _data_type=DataType(int),
         )
 
         with pytest.raises(
