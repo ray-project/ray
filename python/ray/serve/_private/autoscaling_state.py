@@ -67,6 +67,9 @@ class DeploymentAutoscalingState:
             maxlen=AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX
         )
         self._latest_metrics_timestamp: Optional[float] = None
+        # Track timestamps of last scale up and scale down events
+        self._last_scale_up_time: Optional[float] = None
+        self._last_scale_down_time: Optional[float] = None
 
     def register(self, info: DeploymentInfo, curr_target_num_replicas: int) -> int:
         """Registers an autoscaling deployment's info.
@@ -131,6 +134,14 @@ class DeploymentAutoscalingState:
     def update_running_replica_ids(self, running_replicas: List[ReplicaID]):
         """Update cached set of running replica IDs for this deployment."""
         self._running_replicas = running_replicas
+
+    def record_scale_up(self):
+        """Record a scale up event by updating the timestamp."""
+        self._last_scale_up_time = time.time()
+
+    def record_scale_down(self):
+        """Record a scale down event by updating the timestamp."""
+        self._last_scale_down_time = time.time()
 
     def is_within_bounds(self, num_replicas_running_at_target_version: int):
         """Whether or not this deployment is within the autoscaling bounds.
@@ -280,8 +291,8 @@ class DeploymentAutoscalingState:
             total_queued_requests=self._get_queued_requests,
             aggregated_metrics=self._get_aggregated_custom_metrics,
             raw_metrics=self._get_raw_custom_metrics,
-            last_scale_up_time=None,
-            last_scale_down_time=None,
+            last_scale_up_time=self._last_scale_up_time,
+            last_scale_down_time=self._last_scale_down_time,
         )
 
     def get_decision_history(self) -> List[DecisionRecord]:
@@ -893,6 +904,16 @@ class ApplicationAutoscalingState:
             running_replicas
         )
 
+    def record_scale_up(self, deployment_id: DeploymentID):
+        """Record a scale up event for a deployment."""
+        if deployment_id in self._deployment_autoscaling_states:
+            self._deployment_autoscaling_states[deployment_id].record_scale_up()
+
+    def record_scale_down(self, deployment_id: DeploymentID):
+        """Record a scale down event for a deployment."""
+        if deployment_id in self._deployment_autoscaling_states:
+            self._deployment_autoscaling_states[deployment_id].record_scale_down()
+
     def on_replica_stopped(self, replica_id: ReplicaID):
         dep_id = replica_id.deployment_id
         if dep_id in self._deployment_autoscaling_states:
@@ -1043,6 +1064,26 @@ class AutoscalingStateManager:
         app_state = self._app_autoscaling_states.get(deployment_id.app_name)
         if app_state:
             app_state.update_running_replica_ids(deployment_id, running_replicas)
+
+    def record_scale_up(self, deployment_id: DeploymentID):
+        """Record a scale up event for a deployment.
+
+        Args:
+            deployment_id: The ID of the deployment being scaled up.
+        """
+        app_state = self._app_autoscaling_states.get(deployment_id.app_name)
+        if app_state:
+            app_state.record_scale_up(deployment_id)
+
+    def record_scale_down(self, deployment_id: DeploymentID):
+        """Record a scale down event for a deployment.
+
+        Args:
+            deployment_id: The ID of the deployment being scaled down.
+        """
+        app_state = self._app_autoscaling_states.get(deployment_id.app_name)
+        if app_state:
+            app_state.record_scale_down(deployment_id)
 
     def on_replica_stopped(self, replica_id: ReplicaID):
         app_state = self._app_autoscaling_states.get(replica_id.deployment_id.app_name)
