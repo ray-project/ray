@@ -129,10 +129,10 @@ The retryable gRPC client works as follows:
     (infinity) for each RPC.
 - With each additional failed RPC, the
   `exponential backoff period is increased <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/rpc/retryable_grpc_client.cc#L95>`_,
-  agnostic of the type of RPC that fails. The backoff period caps out to a max that you can customize 
-  using either the ``core_worker_rpc_server_reconnect_timeout_max_s`` or 
-  ``raylet_rpc_server_reconnect_timeout_max_s`` config options. The GCS doesn't have a max backoff 
-  period as noted above.
+  agnostic of the type of RPC that fails. The backoff period caps out to a max that you can 
+  customize for the core worker and raylet clients using either the 
+  ``core_worker_rpc_server_reconnect_timeout_max_s`` or ``raylet_rpc_server_reconnect_timeout_max_s`` 
+  config options. The GCS client doesn't have a max backoff period as noted above.
 - Once the channel check succeeds, the
   `exponential backoff period is reset and all RPCs in the queue are retried <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/rpc/retryable_grpc_client.cc#L117>`_.
 - If the system successfully receives a node death notification (either through subscription or
