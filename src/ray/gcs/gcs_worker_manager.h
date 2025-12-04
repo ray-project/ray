@@ -16,6 +16,7 @@
 
 #include <vector>
 
+#include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_kv_manager.h"
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/gcs/grpc_service_interfaces.h"
@@ -23,7 +24,6 @@
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/stats/metric.h"
 #include "ray/util/counter_map.h"
-#include "ray/gcs/gcs_init_data.h"
 
 namespace ray {
 namespace gcs {
@@ -31,9 +31,9 @@ namespace gcs {
 class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
  public:
   explicit GcsWorkerManager(size_t max_num_dead_workers,
-                   gcs::GcsTableStorage &gcs_table_storage,
-                   instrumented_io_context &io_context,
-                   pubsub::GcsPublisher &gcs_publisher)
+                            gcs::GcsTableStorage &gcs_table_storage,
+                            instrumented_io_context &io_context,
+                            pubsub::GcsPublisher &gcs_publisher)
       : gcs_table_storage_(gcs_table_storage),
         io_context_(io_context),
         gcs_publisher_(gcs_publisher) {}
@@ -91,7 +91,8 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
       worker_dead_listeners_;
 
   /// A deque where workers are store as pairs of (WorkerID, Timestamp).
-  /// The workers are sorted according to the timestamp, and the oldest is at the head of the deque.
+  /// The workers are sorted according to the timestamp, and the oldest is at the head of
+  /// the deque.
   /// @note The pair consists of:
   ///   - first: WorkerID (identifier for the worker)
   ///   - second: Timestamp (time when the worker was last updated or added)

@@ -54,7 +54,6 @@ void GcsInitData::AsyncLoadWorkerTableData(Postable<void()> on_done) {
       }));
 }
 
-
 void GcsInitData::AsyncLoadJobTableData(Postable<void()> on_done) {
   RAY_LOG(INFO) << "Loading job table data.";
   gcs_table_storage_.JobTable().GetAll(std::move(on_done).TransformArg(
