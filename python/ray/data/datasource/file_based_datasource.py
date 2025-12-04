@@ -74,7 +74,7 @@ class FileShuffleConfig:
     - If ``seed`` is not None and ``reseed_after_epoch`` is False, the random seed is
       constantly ``seed`` across epochs.
     - If ``seed`` is not None and ``reseed_after_epoch`` is True, the random seed is
-      ``seed + epoch_idx``.
+      different for each epoch.
 
     .. note::
         Even if you provided a seed, you might still observe a non-deterministic row
@@ -86,10 +86,11 @@ class FileShuffleConfig:
         seed: An optional integer seed for the file shuffler. If None, shuffling is
             non-deterministic. If provided, shuffling is deterministic based on this
             seed and the ``reseed_after_epoch`` setting.
-        reseed_after_epoch: If True, the random seed is ``seed + epoch_idx``, resulting
-            in different shuffling orders across epochs. If False, the random seed is
-            constantly ``seed``, resulting in the same shuffling order across epochs.
-            Only takes effect when ``seed`` is not None. Defaults to True.
+        reseed_after_epoch: If True, the random seed considers both ``seed`` and
+            ``epoch_idx``, resulting in different shuffling orders across epochs.
+            If False, the random seed is constantly ``seed``, resulting in the same
+            shuffling order across epochs. Only takes effect when ``seed`` is not None.
+            Defaults to True.
 
     Example:
         >>> import ray
