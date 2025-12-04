@@ -137,7 +137,7 @@ def test_register_histogram_metric(
     """
     Test the register_histogram_metric method of OpenTelemetryMetricRecorder.
     - Test that it registers a histogram metric.
-    - Test that recordings are sent to OTEL SDK synchronously.
+    - Test that recordings are buffered in _histogram_recordings.
     - Test bucket midpoint calculation.
     """
     mock_histogram = MagicMock()
@@ -152,7 +152,7 @@ def test_register_histogram_metric(
     assert "test_histogram" in recorder._registered_instruments
     assert recorder._metric_name_to_type["test_histogram"] == MetricType.HISTOGRAM
 
-    # Record values - should be recorded synchronously to OTEL SDK
+    # Record values - should be buffered (not sent to SDK yet)
     recorder.set_metric_value(
         name="test_histogram",
         tags={"label_key": "label_value"},
@@ -163,10 +163,17 @@ def test_register_histogram_metric(
         tags={"label_key": "label_value"},
         value=2.5,
     )
-    # Verify recordings were sent to SDK immediately
-    assert mock_histogram.record.call_count == 2
-    mock_histogram.record.assert_any_call(1.5, attributes={"label_key": "label_value"})
-    mock_histogram.record.assert_any_call(2.5, attributes={"label_key": "label_value"})
+    # Verify recordings are buffered, not sent to SDK yet
+    assert mock_histogram.record.call_count == 0
+    assert len(recorder._histogram_recordings["test_histogram"]) == 2
+    assert recorder._histogram_recordings["test_histogram"][0] == (
+        frozenset({("label_key", "label_value")}),
+        1.5,
+    )
+    assert recorder._histogram_recordings["test_histogram"][1] == (
+        frozenset({("label_key", "label_value")}),
+        2.5,
+    )
     mock_logger_warning.assert_not_called()
 
     # Test negative first boundary bucket midpoints
@@ -337,8 +344,55 @@ def test_metric_type_routing(mock_get_meter, mock_set_meter_provider):
     # Sum: accumulated
     assert recorder._observations_by_name["sum"][tag_key] == 15.0
 
-    # Histogram: recorded synchronously (2 SDK calls)
+    # Histogram: buffered (2 recordings, not sent to SDK yet)
+    assert mock_histogram.record.call_count == 0
+    assert len(recorder._histogram_recordings["histogram"]) == 2
+
+
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_flush_histograms(mock_get_meter, mock_set_meter_provider):
+    """
+    Test the flush_histograms method of OpenTelemetryMetricRecorder.
+    - Test that buffered recordings are flushed to the OTEL SDK.
+    - Test that buffer is cleared after flush.
+    """
+    mock_histogram = MagicMock()
+    mock_meter = MagicMock()
+    mock_meter.create_histogram.return_value = mock_histogram
+    mock_get_meter.return_value = mock_meter
+    recorder = OpenTelemetryMetricRecorder()
+
+    recorder.register_histogram_metric(
+        name="test_histogram", description="Test Histogram", buckets=[1.0, 2.0, 3.0]
+    )
+
+    # Buffer some recordings
+    recorder.set_metric_value(
+        name="test_histogram",
+        tags={"label_key": "label_value"},
+        value=1.5,
+    )
+    recorder.set_metric_value(
+        name="test_histogram",
+        tags={"label_key": "label_value"},
+        value=2.5,
+    )
+
+    # Verify recordings are buffered
+    assert len(recorder._histogram_recordings["test_histogram"]) == 2
+    assert mock_histogram.record.call_count == 0
+
+    # Flush
+    recorder.flush_histograms()
+
+    # Verify recordings were flushed to SDK
     assert mock_histogram.record.call_count == 2
+    mock_histogram.record.assert_any_call(1.5, attributes={"label_key": "label_value"})
+    mock_histogram.record.assert_any_call(2.5, attributes={"label_key": "label_value"})
+
+    # Buffer should be cleared
+    assert len(recorder._histogram_recordings["test_histogram"]) == 0
 
 
 if __name__ == "__main__":

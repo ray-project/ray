@@ -2,7 +2,7 @@ import logging
 import threading
 from collections import defaultdict
 from enum import Enum
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from opentelemetry import metrics
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
@@ -31,11 +31,6 @@ class OpenTelemetryMetricRecorder:
     A class to record OpenTelemetry metrics. This is the main entry point for exporting
     all ray telemetries to Prometheus server.
     It uses OpenTelemetry's Prometheus exporter to export metrics.
-
-    Performance optimization: Gauges, counters, and sums use a "lazy observation"
-    pattern where values are buffered in memory and only exported to OTEL SDK during
-    Prometheus collection. This decouples hot-path metric recording from OTEL SDK
-    overhead. Histograms use synchronous recording.
     """
 
     _metrics_initialized = False
@@ -52,6 +47,10 @@ class OpenTelemetryMetricRecorder:
         self._observations_by_name: Dict[str, Dict[frozenset, float]] = defaultdict(
             dict
         )
+        # Buffer for histogram recordings: metric name -> list of (tags_frozenset, value)
+        self._histogram_recordings: Dict[
+            str, List[Tuple[frozenset, float]]
+        ] = defaultdict(list)
         self._histogram_bucket_midpoints = defaultdict(list)
         self._init_metrics()
         self.meter = metrics.get_meter(__name__)
@@ -231,10 +230,9 @@ class OpenTelemetryMetricRecorder:
 
         - Gauges: stores latest value, cleared on collection (lazy)
         - Counters/Sums: accumulates value, persisted across collections (lazy)
-        - Histograms: records directly to OTEL SDK (synchronous)
+        - Histograms: buffers recordings, flushed via flush_histograms()
 
-        For gauges/counters/sums, this method is optimized for high-frequency calls -
-        it only does dict operations under a brief lock, with no OTEL SDK calls.
+        this method only writes to memory, and does not call the OTEL SDK.
         """
         tag_key = frozenset(tags.items())
 
@@ -253,22 +251,45 @@ class OpenTelemetryMetricRecorder:
                 return
 
             if metric_type == MetricType.HISTOGRAM:
-                # Histogram: record synchronously
-                instrument = self._registered_instruments.get(name)
-                if instrument is not None:
-                    high_cardinality_labels = (
-                        MetricCardinality.get_high_cardinality_labels_to_drop(name)
-                    )
-                    filtered_tags = {
-                        k: v
-                        for k, v in tags.items()
-                        if k not in high_cardinality_labels
-                    }
-                    instrument.record(value, attributes=filtered_tags)
+                # Histogram: buffer the recording for later flush
+                self._histogram_recordings[name].append((tag_key, value))
                 return
 
         # Metric not registered
         logger.warning(f"Metric not registered: {name}")
+
+    def flush_histograms(self):
+        """Flush buffered histogram recordings to the OTEL SDK.
+
+        Call this after recording a batch of histogram values. This allows
+        high-frequency histogram recording to be fast (just list appends),
+        with the OTEL SDK calls batched outside the hot path.
+        """
+        with self._lock:
+            recordings_to_flush = dict(self._histogram_recordings)
+            self._histogram_recordings = defaultdict(list)
+            histogram_instruments = {
+                name: inst
+                for name, inst in self._registered_instruments.items()
+                if self._metric_name_to_type.get(name) == MetricType.HISTOGRAM
+            }
+
+        # Flush outside lock - OTEL SDK handles its own thread safety
+        for name, recordings in recordings_to_flush.items():
+            instrument = histogram_instruments.get(name)
+            if instrument is None:
+                continue
+
+            high_cardinality_labels = (
+                MetricCardinality.get_high_cardinality_labels_to_drop(name)
+            )
+            for tag_key, value in recordings:
+                tags = {
+                    k: v
+                    for k, v in dict(tag_key).items()
+                    if k not in high_cardinality_labels
+                }
+                instrument.record(value, attributes=tags)
 
     def record_and_export(self, records: List[Record], global_tags=None):
         """Record a list of telemetry records and export them to Prometheus."""
