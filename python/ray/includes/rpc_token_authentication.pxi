@@ -1,9 +1,11 @@
+from libcpp cimport bool as c_bool
 from ray.includes.rpc_token_authentication cimport (
     CAuthenticationMode,
     GetAuthenticationMode,
     CAuthenticationToken,
     CAuthenticationTokenLoader,
     CAuthenticationTokenValidator,
+    CTokenLoadResult,
 )
 from ray._private.authentication.authentication_constants import AUTHORIZATION_HEADER_NAME
 import logging
@@ -73,8 +75,23 @@ class AuthenticationTokenLoader:
 
         Returns:
             bool: True if a token exists, False otherwise
+
+        Raises:
+            AuthenticationError: If any issues loading the token
         """
-        return CAuthenticationTokenLoader.instance().HasToken(ignore_auth_mode)
+        cdef CTokenLoadResult result
+        cdef c_bool c_ignore_auth_mode = ignore_auth_mode
+
+        with nogil:
+            result = CAuthenticationTokenLoader.instance().TryLoadToken(c_ignore_auth_mode)
+
+        if result.hasError():
+            from ray.exceptions import AuthenticationError
+            raise AuthenticationError(result.error_message.decode('utf-8'))
+
+        if not result.token.has_value() or result.token.value().empty():
+            return False
+        return True
 
     def reset_cache(self):
         """Reset the C++ authentication token cache.
