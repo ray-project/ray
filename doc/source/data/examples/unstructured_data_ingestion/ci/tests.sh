@@ -6,6 +6,6 @@
 
 set -exo pipefail
 
-python ci/nb2py.py content/unstructured-data-ingestion.ipynb unstructured-data-ingestion.py
-python unstructured-data-ingestion.py
-rm unstructured-data-ingestion.py
+python ci/nb2py.py content/unstructured_data_ingestion.ipynb unstructured_data_ingestion.py
+python unstructured_data_ingestion.py
+rm unstructured_data_ingestion.py
