@@ -624,7 +624,7 @@ py_test(
 
 py_test(
     name = "test_hash_shuffle",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_hash_shuffle.py"],
     tags = [
         "exclusive",

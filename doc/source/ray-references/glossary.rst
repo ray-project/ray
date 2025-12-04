@@ -93,8 +93,9 @@ documentation, sorted alphabetically.
             3   3
             4   4
             >>> next(iter(dataset.iter_batches(batch_format="pyarrow", batch_size=5)))
-            id: int64                                                                                                                          
-            ----                                                                                                                               
+            pyarrow.Table
+            id: int64
+            ----
             id: [[0],[1],...,[3],[4]]                                                                                                         
 
         To learn more about batch formats, read
