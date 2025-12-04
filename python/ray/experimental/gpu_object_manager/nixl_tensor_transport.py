@@ -148,7 +148,7 @@ class NixlTensorTransport(TensorTransportManager):
         tensor_transport_metadata: NixlTransportMetadata,
         communicator_metadata: NixlCommunicatorMetadata,
     ):
-        if tensors is None:
+        if not tensors:
             return
 
         assert isinstance(
