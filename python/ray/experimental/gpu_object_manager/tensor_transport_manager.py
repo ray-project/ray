@@ -112,6 +112,7 @@ class TensorTransportManager(ABC):
     def send_multiple_tensors(
         self,
         tensors: List["torch.Tensor"],
+        tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
     ):
         """
@@ -119,6 +120,7 @@ class TensorTransportManager(ABC):
 
         Args:
             tensors: The tensors to send.
+            tensor_transport_metadata: The tensor transport metadata for the RDT object.
             communicator_metadata: The communicator metadata for the send/recv operation.
         """
 

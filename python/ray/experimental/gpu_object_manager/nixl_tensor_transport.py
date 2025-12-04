@@ -219,8 +219,8 @@ class NixlTensorTransport(TensorTransportManager):
     def send_multiple_tensors(
         self,
         tensors: List["torch.Tensor"],
+        tensor_transport_metadata: NixlTransportMetadata,
         communicator_metadata: NixlCommunicatorMetadata,
-        device: "torch.device",
     ):
         raise NotImplementedError(
             "NIXL transport does not support send_multiple_tensors, since it is a one-sided transport."
