@@ -30,7 +30,7 @@ pyarrow >= 9.0.0
 smart_open
 lz4
 aiorwlock
-scipy>=1.14.1
+scipy
 colorful
 rich
 opentelemetry-sdk>=1.30.0
