@@ -435,17 +435,16 @@ TEST(MutableObjectProvider, HandleOutOfOrderPushMutableObject) {
     round_completed[round].resize(kNumRanks, false);
   }
 
-  // Barrier to synchronize the start of each round
-  std::vector<std::unique_ptr<absl::Barrier>> round_barriers;
-  for (int round = 0; round < kNumRounds; round++) {
-    round_barriers.push_back(std::make_unique<absl::Barrier>(kNumRanks));
-  }
+  // Single barrier to synchronize the start of all threads (but not between rounds)
+  // This allows rank0 to proceed to the next round before ranks 2-3 complete previous round
+  absl::Barrier start_barrier(kNumRanks);
 
   // Function for each rank to send requests for all rounds
   auto rank_sender = [&](int rank) {
+    // Wait for all ranks to be ready before starting (synchronize thread launch)
+    start_barrier.Block();
+
     for (int round = 0; round < kNumRounds; round++) {
-      // Wait for all ranks to be ready before sending this round
-      round_barriers[round]->Block();
 
       // Simulate network jitter: rank0 and rank1 send immediately,
       // rank2 and rank3 are delayed (simulating the issue scenario)
