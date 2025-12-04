@@ -248,7 +248,7 @@ class HashOperatorTestCase:
 @pytest.mark.parametrize(
     "tc",
     [
-        # Case 1: Auto-derived partitions with limited CPUs
+        # Case 1: Auto-derived partitions with limited CPUs (trigger test)
         HashOperatorTestCase(
             input_size_bytes=2 * GiB,
             input_num_blocks=16,
