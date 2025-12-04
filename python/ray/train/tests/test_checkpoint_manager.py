@@ -63,6 +63,37 @@ def test_limited_checkpoints(checkpoint_paths: List[str]):
     assert Path(checkpoint_paths[9]).exists()
 
 
+@pytest.mark.parametrize(
+    "metrics_fn",
+    [
+        lambda v: {"nested": {"sub": {"attr": v}}},
+        lambda v: {"nested": {"sub/attr": v}},
+        lambda v: {"nested/sub": {"attr": v}},
+        lambda v: {"nested/sub/attr": v},
+        lambda v: {"attr": v},
+    ],
+)
+@pytest.mark.parametrize("keep", list(range(1, 3)))
+def test_precomputed_metrics_only_keep_latest_n_checkpoints(
+    metrics_fn,
+    keep,
+    checkpoint_paths: List[str],
+):
+    manager = _CheckpointManager(checkpoint_config=CheckpointConfig(num_to_keep=keep))
+
+    for i in range(10):
+        manager.register_checkpoint(
+            _TrainingResult(
+                checkpoint=Checkpoint.from_directory(checkpoint_paths[i]),
+                metrics=metrics_fn(i),
+            )
+        )
+        expected_stored_count = min(i + 1, keep)
+
+        assert len(manager._flat_metrics_pre_computed.keys()) == expected_stored_count
+        assert len(manager.best_checkpoint_results) == expected_stored_count
+
+
 @pytest.mark.parametrize("order", ["min", "max"])
 def test_keep_checkpoints_by_score(order, checkpoint_paths):
     num_to_keep = 2
@@ -199,6 +230,13 @@ def test_nested_keep_best_checkpoint(checkpoint_paths, metrics_fn):
     )
 
     assert len(manager.best_checkpoint_results) == 2
+    assert (
+        len(
+            manager._flat_metrics_pre_computed.keys()
+            - {manager.latest_checkpoint_result}
+        )
+        == 2
+    )
 
     assert manager._get_checkpoint_score(manager.best_checkpoint_results[0]) == (
         True,
@@ -224,6 +262,13 @@ def test_nested_keep_best_checkpoint(checkpoint_paths, metrics_fn):
         )
     )
     assert len(manager.best_checkpoint_results) == 2
+    assert (
+        len(
+            manager._flat_metrics_pre_computed.keys()
+            - {manager.latest_checkpoint_result}
+        )
+        == 2
+    )
 
     assert manager._get_checkpoint_score(manager.best_checkpoint_results[0]) == (
         True,
