@@ -105,9 +105,6 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
     def healthcheck_accelerator(accelerator_id: str) -> Tuple[bool, Optional[str]]:
         """Run a simple CUDA kernel on the specified CUDA GPU to verify it's functional.
 
-        This runs a subprocess with CUDA_VISIBLE_DEVICES set to the specific CUDA GPU,
-        then executes a matmul kernel to verify the CUDA GPU works.
-
         Args:
             accelerator_id: The physical CUDA GPU ID to check.
 
@@ -120,7 +117,10 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         # CUDA GPU health check script that runs a matmul kernel
         health_check_script = """
 import sys
-import torch
+try:
+    import torch
+except ImportError:
+    sys.exit(2)
 try:
     if not torch.cuda.is_available():
         print("CUDA not available", file=sys.stderr)
@@ -135,7 +135,7 @@ except Exception as e:
 """
 
         env = os.environ.copy()
-        # Set CUDA_VISIBLE_DEVICES to the specific CUDA GPU to check
+        # Set CUDA_VISIBLE_DEVICES to the specific CUDA GPU
         env[CUDA_VISIBLE_DEVICES_ENV_VAR] = accelerator_id
 
         # The kernel can potentially hang if the CUDA GPU is not healthy, hence running in a subprocess with a timeout
@@ -150,16 +150,21 @@ except Exception as e:
 
             if result.returncode == 0:
                 return (True, None)
+            elif result.returncode == 2:
+                logger.warning(
+                    f"Skipping health check for CUDA GPU {accelerator_id}: torch is not installed."
+                )
+                return (True, None)
             else:
                 return (
                     False,
                     f"CUDA GPU {accelerator_id} health check failed: {result.stderr.strip()}",
                 )
 
-        except subprocess.TimeoutExpired:
+        except Exception as e:
             return (
                 False,
-                f"CUDA GPU {accelerator_id} health check failed: timed out after {timeout} seconds",
+                f"CUDA GPU {accelerator_id} health check failed: {str(e)}",
             )
 
     @staticmethod

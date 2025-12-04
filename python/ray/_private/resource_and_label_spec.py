@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Optional, Tuple
 
 import ray
@@ -367,23 +368,30 @@ class ResourceAndLabelSpec:
         )
 
         failed_accelerators = []
-        for accelerator_id in accelerator_ids:
-            healthy, error_msg = accelerator_manager.healthcheck_accelerator(
-                accelerator_id
-            )
-            if not healthy:
-                logger.error(
-                    f"{accelerator_manager.get_resource_name()} {accelerator_id} "
-                    f"health check failed: {error_msg}"
-                )
-                failed_accelerators.append(accelerator_id)
-            else:
-                logger.info(
-                    f"{accelerator_manager.get_resource_name()} {accelerator_id} "
-                    f"health check passed"
-                )
+        with ThreadPoolExecutor(max_workers=len(accelerator_ids)) as executor:
+            future_to_accelerator_id = {
+                executor.submit(
+                    accelerator_manager.healthcheck_accelerator, accelerator_id
+                ): accelerator_id
+                for accelerator_id in accelerator_ids
+            }
+            for future in as_completed(future_to_accelerator_id):
+                accelerator_id = future_to_accelerator_id[future]
+                healthy, error_msg = future.result()
+                if not healthy:
+                    logger.error(
+                        f"{accelerator_manager.get_resource_name()} {accelerator_id} "
+                        f"health check failed: {error_msg}"
+                    )
+                    failed_accelerators.append(accelerator_id)
+                else:
+                    logger.info(
+                        f"{accelerator_manager.get_resource_name()} {accelerator_id} "
+                        f"health check passed"
+                    )
 
         if failed_accelerators:
+            failed_accelerators.sort()
             raise RuntimeError(
                 f"Accelerator health check failed for device(s): {failed_accelerators}. "
                 f"Node startup aborted. Please check hardware or exclude failed "
