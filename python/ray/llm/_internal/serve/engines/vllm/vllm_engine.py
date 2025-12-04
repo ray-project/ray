@@ -1,4 +1,5 @@
 import argparse
+import inspect
 import os
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, Tuple, Union
 
@@ -194,15 +195,23 @@ class VLLMEngine(LLMEngine):
 
         state = State()
         # TODO (Kourosh): There might be some variables that needs protection?
-        # Merge frontend and engine args, preferring engine args for overlapping keys
-        merged_args = {**vllm_frontend_args.__dict__, **vllm_engine_args.__dict__}
-        args = argparse.Namespace(**merged_args)
-
-        await init_app_state(
-            engine_client=self._engine_client,
-            state=state,
-            args=args,
+        args = argparse.Namespace(
+            **(vllm_frontend_args.__dict__ | vllm_engine_args.__dict__)
         )
+
+        if "vllm_config" in inspect.signature(init_app_state).parameters:
+            await init_app_state(
+                self._engine_client,
+                vllm_config=vllm_engine_config,
+                state=state,
+                args=args,
+            )
+        else:
+            await init_app_state(
+                self._engine_client,
+                state=state,
+                args=args,
+            )
 
         self._oai_models = state.openai_serving_models
         self._oai_serving_chat = state.openai_serving_chat
