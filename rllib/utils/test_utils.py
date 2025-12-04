@@ -26,6 +26,7 @@ from gymnasium.spaces import (
 
 import ray
 from ray import tune
+from ray._common.deprecation import Deprecated
 from ray.rllib.core import DEFAULT_MODULE_ID, Columns
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.utils.annotations import OldAPIStack
@@ -49,6 +50,33 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
+
+
+@Deprecated(
+    old="ray.rllib.utils.test_utils.add_rllib_example_script_args",
+    new="ray.rllib.examples.utils.add_rllib_example_script_args",
+    error=False,
+)
+def add_rllib_example_script_args(*args, **kwargs):
+    ...
+
+
+@Deprecated(
+    old="ray.rllib.utils.test_utils.should_stop",
+    new="ray.rllib.examples.utils.should_stop",
+    error=False,
+)
+def should_stop(*args, **kwargs):
+    ...
+
+
+@Deprecated(
+    old="ray.rllib.utils.test_utils.run_rllib_example_script_experiment",
+    new="ray.rllib.examples.utils.run_rllib_example_script_experiment",
+    error=False,
+)
+def run_rllib_example_script_experiment(*args, **kwargs):
+    ...
 
 
 def check(x, y, decimals=5, atol=None, rtol=None, false=False):
