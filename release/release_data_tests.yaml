@@ -562,6 +562,7 @@
 
 
 - name: image_embedding_from_jsonl_{{case}}
+  python: "3.10"
   frequency: "{{frequency}}"
   group: data-batch-inference
 
@@ -638,7 +639,7 @@
 ##############
 
 - name: "tpch_q1_{{scaling}}"
-
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -656,6 +657,7 @@
 #################################################
 
 - name: "cross_az_map_batches_autoscaling"
+  python: "3.10"
   frequency: manual
   env: gce
   cluster:
