@@ -1704,7 +1704,6 @@ class Dataset:
             raise ValueError(
                 "`shuffle` must be False when `target_num_rows_per_block` is set."
             )
-
         plan = self._plan.copy()
         if target_num_rows_per_block is not None:
             op = StreamingRepartition(
