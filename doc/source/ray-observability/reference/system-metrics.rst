@@ -14,7 +14,7 @@ Ray exports a number of system metrics, which provide introspection into the sta
 
   You can restore or adjust label behavior using the environment variable `RAY_metric_cardinality_level`:
 
-  - `legacy`: Preserve all labels. (This was the default behavior before Ray 2.53)
+  - `legacy`: Preserve all labels. (This was the default behavior before Ray 2.53.)
   - `recommended`: Drop high-cardinality labels. The specific labels are determined internally by Ray; currently this includes only `WorkerId`. (This is the default behavior since Ray 2.53)
   - `low`: Same as `recommended`, but also drops the Name label for tasks and actors.
 
