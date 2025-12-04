@@ -478,7 +478,7 @@ class MARWIL(Algorithm):
             self.metrics.log_value(
                 key=NUM_ENV_STEPS_SAMPLED_LIFETIME,
                 value=self.config.train_batch_size_per_learner
-                * (self.config.num_learners if self.config.num_learners > 0 else 1),
+                * max(1, self.config.num_learners),
                 reduce="sum",
                 clear_on_reduce=False,
             )
