@@ -145,6 +145,11 @@ class ResourceAndLabelSpec:
         ) = ResourceAndLabelSpec._get_current_node_accelerator(
             self.num_gpus, self.resources
         )
+
+        # Validate accelerator health
+        if accelerator_manager is not None:
+            self._validate_accelerator_health(accelerator_manager)
+
         self._resolve_accelerator_resources(accelerator_manager, num_accelerators)
 
         # Default num_gpus value if unset by user and unable to auto-detect.
@@ -330,6 +335,60 @@ class ResourceAndLabelSpec:
             merged[key] = val
 
         self.labels = merged
+
+    def _validate_accelerator_health(
+        self, accelerator_manager: AcceleratorManager
+    ) -> None:
+        """Validate all accelerators are healthy by running health checks.
+
+        If CUDA_VISIBLE_DEVICES (or equivalent) is set, only those accelerators
+        are checked. Otherwise, all physical accelerators are checked.
+
+        Args:
+            accelerator_manager: The accelerator manager for the detected accelerator type.
+
+        Raises:
+            RuntimeError: If any accelerator fails the health check.
+        """
+        visible_ids = accelerator_manager.get_current_process_visible_accelerator_ids()
+
+        if visible_ids is not None:
+            accelerator_ids = visible_ids
+        else:
+            total_accelerators = accelerator_manager.get_current_node_num_accelerators()
+            accelerator_ids = [str(i) for i in range(total_accelerators)]
+
+        if not accelerator_ids:
+            return
+
+        logger.info(
+            f"Running health check on {len(accelerator_ids)} "
+            f"{accelerator_manager.get_resource_name()}(s): {accelerator_ids}"
+        )
+
+        failed_accelerators = []
+        for accelerator_id in accelerator_ids:
+            healthy, error_msg = accelerator_manager.healthcheck_accelerator(
+                accelerator_id
+            )
+            if not healthy:
+                logger.error(
+                    f"{accelerator_manager.get_resource_name()} {accelerator_id} "
+                    f"health check failed: {error_msg}"
+                )
+                failed_accelerators.append(accelerator_id)
+            else:
+                logger.info(
+                    f"{accelerator_manager.get_resource_name()} {accelerator_id} "
+                    f"health check passed"
+                )
+
+        if failed_accelerators:
+            raise RuntimeError(
+                f"Accelerator health check failed for device(s): {failed_accelerators}. "
+                f"Node startup aborted. Please check hardware or exclude failed "
+                f"devices via {accelerator_manager.get_visible_accelerator_ids_env_var()}."
+            )
 
     def _resolve_accelerator_resources(self, accelerator_manager, num_accelerators):
         """Detect and update accelerator resources on a node."""

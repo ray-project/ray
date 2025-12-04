@@ -1,6 +1,8 @@
 import logging
 import os
 import re
+import subprocess
+import sys
 from typing import List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
@@ -98,6 +100,67 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         os.environ[
             NvidiaGPUAcceleratorManager.get_visible_accelerator_ids_env_var()
         ] = ",".join([str(i) for i in visible_cuda_devices])
+
+    @staticmethod
+    def healthcheck_accelerator(accelerator_id: str) -> Tuple[bool, Optional[str]]:
+        """Run a simple CUDA kernel on the specified CUDA GPU to verify it's functional.
+
+        This runs a subprocess with CUDA_VISIBLE_DEVICES set to the specific CUDA GPU,
+        then executes a matmul kernel to verify the CUDA GPU works.
+
+        Args:
+            accelerator_id: The physical CUDA GPU ID to check.
+
+        Returns:
+            (healthy, error_message): True if healthy, False with error if not.
+        """
+        # Timeout in seconds for GPU health check
+        timeout = 60
+
+        # CUDA GPU health check script that runs a matmul kernel
+        health_check_script = """
+import sys
+import torch
+try:
+    if not torch.cuda.is_available():
+        print("CUDA not available", file=sys.stderr)
+        sys.exit(1)
+    x = torch.randn(100, 100, device='cuda')
+    y = torch.matmul(x, x)
+    torch.cuda.synchronize()
+    sys.exit(0)
+except Exception as e:
+    print(str(e), file=sys.stderr)
+    sys.exit(1)
+"""
+
+        env = os.environ.copy()
+        # Set CUDA_VISIBLE_DEVICES to the specific CUDA GPU to check
+        env[CUDA_VISIBLE_DEVICES_ENV_VAR] = accelerator_id
+
+        # The kernel can potentially hang if the CUDA GPU is not healthy, hence running in a subprocess with a timeout
+        try:
+            result = subprocess.run(
+                [sys.executable, "-c", health_check_script],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=timeout,
+            )
+
+            if result.returncode == 0:
+                return (True, None)
+            else:
+                return (
+                    False,
+                    f"CUDA GPU {accelerator_id} health check failed: {result.stderr.strip()}",
+                )
+
+        except subprocess.TimeoutExpired:
+            return (
+                False,
+                f"CUDA GPU {accelerator_id} health check failed: timed out after {timeout} seconds",
+            )
 
     @staticmethod
     def get_ec2_instance_num_accelerators(
