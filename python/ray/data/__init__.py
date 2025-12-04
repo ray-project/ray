@@ -22,7 +22,6 @@ from ray.data.datasource import (
     FileShuffleConfig,
     ReadTask,
     RowBasedFileDatasink,
-    SaveMode,
 )
 from ray.data.iterator import DataIterator, DatasetIterator
 from ray.data.preprocessor import Preprocessor
@@ -133,7 +132,6 @@ __all__ = [
     "NodeIdStr",
     "ReadTask",
     "RowBasedFileDatasink",
-    "SaveMode",
     "Schema",
     "SinkMode",
     "TaskPoolStrategy",
