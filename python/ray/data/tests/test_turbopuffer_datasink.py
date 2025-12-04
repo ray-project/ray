@@ -542,19 +542,21 @@ def test_write_single_namespace_end_to_end_calls_prepare_and_single_namespace():
         mock_get_client.return_value = MagicMock()
         sink.write([block1, block2], ctx=None)
 
-    # One concatenated table of 3 rows should be prepared.
-    assert mock_prepare.call_count == 1
-    prepared_input = mock_prepare.call_args[0][0]
-    assert prepared_input.num_rows == 3
+    # With streaming, _prepare_arrow_table is called once per block.
+    assert mock_prepare.call_count == 2
+    # First block has 2 rows, second block has 1 row.
+    assert mock_prepare.call_args_list[0][0][0].num_rows == 2
+    assert mock_prepare.call_args_list[1][0][0].num_rows == 1
 
-    # Single-namespace path should be taken.
+    # Single-namespace path should be taken once per block.
     mock_multi.assert_not_called()
-    mock_single.assert_called_once()
+    assert mock_single.call_count == 2
 
-    client_arg, prepared_table_arg, ns_name = mock_single.call_args[0]
-    assert ns_name == "default_ns"
-    assert prepared_table_arg.num_rows == 3
-    assert client_arg is mock_get_client.return_value
+    # All writes should go to the same namespace.
+    for call in mock_single.call_args_list:
+        client_arg, prepared_table_arg, ns_name = call[0]
+        assert ns_name == "default_ns"
+        assert client_arg is mock_get_client.return_value
 
 
 def test_write_multi_namespace_end_to_end_uses_write_multi_namespace():
@@ -577,19 +579,98 @@ def test_write_multi_namespace_end_to_end_uses_write_multi_namespace():
         mock_get_client.return_value = MagicMock()
         sink.write([block1, block2], ctx=None)
 
-    # Prepared once with both blocks concatenated.
-    assert mock_prepare.call_count == 1
-    prepared_input = mock_prepare.call_args[0][0]
-    assert prepared_input.num_rows == 2
+    # With streaming, _prepare_arrow_table is called once per block.
+    assert mock_prepare.call_count == 2
+    assert mock_prepare.call_args_list[0][0][0].num_rows == 1
+    assert mock_prepare.call_args_list[1][0][0].num_rows == 1
 
     mock_single.assert_not_called()
-    mock_multi.assert_called_once()
+    # Multi-namespace path is called once per block.
+    assert mock_multi.call_count == 2
 
-    client_arg, prepared_table_arg = mock_multi.call_args[0]
-    assert prepared_table_arg.num_rows == 2
-    assert client_arg is mock_get_client.return_value
+    for call in mock_multi.call_args_list:
+        client_arg, prepared_table_arg = call[0]
+        assert prepared_table_arg.num_rows == 1
+        assert client_arg is mock_get_client.return_value
 
 
+### 9. Streaming write behavior (memory efficiency)
+
+
+def test_write_processes_blocks_in_streaming_fashion():
+    """Verify blocks are processed one at a time, not concatenated into one table.
+
+    This test ensures memory efficiency by checking that each block is written
+    independently rather than accumulating all blocks before writing.
+    """
+    sink = make_sink(batch_size=10)
+
+    # Create multiple blocks
+    blocks = [
+        pa.table({"id": [i], "vector": [[float(i)]]})
+        for i in range(5)
+    ]
+
+    write_calls = []
+
+    def track_write_single_namespace(client, table, ns_name):
+        # Record the table size at each call
+        write_calls.append(table.num_rows)
+
+    with patch.object(sink, "_get_client") as mock_get_client, patch.object(
+        sink, "_write_single_namespace", side_effect=track_write_single_namespace
+    ):
+        mock_get_client.return_value = MagicMock()
+        sink.write(blocks, ctx=None)
+
+    # Should have 5 write calls, one per block
+    assert len(write_calls) == 5
+    # Each call should write 1 row (the size of each block)
+    assert all(count == 1 for count in write_calls)
+
+
+def test_write_multi_namespace_streaming_across_blocks():
+    """Verify multi-namespace writes process blocks independently.
+
+    Each block should be grouped and written separately, allowing the same
+    namespace to receive multiple writes from different blocks.
+    """
+    sink = TurbopufferDatasink(
+        namespace=None,
+        namespace_column="space_id",
+        namespace_format="ns-{namespace}",
+        api_key="test-api-key",
+    )
+
+    # Two blocks, each with rows for namespace "a"
+    block1 = pa.table({"space_id": ["a", "a"], "id": [1, 2], "vector": [[1.0], [2.0]]})
+    block2 = pa.table({"space_id": ["a", "b"], "id": [3, 4], "vector": [[3.0], [4.0]]})
+
+    namespace_writes = {}
+
+    def track_write_single_namespace(client, table, ns_name):
+        if ns_name not in namespace_writes:
+            namespace_writes[ns_name] = []
+        namespace_writes[ns_name].append(table.num_rows)
+
+    with patch.object(sink, "_get_client") as mock_get_client, patch.object(
+        sink, "_write_single_namespace", side_effect=track_write_single_namespace
+    ):
+        mock_get_client.return_value = MagicMock()
+        sink.write([block1, block2], ctx=None)
+
+    # Namespace "a" should receive 2 writes (once from each block)
+    # Block1: 2 rows to "a"
+    # Block2: 1 row to "a", 1 row to "b"
+    assert "ns-a" in namespace_writes
+    assert "ns-b" in namespace_writes
+    # "a" gets writes from both blocks
+    assert namespace_writes["ns-a"] == [2, 1]
+    # "b" only appears in block2
+    assert namespace_writes["ns-b"] == [1]
+
+
+### 10. Serialization behavior
 
 
 def test_serialization_excludes_non_serializable_attributes(mock_turbopuffer_module):
@@ -602,21 +683,26 @@ def test_serialization_excludes_non_serializable_attributes(mock_turbopuffer_mod
     
     sink = make_sink()
     
+    # Trigger client initialization
     client = sink._get_client()
     assert sink._client is not None
     assert sink._turbopuffer is not None
     
+    # Pickle and unpickle
     pickled = pickle.dumps(sink)
     unpickled_sink = pickle.loads(pickled)
     
+    # Verify non-serializable attributes are reinitialized correctly
     assert unpickled_sink._client is None  # Client should be reset to None
-    assert unpickled_sink._turbopuffer is not None
+    assert unpickled_sink._turbopuffer is not None  # Module re-imported in __setstate__
     
+    # Verify all configuration is preserved
     assert unpickled_sink.namespace == sink.namespace
     assert unpickled_sink.api_key == sink.api_key
     assert unpickled_sink.region == sink.region
     assert unpickled_sink.batch_size == sink.batch_size
     
+    # Verify lazy initialization still works after unpickling
     client2 = unpickled_sink._get_client()
     assert client2 is not None
     assert unpickled_sink._client is client2
