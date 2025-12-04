@@ -133,8 +133,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
                 rpc::Address *owner_address = nullptr) const override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  bool HasOwner(const ObjectID &object_id) const override ABSL_LOCKS_EXCLUDED(mutex_);
-
   StatusSet<StatusT::NotFound> HasOwner(
       const std::vector<ObjectID> &object_ids) const override ABSL_LOCKS_EXCLUDED(mutex_);
 
