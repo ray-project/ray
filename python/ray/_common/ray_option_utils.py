@@ -130,9 +130,9 @@ def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
 
 
 def _validate_num_returns(num_returns: str | int, func: Any) -> Optional[str]:
-    """The number of returned values from a task can only be "streaming" or an int > 0."""
+    """The number of returned values from a task can only be "streaming", "dynamic" or an int > 0."""
 
-    error_msg: str = "The keyword 'num_returns' only accepts a non-negative integer or 'streaming' (for generators)."
+    error_msg: str = "The keyword 'num_returns' only accepts a non-negative integer, 'streaming', or 'dynamic' (for generators)."
     is_generator_function: bool = inspect.isgeneratorfunction(func)
 
     if isinstance(num_returns, int) and num_returns >= 0:
@@ -140,7 +140,7 @@ def _validate_num_returns(num_returns: str | int, func: Any) -> Optional[str]:
 
     if (
         isinstance(num_returns, str)
-        and num_returns == "streaming"
+        and (num_returns == "streaming" or num_returns == "dynamic")
         and is_generator_function
     ):
         return
