@@ -91,10 +91,9 @@ class TestBC(unittest.TestCase):
 
     def test_bc_lr_schedule(self):
         # Define the data paths.
-        data_path = "tests/data/cartpole/cartpole-v1_large"
+        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
         base_path = Path(__file__).parents[3]
         data_path = "local://" / base_path / data_path
-
 
         config = (
             BCConfig()
