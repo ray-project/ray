@@ -246,12 +246,11 @@ class _BatchQueue:
             except asyncio.TimeoutError:
                 pass
 
-            # Add all new arrivals to the batch.
-            # Track items we need to put back if they don't fit
-            deferred_item = None
-
             # Custom batch size function logic
             if self.batch_size_fn is not None:
+                # Add all new arrivals to the batch.
+                # Track items we need to put back if they don't fit
+                deferred_item = None
                 while not self.queue.empty():
                     next_item = self.queue.get_nowait()
                     # Temporarily add to check size
@@ -264,19 +263,19 @@ class _BatchQueue:
                         deferred_item = next_item
                         break
                     # Size is OK, keep it in the batch (already added above)
+
+                # Put deferred item back in queue for next batch
+                if deferred_item is not None:
+                    # NOTE: The deferred item goes to the back of the queue (FIFO),
+                    # so newer requests may be processed before it. Consider using
+                    # asyncio.PriorityQueue if strict ordering is required.
+                    self.queue.put_nowait(deferred_item)
+                    # break the loop early because the deferred item is too large to fit in the batch
+                    break
             else:
                 # Default behavior: use original len() check logic
                 while len(batch) < max_batch_size and not self.queue.empty():
                     batch.append(self.queue.get_nowait())
-
-            # Put deferred item back in queue for next batch
-            if deferred_item is not None:
-                # NOTE: The deferred item goes to the back of the queue (FIFO),
-                # so newer requests may be processed before it. Consider using
-                # asyncio.PriorityQueue if strict ordering is required.
-                self.queue.put_nowait(deferred_item)
-                # break the loop early because the deferred item is too large to fit in the batch
-                break
 
             # Only clear the put event if the queue is empty. If it's not empty
             # we can start constructing a new batch immediately in the next loop.
