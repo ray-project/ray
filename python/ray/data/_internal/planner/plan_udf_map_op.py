@@ -333,12 +333,12 @@ def _get_udf(
             and isinstance(compute, ActorPoolStrategy)
             and not compute.enable_true_multi_threading
         ):
-            # NOTE: By default Actor-based UDFs are restricted to run within a 
-            # single-thread (when enable_true_multi_threading=False). 
-            # 
-            # Historically, this has been done to allow block-fetching, batching, etc to 
-            # be overlapped with the actual UDF invocation, while avoiding the 
-            # pitfalls of concurrent GPU access (like OOMs, etc) when specifying 
+            # NOTE: By default Actor-based UDFs are restricted to run within a
+            # single-thread (when enable_true_multi_threading=False).
+            #
+            # Historically, this has been done to allow block-fetching, batching, etc to
+            # be overlapped with the actual UDF invocation, while avoiding the
+            # pitfalls of concurrent GPU access (like OOMs, etc) when specifying
             # max_concurrency > 1.
             udf = make_callable_class_single_threaded(udf)
 
