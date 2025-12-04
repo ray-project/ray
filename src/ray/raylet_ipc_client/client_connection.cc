@@ -274,8 +274,9 @@ void ServerConnection::DoAsyncWrites() {
   if (RayConfig::instance().event_stats()) {
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
+    auto event_stats = io_context.stats();
     const auto stats_handle =
-        io_context.stats().RecordStart("ClientConnection.async_write.DoAsyncWrites");
+        event_stats->RecordStart("ClientConnection.async_write.DoAsyncWrites");
     boost::asio::async_write(
         socket_,
         message_buffers,
@@ -285,24 +286,27 @@ void ServerConnection::DoAsyncWrites() {
          call_handlers,
          stats_handle = std::move(stats_handle)](const boost::system::error_code &error,
                                                  size_t bytes_transferred) {
-          EventTracker::RecordExecution(
-              [this, this_ptr, num_messages, call_handlers, error]() {
-                ray::Status status = boost_to_ray_status(error);
-                if (error.value() == boost::system::errc::errc_t::broken_pipe) {
-                  RAY_LOG(ERROR) << "Broken Pipe happened during calling "
-                                 << "ServerConnection::DoAsyncWrites.";
-                  // From now on, calling DoAsyncWrites will directly call the handler
-                  // with this broken-pipe status.
-                  async_write_broken_pipe_ = true;
-                } else if (!status.ok()) {
-                  RAY_LOG(ERROR)
-                      << "Error encountered during calling "
-                      << "ServerConnection::DoAsyncWrites, message: " << status.message()
-                      << ", error code: " << static_cast<int>(error.value());
-                }
-                call_handlers(status, num_messages);
-              },
-              std::move(stats_handle));
+          static_cast<instrumented_io_context &>(socket_.get_executor().context())
+              .stats()
+              ->RecordExecution(
+                  [this, this_ptr, num_messages, call_handlers, error]() {
+                    ray::Status status = boost_to_ray_status(error);
+                    if (error.value() == boost::system::errc::errc_t::broken_pipe) {
+                      RAY_LOG(ERROR) << "Broken Pipe happened during calling "
+                                     << "ServerConnection::DoAsyncWrites.";
+                      // From now on, calling DoAsyncWrites will directly call the handler
+                      // with this broken-pipe status.
+                      async_write_broken_pipe_ = true;
+                    } else if (!status.ok()) {
+                      RAY_LOG(ERROR)
+                          << "Error encountered during calling "
+                          << "ServerConnection::DoAsyncWrites, message: "
+                          << status.message()
+                          << ", error code: " << static_cast<int>(error.value());
+                    }
+                    call_handlers(status, num_messages);
+                  },
+                  std::move(stats_handle));
         });
   } else {
     boost::asio::async_write(
@@ -378,16 +382,18 @@ void ClientConnection::ProcessMessages() {
     auto this_ptr = shared_ClientConnection_from_this();
     auto &io_context = static_cast<instrumented_io_context &>(
         ServerConnection::socket_.get_executor().context());
-    auto stats_handle = io_context.stats().RecordStart(
-        "ClientConnection.async_read.ProcessMessageHeader");
+    auto event_stats = io_context.stats();
+    auto stats_handle =
+        event_stats->RecordStart("ClientConnection.async_read.ProcessMessageHeader");
     boost::asio::async_read(
         ServerConnection::socket_,
         header,
         [this, this_ptr, stats_handle = std::move(stats_handle)](
             const boost::system::error_code &ec, size_t bytes_transferred) mutable {
-          EventTracker::RecordExecution(
-              [this, this_ptr, ec]() { ProcessMessageHeader(ec); },
-              std::move(stats_handle));
+          static_cast<instrumented_io_context &>(socket_.get_executor().context())
+              .stats()
+              ->RecordExecution([this, this_ptr, ec]() { ProcessMessageHeader(ec); },
+                                std::move(stats_handle));
         });
   } else {
     boost::asio::async_read(ServerConnection::socket_,
@@ -426,15 +432,16 @@ void ClientConnection::ProcessMessageHeader(const boost::system::error_code &err
     auto this_ptr = shared_ClientConnection_from_this();
     auto &io_context = static_cast<instrumented_io_context &>(
         ServerConnection::socket_.get_executor().context());
+    auto event_stats = io_context.stats();
     auto stats_handle =
-        io_context.stats().RecordStart("ClientConnection.async_read.ProcessMessage");
+        event_stats->RecordStart("ClientConnection.async_read.ProcessMessage");
     boost::asio::async_read(
         ServerConnection::socket_,
         boost::asio::buffer(read_message_),
-        [this, this_ptr, stats_handle = std::move(stats_handle)](
+        [this, this_ptr, event_stats, stats_handle = std::move(stats_handle)](
             const boost::system::error_code &ec, size_t bytes_transferred) mutable {
-          EventTracker::RecordExecution([this, this_ptr, ec]() { ProcessMessage(ec); },
-                                        std::move(stats_handle));
+          event_stats->RecordExecution([this, this_ptr, ec]() { ProcessMessage(ec); },
+                                       std::move(stats_handle));
         });
   } else {
     boost::asio::async_read(ServerConnection::socket_,

@@ -1,46 +1,19 @@
-import abc
 from collections.abc import Mapping
-from typing import Any, Dict
 
 
-class TableRow(Mapping):
-    """
-    A dict-like row of a tabular ``Dataset``.
+def row_str(row: Mapping) -> str:
+    """Convert a row to string representation."""
+    return str(row.as_pydict())
 
-    This implements the dictionary mapping interface, but provides more
-    efficient access with less data copying than converting Arrow Tables
-    or Pandas DataFrames into per-row dicts. This class must be subclassed,
-    with subclasses implementing ``__getitem__``, ``__iter__``, and ``__len__``.
 
-    Concrete subclasses include ``ray.data._internal.arrow_block.ArrowRow`` and
-    ``ray.data._internal.pandas_block.PandasRow``.
-    """
+def row_repr(row: Mapping) -> str:
+    """Convert a row to repr representation."""
+    return str(row)
 
-    def __init__(self, row: Any):
-        """
-        Construct a ``TableRow`` (internal API).
 
-        Args:
-            row: The tabular row that backs this row mapping.
-        """
-        self._row = row
+def row_repr_pretty(row: Mapping, p, cycle):
+    """Pretty print a row."""
+    from IPython.lib.pretty import _dict_pprinter_factory
 
-    @abc.abstractmethod
-    def as_pydict(self) -> Dict[str, Any]:
-        """Convert to a normal Python dict.
-
-        This can create a new copy of the row.
-        """
-        ...
-
-    def __str__(self):
-        return str(self.as_pydict())
-
-    def __repr__(self):
-        return str(self)
-
-    def _repr_pretty_(self, p, cycle):
-        from IPython.lib.pretty import _dict_pprinter_factory
-
-        pprinter = _dict_pprinter_factory("{", "}")
-        return pprinter(self, p, cycle)
+    pprinter = _dict_pprinter_factory("{", "}")
+    return pprinter(row, p, cycle)

@@ -1130,6 +1130,20 @@ py_test(
 )
 
 py_test(
+    name = "test_kafka",
+    size = "medium",
+    srcs = ["tests/test_kafka.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_metadata_provider",
     size = "small",
     srcs = ["tests/test_metadata_provider.py"],
@@ -1245,6 +1259,20 @@ py_test(
     name = "test_randomize_block_order",
     size = "small",
     srcs = ["tests/test_randomize_block_order.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_ranker",
+    size = "small",
+    srcs = ["tests/test_ranker.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1636,6 +1664,20 @@ py_test(
 )
 
 py_test(
+    name = "test_namespace_expressions",
+    size = "medium",
+    srcs = ["tests/test_namespace_expressions.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_context",
     size = "small",
     srcs = ["tests/test_context.py"],
@@ -1737,6 +1779,20 @@ py_test(
     name = "test_dataset_stats",
     size = "small",
     srcs = ["tests/test_dataset_stats.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_preserve_hash_shuffle_blocks",
+    size = "small",
+    srcs = ["tests/test_preserve_hash_shuffle_blocks.py"],
     tags = [
         "exclusive",
         "team:data",
