@@ -55,7 +55,7 @@ The highlighted lines focus on the PER configuration.
 .. dropdown:: **Executable example script**
     :animate: fade-in-slide-down
 
-    .. literalinclude:: ../../../rllib/examples/replay_buffer_api.py
+    .. literalinclude:: ../../../rllib/examples/_old_api_stack/replay_buffer_api.py
         :emphasize-lines: 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70
         :language: python
         :start-after: __sphinx_doc_replay_buffer_api_example_script_begin__
