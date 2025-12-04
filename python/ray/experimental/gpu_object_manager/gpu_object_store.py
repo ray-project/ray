@@ -10,6 +10,7 @@ from ray._raylet import ObjectRef
 from ray.experimental.collective import get_tensor_transport_manager
 from ray.experimental.collective.util import device_match_transport
 from ray.util.collective.types import (
+    CUDA_IPC_GROUP_NAME,
     Backend,
     CommunicatorMetadata,
     TensorTransportMetadata,
@@ -27,6 +28,11 @@ TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND = {
     TensorTransportEnum.NCCL: Backend.NCCL,
     TensorTransportEnum.GLOO: Backend.TORCH_GLOO,
     TensorTransportEnum.NIXL: Backend.NIXL,
+    TensorTransportEnum.CUDA_IPC: Backend.CUDA_IPC,
+}
+
+COMMUNICATOR_NAME_TO_COLLECTIVE_BACKEND = {
+    CUDA_IPC_GROUP_NAME: Backend.CUDA_IPC,
 }
 
 
@@ -57,7 +63,14 @@ def __ray_send__(
 
     tensors = gpu_object_store.get_object(obj_id)
 
-    backend = collective.get_group_handle(communicator_meta.communicator_name).backend()
+    if communicator_meta.communicator_name in COMMUNICATOR_NAME_TO_COLLECTIVE_BACKEND:
+        backend = COMMUNICATOR_NAME_TO_COLLECTIVE_BACKEND[
+            communicator_meta.communicator_name
+        ]
+    else:
+        backend = collective.get_group_handle(
+            communicator_meta.communicator_name
+        ).backend()
 
     tensor_transport_manager = get_tensor_transport_manager(backend)
     if tensors and not device_match_transport(tensors[0].device, backend):
@@ -90,9 +103,17 @@ def __ray_recv__(
         device = tensor_transport_meta.tensor_device
         tensor_meta = tensor_transport_meta.tensor_meta
 
-        backend = collective.get_group_handle(
+        if (
             communicator_meta.communicator_name
-        ).backend()
+            in COMMUNICATOR_NAME_TO_COLLECTIVE_BACKEND
+        ):
+            backend = COMMUNICATOR_NAME_TO_COLLECTIVE_BACKEND[
+                communicator_meta.communicator_name
+            ]
+        else:
+            backend = collective.get_group_handle(
+                communicator_meta.communicator_name
+            ).backend()
 
         if tensor_meta and not device_match_transport(device, backend):
             raise ValueError(
