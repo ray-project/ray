@@ -16,7 +16,7 @@ from ray._common.network_utils import build_address
 from ray._private.telemetry.metric_cardinality import (
     WORKER_ID_TAG_KEY,
     TASK_OR_ACTOR_NAME_TAG_KEY,
-    HIGH_CARDINALITY_METRICS,
+    MetricCardinality,
 )
 
 
@@ -90,7 +90,10 @@ def _cardinality_level_test(_setup_cluster_for_test, cardinality_level, metric):
         samples = metric_samples.get(f"ray_{metric}")
         assert samples, f"Metric {metric} not found in samples"
         for sample in samples:
-            if cardinality_level == "legacy" or metric not in HIGH_CARDINALITY_METRICS:
+            if (
+                cardinality_level == "legacy"
+                or metric not in MetricCardinality.get_high_cardinality_metrics()
+            ):
                 # If the cardinality level is legacy, the WorkerId tag should be
                 # present
                 assert (
