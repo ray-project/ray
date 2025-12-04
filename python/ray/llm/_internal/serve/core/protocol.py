@@ -43,14 +43,18 @@ class LLMServerProtocol(DeploymentProtocol):
         """
 
     async def chat(
-        self, request: "ChatCompletionRequest"
+        self,
+        request: "ChatCompletionRequest",
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[Union[str, "ChatCompletionResponse", "ErrorResponse"], None]:
         """
         Inferencing to the engine for chat, and return the response.
         """
 
     async def completions(
-        self, request: "CompletionRequest"
+        self,
+        request: "CompletionRequest",
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[
         Union[List[Union[str, "ErrorResponse"]], "CompletionResponse"], None
     ]:

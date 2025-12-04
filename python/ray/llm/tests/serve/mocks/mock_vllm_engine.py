@@ -2,7 +2,7 @@ import asyncio
 import json
 import random
 from random import randint
-from typing import AsyncGenerator, Dict, Union
+from typing import AsyncGenerator, Dict, Optional, Union
 
 from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
 from ray.llm._internal.serve.core.configs.llm_config import (
@@ -71,7 +71,9 @@ class MockVLLMEngine(LLMEngine):
             raise RuntimeError("Engine not started")
 
     async def chat(
-        self, request: ChatCompletionRequest
+        self,
+        request: ChatCompletionRequest,
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
         """Mock chat completion."""
         if not self.started:
@@ -93,7 +95,9 @@ class MockVLLMEngine(LLMEngine):
             yield response
 
     async def completions(
-        self, request: CompletionRequest
+        self,
+        request: CompletionRequest,
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         """Mock text completion."""
         if not self.started:
@@ -109,7 +113,9 @@ class MockVLLMEngine(LLMEngine):
             yield response
 
     async def embeddings(
-        self, request: EmbeddingRequest
+        self,
+        request: EmbeddingRequest,
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[Union[str, EmbeddingResponse, ErrorResponse], None]:
         """Mock embeddings generation."""
         if not self.started:
@@ -140,7 +146,9 @@ class MockVLLMEngine(LLMEngine):
         yield response
 
     async def transcriptions(
-        self, request: TranscriptionRequest
+        self,
+        request: TranscriptionRequest,
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[Union[str, TranscriptionResponse, ErrorResponse], None]:
         """Mock transcription generation."""
         if not self.started:
@@ -157,7 +165,9 @@ class MockVLLMEngine(LLMEngine):
             yield response
 
     async def score(
-        self, request: ScoreRequest
+        self,
+        request: ScoreRequest,
+        raw_request_headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[Union[str, ScoreResponse, ErrorResponse], None]:
         """Mock score generation for text pairs."""
         if not self.started:
