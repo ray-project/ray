@@ -1290,7 +1290,7 @@ class HashShuffleOperator(HashShufflingOperatorBase):
             f"shuffle={aggregator_shuffle_object_store_memory_required / MiB:.1f}MiB, "
             f"output={output_object_store_memory_required / MiB:.1f}MiB, "
             f"total_base={aggregator_total_memory_required / MiB:.1f}MiB, "
-            f"skew_factor={cls.SHUFFLE_AGGREGATOR_MEMORY_ESTIMATE_SKEW_FACTOR}, "
+            f"shuffle_aggregator_memory_estimate_skew_factor={cls.SHUFFLE_AGGREGATOR_MEMORY_ESTIMATE_SKEW_FACTOR}, "
             f"total_with_skew={total_with_skew / MiB:.1f}MiB"
         )
 
