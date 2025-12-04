@@ -20,7 +20,7 @@
 ###############
 
 - name: "read_parquet_{{scaling}}"
-
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -36,7 +36,7 @@
       --iter-bundles
 
 - name: "read_large_parquet_{{scaling}}"
-
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -52,7 +52,7 @@
       --iter-bundles
 
 - name: "read_images_{{scaling}}"
-
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -67,6 +67,7 @@
       s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
 
 - name: read_tfrecords
+  python: "3.10"
   run:
     timeout: 3600
     script: >
@@ -75,7 +76,7 @@
       --iter-bundles
 
 - name: "read_from_uris_{{scaling}}"
-
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -88,6 +89,7 @@
     script: python read_from_uris_benchmark.py
 
 - name: read_images_comparison_microbenchmark_single_node
+  python: "3.10"
   frequency: manual
 
   cluster:
@@ -104,6 +106,7 @@
 ###############
 
 - name: write_parquet
+  python: "3.10"
   run:
     timeout: 3600
     script: >
@@ -115,7 +118,7 @@
 ###################
 
 - name: "count_parquet_{{scaling}}"
-
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -155,7 +158,7 @@
 # TODO: Bump the scale from SF10 to SF1000 once we handle the scale.
 
 - name: "aggregate_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
-
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -175,7 +178,7 @@
 
 
 - name: "map_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
-
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size]
@@ -230,7 +233,7 @@
 #
 
 - name: joins_{{dataset}}_{{join_type}}
-
+  python: "3.10"
   cluster:
     cluster_compute: fixed_size_100_cpu_compute.yaml
 
@@ -255,7 +258,7 @@
 ###############
 
 - name: wide_schema_pipeline_{{data_type}}
-
+  python: "3.10"
   cluster:
     cluster_compute: fixed_size_cpu_compute.yaml
 
@@ -274,7 +277,7 @@
 #######################
 
 - name: streaming_split
-
+  python: "3.10"
   run:
     timeout: 300
     wait_for_nodes:
@@ -303,6 +306,7 @@
 ################
 
 - name: distributed_training
+  python: "3.10"
   working_dir: nightly_tests
 
   cluster:
