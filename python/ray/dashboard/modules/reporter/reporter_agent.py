@@ -676,19 +676,19 @@ class ReporterAgent(
         implements an interface of `metrics_service_pb2_grpc.MetricsServiceServicer` (https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/collector/metrics/v1/metrics_service.proto#L30),
         which is the default open-telemetry metrics service interface.
         """
-        for resource_metrics in request.resource_metrics:
-            for scope_metrics in resource_metrics.scope_metrics:
-                for metric in scope_metrics.metrics:
-                    if metric.WhichOneof("data") == "histogram":
-                        await get_or_create_event_loop().run_in_executor(
-                            self._executor,
-                            lambda: self._export_histogram_data(metric),
-                        )
-                    else:
-                        await get_or_create_event_loop().run_in_executor(
-                            self._executor,
-                            lambda: self._export_number_data(metric),
-                        )
+        # for resource_metrics in request.resource_metrics:
+        #     for scope_metrics in resource_metrics.scope_metrics:
+        #         for metric in scope_metrics.metrics:
+        #             if metric.WhichOneof("data") == "histogram":
+        #                 await get_or_create_event_loop().run_in_executor(
+        #                     self._executor,
+        #                     lambda: self._export_histogram_data(metric),
+        #                 )
+        #             else:
+        #                 await get_or_create_event_loop().run_in_executor(
+        #                     self._executor,
+        #                     lambda: self._export_number_data(metric),
+        #                 )
 
         return metrics_service_pb2.ExportMetricsServiceResponse()
 
