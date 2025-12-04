@@ -58,9 +58,6 @@ class MetricCardinality(str, Enum):
             return []
 
         _HIGH_CARDINALITY_LABELS[metric_name] = [WORKER_ID_TAG_KEY]
-        if cardinality_level == MetricCardinality.LOW and metric_name in [
-            "tasks",
-            "actors",
-        ]:
+        if cardinality_level == MetricCardinality.LOW:
             _HIGH_CARDINALITY_LABELS[metric_name].append(TASK_OR_ACTOR_NAME_TAG_KEY)
         return _HIGH_CARDINALITY_LABELS[metric_name]
