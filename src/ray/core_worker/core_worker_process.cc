@@ -26,6 +26,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_rpc_proxy.h"
+#include "ray/core_worker/metrics.h"
 #include "ray/core_worker_rpc_client/core_worker_client.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
@@ -130,6 +131,27 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker() {
     return nullptr;
   }
   return core_worker_process->TryGetCoreWorker();
+}
+
+ray::stats::Histogram *CoreWorkerProcess::GetTaskReceiveTimeMsHistogram() {
+  if (!core_worker_process) {
+    return nullptr;
+  }
+  return core_worker_process->GetTaskReceiveTimeMsHistogram();
+}
+
+ray::stats::Histogram *CoreWorkerProcess::GetTaskArgFetchTimeMsHistogram() {
+  if (!core_worker_process) {
+    return nullptr;
+  }
+  return core_worker_process->GetTaskArgFetchTimeMsHistogram();
+}
+
+ray::stats::Histogram *CoreWorkerProcess::GetTaskPostProcessingTimeMsHistogram() {
+  if (!core_worker_process) {
+    return nullptr;
+  }
+  return core_worker_process->GetTaskPostProcessingTimeMsHistogram();
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
@@ -807,6 +829,16 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       new ray::stats::Gauge(GetSizeOfOwnedObjectsByStateGaugeMetric()));
   scheduler_placement_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
       new ray::stats::Histogram(GetSchedulerPlacementTimeMsHistogramMetric()));
+
+  // Initialize worker task execution metrics if enabled.
+  if (RayConfig::instance().enable_worker_task_execution_metrics()) {
+    task_receive_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
+        new ray::stats::Histogram(GetTaskReceiveTimeMsHistogramMetric()));
+    task_arg_fetch_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
+        new ray::stats::Histogram(GetTaskArgFetchTimeMsHistogramMetric()));
+    task_post_processing_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
+        new ray::stats::Histogram(GetTaskPostProcessingTimeMsHistogramMetric()));
+  }
 
   // Initialize event framework before starting up worker.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {

@@ -40,6 +40,24 @@ inline ray::stats::Gauge GetTaskByStateGaugeMetric() {
       /*tag_keys=*/{"State", "Name", "Source", "IsRetry", "JobId"},
   };
 }
+
+inline ray::stats::Gauge() {
+  return ray::stats::Gauge{
+      /*name=*/"owned_objects",
+      /*description=*/"Current number of objects owned by this worker grouped by state.",
+      /*unit=*/"count",
+      // Expected tags:
+      // - State: Spilled, InMemory, InPlasma, PendingCreation
+      /*tag_keys=*/{"State", "JobId"},
+  };
+}
+
+{
+  "tasks" : {
+    "defalt" : {}, "flavors" : { "tasks_max" : max, }
+  }
+}
+
 inline ray::stats::Gauge GetOwnedObjectsByStateGaugeMetric() {
   return ray::stats::Gauge{
       /*name=*/"owned_objects",
@@ -68,6 +86,52 @@ inline ray::stats::Gauge GetTotalLineageBytesGaugeMetric() {
       /*description=*/
       "Total amount of memory used to store task specs for lineage reconstruction.",
       /*unit=*/"",
+      /*tag_keys=*/{},
+  };
+}
+
+/// Worker-side task execution metrics.
+/// These are gated by the enable_worker_task_execution_metrics config flag.
+
+inline ray::stats::Histogram GetTaskReceiveTimeMsHistogramMetric() {
+  /// Tracks the time from when a task is received (HandlePushTask) to when
+  /// execution begins. Includes queuing time and argument fetching.
+  /// Only recorded when enable_worker_task_execution_metrics is true.
+  return ray::stats::Histogram{
+      /*name=*/"task_receive_time_ms",
+      /*description=*/
+      "Time from task reception to execution start, including queuing and arg fetch.",
+      /*unit=*/"ms",
+      /*boundaries=*/{1, 10, 100, 1000, 10000},
+      /*tag_keys=*/{},
+  };
+}
+
+inline ray::stats::Histogram GetTaskArgFetchTimeMsHistogramMetric() {
+  /// Tracks the time spent fetching and pinning task arguments.
+  /// This is the time in GetAndPinArgsForExecutor.
+  /// Only recorded when enable_worker_task_execution_metrics is true.
+  return ray::stats::Histogram{
+      /*name=*/"task_arg_fetch_time_ms",
+      /*description=*/
+      "Time spent fetching and pinning task arguments.",
+      /*unit=*/"ms",
+      /*boundaries=*/{1, 10, 100, 1000, 10000},
+      /*tag_keys=*/{},
+  };
+}
+
+inline ray::stats::Histogram GetTaskPostProcessingTimeMsHistogramMetric() {
+  /// Tracks the time from task execution completion to reply being sent.
+  /// Includes handling borrowed refs, serializing return objects, and sending reply.
+  /// Only recorded when enable_worker_task_execution_metrics is true.
+  return ray::stats::Histogram{
+      /*name=*/"task_post_processing_time_ms",
+      /*description=*/
+      "Time from task execution completion to reply sent, including return "
+      "serialization.",
+      /*unit=*/"ms",
+      /*boundaries=*/{1, 10, 100, 1000, 10000},
       /*tag_keys=*/{},
   };
 }

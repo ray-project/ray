@@ -20,6 +20,8 @@
 #include <vector>
 
 #include "ray/core_worker/common.h"
+#include "ray/stats/metric.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace core {
@@ -27,6 +29,9 @@ namespace core {
 void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
                               rpc::PushTaskReply *reply,
                               rpc::SendReplyCallback send_reply_callback) {
+  // Capture start time for receive time metric (time from task reception to execution).
+  int64_t task_receive_start_time_ms = current_sys_time_ms();
+
   TaskSpecification task_spec;
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
   // assigned at initial actor creation time.
@@ -35,9 +40,15 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
   auto make_accept_callback = [&]() {
     // Capture resource_ids by value at the time of callback creation, AFTER it
     // has been populated for non-actor tasks inside the critical section.
-    return [this, reply, resource_ids = resource_ids](
+    return [this, reply, resource_ids = resource_ids, task_receive_start_time_ms](
                const TaskSpecification &accepted_task_spec,
                const rpc::SendReplyCallback &accepted_send_reply_callback) mutable {
+      // Record receive time metric if enabled (time from task reception to execution).
+      if (receive_time_histogram_) {
+        int64_t receive_time_ms = current_sys_time_ms() - task_receive_start_time_ms;
+        receive_time_histogram_->Record(static_cast<double>(receive_time_ms));
+      }
+
       auto num_returns = accepted_task_spec.NumReturns();
       RAY_CHECK(num_returns >= 0);
 
@@ -54,6 +65,8 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
                                   reply->mutable_borrowed_refs(),
                                   &is_retryable_error,
                                   &application_error);
+      // Record start time for post-processing metric.
+      auto post_processing_start_time_ms = current_sys_time_ms();
       reply->set_is_retryable_error(is_retryable_error);
       reply->set_is_application_error(!application_error.empty());
       std::string task_execution_error;
@@ -148,6 +161,14 @@ void TaskReceiver::HandleTask(rpc::PushTaskRequest request,
       }
       RAY_CHECK(!status.IsTimedOut())
           << "Timeout unexpected! We assume calls to the raylet don't timeout!";
+
+      // Record post-processing time metric if enabled.
+      if (post_processing_histogram_) {
+        int64_t post_processing_time_ms =
+            current_sys_time_ms() - post_processing_start_time_ms;
+        post_processing_histogram_->Record(static_cast<double>(post_processing_time_ms));
+      }
+
       if (status.IsIntentionalSystemExit() || status.IsUnexpectedSystemExit() ||
           status.IsCreationTaskError() || status.IsInterrupted() || status.IsIOError() ||
           status.IsDisconnected()) {
