@@ -135,8 +135,11 @@ class TestBC(unittest.TestCase):
             lr = results[LEARNER_RESULTS][DEFAULT_POLICY_ID][
                 "default_optimizer_learning_rate"
             ]
-            if results[NUM_ENV_STEPS_SAMPLED_LIFETIME] < 3000:
-                self.assertTrue(0.001 <= lr <= 0.01)
+            ts = results[NUM_ENV_STEPS_SAMPLED_LIFETIME]
+            if ts < 3000:
+                # The learning rate should be linearly interpolated.
+                expected_lr = 0.001 + (ts / 3000) * (0.01 - 0.001)
+                self.assertAlmostEqual(lr, expected_lr, places=6)
             else:
                 self.assertEqual(lr, 0.01)
                 done = True
