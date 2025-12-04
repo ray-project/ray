@@ -151,6 +151,11 @@ class ParquetDatasink(_FileDatasink):
             if "compression" in open_stream_args:
                 self.arrow_parquet_args["compression"] = open_stream_args["compression"]
 
+        if "partitioning_flavor" in self.arrow_parquet_args:
+            assert (
+                self.partition_cols is not None
+            ), "partition_cols must be provided when partitioning_flavor is set."
+
         super().__init__(
             path,
             filesystem=filesystem,
