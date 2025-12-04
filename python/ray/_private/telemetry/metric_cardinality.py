@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, List
+from typing import Dict, List, Set
 
 from ray._private.ray_constants import RAY_METRIC_CARDINALITY_LEVEL
 
@@ -7,6 +7,7 @@ from ray._private.ray_constants import RAY_METRIC_CARDINALITY_LEVEL
 WORKER_ID_TAG_KEY = "WorkerId"
 # Keep in sync with the NameKey in src/ray/stats/metric_defs.cc
 TASK_OR_ACTOR_NAME_TAG_KEY = "Name"
+HIGH_CARDINALITY_METRICS: Set[str] = {"tasks", "actors"}
 
 _CARDINALITY_LEVEL = None
 _HIGH_CARDINALITY_LABELS: Dict[str, List[str]] = {}
@@ -49,7 +50,10 @@ class MetricCardinality(str, Enum):
             return _HIGH_CARDINALITY_LABELS[metric_name]
 
         cardinality_level = MetricCardinality.get_cardinality_level()
-        if cardinality_level == MetricCardinality.LEGACY:
+        if (
+            cardinality_level == MetricCardinality.LEGACY
+            or metric_name not in HIGH_CARDINALITY_METRICS
+        ):
             _HIGH_CARDINALITY_LABELS[metric_name] = []
             return []
 
