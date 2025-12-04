@@ -94,7 +94,12 @@ spec:
 istioctl install --set profile=demo -y
 ```
 
-6. Install the KubeRay operator, following [these instructions](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/kuberay-operator-installation.html). The minimum version for this guide is v1.5.0.
+6. Install the KubeRay operator, following [these instructions](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/kuberay-operator-installation.html). The minimum version for this guide is v1.5.1. To use this feature, the `RayServiceIncrementalUpgrade` feature gate must be enabled. To enable the feature gate when installing the kuberay operator, run the following command:
+```bash
+helm install kuberay-operator kuberay/kuberay-operator --version v1.5.1 \
+  --set featureGates\[0\].name=RayServiceIncrementalUpgrade \
+  --set featureGates\[0\].enabled=true
+```
 
 7. Create a RayService with incremental upgrade enabled.
 ```bash
@@ -161,7 +166,7 @@ To use the feature, set the `upgradeStrategy.type` to `NewClusterWithIncremental
 apiVersion: ray.io/v1
 kind: RayService
 metadata:
-  name: example-rayservice
+  name: rayservice-incremental-upgrade
 spec:
   # This is the main configuration block for the upgrade
   upgradeStrategy:
@@ -211,13 +216,21 @@ spec:
         # ... pod spec with GPU requests ...
 ```
 
-### 4. Monitoring the Upgrade
+### 4. Trigger the Upgrade
+
+Incremental upgrades are triggered exactly like standard zero-downtime upgrades in KubeRay: by modifying the `spec.rayClusterConfig` in your RayService Custom Resource.
+
+When KubeRay detects a change in the cluster specification (such as a new container image, modified resource limits, or updated environment variables), it calculates a new hash. If the hash differs from the active cluster and incremental upgrades are enabled, the `NewClusterWithIncrementalUpgrade` strategy is automatically initiated.
+
+Updates to the cluster specifications can occur by running `kubectl apply -f` on the updated YAML configuration file, or by directly editing the CR using `kubectl edit rayservice <your-rayservice-name>`.
+
+### 5. Monitoring the Upgrade
 
 You can monitor the progress of the upgrade by inspecting the `RayService` status and the `HTTPRoute` object.
 
 1.  **Check `RayService` Status:**
     ```bash
-    kubectl describe rayservice example-rayservice
+    kubectl describe rayservice rayservice-incremental-upgrade
     ```
     Look at the `Status` section. You will see both `Active Service Status` and `Pending Service Status`, which show the state of both clusters. Pay close attention to these two new fields:
     * **`Target Capacity`:** The percentage of replicas KubeRay is *telling* this cluster to scale to.
@@ -228,7 +241,7 @@ You can monitor the progress of the upgrade by inspecting the `RayService` statu
 2.  **Check `HTTPRoute` Weights:**
     You can also see the traffic weights directly on the `HTTPRoute` resource KubeRay manages.
     ```bash
-    kubectl get httproute example-rayservice-httproute -n <your-namespace> -o yaml
+    kubectl get httproute rayservice-incremental-upgrade-httproute -o yaml
     ```
     Look at the `spec.rules.backendRefs`. You will see the `weight` for the old and new services change in real-time as the traffic shift (Phase 2) progresses.
 
