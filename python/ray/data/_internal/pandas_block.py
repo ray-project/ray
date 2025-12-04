@@ -36,6 +36,14 @@ from ray.data.block import (
 from ray.data.context import DataContext
 from ray.data.expressions import Expr
 
+PIL_Image = None
+try:
+    from PIL.Image import Image
+
+    PIL_Image = Image
+except Exception:
+    pass
+
 if TYPE_CHECKING:
     import pandas
     import pyarrow
@@ -539,6 +547,8 @@ class PandasBlockAccessor(TableBlockAccessor):
                     total_size += (
                         current.memory_usage(index=True, deep=True).sum() - size
                     )
+                elif PIL_Image is not None and isinstance(current, PIL_Image):
+                    total_size += np.asarray(current).nbytes - size
                 elif isinstance(current, (list, tuple, set)):
                     objects.extend(current)
                 elif isinstance(current, dict):
@@ -546,6 +556,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                     objects.extend(current.values())
                 elif isinstance(current, TensorArrayElement):
                     objects.extend(current.to_numpy())
+
             return total_size
 
         # Get initial memory usage.
@@ -597,7 +608,6 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         # Sum up total memory usage
         total_memory_usage = memory_usage.sum()
-
         return int(total_memory_usage)
 
     def _zip(self, acc: BlockAccessor) -> "pandas.DataFrame":
