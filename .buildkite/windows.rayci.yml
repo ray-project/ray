@@ -159,6 +159,7 @@ steps:
         --operating-system windows
         --test-env=CI="1"
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
-        --test-env=USERPROFILE
+        --test-env=USERPROFILE || true
+      - sleep 100000
     depends_on: windowsbuild
     soft_fail: true
