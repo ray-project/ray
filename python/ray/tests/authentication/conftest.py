@@ -1,9 +1,10 @@
-import uuid
-
 import grpc
 import pytest
 from grpc import aio as aiogrpc
 
+from ray._private.authentication.authentication_token_generator import (
+    generate_new_authentication_token,
+)
 from ray._private.authentication_test_utils import (
     authentication_env_guard,
     reset_auth_token_state,
@@ -30,11 +31,30 @@ class AsyncReporterService(reporter_pb2_grpc.ReporterServiceServicer):
         return reporter_pb2.HealthCheckReply()
 
 
+class SyncLogService(reporter_pb2_grpc.LogServiceServicer):
+    """Simple synchronous log service for testing streaming auth interceptors."""
+
+    def StreamLog(self, request, context):
+        """Streaming log endpoint - yields test data chunks."""
+        for i in range(3):
+            yield reporter_pb2.StreamLogReply(data=f"chunk{i}".encode())
+
+
+class AsyncLogService(reporter_pb2_grpc.LogServiceServicer):
+    """Simple asynchronous log service for testing streaming auth interceptors."""
+
+    async def StreamLog(self, request, context):
+        """Streaming log endpoint (async version) - yields test data chunks."""
+        for i in range(3):
+            yield reporter_pb2.StreamLogReply(data=f"chunk{i}".encode())
+
+
 def _create_test_server_base(
     *,
     asynchronous: bool,
     with_auth: bool,
-    servicer_cls,
+    reporter_servicer_cls,
+    log_servicer_cls,
 ):
     """Internal helper to create sync or async test server with optional auth."""
 
@@ -58,9 +78,12 @@ def _create_test_server_base(
                 options=None,
             )
 
-    # Add test service
-    servicer = servicer_cls()
-    reporter_pb2_grpc.add_ReporterServiceServicer_to_server(servicer, server)
+    # Add test services
+    reporter_servicer = reporter_servicer_cls()
+    reporter_pb2_grpc.add_ReporterServiceServicer_to_server(reporter_servicer, server)
+
+    log_servicer = log_servicer_cls()
+    reporter_pb2_grpc.add_LogServiceServicer_to_server(log_servicer, server)
 
     # Bind to ephemeral port
     port = server.add_insecure_port("[::]:0")
@@ -80,7 +103,8 @@ def create_sync_test_server():
         server, port = _create_test_server_base(
             asynchronous=False,
             with_auth=with_auth,
-            servicer_cls=SyncReporterService,
+            reporter_servicer_cls=SyncReporterService,
+            log_servicer_cls=SyncLogService,
         )
         server.start()
         return server, port
@@ -100,7 +124,8 @@ def create_async_test_server():
         server, port = _create_test_server_base(
             asynchronous=True,
             with_auth=with_auth,
-            servicer_cls=AsyncReporterService,
+            reporter_servicer_cls=AsyncReporterService,
+            log_servicer_cls=AsyncLogService,
         )
         await server.start()
         return server, port
@@ -109,14 +134,9 @@ def create_async_test_server():
 
 
 @pytest.fixture
-def test_token():
-    """Generate a test authentication token."""
-    return uuid.uuid4().hex
-
-
-@pytest.fixture
-def setup_auth_environment(test_token):
+def setup_auth_environment():
     """Set up authentication environment with test token."""
+    test_token = generate_new_authentication_token()
     with authentication_env_guard():
         set_auth_mode("token")
         set_env_auth_token(test_token)

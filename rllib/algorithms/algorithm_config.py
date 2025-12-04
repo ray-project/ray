@@ -111,7 +111,7 @@ class AlgorithmConfig(_Config):
     .. testcode::
 
         from ray.rllib.algorithms.ppo import PPOConfig
-        from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
+        from ray.rllib.callbacks.callbacks import MemoryTrackingCallbacks
         # Construct a generic config object, specifying values within different
         # sub-categories, e.g. "training".
         config = (
@@ -4452,6 +4452,12 @@ class AlgorithmConfig(_Config):
         # If module_config_dict is not defined, set to our generic one.
         if rl_module_spec.model_config is None:
             rl_module_spec.model_config = self.model_config
+        # Otherwise we combine the two dictionaries where settings from the
+        # `RLModuleSpec` have higher priority.
+        else:
+            rl_module_spec.model_config = (
+                self.model_config | rl_module_spec._get_model_config()
+            )
 
         if inference_only is not None:
             rl_module_spec.inference_only = inference_only
@@ -6128,7 +6134,13 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
 
     .. testcode::
 
-        from ray.rllib.algorithm.algorithm_config import DifferentiableAlgorithmConfig
+        from ray.rllib.algorithms.algorithm_config import DifferentiableAlgorithmConfig
+        from ray.rllib.core.learner.differentiable_learner_config import (
+            DifferentiableLearnerConfig,
+        )
+        from ray.rllib.core.learner.torch.torch_differentiable_learner import (
+            TorchDifferentiableLearner,
+        )
         # Construct a generic config for an algorithm that needs differentiable Learners.
         config = (
             DifferentiableAlgorithmConfig()
@@ -6137,15 +6149,14 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
             .learners(
                 differentiable_learner_configs=[
                     DifferentiableLearnerConfig(
-                        DifferentiableTorchLearner,
+                        TorchDifferentiableLearner,
                         lr=1e-4,
                     )
                 ]
             )
         )
-        # Similar to `AlgorithmConfig` the config using differentiable Learners can be
-        # used to build a respective `Algorithm`.
-        algo = config.build()
+        # The config is then used to configure a MetaLearner, see
+        # `rllib/examples/algorithms/maml_lr_supervised_learning.py` for a full example.
 
 
     """

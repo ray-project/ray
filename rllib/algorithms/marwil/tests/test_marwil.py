@@ -36,7 +36,7 @@ class TestMARWIL(unittest.TestCase):
           --stop='{"timesteps_total": 50000}' \
           --config='{"output": "/tmp/out", "batch_mode": "complete_episodes"}'
         """
-        data_path = "tests/data/cartpole/cartpole-v1_large"
+        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
         base_path = Path(__file__).parents[3]
         print(f"base_path={base_path}")
         data_path = "local://" / base_path / data_path
@@ -81,7 +81,7 @@ class TestMARWIL(unittest.TestCase):
 
         Learns from a historic-data file.
         """
-        data_path = "tests/data/pendulum/pendulum-v1_large"
+        data_path = "offline/tests/data/pendulum/pendulum-v1_large"
         base_path = Path(__file__).parents[3]
         print(f"base_path={base_path}")
         data_path = "local://" + base_path.joinpath(data_path).as_posix()
@@ -125,7 +125,7 @@ class TestMARWIL(unittest.TestCase):
     def test_marwil_loss_function(self):
         """Test MARWIL's loss function."""
 
-        data_path = "tests/data/cartpole/cartpole-v1_large"
+        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
         base_path = Path(__file__).parents[3]
         print(f"base_path={base_path}")
         data_path = "local://" + base_path.joinpath(data_path).as_posix()

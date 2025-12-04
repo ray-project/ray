@@ -18,6 +18,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/metrics.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 
@@ -132,14 +133,14 @@ class EventTracker {
   ///
   /// \param fn The function to execute and instrument.
   /// \param handle An opaque stats handle returned by RecordStart().
-  static void RecordExecution(const std::function<void()> &fn,
-                              std::shared_ptr<StatsHandle> handle);
+  void RecordExecution(const std::function<void()> &fn,
+                       std::shared_ptr<StatsHandle> handle);
 
   /// Records the end of an event. This is used in conjunction
   /// with RecordStart() to manually instrument an event.
   ///
   /// \param handle An opaque stats handle returned by RecordStart().
-  static void RecordEnd(std::shared_ptr<StatsHandle> handle);
+  void RecordEnd(std::shared_ptr<StatsHandle> handle);
 
   /// Returns a snapshot view of the global count, queueing, and execution statistics
   /// across all handlers.
@@ -188,4 +189,12 @@ class EventTracker {
 
   /// Protects access to the per-handler post stats table.
   mutable absl::Mutex mutex_;
+
+  ray::stats::Count operation_count_metric_{ray::GetOperationCountCounterMetric()};
+  ray::stats::Gauge operation_active_gauge_metric_{
+      ray::GetOperationActiveCountGaugeMetric()};
+  ray::stats::Histogram operation_run_time_ms_histogram_metric_{
+      ray::GetOperationRunTimeMsHistogramMetric()};
+  ray::stats::Histogram operation_queue_time_ms_histogram_metric_{
+      ray::GetOperationQueueTimeMsHistogramMetric()};
 };
