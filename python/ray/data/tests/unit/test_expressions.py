@@ -747,32 +747,32 @@ def _build_complex_expr():
             │   │   │   │   │   ├── left: DIV
             │   │   │   │   │   │   ├── left: MUL
             │   │   │   │   │   │   │   ├── left: ADD
-            │   │   │   │   │   │   │   │   ├── left: COL('age')
+            │   │   │   │   │   │   │   │   ├── left: UNRESOLVED_COL('age')
             │   │   │   │   │   │   │   │   └── right: LIT(10)
-            │   │   │   │   │   │   │   └── right: COL('rate')
+            │   │   │   │   │   │   │   └── right: UNRESOLVED_COL('rate')
             │   │   │   │   │   │   └── right: LIT(2.5)
             │   │   │   │   │   └── right: LIT(100)
             │   │   │   │   └── right: OR
             │   │   │   │       ├── left: IS_NOT_NULL
-            │   │   │   │       │   └── operand: COL('name')
+            │   │   │   │       │   └── operand: UNRESOLVED_COL('name')
             │   │   │   │       └── right: AND
             │   │   │   │           ├── left: IN
-            │   │   │   │           │   ├── left: COL('status')
+            │   │   │   │           │   ├── left: UNRESOLVED_COL('status')
             │   │   │   │           │   └── right: LIT(['active', 'pending'])
-            │   │   │   │           └── right: COL('verified')
+            │   │   │   │           └── right: UNRESOLVED_COL('verified')
             │   │   │   └── right: LE
             │   │   │       ├── left: FLOORDIV
             │   │   │       │   ├── left: SUB
-            │   │   │       │   │   ├── left: COL('count')
+            │   │   │       │   │   ├── left: UNRESOLVED_COL('count')
             │   │   │       │   │   └── right: LIT(5)
             │   │   │       │   └── right: LIT(2)
-            │   │   │       └── right: COL('limit')
+            │   │   │       └── right: UNRESOLVED_COL('limit')
             │   │   └── right: NOT
             │   │       └── operand: OR
             │   │           ├── left: IS_NULL
-            │   │           │   └── operand: COL('deleted')
+            │   │           │   └── operand: UNRESOLVED_COL('deleted')
             │   │           └── right: NE
-            │   │               ├── left: COL('score')
+            │   │               ├── left: UNRESOLVED_COL('score')
             │   │               └── right: LIT(0)
             │   └── right: LT
             │       ├── left: DOWNLOAD('uri')
@@ -780,9 +780,9 @@ def _build_complex_expr():
             └── right: GT
                 ├── left: ALIAS('udf_result')
                 │   └── UDF(custom_udf)
-                │       ├── arg[0]: COL('value')
+                │       ├── arg[0]: UNRESOLVED_COL('value')
                 │       ├── arg[1]: LIT(10)
-                │       └── kwarg['z']: COL('multiplier')
+                │       └── kwarg['z']: UNRESOLVED_COL('multiplier')
                 └── right: LIT(50)""",
         ),
     ],
