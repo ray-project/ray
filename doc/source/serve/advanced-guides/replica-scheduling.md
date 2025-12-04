@@ -11,7 +11,7 @@ This guide explains how Ray Serve schedules deployment replicas across your clus
 | Multi-GPU inference with tensor parallelism | `placement_group_bundles` + `STRICT_PACK` | vLLM with `tensor_parallel_size=4` |
 | Target specific GPU types or zones | Custom resources in `ray_actor_options` | Schedule on A100 nodes only |
 | Limit replicas per node for HA | `max_replicas_per_node` | Max 2 replicas of each deployment per node |
-| Reduce cloud costs by packing nodes | `RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1` | Many small models sharing nodes |
+| Reduce cloud costs by packing nodes | `RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY=1` | Many small models sharing nodes |
 | Reserve resources for worker actors | `placement_group_bundles` | Replica spawns Ray Data workers |
 | Shard large embeddings across nodes | `placement_group_bundles` + `STRICT_SPREAD` | Recommendation model with distributed embedding table |
 | Simple deployment, no special needs | Default (just `ray_actor_options`) | Single-GPU model |
@@ -33,7 +33,7 @@ When you deploy an application, Ray Serve's deployment scheduler determines wher
 │  │                                                                           │  │
 │  │   1. Check placement_group_bundles  ──▶  PlacementGroupSchedulingStrategy │  │
 │  │   2. Check target node affinity     ──▶  NodeAffinitySchedulingStrategy   │  │
-│  │   3. Use default strategy           ──▶  SPREAD (default) or COMPACT      │  │
+│  │   3. Use default strategy           ──▶  SPREAD (default) or PACK         │  │
 │  └───────────────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────────┘
                                                │
@@ -41,7 +41,7 @@ When you deploy an application, Ray Serve's deployment scheduler determines wher
              │                                                                   │
              ▼                                                                   ▼
 ┌─────────────────────────────────────┐               ┌─────────────────────────────────────┐
-│    SPREAD Strategy (default)        │               │         COMPACT Strategy             │
+│    SPREAD Strategy (default)        │               │           PACK Strategy              │
 │                                     │               │                                     │
 │  Distributes replicas across nodes  │               │   Packs replicas onto fewer nodes   │
 │  for fault tolerance                │               │   to minimize resource waste        │
@@ -70,8 +70,8 @@ By default, Ray Serve uses a **spread scheduling strategy** that distributes rep
 When scheduling a replica, the scheduler evaluates strategies in the following priority order:
 
 1. **Placement groups**: If you specify `placement_group_bundles`, the scheduler uses a `PlacementGroupSchedulingStrategy` to co-locate the replica with its required resources.
-2. **Node affinity**: If the scheduler identifies a target node (for example, during compact scheduling), it uses a `NodeAffinitySchedulingStrategy` with soft constraints.
-4. **Default strategy**: Falls back to either `SPREAD` (default) or `DEFAULT` (when compact scheduling is enabled).
+2. **Node affinity**: If the scheduler identifies a target node (for example, during pack scheduling), it uses a `NodeAffinitySchedulingStrategy` with soft constraints.
+4. **Default strategy**: Falls back to either `SPREAD` (default) or `DEFAULT` (when pack scheduling is enabled).
 
 ### Downscaling behavior
 
@@ -225,40 +225,40 @@ Use descriptive resource names that reflect the node's capabilities, such as GPU
 
 These environment variables modify Ray Serve's scheduling behavior. Set them before starting Ray.
 
-### `RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY`
+### `RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY`
 
 **Default**: `0` (disabled)
 
-When enabled, switches from spread scheduling to **compact scheduling**. Compact scheduling:
+When enabled, switches from spread scheduling to **pack scheduling**. Pack scheduling:
 - Packs replicas onto fewer nodes to minimize resource fragmentation
 - Sorts pending replicas by resource requirements (largest first)
 - Prefers scheduling on nodes that already have replicas (non-idle nodes)
 - Uses best-fit bin packing to find the optimal node for each replica
 
 ```bash
-export RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1
+export RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY=1
 ray start --head
 ```
-**When to use compact scheduling:** When you run many small deployments (such as 10 models each needing 0.5 CPUs), spread scheduling scatters them across nodes, wasting capacity. Compact scheduling fills nodes efficiently before using new ones. Cloud providers bill per node-hour. Packing replicas onto fewer nodes allows idle nodes to be released by the autoscaler, directly reducing your bill.
+**When to use pack scheduling:** When you run many small deployments (such as 10 models each needing 0.5 CPUs), spread scheduling scatters them across nodes, wasting capacity. Pack scheduling fills nodes efficiently before using new ones. Cloud providers bill per node-hour. Packing replicas onto fewer nodes allows idle nodes to be released by the autoscaler, directly reducing your bill.
 
-**When to avoid compact scheduling:** High availability is critical and you want replicas spread across nodes
+**When to avoid pack scheduling:** High availability is critical and you want replicas spread across nodes
 
 :::{note}
-Compact scheduling automatically falls back to spread scheduling when any deployment uses placement groups with `PACK`, `SPREAD`, or `STRICT_SPREAD` strategies. This happens because compact scheduling needs to predict where resources will be consumed to bin-pack effectively. With `STRICT_PACK`, all bundles are guaranteed to land on one node, making resource consumption predictable. With other strategies, bundles may spread across multiple nodes unpredictably, so the scheduler can't accurately track available resources per node.
+Pack scheduling automatically falls back to spread scheduling when any deployment uses placement groups with `PACK`, `SPREAD`, or `STRICT_SPREAD` strategies. This happens because pack scheduling needs to predict where resources will be consumed to bin-pack effectively. With `STRICT_PACK`, all bundles are guaranteed to land on one node, making resource consumption predictable. With other strategies, bundles may spread across multiple nodes unpredictably, so the scheduler can't accurately track available resources per node.
 :::
 
 ### `RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES`
 
 **Default**: empty
 
-A comma-separated list of custom resource names that should be prioritized when sorting replicas for compact scheduling. Resources listed earlier have higher priority.
+A comma-separated list of custom resource names that should be prioritized when sorting replicas for pack scheduling. Resources listed earlier have higher priority.
 
 ```bash
 export RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES="TPU,custom_accelerator"
 ray start --head
 ```
 
-When compact scheduling sorts replicas by resource requirements, the priority order is:
+When pack scheduling sorts replicas by resource requirements, the priority order is:
 1. Custom resources in `RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES` (in order)
 2. GPU
 3. CPU

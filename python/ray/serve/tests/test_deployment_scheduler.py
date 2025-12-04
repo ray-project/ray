@@ -8,7 +8,7 @@ from ray._common.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 from ray.serve._private import default_impl
 from ray.serve._private.common import DeploymentID, ReplicaID
-from ray.serve._private.constants import RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY
+from ray.serve._private.constants import RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY
 from ray.serve._private.deployment_scheduler import (
     ReplicaSchedulingRequest,
     SpreadDeploymentSchedulingPolicy,
@@ -28,7 +28,7 @@ class Replica:
 
 
 @pytest.mark.skipif(
-    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY, reason="Need to use spread strategy"
+    RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Need to use spread strategy"
 )
 class TestSpreadScheduling:
     @pytest.mark.parametrize(
@@ -145,9 +145,9 @@ app_A = A.bind()
 
 
 @pytest.mark.skipif(
-    not RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY, reason="Needs compact strategy."
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
 )
-class TestCompactScheduling:
+class TestPackScheduling:
     @pytest.mark.parametrize("use_pg", [True, False])
     def test_e2e_basic(self, ray_cluster, use_pg: bool):
         cluster = ray_cluster
