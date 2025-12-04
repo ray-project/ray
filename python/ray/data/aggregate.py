@@ -235,18 +235,6 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         """
         return self._agg_name
 
-    def get_result_labels(self) -> Optional[List[str]]:
-        """Return labels for list-valued results.
-
-        For aggregators that return list results (e.g., quantiles), this method
-        returns meaningful labels for each element in the list. If the aggregator
-        returns a scalar result or doesn't have meaningful labels, returns None.
-
-        Returns:
-            List of string labels for each element in the result list, or None.
-        """
-        return None
-
     @abc.abstractmethod
     def combine(
         self, current_accumulator: AccumulatorType, new: AccumulatorType
@@ -1462,10 +1450,6 @@ class ApproximateQuantile(AggregateFnV2):
 
     def finalize(self, accumulator: bytes) -> List[float]:
         return self._sketch_cls.deserialize(accumulator).get_quantiles(self._quantiles)
-
-    def get_result_labels(self) -> Optional[List[str]]:
-        """Return quantile values as labels for the result list."""
-        return [str(q) for q in self._quantiles]
 
 
 @PublicAPI(stability="alpha")

@@ -477,11 +477,8 @@ def _format_stats(
     # Handle list results: expand into separate indexed stats
     # If the value is None but the type is list, it means we got a null result
     # for a list-type aggregator (e.g., ignore_nulls=True and all nulls).
-    labels = agg.get_result_labels()
     is_list_type = (
-        pa.types.is_list(agg_type)
-        or (labels is not None and len(labels) > 0)
-        or DataType.from_arrow(agg_type).is_list_type()
+        pa.types.is_list(agg_type) or DataType.from_arrow(agg_type).is_list_type()
     )
 
     if isinstance(value, list) or (value is None and is_list_type):
@@ -491,20 +488,10 @@ def _format_stats(
             else agg_type
         )
         if value is None:
-            # If we have explicit labels, expand to Nones for each label.
-            # Otherwise, return as is (unexpanded) since we can't determine expansion size.
-            if labels is not None:
-                return {f"{agg_name}[{label}]": (None, scalar_type) for label in labels}
+            # Can't expand None without knowing the size, return as-is
+            pass
         else:
-            if not labels:
-                labels = [str(idx) for idx in range(len(value))]
-            elif len(labels) != len(value):
-                raise ValueError(
-                    f"Aggregator {agg.__class__.__name__} returned {len(value)} values "
-                    f"but get_result_labels() returned {len(labels)} labels. "
-                    f"These must match to properly format statistics."
-                )
-
+            labels = [str(idx) for idx in range(len(value))]
             return {
                 f"{agg_name}[{label}]": (list_val, scalar_type)
                 for label, list_val in zip(labels, value)

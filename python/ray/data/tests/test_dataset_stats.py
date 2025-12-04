@@ -496,7 +496,7 @@ class TestDatasetSummary:
                 pd.DataFrame(
                     {
                         DatasetSummary.STATISTIC_COLUMN: [
-                            "approx_quantile[0.5]",
+                            "approx_quantile[0]",
                             "count",
                             "max",
                             "mean",
@@ -516,7 +516,7 @@ class TestDatasetSummary:
                 pd.DataFrame(
                     {
                         DatasetSummary.STATISTIC_COLUMN: [
-                            "approx_quantile[0.5]",
+                            "approx_quantile[0]",
                             "count",
                             "max",
                             "mean",
@@ -536,7 +536,7 @@ class TestDatasetSummary:
                 pd.DataFrame(
                     {
                         DatasetSummary.STATISTIC_COLUMN: [
-                            "approx_quantile[0.5]",
+                            "approx_quantile[0]",
                             "count",
                             "max",
                             "mean",
@@ -557,7 +557,7 @@ class TestDatasetSummary:
                 pd.DataFrame(
                     {
                         DatasetSummary.STATISTIC_COLUMN: [
-                            "approx_quantile[0.5]",
+                            "approx_quantile[0]",
                             "count",
                             "max",
                             "mean",
@@ -577,7 +577,7 @@ class TestDatasetSummary:
                 pd.DataFrame(
                     {
                         DatasetSummary.STATISTIC_COLUMN: [
-                            "approx_quantile[0.5]",
+                            "approx_quantile[0]",
                             "count",
                             "max",
                             "mean",
@@ -631,13 +631,13 @@ class TestDatasetSummary:
         summary = ds.summary(columns=["x"], override_dtype_agg_mapping=custom_mapping)
         actual = summary.to_pandas()
 
-        # Should have separate rows for each quantile with actual quantile values [0.25], [0.5], [0.75]
+        # Should have separate rows for each quantile with index-based labels [0], [1], [2]
         expected = pd.DataFrame(
             {
                 DatasetSummary.STATISTIC_COLUMN: [
-                    "approx_quantile[0.25]",
-                    "approx_quantile[0.5]",
-                    "approx_quantile[0.75]",
+                    "approx_quantile[0]",
+                    "approx_quantile[1]",
+                    "approx_quantile[2]",
                     "count",
                     "max",
                     "min",
@@ -685,9 +685,9 @@ class TestDatasetSummary:
         actual = summary.to_pandas()
 
         expected_stats = [
-            "approx_quantile[0.1]",
-            "approx_quantile[0.5]",
-            "approx_quantile[0.9]",
+            "approx_quantile[0]",
+            "approx_quantile[1]",
+            "approx_quantile[2]",
             "approx_topk[0]",
             "approx_topk[1]",
             "approx_topk[2]",
@@ -706,9 +706,9 @@ class TestDatasetSummary:
 
         # Verify all expected values
         expected_values = {
-            ("approx_quantile[0.1]", "value"): 10.0,
-            ("approx_quantile[0.5]", "value"): 40.0,
-            ("approx_quantile[0.9]", "value"): 70.0,
+            ("approx_quantile[0]", "value"): 10.0,
+            ("approx_quantile[1]", "value"): 40.0,
+            ("approx_quantile[2]", "value"): 70.0,
             ("approx_topk[0]", "category"): {"category": "apple", "count": 3},
             ("approx_topk[1]", "category"): {"category": "banana", "count": 2},
             ("approx_topk[2]", "category"): {"category": "date", "count": 1},

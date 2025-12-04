@@ -11,8 +11,8 @@ Class
 .. autoclass:: DataType
     :members:
 
-Enum
-----
+Enumeration
+-----------
 
 .. autoclass:: TypeCategory
     :members:
