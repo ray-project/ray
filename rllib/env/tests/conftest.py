@@ -1,7 +1,6 @@
 """Shared fixtures for env runner tests."""
 from typing import Any
 
-import gymnasium as gym
 import pytest
 
 import ray
@@ -300,14 +299,6 @@ class EnvToModuleConnectorTracker(ConnectorV2):
         cls.call_count = 0
 
     @classmethod
-    def get_call_count(cls) -> int:
-        return cls.call_count
-
-    @classmethod
-    def get_records(cls) -> list[dict[str, Any]]:
-        return cls.call_records
-
-    @classmethod
     def get_records_for_episode(cls, episode_id: str) -> list[dict[str, Any]]:
         return [r for r in cls.call_records if r["episode_id"] == episode_id]
 
@@ -360,14 +351,6 @@ class ModuleToEnvConnectorTracker(ConnectorV2):
         cls.call_records = []
         cls.call_count = 0
 
-    @classmethod
-    def get_call_count(cls) -> int:
-        return cls.call_count
-
-    @classmethod
-    def get_records(cls) -> list[dict[str, Any]]:
-        return cls.call_records
-
 
 def make_env_to_module_connector_tracker(env, spaces, device):
     """Factory function for EnvToModuleConnectorTracker."""
@@ -391,8 +374,6 @@ def env_runner_with_env_to_module_tracker(runner_type, ray_init):
     EnvToModuleConnectorTracker.reset()
 
     if runner_type == "single_agent":
-        from ray.rllib.algorithms import PPOConfig
-
         config = (
             PPOConfig()
             .environment("CartPole-v1")
@@ -403,8 +384,6 @@ def env_runner_with_env_to_module_tracker(runner_type, ray_init):
         )
         runner = SingleAgentEnvRunner(config=config)
     elif runner_type == "multi_agent":
-        from ray.rllib.algorithms import PPOConfig
-
         config = (
             PPOConfig()
             .environment(MultiAgentCartPole, env_config={"num_agents": 2})
@@ -432,8 +411,6 @@ def env_runner_with_module_to_env_tracker(runner_type, ray_init):
     ModuleToEnvConnectorTracker.reset()
 
     if runner_type == "single_agent":
-        from ray.rllib.algorithms import PPOConfig
-
         config = (
             PPOConfig()
             .environment("CartPole-v1")
@@ -444,8 +421,6 @@ def env_runner_with_module_to_env_tracker(runner_type, ray_init):
         )
         runner = SingleAgentEnvRunner(config=config)
     elif runner_type == "multi_agent":
-        from ray.rllib.algorithms import PPOConfig
-
         config = (
             PPOConfig()
             .environment(MultiAgentCartPole, env_config={"num_agents": 2})
@@ -465,99 +440,3 @@ def env_runner_with_module_to_env_tracker(runner_type, ray_init):
     yield runner
     runner.stop()
     ModuleToEnvConnectorTracker.reset()
-
-
-class ImmediateTerminationEnv(gym.Env):
-    """Environment that terminates immediately after one step."""
-
-    def __init__(self, config=None):
-        self.observation_space = gym.spaces.Discrete(2)
-        self.action_space = gym.spaces.Discrete(2)
-
-    def reset(self, *, seed=None, options=None):
-        return 0, {}
-
-    def step(self, action):
-        return 0, 1.0, True, False, {}
-
-
-class ZeroRewardEnv(gym.Env):
-    """Environment that always returns zero reward."""
-
-    def __init__(self, config=None):
-        self.observation_space = gym.spaces.Discrete(2)
-        self.action_space = gym.spaces.Discrete(2)
-        self._step_count = 0
-        self._max_steps = config.get("max_steps", 10) if config else 10
-
-    def reset(self, *, seed=None, options=None):
-        self._step_count = 0
-        return 0, {}
-
-    def step(self, action):
-        self._step_count += 1
-        done = self._step_count >= self._max_steps
-        return 0, 0.0, done, False, {}
-
-
-class NegativeRewardEnv(gym.Env):
-    """Environment that always returns negative reward."""
-
-    def __init__(self, config=None):
-        self.observation_space = gym.spaces.Discrete(2)
-        self.action_space = gym.spaces.Discrete(2)
-        self._step_count = 0
-        self._max_steps = config.get("max_steps", 10) if config else 10
-
-    def reset(self, *, seed=None, options=None):
-        self._step_count = 0
-        return 0, {}
-
-    def step(self, action):
-        self._step_count += 1
-        done = self._step_count >= self._max_steps
-        return 0, -1.0, done, False, {}
-
-
-class ConfigurableFailingEnv(gym.Env):
-    """Environment that fails on step or reset based on configuration."""
-
-    step_count = 0
-    reset_count = 0
-
-    def __init__(self, config=None):
-        self.observation_space = gym.spaces.Discrete(2)
-        self.action_space = gym.spaces.Discrete(2)
-
-        config = config or {}
-        self.fail_on_step = config.get("fail_on_step", False)
-        self.fail_on_reset = config.get("fail_on_reset", False)
-        self.fail_after_n_steps = config.get("fail_after_n_steps", None)
-        self.fail_after_n_resets = config.get("fail_after_n_resets", None)
-
-    def reset(self, *, seed=None, options=None):
-        ConfigurableFailingEnv.reset_count += 1
-
-        if self.fail_on_reset and (
-            self.fail_after_n_resets is None
-            or ConfigurableFailingEnv.reset_count > self.fail_after_n_resets
-        ):
-            raise RuntimeError("Simulated reset failure")
-
-        return 0, {}
-
-    def step(self, action):
-        ConfigurableFailingEnv.step_count += 1
-
-        if self.fail_on_step and (
-            self.fail_after_n_steps is None
-            or ConfigurableFailingEnv.step_count > self.fail_after_n_steps
-        ):
-            raise RuntimeError("Simulated step failure")
-
-        return 0, 1.0, False, False, {}
-
-    @classmethod
-    def reset_counters(cls):
-        cls.step_count = 0
-        cls.reset_count = 0

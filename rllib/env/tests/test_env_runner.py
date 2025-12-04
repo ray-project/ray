@@ -5,6 +5,8 @@ consistent behavior across the EnvRunner interface.
 Additionally, the tests are split into separate classes for different testing
 components.
 """
+import math
+
 import pytest
 from conftest import (
     CallbackTracker,
@@ -404,7 +406,7 @@ class TestEnvRunnerConnectors:
         env_runner.sample(num_timesteps=1, random_actions=True)
 
         # Should have records for each vectorized env after reset
-        records = EnvToModuleConnectorTracker.get_records()
+        records = EnvToModuleConnectorTracker.call_records
         assert len(records) >= env_runner.num_envs
 
         # First records should be at timestep 0 (reset)
@@ -421,8 +423,7 @@ class TestEnvRunnerConnectors:
         # Connector is called once per loop iteration, not once per timestep
         # With vectorized envs, each iteration steps all envs in parallel
         # So: 1 reset call + ceil(num_timesteps / num_envs) step calls
-        call_count = EnvToModuleConnectorTracker.get_call_count()
-        import math
+        call_count = EnvToModuleConnectorTracker.call_count
 
         min_expected_calls = 1 + math.ceil(num_timesteps / env_runner.num_envs)
         assert call_count >= min_expected_calls
@@ -476,11 +477,11 @@ class TestEnvRunnerConnectors:
 
         # With random_actions=True, the RLModule is bypassed
         env_runner.sample(num_timesteps=num_timesteps, random_actions=True)
-        assert ModuleToEnvConnectorTracker.get_call_count() == 0
+        assert ModuleToEnvConnectorTracker.call_count == 0
 
         # Use random_actions=False to engage the RLModule and module_to_env
         env_runner.sample(num_timesteps=num_timesteps, random_actions=False)
-        assert ModuleToEnvConnectorTracker.get_call_count() >= num_timesteps
+        assert ModuleToEnvConnectorTracker.call_count >= num_timesteps
 
     def test_connector_sample_options(self, env_runner_with_env_to_module_tracker):
         """Test connector behavior with various sample options.
@@ -495,7 +496,7 @@ class TestEnvRunnerConnectors:
         # Part 1: Test episode ID continuity across samples
         episodes_1 = env_runner.sample(num_timesteps=3, random_actions=True)
         episode_ids_1 = {e.id_ for e in episodes_1}
-        call_count_after_first = EnvToModuleConnectorTracker.get_call_count()
+        call_count_after_first = EnvToModuleConnectorTracker.call_count
 
         # Sample more - should continue same episodes
         env_runner.sample(num_timesteps=3, random_actions=True)
@@ -507,11 +508,11 @@ class TestEnvRunnerConnectors:
 
         # Part 2: Test force_reset creates new episodes
         env_runner.sample(num_timesteps=5, random_actions=True, force_reset=True)
-        call_count_after_reset = EnvToModuleConnectorTracker.get_call_count()
+        call_count_after_reset = EnvToModuleConnectorTracker.call_count
         assert call_count_after_reset > call_count_after_first
 
         # Should have reset records from initial + force_reset
-        records = EnvToModuleConnectorTracker.get_records()
+        records = EnvToModuleConnectorTracker.call_records
         reset_records = [r for r in records if r["timestep"] == 0]
         assert len(reset_records) >= 2 * env_runner.num_envs
 
@@ -523,7 +524,7 @@ class TestEnvRunnerConnectors:
 
         # Sample with explore=False
         env_runner.sample(num_timesteps=3, random_actions=True, explore=False)
-        records = EnvToModuleConnectorTracker.get_records()
+        records = EnvToModuleConnectorTracker.call_records
         assert all(not r["explore"] for r in records)
 
 
