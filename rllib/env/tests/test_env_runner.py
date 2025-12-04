@@ -35,7 +35,7 @@ class TestEnvRunnerSampling:
             assert all(e.is_done for e in episodes)
 
     def test_sample_num_timesteps(self, env_runner, num_timesteps=20):
-        """Test sampling a specific number of timesteps."""
+        """Test sampling a number of timesteps."""
         for _ in range(self.repeats):
             episodes = env_runner.sample(
                 num_timesteps=num_timesteps, random_actions=True
@@ -50,6 +50,7 @@ class TestEnvRunnerSampling:
         """Test sampling with default rollout_fragment_length."""
         for _ in range(self.repeats):
             episodes = env_runner.sample(random_actions=True)
+
             total_timesteps = sum(len(e) for e in episodes)
             rollout_fragment_length = env_runner_config.rollout_fragment_length
             assert (
