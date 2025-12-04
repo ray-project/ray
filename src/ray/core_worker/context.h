@@ -100,19 +100,14 @@ class WorkerContext {
 
   ActorID GetRootDetachedActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
 
+  /// If a worker makes a blocking call (e.g. to get objects), it can notify the raylet to
+  /// release CPU resources.
+  /// \return true if worker is executing a NORMAL_TASK on the main thread or an
+  /// ACTOR_CREATION_TASK. Otherwise, returns false (including when worker is the Driver)
+  bool NotifyRayletWhenBlocked() const;
+
   /// Returns whether the current thread is the main worker thread.
   bool CurrentThreadIsMain() const;
-
-  /// Returns whether we should Block/Unblock through the raylet on Get/Wait.
-  /// This only applies to direct task calls.
-  bool ShouldReleaseResourcesOnBlockingCalls() const;
-
-  /// Returns whether we are in a direct call actor.
-  bool CurrentActorIsDirectCall() const ABSL_LOCKS_EXCLUDED(mutex_);
-
-  /// Returns whether we are in a direct call task. This encompasses both direct
-  /// actor and normal tasks.
-  bool CurrentTaskIsDirectCall() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   int CurrentActorMaxConcurrency() const ABSL_LOCKS_EXCLUDED(mutex_);
 
