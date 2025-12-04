@@ -192,6 +192,13 @@ INFO 2025-12-04 01:59:08,141 default_ForecastingService -- Unloading model 'cust
 INFO 2025-12-04 01:59:08,142 default_ForecastingService -- Successfully unloaded model 'customer_abc' in 0.2ms.
 ```
 
+You can also send the `multiplexed_model_id` using the deployment handle:
+
+```python
+handle = serve.get_deployment_handle("ForecastingService", "default")
+result = await handle.options(multiplexed_model_id="customer_123").remote(request)
+```
+
 ### Test multiple customers
 
 Send requests for different customers to see multiplexing in action:
@@ -225,17 +232,10 @@ print(f"\nSent {len(random_requests)} requests total")
 
 ```
 
-What happens:
+What happens when request load increases:
 1. First request for each customer triggers model loading (~100&nbsp;ms).
 2. Subsequent requests use the cached model (<5&nbsp;ms).
 3. When cache fills (>4 models per replica), least recently used models evict.
-
-You can also send requests using the deployment handle:
-
-```python
-handle = serve.get_deployment_handle("ForecastingService", "default")
-result = await handle.options(multiplexed_model_id="customer_123").remote(request)
-```
 
 ### Shutdown
 

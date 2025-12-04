@@ -95,8 +95,8 @@ class ItemRankingModel:
     """
     
     def __init__(self):
-        # In production: Load model weights
-        # self.model = load_model("s3://models/ranking_model.pkl")
+        # In production, this is your cloud storage path or model registry
+        # self.model = load_model("/models/ranking_model.pkl")
         pass
     
     async def rank_items(
