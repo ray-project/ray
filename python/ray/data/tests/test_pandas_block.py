@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+from PIL import Image
 
 import ray
 import ray.data
@@ -457,14 +458,12 @@ class TestSizeBytes:
 
     def test_pil_image(ray_start_regular_shared):
         """Test that size_bytes correctly handles PIL Image objects."""
-        pytest.importorskip("PIL")
-        from PIL import Image
 
         # Create a 200x200 RGB image (~120KB uncompressed)
         # RGB = 3 bytes per pixel, 200x200 = 40,000 pixels = 120,000 bytes
         width, height = 200, 200
         img = Image.new("RGB", (width, height), color="red")
-        
+
         # Put the PIL Image in a DataFrame
         block = pd.DataFrame({"image": [img]})
         block_accessor = PandasBlockAccessor.for_block(block)
@@ -473,7 +472,7 @@ class TestSizeBytes:
         # The true size is the image data size
         # For PIL Images, this is width * height * num_channels
         true_size = len(img.tobytes())
-        
+
         # The size_bytes should be within 1% of the actual image size
         # Note: There's some overhead from the DataFrame structure and PIL object wrapper
         assert bytes_size == pytest.approx(true_size, rel=0.01), (
