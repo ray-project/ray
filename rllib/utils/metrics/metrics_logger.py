@@ -5,8 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type, Union
 import numpy as np
 import tree  # pip install dm_tree
 
-from ray._common.deprecation import Deprecated, deprecation_warning
-from ray.rllib._common.deprecation import DEPRECATED_VALUE
+from ray._common.deprecation import DEPRECATED_VALUE, Deprecated, deprecation_warning
 from ray.rllib.utils import deep_update, force_tuple
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics.stats import (
