@@ -1207,6 +1207,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
 
 
 class HashShuffleOperator(HashShufflingOperatorBase):
+    # Add 30% buffer to account for data skew
+    SHUFFLE_AGGREGATOR_MEMORY_ESTIMATE_SKEW_FACTOR = 1.3
+
     def __init__(
         self,
         input_op: PhysicalOperator,
@@ -1258,9 +1261,6 @@ class HashShuffleOperator(HashShufflingOperatorBase):
             estimated_dataset_bytes / num_partitions
         )  # Estimated byte size of a single partition
 
-        # Add 30% buffer to account for data skew
-        SKEW_FACTOR = 1.3
-
         # Inputs (object store) - memory for receiving shuffled partitions
         aggregator_shuffle_object_store_memory_required = math.ceil(
             partition_byte_size_estimate * max_partitions_for_aggregator
@@ -1278,7 +1278,10 @@ class HashShuffleOperator(HashShufflingOperatorBase):
             # Output (object store)
             output_object_store_memory_required
         )
-        total_with_skew = math.ceil(aggregator_total_memory_required * SKEW_FACTOR)
+        total_with_skew = math.ceil(
+            aggregator_total_memory_required
+            * cls.SHUFFLE_AGGREGATOR_MEMORY_ESTIMATE_SKEW_FACTOR
+        )
         logger.info(
             f"Estimated memory requirement for shuffling aggregator "
             f"(partitions={num_partitions}, "
@@ -1287,7 +1290,7 @@ class HashShuffleOperator(HashShufflingOperatorBase):
             f"shuffle={aggregator_shuffle_object_store_memory_required / MiB:.1f}MiB, "
             f"output={output_object_store_memory_required / MiB:.1f}MiB, "
             f"total_base={aggregator_total_memory_required / MiB:.1f}MiB, "
-            f"skew_factor={SKEW_FACTOR}, "
+            f"skew_factor={cls.SHUFFLE_AGGREGATOR_MEMORY_ESTIMATE_SKEW_FACTOR}, "
             f"total_with_skew={total_with_skew / MiB:.1f}MiB"
         )
 
