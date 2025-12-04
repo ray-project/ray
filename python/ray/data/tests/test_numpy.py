@@ -11,7 +11,6 @@ from ray.data.context import DataContext
 from ray.data.dataset import Schema
 from ray.data.datasource import (
     BaseFileMetadataProvider,
-    FastFileMetadataProvider,
 )
 from ray.data.extensions.tensor_extension import ArrowTensorType
 from ray.data.tests.conftest import *  # noqa
@@ -132,20 +131,10 @@ def test_numpy_read_x(ray_start_regular_shared, tmp_path):
 
 
 def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
-    tensor_type = _get_tensor_type()
-
     path = os.path.join(tmp_path, "test_np_dir")
     os.mkdir(path)
     path = os.path.join(path, "test.npy")
     np.save(path, np.expand_dims(np.arange(0, 10), 1))
-    ds = ray.data.read_numpy(
-        path, meta_provider=FastFileMetadataProvider(), override_num_blocks=1
-    )
-    assert ds.count() == 10
-    assert ds.schema() == Schema(pa.schema([("data", tensor_type((1,), pa.int64()))]))
-    np.testing.assert_equal(
-        extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
-    )
 
     with pytest.raises(NotImplementedError):
         ray.data.read_binary_files(
