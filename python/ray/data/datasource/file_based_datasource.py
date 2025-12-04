@@ -253,7 +253,7 @@ class FileBasedDatasource(Datasource):
         paths = self._paths()
         file_sizes = self._file_sizes()
 
-        paths, file_sizes = shuffle_file_metadata(
+        paths, file_sizes = _shuffle_file_metadata(
             paths, file_sizes, self._shuffle, epoch_idx
         )
 
@@ -585,7 +585,7 @@ def _validate_shuffle_arg(
 FileMetadata = TypeVar("FileMetadata")
 
 
-def shuffle_file_metadata(
+def _shuffle_file_metadata(
     paths: List[str],
     file_metadata: List[FileMetadata],
     shuffler: Union[Literal["files"], FileShuffleConfig, None],

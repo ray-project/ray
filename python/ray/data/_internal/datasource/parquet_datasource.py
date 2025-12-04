@@ -41,8 +41,8 @@ from ray.data.context import DataContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import (
+    _shuffle_file_metadata,
     _validate_shuffle_arg,
-    shuffle_file_metadata,
 )
 from ray.data.datasource.file_meta_provider import (
     FileMetadataProvider,
@@ -479,7 +479,7 @@ class ParquetDatasource(Datasource):
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
         # FileBasedDatasource's write side, however.
-        pq_fragments, pq_paths = shuffle_file_metadata(
+        pq_fragments, pq_paths = _shuffle_file_metadata(
             self._pq_fragments, self._pq_paths, self._shuffle, epoch_idx
         )
 
