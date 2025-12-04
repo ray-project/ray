@@ -1400,6 +1400,7 @@ class ApplicationStateManager:
     def update(self) -> bool:
         """
         Update each application state.
+
         Returns:
             bool: True if any application's target state changed during this update.
         """
