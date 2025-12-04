@@ -124,6 +124,7 @@ class BatchIterator:
         self._shuffle_seed = shuffle_seed
         self._ensure_copy = ensure_copy
         self._prefetch_batches = prefetch_batches
+        # TODO: pass the dataset's context down instead of fetching the global context here.
         self._ctx = DataContext.get_current()
         self._eager_free = clear_block_after_read and self._ctx.eager_free
 

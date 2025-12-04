@@ -2,10 +2,7 @@ import dataclasses
 import logging
 import threading
 from contextlib import nullcontext
-from typing import TYPE_CHECKING, Any, Callable, Iterator, List, Optional, Tuple, Union
-
-if TYPE_CHECKING:
-    from ray.data.context import DataContext
+from typing import Any, Callable, Iterator, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -18,6 +15,7 @@ from ray.data._internal.block_batching.interfaces import (
 )
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockAccessor, DataBatch
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -45,28 +43,24 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
 
 def resolve_block_refs(
     block_ref_iter: Iterator[ObjectRef[Block]],
+    ctx: DataContext,
     stats: Optional[DatasetStats] = None,
     max_get_batch_size: Optional[Union[int, Callable[[], int]]] = None,
-    ctx: Optional["DataContext"] = None,
 ) -> Iterator[Block]:
     """Resolves the block references for each logical batch.
 
     Args:
         block_ref_iter: An iterator over block object references.
+        ctx: The ``DataContext`` to use.
         stats: An optional stats object to recording block hits and misses.
         max_get_batch_size: Maximum number of block references to resolve in a
             single ``ray.get()`` call. This can be an integer override or a callable
             that returns the desired batch size dynamically. If ``None``, defaults to
-            ``DataContext.get_current().iter_get_block_batch_size``.
-        ctx: Optional ``DataContext`` to use. If ``None``, the current context is
-            fetched.
+            ``ctx.iter_get_block_batch_size``.
     """
     hits = 0
     misses = 0
     unknowns = 0
-
-    if ctx is None:
-        ctx = ray.data.context.DataContext.get_current()
 
     def _get_effective_batch_size() -> int:
         override: Optional[int]

@@ -32,7 +32,8 @@ def block_generator(num_rows: int, num_blocks: int):
 def test_resolve_block_refs(ray_start_regular_shared):
     block_refs = [ray.put(0), ray.put(1), ray.put(2)]
 
-    resolved_iter = resolve_block_refs(iter(block_refs))
+    ctx = ray.data.DataContext.get_current()
+    resolved_iter = resolve_block_refs(iter(block_refs), ctx=ctx)
     assert list(resolved_iter) == [0, 1, 2]
 
 
@@ -57,7 +58,7 @@ def test_resolve_block_refs_batches(ray_start_regular_shared, monkeypatch):
     block_refs = [ray.put(i) for i in range(5)]
 
     try:
-        assert list(resolve_block_refs(iter(block_refs))) == list(range(5))
+        assert list(resolve_block_refs(iter(block_refs), ctx=ctx)) == list(range(5))
     finally:
         ctx.iter_get_block_batch_size = old_batch_size
 
@@ -85,9 +86,9 @@ def test_resolve_block_refs_max_batch_override(ray_start_regular_shared, monkeyp
     block_refs = [ray.put(i) for i in range(7)]
 
     try:
-        assert list(resolve_block_refs(iter(block_refs), max_get_batch_size=3)) == list(
-            range(7)
-        )
+        assert list(
+            resolve_block_refs(iter(block_refs), max_get_batch_size=3, ctx=ctx)
+        ) == list(range(7))
     finally:
         ctx.iter_get_block_batch_size = old_batch_size
 
@@ -122,7 +123,7 @@ def test_resolve_block_refs_max_batch_callable(ray_start_regular_shared, monkeyp
 
     try:
         assert list(
-            resolve_block_refs(iter(block_refs), max_get_batch_size=provider)
+            resolve_block_refs(iter(block_refs), max_get_batch_size=provider, ctx=ctx)
         ) == list(range(5))
     finally:
         ctx.iter_get_block_batch_size = old_batch_size
