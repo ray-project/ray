@@ -13,7 +13,7 @@ _, tf, _ = try_import_tf()
 
 @DeveloperAPI
 class PercentilesStats(StatsBase):
-    """A Stats object that tracks percentiles of a series of values."""
+    """A Stats object that tracks percentiles of a series of singular values (not vectors)."""
 
     stats_cls_identifier = "percentiles"
 
@@ -109,9 +109,7 @@ class PercentilesStats(StatsBase):
         self._comp_error("__mul__")
 
     def _comp_error(self, comp):
-        raise ValueError(
-            f"Cannot {comp} percentiles object to other object because percentiles are not reduced to a single value."
-        )
+        raise NotImplementedError()
 
     def __format__(self, fmt):
         raise ValueError(
@@ -152,6 +150,12 @@ class PercentilesStats(StatsBase):
         assert (
             not self.is_leaf
         ), "PercentilesStats should only be merged at aggregation stages (root or intermediate)"
+        assert all(
+            s._percentiles == self._percentiles for s in incoming_stats
+        ), "All incoming PercentilesStats objects must have the same percentiles"
+        assert all(
+            s._window == self._window for s in incoming_stats
+        ), "All incoming PercentilesStats objects must have the same window size"
         new_values = [s.values for s in incoming_stats]
         new_values = list(chain.from_iterable(new_values))
         all_values = list(self.values) + new_values

@@ -12,7 +12,7 @@ _, tf, _ = try_import_tf()
 
 @DeveloperAPI
 class LifetimeSumStats(StatsBase):
-    """A Stats object that tracks the sum of a series of values."""
+    """A Stats object that tracks the sum of a series of singular values (not vectors)."""
 
     stats_cls_identifier = "lifetime_sum"
 
@@ -122,7 +122,7 @@ class LifetimeSumStats(StatsBase):
 
         # Convert GPU tensor to CPU
         if torch and isinstance(value, torch.Tensor):
-            value = value.detach().cpu().item()
+            value = single_value_to_cpu(value)
         return value if compile else [value]
 
     def get_state(self) -> Dict[str, Any]:
@@ -166,7 +166,7 @@ class LifetimeSumStats(StatsBase):
             lifetime_sum = self._lifetime_sum
             # Convert GPU tensor to CPU
             if torch and isinstance(lifetime_sum, torch.Tensor):
-                lifetime_sum = lifetime_sum.detach().cpu().item()
+                lifetime_sum = single_value_to_cpu(lifetime_sum)
 
             return (lifetime_sum - self._value_at_last_reduce) / (
                 time.perf_counter() - self._last_reduce_time
@@ -190,7 +190,7 @@ class LifetimeSumStats(StatsBase):
             lifetime_sum = self._lifetime_sum
             # Convert GPU tensor to CPU
             if torch and isinstance(lifetime_sum, torch.Tensor):
-                lifetime_sum = lifetime_sum.detach().cpu().item()
+                lifetime_sum = single_value_to_cpu(lifetime_sum)
 
             return (lifetime_sum - self._value_at_last_restore) / (
                 time.perf_counter() - self._last_restore_time
@@ -208,7 +208,7 @@ class LifetimeSumStats(StatsBase):
         value = self._lifetime_sum
         # Convert GPU tensor to CPU
         if torch and isinstance(value, torch.Tensor):
-            value = value.detach().cpu().item()
+            value = single_value_to_cpu(value)
 
         # Reset for all non-root stats (both leaf and intermediate aggregators)
         # Only root stats should never reset because they aggregate everything

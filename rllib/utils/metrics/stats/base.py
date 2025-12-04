@@ -41,6 +41,9 @@ class StatsBase(metaclass=ABCMeta):
         Args:
             is_root: If True, the Stats object is a root stats object.
             is_leaf: If True, the Stats object is a leaf stats object.
+
+        Note: A stats object can be both root and leaf at the same time.
+        Note: A stats object can also be neither root nor leaf ("intermediate" stats that only aggregate from other stats but are not at the root).
         """
         self.is_root = is_root
         self.is_leaf = is_leaf

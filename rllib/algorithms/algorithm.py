@@ -1750,6 +1750,8 @@ class Algorithm(Checkpointable, Trainable):
                         NUM_ENV_STEPS_SAMPLED_LIFETIME,
                     ),
                     throughput=True,
+                    # Note (artur): Peeking throughputs of lifetime metrics results in a dictionary with both throughputs (since last restore and total).
+                    # We only need the throughput since last restore here.
                     default={"throughput_since_last_restore": 0.0},
                 )["throughput_since_last_restore"]
                 _num = min(

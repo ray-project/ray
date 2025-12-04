@@ -6,6 +6,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray._common.deprecation import Deprecated, deprecation_warning
+from ray.rllib._common.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils import deep_update, force_tuple
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics.stats import (
@@ -126,10 +127,12 @@ class MetricsLogger:
     Please take a look ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP for the available reduction methods.
     You can provide your own reduce methods by extending ray.rllib.utils.metrics.metrics_logger.DEFAULT_STATS_CLS_LOOKUP and passing it to AlgorithmConfig.logging().
 
-    Note: In our docstirngs we make heavy use of the phrase 'parallel components'.
+    Notes on architecture:
+    In our docstrings we make heavy use of the phrase 'parallel components'.
     This pertains to the architecture of the logging system, where we have one 'root' MetricsLogger
     that is used to aggregate all metrics of n parallel ('non-root') MetricsLoggers that are used to log metrics for each parallel component.
     A parallel component is typically a single Learner, an EnvRunner, or a ConnectorV2 or any other component of which more than one instance is running in parallel.
+    We also allow intermediate MetricsLoggers that are no root MetricsLogger but are used to aggregate metrics. They are therefore neither root nor leaf.
     """
 
     def __init__(
@@ -268,10 +271,10 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         percentiles: Optional[Union[List[int], bool]] = None,
-        clear_on_reduce: Optional[bool] = None,
+        clear_on_reduce: Optional[bool] = DEPRECATED_VALUE,
         with_throughput: Optional[bool] = None,
-        throughput_ema_coeff: Optional[float] = None,
-        reduce_per_index_on_aggregate: Optional[bool] = None,
+        throughput_ema_coeff: Optional[float] = DEPRECATED_VALUE,
+        reduce_per_index_on_aggregate: Optional[bool] = DEPRECATED_VALUE,
         **kwargs: Dict[str, Any],
     ) -> None:
         """Prepare the kwargs and create the stats object if it doesn't exist."""
@@ -293,14 +296,14 @@ class MetricsLogger:
                     )
                     window = None
 
-                if reduce_per_index_on_aggregate is not None:
+                if reduce_per_index_on_aggregate is not DEPRECATED_VALUE:
                     deprecation_warning(
                         "reduce_per_index_on_aggregate is deprecated. Aggregation now happens over all values"
                         "of incoming stats objects, treating each incoming value with equal weight.",
                         error=False,
                     )
 
-                if throughput_ema_coeff is not None:
+                if throughput_ema_coeff is not DEPRECATED_VALUE:
                     deprecation_warning(
                         "throughput_ema_coeff is deprecated. Throughput is not smoothed with ema anymore"
                         "but calculate once per MetricsLogger.reduce() call.",
@@ -310,7 +313,7 @@ class MetricsLogger:
                 if reduce == "mean":
                     if ema_coeff is not None:
                         deprecation_warning(
-                            "ema_coeff is not supported for mean reduction. Use ema instead.",
+                            "ema_coeff is not supported for mean reduction. Use `reduce='ema'` instead.",
                             error=True,
                         )
 
@@ -353,10 +356,10 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         percentiles: Optional[Union[List[int], bool]] = None,
-        clear_on_reduce: Optional[bool] = None,
+        clear_on_reduce: Optional[bool] = DEPRECATED_VALUE,
         with_throughput: Optional[bool] = None,
-        throughput_ema_coeff: Optional[float] = None,
-        reduce_per_index_on_aggregate: Optional[bool] = None,
+        throughput_ema_coeff: Optional[float] = DEPRECATED_VALUE,
+        reduce_per_index_on_aggregate: Optional[bool] = DEPRECATED_VALUE,
         **kwargs: Dict[str, Any],
     ) -> None:
         """Logs a new value or item under a (possibly nested) key to the logger.
@@ -408,7 +411,7 @@ class MetricsLogger:
         if reduce is None:
             reduce = "ema"
         # 2. If clear_on_reduce is provided, warn about deprecation.
-        if clear_on_reduce is not None:
+        if clear_on_reduce is not DEPRECATED_VALUE:
             deprecation_warning(
                 "clear_on_reduce is deprecated. Use reduce='lifetime_sum' for sums. Provide a custom reduce method for other cases.",
                 error=False,
@@ -442,10 +445,10 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         percentiles: Optional[Union[List[int], bool]] = None,
-        clear_on_reduce: Optional[bool] = None,
+        clear_on_reduce: Optional[bool] = DEPRECATED_VALUE,
         with_throughput: Optional[bool] = None,
-        throughput_ema_coeff: Optional[float] = None,
-        reduce_per_index_on_aggregate: Optional[bool] = None,
+        throughput_ema_coeff: Optional[float] = DEPRECATED_VALUE,
+        reduce_per_index_on_aggregate: Optional[bool] = DEPRECATED_VALUE,
     ) -> None:
         """Logs all leafs of a possibly nested dict of values or Stats objects to this logger.
 
@@ -586,10 +589,10 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         percentiles: Optional[Union[List[int], bool]] = None,
-        clear_on_reduce: Optional[bool] = None,
+        clear_on_reduce: Optional[bool] = DEPRECATED_VALUE,
         with_throughput: Optional[bool] = None,
-        throughput_ema_coeff: Optional[float] = None,
-        reduce_per_index_on_aggregate: Optional[bool] = None,
+        throughput_ema_coeff: Optional[float] = DEPRECATED_VALUE,
+        reduce_per_index_on_aggregate: Optional[bool] = DEPRECATED_VALUE,
     ) -> StatsBase:
         """Measures and logs a time delta value under `key` when used with a with-block.
 
@@ -651,7 +654,12 @@ class MetricsLogger:
     def reduce(self, compile: bool = False) -> Dict:
         """Reduces all logged values based on their settings and returns a result dict.
 
-        DO NOT CALL THIS METHOD! This should be called only by RLlib when aggregating stats.
+        Note to user: Do not call this method directly! This should be called only by RLlib when aggregating stats.
+
+        Args:
+            compile: If True, the result is compiled into a single value if possible.
+                If it is not possible, the result is a list of values.
+                If False, the result is a list of one or more values.
 
         Returns:
             A dict containing all ever logged nested keys to this MetricsLogger with the leafs being the reduced stats.
@@ -726,7 +734,7 @@ class MetricsLogger:
                     cls_identifier = stats_state["stats_cls_identifier"]
                     assert (
                         cls_identifier in self.stats_cls_lookup
-                    ), f"Stats class identifier {cls_identifier} not found in stats_cls_lookup"
+                    ), f"Stats class identifier {cls_identifier} not found in stats_cls_lookup. This can happen if you are loading a stats from a checkpoint that was created with a different stats class lookup."
                     _cls = self.stats_cls_lookup[cls_identifier]
                     stats = _cls.from_state(state=stats_state)
                 else:
@@ -919,7 +927,7 @@ class MetricsLogger:
 
     @Deprecated(
         new="",
-        help="Tensor mode is not required anymore since metrics are always reduced on CPU.",
+        help="Tensor mode is not required anymore.",
         error=False,
     )
     def activate_tensor_mode(self):
@@ -927,7 +935,7 @@ class MetricsLogger:
 
     @Deprecated(
         new="",
-        help="Tensor mode is not required anymore since metrics are always reduced on CPU.",
+        help="Tensor mode is not required anymore.",
         error=False,
     )
     def deactivate_tensor_mode(self):

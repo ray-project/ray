@@ -1,7 +1,7 @@
 from abc import ABCMeta
 from collections import deque
 from itertools import chain
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 
@@ -10,7 +10,7 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics.stats.base import StatsBase
-from ray.rllib.utils.metrics.stats.utils import batch_values_to_cpu
+from ray.rllib.utils.metrics.stats.utils import batch_values_to_cpu, single_value_to_cpu
 from ray.util.annotations import DeveloperAPI
 
 torch, _ = try_import_torch()
@@ -19,7 +19,7 @@ _, tf, _ = try_import_tf()
 
 @DeveloperAPI
 class SeriesStats(StatsBase, metaclass=ABCMeta):
-    """A base class for Stats that represent a series of values."""
+    """A base class for Stats that represent a series of singular values (not vectors)."""
 
     # Set by subclasses
     _np_reduce_fn = None
@@ -240,7 +240,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         # Otherwise use numpy reduction
         return [self._np_reduce_fn([value_1, value_2])]
 
-    def window_reduce(self, values=None) -> Tuple[Any, Any]:
+    def window_reduce(self, values=None) -> List[Any]:
         """Reduces the internal values list according to the constructor settings.
 
         If values are PyTorch GPU tensors, reduction happens on GPU and result
@@ -269,7 +269,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
             if torch.all(torch.isnan(stacked)):
                 return [np.nan]
             result = self._torch_reduce_fn(stacked)
-            return [result.detach().cpu().item()]
+            return [single_value_to_cpu(result)]
 
         # Otherwise use numpy reduction on CPU values
         if np.all(np.isnan(values)):

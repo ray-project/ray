@@ -9,7 +9,7 @@ torch, _ = try_import_torch()
 
 @DeveloperAPI
 class MaxStats(SeriesStats):
-    """A Stats object that tracks the max of a series of values."""
+    """A Stats object that tracks the max of a series of singular values (not vectors)."""
 
     stats_cls_identifier = "max"
 

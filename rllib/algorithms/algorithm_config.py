@@ -3666,12 +3666,15 @@ class AlgorithmConfig(_Config):
                 `training_step()` calls until the minimum timesteps have been
                 executed. Set to 0 or None for no minimum timesteps.
             log_gradients: Log gradients to results. If this is `True` the global norm
-                of the gradients dictionariy for each optimizer is logged to results.
+                of the gradients dictionary for each optimizer is logged to results.
                 The default is `False`.
             custom_stats_cls_lookup: A dictionary mapping stat names to their corresponding Stats classes.
-                This allows you to use your own Stats classes for logging metrics.
+                The Stats classes should be subclasses of :py:class:`~ray.rllib.utils.metrics.stats.StatsBase`.
                 The keys of the dictionary are the stat names, and the values are the corresponding Stats classes.
-                The Stats classes must be subclasses of rllib.utils.metrics.StatsBase.
+                This allows you to use your own Stats classes for logging metrics.
+                You can replace existing values to override some behaviour of RLlib.
+                You can add key-value-pairs to the dictionary to add new stats classes that will be available
+                when logging values with the MetricsLogger throughout RLlib.
 
         Returns:
             This updated AlgorithmConfig object.

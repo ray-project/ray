@@ -17,7 +17,7 @@ _, tf, _ = try_import_tf()
 
 @DeveloperAPI
 class EmaStats(StatsBase):
-    """A Stats object that tracks the exponential average of a series of values."""
+    """A Stats object that tracks the exponential average of a series of singular values (not vectors)."""
 
     stats_cls_identifier = "ema"
 

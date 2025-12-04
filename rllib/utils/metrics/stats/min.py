@@ -9,7 +9,7 @@ torch, _ = try_import_torch()
 
 @DeveloperAPI
 class MinStats(SeriesStats):
-    """A Stats object that tracks the min of a series of values."""
+    """A Stats object that tracks the min of a series of singular values (not vectors)."""
 
     stats_cls_identifier = "min"
 

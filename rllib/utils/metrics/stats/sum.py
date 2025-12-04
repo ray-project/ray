@@ -12,7 +12,7 @@ torch, _ = try_import_torch()
 
 @DeveloperAPI
 class SumStats(SeriesStats):
-    """A Stats object that tracks the sum of a series of values."""
+    """A Stats object that tracks the sum of a series of singular values (not vectors)."""
 
     stats_cls_identifier = "sum"
 

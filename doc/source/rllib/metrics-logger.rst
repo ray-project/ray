@@ -9,7 +9,7 @@ MetricsLogger API
 
 :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` let's RLlib experiments keep track of metrics. 
 Most components (example: :py:class:`~ray.rllib.env.env_runner.EnvRunner`, :py:class:`~ray.rllib.core.learner.learner.Learner`) in RLlib keep an instance of MetricsLogger that can be logged to. 
-Any logged metrics are aggregated towards to root MetricsLogger which lives inside the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` object and is used to report metrics to the user or to Ray Tune.
+Any logged metrics are aggregated towards to the root MetricsLogger which lives inside the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` object and is used to report metrics to the user or to Ray Tune.
 When a subcomponent reports metrics down the hierarchy, it "reduces" the logged results before sending them. For example, when reducing by summation, subcomponents calculate sums before sending them to the parent component.
 
 We recommend using this API for any metrics that you want RLlib to report, especially if they should be reported to Ray Tune or WandB.
@@ -136,7 +136,7 @@ check the current underlying reduced result for some key, without actually havin
 
 .. warning::
     A limitation of peeking metrics is that you can often not meaningfully peek metrics if they are aggregated downstream.
-    For example, if you log the number of steps you trained on on each call to :py:meth:`~ray.rllib.core.learner.learner.Learner.update`, these will be reduced and aggregated
+    For example, if you log the number of steps you trained on each call to :py:meth:`~ray.rllib.core.learner.learner.Learner.update`, these will be reduced and aggregated
     by the Algorithm's MetricsLogger and peeking them inside :py:class:`~ray.rllib.core.learner.learner.Learner` will not give you the aggregated result.
 
 Instead of providing a flat key, you can also log a value under some nested key through passing in a tuple:
@@ -175,13 +175,15 @@ However, use your best judgement for what you are logging because RLlib will rep
 
     logger.log_value("some_items", value="a", reduce="item_series")
     logger.log_value("some_items", value="b", reduce="item_series")
-    logger.log_value("some_items", value="c", reduce="item_series")
-    logger.log_value("some_items", value="d", reduce="item_series")
+    logger.log_value("an_item", value="c", reduce="item")
+    logger.log_value("an_item", value="d", reduce="item")
 
-    logger.peek("some_items")  # expect a list: ["a", "b", "c", "d"]
+    logger.peek("some_items")  # expect a list: ["a", "b"]
+    logger.peek("an_item")  # expect a string: "d"
 
     logger.reduce()
     logger.peek("some_items")  # expect an empty list: []
+    logger.peek("an_item")  # expect None: []
 
 Logging non-scalar data
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -214,9 +216,6 @@ For example, to log three consecutive image frames from a ``CartPole`` environme
     logger.log_value("some_images", value=env.render(), reduce="item_series")
     env.step(1)
     logger.log_value("some_images", value=env.render(), reduce="item_series")
-
-Or you can use the ``reduce="item"`` to log a single item per iteration.
-For example, if you just want to report the most recent value of some metric.
 
 Timers
 ~~~~~~
@@ -267,11 +266,12 @@ counts either over the lifetime or over some particular phase, use the ``reduce=
     logger.peek("my_counter")  # expect: 0 (upon reduction, all values are cleared)
 
 If you log lifetime metrics with ``reduce="lifetime_sum"``, these will get summed up over the lifetime of the experiment and even after resuming from a checkpoint.
-Note that you can not meaningfully peek ``lifetime_sum`` values outside of the root MetricsLogger.
+Note that you can not meaningfully peek ``lifetime_sum`` values outside of the root MetricsLogger. Also note that the lifetime sum is summed up at the root MetricsLogger 
+whereas we only keep the most recent values in parallel components which are cleared each time we reduce.
 
 
 Throughput measurements
-+++++++++++++++++++++++++++++++++
+++++++++++++++++++++++++
 
 A metrics logged with the settings ``reduce="sum"`` or ``reduce="lifetime_sum"`` can also measure throughput.
 The throughput is calculated once per metrics reporting cycle.
@@ -287,12 +287,12 @@ You can use the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.
     logger = MetricsLogger(root=True)
 
     for _ in range(3):
-        logger.log_value("lifetime_count", 5, reduce="sum", with_throughput=True)
+        logger.log_value("lifetime_sum", 5, reduce="sum", with_throughput=True)
 
     
     time.sleep(1.0)
     # Expect the throughput to be roughly 15/sec.
-    print(logger.peek("lifetime_count", throughput=True))
+    print(logger.peek("lifetime_sum", throughput=True))
 
 
 Example 1: How to use MetricsLogger in EnvRunner callbacks
@@ -420,7 +420,7 @@ Migrating to Ray 2.53
 If you have been using the MetricsLogger API before Ray 2.52, the following needs your attention:
 
 Most importantly:
-- Metrics are now cleared once per MetricsLogger.reduce() call. Peeking them thereafter returns the zero-element for the respective reduce type (np.nan, None or an empty list).
+- **Metrics are now cleared once per MetricsLogger.reduce() call. Peeking them thereafter returns the zero-element for the respective reduce type (np.nan, None or an empty list).**
 - Control flow should be based on other variables, rather than peeking metrics.
 
 For MetricsLogger's logging methods (log_value, log_time, etc.):
@@ -433,3 +433,4 @@ Other changes:
 - Many metrics look more noisy after upgrading to 2.52. This is mostly because they are not smoothed anymore. Smoothing should happen downstream if desired.
 - :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.aggregate` is now the only way to aggregate metrics.
 - You can now pass a custom stats class to (AlgorithmConfig.reporting(custom_stats_cls_lookup={...})). This enables you to write your own stats class with its own reduction logic. If your own stats class constitutes a fix or a valuable addition to RLlib, please consider contributing it to the project through a PR.
+- When aggregating metrics, we can now peek only the onces that were merged in the most recent reduction cycle with the ``latest_merged_only=True`` argument in :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.peek`.

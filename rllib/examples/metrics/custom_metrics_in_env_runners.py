@@ -105,7 +105,7 @@ class MinOfMaxStats(MaxStats):
     def _np_reduce_fn(self, values):
         # If this is a root stat (where we aggregate all values), return the min of the max of the values.
         if self.is_root:
-            return np.nanmin(np.nanmax(values, axis=0))
+            return np.nanmin(values, axis=0)
         return np.nanmax(values)
 
     def _torch_reduce_fn(self, values):

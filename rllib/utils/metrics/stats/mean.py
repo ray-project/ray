@@ -2,16 +2,17 @@ from typing import Any, Union
 
 import numpy as np
 
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics.stats.series import SeriesStats
 from ray.util.annotations import DeveloperAPI
 
 torch, _ = try_import_torch()
+_, tf, _ = try_import_tf()
 
 
 @DeveloperAPI
 class MeanStats(SeriesStats):
-    """A Stats object that tracks the mean of a series of values.
+    """A Stats object that tracks the mean of a series of singular values (not vectors).
 
     Note the following limitation: When merging multiple MeanStats objects, the resulting mean is not the true mean of all values.
     Instead, it is the mean of the means of the incoming MeanStats objects.
@@ -42,10 +43,6 @@ class MeanStats(SeriesStats):
                 PyTorch GPU tensors are kept on GPU until reduce() or peek().
                 TensorFlow tensors are moved to CPU immediately.
         """
-        from ray.rllib.utils.framework import try_import_tf
-
-        _, tf, _ = try_import_tf()
-
         # Convert TensorFlow tensors to CPU immediately, keep PyTorch tensors as-is
         if tf and tf.is_tensor(value):
             value = value.numpy()
