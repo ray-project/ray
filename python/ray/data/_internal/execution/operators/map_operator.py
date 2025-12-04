@@ -663,7 +663,6 @@ def _map_task(
             meta_with_schema = BlockMetadataWithSchema(metadata=m_out, schema=s_out)
             yield b_out
             yield meta_with_schema
-            print(f"type={type(b_out)} block size is {meta_with_schema.size_bytes}")
             stats = BlockExecStats.builder()
             profiler.reset()
 
