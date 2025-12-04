@@ -3483,7 +3483,7 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
                            << TaskID::FromBinary(task_id) << ": " << status.ToString()
                            << "with Worker ID: " << executor_worker_id;
           if (timer) {
-            RAY_LOG(WARNING) << "Escalating graceful shutdown to SIGKILL instead.";
+            RAY_LOG(INFO) << "Escalating graceful shutdown to SIGKILL instead.";
             return;
           }
         }
