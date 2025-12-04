@@ -69,7 +69,7 @@ def test_checkpoint_validation_management_reordering(tmp_path):
         ),
     )
 
-    # Start validation tasks and wait for them to complete
+    # Enqueue validation tasks
     vm.after_report(
         training_report=_TrainingReport(
             metrics=low_initial_high_final_training_result.metrics,
