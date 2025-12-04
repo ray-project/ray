@@ -439,7 +439,7 @@ class TestToPyArrow:
             fn=dummy_fn,
             args=[col("x")],
             kwargs={},
-            data_type=DataType(int),
+            _data_type=DataType(int),
         )
 
         with pytest.raises(TypeError, match="UDF expressions cannot be converted"):
@@ -713,7 +713,7 @@ def _build_complex_expr():
         fn=custom_udf,
         args=[col("value"), lit(10)],
         kwargs={"z": col("multiplier")},
-        data_type=DataType(int),
+        _data_type=DataType(int),
     )
 
     # Build the mega-complex expression

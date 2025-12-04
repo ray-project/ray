@@ -108,7 +108,10 @@ class _ListNamespace:
             UDFExpr that extracts a slice from each list.
         """
         # Return type is the same as the input list type
-        return_dtype = self._expr.data_type
+        if self._expr._is_resolved():
+            return_dtype = self._expr.data_type
+        else:
+            return_dtype = DataType(object)
 
         @pyarrow_udf(return_dtype=return_dtype)
         def _list_slice(arr: pyarrow.Array) -> pyarrow.Array:
