@@ -188,7 +188,10 @@ class JobManager:
                             job_id, timeout=None
                         )
 
-                    if self._timeout_check_timer.time() - job_info.start_time / 1000 > timeout:
+                    if (
+                        self._timeout_check_timer.time() - job_info.start_time / 1000 
+                        > timeout
+                    ):
                         err_msg = (
                             "Job supervisor actor failed to start within "
                             f"{timeout} seconds. This timeout can be "
