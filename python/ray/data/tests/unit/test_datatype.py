@@ -407,6 +407,12 @@ class TestIsOf:
             (DataType.temporal("date32"), TypeCategory.TEMPORAL, True),
             # Negatives
             (DataType.int64(), TypeCategory.LIST, False),
+            (DataType.list(DataType.int64()), TypeCategory.LARGE_LIST, False),
+            (
+                DataType.fixed_size_list(DataType.int32(), 3),
+                TypeCategory.LARGE_LIST,
+                False,
+            ),
             (DataType.list(DataType.int64()), TypeCategory.STRUCT, False),
             (DataType.struct([("x", DataType.int64())]), TypeCategory.MAP, False),
         ],

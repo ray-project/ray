@@ -11,6 +11,7 @@ from ray.air.util.tensor_extensions.arrow import (
 from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class TypeCategory(str, Enum):
     """High-level categories of data types.
 
@@ -134,8 +135,16 @@ class DataType:
             except ValueError:
                 return False
 
-        if category == TypeCategory.LIST or category == TypeCategory.LARGE_LIST:
+        if category == TypeCategory.LIST:
             return self.is_list_type()
+        elif category == TypeCategory.LARGE_LIST:
+            if not self.is_arrow_type():
+                return False
+            pa_type = self._physical_dtype
+            return pa.types.is_large_list(pa_type) or (
+                hasattr(pa.types, "is_large_list_view")
+                and pa.types.is_large_list_view(pa_type)
+            )
         elif category == TypeCategory.STRUCT:
             return self.is_struct_type()
         elif category == TypeCategory.MAP:
