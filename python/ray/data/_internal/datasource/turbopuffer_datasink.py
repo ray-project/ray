@@ -443,47 +443,18 @@ class TurbopufferDatasink(Datasink):
         """
         Transform Arrow table to Turbopuffer row-based format.
 
-        Turbopuffer expects upsert_rows as a list of row dictionaries:
-        [
-            {"id": "1", "vector": [...], "attr1": val1, ...},
-            {"id": "2", "vector": [...], "attr1": val2, ...},
-        ]
-
-        Converts binary UUID fields (16 bytes) to string format.
+        Converts ID column to native uuid.UUID,
+        per Turbopuffer performance docs.
         """
-        # Validate table has ID column by checking schema before conversion.
         if _ID_COLUMN not in table.column_names:
             raise ValueError(f"Table must have '{_ID_COLUMN}' column")
 
-        # Convert to list of row dictionaries
         rows = table.to_pylist()
 
-        # Convert bytes to proper formats (e.g., UUIDs)
         for row in rows:
-            for key, value in list(row.items()):
-                if isinstance(value, bytes):
-                    # Check if it's a 16-byte UUID
-                    if len(value) == 16:
-                        row[key] = str(uuid.UUID(bytes=value))
-                    else:
-                        # For other bytes, convert to hex string
-                        row[key] = value.hex()
-                elif isinstance(value, list) and len(value) > 0:
-                    # Handle arrays of UUIDs (e.g., permissions_user_ids)
-                    converted_list = []
-                    for item in value:
-                        if isinstance(item, bytes):
-                            # Check if it's a 16-byte UUID
-                            if len(item) == 16:
-                                # Convert 16-byte UUID to string
-                                converted_list.append(str(uuid.UUID(bytes=item)))
-                            else:
-                                # For other bytes, convert to hex string
-                                converted_list.append(item.hex())
-                        else:
-                            # Keep non-bytes items as-is
-                            converted_list.append(item)
-                    row[key] = converted_list
+            id_val = row.get(_ID_COLUMN)
+            if isinstance(id_val, bytes) and len(id_val) == 16:
+                row[_ID_COLUMN] = uuid.UUID(bytes=id_val)
 
         return rows
 
