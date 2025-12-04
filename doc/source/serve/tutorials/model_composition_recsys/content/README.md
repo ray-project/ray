@@ -35,7 +35,7 @@ Use model composition when you have:
 - Multiple teams contributing models to the same system.
 - Need to A/B test individual components.
 
-## Write a composed recommendation pipeline
+## Configure a composed deployment
 
 Build a recommendation system with three components:
 1. **UserFeatureExtractor**: Extracts user features (demographics, history, preferences).

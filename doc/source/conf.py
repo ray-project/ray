@@ -235,8 +235,6 @@ exclude_patterns = [
     "train/examples/**/README.md",
     "serve/tutorials/deployment-serve-llm/README.*",
     "serve/tutorials/deployment-serve-llm/*/notebook.ipynb",
-    "serve/tutorials/model_multiplexing_forecast/content/notebook.ipynb",
-    "serve/tutorials/model_composition_recsys/content/notebook.ipynb",
     "data/examples/**/content/README.md",
     "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
     "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",

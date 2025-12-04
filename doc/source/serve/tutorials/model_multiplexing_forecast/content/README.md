@@ -35,7 +35,7 @@ Use model multiplexing when you have:
 - Similar input/output formats across models.
 - Limited infrastructure budget.
 
-## Write a multiplexed deployment
+## Configure a multiplexed deployment
 
 Assume you have multiple forecasting models stored in cloud storage with the following structure:
 ```
