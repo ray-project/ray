@@ -3456,10 +3456,10 @@ py_test(
 )
 
 py_test(
-    name = "examples/catalogs/mobilenet_v2_encoder",
+    name = "examples/_old_api_stack/catalogs/mobilenet_v2_encoder",
     size = "small",
-    srcs = ["examples/catalogs/mobilenet_v2_encoder.py"],
-    main = "examples/catalogs/mobilenet_v2_encoder.py",
+    srcs = ["examples/_old_api_stack/catalogs/mobilenet_v2_encoder.py"],
+    main = "examples/_old_api_stack/catalogs/mobilenet_v2_encoder.py",
     tags = [
         "examples",
         "no_main",
@@ -3552,10 +3552,10 @@ py_test(
 )
 
 py_test(
-    name = "examples/checkpoints/cartpole_dqn_export",
+    name = "examples/_old_api_stack/checkpoints/cartpole_dqn_export",
     size = "small",
-    srcs = ["examples/checkpoints/cartpole_dqn_export.py"],
-    main = "examples/checkpoints/cartpole_dqn_export.py",
+    srcs = ["examples/_old_api_stack/checkpoints/cartpole_dqn_export.py"],
+    main = "examples/_old_api_stack/checkpoints/cartpole_dqn_export.py",
     tags = [
         "examples",
         "exclusive",
@@ -4120,9 +4120,9 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/envs/greyscale_env",
+    name = "examples/_old_api_stack/envs/greyscale_env",
     size = "medium",
-    srcs = ["examples/envs/greyscale_env.py"],
+    srcs = ["examples/_old_api_stack/envs/greyscale_env.py"],
     args = ["--stop-iters=1 --as-test --framework torch"],
     tags = [
         "examples",
@@ -4596,14 +4596,14 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/inference/policy_inference_after_training_with_lstm_tf",
+    name = "examples/_old_api_stack/inference/policy_inference_after_training_with_lstm_tf",
     size = "medium",
-    srcs = ["examples/inference/policy_inference_after_training_with_lstm.py"],
+    srcs = ["examples/_old_api_stack/inference/policy_inference_after_training_with_lstm.py"],
     args = [
         "--stop-iters=1",
         "--framework=tf",
     ],
-    main = "examples/inference/policy_inference_after_training_with_lstm.py",
+    main = "examples/_old_api_stack/inference/policy_inference_after_training_with_lstm.py",
     tags = [
         "examples",
         "exclusive",
@@ -4613,14 +4613,14 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/inference/policy_inference_after_training_with_lstm_torch",
+    name = "examples/_old_api_stack/inference/policy_inference_after_training_with_lstm_torch",
     size = "medium",
-    srcs = ["examples/inference/policy_inference_after_training_with_lstm.py"],
+    srcs = ["examples/_old_api_stack/inference/policy_inference_after_training_with_lstm.py"],
     args = [
         "--stop-iters=1",
         "--framework=torch",
     ],
-    main = "examples/inference/policy_inference_after_training_with_lstm.py",
+    main = "examples/_old_api_stack/inference/policy_inference_after_training_with_lstm.py",
     tags = [
         "examples",
         "exclusive",
@@ -5083,15 +5083,15 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/offline_rl/offline_rl_torch_old_api_stack",
+    name = "examples/_old_api_stack/offline_rl/offline_rl_torch_old_api_stack",
     size = "medium",
-    srcs = ["examples/offline_rl/offline_rl.py"],
+    srcs = ["examples/_old_api_stack/offline_rl/offline_rl.py"],
     args = [
         "--as-test",
         "--stop-reward=-300",
         "--stop-iters=1",
     ],
-    main = "examples/offline_rl/offline_rl.py",
+    main = "examples/_old_api_stack/offline_rl/offline_rl.py",
     tags = [
         "examples",
         "exclusive",
@@ -5255,9 +5255,9 @@ py_test(
 )
 
 py_test(
-    name = "examples/replay_buffer_api",
+    name = "examples/_old_api_stack/replay_buffer_api",
     size = "large",
-    srcs = ["examples/replay_buffer_api.py"],
+    srcs = ["examples/_old_api_stack/replay_buffer_api.py"],
     tags = [
         "examples",
         "team:rllib",
