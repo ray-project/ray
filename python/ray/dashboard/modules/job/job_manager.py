@@ -11,8 +11,8 @@ from typing import Any, AsyncIterator, Dict, Optional, Union
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.utils import Timer, run_background_task
-from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.npu import NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
+from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.event.event_logger import get_event_logger
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
