@@ -137,8 +137,8 @@ Test your multiplexed deployment on your local machine before moving to producti
 In a terminal, run:
 
 
-```python
-!serve run serve_forecast_multiplex:app --non-blocking
+```bash
+serve run serve_forecast_multiplex:app --non-blocking
 ```
 
 **Note:** When running in a notebook, the `--non-blocking` flag returns control immediately so you can continue executing cells. Without it, `serve run` blocks the notebook. In a terminal, you can omit this flag to stream logs to the console.
@@ -242,8 +242,8 @@ result = await handle.options(multiplexed_model_id="customer_123").remote(reques
 Shutdown your service:
 
 
-```python
-!serve shutdown -y
+```bash
+serve shutdown -y
 ```
 
 ## Deploy to production with Anyscale Services
@@ -469,7 +469,7 @@ class ForecastingService:
 
 When you send the first request for a model, the system loads the model into the cache. Subsequent requests are fast until the system evicts the model from the cache according to the LRU policy.
 
-If you wish to avoid cold-starts, consider [awaiting blocking IO/network operations](#use-coroutines-for-blocking-operations-during-model-loading), [pre-warming important models](#pre-warm-models), [increasing the cache size](#tune-cache-size), or [add more replicas](#scale-replicas) to your deployment.
+If you wish to avoid cold-starts, consider [awaiting blocking IO/network operations](#use-co-routines-for-blocking-operations-during-model-loading), [pre-warming important models](#pre-warm-models), [increasing the cache size](#tune-cache-size), or [add more replicas](#scale-replicas) to your deployment.
 
 ### Cache thrashing
 
