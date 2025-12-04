@@ -423,17 +423,16 @@ def test_transform_to_turbopuffer_format_requires_id_column():
         sink._transform_to_turbopuffer_format(table)
 
 
-def test_transform_converts_uuid_bytes_and_hex_and_lists():
+def test_transform_converts_id_uuid_bytes_to_native_uuid():
+    """
     u = uuid.uuid4()
-    uuid_bytes = u.bytes
     other_bytes = b"\x01\x02\x03"
 
     table = pa.table(
         {
-            "id": [1],
-            "uuid_col": [uuid_bytes],
-            "bytes_col": [other_bytes],
-            "list_col": [[uuid_bytes, other_bytes]],
+            "id": [u.bytes],
+            "vector": [[0.1, 0.2]],
+            "other_bytes": [other_bytes],
         }
     )
 
@@ -442,11 +441,11 @@ def test_transform_converts_uuid_bytes_and_hex_and_lists():
     assert len(rows) == 1
     row = rows[0]
 
-    assert row["uuid_col"] == str(u)
-    assert row["bytes_col"] == other_bytes.hex()
-    assert row["list_col"][0] == str(u)
-    # Non-UUID bytes inside lists should also be converted to hex for consistency.
-    assert row["list_col"][1] == other_bytes.hex()
+    # ID should be native UUID, not string
+    assert row["id"] == u
+    assert isinstance(row["id"], uuid.UUID)
+    # Other bytes columns should remain unchanged (not converted)
+    assert row["other_bytes"] == other_bytes
 
 
 ### 7. Retry logic and backoff
