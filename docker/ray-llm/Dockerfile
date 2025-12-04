@@ -5,10 +5,6 @@ FROM "$BASE_IMAGE"
 
 COPY python/deplocks/llm/rayllm_*.lock ./
 
-ENV RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1
-ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so:${LD_PRELOAD}
-ENV CUDA_HOME=/usr/local/cuda
-
 # vLLM commit to use for EP kernel and DeepGEMM install scripts
 ARG VLLM_SCRIPTS_REF="c4c0354eec86f3486285f121fa184dd6d9cacb9d"
 
