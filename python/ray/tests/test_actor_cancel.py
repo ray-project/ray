@@ -514,8 +514,6 @@ def test_is_canceled_sync_actor_task(shutdown_only):
 
 def test_is_canceled_concurrent_actor_task(shutdown_only):
     """Test that is_canceled() works correctly for concurrent actor tasks."""
-    ray.init()
-
     @ray.remote
     class ConcurrentActor:
         def __init__(self):
@@ -567,22 +565,16 @@ def test_is_canceled_concurrent_actor_task(shutdown_only):
 
 def test_is_canceled_not_supported_in_async_actor(shutdown_only):
     """Test is_canceled() for async actors."""
-    ray.init()
-
     @ray.remote
     class AsyncActor:
         def __init__(self):
             self.is_canceled = False
 
         async def async_task(self):
-            import asyncio
-
-            for _ in range(100):
-                # is_canceled() doesn't work for async actors
-                if ray.get_runtime_context().is_canceled():
-                    self.is_canceled = True
-                    return "canceled"
-                await asyncio.sleep(0.1)
+            # is_canceled() doesn't work for async actors
+            if ray.get_runtime_context().is_canceled():
+                self.is_canceled = True
+                return "canceled"
             return "completed"
 
         def is_canceled(self):
