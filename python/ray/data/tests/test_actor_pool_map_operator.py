@@ -913,22 +913,22 @@ def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context)
     ],
 )
 def test_actor_init_failure_retry(
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
     restore_data_context,
     retry_on_errors,
     max_retries,
     should_succeed,
 ):
-    """Tests that actor initialization failures are retried based on
+    """Tests that UDF initialization failures are retried based on
     actor_init_retry_on_errors and actor_init_max_retries settings.
 
-    When an actor's __init__ fails, the _task_done_callback in ActorPoolMapOperator
-    catches the ActorDiedError and checks actor_init_retry_on_errors to decide
-    whether to retry or propagate the error.
+    When the user-provided UDF's __init__ fails, the _MapWorker retries
+    the initialization within the same actor based on the retry settings.
+    If all retries fail, the actor dies and an ActorDiedError is raised.
     """
     from ray.exceptions import ActorDiedError
 
-    @ray.remote
+    @ray.remote(num_cpus=0)
     class Counter:
         def __init__(self):
             self._count = 0
@@ -952,7 +952,7 @@ def test_actor_init_failure_retry(
     ctx = ray.data.DataContext.get_current()
     ctx.actor_init_retry_on_errors = retry_on_errors
     ctx.actor_init_max_retries = max_retries
-    # Set to 0 so actors start asynchronously and retry callback can work
+    # Set to 0 so actors start asynchronously
     ctx.wait_for_min_actors_s = 0
 
     if should_succeed:

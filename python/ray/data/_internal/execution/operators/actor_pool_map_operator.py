@@ -180,9 +180,6 @@ class ActorPoolMapOperator(MapOperator):
         self._locality_hits = 0
         self._locality_misses = 0
 
-        # Track actor init retry count
-        self._actor_init_retry_count = 0
-
     @staticmethod
     def _create_task_selector(actor_pool: "_ActorPool") -> "_ActorTaskSelector":
         return _ActorTaskSelectorImpl(actor_pool)
@@ -294,34 +291,10 @@ class ActorPoolMapOperator(MapOperator):
         def _task_done_callback(res_ref):
             # res_ref is a future for a now-ready actor; move actor from pending to the
             # active actor pool.
-            try:
-                has_actor = self._actor_pool.pending_to_running(res_ref)
-            except ray.exceptions.RayActorError as e:
-                # Only retry if this was a UDF initialization failure,
-                # not a scheduling failure.
-                if not e.actor_init_failed:
-                    raise
-                # Check if we should retry this initialization failure based on DataContext settings.
-                if self.data_context.actor_init_retry_on_errors:
-                    self._actor_init_retry_count += 1
-                    max_retries = self.data_context.actor_init_max_retries
-                    # -1 means infinite retries
-                    if max_retries < 0 or self._actor_init_retry_count <= max_retries:
-                        # Don't spawn replacement actors if shutting down
-                        if self._actor_pool._shutting_down:
-                            return
-                        # Spawn a replacement actor
-                        new_actor, new_ready_ref = self._actor_pool._create_actor()
-                        self._actor_pool.add_pending_actor(new_actor, new_ready_ref)
-                        return
-                # Non-retryable error or max retries exceeded, let it propagate.
-                raise
-
+            has_actor = self._actor_pool.pending_to_running(res_ref)
             if not has_actor:
                 # Actor has already been killed.
                 return
-            # A new actor has started successfully, reset retry count.
-            self._actor_init_retry_count = 0
             # Try to dispatch queued tasks.
             self._dispatch_tasks()
 
@@ -604,12 +577,40 @@ class _MapWorker:
         # Initialize the data context for this actor after setting the src_fn_name in order to not
         # break __repr__. It's possible that logging setup fails.
         DataContext._set_current(ctx)
-        # Initialize state for this actor.
-        self._map_transformer.init()
+        # Initialize state for this actor with retry logic for UDF init failures.
+        self._init_udf_with_retries(ctx)
         self._logical_actor_id = logical_actor_id
         actor_location_tracker.update_actor_location.remote(
             self._logical_actor_id, ray.get_runtime_context().get_node_id()
         )
+
+    def _init_udf_with_retries(self, ctx: DataContext) -> None:
+        """Initialize the UDF with retry logic for transient failures."""
+        if not ctx.actor_init_retry_on_errors:
+            # No retry enabled, just init directly.
+            self._map_transformer.init()
+            return
+
+        max_retries = ctx.actor_init_max_retries
+        # -1 means infinite retries
+        last_exception = None
+        attempt = 0
+        while max_retries < 0 or attempt <= max_retries:
+            try:
+                self._map_transformer.init()
+                return  # Success
+            except Exception as e:
+                last_exception = e
+                attempt += 1
+                # Log only if we'll retry
+                if max_retries < 0 or attempt <= max_retries:
+                    logger.debug(
+                        f"UDF initialization failed (attempt {attempt}/"
+                        f"{'infinite' if max_retries < 0 else max_retries + 1}): {e}. "
+                        "Retrying..."
+                    )
+        # All retries exhausted
+        raise last_exception
 
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()
@@ -863,8 +864,6 @@ class _ActorPool(AutoscalingActorPool):
         self._num_restarting_actors: int = 0
         self._num_active_actors: int = 0
         self._total_num_tasks_in_flight: int = 0
-        # Flag to indicate if the pool is shutting down
-        self._shutting_down: bool = False
 
     # === Overriding methods of AutoscalingActorPool ===
 
@@ -1137,7 +1136,6 @@ class _ActorPool(AutoscalingActorPool):
 
         This is called once the operator is shutting down.
         """
-        self._shutting_down = True
         self._release_pending_actors(force=force)
         self._release_running_actors(force=force)
 
