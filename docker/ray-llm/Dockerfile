@@ -30,7 +30,7 @@ uv pip install --system --no-cache-dir --no-deps \
 # Export installed packages
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
-sudo apt-get update -y && sudo apt-get install -y kmod pkg-config librdmacm-dev cmake
+sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake
 
 # Fetch and run vLLM install scripts at pinned commit
 VLLM_RAW="https://raw.githubusercontent.com/vllm-project/vllm/${VLLM_SCRIPTS_REF}"
