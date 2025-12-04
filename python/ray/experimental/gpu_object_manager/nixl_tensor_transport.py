@@ -40,20 +40,8 @@ class NixlTransportMetadata(TensorTransportMetadata):
 
 class NixlTensorTransport(TensorTransportManager):
     def __init__(self, tensor_transport_backend: str):
-        """
-        Creates a NIXL agent with UCX backend.
-        """
-        from nixl._api import nixl_agent, nixl_agent_config
-
-        agent_config = nixl_agent_config(backends=["UCX"])
-        ctx = ray.get_runtime_context()
-        actor_id = ctx.get_actor_id()
-        if actor_id is None:
-            # If the actor id is None, it means the current process is a driver.
-            import uuid
-
-            actor_id = f"RAY-DRIVER-{uuid.uuid4()}"
-        self._nixl_agent = nixl_agent(actor_id, agent_config)
+        # This is lazily initialized because it requires NIXL to actually be installed and we want to allow an owner that is just coordinating to not need to have NIXL installed.
+        self._nixl_agent = None
         self._aborted_transfer_obj_ids = set()
         self._aborted_transfer_obj_ids_lock = threading.Lock()
 
@@ -68,6 +56,26 @@ class NixlTensorTransport(TensorTransportManager):
     @staticmethod
     def can_abort_transport() -> bool:
         return True
+
+    def get_nixl_agent(self):
+        """
+        Creates a NIXL agent with UCX backend if not already created.
+        """
+        if self._nixl_agent is not None:
+            return self._nixl_agent
+
+        from nixl._api import nixl_agent, nixl_agent_config
+
+        agent_config = nixl_agent_config(backends=["UCX"])
+        ctx = ray.get_runtime_context()
+        actor_id = ctx.get_actor_id()
+        if actor_id is None:
+            # If the actor id is None, it means the current process is a driver.
+            import uuid
+
+            actor_id = f"RAY-DRIVER-{uuid.uuid4()}"
+        self._nixl_agent = nixl_agent(actor_id, agent_config)
+        return self._nixl_agent
 
     def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
         # TODO(dayshah): This is called on a .remote RDT call, so it's quite expensive.
@@ -109,9 +117,10 @@ class NixlTensorTransport(TensorTransportManager):
             return duplicate_meta
 
         if gpu_object:
-            reg_descs = self._nixl_agent.register_memory(gpu_object)
-            serialized_descs = self._nixl_agent.get_serialized_descs(reg_descs.trim())
-            agent_meta = self._nixl_agent.get_agent_metadata()
+            nixl_agent = self.get_nixl_agent()
+            reg_descs = nixl_agent.register_memory(gpu_object)
+            serialized_descs = nixl_agent.get_serialized_descs(reg_descs.trim())
+            agent_meta = nixl_agent.get_agent_metadata()
             # We assume all tensors in one GPU object have the same device type.
             device = gpu_object[0].device
             for t in gpu_object:
@@ -170,7 +179,7 @@ class NixlTensorTransport(TensorTransportManager):
         remote_name = None
         xfer_handle = None
         try:
-            nixl_agent = self._nixl_agent
+            nixl_agent = self.get_nixl_agent()
             remote_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
             local_descs = nixl_agent.register_memory(tensors)
             remote_name = nixl_agent.add_remote_agent(remote_nixl_agent_meta)
@@ -236,7 +245,7 @@ class NixlTensorTransport(TensorTransportManager):
         if count == 0:
             descs = tensor_transport_meta.nixl_reg_descs
             if descs is not None:
-                self._nixl_agent.deregister_memory(descs)
+                self.get_nixl_agent().deregister_memory(descs)
 
     def abort_transport(
         self,
