@@ -130,7 +130,7 @@ class TestOpenAICompatibility:
         client, expected_model = testing_model
         # Use requests directly since OpenAI client requires model parameter
         response = requests.post(
-            f"{client.base_url}/chat/completions",
+            f"{client.base_url}chat/completions",
             json={
                 "messages": [{"role": "user", "content": "Hello world"}],
             },
