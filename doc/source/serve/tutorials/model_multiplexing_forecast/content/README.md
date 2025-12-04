@@ -274,7 +274,7 @@ anyscale service deploy -f service.yaml
 The output shows your endpoint URL and authentication token.
 ```console
 (anyscale +6.6s) Query the service once it's running using the following curl command (add the path you want to query):
-(anyscale +6.6s) curl -H "Authorization: Bearer 4I9gMWIdpsfmNufE9-DLPXBRXvvwMjIfMfqtEzZq0Qc" https://forecast-multiplexing-service-jgz99.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata.com/
+(anyscale +6.6s) curl -H "Authorization: Bearer <YOUR-TOKEN>" <YOUR-ENDPOINT>
 ```
 
 You can also retrieve them from your console. Go to your Anyscale Service page, then click the **Query** button at the top.
