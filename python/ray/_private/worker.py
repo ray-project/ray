@@ -2840,15 +2840,15 @@ blocking_get_inside_async_warned = False
 
 @overload
 def get(
-    object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
-) -> List[Any]:
+    object_refs: "Sequence[ObjectRef[R]]", *, timeout: Optional[float] = None
+) -> List[R]:
     ...
 
 
 @overload
 def get(
-    object_refs: "Sequence[ObjectRef[R]]", *, timeout: Optional[float] = None
-) -> List[R]:
+    object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
+) -> List[Any]:
     ...
 
 
