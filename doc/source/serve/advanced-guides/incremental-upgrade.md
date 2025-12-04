@@ -53,7 +53,7 @@ We use `v1.29.0` which is known to be compatible with recent Istio versions.
 kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
 ```
 
-3. Install and Configure MetalLB for LoadBalancer on kind [optional]
+3. Install and Configure MetalLB for LoadBalancer on kind
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.7/config/manifests/metallb-native.yaml
 ```
