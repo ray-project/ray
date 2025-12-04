@@ -55,4 +55,4 @@ class ValidateTaskConfig:
     """
 
     max_retries: int = 3
-    retry_exceptions: Optional[List[Exception]] = None
+    retry_exceptions: Optional[List[Type[Exception]]] = None
