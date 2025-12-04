@@ -41,7 +41,7 @@ try:
     from PIL.Image import Image
 
     PIL_Image = Image
-except Exception:
+except ImportError:
     pass
 
 if TYPE_CHECKING:
