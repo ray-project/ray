@@ -17,12 +17,14 @@ from ray.util.collective.collective import (
     nccl_available,
     recv,
     recv_multigpu,
+    recv_multidevice,
     reduce,
     reduce_multigpu,
     reducescatter,
     reducescatter_multigpu,
     send,
     send_multigpu,
+    send_multidevice,
 )
 
 __all__ = [
@@ -47,7 +49,9 @@ __all__ = [
     "reducescatter_multigpu",
     "send",
     "send_multigpu",
+    "send_multidevice",
     "recv",
     "recv_multigpu",
+    "recv_multidevice",
     "get_group_handle",
 ]
