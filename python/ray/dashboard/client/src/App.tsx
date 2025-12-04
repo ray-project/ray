@@ -232,20 +232,12 @@ const App = () => {
     updateTimezone();
   }, []);
 
-  // Check authentication mode on mount
+  // Check authentication mode on mount and cache in sessionStorage
   useEffect(() => {
     const checkAuthentication = async () => {
       try {
         const { authentication_mode } = await getAuthenticationMode();
-
-        if (authentication_mode === "token") {
-          // Token authentication is enabled
-          // The HttpOnly cookie will be sent automatically with requests
-          // If no valid cookie exists, the first request will trigger 401/403
-          // and the response interceptor will show the authentication dialog
-        } else {
-          // Auth mode is disabled
-        }
+        sessionStorage.setItem("ray-authentication-mode", authentication_mode);
       } catch (error) {
         console.error("Failed to check authentication mode:", error);
       }
@@ -260,14 +252,22 @@ const App = () => {
       const customEvent = event as CustomEvent<{ hadToken: boolean }>;
       const hadToken = customEvent.detail?.hadToken ?? false;
 
-      try {
-        const { authentication_mode } = await getAuthenticationMode();
-        if (authentication_mode === "token" || authentication_mode === "k8s") {
-          setHasAttemptedAuthentication(hadToken);
-          setAuthenticationDialogOpen(true);
+      // Check cached auth mode first, fall back to API if not cached
+      let authMode = sessionStorage.getItem("ray-authentication-mode");
+      if (!authMode) {
+        try {
+          const { authentication_mode } = await getAuthenticationMode();
+          authMode = authentication_mode;
+          sessionStorage.setItem("ray-authentication-mode", authentication_mode);
+        } catch (error) {
+          console.error("Failed to check authentication mode:", error);
+          return;
         }
-      } catch (error) {
-        console.error("Failed to check authentication mode:", error);
+      }
+
+      if (authMode === "token" || authMode === "k8s") {
+        setHasAttemptedAuthentication(hadToken);
+        setAuthenticationDialogOpen(true);
       }
     };
 
