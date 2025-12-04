@@ -56,12 +56,6 @@ DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 1024 * 1024 * 1024
 # blocks larger than this threshold.
 MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
 
-# We will attempt to slice blocks whose size exceeds this factor *
-# target_num_rows_per_block. We will warn the user if slicing fails and we produce
-# blocks with more rows than this threshold.
-MAX_SAFE_ROWS_PER_BLOCK_FACTOR = 1.5
-
-
 DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 
 # This default appears to work well with most file sizes on remote storage systems,
@@ -144,6 +138,9 @@ DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
     "RAY_DATA_ENABLE_PROGRESS_BAR_NAME_TRUNCATION", True
 )
 
+# Progress bar log interval in seconds
+DEFAULT_PROGRESS_BAR_LOG_INTERVAL = env_integer("RAY_DATA_PROGRESS_LOG_INTERVAL", 5)
+
 # Globally enable or disable experimental rich progress bars. This is a new
 # interface to replace the old tqdm progress bar implementation.
 DEFAULT_ENABLE_RICH_PROGRESS_BARS = bool(
@@ -212,7 +209,9 @@ DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
     "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", -1
 )
 
-DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR = 4
+DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR = env_integer(
+    "RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR", 2
+)
 
 # Enable per node metrics reporting for Ray Data, disabled by default.
 DEFAULT_ENABLE_PER_NODE_METRICS = bool(
@@ -238,6 +237,16 @@ DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
     0.5,
 )
 
+DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: int = env_integer(
+    "RAY_DATA_DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA",
+    1,
+)
+
+
+DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
+    "RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE", False
+)
+
 
 @DeveloperAPI
 @dataclass
@@ -258,6 +267,9 @@ class AutoscalingConfig:
             between autoscaling speed and resource efficiency (i.e.,
             making tasks wait instead of immediately triggering execution).
         actor_pool_util_downscaling_threshold: Actor Pool utilization threshold for downscaling.
+        actor_pool_max_upscaling_delta: Maximum number of actors to scale up in a single scaling decision.
+            This limits how many actors can be added at once to prevent resource contention
+            and scheduling pressure. Defaults to 1 for conservative scaling.
     """
 
     actor_pool_util_upscaling_threshold: float = (
@@ -268,6 +280,9 @@ class AutoscalingConfig:
     actor_pool_util_downscaling_threshold: float = (
         DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD
     )
+
+    # Maximum number of actors to scale up in a single scaling decision
+    actor_pool_max_upscaling_delta: int = DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA
 
 
 def _execution_options_factory() -> "ExecutionOptions":
@@ -377,8 +392,12 @@ class DataContext:
             `ProgressBar.MAX_NAME_LENGTH`. Otherwise, the full operator name is shown.
         enable_rich_progress_bars: Whether to use the new rich progress bars instead
             of the tqdm TUI.
+        progress_bar_log_interval: The interval in seconds for logging progress bar
+            updates in non-interactive terminals.
         enable_get_object_locations_for_metrics: Whether to enable
-            ``get_object_locations`` for metrics.
+            ``get_object_locations`` for metrics. This is useful for tracking whether
+            the object input of a task is local (cache hit) or not local (cache miss)
+            to the node that task is running on.
         write_file_retry_on_errors: A list of substrings of error messages that should
             trigger a retry when writing files. This is useful for handling transient
             errors when writing to remote storage systems.
@@ -453,6 +472,8 @@ class DataContext:
             later. If `None`, this type of backpressure is disabled.
         downstream_capacity_backpressure_max_queued_bundles: Maximum number of queued
             bundles before applying backpressure. If `None`, no limit is applied.
+        enable_dynamic_output_queue_size_backpressure: Whether to cap the concurrency
+        of an operator based on it's and downstream's queue size.
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
@@ -545,6 +566,7 @@ class DataContext:
         DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION
     )
     enable_rich_progress_bars: bool = DEFAULT_ENABLE_RICH_PROGRESS_BARS
+    progress_bar_log_interval: int = DEFAULT_PROGRESS_BAR_LOG_INTERVAL
     enable_get_object_locations_for_metrics: bool = (
         DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS
     )
@@ -569,7 +591,8 @@ class DataContext:
     # Setting non-positive value here (ie <= 0) disables this functionality
     # (defaults to -1).
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
-    max_tasks_in_flight_per_actor: Optional[int] = DEFAULT_MAX_TASKS_IN_FLIGHT_PER_ACTOR
+    # This setting serves as a global override
+    max_tasks_in_flight_per_actor: Optional[int] = None
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
@@ -591,6 +614,10 @@ class DataContext:
     downstream_capacity_backpressure_ratio: float = None
     downstream_capacity_backpressure_max_queued_bundles: int = None
 
+    enable_dynamic_output_queue_size_backpressure: bool = (
+        DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE
+    )
+
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
@@ -606,6 +633,15 @@ class DataContext:
         # the DataContext from the plugin implementations, as well as to avoid
         # circular dependencies.
         self._kv_configs: Dict[str, Any] = {}
+
+        # Sync hash shuffle aggregator fields to its detector config
+        self.issue_detectors_config.hash_shuffle_detector_config.detection_time_interval_s = (
+            self.hash_shuffle_aggregator_health_warning_interval_s
+        )
+        self.issue_detectors_config.hash_shuffle_detector_config.min_wait_time_s = (
+            self.min_hash_shuffle_aggregator_wait_time_in_s
+        )
+
         self._max_num_blocks_in_streaming_gen_buffer = (
             DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER
         )

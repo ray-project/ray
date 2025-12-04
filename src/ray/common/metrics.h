@@ -48,4 +48,89 @@ inline ray::stats::Gauge GetActorByStateGaugeMetric() {
   };
 }
 
+inline ray::stats::Gauge GetObjectStoreMemoryGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"object_store_memory",
+      /*description=*/"Object store memory by various sub-kinds on this node",
+      /*unit=*/"",
+      /// Location:
+      ///    - MMAP_SHM: currently in shared memory(e.g. /dev/shm).
+      ///    - MMAP_DISK: memory that's fallback allocated on mmapped disk,
+      ///      e.g. /tmp.
+      ///    - WORKER_HEAP: ray objects smaller than ('max_direct_call_object_size',
+      ///      default 100KiB) stored in process memory, i.e. inlined return
+      ///      values, placeholders for objects stored in plasma store.
+      ///    - SPILLED: current number of bytes from objects spilled
+      ///      to external storage. Note this might be smaller than
+      ///      the physical storage incurred on the external storage because
+      ///      Ray might fuse spilled objects into a single file, so a deleted
+      ///      spill object might still exist in the spilled file. Check
+      ///      spilled object fusing for more details.
+      /// ObjectState:
+      ///    - SEALED: sealed objects bytes (could be MMAP_SHM or MMAP_DISK)
+      ///    - UNSEALED: unsealed objects bytes (could be MMAP_SHM or MMAP_DISK)
+      /*tag_keys=*/{"Location", "ObjectState"},
+  };
+}
+
+inline ray::stats::Histogram GetSchedulerPlacementTimeMsHistogramMetric() {
+  return ray::stats::Histogram{
+      /*name=*/"scheduler_placement_time_ms",
+      /*description=*/
+      "The time it takes for a workload (task, actor, placement group) to "
+      "be placed. This is the time from when the tasks dependencies are "
+      "resolved to when it actually reserves resources on a node to run.",
+      /*unit=*/"ms",
+      /*boundaries=*/{1, 10, 100, 1000, 10000},
+      /*tag_keys=*/{"WorkloadType"},
+  };
+}
+
+inline ray::stats::Gauge GetIoContextEventLoopLagMsGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"io_context_event_loop_lag_ms",
+      /*description=*/"The latency of a task from post to execution",
+      /*unit=*/"ms",
+      /*tag_keys=*/{"Name"},
+  };
+}
+
+inline ray::stats::Count GetOperationCountCounterMetric() {
+  return ray::stats::Count{
+      /*name=*/"operation_count",
+      /*description=*/"operation count",
+      /*unit=*/"",
+      /*tag_keys=*/{"Name"},
+  };
+}
+
+inline ray::stats::Histogram GetOperationRunTimeMsHistogramMetric() {
+  return ray::stats::Histogram{
+      /*name=*/"operation_run_time_ms",
+      /*description=*/"operation execution time",
+      /*unit=*/"ms",
+      /*boundaries=*/{1, 10, 100, 1000, 10000},
+      /*tag_keys=*/{"Name"},
+  };
+}
+
+inline ray::stats::Histogram GetOperationQueueTimeMsHistogramMetric() {
+  return ray::stats::Histogram{
+      /*name=*/"operation_queue_time_ms",
+      /*description=*/"operation queuing time",
+      /*unit=*/"ms",
+      /*boundaries=*/{1, 10, 100, 1000, 10000},
+      /*tag_keys=*/{"Name"},
+  };
+}
+
+inline ray::stats::Gauge GetOperationActiveCountGaugeMetric() {
+  return ray::stats::Gauge{
+      /*name=*/"operation_active_count",
+      /*description=*/"active operation number",
+      /*unit=*/"",
+      /*tag_keys=*/{"Name"},
+  };
+}
+
 }  // namespace ray

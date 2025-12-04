@@ -1,10 +1,10 @@
 import os
 import subprocess
 
+from ci.ray_ci.bisect.validator import Validator
+
 from ray_release.bazel import bazel_runfile
 from ray_release.test import Test
-
-from ci.ray_ci.bisect.validator import Validator
 
 TEST_SCRIPT = "ci/ray_ci/bisect/macos_validator.sh"
 

@@ -1,22 +1,22 @@
 from typing import TYPE_CHECKING, Optional, Type
 
 from ray._common.deprecation import Deprecated
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.core.configs.llm_config import (
     CloudMirrorConfig as _CloudMirrorConfig,
     LLMConfig as _LLMConfig,
     LoraConfig as _LoraConfig,
     ModelLoadingConfig as _ModelLoadingConfig,
 )
-
-# For backward compatibility
-from ray.llm._internal.serve.deployments.llm.llm_server import (
-    LLMServer as _LLMServer,
-)
-from ray.llm._internal.serve.deployments.routers.builder_ingress import (
+from ray.llm._internal.serve.core.ingress.builder import (
     LLMServingArgs as _LLMServingArgs,
 )
-from ray.llm._internal.serve.deployments.routers.router import (
+from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress as _OpenAiIngress,
+)
+
+# For backward compatibility
+from ray.llm._internal.serve.core.server.llm_server import (
+    LLMServer as _LLMServer,
 )
 from ray.util.annotations import PublicAPI
 
@@ -161,7 +161,7 @@ def build_llm_deployment(
     Returns:
         The configured Ray Serve Application for vllm deployment.
     """
-    from ray.llm._internal.serve.deployments.llm.builder_llm_server import (
+    from ray.llm._internal.serve.core.server.builder import (
         build_llm_deployment,
     )
 
@@ -272,7 +272,7 @@ def build_openai_app(llm_serving_args: dict) -> "Application":
     Returns:
         The configured Ray Serve Application router.
     """
-    from ray.llm._internal.serve.deployments.routers.builder_ingress import (
+    from ray.llm._internal.serve.core.ingress.builder import (
         build_openai_app,
     )
 
@@ -362,11 +362,59 @@ def build_pd_openai_app(pd_serving_args: dict) -> "Application":
     Returns:
         The configured Ray Serve Application router.
     """
-    from ray.llm._internal.serve.deployments.prefill_decode_disagg.builder_pd import (
+    from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
         build_pd_openai_app,
     )
 
     return build_pd_openai_app(pd_serving_args=pd_serving_args)
+
+
+@PublicAPI(stability="alpha")
+def build_dp_deployment(
+    llm_config: "LLMConfig",
+    *,
+    name_prefix: Optional[str] = None,
+    override_serve_options: Optional[dict] = None,
+) -> "Application":
+    """Build a data parallel attention LLM deployment.
+
+    Args:
+        llm_config: The LLM configuration.
+        name_prefix: The prefix to add to the deployment name.
+        override_serve_options: The optional serve options to override the
+            default options.
+
+    Returns:
+        The Ray Serve Application for the data parallel attention LLM deployment.
+    """
+    from ray.llm._internal.serve.serving_patterns.data_parallel.builder import (
+        build_dp_deployment,
+    )
+
+    return build_dp_deployment(
+        llm_config=llm_config,
+        name_prefix=name_prefix,
+        override_serve_options=override_serve_options,
+    )
+
+
+@PublicAPI(stability="alpha")
+def build_dp_openai_app(dp_serving_args: dict) -> "Application":
+    """Build an OpenAI compatible app with the DP attention deployment
+    setup from the given builder configuration.
+
+    Args:
+        dp_serving_args: The configuration for the builder. It has to conform
+            to the DPOpenAiServingArgs pydantic model.
+
+    Returns:
+        The configured Ray Serve Application.
+    """
+    from ray.llm._internal.serve.serving_patterns.data_parallel.builder import (
+        build_dp_openai_app,
+    )
+
+    return build_dp_openai_app(builder_config=dp_serving_args)
 
 
 __all__ = [
@@ -377,6 +425,9 @@ __all__ = [
     "LoraConfig",
     "build_llm_deployment",
     "build_openai_app",
+    "build_pd_openai_app",
+    "build_dp_deployment",
+    "build_dp_openai_app",
     "LLMServer",
     "LLMRouter",
 ]

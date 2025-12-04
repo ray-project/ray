@@ -68,6 +68,38 @@ class vLLMEngineRequest(BaseModel):
         arbitrary_types_allowed = True
 
 
+def _convert_logprob_dict(logprob_dict: Dict[int, Any]) -> Dict[int, Dict[str, Any]]:
+    """Convert a dict of token_id -> Logprob to token_id -> dict.
+
+    Handles conversion of vLLM's Logprob objects (currently dataclass) to
+    serializable dicts. This supports both dataclass (current vLLM format)
+    and Pydantic models (for future compatibility).
+
+    Args:
+        logprob_dict: Dict mapping token_id to Logprob instance.
+
+    Returns:
+        Dict mapping token_id to serializable dict with logprob fields.
+    """
+    result = {}
+    for token_id, logprob in logprob_dict.items():
+        # Handle Pydantic models (model_dump method)
+        if hasattr(logprob, "model_dump"):
+            result[token_id] = logprob.model_dump()
+        # Handle dataclasses (current vLLM format)
+        elif dataclasses.is_dataclass(logprob):
+            result[token_id] = dataclasses.asdict(logprob)
+        # Already a dict
+        elif isinstance(logprob, dict):
+            result[token_id] = logprob
+        else:
+            raise TypeError(
+                f"Unsupported logprob type: {type(logprob)}. "
+                "Expected dataclass, Pydantic model, or dict."
+            )
+    return result
+
+
 class vLLMOutputData(BaseModel):
     """The output of the vLLM engine."""
 
@@ -86,6 +118,14 @@ class vLLMOutputData(BaseModel):
 
     # Metrics fields.
     metrics: Optional[Dict[str, Any]] = None
+
+    # Logprobs fields.
+    # logprobs: List[Dict[int, Dict[str, Any]]] where each dict maps token_id to
+    # logprob info (logprob, rank, decoded_token) for each generated token.
+    logprobs: Optional[List[Dict[int, Dict[str, Any]]]] = None
+    # prompt_logprobs: List[Optional[Dict[int, Dict[str, Any]]]] where each dict
+    # (or None) maps token_id to logprob info for each prompt token.
+    prompt_logprobs: Optional[List[Optional[Dict[int, Dict[str, Any]]]]] = None
 
     @classmethod
     def from_vllm_engine_output(cls, output: Any) -> "vLLMOutputData":
@@ -111,6 +151,22 @@ class vLLMOutputData(BaseModel):
             data.generated_tokens = output.outputs[0].token_ids
             data.generated_text = output.outputs[0].text
             data.num_generated_tokens = len(output.outputs[0].token_ids)
+
+            # Extract logprobs
+            if output.outputs[0].logprobs is not None:
+                data.logprobs = [
+                    _convert_logprob_dict(logprob_dict)
+                    for logprob_dict in output.outputs[0].logprobs
+                ]
+
+            # Extract prompt_logprobs
+            if output.prompt_logprobs is not None:
+                data.prompt_logprobs = [
+                    _convert_logprob_dict(logprob_dict)
+                    if logprob_dict is not None
+                    else None
+                    for logprob_dict in output.prompt_logprobs
+                ]
         elif isinstance(output, vllm.outputs.PoolingRequestOutput):
             data.embeddings = output.outputs.data.cpu()
             if (
@@ -261,6 +317,8 @@ class vLLMEngineWrapper:
         else:
             tokenized_prompt = None
 
+        # Extract image data from preprocessing output
+        # Note: Field name is 'image' (singular) not 'images' (plural).
         if "image" in row:
             image = row.pop("image")
         else:
@@ -690,7 +748,7 @@ class vLLMEngineStage(StatefulStage):
         """The optional input keys of the stage and their descriptions."""
         return {
             "tokenized_prompt": "The tokenized prompt. If provided, the prompt will not be tokenized by the vLLM engine.",
-            "images": "The images to generate text from. If provided, the prompt will be a multimodal prompt.",
+            "image": "The image(s) for multimodal input. Accepts a single image or list of images.",
             "model": "The model to use for this request. If the model is different from the "
             "model set in the stage, then this is a LoRA request.",
         }

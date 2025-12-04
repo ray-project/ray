@@ -47,7 +47,8 @@ RayletClient::RayletClient(const rpc::Address &address,
           ::RayConfig::instance().raylet_rpc_server_reconnect_timeout_max_s(),
           /*server_unavailable_timeout_callback=*/
           std::move(raylet_unavailable_timeout_callback),
-          /*server_name=*/std::string("Raylet ") + address.ip_address())) {}
+          /*server_name=*/std::string("Raylet ") + address.ip_address())),
+      pins_in_flight_(std::make_shared<std::atomic<int64_t>>(0)) {}
 
 void RayletClient::RequestWorkerLease(
     const rpc::LeaseSpec &lease_spec,
@@ -305,7 +306,8 @@ void RayletClient::ReleaseUnusedBundles(
   for (auto &bundle : bundles_in_use) {
     request.add_bundles_in_use()->CopyFrom(bundle);
   }
-  INVOKE_RPC_CALL(
+  INVOKE_RETRYABLE_RPC_CALL(
+      retryable_grpc_client_,
       NodeManagerService,
       ReleaseUnusedBundles,
       request,
@@ -334,10 +336,13 @@ void RayletClient::PinObjectIDs(
   if (!generator_id.IsNil()) {
     request.set_generator_id(generator_id.Binary());
   }
-  pins_in_flight_++;
-  auto rpc_callback = [this, callback = std::move(callback)](
+
+  // NOTE: this callback can execute after the RayletClient instance is destroyed, so
+  // we capture the shared_ptr to `pins_in_flight_` instead of `this`.
+  pins_in_flight_->fetch_add(1);
+  auto rpc_callback = [callback, pins_in_flight = pins_in_flight_](
                           Status status, rpc::PinObjectIDsReply &&reply) {
-    pins_in_flight_--;
+    pins_in_flight->fetch_sub(1);
     callback(status, std::move(reply));
   };
   INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
@@ -355,12 +360,13 @@ void RayletClient::ShutdownRaylet(
     const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) {
   rpc::ShutdownRayletRequest request;
   request.set_graceful(graceful);
-  INVOKE_RPC_CALL(NodeManagerService,
-                  ShutdownRaylet,
-                  request,
-                  callback,
-                  grpc_client_,
-                  /*method_timeout_ms*/ -1);
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            ShutdownRaylet,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
 }
 
 void RayletClient::DrainRaylet(
@@ -372,12 +378,13 @@ void RayletClient::DrainRaylet(
   request.set_reason(reason);
   request.set_reason_message(reason_message);
   request.set_deadline_timestamp_ms(deadline_timestamp_ms);
-  INVOKE_RPC_CALL(NodeManagerService,
-                  DrainRaylet,
-                  request,
-                  callback,
-                  grpc_client_,
-                  /*method_timeout_ms*/ -1);
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            DrainRaylet,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
 }
 
 void RayletClient::IsLocalWorkerDead(
@@ -437,12 +444,13 @@ void RayletClient::CancelLeasesWithResourceShapes(
 void RayletClient::NotifyGCSRestart(
     const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) {
   rpc::NotifyGCSRestartRequest request;
-  INVOKE_RPC_CALL(NodeManagerService,
-                  NotifyGCSRestart,
-                  request,
-                  callback,
-                  grpc_client_,
-                  /*method_timeout_ms*/ -1);
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            NotifyGCSRestart,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
 }
 
 void RayletClient::GetSystemConfig(
@@ -465,6 +473,39 @@ void RayletClient::GetNodeStats(
                   callback,
                   grpc_client_,
                   /*method_timeout_ms*/ -1);
+}
+
+void RayletClient::GetWorkerPIDs(
+    const gcs::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
+  rpc::GetWorkerPIDsRequest request;
+  auto client_callback = [callback](const Status &status,
+                                    rpc::GetWorkerPIDsReply &&reply) {
+    if (status.ok()) {
+      std::vector<int32_t> workers(reply.pids().begin(), reply.pids().end());
+      callback(status, workers);
+    } else {
+      callback(status, std::nullopt);
+    }
+  };
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            GetWorkerPIDs,
+                            request,
+                            client_callback,
+                            grpc_client_,
+                            timeout_ms);
+}
+
+void RayletClient::KillLocalActor(
+    const rpc::KillLocalActorRequest &request,
+    const rpc::ClientCallback<rpc::KillLocalActorReply> &callback) {
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            KillLocalActor,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
 }
 
 }  // namespace rpc

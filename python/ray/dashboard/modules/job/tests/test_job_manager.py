@@ -337,8 +337,9 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
     gcs_client = ray._private.worker.global_worker.gcs_client
     job_manager = JobManager(gcs_client, tmp_path)
 
+    entrypoint = "echo hello 1"
     job_id = await job_manager.submit_job(
-        entrypoint="echo hello 1", submission_id="test_runtime_env_setup_logs"
+        entrypoint=entrypoint, submission_id="test_runtime_env_setup_logs"
     )
     await async_wait_for_condition(
         check_job_succeeded, job_manager=job_manager, job_id=job_id
@@ -349,10 +350,10 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
         ray._private.worker._global_node.get_logs_dir_path(),
         f"job-driver-{job_id}.log",
     )
-    start_message = "Runtime env is setting up."
     with open(job_driver_log_path, "r") as f:
         logs = f.read()
-        assert start_message in logs
+        assert "Runtime env is setting up." in logs
+        assert f"Running entrypoint for job {job_id}: {entrypoint}" in logs
 
 
 @pytest.mark.asyncio
@@ -416,7 +417,7 @@ async def test_pending_job_timeout_during_new_head_creation(
         {
             "cmd": "ray start --head",
             "env": {
-                "RAY_testing_rpc_failure": "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=2:50:50,CoreWorkerService.grpc_client.PushTask=3:50:50"
+                "RAY_testing_rpc_failure": "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=3:33:33:33,CoreWorkerService.grpc_client.PushTask=3:33:33:33"
             },
         },
     ],
@@ -1101,7 +1102,9 @@ class TestTailLogs:
         i = 0
         async for lines in job_manager.tail_job_logs(job_id):
             assert all(
-                s == expected_log or "Runtime env" in s
+                s == expected_log
+                or "Runtime env" in s
+                or "Running entrypoint for job" in s
                 for s in lines.strip().split("\n")
             )
             print(lines, end="")
@@ -1141,7 +1144,9 @@ class TestTailLogs:
 
             async for lines in job_manager.tail_job_logs(job_id):
                 assert all(
-                    s == "Waiting..." or "Runtime env" in s
+                    s == "Waiting..."
+                    or "Runtime env" in s
+                    or "Running entrypoint for job" in s
                     for s in lines.strip().split("\n")
                 )
                 print(lines, end="")
@@ -1165,7 +1170,9 @@ class TestTailLogs:
 
             async for lines in job_manager.tail_job_logs(job_id):
                 assert all(
-                    s == "Waiting..." or "Runtime env" in s
+                    s == "Waiting..."
+                    or "Runtime env" in s
+                    or "Running entrypoint for job" in s
                     for s in lines.strip().split("\n")
                 )
                 print(lines, end="")
@@ -1194,7 +1201,10 @@ class TestTailLogs:
 
             async for lines in job_manager.tail_job_logs(job_id):
                 assert all(
-                    s == "Waiting..." or s == "Terminated" or "Runtime env" in s
+                    s == "Waiting..."
+                    or s == "Terminated"
+                    or "Runtime env" in s
+                    or "Running entrypoint for job" in s
                     for s in lines.strip().split("\n")
                 )
                 print(lines, end="")

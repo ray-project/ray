@@ -7,9 +7,7 @@
 # You can obtain this list from the ray.egg-info/requires.txt
 
 ## setup.py install_requires
-# Click 8.3.0 does not work with copy.deepcopy on Python 3.10
-# TODO(aslonnie): https://github.com/ray-project/ray/issues/56747
-click>=7.0, !=8.3.0
+click>=7.0
 cupy-cuda12x; sys_platform != 'darwin'
 filelock
 jsonschema
@@ -23,8 +21,6 @@ watchfiles
 # Python version-specific requirements
 grpcio >= 1.32.0; python_version < '3.10'
 grpcio >= 1.42.0; python_version >= '3.10'
-# Version used in mac CI; needs upgrade.
-grpcio == 1.54.2; sys_platform == "darwin"
 
 numpy>=1.20
 

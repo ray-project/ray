@@ -151,7 +151,7 @@ message GetAllActorInfoReply {
 
 // `KillActorViaGcsRequest` is sent to GCS Service to ask to kill an actor.
 // `KillActorViaGcsRequest` is different from `KillActorRequest`.
-// `KillActorRequest` is send to core worker to ask to kill an actor.
+// `KillLocalActorRequest` is sent to raylet to ask to kill a local actor.
 message KillActorViaGcsRequest {
   // ID of this actor.
   bytes actor_id = 1;
@@ -723,10 +723,6 @@ message GetAllResourceUsageRequest {}
 message GetAllResourceUsageReply {
   GcsStatus status = 1;
   ResourceUsageBatchData resource_usage_data = 2;
-  /// True if gcs finds infeasible or pending actor creation tasks
-  /// locally (when gcs actor scheduler is enabled). This field is
-  /// expected to help triggering auto-scaling.
-  bool cluster_full_of_actors_detected_by_gcs = 3;
 }
 
 message GetDrainingNodesRequest {}

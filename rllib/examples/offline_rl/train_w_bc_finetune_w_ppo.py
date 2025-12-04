@@ -74,8 +74,8 @@ from torch import nn
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import (
-    COMPONENT_LEARNER_GROUP,
     COMPONENT_LEARNER,
+    COMPONENT_LEARNER_GROUP,
     COMPONENT_RL_MODULE,
 )
 from ray.rllib.core.columns import Columns
@@ -191,7 +191,7 @@ if __name__ == "__main__":
     # Define the data paths for our CartPole large dataset.
     base_path = Path(__file__).parents[2]
     assert base_path.is_dir(), base_path
-    data_path = base_path / "tests/data/cartpole/cartpole-v1_large"
+    data_path = base_path / "offline/tests/data/cartpole/cartpole-v1_large"
     assert data_path.is_dir(), data_path
     print(f"data_path={data_path}")
 

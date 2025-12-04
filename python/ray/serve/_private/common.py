@@ -8,6 +8,7 @@ from starlette.types import Scope
 import ray
 from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.thirdparty.get_asgi_route_name import RoutePattern
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatus as DeploymentStatusProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
@@ -101,8 +102,43 @@ ApplicationName = str
 
 @dataclass
 class EndpointInfo:
+    """Metadata about a deployment's HTTP/gRPC endpoint.
+
+    This represents the public routing interface for a deployment. It's created when
+    a deployment is registered with a route prefix and broadcast to all proxies via
+    the long poll mechanism (ROUTE_TABLE namespace).
+
+    Flow:
+        1. Created in ApplicationState when deployment is applied
+        2. Stored in EndpointState (controller's source of truth)
+        3. Broadcast to all ProxyActors via long poll (ROUTE_TABLE)
+        4. Cached in ProxyRouter for request routing
+        5. Used to route incoming HTTP/gRPC requests to correct deployments
+        6. Used to determine route patterns for accurate metrics tagging
+
+    Key Difference from DeploymentInfo:
+        - EndpointInfo: Just HTTP/gRPC routing metadata (shared with proxies)
+        - DeploymentInfo: Complete deployment config (replicas, resources, etc.)
+
+    Attributes:
+        route: The route prefix for this deployment (e.g., "/api").
+        app_is_cross_language: Whether the deployment uses a different language
+            than the proxy (e.g., Java deployment with Python proxy). This affects
+            how the proxy serializes/deserializes requests.
+        route_patterns: List of RoutePattern objects for ASGI route patterns.
+            Each RoutePattern has methods (list of HTTP methods or None) and path.
+            Examples: [RoutePattern(methods=["GET", "POST"], path="/"),
+                      RoutePattern(methods=["PUT"], path="/users/{id}"),
+                      RoutePattern(methods=None, path="/websocket")]
+            Used by proxies to match incoming requests to specific route patterns
+            for accurate metrics tagging. This avoids high cardinality by using
+            parameterized patterns instead of individual request paths.
+            Only populated for deployments with ASGI apps (FastAPI/Starlette).
+    """
+
     route: str
     app_is_cross_language: bool = False
+    route_patterns: Optional[List["RoutePattern"]] = None
 
 
 # Keep in sync with ServeReplicaState in dashboard/client/src/type/serve.ts
@@ -546,7 +582,7 @@ class RunningReplicaInfo:
     node_id: Optional[str]
     node_ip: Optional[str]
     availability_zone: Optional[str]
-    actor_handle: ActorHandle
+    actor_name: str
     max_ongoing_requests: int
     is_cross_language: bool = False
     multiplexed_model_ids: List[str] = field(default_factory=list)
@@ -565,7 +601,7 @@ class RunningReplicaInfo:
                 [
                     self.replica_id.to_full_id_str(),
                     self.node_id if self.node_id else "",
-                    str(self.actor_handle._actor_id),
+                    self.actor_name,
                     str(self.max_ongoing_requests),
                     str(self.is_cross_language),
                     str(self.multiplexed_model_ids),
@@ -588,6 +624,10 @@ class RunningReplicaInfo:
                 self._hash == other._hash,
             ]
         )
+
+    def get_actor_handle(self) -> ActorHandle:
+        actor_handle = ray.get_actor(self.actor_name, namespace=SERVE_NAMESPACE)
+        return actor_handle
 
 
 @dataclass(frozen=True)
@@ -757,12 +797,17 @@ OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
 
 RUNNING_REQUESTS_KEY = "running_requests"
 ONGOING_REQUESTS_KEY = "ongoing_requests"
+QUEUED_REQUESTS_KEY = "queued_requests"
 
 
 @dataclass(order=True)
 class TimeStampedValue:
     timestamp: float
     value: float = field(compare=False)
+
+
+# Type alias for time series data
+TimeSeries = List[TimeStampedValue]
 
 
 @dataclass
@@ -795,9 +840,9 @@ class HandleMetricReport:
     actor_id: str
     handle_source: DeploymentHandleSource
     aggregated_queued_requests: float
-    queued_requests: List[TimeStampedValue]
+    queued_requests: TimeSeries
     aggregated_metrics: Dict[str, Dict[ReplicaID, float]]
-    metrics: Dict[str, Dict[ReplicaID, List[TimeStampedValue]]]
+    metrics: Dict[str, Dict[ReplicaID, TimeSeries]]
     timestamp: float
 
     @property
@@ -838,5 +883,5 @@ class ReplicaMetricReport:
 
     replica_id: ReplicaID
     aggregated_metrics: Dict[str, float]
-    metrics: Dict[str, List[TimeStampedValue]]
+    metrics: Dict[str, TimeSeries]
     timestamp: float

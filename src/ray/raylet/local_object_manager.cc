@@ -355,7 +355,7 @@ void LocalObjectManager::SpillObjectsInternal(
           io_worker_pool_.PushSpillWorker(io_worker);
           size_t num_objects_spilled = status.ok() ? r.spilled_objects_url_size() : 0;
           // Object spilling is always done in the order of the request.
-          // For example, if an object succeeded, it'll guarentee that all objects
+          // For example, if an object succeeded, it'll guarantee that all objects
           // before this will succeed.
           RAY_CHECK(num_objects_spilled <= requested_objects_to_spill.size());
           for (size_t i = num_objects_spilled; i != requested_objects_to_spill.size();
@@ -647,8 +647,8 @@ void LocalObjectManager::RecordMetrics() const {
   ray::stats::STATS_spill_manager_request_total.Record(restored_objects_total_,
                                                        "Restored");
 
-  stats::STATS_object_store_memory.Record(spilled_bytes_current_,
-                                          {{stats::LocationKey, "SPILLED"}});
+  object_store_memory_gauge_.Record(spilled_bytes_current_,
+                                    {{stats::LocationKey, "SPILLED"}});
 
   ray::stats::STATS_spill_manager_request_total.Record(num_failed_deletion_requests_,
                                                        "FailedDeletion");

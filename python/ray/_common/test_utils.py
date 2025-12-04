@@ -271,3 +271,14 @@ class FakeTimer:
     def realistic_sleep(self, amt: float):
         with self._lock:
             self._curr += amt + 0.001
+
+
+def is_named_tuple(cls):
+    """Return True if cls is a namedtuple and False otherwise."""
+    b = cls.__bases__
+    if len(b) != 1 or b[0] is not tuple:
+        return False
+    f = getattr(cls, "_fields", None)
+    if not isinstance(f, tuple):
+        return False
+    return all(type(n) is str for n in f)

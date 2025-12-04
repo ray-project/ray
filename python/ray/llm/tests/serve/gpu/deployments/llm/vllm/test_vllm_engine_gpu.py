@@ -3,7 +3,7 @@ import sys
 import pytest
 
 import ray
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
+from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
 from ray.util.placement_group import PlacementGroupSchedulingStrategy, placement_group
 
@@ -28,7 +28,6 @@ async def test_vllm_engine_start_with_custom_resource_bundle(
         placement_group_config={"bundles": [{"GPU": 0.49}]},
         runtime_env=dict(
             env_vars={
-                "VLLM_RAY_PER_WORKER_GPUS": "0.49",
                 "VLLM_DISABLE_COMPILE_CACHE": "1",
             },
         ),

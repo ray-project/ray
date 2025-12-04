@@ -1,8 +1,8 @@
-import gymnasium as gym
-import logging
 import importlib.util
+import logging
 import os
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Collection,
@@ -11,12 +11,17 @@ from typing import (
     Optional,
     Tuple,
     Type,
-    TYPE_CHECKING,
     TypeVar,
     Union,
 )
 
+import gymnasium as gym
+
 import ray
+from ray._common.deprecation import (
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.rllib.core import (
@@ -28,18 +33,14 @@ from ray.rllib.core import (
 from ray.rllib.core.learner import LearnerGroup
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.annotations import OldAPIStack
-from ray._common.deprecation import (
-    deprecation_warning,
-    DEPRECATED_VALUE,
-)
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME, WEIGHTS_SEQ_NO
 from ray.rllib.utils.typing import (
@@ -557,12 +558,14 @@ class EnvRunnerGroup:
                 env_runner_states.update(rl_module_state)
 
             # Broadcast updated states back to all workers.
-            self.foreach_env_runner(
-                "set_state",  # Call the `set_state()` remote method.
+            # We explicitly don't want to fire and forget here, because this can lead to a lot of in-flight requests.
+            # When these pile up, object store memory can spike.
+            self.foreach_env_runner_async_fetch_ready(
+                func="set_state",
+                tag="set_state",
                 kwargs=dict(state=env_runner_states),
                 remote_worker_ids=env_runner_indices_to_update,
-                local_env_runner=False,
-                timeout_seconds=0.0,  # This is a state update -> Fire-and-forget.
+                timeout_seconds=0.0,
             )
 
     def foreach_env_runner_async_fetch_ready(
@@ -708,10 +711,12 @@ class EnvRunnerGroup:
                 rl_module_state_ref = ray.put(rl_module_state)
 
                 # Sync to specified remote workers in this EnvRunnerGroup.
-                self.foreach_env_runner(
+                # We explicitly don't want to fire and forget here, because this can lead to a lot of in-flight requests.
+                # When these pile up, object store memory can spike.
+                self.foreach_env_runner_async_fetch_ready(
                     func="set_state",
+                    tag="set_state",
                     kwargs=dict(state=rl_module_state_ref),
-                    local_env_runner=False,  # Do not sync back to local worker.
                     remote_worker_ids=to_worker_indices,
                     timeout_seconds=timeout_seconds,
                 )
@@ -1277,9 +1282,8 @@ class EnvRunnerGroup:
             .remote(**kwargs)
         )
 
-    @classmethod
-    def _valid_module(cls, class_path):
-        del cls
+    @staticmethod
+    def _valid_module(class_path):
         if (
             isinstance(class_path, str)
             and not os.path.isfile(class_path)
@@ -1290,9 +1294,8 @@ class EnvRunnerGroup:
                 spec = importlib.util.find_spec(module_path)
                 if spec is not None:
                     return True
-            except (ModuleNotFoundError, ValueError):
-                print(
-                    f"module {module_path} not found while trying to get "
-                    f"input {class_path}"
+            except (ModuleNotFoundError, ValueError) as e:
+                logger.warning(
+                    f"module {module_path} not found using input {class_path} with error: {e}"
                 )
         return False

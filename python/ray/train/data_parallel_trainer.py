@@ -6,7 +6,7 @@ import ray
 from ray._private.ray_constants import env_integer
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.config import RunConfig, ScalingConfig
-from ray.train import BackendConfig, Checkpoint, TrainingIterator
+from ray.train import BackendConfig, Checkpoint
 from ray.train._internal import session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.data_config import DataConfig
@@ -14,7 +14,7 @@ from ray.train._internal.session import _TrainingResult, get_session
 from ray.train._internal.utils import construct_train_func, count_required_parameters
 from ray.train.base_trainer import _TRAINER_RESTORE_DEPRECATION_WARNING
 from ray.train.constants import RAY_TRAIN_ENABLE_STATE_TRACKING
-from ray.train.trainer import BaseTrainer, GenDataset
+from ray.train.trainer import BaseTrainer, GenDataset, TrainingIterator
 from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
