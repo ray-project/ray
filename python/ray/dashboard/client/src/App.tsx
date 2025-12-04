@@ -256,12 +256,19 @@ const App = () => {
 
   // Listen for authentication errors from axios interceptor
   useEffect(() => {
-    const handleAuthenticationError = (event: Event) => {
+    const handleAuthenticationError = async (event: Event) => {
       const customEvent = event as CustomEvent<{ hadToken: boolean }>;
       const hadToken = customEvent.detail?.hadToken ?? false;
 
-      setHasAttemptedAuthentication(hadToken);
-      setAuthenticationDialogOpen(true);
+      try {
+        const { authentication_mode } = await getAuthenticationMode();
+        if (authentication_mode === "token" || authentication_mode === "k8s") {
+          setHasAttemptedAuthentication(hadToken);
+          setAuthenticationDialogOpen(true);
+        }
+      } catch (error) {
+        console.error("Failed to check authentication mode:", error);
+      }
     };
 
     window.addEventListener(
