@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Union
 
 import ray
-import ray.util.collective as collective
 from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
 from ray.experimental.gpu_object_manager.types import (
@@ -65,6 +64,7 @@ def __ray_send__(
     obj_id: str,
     tensor_transport_meta: TensorTransportMetadata,
     communicator_meta: CommunicatorMetadata,
+    backend: str,
 ):
     """Helper function that runs on the src actor to send tensors to the dst actor."""
     from ray._private.worker import global_worker
@@ -75,8 +75,6 @@ def __ray_send__(
     ), f"obj_id={obj_id} not found in GPU object store"
 
     tensors = gpu_object_store.get_object(obj_id)
-
-    backend = collective.get_group_handle(communicator_meta.communicator_name).backend()
 
     tensor_transport_manager = get_tensor_transport_manager(backend)
     if tensors and not device_match_transport(tensors[0].device, backend):
@@ -95,6 +93,7 @@ def __ray_recv__(
     obj_id: str,
     tensor_transport_meta: List[Union[ObjectRef, TensorTransportMetadata]],
     communicator_meta: CommunicatorMetadata,
+    backend: str,
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
@@ -108,10 +107,6 @@ def __ray_recv__(
         )
         device = tensor_transport_meta.tensor_device
         tensor_meta = tensor_transport_meta.tensor_meta
-
-        backend = collective.get_group_handle(
-            communicator_meta.communicator_name
-        ).backend()
 
         if tensor_meta and not device_match_transport(device, backend):
             raise ValueError(
@@ -138,9 +133,10 @@ def __ray_recv__(
         gpu_object_store.add_object(obj_id, e, is_primary=False)
 
 
-def __ray_abort_transport__(self, obj_id: str, communicator_meta: CommunicatorMetadata):
+def __ray_abort_transport__(
+    self, obj_id: str, communicator_meta: CommunicatorMetadata, backend: str
+):
     """Helper function that can run on an actor doing a send or recv to abort the transport."""
-    backend = collective.get_group_handle(communicator_meta.communicator_name).backend()
     tensor_transport_manager = get_tensor_transport_manager(backend)
     tensor_transport_manager.abort_transport(obj_id, communicator_meta)
 

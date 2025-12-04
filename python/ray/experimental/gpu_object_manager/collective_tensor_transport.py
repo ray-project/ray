@@ -28,6 +28,7 @@ class CollectiveCommunicatorMetadata(CommunicatorMetadata):
         dst_rank: The rank of the destination actor.
     """
 
+    communicator_name: str = ""
     src_rank: Optional[int] = None
     dst_rank: Optional[int] = None
 

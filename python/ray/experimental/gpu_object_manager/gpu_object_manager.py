@@ -212,6 +212,7 @@ class GPUObjectManager:
                     __ray_abort_transport__,
                     ref_info.obj_id,
                     ref_info.communicator_meta,
+                    ref_info.backend,
                 )
             ref_info.dst_actor.__ray_call__.options(
                 concurrency_group="_ray_system_error"
@@ -219,6 +220,7 @@ class GPUObjectManager:
                 __ray_abort_transport__,
                 ref_info.obj_id,
                 ref_info.communicator_meta,
+                ref_info.backend,
             )
             logger.info(
                 "RDT transfer with src actor %s and dst actor %s failed due to %s.",
@@ -401,7 +403,11 @@ class GPUObjectManager:
                 None, None, tensor_transport_backend
             )
             __ray_recv__(
-                None, obj_id, [gpu_object_meta.tensor_transport_meta], communicator_meta
+                None,
+                obj_id,
+                [gpu_object_meta.tensor_transport_meta],
+                communicator_meta,
+                tensor_transport_backend,
             )
 
     def trigger_out_of_band_tensor_transfer(
@@ -506,6 +512,7 @@ class GPUObjectManager:
                     obj_id,
                     tensor_transport_meta,
                     communicator_meta,
+                    gpu_object_meta.tensor_transport_backend,
                 )
 
             # Receive tensors from the source rank and store them in the
@@ -521,6 +528,7 @@ class GPUObjectManager:
                 obj_id,
                 [tensor_transport_meta],
                 communicator_meta,
+                gpu_object_meta.tensor_transport_backend,
             )
 
             self._unmonitored_transfers.put(

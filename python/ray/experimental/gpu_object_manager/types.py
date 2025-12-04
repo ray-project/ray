@@ -7,13 +7,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class CommunicatorMetadata:
-    """Metadata for the communicator.
-
-    Args:
-        communicator_name: The name of the communicator.
-    """
-
-    communicator_name: str = ""
+    """Metadata for the communicator."""
 
 
 @dataclass
