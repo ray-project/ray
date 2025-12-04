@@ -127,6 +127,7 @@ class TensorTransportEnum(Enum):
     NCCL = TensorTransport.Value("NCCL")
     GLOO = TensorTransport.Value("GLOO")
     NIXL = TensorTransport.Value("NIXL")
+    HCCL = TensorTransport.Value("HCCL")
 
     @classmethod
     def from_str(cls, name: str) -> "TensorTransportEnum":
