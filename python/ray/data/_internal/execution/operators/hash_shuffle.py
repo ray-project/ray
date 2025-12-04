@@ -27,7 +27,9 @@ import pyarrow as pa
 
 import ray
 from ray import ObjectRef
-from ray._private.ray_constants import env_integer
+from ray._private.ray_constants import (
+    env_integer,
+)
 from ray.actor import ActorHandle
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.arrow_ops.transform_pyarrow import (
@@ -493,6 +495,7 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
         shuffle_progress_bar_name: Optional[str] = None,
         finalize_progress_bar_name: Optional[str] = None,
+        disallow_block_splitting: bool = False,
     ):
         input_logical_ops = [
             input_physical_op._logical_operators[0] for input_physical_op in input_ops
@@ -573,7 +576,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             num_aggregators=num_aggregators,
             aggregation_factory=partition_aggregation_factory,
             aggregator_ray_remote_args=ray_remote_args,
-            data_context=data_context,
+            target_max_block_size=None
+            if disallow_block_splitting
+            else data_context.target_max_block_size,
         )
 
         # We track the running usage total because iterating
@@ -1178,8 +1183,10 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
         #   - No more than 4 CPUs per aggregator
         #
         cap = min(4.0, total_available_cluster_resources.cpu * 0.25 / num_aggregators)
-
-        target_num_cpus = min(cap, estimated_aggregator_memory_required / (4 * GiB))
+        target_num_cpus = min(
+            cap,
+            estimated_aggregator_memory_required / (4 * GiB),
+        )
 
         # Round resource to 2d decimal point (for readability)
         return round(target_num_cpus, 2)
@@ -1200,6 +1207,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
 
 
 class HashShuffleOperator(HashShufflingOperatorBase):
+    # Add 30% buffer to account for data skew
+    SHUFFLE_AGGREGATOR_MEMORY_ESTIMATE_SKEW_FACTOR = 1.3
+
     def __init__(
         self,
         input_op: PhysicalOperator,
@@ -1228,6 +1238,9 @@ class HashShuffleOperator(HashShufflingOperatorBase):
                 )
             ),
             shuffle_progress_bar_name="Shuffle",
+            # NOTE: In cases like ``groupby`` blocks can't be split as this might violate an invariant that all rows
+            #             with the same key are in the same group (block)
+            disallow_block_splitting=True,
         )
 
     def _get_operator_num_cpus_override(self) -> float:
@@ -1241,18 +1254,22 @@ class HashShuffleOperator(HashShufflingOperatorBase):
         num_partitions: int,
         estimated_dataset_bytes: int,
     ) -> int:
+        max_partitions_for_aggregator = math.ceil(
+            num_partitions / num_aggregators
+        )  # Max number of partitions that a single aggregator might handle
         partition_byte_size_estimate = math.ceil(
             estimated_dataset_bytes / num_partitions
+        )  # Estimated byte size of a single partition
+
+        # Inputs (object store) - memory for receiving shuffled partitions
+        aggregator_shuffle_object_store_memory_required = math.ceil(
+            partition_byte_size_estimate * max_partitions_for_aggregator
         )
 
-        # Estimate of object store memory required to accommodate all partitions
-        # handled by a single aggregator
-        aggregator_shuffle_object_store_memory_required: int = math.ceil(
-            estimated_dataset_bytes / num_aggregators
+        # Output (object store) - memory for output partitions
+        output_object_store_memory_required = math.ceil(
+            partition_byte_size_estimate * max_partitions_for_aggregator
         )
-        # Estimate of memory required to accommodate single partition as an output
-        # (inside Object Store)
-        output_object_store_memory_required: int = partition_byte_size_estimate
 
         aggregator_total_memory_required: int = (
             # Inputs (object store)
@@ -1261,7 +1278,10 @@ class HashShuffleOperator(HashShufflingOperatorBase):
             # Output (object store)
             output_object_store_memory_required
         )
-
+        total_with_skew = math.ceil(
+            aggregator_total_memory_required
+            * cls.SHUFFLE_AGGREGATOR_MEMORY_ESTIMATE_SKEW_FACTOR
+        )
         logger.info(
             f"Estimated memory requirement for shuffling aggregator "
             f"(partitions={num_partitions}, "
@@ -1269,10 +1289,12 @@ class HashShuffleOperator(HashShufflingOperatorBase):
             f"dataset (estimate)={estimated_dataset_bytes / GiB:.1f}GiB): "
             f"shuffle={aggregator_shuffle_object_store_memory_required / MiB:.1f}MiB, "
             f"output={output_object_store_memory_required / MiB:.1f}MiB, "
-            f"total={aggregator_total_memory_required / MiB:.1f}MiB, "
+            f"total_base={aggregator_total_memory_required / MiB:.1f}MiB, "
+            f"shuffle_aggregator_memory_estimate_skew_factor={cls.SHUFFLE_AGGREGATOR_MEMORY_ESTIMATE_SKEW_FACTOR}, "
+            f"total_with_skew={total_with_skew / MiB:.1f}MiB"
         )
 
-        return aggregator_total_memory_required
+        return total_with_skew
 
 
 @dataclass
@@ -1294,13 +1316,13 @@ class AggregatorPool:
         num_aggregators: int,
         aggregation_factory: StatefulShuffleAggregationFactory,
         aggregator_ray_remote_args: Dict[str, Any],
-        data_context: DataContext,
+        target_max_block_size: Optional[int],
     ):
         assert (
             num_partitions >= 1
         ), f"Number of partitions has to be >= 1 (got {num_partitions})"
 
-        self._data_context = data_context
+        self._target_max_block_size = target_max_block_size
         self._num_partitions = num_partitions
         self._num_aggregators: int = num_aggregators
         self._aggregator_partition_map: Dict[
@@ -1342,7 +1364,7 @@ class AggregatorPool:
                 aggregator_id,
                 target_partition_ids,
                 self._aggregation_factory_ref,
-                self._data_context,
+                self._target_max_block_size,
             )
 
             self._aggregators.append(aggregator)
@@ -1555,13 +1577,13 @@ class HashShuffleAggregator:
         aggregator_id: int,
         target_partition_ids: List[int],
         agg_factory: StatefulShuffleAggregationFactory,
-        data_context: DataContext,
+        target_max_block_size: Optional[int],
     ):
         self._lock = threading.Lock()
         self._agg: StatefulShuffleAggregation = agg_factory(
             aggregator_id, target_partition_ids
         )
-        self._data_context = data_context
+        self._target_max_block_size = target_max_block_size
 
     def submit(self, input_seq_id: int, partition_id: int, partition_shard: Block):
         with self._lock:
@@ -1579,16 +1601,16 @@ class HashShuffleAggregator:
             # Clear any remaining state (to release resources)
             self._agg.clear(partition_id)
 
-        target_max_block_size = self._data_context.target_max_block_size
-        # None means the user wants to preserve the block distribution,
-        # so we do not break the block down further.
-        if target_max_block_size is not None:
+        if self._target_max_block_size is None:
+            yield block
+            yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
+        else:
             # Creating a block output buffer per partition finalize task because
             # retrying finalize tasks cause stateful output_bufer to be
             # fragmented (ie, adding duplicated blocks, calling finalize 2x)
             output_buffer = BlockOutputBuffer(
                 output_block_size_option=OutputBlockSizeOption(
-                    target_max_block_size=target_max_block_size
+                    target_max_block_size=self._target_max_block_size
                 )
             )
 
@@ -1598,9 +1620,6 @@ class HashShuffleAggregator:
                 block = output_buffer.next()
                 yield block
                 yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
-        else:
-            yield block
-            yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
 
 
 def _get_total_cluster_resources() -> ExecutionResources:
