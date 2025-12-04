@@ -189,7 +189,7 @@ class JobManager:
                         )
 
                     if (
-                        self._timeout_check_timer.time() - job_info.start_time / 1000 
+                        self._timeout_check_timer.time() - job_info.start_time / 1000
                         > timeout
                     ):
                         err_msg = (
