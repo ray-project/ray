@@ -33,7 +33,7 @@ aiorwlock
 scipy>=1.14.1
 colorful
 rich
-opentelemetry-sdk
+opentelemetry-sdk>=1.30.0
 opentelemetry-api
 opentelemetry-exporter-prometheus
 opentelemetry-proto
