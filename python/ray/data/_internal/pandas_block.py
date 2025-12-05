@@ -465,6 +465,8 @@ class PandasBlockAccessor(TableBlockAccessor):
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow as pa
 
+        from ray.air.util.tensor_extensions.pandas import TensorDtype
+
         # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
         # column to the resulting table.
         arrow_table = pa.Table.from_pandas(self._table, preserve_index=False)
@@ -481,9 +483,13 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         for idx, col_name in enumerate(self._table.columns):
             col = self._table[col_name]
-            # Check if there is any non-null value in the original Pandas column
+
+            if isinstance(
+                col.dtype, TensorDtype
+            ):  # Skip TensorDtype columns: tensors containing all NaN or empty strings are still valid data, and shouldn't be treated as nulls
+                continue
+
             if not col.notna().any():
-                # If there are only null-values, coerce column to Arrow's `NullType`
                 null_coerced_columns[(idx, col_name)] = pa.nulls(
                     len(col), type=pa.null()
                 )

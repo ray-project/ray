@@ -495,5 +495,22 @@ def test_empty_dataframe_with_object_columns(ray_start_regular_shared):
     assert bytes_size >= 0
 
 
+def test_tensor_column_with_all_nan_preserves_type(ray_start_regular_shared):
+    from ray.data.extensions import TensorArray
+
+    # Create a DataFrame with all-NaN tensor column
+    df = pd.DataFrame(
+        {"foo": TensorArray([np.array([np.nan, np.nan]), np.array([np.nan, np.nan])])}
+    )
+
+    block_accessor = PandasBlockAccessor.for_block(df)
+    arrow_table = block_accessor.to_arrow()
+
+    # The column should NOT be converted to null type
+    assert not pa.types.is_null(
+        arrow_table.schema.field("foo").type
+    ), "TensorDtype column with all-NaN values should not be converted to null type"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
