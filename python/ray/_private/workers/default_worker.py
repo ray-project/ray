@@ -289,21 +289,24 @@ if __name__ == "__main__":
         stderr_fileno, unbuffered=True, closefd=False
     )
 
-    # Setup log file.
-    out_filepath, err_filepath = node.get_log_file_names(
-        get_worker_log_file_name(args.worker_type),
-        unique=False,  # C++ core worker process already creates the file, should use a deterministic function to get the same file path.
-        create_out=True,
-        create_err=True,
-    )
-    worker.set_out_file(out_filepath)
-    worker.set_err_file(err_filepath)
+    # Setup log file unless globally disabled.
+    if not ray_constants.RAY_DISABLE_WORKER_LOGS:
+        out_filepath, err_filepath = node.get_log_file_names(
+            get_worker_log_file_name(args.worker_type),
+            unique=False,
+            create_out=True,
+            create_err=True,
+        )
+        worker.set_out_file(out_filepath)
+        worker.set_err_file(err_filepath)
 
-    rotation_max_bytes = os.getenv("RAY_ROTATION_MAX_BYTES", None)
+        rotation_max_bytes = os.getenv("RAY_ROTATION_MAX_BYTES", None)
 
-    # Log rotation is disabled on windows platform.
-    if sys.platform != "win32" and rotation_max_bytes and int(rotation_max_bytes) > 0:
-        worker.set_file_rotation_enabled(True)
+        if sys.platform != "win32" and rotation_max_bytes and int(rotation_max_bytes) > 0:
+            worker.set_file_rotation_enabled(True)
+    else:
+        worker.set_out_file(None)
+        worker.set_err_file(None)
 
     if mode == ray.WORKER_MODE and args.worker_preload_modules:
         module_names_to_import = args.worker_preload_modules.split(",")
