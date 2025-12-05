@@ -142,12 +142,8 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 reason="pool below min size",
             )
         elif actor_pool.current_size() > actor_pool.max_size():
-            num_to_scale_down = min(
-                self._compute_downscale_delta(actor_pool),
-                actor_pool.current_size() - actor_pool.max_size(),
-            )
             return ActorPoolScalingRequest.downscale(
-                delta=-num_to_scale_down,
+                delta=-(actor_pool.current_size() - actor_pool.max_size()),
                 reason="pool exceeding max size",
             )
 
