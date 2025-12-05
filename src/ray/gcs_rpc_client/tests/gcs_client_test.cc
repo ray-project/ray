@@ -369,7 +369,9 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   bool SubscribeToNodeAddressAndLivenessChange(
-      std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe) {
+      std::function<void(NodeID,
+                         const rpc::GcsNodeAddressAndLiveness &,
+                         const bool is_initializing)> subscribe) {
     std::promise<bool> promise;
     gcs_client_->Nodes().AsyncSubscribeToNodeAddressAndLivenessChange(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); });
@@ -610,7 +612,8 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   std::atomic<int> unregister_count(0);
   auto on_subscribe = [&register_count, &unregister_count](
                           const NodeID &node_id,
-                          const rpc::GcsNodeAddressAndLiveness &data) {
+                          const rpc::GcsNodeAddressAndLiveness &data,
+                          const bool is_initializing) {
     if (data.state() == rpc::GcsNodeInfo::ALIVE) {
       ++register_count;
     } else if (data.state() == rpc::GcsNodeInfo::DEAD) {
@@ -802,9 +805,9 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   // Test that subscription of the node table can still work when GCS server restarts.
   // Subscribe to node addition and removal events from GCS and cache those information.
   std::atomic<int> node_change_count(0);
-  auto node_subscribe = [&node_change_count](
-                            const NodeID &id,
-                            const rpc::GcsNodeAddressAndLiveness &result) {
+  auto node_subscribe = [&node_change_count](const NodeID &id,
+                                             const rpc::GcsNodeAddressAndLiveness &result,
+                                             const bool is_initializing) {
     ++node_change_count;
   };
   ASSERT_TRUE(SubscribeToNodeAddressAndLivenessChange(node_subscribe));
