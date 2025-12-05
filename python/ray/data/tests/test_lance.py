@@ -6,11 +6,22 @@ import pytest
 from pkg_resources import parse_version
 from pytest_lazy_fixtures import lf as lazy_fixture
 
-import ray
+import ray.data as ray_data
 from ray._common.test_utils import wait_for_condition
 from ray._private.arrow_utils import get_pyarrow_version
 from ray.data import Schema
 from ray.data.datasource.path_util import _unwrap_protocol
+
+pytest.importorskip(
+    "lance_ray",
+    reason="lance-ray not available. Install with: pip install lance-ray",
+)
+
+
+@pytest.fixture(autouse=True)
+def _disable_uv_runtime_env(monkeypatch):
+    # Prevent uv integration from uploading the entire repo as working_dir.
+    monkeypatch.setenv("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")
 
 
 @pytest.mark.parametrize(
@@ -55,9 +66,11 @@ def test_lance_read_basic(fs, data_path, batch_size):
     ds_lance.merge(df2, "one")
 
     if batch_size is None:
-        ds = ray.data.read_lance(path)
+        ds = ray_data.read_lance(path)
     else:
-        ds = ray.data.read_lance(path, scanner_options={"batch_size": batch_size})
+        ds = ray_data.read_lance(
+            path, scanner_options={"batch_size": batch_size}
+        )
 
     # Test metadata-only ops.
     assert ds.count() == 6
@@ -84,10 +97,12 @@ def test_lance_read_basic(fs, data_path, batch_size):
     ]
 
     # Test column projection.
-    ds = ray.data.read_lance(path, columns=["one"])
+    ds = ray_data.read_lance(path, columns=["one"])
     values = [s["one"] for s in ds.take_all()]
     assert sorted(values) == [1, 2, 3, 4, 5, 6]
-    assert ds.schema().names == ["one", "two", "three", "four"]
+    schema = ds.schema()
+    assert schema is not None
+    assert schema.names == ["one", "two", "three", "four"]
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
@@ -98,7 +113,7 @@ def test_lance_read_with_scanner_fragments(data_path):
     dataset = lance.write_dataset(table, path, max_rows_per_file=2)
 
     fragments = dataset.get_fragments()
-    ds = ray.data.read_lance(path, scanner_options={"fragments": fragments[:1]})
+    ds = ray_data.read_lance(path, scanner_options={"fragments": fragments[:1]})
     values = [[s["one"], s["two"]] for s in ds.take_all()]
     assert values == [
         [2, "b"],
@@ -120,7 +135,7 @@ def test_lance_read_many_files(data_path):
     lance.write_dataset(data, path, max_rows_per_file=1)
 
     def test_lance():
-        ds = ray.data.read_lance(path)
+        ds = ray_data.read_lance(path)
         return ds.count() == num_rows
 
     wait_for_condition(test_lance, timeout=10)
@@ -130,12 +145,12 @@ def test_lance_read_many_files(data_path):
 def test_lance_write(data_path):
     schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
 
-    ray.data.range(10).map(
+    ray_data.range(10).map(
         lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
     ).write_lance(data_path, schema=schema)
 
     ds = lance.dataset(data_path)
-    ds.count_rows() == 10
+    assert ds.count_rows() == 10
     assert ds.schema.names == schema.names
     # The schema is platform-dependent, because numpy uses int32 on Windows.
     # So we observe the schema that is written and use that.
@@ -145,22 +160,22 @@ def test_lance_write(data_path):
     assert sorted(tbl["id"].to_pylist()) == list(range(10))
     assert set(tbl["str"].to_pylist()) == {f"str-{i}" for i in range(10)}
 
-    ray.data.range(10).map(
+    ray_data.range(10).map(
         lambda x: {"id": x["id"] + 10, "str": f"str-{x['id'] + 10}"}
     ).write_lance(data_path, mode="append")
 
     ds = lance.dataset(data_path)
-    ds.count_rows() == 20
+    assert ds.count_rows() == 20
     tbl = ds.to_table()
     assert sorted(tbl["id"].to_pylist()) == list(range(20))
     assert set(tbl["str"].to_pylist()) == {f"str-{i}" for i in range(20)}
 
-    ray.data.range(10).map(
+    ray_data.range(10).map(
         lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
     ).write_lance(data_path, schema=schema, mode="overwrite")
 
     ds = lance.dataset(data_path)
-    ds.count_rows() == 10
+    assert ds.count_rows() == 10
     assert ds.schema == schema
 
 
@@ -168,7 +183,7 @@ def test_lance_write(data_path):
 def test_lance_write_min_rows_per_file(data_path):
     schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
 
-    ray.data.range(10).map(
+    ray_data.range(10).map(
         lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
     ).write_lance(data_path, schema=schema, min_rows_per_file=100)
 
@@ -183,13 +198,15 @@ def test_lance_write_min_rows_per_file(data_path):
 def test_lance_write_max_rows_per_file(data_path):
     schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
 
-    ray.data.range(10).map(
+    ray_data.range(10).map(
         lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
     ).write_lance(data_path, schema=schema, max_rows_per_file=1)
 
     ds = lance.dataset(data_path)
     assert ds.count_rows() == 10
-    assert ds.schema == schema
+    ds_schema = ds.schema
+    assert ds_schema is not None
+    assert ds_schema == schema
 
     assert len(ds.get_fragments()) == 10
 
@@ -222,16 +239,20 @@ def test_lance_read_with_version(data_path):
     ds_lance.merge(df2, "one")
 
     # Default read should return the latest (merged) dataset.
-    ds_latest = ray.data.read_lance(path)
+    ds_latest = ray_data.read_lance(path)
 
     assert ds_latest.count() == 6
     # Latest dataset should contain merged columns
-    assert "three" in ds_latest.schema().names
+    ds_latest_schema = ds_latest.schema()
+    assert ds_latest_schema is not None
+    assert "three" in ds_latest_schema.names
 
     # Read the initial version and ensure it contains the original columns
-    ds_prev = ray.data.read_lance(path, version=initial_version)
+    ds_prev = ray_data.read_lance(path, version=initial_version)
     assert ds_prev.count() == 6
-    assert ds_prev.schema().names == ["one", "two"]
+    ds_prev_schema = ds_prev.schema()
+    assert ds_prev_schema is not None
+    assert ds_prev_schema.names == ["one", "two"]
 
     values_prev = [[s["one"], s["two"]] for s in ds_prev.take_all()]
     assert sorted(values_prev) == [
