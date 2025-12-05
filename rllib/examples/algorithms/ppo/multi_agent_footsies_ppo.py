@@ -161,7 +161,7 @@ config = (
             "binary_download_dir": args.binary_download_dir,
             "binary_extract_dir": args.binary_extract_dir,
             "binary_to_download": binary_to_download,
-            "suppress_unity_output": not args.log_unity_output,
+            "log_unity_output": args.log_unity_output,
         },
     )
     .learners(
