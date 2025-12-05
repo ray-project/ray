@@ -28,14 +28,24 @@ namespace gcs {
 /**
   @interface InternalKVAccessorInterface
 
-  Interface for accessing the internal control plane key-value store
+  Interface for accessing the internal control plane key-value store. Data stored in the
+  key value store fate shares with the Ray cluster.
+
+  Data in the internal KV is organized under namespaces.  A namespace can be loosely
+  understood as a table or collection in the KV.  Cluster data is stored under a distinct
+  KV. Usage of this interface should try to keep data organized in function specific
+  namespaces to avoid collision.
+
+  Note: It is generally an anti-pattern to make heavy use of the Ray cluster internal KV.
+  Reason being that additional load will slow down normal cluster control plane
+  operations.
  */
 class InternalKVAccessorInterface {
  public:
   virtual ~InternalKVAccessorInterface() = default;
 
   /**
-    Asynchronously list keys with prefix stored in internal kv
+    Asynchronously list keys with prefix stored in internal kv under a given namespace.
 
     @param  ns The namespace to scan.
     @param  prefix The prefix to scan.
@@ -49,7 +59,7 @@ class InternalKVAccessorInterface {
       const OptionalItemCallback<std::vector<std::string>> &callback) = 0;
 
   /**
-    Asynchronously get the value for a given key.
+    Asynchronously get the value for a given key under a given namespace.
 
     @param ns The namespace to lookup.
     @param key The key to lookup.
@@ -62,7 +72,7 @@ class InternalKVAccessorInterface {
                                   const OptionalItemCallback<std::string> &callback) = 0;
 
   /**
-    Asynchronously get the value for multiple keys.
+    Asynchronously get the value for multiple keys under a given namespace.
 
     @param ns The namespace to lookup.
     @param keys The keys to lookup.
@@ -77,7 +87,7 @@ class InternalKVAccessorInterface {
           &callback) = 0;
 
   /**
-    Asynchronously set the value for a given key.
+    Asynchronously set the value for a given key under a given namespace.
 
     @param ns The namespace to put the key.
     @param key The key in <key, value> pair
@@ -94,7 +104,7 @@ class InternalKVAccessorInterface {
                                   const OptionalItemCallback<bool> &callback) = 0;
 
   /**
-    Asynchronously check the existence of a given key
+    Asynchronously check the existence of a given key under a given namespace.
 
     @param ns The namespace to check.
     @param key The key to check.
@@ -108,7 +118,7 @@ class InternalKVAccessorInterface {
                                      const OptionalItemCallback<bool> &callback) = 0;
 
   /**
-    Asynchronously delete a key
+    Asynchronously delete a key under a given namespace.
 
     @param ns The namespace to delete from.
     @param key The key to delete.
@@ -124,7 +134,7 @@ class InternalKVAccessorInterface {
                                   const OptionalItemCallback<int> &callback) = 0;
 
   /**
-    List keys with prefix stored in internal kv
+    List keys with prefix stored in internal kv under a given namespace.
 
     The RPC will timeout after the timeout_ms, or wait infinitely if timeout_ms is -1.
 
@@ -140,7 +150,7 @@ class InternalKVAccessorInterface {
                       std::vector<std::string> &value) = 0;
 
   /**
-    Set the <key, value> in the store
+    Set the <key, value> in the store under a given namespace.
 
     The RPC will timeout after the timeout_ms, or wait infinitely if timeout_ms is -1.
 
@@ -162,7 +172,7 @@ class InternalKVAccessorInterface {
                      bool &added) = 0;
 
   /**
-    Retrieve the value associated with a key
+    Retrieve the value associated with a key under a given namespace.
 
     The RPC will timeout after the timeout_ms, or wait infinitely if timeout_ms is -1.
 
@@ -178,7 +188,7 @@ class InternalKVAccessorInterface {
                      std::string &value) = 0;
 
   /**
-    Retrieve the values associated with some keys
+    Retrieve the values associated with some keys under a given namespace.
 
     @param ns The namespace to lookup.
     @param keys The keys to lookup.
@@ -192,7 +202,7 @@ class InternalKVAccessorInterface {
                           std::unordered_map<std::string, std::string> &values) = 0;
 
   /**
-    Delete the key
+    Delete the key under a given namespace.
 
     The RPC will timeout after the timeout_ms, or wait infinitely if timeout_ms is -1.
 
@@ -211,7 +221,7 @@ class InternalKVAccessorInterface {
                      int &num_deleted) = 0;
 
   /**
-    Check existence of a key in the store
+    Check existence of a key in the store under a given namespace.
 
     The RPC will timeout after the timeout_ms, or wait infinitely if timeout_ms is -1.
 

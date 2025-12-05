@@ -46,7 +46,7 @@ ray_cc_library(
     hdrs = [
         "accessor_factory_interface.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
     deps = [],
 )
 
