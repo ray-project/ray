@@ -336,7 +336,11 @@ def test_read_webdataset_resource_integration(ray_start_2_cpus, tmp_path):
     # Verify the data is correct
     for i, sample in enumerate(samples):
         assert sample["__key__"] == str(i)
-        assert sample["txt"].decode("utf-8") == f"sample {i}"
+        txt_value = sample["txt"]
+        # Handle both bytes and string (webdataset may auto-decode .txt files)
+        if isinstance(txt_value, bytes):
+            txt_value = txt_value.decode("utf-8")
+        assert txt_value == f"sample {i}"
 
 
 if __name__ == "__main__":
