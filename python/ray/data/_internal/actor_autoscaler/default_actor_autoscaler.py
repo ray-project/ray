@@ -62,6 +62,7 @@ class DefaultActorAutoscaler(ActorAutoscaler):
         self,
         actor_pool: "AutoscalingActorPool",
         max_scale_up: Optional[int],
+        util: float,
     ) -> int:
         """Compute how many actors to add when scaling up.
 
@@ -71,11 +72,11 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             actor_pool: The actor pool to scale.
             max_scale_up: Maximum actors that can be added based on resource budget,
                 or None if unlimited.
+            util: The current utilization of the actor pool.
 
         Returns:
             The number of actors to add (must be >= 1).
         """
-        util = self._compute_utilization(actor_pool)
         # Calculate desired delta based on utilization
         plan_delta = math.ceil(
             actor_pool.current_size()
@@ -177,7 +178,7 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             max_scale_up = _get_max_scale_up(actor_pool, budget)
             if max_scale_up == 0:
                 return ActorPoolScalingRequest.no_op(reason="exceeded resource limits")
-            delta = self._compute_upscale_delta(actor_pool, max_scale_up)
+            delta = self._compute_upscale_delta(actor_pool, max_scale_up, util)
 
             return ActorPoolScalingRequest.upscale(
                 delta=delta,
