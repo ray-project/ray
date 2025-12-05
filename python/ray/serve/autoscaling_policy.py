@@ -2,7 +2,11 @@ import logging
 import math
 from typing import Any, Dict, Optional, Tuple
 
-from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S, SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    CONTROL_LOOP_INTERVAL_S,
+    SERVE_AUTOSCALING_DECISION_COUNTERS_KEY,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve.config import AutoscalingConfig, AutoscalingContext
 from ray.util.annotations import PublicAPI
 
@@ -102,7 +106,7 @@ def replica_queue_length_autoscaling_policy(
     capacity_adjusted_min_replicas: int = ctx.capacity_adjusted_min_replicas
     capacity_adjusted_max_replicas: int = ctx.capacity_adjusted_max_replicas
     policy_state: Dict[str, Any] = ctx.policy_state
-    decision_counter = policy_state.get("decision_counter", 0)
+    decision_counter = policy_state.get(SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, 0)
     if num_running_replicas == 0:
         # When 0 replicas and queries are queued, scale up the replicas
         if total_num_requests > 0:
@@ -169,7 +173,7 @@ def replica_queue_length_autoscaling_policy(
     else:
         decision_counter = 0
 
-    policy_state["decision_counter"] = decision_counter
+    policy_state[SERVE_AUTOSCALING_DECISION_COUNTERS_KEY] = decision_counter
     return decision_num_replicas, policy_state
 
 
