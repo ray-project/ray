@@ -10,7 +10,7 @@ This guide explains how Ray Serve schedules deployment replicas across your clus
 |------|----------|---------|
 | Multi-GPU inference with tensor parallelism | `placement_group_bundles` + `STRICT_PACK` | vLLM with `tensor_parallel_size=4` |
 | Target specific GPU types or zones | Custom resources in `ray_actor_options` | Schedule on A100 nodes only |
-| Limit replicas per node for HA | `max_replicas_per_node` | Max 2 replicas of each deployment per node |
+| Limit replicas per node for high availability | `max_replicas_per_node` | Max 2 replicas of each deployment per node |
 | Reduce cloud costs by packing nodes | `RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY=1` | Many small models sharing nodes |
 | Reserve resources for worker actors | `placement_group_bundles` | Replica spawns Ray Data workers |
 | Shard large embeddings across nodes | `placement_group_bundles` + `STRICT_SPREAD` | Recommendation model with distributed embedding table |
@@ -41,7 +41,7 @@ When you deploy an application, Ray Serve's deployment scheduler determines wher
              │                                                                   │
              ▼                                                                   ▼
 ┌─────────────────────────────────────┐               ┌─────────────────────────────────────┐
-│    SPREAD Strategy (default)        │               │           PACK Strategy              │
+│    SPREAD Strategy (default)        │               │           PACK Strategy             │
 │                                     │               │                                     │
 │  Distributes replicas across nodes  │               │   Packs replicas onto fewer nodes   │
 │  for fault tolerance                │               │   to minimize resource waste        │
@@ -57,7 +57,7 @@ When you deploy an application, Ray Serve's deployment scheduler determines wher
 │  ✓ High availability                │               │               └───────────┘        │
 │  ✓ Load balanced                    │               │           Can be released          │
 │  ✓ Reduced contention               │               │  ✓ Fewer nodes = lower cloud costs │
-└─────────────────────────────────────┘               └─────────────────────────────────────┘
+└─────────────────────────────────────┘               └────────────────────────────────────┘
 ```
 
 By default, Ray Serve uses a **spread scheduling strategy** that distributes replicas across nodes with best effort. This approach:
@@ -70,17 +70,16 @@ By default, Ray Serve uses a **spread scheduling strategy** that distributes rep
 When scheduling a replica, the scheduler evaluates strategies in the following priority order:
 
 1. **Placement groups**: If you specify `placement_group_bundles`, the scheduler uses a `PlacementGroupSchedulingStrategy` to co-locate the replica with its required resources.
-2. **Node affinity**: If the scheduler identifies a target node (for example, during pack scheduling), it uses a `NodeAffinitySchedulingStrategy` with soft constraints.
-4. **Default strategy**: Falls back to either `SPREAD` (default) or `DEFAULT` (when pack scheduling is enabled).
+2. **Pack scheduling with node affinity**: If pack scheduling is enabled, the scheduler identifies the best available node by preferring non-idle nodes (nodes already running replicas) and using a best-fit algorithm to minimize resource fragmentation. It then uses a `NodeAffinitySchedulingStrategy` with soft constraints to schedule the replica on that node.
+3. **Default strategy**: Falls back to `SPREAD` when pack scheduling isn't enabled.
 
 ### Downscaling behavior
 
 When Ray Serve scales down a deployment, it intelligently selects which replicas to stop:
 
 1. **Non-running replicas first**: Pending, launching, or recovering replicas are stopped before running replicas.
-2. **Minimize node count**: Running replicas are stopped from nodes with the fewest total replicas across all deployments, helping to free up nodes faster.
-3. **Head node protection**: Replicas on the head node have the lowest priority for removal since the head node can't be released.
-4. **Newest first**: Among replicas on the same node, newer replicas are stopped before older ones.
+2. **Minimize node count**: Running replicas are stopped from nodes with the fewest total replicas across all deployments, helping to free up nodes faster. Among replicas on the same node, newer replicas are stopped before older ones.
+3. **Head node protection**: Replicas on the head node have the lowest priority for removal since the head node can't be released. Among replicas on the head node, newer replicas are stopped before older ones.
 
 ## APIs for controlling replica placement
 
@@ -126,7 +125,7 @@ A **bundle** is a dictionary specifying resource requirements, such as `{"CPU": 
 
 #### What placement groups and bundles mean
 
-The following diagram illustrates how a deployment with `placement_group_bundles=[{"GPU": 1}, {"GPU": 1}, {"CPU": 4}]` and [`placement_group_strategy`](../api/doc/ray.serve.deployment_decorator.rst)`="STRICT_PACK"` is scheduled:
+The following diagram illustrates how a deployment with `placement_group_bundles=[{"GPU": 1}, {"GPU": 1}, {"CPU": 4}]` and [`placement_group_strategy`](../api/doc/ray.serve.deployment_decorator.rst)` set to  "STRICT_PACK"` is scheduled:
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -165,8 +164,6 @@ This is different from simply requesting resources in `ray_actor_options`. With 
 
 #### When to use placement groups
 
-Use `placement_group_bundles` when:
-
 | Scenario | Why placement groups help |
 |----------|---------------------------|
 | **Model parallelism** | Tensor parallelism or pipeline parallelism requires multiple GPUs that must communicate efficiently. Use `STRICT_PACK` to guarantee all GPUs are on the same node. For example, vLLM with `tensor_parallel_size=4` and the Ray distributed executor backend spawns 4 Ray worker actors (one per GPU shard), all of which must be on the same node for efficient inter-GPU communication via NVLink/NVSwitch. |
@@ -177,7 +174,11 @@ Use `placement_group_bundles` when:
 Don't use placement groups when:
 - Your replica is self-contained and doesn't spawn additional actors/tasks
 - You only need simple resource requirements (use `ray_actor_options` instead)
-- You want to use `max_replicas_per_node` (the two options are mutually exclusive)
+- You want to use `max_replicas_per_node`. These options are mutually exclusive because `max_replicas_per_node` controls replica distribution at the node level, while placement groups control scheduling at the placement group level with their own strategies. Combining them would create conflicting scheduling behavior.
+
+:::{note}
+**How `max_replicas_per_node` works:** Ray Serve creates a synthetic custom resource for each deployment. Every node implicitly has 1.0 of this resource, and each replica requests `1.0 / max_replicas_per_node` of it. For example, with `max_replicas_per_node=3`, each replica requests ~0.33 of the resource, so only 3 replicas can fit on a node before the resource is exhausted. This mechanism relies on Ray's standard resource scheduling, which conflicts with placement group scheduling.
+:::
 
 #### Configuring placement groups
 

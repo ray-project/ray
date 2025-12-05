@@ -671,10 +671,6 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             d.is_non_strict_pack_pg() for d in self._deployments.values()
         )
         # Schedule replicas using compact strategy.
-        use_pack_strategy = (
-            RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY
-            or RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY
-        )
         if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY:
             warnings.warn(
                 "The environment variable 'RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY' "
@@ -683,7 +679,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 DeprecationWarning,
                 stacklevel=2,
             )
-        if use_pack_strategy and not non_strict_pack_pgs_exist:
+        if RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY and not non_strict_pack_pgs_exist:
             # Flatten dict of deployment replicas into all replicas,
             # then sort by decreasing resource size
             all_scheduling_requests = sorted(

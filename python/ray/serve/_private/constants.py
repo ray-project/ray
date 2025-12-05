@@ -1,3 +1,4 @@
+import os
 from typing import List
 
 from ray.serve._private.constants_utils import (
@@ -417,7 +418,8 @@ RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = get_env_bool(
 
 # Use pack instead of spread scheduling strategy.
 RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY = get_env_bool(
-    "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY", "0"
+    "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY",
+    os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0"),
 )
 
 # Comma-separated list of custom resources prioritized in scheduling. Sorted from highest to lowest priority.
