@@ -99,7 +99,7 @@ class TestFootsies(unittest.TestCase):
             captured_output = f.read()
 
         assert (
-            "`suppress_unity_output` not set in environment config, suppressing output by default"
+            "`log_unity_output` not set in environment config, not logging output by default"
             in captured_output
         )
         assert "[UnityMemory]" not in captured_output
@@ -110,7 +110,7 @@ class TestFootsies(unittest.TestCase):
 
     def test_enable_output_mode(self):
         with capture_stdout_stderr() as log_path:
-            env = _create_env({"suppress_unity_output": False})
+            env = _create_env({"log_unity_output": True})
             time.sleep(2)  # Give Unity time to write output
             env.close()
             # Give a bit more time for any buffered output to be written

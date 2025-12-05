@@ -94,15 +94,15 @@ class FootsiesBinary:
         logger.info(f"Game binary path: {game_binary_path}")
 
         # The underlying game can be quite spammy. So when we are not debugging it, we can suppress the output.
-        suppress_output = self.config.get("suppress_unity_output")
-        if suppress_output is None:
-            if log_once("suppress_unity_output_not_set"):
+        log_output = self.config.get("log_unity_output")
+        if log_output is None:
+            if log_once("log_unity_output_not_set"):
                 logger.warning(
-                    "`suppress_unity_output` not set in environment config, suppressing output by default"
+                    "`log_unity_output` not set in environment config, not logging output by default"
                 )
-            suppress_output = True
+            log_output = False
 
-        if suppress_output:
+        if not log_output:
             stdout_dest = stderr_dest = subprocess.DEVNULL
         else:
             stdout_dest = stderr_dest = None  # Use parent's stdout/stderr
