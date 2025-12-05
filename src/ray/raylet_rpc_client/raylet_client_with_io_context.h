@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "ray/common/asio/asio_util.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/rpc/grpc_client.h"
 
@@ -39,6 +40,9 @@ class RayletClientWithIoContext {
                      int64_t timeout_ms);
 
  private:
+  // Connect to the raylet on a singleton io service with a dedicated thread.
+  // This is to avoid creating multiple threads for multiple clients in python.
+  inline static InstrumentedIOContextWithThread io_context_{"raylet_client_io_service"};
   /// client call manager is created inside the raylet client, it should be kept active
   /// during the whole lifetime of client.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;

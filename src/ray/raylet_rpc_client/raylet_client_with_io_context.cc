@@ -19,7 +19,6 @@
 #include <string>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
@@ -29,10 +28,7 @@ namespace rpc {
 
 RayletClientWithIoContext::RayletClientWithIoContext(const std::string &ip_address,
                                                      int port) {
-  // Connect to the raylet on a singleton io service with a dedicated thread.
-  // This is to avoid creating multiple threads for multiple clients in python.
-  static InstrumentedIOContextWithThread io_context("raylet_client_io_service");
-  instrumented_io_context &io_service = io_context.GetIoService();
+  instrumented_io_context &io_service = io_context_.GetIoService();
   client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
       io_service, /*record_stats=*/false, ip_address);
   auto raylet_unavailable_timeout_callback = []() {
