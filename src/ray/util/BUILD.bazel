@@ -58,9 +58,12 @@ ray_cc_library(
 
 ray_cc_library(
     name = "pipe",
+    srcs = ["pipe.cc"],
     hdrs = ["pipe.h"],
     deps = [
         ":logging",
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
     ],
 )
 
