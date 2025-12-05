@@ -8,6 +8,7 @@ _common/ (not in tests/) to be accessible in the Ray package distribution.
 import asyncio
 import inspect
 import os
+import threading
 import time
 import traceback
 import uuid
@@ -247,6 +248,29 @@ def check_library_usage_telemetry(
         assert all(
             [extra_usage_tags[k] == v for k, v in expected_extra_usage_tags.items()]
         ), extra_usage_tags
+
+
+class FakeTimer:
+    def __init__(self, start_time: Optional[float] = None):
+        self._lock = threading.Lock()
+        self.reset(start_time=start_time)
+
+    def reset(self, start_time: Optional[float] = None):
+        with self._lock:
+            if start_time is None:
+                start_time = time.time()
+            self._curr = start_time
+
+    def time(self) -> float:
+        return self._curr
+
+    def advance(self, by: float):
+        with self._lock:
+            self._curr += by
+
+    def realistic_sleep(self, amt: float):
+        with self._lock:
+            self._curr += amt + 0.001
 
 
 def is_named_tuple(cls):
