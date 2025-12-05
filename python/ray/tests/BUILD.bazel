@@ -523,6 +523,7 @@ py_test_module_list(
         "test_component_failures.py",
         "test_concurrency_group.py",
         "test_core_worker_io_thread_stack_size.py",
+        "test_cpu_tensor_zero_copy_serialization.py",
         "test_cross_language.py",
         "test_debug_tools.py",
         "test_distributed_sort.py",
@@ -564,7 +565,6 @@ py_test_module_list(
         "test_system_metrics.py",
         "test_task_events_3.py",
         "test_task_metrics_reconstruction.py",
-        "test_tensor_zero_copy_serialization.py",
         "test_top_level_api.py",
         "test_tpu.py",
         "test_tqdm.py",
@@ -642,7 +642,7 @@ py_test_module_list(
     files = [
         "gpu_objects/test_gpu_objects_nccl.py",
         "gpu_objects/test_gpu_objects_nixl.py",
-        "test_tensor_zero_copy_serialization.py",
+        "test_gpu_tensor_zero_copy_serialization.py",
     ],
     tags = [
         "custom_setup",
