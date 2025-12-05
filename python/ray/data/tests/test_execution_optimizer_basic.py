@@ -60,7 +60,10 @@ def test_read_operator_emits_warning_for_large_read_tasks():
             return None
 
         def get_read_tasks(
-            self, parallelism: int, per_task_row_limit: Optional[int] = None
+            self,
+            parallelism: int,
+            per_task_row_limit: Optional[int] = None,
+            epoch_idx: int = 0,
         ) -> List[ReadTask]:
             large_object = np.zeros((128, 1024, 1024), dtype=np.uint8)  # 128 MiB
 

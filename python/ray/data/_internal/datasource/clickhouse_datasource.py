@@ -258,7 +258,10 @@ class ClickHouseDatasource(Datasource):
         return self._get_estimate_size()
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        epoch_idx: int = 0,
     ) -> List[ReadTask]:
         """
         Create read tasks for the ClickHouse query.
@@ -271,6 +274,8 @@ class ClickHouseDatasource(Datasource):
             per_task_row_limit: Maximum number of rows allowed in each emitted
                 task.  Blocks larger than this limit will be sliced before
                 being yielded downstream.
+            epoch_idx: The epoch index for the read tasks. Not used by this
+                datasource.
 
         Returns:
             A list of read tasks to be executed.

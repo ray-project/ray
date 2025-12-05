@@ -1,6 +1,7 @@
 import abc
 import math
 import pickle
+import re
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -50,6 +51,8 @@ SupportsRichComparisonType = TypeVar(
     "SupportsRichComparisonType", bound=_SupportsRichComparison
 )
 AggOutputType = TypeVar("AggOutputType")
+
+_AGGREGATION_NAME_PATTERN = re.compile(r"^([^(]+)(?:\(.*\))?$")
 
 
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
@@ -199,6 +202,14 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         self._target_col_name = on
         self._ignore_nulls = ignore_nulls
 
+        # Extract and store the agg name (e.g., "sum" from "sum(col)")
+        # This avoids string parsing later
+        match = _AGGREGATION_NAME_PATTERN.match(name)
+        if match:
+            self._agg_name = match.group(1)
+        else:
+            self._agg_name = name
+
         _safe_combine = _null_safe_combine(self.combine, ignore_nulls)
         _safe_aggregate = _null_safe_aggregate(self.aggregate_block, ignore_nulls)
         _safe_finalize = _null_safe_finalize(self.finalize)
@@ -215,6 +226,14 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
 
     def get_target_column(self) -> Optional[str]:
         return self._target_col_name
+
+    def get_agg_name(self) -> str:
+        """Return the agg name (e.g., 'sum', 'mean', 'count').
+
+        Returns the aggregation type extracted from the name during initialization.
+        For example, returns 'sum' for an aggregator named 'sum(col)'.
+        """
+        return self._agg_name
 
     @abc.abstractmethod
     def combine(

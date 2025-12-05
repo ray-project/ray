@@ -17,6 +17,7 @@ import ray
 from ray import serve
 from ray._common.network_utils import build_address
 from ray._common.test_utils import wait_for_condition
+from ray._common.utils import TimerBase
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
@@ -32,7 +33,6 @@ from ray.serve._private.constants import (
 from ray.serve._private.deployment_state import ALL_REPLICA_STATES, ReplicaState
 from ray.serve._private.proxy import DRAINING_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import TimerBase
 from ray.serve.context import _get_global_client
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.schema import ApplicationStatus, TargetGroup

@@ -133,6 +133,8 @@ starlette>=0.40.0
 requests>=2.32.3
 docker>=7.1.0
 protobuf>=4,<5
+# cupy-cuda12x requires fastrlock
+fastrlock>=0.8.3; sys_platform != 'darwin'
 
 # TODO(aslonnie): remove this
 # this is required as some packages depends on ray and will pick up older version of

@@ -2,8 +2,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, List, Optional
 
 import ray
-from ray.util.collective.types import (
-    Backend,
+from ray.experimental.gpu_object_manager.types import (
     CommunicatorMetadata,
     TensorTransportMetadata,
 )
@@ -15,11 +14,11 @@ if TYPE_CHECKING:
 class TensorTransportManager(ABC):
     @property
     @abstractmethod
-    def tensor_transport_backend(self) -> Backend:
+    def tensor_transport_backend(self) -> str:
         """The tensor transport backend, e.g., NCCL.
 
         Returns:
-            Backend: The backend of the tensor transport.
+            str: The backend of the tensor transport.
         """
 
     @staticmethod
@@ -53,28 +52,9 @@ class TensorTransportManager(ABC):
             bool: True if the actor has the tensor transport available, False otherwise.
         """
 
-    @staticmethod
-    @abstractmethod
-    def get_tensor_transport_metadata(
-        src_actor: "ray.actor.ActorHandle",
-        obj_id: str,
-    ) -> TensorTransportMetadata:
-        """
-        Get the tensor transport metadata for the GPU object.
-        This function retrieves metadata about tensors stored in the GPU object store,
-        including their shapes, dtypes, and any transport-specific metadata, e.g., NIXL descriptors.
-
-        Args:
-            src_actor: The actor that runs this function.
-            obj_id: The ID of the GPU object to get metadata for
-
-        Returns:
-            TensorTransportMetadata: A named tuple containing the tensor metadata.
-        """
-
-    @staticmethod
     @abstractmethod
     def extract_tensor_transport_metadata(
+        self,
         obj_id: str,
         gpu_object: List["torch.Tensor"],
     ) -> TensorTransportMetadata:
@@ -89,9 +69,9 @@ class TensorTransportManager(ABC):
             TensorTransportMetadata: The tensor transport metadata.
         """
 
-    @staticmethod
     @abstractmethod
     def get_communicator_metadata(
+        self,
         src_actor: "ray.actor.ActorHandle",
         dst_actor: "ray.actor.ActorHandle",
         backend: Optional[str] = None,
@@ -109,9 +89,9 @@ class TensorTransportManager(ABC):
             CommunicatorMetadata: The communicator metadata.
         """
 
-    @staticmethod
     @abstractmethod
     def recv_multiple_tensors(
+        self,
         tensors: List["torch.Tensor"],
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
@@ -128,10 +108,11 @@ class TensorTransportManager(ABC):
 
         """
 
-    @staticmethod
     @abstractmethod
     def send_multiple_tensors(
+        self,
         tensors: List["torch.Tensor"],
+        tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
     ):
         """
@@ -139,12 +120,14 @@ class TensorTransportManager(ABC):
 
         Args:
             tensors: The tensors to send.
+            tensor_transport_metadata: The tensor transport metadata for the RDT object.
             communicator_metadata: The communicator metadata for the send/recv operation.
         """
 
-    @staticmethod
     @abstractmethod
-    def garbage_collect(obj_id: str, tensor_transport_meta: TensorTransportMetadata):
+    def garbage_collect(
+        self, obj_id: str, tensor_transport_meta: TensorTransportMetadata
+    ):
         """
         Garbage collect for the tensor transport after the GPU object is freed.
 
@@ -153,9 +136,9 @@ class TensorTransportManager(ABC):
             tensor_transport_meta: The tensor transport metadata.
         """
 
-    @staticmethod
     @abstractmethod
     def abort_transport(
+        self,
         obj_id: str,
         communicator_metadata: CommunicatorMetadata,
     ):

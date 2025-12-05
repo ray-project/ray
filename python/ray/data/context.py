@@ -646,6 +646,10 @@ class DataContext:
             DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER
         )
 
+        # The current epoch index.
+        # This is updated at the end of each execution.
+        self._epoch_idx = 0
+
         is_ray_job = os.environ.get("RAY_JOB_ID") is not None
         if is_ray_job:
             is_driver = ray.get_runtime_context().worker.mode != WORKER_MODE

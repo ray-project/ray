@@ -5,8 +5,8 @@ from typing import Dict, List, Optional, Union
 import ray
 import ray.experimental.internal_kv as internal_kv
 from ray.experimental.collective.communicator import CommunicatorHandle
-from ray.experimental.collective.util import get_address_and_port
 from ray.util.annotations import PublicAPI
+from ray.util.collective.collective import get_address_and_port
 from ray.util.collective.collective_group.torch_gloo_collective_group import (
     get_master_address_metadata_key,
 )
