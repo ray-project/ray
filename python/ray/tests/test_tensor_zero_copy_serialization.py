@@ -167,7 +167,7 @@ def test_cpu_tensor_serialization(ray_start_cluster_with_zero_copy_tensors):
         assert_tensors_equivalent(obj, restored2)
 
 
-@pytest.mark.skip(reason="GPU test is currently failing.")
+@pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 def test_gpu_tensor_serialization(ray_start_cluster_with_zero_copy_tensors):
     if not torch.cuda.is_available():
         pytest.skip("CUDA not available")
@@ -213,7 +213,7 @@ def test_gpu_tensor_serialization(ray_start_cluster_with_zero_copy_tensors):
 
     TEST_GPU_OBJECTS = PRIMITIVE_GPU_OBJECTS + REPRESENTATIVE_COMPLEX_GPU_OBJECTS
 
-    @ray.remote
+    @ray.remote(num_gpus=1)
     def echo(x):
         return x
 

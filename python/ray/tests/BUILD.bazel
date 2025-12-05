@@ -564,6 +564,7 @@ py_test_module_list(
         "test_system_metrics.py",
         "test_task_events_3.py",
         "test_task_metrics_reconstruction.py",
+        "test_tensor_zero_copy_serialization.py",
         "test_top_level_api.py",
         "test_tpu.py",
         "test_tqdm.py",
