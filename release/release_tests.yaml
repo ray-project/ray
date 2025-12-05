@@ -4318,7 +4318,8 @@
 
 
 - name: e2e_xgboost  # do not use dashes (regex sensitive)
-  frequency: weekly
+  # TODO: https://github.com/anyscale/ray/issues/573
+  frequency: manual
   python: "3.11"
   group: ray-examples
   team: ml
