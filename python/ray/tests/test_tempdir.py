@@ -387,14 +387,12 @@ def test_resolve_user_ray_temp_dir_from_gcs(delete_default_temp_dir):
         nodes = ray.nodes()
         assert len(nodes) == 1, "Expected 1 node in the cluster"
         node_id = nodes[0]["NodeID"]
-        # TODO(Kunchd): fetch the gcs client from global worker
-        cached_gcs_address = ray._private.worker._global_node.gcs_address
+        gcs_client = ray._private.worker.global_worker.gcs_client
         ray.shutdown()
 
         # test WITHOUT ray.init() (fetch temp_dir from GCS)
-        print(f"cached_gcs_address: {cached_gcs_address}, node_id: {node_id}")
         resolved_temp_dir = ray._common.utils.resolve_user_ray_temp_dir(
-            gcs_address=cached_gcs_address, node_id=node_id
+            gcs_client, node_id=node_id
         )
         assert resolved_temp_dir == head_temp_dir, (
             f"Expected temp_dir from GCS to be {head_temp_dir}, "
@@ -404,7 +402,7 @@ def test_resolve_user_ray_temp_dir_from_gcs(delete_default_temp_dir):
         # test WITH ray.init() (fetch temp_dir from runtime context)
         ray.init(address="auto")
         resolved_temp_dir = ray._common.utils.resolve_user_ray_temp_dir(
-            gcs_address=ray._private.worker._global_node.gcs_address, node_id=node_id
+            gcs_client, node_id=node_id
         )
         assert resolved_temp_dir == head_temp_dir, (
             f"Expected temp_dir from runtime context to be {head_temp_dir}, "

@@ -1038,10 +1038,11 @@ def timeline(filename=None, store_in_ray_temp=False):
     if store_in_ray_temp and filename is not None:
         # try to fetch gcs address and node id
         if ray.is_initialized():
-            gcs_address = ray.get_gcs_client().gcs_address
             node_id = ray.get_runtime_context().node_id
             resolved_filename = os.path.join(
-                ray._common.utils.resolve_user_ray_temp_dir(gcs_address, node_id),
+                ray._common.utils.resolve_user_ray_temp_dir(
+                    ray.get_gcs_client(), node_id
+                ),
                 filename,
             )
         else:

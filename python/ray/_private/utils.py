@@ -33,7 +33,6 @@ from ray._common.utils import (
     get_ray_address_file,
     get_system_memory,
 )
-from ray._raylet import GcsClient
 from ray.core.generated.runtime_environment_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
@@ -1111,57 +1110,6 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
     if not result:
         raise ConnectionError(
             f"Could not read '{key.decode()}' from GCS. Did GCS start successfully?"
-        )
-    return result
-
-
-def get_all_node_info_with_retry(
-    gcs_client: GcsClient,
-    filters: list[tuple[str, str, str]],
-    timeout: float = 3.0,
-    num_retries: int = ray_constants.NUM_REDIS_GET_RETRIES,
-):
-    """Get node info from GCS with retry logic.
-
-    This function is a wrapper for get_all_node_info with retry logic.
-
-    Args:
-        gcs_client: The GCS client to use for fetching node info.
-        filters: List of filter tuples to apply to the node info query.
-        timeout: Timeout for each individual GCS request.
-        num_retries: Number of times to retry before giving up.
-
-    Returns:
-        Dictionary of node info, or empty dict if no matching nodes found.
-
-    Raises:
-        ConnectionError: If unable to connect to GCS after all retries.
-    """
-    result = None
-    for _ in range(num_retries):
-        try:
-            result = gcs_client.get_all_node_info(timeout=timeout, filters=filters)
-        except Exception as e:
-            if isinstance(e, ray.exceptions.RpcError) and e.rpc_code in (
-                ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
-                ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
-            ):
-                logger.warning(connect_error.format(gcs_client.address))
-            else:
-                logger.exception("Get all node info failed")
-            result = None
-
-        if result is not None:
-            # Successfully retrieved node info (even if empty)
-            break
-        else:
-            logger.debug(f"Failed to fetch node info with filters {filters}. Retrying.")
-            time.sleep(2)
-
-    if result is None:
-        raise ConnectionError(
-            f"Could not read node info with filters {filters} from GCS. "
-            "Did GCS start successfully?"
         )
     return result
 

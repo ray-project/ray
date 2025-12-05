@@ -14,7 +14,9 @@ from types import ModuleType
 from typing import Any, Coroutine, Dict, Optional, Tuple
 
 import ray
-from ray._raylet import GcsClient
+from ray._raylet import GcsClient, NodeID as RayNodeID
+from ray.core.generated.gcs_pb2 import GcsNodeInfo
+from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 
 import psutil
 
@@ -220,7 +222,7 @@ def get_call_location(back: int = 1):
         return "UNKNOWN"
 
 
-def resolve_user_ray_temp_dir(gcs_address: str, node_id: str):
+def resolve_user_ray_temp_dir(gcs_client: GcsClient, node_id: str):
     """
     Get the ray temp directory.
 
@@ -229,8 +231,7 @@ def resolve_user_ray_temp_dir(gcs_address: str, node_id: str):
     default ray temp directory.
 
     Args:
-        gcs_address: The address of the GCS server.
-                     E.g.: "127.0.0.1:6379"
+        gcs_client: The GCS client.
         node_id: The ID of the node to fetch the temp dir for.
                  E.g.: "1a9904d8aa3de65367830e2aef6313a5b2e9d4b0e3725e0dceeacb1b"
                         (hex string representation of the node ID)
@@ -242,57 +243,56 @@ def resolve_user_ray_temp_dir(gcs_address: str, node_id: str):
     if ray.is_initialized() and ray.get_runtime_context().get_node_id() == node_id:
         return ray.get_runtime_context().get_temp_dir()
 
-    # Attempt to fetch temp dir as specified by --temp-dir at creation time.
-    if gcs_address is not None and node_id is not None:
-        gcs_client = GcsClient(gcs_address)
-        try:
-            node_infos = gcs_client.get_all_node_info(
-                filters=[
-                    ("node_id", "=", node_id),
-                    ("state", "=", "ALIVE"),
-                ]
-            ).values()
-        except Exception as e:
+    # Fetch temp dir as specified by --temp-dir at creation time.
+    try:
+        # Create node selector for node_id filter
+        node_selector = GetAllNodeInfoRequest.NodeSelector()
+        node_selector.node_id = RayNodeID.from_hex(node_id).binary()
+
+        # Get ALIVE state enum value
+        state_filter = GcsNodeInfo.GcsNodeState.Value("ALIVE")
+
+        node_infos = gcs_client.get_all_node_info(
+            node_selectors=[node_selector],
+            state_filter=state_filter,
+        ).values()
+    except Exception as e:
+        raise Exception(
+            f"Failed to get node info from GCS when fetching tempdir for node {node_id}: {e}"
+        )
+    if not node_infos:
+        raise Exception(
+            f"No node info associated with ALIVE state found for node {node_id} in GCS"
+        )
+
+    node_info = next(iter(node_infos))
+    if node_info is not None:
+        temp_dir = getattr(node_info, "temp_dir", None)
+        if temp_dir is not None:
+            return temp_dir
+        else:
             raise Exception(
-                f"Failed to get node info from GCS when fetching tempdir for node {node_id}: {e}"
+                "Node temp_dir was not found in NodeInfo. did the node's raylet start successfully?"
             )
 
-        # Check that node infos is not empty
-        if not node_infos:
-            raise Exception(
-                f"No node info associated with ALIVE state found for node {node_id} in GCS"
-            )
 
-        # Get the first node info
-        node_info = next(iter(node_infos))
-
-        if node_info is not None:
-            temp_dir = getattr(node_info, "temp_dir", None)
-            if temp_dir is not None:
-                return temp_dir
-            else:
-                logger.warning(
-                    "Node temp_dir not found in NodeInfo. "
-                    "Using Ray's default temp dir."
-                )
-
-    # fallback to default ray temp dir
-    return get_default_ray_temp_dir()
-
-
-def get_default_ray_temp_dir():
+def get_default_system_temp_dir():
     if "RAY_TMPDIR" in os.environ:
-        tmp_dir = os.environ["RAY_TMPDIR"]
+        return os.environ["RAY_TMPDIR"]
     elif sys.platform.startswith("linux") and "TMPDIR" in os.environ:
-        tmp_dir = os.environ["TMPDIR"]
+        return os.environ["TMPDIR"]
     elif sys.platform.startswith("darwin") or sys.platform.startswith("linux"):
         # Ideally we wouldn't need this fallback, but keep it for now for
         # for compatibility
-        tmp_dir = os.path.join(os.sep, "tmp")
+        tempdir = os.path.join(os.sep, "tmp")
     else:
-        tmp_dir = tempfile.gettempdir()
+        tempdir = tempfile.gettempdir()
 
-    return os.path.join(tmp_dir, "ray")
+    return tempdir
+
+
+def get_default_ray_temp_dir():
+    return os.path.join(get_default_system_temp_dir(), "ray")
 
 
 def get_ray_address_file(temp_dir: Optional[str]):

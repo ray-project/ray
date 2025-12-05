@@ -34,13 +34,13 @@ from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.services import get_address, serialize_config
 from ray._private.utils import (
-    get_all_node_info_with_retry,
     is_in_test,
     open_log,
     try_to_symlink,
     validate_socket_filepath,
 )
 from ray._raylet import GcsClient, get_session_key_from_storage
+from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 
 import psutil
 
@@ -472,16 +472,19 @@ class Node:
             # worker nodes as we will need it to resolve whether head node received a
             # custom object spilling directory.
             try:
-                node_infos = get_all_node_info_with_retry(
-                    self.get_gcs_client(),
-                    filters=[
-                        ("is_head_node", "=", True),
-                    ],
-                    timeout=3.0,
-                    num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
-                ).values()
+                head_node_selector = GetAllNodeInfoRequest.NodeSelector()
+                head_node_selector.is_head_node = True
+
+                node_infos = (
+                    self.get_gcs_client()
+                    .get_all_node_info(
+                        timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
+                        node_selectors=[head_node_selector],
+                    )
+                    .values()
+                )
             except Exception as e:
-                logger.error(f"Failed to get head node info: {e}")
+                logger.error(f"Failed to get head node info: {repr(e)}")
                 raise e
 
             if not node_infos:
@@ -519,14 +522,17 @@ class Node:
                 else:
                     node_ip_address = ray._private.services.get_node_ip_address()
                 try:
-                    node_infos = get_all_node_info_with_retry(
-                        self.get_gcs_client(),
-                        filters=[
-                            ("node_ip_address", "=", node_ip_address),
-                        ],
-                        timeout=3.0,
-                        num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
-                    ).values()
+                    ip_node_selector = GetAllNodeInfoRequest.NodeSelector()
+                    ip_node_selector.node_ip_address = node_ip_address
+
+                    node_infos = (
+                        self.get_gcs_client()
+                        .get_all_node_info(
+                            timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
+                            node_selectors=[ip_node_selector],
+                        )
+                        .values()
+                    )
                 except Exception as e:
                     raise Exception(
                         f"Failed to get node info from gcs with node ip address {node_ip_address} "

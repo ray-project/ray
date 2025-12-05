@@ -61,6 +61,7 @@ import ray._common.usage.usage_constants as usage_constant
 import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClient
 from ray.core.generated import usage_pb2
+from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_put,
@@ -564,9 +565,12 @@ def get_total_num_running_jobs_to_report(gcs_client) -> Optional[int]:
 def get_total_num_alive_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
     """Return the total number of alive nodes in the cluster"""
     try:
+        # Get ALIVE state enum value
+        state_filter = GcsNodeInfo.GcsNodeState.Value("ALIVE")
+
         result = gcs_client.get_all_node_info(
             timeout=timeout,
-            filters=[("state", "=", "ALIVE")],
+            state_filter=state_filter,
         )
         return len(result.items())
     except Exception as e:

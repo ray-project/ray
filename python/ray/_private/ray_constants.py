@@ -404,6 +404,8 @@ DEFAULT_RUNTIME_ENV_DIR_NAME = "runtime_resources"
 # dafault timeout is 10 minutes
 DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS = 600
 
+GCS_SERVER_REQUEST_TIMEOUT_SECONDS = 60
+
 # Used to separate lines when formatting the call stack where an ObjectRef was
 # created.
 CALL_STACK_LINE_DELIMITER = " | "

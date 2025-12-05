@@ -18,6 +18,7 @@ from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfig
 from ray.autoscaler._private.monitor import Monitor
 from ray.autoscaler.v2.instance_manager.config import KubeRayConfigReader
 from ray.autoscaler.v2.utils import is_autoscaler_v2
+from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 
 logger = logging.getLogger(__name__)
 
@@ -25,16 +26,19 @@ BACKOFF_S = 5
 
 
 def _get_log_dir(gcs_client: GcsClient) -> str:
-    # Get head node id
-    nodes = gcs_client.get_all_node_info()
+
+    # Get head node id using is_head_node filter
+    head_node_selector = GetAllNodeInfoRequest.NodeSelector()
+    head_node_selector.is_head_node = True
+
+    nodes = gcs_client.get_all_node_info(node_selectors=[head_node_selector])
     head_node_id = None
     for node_id, node_info in nodes.items():
-        if node_info.is_head_node:
-            head_node_id = node_id.hex()
-            break
+        head_node_id = node_id.hex()
+        break
 
     return os.path.join(
-        ray._common.utils.resolve_user_ray_temp_dir(gcs_client.address, head_node_id),
+        ray._common.utils.resolve_user_ray_temp_dir(gcs_client, head_node_id),
         ray._private.ray_constants.SESSION_LATEST,
         "logs",
     )
