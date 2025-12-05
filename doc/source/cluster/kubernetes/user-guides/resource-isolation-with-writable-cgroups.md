@@ -23,7 +23,6 @@ $ gcloud container clusters create ray-resource-isolation \
     --cluster-version=1.34 \
     --machine-type=e2-standard-16 \
     --num-nodes=3 \
-    --scopes="cloud-platform" \
     --containerd-config-from-file=containerd_config.yaml
 ```
 
