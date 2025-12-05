@@ -586,12 +586,9 @@ class _MapWorker:
 
     def _init_udf_with_retries(self, ctx: DataContext) -> None:
         """Initialize the UDF with retry logic for transient failures."""
-        if not ctx.actor_init_retry_on_errors:
-            # No retry enabled, just init directly.
-            self._map_transformer.init()
-            return
-
-        max_retries = ctx.actor_init_max_retries
+        max_retries = (
+            ctx.actor_init_max_retries if ctx.actor_init_retry_on_errors else 0
+        )
         # -1 means infinite retries
         last_exception = None
         attempt = 0
@@ -602,13 +599,6 @@ class _MapWorker:
             except Exception as e:
                 last_exception = e
                 attempt += 1
-                # Log only if we'll retry
-                if max_retries < 0 or attempt <= max_retries:
-                    logger.debug(
-                        f"UDF initialization failed (attempt {attempt}/"
-                        f"{'infinite' if max_retries < 0 else max_retries + 1}): {e}. "
-                        "Retrying..."
-                    )
         # All retries exhausted
         raise last_exception
 
