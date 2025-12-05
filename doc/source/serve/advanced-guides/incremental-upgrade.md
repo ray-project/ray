@@ -1,7 +1,7 @@
 (rayservice-incremental-upgrade)=
 # RayService Zero-Downtime Incremental Upgrades
 
-This guide details how to configure and use the `NewClusterWithIncrementalUpgrade` strategy for a `RayService` with KubeRay. This feature was proposed in a [Ray Enhancement Proposal (REP)](https://github.com/ray-project/enhancements/blob/main/reps/2024-12-4-ray-service-incr-upgrade.md) and implemented with alpha support in KubeRay v1.5.0. If unfamiliar with RayServices and KubeRay, see the [RayService Quickstart](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/rayservice-quick-start.html).
+This guide details how to configure and use the `NewClusterWithIncrementalUpgrade` strategy for a `RayService` with KubeRay. This feature was proposed in a [Ray Enhancement Proposal (REP)](https://github.com/ray-project/enhancements/blob/main/reps/2024-12-4-ray-service-incr-upgrade.md) and implemented with alpha support in KubeRay v1.5.1. If unfamiliar with RayServices and KubeRay, see the [RayService Quickstart](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/rayservice-quick-start.html).
 
 In previous versions of KubeRay, zero-downtime upgrades were supported only through the `NewCluster` strategy. This upgrade strategy involved scaling up a pending RayCluster with equal capacity as the active cluster, waiting until the updated Serve applications were healthy, and then switching traffic to the new RayCluster. While this upgrade strategy is reliable, it required users to scale 200% of their original cluster's compute resources which can be prohibitive when dealing with expensive accelerator resources.
 
@@ -137,8 +137,7 @@ Understanding the lifecycle of an incremental upgrade helps in monitoring and co
         * If the Ray Serve autoscaler is enabled, the Serve application will scale its `num_replicas` from `min_replicas` based on the new `target_capacity`. Without the Ray Serve autoscaler enabled, the new `target_capacity` value will directly adjust `num_replicas` for each Serve deployment. Depending on the updated value of`num_replicas`, the Ray Autoscaler will begin provisioning pods for the pending cluster to handle the updated resource load.
 
     * **Phase 2: Shift Traffic (HTTPRoute)**
-        * KubeRay waits for the pending cluster's new pods to be ready. With the alpha version of this feature and
-        Ray Serve autoscaling, there may be a temporary drop in requests-per-second while worker Pods are being
+        * KubeRay waits for the pending cluster's new pods to be ready. There may be a temporary drop in requests-per-second while worker Pods are being
         created for the updated Ray serve replicas.
         * Once ready, it begins to *gradually* shift traffic. Every `intervalSeconds`, it updates the `HTTPRoute` weights, moving `stepSizePercent` (5%) of traffic from the active to the pending cluster.
         * This continues until the *actual* traffic (`trafficRoutedPercent`) "catches up" to the *pending* cluster's `target_capacity` (20% in this example).
@@ -244,6 +243,67 @@ You can monitor the progress of the upgrade by inspecting the `RayService` statu
     kubectl get httproute rayservice-incremental-upgrade-httproute -o yaml
     ```
     Look at the `spec.rules.backendRefs`. You will see the `weight` for the old and new services change in real-time as the traffic shift (Phase 2) progresses.
+
+## How to upgrade safely?
+
+Since this feature is alpha and rollback is not yet supported, we recommend conservative parameter settings to minimize risk during upgrades.
+
+### Recommended Parameters
+
+To upgrade safely, you should:
+1. Scale up 1 worker pod in the new cluster and scale down 1 worker pod in the old cluster at a time
+2. Make the upgrade process gradual to allow the Ray Serve autoscaler to adapt
+
+Based on these principles, we recommend:
+- **maxSurgePercent**: Calculate based on the formula below
+- **stepSizePercent**: Set to a value less than `maxSurgePercent`
+- **intervalSeconds**: 60
+
+### Calculating maxSurgePercent
+
+The `maxSurgePercent` determines the maximum percentage of additional resources that can be provisioned during the upgrade. To calculate the minimum safe value:
+
+\begin{equation}
+\text{maxSurgePercent} = \frac{\text{resources per pod}}{\text{total cluster resources}} \times 100
+\end{equation}
+
+#### Example
+
+Consider a RayCluster with the following configuration:
+- `excludeHeadService`: true
+- Head pod: No GPU
+- 5 worker pods, each with 1 GPU (total: 5 GPUs)
+
+For this cluster:
+\begin{equation}
+\text{maxSurgePercent} = \frac{1 \text{ GPU}}{5 \text{ GPUs}} \times 100 = 20\%
+\end{equation}
+
+With `maxSurgePercent: 20`, the upgrade process ensures:
+- The new cluster scales up **1 worker pod at a time** (20% of 5 = 1 pod)
+- The old cluster scales down **1 worker pod at a time**
+- Your cluster temporarily uses 6 GPUs during the transition (5 original + 1 new)
+
+This configuration guarantees you have sufficient resources to run at least one additional worker pod during the upgrade without resource contention.
+
+### Understanding intervalSeconds
+
+Set `intervalSeconds` to 60 seconds to give the Ray Serve autoscaler and Ray autoscaler sufficient time to:
+- Detect load changes
+- Make scaling decisions while respecting upscale/downscale delays
+- Provision resources
+- Allow replicas to transition states gracefully to "deploying"
+
+A larger interval prevents the upgrade controller from making changes faster than the autoscaler can react, reducing the risk of service disruption.
+
+### Example Configuration
+
+```yaml
+upgradeStrategy:
+  maxSurgePercent: 20  # Calculated: (1 GPU / 5 GPUs) × 100
+  stepSizePercent: 10  # Less than maxSurgePercent
+  intervalSeconds: 60  # Wait 1 minute between steps
+```
 
 ## API Overview (Reference)
 
