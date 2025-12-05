@@ -302,7 +302,11 @@ if __name__ == "__main__":
 
         rotation_max_bytes = os.getenv("RAY_ROTATION_MAX_BYTES", None)
 
-        if sys.platform != "win32" and rotation_max_bytes and int(rotation_max_bytes) > 0:
+        if (
+            sys.platform != "win32"
+            and rotation_max_bytes
+            and int(rotation_max_bytes) > 0
+        ):
             worker.set_file_rotation_enabled(True)
     else:
         worker.set_out_file(None)

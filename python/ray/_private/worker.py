@@ -2667,7 +2667,9 @@ def connect(
     # When worker logs are disabled (only for non-driver workers) or not redirecting to files,
     # give core worker empty logs directory.
     is_driver = mode in (SCRIPT_MODE, LOCAL_MODE)
-    if (ray_constants.RAY_DISABLE_WORKER_LOGS and not is_driver) or not node.should_redirect_logs():
+    if (
+        ray_constants.RAY_DISABLE_WORKER_LOGS and not is_driver
+    ) or not node.should_redirect_logs():
         logs_dir = ""
     else:
         logs_dir = node.get_logs_dir_path()
