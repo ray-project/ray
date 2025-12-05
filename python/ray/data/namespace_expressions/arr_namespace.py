@@ -52,7 +52,7 @@ class _ArrayNamespace:
         return_dtype = DataType(object)
 
         expr_dtype = self._expr.data_type
-        if expr_dtype.is_arrow_type() and expr_dtype.is_list_type():
+        if expr_dtype.is_list_type():
             outer_arrow_type = expr_dtype.to_arrow_dtype()
             inner_arrow_type = outer_arrow_type.value_type
 
@@ -79,35 +79,23 @@ class _ArrayNamespace:
         return_dtype = DataType(object)
 
         expr_dtype = self._expr.data_type
-        if expr_dtype.is_arrow_type():
+        if expr_dtype.is_list_type():
             arrow_type = expr_dtype.to_arrow_dtype()
             if pyarrow.types.is_fixed_size_list(arrow_type):
                 # FixedSizeListArray<T> -> ListArray<T>
                 return_dtype = DataType.from_arrow(pyarrow.list_(arrow_type.value_type))
-            elif expr_dtype.is_list_type():
-                # For other list-like arrays we return the input unchanged,
-                # so the dtype is the same as the original expression.
+            else:
+                # Other list-like arrays are returned unchanged.
                 return_dtype = expr_dtype
 
         @pyarrow_udf(return_dtype=return_dtype)
         def _to_list(arr: pyarrow.Array) -> pyarrow.Array:
-            # Check if it's any list type.
-            is_list_like = (
-                pyarrow.types.is_list(arr.type)
-                or pyarrow.types.is_large_list(arr.type)
-                or pyarrow.types.is_fixed_size_list(arr.type)
-                or (
-                    hasattr(pyarrow.types, "is_list_view")
-                    and pyarrow.types.is_list_view(arr.type)
-                )
-                or (
-                    hasattr(pyarrow.types, "is_large_list_view")
-                    and pyarrow.types.is_large_list_view(arr.type)
-                )
-            )
-            if not is_list_like:
+            # Validate that this is a list-like Arrow type using DataType.
+            arr_dtype = DataType.from_arrow(arr.type)
+            if not arr_dtype.is_list_type():
                 raise pyarrow.lib.ArrowInvalid(
-                    f"arr.to_list() can only be called on list-like columns, but got {arr.type}"
+                    "arr.to_list() can only be called on list-like columns, "
+                    f"but got {arr.type}"
                 )
 
             # Only FixedSizeListArray needs conversion; other list-like
