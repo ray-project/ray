@@ -468,7 +468,7 @@ it cancels all child and Actor Tasks.
 Detecting cancellation in running actor tasks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For sync actor tasks, you can periodically check whether a cancellation has been requested
+For non-async actor tasks, you can periodically check whether a cancellation has been requested
 by calling ``ray.get_runtime_context().is_canceled()``. This allows tasks to detect cancellation
 and perform cleanup operations before exiting gracefully.
 
@@ -483,7 +483,7 @@ and perform cleanup operations before exiting gracefully.
 
 **Important notes:**
 
-- For **sync actor tasks**, direct interruption is not supported. You need to check ``is_canceled()`` periodically to detect cancellation requests.
+- For **non-async actor tasks**, direct interruption is not supported. You need to check ``is_canceled()`` periodically to detect cancellation requests.
 - ``is_canceled()`` is **not supported** for async actor tasks and will raise a ``RuntimeError``.
 
 Scheduling
