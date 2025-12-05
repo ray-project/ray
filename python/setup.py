@@ -408,7 +408,7 @@ if setup_spec.type == SetupType.RAY:
         "jsonschema",
         "msgpack >= 1.1.0, < 2.0.0",
         "packaging",
-        "protobuf>=3.20.3; python_version < '3.13'",
+        "protobuf>=3.20.3",
         "pyyaml",
         "requests",
     ]
