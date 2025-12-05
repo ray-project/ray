@@ -84,6 +84,8 @@ altair==5.1.2
     # via gradio
 amqp==5.3.1
     # via kombu
+annotated-doc==0.0.4
+    # via fastapi
 annotated-types==0.6.0
     # via pydantic
 antlr4-python3-runtime==4.11.1
@@ -2485,6 +2487,7 @@ typing-extensions==4.15.0
     #   semgrep
     #   snowflake-connector-python
     #   sqlalchemy
+    #   starlette
     #   tensorflow
     #   testcontainers
     #   textual
