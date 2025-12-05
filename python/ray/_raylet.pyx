@@ -2663,7 +2663,8 @@ cdef class CoreWorker:
         options.job_id = job_id.native()
         options.gcs_options = gcs_options.native()[0]
 
-        if ray_constants.RAY_DISABLE_WORKER_LOGS:
+        # Only disable logging for workers, not drivers.
+        if ray_constants.RAY_DISABLE_WORKER_LOGS and not self.is_driver:
             options.enable_logging = False
             log_dir = ""
             options.install_failure_signal_handler = False
