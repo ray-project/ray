@@ -464,7 +464,7 @@ dm-control==1.0.12 ; python_version < "3.12"
     # via -r python/requirements/ml/rllib-test-requirements.txt
 dm-env==1.6
     # via dm-control
-dm-tree==0.1.8 ; python_version < "3.13"
+dm-tree==0.1.8
     # via
     #   -r python/requirements.txt
     #   dm-control
@@ -1387,7 +1387,7 @@ opentelemetry-instrumentation-asgi==0.55b1
     # via opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-fastapi==0.55b1
     # via -r python/requirements/test-requirements.txt
-opentelemetry-proto==1.27.0 ; python_version < "3.13"
+opentelemetry-proto==1.27.0
     # via -r python/requirements.txt
 opentelemetry-sdk==1.34.1
     # via
@@ -1583,7 +1583,7 @@ proto-plus==1.22.3
     #   google-api-core
     #   google-cloud-bigquery
     #   google-cloud-bigquery-storage
-protobuf==4.25.8 ; python_version < "3.13"
+protobuf==4.25.8
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -2055,7 +2055,7 @@ scikit-learn==1.5.2
     #   mlflow
     #   pymars
     #   torch-geometric
-scipy==1.11.4 ; python_version < "3.13"
+scipy==1.11.4
     # via
     #   -r python/requirements.txt
     #   ax-platform

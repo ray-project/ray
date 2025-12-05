@@ -13,7 +13,7 @@ filelock
 jsonschema
 msgpack<2.0.0,>=1.1.0
 packaging
-protobuf>=3.20.3; python_version < '3.13'
+protobuf>=3.20.3
 pyyaml
 requests
 watchfiles
@@ -22,7 +22,7 @@ watchfiles
 grpcio >= 1.32.0; python_version < '3.10'
 grpcio >= 1.42.0; python_version >= '3.10'
 
-numpy>=1.20; python_version < '3.13'
+numpy>=1.20
 
 pyarrow >= 9.0.0
 
@@ -30,19 +30,19 @@ pyarrow >= 9.0.0
 smart_open
 lz4
 aiorwlock
-scipy; python_version < '3.13'
+scipy
 colorful
 rich
 opentelemetry-sdk>=1.30.0
 opentelemetry-api
 opentelemetry-exporter-prometheus
-opentelemetry-proto>=1.27.0; python_version < '3.13'
+opentelemetry-proto>=1.27.0
 fastapi
 gymnasium==1.1.1
 virtualenv!=20.21.1,>=20.0.24
 opencensus
 aiohttp_cors
-dm_tree; python_version < "3.13"
+dm_tree
 uvicorn
 scikit-image>=0.21.0
 prometheus_client>=0.7.1
