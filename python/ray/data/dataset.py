@@ -4204,9 +4204,19 @@ class Dataset:
 
                 import ray
                 import pandas as pd
-                docs = [{"title": "Iceberg data sink test"} for key in range(4)]
+
+                # Basic write
+                docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
                 ds = ray.data.from_pandas(pd.DataFrame(docs))
                 ds.write_iceberg(
+                    table_identifier="db_name.table_name",
+                    catalog_kwargs={"name": "default", "type": "sql"}
+                )
+
+                # Schema evolution is automatic - new columns are added automatically
+                enriched_docs = [{"id": i, "title": f"Doc {i}", "category": "new"} for i in range(3)]
+                ds_enriched = ray.data.from_pandas(pd.DataFrame(enriched_docs))
+                ds_enriched.write_iceberg(
                     table_identifier="db_name.table_name",
                     catalog_kwargs={"name": "default", "type": "sql"}
                 )
@@ -4214,21 +4224,55 @@ class Dataset:
         Args:
             table_identifier: Fully qualified table identifier (``db_name.table_name``)
             catalog_kwargs: Optional arguments to pass to PyIceberg's catalog.load_catalog()
-                function (e.g., name, type, etc.). For the function definition, see
+                function (such as name, type, etc.). For the function definition, see
                 `pyiceberg catalog
                 <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
                 #pyiceberg.catalog.load_catalog>`_.
-            snapshot_properties: custom properties write to snapshot when committing
+            snapshot_properties: Custom properties to write to snapshot when committing
                 to an iceberg table.
             ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
+
+        Note:
+            Schema evolution is automatically enabled. New columns in the incoming data
+            are automatically added to the table schema.
         """
+        # Get the dataset's schema to pass to datasink for early schema evolution
+        # This allows evolving the table schema before files are written,
+        # avoiding PyIceberg name mapping errors when incoming data has new columns
+        incoming_schema = None
+        ds_schema = self.schema(fetch_if_missing=True)
+        if ds_schema is not None:
+            import pyarrow as pa
+
+            base_schema = ds_schema.base_schema
+            if isinstance(base_schema, pa.Schema):
+                # Already a PyArrow schema, use directly
+                incoming_schema = base_schema
+            else:
+                # For Pandas schemas, Schema.types converts to Arrow types but may
+                # return Python's `object` for unsupported types (e.g., strings) or
+                # `None` for columns where type conversion fails. Convert both to
+                # pa.large_string() to ensure all columns are included in schema
+                # evolution, avoiding PyIceberg name mapping errors.
+                fields = []
+                for name, dtype in zip(ds_schema.names, ds_schema.types):
+                    if isinstance(dtype, pa.DataType):
+                        fields.append((name, dtype))
+                    elif dtype is object or dtype is None:
+                        # Use large_string as fallback for unknown types
+                        fields.append((name, pa.large_string()))
+                if fields:
+                    incoming_schema = pa.schema(fields)
 
         datasink = IcebergDatasink(
-            table_identifier, catalog_kwargs, snapshot_properties
+            table_identifier=table_identifier,
+            catalog_kwargs=catalog_kwargs,
+            snapshot_properties=snapshot_properties,
+            incoming_schema=incoming_schema,
         )
 
         self.write_datasink(
