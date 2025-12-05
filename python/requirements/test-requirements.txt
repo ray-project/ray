@@ -94,7 +94,7 @@ importlib-metadata==6.11.0
 # Some packages have downstream dependencies that we have to specify here to resolve conflicts.
 # Feel free to add (or remove!) packages here liberally.
 tensorboardX
-tensorboard>=2.15.2
+tensorboard
 tensorboard-data-server==0.7.2
 h11>=0.16.0
 markdown-it-py
