@@ -44,9 +44,7 @@ def _get_log_dir(gcs_client: GcsClient) -> str:
     node_info = next(iter(node_infos))
     if node_info is not None:
         temp_dir = getattr(node_info, "temp_dir", None)
-        if temp_dir is not None:
-            return temp_dir
-        else:
+        if temp_dir is None:
             raise Exception(
                 "Node temp_dir was not found in NodeInfo. did the head node's raylet start successfully?"
             )
