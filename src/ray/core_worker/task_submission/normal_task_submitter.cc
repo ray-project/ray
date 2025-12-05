@@ -802,26 +802,26 @@ bool NormalTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spe
 
 ClusterSizeBasedLeaseRequestRateLimiter::ClusterSizeBasedLeaseRequestRateLimiter(
     size_t min_concurrent_lease_limit)
-    : min_concurrent_lease_cap_(min_concurrent_lease_limit), num_alive_nodes_(0) {}
+    : min_concurrent_lease_cap_(min_concurrent_lease_limit) {
+  alive_nodes_.clear();
+}
 
 size_t ClusterSizeBasedLeaseRequestRateLimiter::
     GetMaxPendingLeaseRequestsPerSchedulingCategory() {
-  return std::max<size_t>(min_concurrent_lease_cap_, num_alive_nodes_.load());
+  absl::MutexLock lock(&mutex_);
+  return std::max<size_t>(min_concurrent_lease_cap_, alive_nodes_.size());
 }
 
 void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
     const rpc::GcsNodeAddressAndLiveness &data) {
+  absl::MutexLock lock(&mutex_);
   if (data.state() == rpc::GcsNodeInfo::DEAD) {
-    if (num_alive_nodes_ != 0) {
-      num_alive_nodes_--;
-    } else {
-      RAY_LOG(WARNING) << "Node" << data.node_manager_address()
-                       << " change state to DEAD but num_alive_node is 0.";
-    }
+    alive_nodes_.erase(data.node_id());
   } else {
-    num_alive_nodes_++;
+    alive_nodes_.insert(data.node_id());
   }
-  RAY_LOG_EVERY_MS(INFO, 60000) << "Number of alive nodes:" << num_alive_nodes_.load();
+  RAY_LOG_EVERY_MS_OR(INFO, 60000, DEBUG)
+      << "Number of alive nodes:" << alive_nodes_.size();
 }
 
 }  // namespace core
