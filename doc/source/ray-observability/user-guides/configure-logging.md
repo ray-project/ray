@@ -63,6 +63,11 @@ printed from the autoscaler respectively. They're usually empty except when the 
 - ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing {ref}`Runtime Environments <runtime-environments>` for a job when connecting with {ref}`Ray Client <ray-client-ref>`.
 - ``runtime_env_setup-[job_id].log``: Logs from installing {ref}`runtime environments <runtime-environments>` for a Task, Actor, or Job. This file is only present if you install a runtime environment.
 
+Disable worker logs globally
+----------------------------
+
+Set the environment variable ``RAY_DISABLE_WORKER_LOGS=1`` on every node before running ``ray start`` (head and workers) to disable worker log files. When this flag is set, Ray does not create worker stdout/stderr files (``worker-*.out|err``) or core worker logs (``python-core-worker-*.log``). Driver and system logs are not affected.
+
 
 (log-redirection-to-driver)=
 ## Redirecting Worker logs to the Driver

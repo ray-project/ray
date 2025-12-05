@@ -2662,11 +2662,17 @@ cdef class CoreWorker:
         options.raylet_socket = raylet_socket.encode("ascii")
         options.job_id = job_id.native()
         options.gcs_options = gcs_options.native()[0]
-        options.enable_logging = True
+
+        if ray_constants.RAY_DISABLE_WORKER_LOGS:
+            options.enable_logging = False
+            log_dir = ""
+            options.install_failure_signal_handler = False
+        else:
+            options.enable_logging = True
+            options.install_failure_signal_handler = (
+                not ray_constants.RAY_DISABLE_FAILURE_SIGNAL_HANDLER
+            )
         options.log_dir = log_dir.encode("utf-8")
-        options.install_failure_signal_handler = (
-            not ray_constants.RAY_DISABLE_FAILURE_SIGNAL_HANDLER
-        )
         # https://stackoverflow.com/questions/2356399/tell-if-python-is-in-interactive-mode
         options.interactive = hasattr(sys, "ps1")
         options.node_ip_address = node_ip_address.encode("utf-8")
