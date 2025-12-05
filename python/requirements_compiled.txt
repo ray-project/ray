@@ -100,7 +100,7 @@ appdirs==1.4.4
     # via fs
 applicationinsights==0.11.10
     # via azure-cli-telemetry
-argcomplete==3.3.0
+argcomplete==3.5.3
     # via
     #   azure-cli-core
     #   gsutil
@@ -154,7 +154,7 @@ aws-xray-sdk==2.12.1
     # via moto
 ax-platform==0.3.2
     # via -r python/requirements/ml/tune-requirements.txt
-azure-cli-core==2.62.0
+azure-cli-core==2.77.0
     # via -r python/requirements/test-requirements.txt
 azure-cli-telemetry==1.1.0
     # via azure-cli-core
@@ -164,9 +164,10 @@ azure-common==1.1.28
     #   azure-mgmt-network
     #   azure-mgmt-resource
     #   smart-open
-azure-core==1.29.5
+azure-core==1.35.0
     # via
     #   adlfs
+    #   azure-cli-core
     #   azure-identity
     #   azure-mgmt-core
     #   azure-storage-blob
@@ -174,24 +175,24 @@ azure-core==1.29.5
     #   smart-open
 azure-datalake-store==0.0.53
     # via adlfs
-azure-identity==1.17.1
+azure-identity==1.23.1
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   adlfs
-azure-mgmt-compute==31.0.0
+azure-mgmt-compute==35.0.0
     # via -r python/requirements/test-requirements.txt
-azure-mgmt-core==1.4.0
+azure-mgmt-core==1.6.0
     # via
     #   azure-cli-core
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
-azure-mgmt-network==25.4.0
+azure-mgmt-network==29.0.0
     # via -r python/requirements/test-requirements.txt
-azure-mgmt-resource==23.1.1
+azure-mgmt-resource==24.0.0
     # via -r python/requirements/test-requirements.txt
-azure-storage-blob==12.22.0
+azure-storage-blob==12.26.0
     # via
     #   adlfs
     #   smart-open
@@ -211,8 +212,6 @@ bayesian-optimization==1.4.3
     # via
     #   -r python/requirements/ml/tune-requirements.txt
     #   nevergrad
-bcrypt==4.0.1
-    # via paramiko
 beautifulsoup4==4.11.1
     # via
     #   -r python/requirements/test-requirements.txt
@@ -287,7 +286,6 @@ cffi==1.16.0
     #   azure-datalake-store
     #   cryptography
     #   pymunk
-    #   pynacl
     #   snowflake-connector-python
     #   soundfile
 cfgv==3.4.0
@@ -396,7 +394,6 @@ cryptography==44.0.3 ; sys_platform != "darwin"
     #   azure-storage-blob
     #   moto
     #   msal
-    #   paramiko
     #   pyjwt
     #   pyopenssl
     #   python-jose
@@ -713,7 +710,7 @@ graphviz==0.20.3
     # via -r python/requirements/test-requirements.txt
 greenlet==3.0.1
     # via sqlalchemy
-grpcio==1.74.0 ; python_version >= "3.10"
+grpcio==1.75.1 ; python_version >= "3.10"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -1093,6 +1090,8 @@ memray==1.19.1 ; platform_system != "Windows" and sys_platform != "darwin" and p
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
+microsoft-security-utilities-secret-masker==1.0.0b4
+    # via azure-cli-core
 minigrid==2.3.1
     # via -r python/requirements/ml/rllib-test-requirements.txt
 mistune==0.8.4
@@ -1128,13 +1127,13 @@ moviepy==0.2.3.1
     # via -r python/requirements/ml/rllib-test-requirements.txt
 mpmath==1.3.0
     # via sympy
-msal==1.28.1
+msal==1.34.0b1
     # via
     #   azure-cli-core
     #   azure-datalake-store
     #   azure-identity
     #   msal-extensions
-msal-extensions==1.2.0b1
+msal-extensions==1.2.0
     # via
     #   azure-cli-core
     #   azure-identity
@@ -1149,10 +1148,8 @@ msgpack-numpy==0.4.8
     # via -r python/requirements/ml/rllib-requirements.txt
 msrest==0.7.1
     # via msrestazure
-msrestazure==0.6.4
-    # via
-    #   -r python/requirements/test-requirements.txt
-    #   azure-cli-core
+msrestazure==0.6.4.post1
+    # via -r python/requirements/test-requirements.txt
 mujoco==3.2.4
     # via
     #   -r python/requirements/ml/rllib-test-requirements.txt
@@ -1495,8 +1492,6 @@ pandas==1.5.3 ; python_version < "3.12"
     #   utilsforecast
 pandocfilters==1.5.0
     # via nbconvert
-paramiko==2.12.0
-    # via azure-cli-core
 paramz==0.9.6
     # via gpy
 parso==0.8.3
@@ -1634,6 +1629,8 @@ py==1.11.0
     # via pytest-forked
 py-cpuinfo==9.0.0
     # via deepspeed
+py-deviceid==0.1.1
+    # via azure-cli-core
 py-partiql-parser==0.5.0
     # via moto
 py-spy==0.4.0 ; python_version < "3.12"
@@ -1656,13 +1653,13 @@ pyarrow==19.0.1
     #   triad
 pyarrow-hotfix==0.7
     # via hudi
-pyasn1==0.5.1
+pyasn1==0.6.1
     # via
     #   oauth2client
     #   pyasn1-modules
     #   python-jose
     #   rsa
-pyasn1-modules==0.3.0
+pyasn1-modules==0.4.2
     # via
     #   google-auth
     #   oauth2client
@@ -1718,8 +1715,6 @@ pymongo==4.3.2
     # via -r python/requirements/test-requirements.txt
 pymunk==6.2.1
     # via -r python/requirements/ml/rllib-test-requirements.txt
-pynacl==1.5.0
-    # via paramiko
 pynvml==11.5.0
     # via deepspeed
 pyopengl==3.1.7
@@ -2140,7 +2135,6 @@ six==1.16.0
     #   msrestazure
     #   oauth2client
     #   opencensus
-    #   paramiko
     #   paramz
     #   patsy
     #   promise
@@ -2461,6 +2455,9 @@ typing-extensions==4.12.2
     #   aws-sam-translator
     #   azure-core
     #   azure-identity
+    #   azure-mgmt-compute
+    #   azure-mgmt-network
+    #   azure-mgmt-resource
     #   azure-storage-blob
     #   bokeh
     #   configspace
@@ -2469,6 +2466,7 @@ typing-extensions==4.12.2
     #   gradio
     #   gradio-client
     #   graphene
+    #   grpcio
     #   gymnasium
     #   huggingface-hub
     #   lightning-utilities
