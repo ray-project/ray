@@ -1080,8 +1080,10 @@ def start(
             )
 
         # Start Ray on a non-head node.
+        # When connecting to an existing cluster, preserve localhost addresses
+        # if the user explicitly specified them (e.g., --address 127.0.0.1:6379)
         bootstrap_address = services.canonicalize_bootstrap_address(
-            address, temp_dir=temp_dir
+            address, temp_dir=temp_dir, preserve_localhost=True
         )
 
         if bootstrap_address is None:
