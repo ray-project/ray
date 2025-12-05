@@ -342,6 +342,8 @@ cdef class InnerGcsClient:
         Returns:
             Dictionary mapping NodeID to GcsNodeInfo
         """
+        # TODO(Kunchd): take in the NodeSelector directly. And convert between python proto to c proto using ParseFromString & SerializeAsString
+
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[CGcsNodeInfo] reply

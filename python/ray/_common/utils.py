@@ -277,7 +277,10 @@ def resolve_user_ray_temp_dir(gcs_address: str, node_id: str):
                 )
 
     # fallback to default ray temp dir
-    tmp_dir = None
+    return get_default_ray_temp_dir()
+
+
+def get_default_ray_temp_dir():
     if "RAY_TMPDIR" in os.environ:
         tmp_dir = os.environ["RAY_TMPDIR"]
     elif sys.platform.startswith("linux") and "TMPDIR" in os.environ:
@@ -292,40 +295,9 @@ def resolve_user_ray_temp_dir(gcs_address: str, node_id: str):
     return os.path.join(tmp_dir, "ray")
 
 
-def get_user_temp_dir():
-    """
-    get_user_temp_dir is deprecated. Use resolve_user_ray_temp_dir instead.
-
-    Get the ray temp directory for the current user.
-
-    Note: There should not be a notion of user temp dir. Instead,
-    user specified temp directories for ray should overwrite /tmp/ray.
-    """
-    logger.warning(
-        "get_user_temp_dir is deprecated, and will be removed in a future release."
-        " Please use resolve_user_ray_temp_dir instead."
-    )
-
-    return resolve_user_ray_temp_dir(None, None)
-
-
-def get_ray_temp_dir():
-    """
-    get_ray_temp_dir is deprecated. Use resolve_user_ray_temp_dir instead.
-
-    Get the ray temp directory for the current user.
-    """
-    logger.warning(
-        "get_ray_temp_dir is deprecated, and will be removed in a future release."
-        " Please use resolve_user_ray_temp_dir instead."
-    )
-
-    return resolve_user_ray_temp_dir(None, None)
-
-
 def get_ray_address_file(temp_dir: Optional[str]):
     if temp_dir is None:
-        temp_dir = resolve_user_ray_temp_dir(None, None)
+        temp_dir = get_default_ray_temp_dir()
     return os.path.join(temp_dir, "ray_current_cluster")
 
 

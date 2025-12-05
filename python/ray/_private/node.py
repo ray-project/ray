@@ -544,7 +544,7 @@ class Node:
             else:
                 if self.head:
                     # fallback to head node's default
-                    self.temp_dir = ray._private.utils.get_default_ray_temp_dir()
+                    self.temp_dir = ray._common.utils.get_default_ray_temp_dir()
                 else:
                     # fallback to head node's temp dir if no node info is found for the given node ip address
                     assert not self._default_worker

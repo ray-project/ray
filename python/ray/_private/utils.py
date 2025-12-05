@@ -9,7 +9,6 @@ import re
 import signal
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from collections import defaultdict
@@ -906,24 +905,6 @@ def get_conda_env_dir(env_name):
             + "verify the name is correct."
         )
     return env_dir
-
-
-def get_default_temp_dir():
-    if "RAY_TMPDIR" in os.environ:
-        return os.environ["RAY_TMPDIR"]
-    elif sys.platform.startswith("linux") and "TMPDIR" in os.environ:
-        return os.environ["TMPDIR"]
-    elif sys.platform.startswith("darwin") or sys.platform.startswith("linux"):
-        # Ideally we wouldn't need this fallback, but keep it for now for
-        # for compatibility
-        tempdir = os.path.join(os.sep, "tmp")
-    else:
-        tempdir = tempfile.gettempdir()
-    return tempdir
-
-
-def get_default_ray_temp_dir():
-    return os.path.join(get_default_temp_dir(), "ray")
 
 
 def get_ray_doc_version():

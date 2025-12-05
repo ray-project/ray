@@ -843,7 +843,7 @@ def test_enable_k8s_disk_usage(enable_k8s_disk_usage: bool):
         ENABLE_K8S_DISK_USAGE=enable_k8s_disk_usage,
     ):
         root_usage = ReporterAgent._get_disk_usage(
-            ray._private.utils.get_default_ray_temp_dir()
+            ray._common.utils.get_default_ray_temp_dir()
         )["/"]
         if enable_k8s_disk_usage:
             # Since K8s disk usage is enabled, we shouuld get non-dummy values.

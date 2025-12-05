@@ -15,7 +15,9 @@ from ray._private.test_utils import check_call_ray
 def unix_socket_create_path(name):
     unix = sys.platform != "win32"
     return (
-        os.path.join(ray._private.utils.get_default_temp_dir(), name) if unix else None
+        os.path.join(ray._common.utils.get_default_ray_temp_dir(), name)
+        if unix
+        else None
     )
 
 
@@ -32,25 +34,29 @@ def unix_socket_delete(unix_socket):
 @pytest.fixture
 def delete_default_temp_dir():
     def delete_default_temp_dir_once():
-        shutil.rmtree(ray._private.utils.get_default_ray_temp_dir(), ignore_errors=True)
-        return not os.path.exists(ray._private.utils.get_default_ray_temp_dir())
+        shutil.rmtree(ray._common.utils.get_default_ray_temp_dir(), ignore_errors=True)
+        return not os.path.exists(ray._common.utils.get_default_ray_temp_dir())
 
     wait_for_condition(delete_default_temp_dir_once)
     yield
 
 
 def test_tempdir_created_successfully(delete_default_temp_dir, shutdown_only):
-    temp_dir = os.path.join(ray._private.utils.get_default_temp_dir(), uuid.uuid4().hex)
+    temp_dir = os.path.join(
+        "/tmp/test", uuid.uuid4().hex[:-10]
+    )  # truncate the uuid to avoid the socket path length limit
     ray.init(_temp_dir=temp_dir)
     assert os.path.exists(temp_dir), "Specified temp dir not found."
     assert not os.path.exists(
-        ray._private.utils.get_default_ray_temp_dir()
+        ray._common.utils.get_default_ray_temp_dir()
     ), "Default temp dir should not exist."
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def test_tempdir_commandline(delete_default_temp_dir):
-    temp_dir = os.path.join(ray._private.utils.get_default_temp_dir(), uuid.uuid4().hex)
+    temp_dir = os.path.join(
+        "/tmp/test", uuid.uuid4().hex[:-10]
+    )  # truncate the uuid to avoid the socket path length limit
     check_call_ray(
         [
             "start",
@@ -62,7 +68,7 @@ def test_tempdir_commandline(delete_default_temp_dir):
     )
     assert os.path.exists(temp_dir), "Specified temp dir not found."
     assert not os.path.exists(
-        ray._private.utils.get_default_ray_temp_dir()
+        ray._common.utils.get_default_ray_temp_dir()
     ), "Default temp dir should not exist."
     check_call_ray(["stop"])
     shutil.rmtree(
@@ -75,7 +81,9 @@ def test_tempdir_long_path():
     if sys.platform != "win32":
         # Test AF_UNIX limits for sockaddr_un->sun_path on POSIX OSes
         maxlen = 104 if sys.platform.startswith("darwin") else 108
-        temp_dir = os.path.join(ray._private.utils.get_default_temp_dir(), "z" * maxlen)
+        temp_dir = os.path.join(
+            ray._common.utils.get_default_ray_temp_dir(), "z" * maxlen
+        )
         with pytest.raises(OSError):
             ray.init(_temp_dir=temp_dir)  # path should be too long
 
@@ -135,7 +143,7 @@ def test_raylet_tempfiles(shutdown_only):
 
 
 def test_tempdir_privilege(shutdown_only):
-    tmp_dir = ray._private.utils.get_default_ray_temp_dir()
+    tmp_dir = ray._common.utils.get_default_ray_temp_dir()
     os.makedirs(tmp_dir, exist_ok=True)
     os.chmod(tmp_dir, 0o000)
     ray.init(num_cpus=1)
@@ -155,7 +163,10 @@ def test_session_dir_uniqueness():
 def test_head_temp_dir_shared_with_worker(delete_default_temp_dir):
     """Test that head node temp_dir is shared with worker node when only head temp_dir is specified."""
     head_temp_dir = os.path.join(
-        ray._private.utils.get_default_temp_dir(), uuid.uuid4().hex
+        ray._common.utils.get_default_ray_temp_dir(),
+        uuid.uuid4().hex[
+            :-10
+        ],  # truncate the uuid to avoid the socket path length limit
     )
 
     # Start head node with temp-dir specified
@@ -206,7 +217,10 @@ def test_head_temp_dir_shared_with_worker(delete_default_temp_dir):
 def test_worker_temp_dir_different_from_head(delete_default_temp_dir):
     """Test that worker node can have a different temp_dir when only worker temp_dir is specified."""
     worker_temp_dir = os.path.join(
-        ray._private.utils.get_default_temp_dir(), uuid.uuid4().hex
+        ray._common.utils.get_default_ray_temp_dir(),
+        uuid.uuid4().hex[
+            :-10
+        ],  # truncate the uuid to avoid the socket path length limit
     )
 
     # Start head node without specifying temp-dir
@@ -246,7 +260,7 @@ def test_worker_temp_dir_different_from_head(delete_default_temp_dir):
         ), "Worker session directory not found in specified temp_dir"
 
         # Verify head node is using default temp_dir (different from worker)
-        default_head_temp_dir = ray._private.utils.get_default_ray_temp_dir()
+        default_head_temp_dir = ray._common.utils.get_default_ray_temp_dir()
         assert os.path.exists(
             default_head_temp_dir
         ), "Head node should be using default temp_dir"
@@ -265,10 +279,16 @@ def test_worker_temp_dir_different_from_head(delete_default_temp_dir):
 def test_both_nodes_different_temp_dirs(delete_default_temp_dir):
     """Test that head and worker can have different temp_dirs when both are specified."""
     head_temp_dir = os.path.join(
-        ray._private.utils.get_default_temp_dir(), uuid.uuid4().hex
+        ray._common.utils.get_default_ray_temp_dir(),
+        uuid.uuid4().hex[
+            :-10
+        ],  # truncate the uuid to avoid the socket path length limit
     )
     worker_temp_dir = os.path.join(
-        ray._private.utils.get_default_temp_dir(), uuid.uuid4().hex
+        ray._common.utils.get_default_ray_temp_dir(),
+        uuid.uuid4().hex[
+            :-10
+        ],  # truncate the uuid to avoid the socket path length limit
     )
 
     # Ensure directories are different
@@ -344,7 +364,10 @@ def test_resolve_user_ray_temp_dir_from_gcs(delete_default_temp_dir):
     import ray._common.utils
 
     head_temp_dir = os.path.join(
-        ray._private.utils.get_default_temp_dir(), uuid.uuid4().hex
+        ray._common.utils.get_default_ray_temp_dir(),
+        uuid.uuid4().hex[
+            :-10
+        ],  # truncate the uuid to avoid the socket path length limit
     )
 
     # Start head node with temp-dir specified
@@ -364,6 +387,7 @@ def test_resolve_user_ray_temp_dir_from_gcs(delete_default_temp_dir):
         nodes = ray.nodes()
         assert len(nodes) == 1, "Expected 1 node in the cluster"
         node_id = nodes[0]["NodeID"]
+        # TODO(Kunchd): fetch the gcs client from global worker
         cached_gcs_address = ray._private.worker._global_node.gcs_address
         ray.shutdown()
 

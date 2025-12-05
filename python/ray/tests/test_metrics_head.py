@@ -7,8 +7,8 @@ import tempfile
 
 import pytest
 
+from ray._common.utils import get_default_ray_temp_dir
 from ray._private.ray_constants import SESSION_LATEST
-from ray._private.utils import get_default_ray_temp_dir
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
     DEFAULT_GRAFANA_ROWS,
     MAX_PERCENTAGE_EXPRESSION,

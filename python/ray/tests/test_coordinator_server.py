@@ -8,7 +8,7 @@ import unittest
 import pytest
 
 from ray._common.network_utils import build_address
-from ray._private.utils import get_default_ray_temp_dir
+from ray._common.utils import get_default_ray_temp_dir
 from ray.autoscaler._private.local import config as local_config
 from ray.autoscaler._private.local.coordinator_node_provider import (
     CoordinatorSenderNodeProvider,

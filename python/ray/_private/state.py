@@ -1046,7 +1046,7 @@ def timeline(filename=None, store_in_ray_temp=False):
             )
         else:
             resolved_filename = os.path.join(
-                ray._private.utils.get_default_ray_temp_dir(), filename
+                ray._common.utils.get_default_ray_temp_dir(), filename
             )
     else:
         resolved_filename = filename
