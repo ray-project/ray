@@ -1199,5 +1199,28 @@ async def test_reporter_raylet_agent(ray_start_with_dashboard):
     assert os.getpid() in pids
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ray_start_with_dashboard",
+    [
+        {"num_cpus": 1},
+    ],
+    indirect=True,
+)
+async def test_reporter_dashboard_and_runtime_env_agent(ray_start_with_dashboard):
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.ip = "127.0.0.1"
+    dashboard_agent.node_manager_port = (
+        ray._private.worker.global_worker.node.node_manager_port
+    )
+    agent = ReporterAgent(dashboard_agent)
+    agent_pids = await agent._async_get_agent_pids_from_raylet()
+    assert len(agent_pids) == 2
+    for pid in agent_pids:
+        proc = psutil.Process(pid)
+        assert proc.name() in ["ray::DashboardAgent", "ray::RuntimeEnvAgent"]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
