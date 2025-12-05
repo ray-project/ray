@@ -628,6 +628,9 @@ class ReporterAgent(
                         bucket_midpoint,
                     )
 
+        # Flush all buffered histogram recordings to OTEL SDK in one batch
+        self._open_telemetry_metric_recorder.flush_histograms()
+
     def _export_number_data(
         self,
         metric: Metric,
@@ -677,9 +680,16 @@ class ReporterAgent(
             for scope_metrics in resource_metrics.scope_metrics:
                 for metric in scope_metrics.metrics:
                     if metric.WhichOneof("data") == "histogram":
-                        self._export_histogram_data(metric)
+                        continue
+                        # await get_or_create_event_loop().run_in_executor(
+                        #     self._executor,
+                        #     lambda: self._export_histogram_data(metric),
+                        # )
                     else:
-                        self._export_number_data(metric)
+                        await get_or_create_event_loop().run_in_executor(
+                            self._executor,
+                            lambda: self._export_number_data(metric),
+                        )
 
         return metrics_service_pb2.ExportMetricsServiceResponse()
 

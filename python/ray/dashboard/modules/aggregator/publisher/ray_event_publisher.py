@@ -231,6 +231,7 @@ class RayEventPublisher(RayEventPublisherInterface):
             {**self._common_metric_tags, "Outcome": "success"},
             float(duration),
         )
+        metric_recorder.flush_histograms()
 
     async def _record_retry_failure(
         self, duration: float, failed_attempts: int

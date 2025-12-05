@@ -1,7 +1,8 @@
 import logging
 import threading
 from collections import defaultdict
-from typing import List
+from enum import Enum
+from typing import Dict, List, Tuple
 
 from opentelemetry import metrics
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
@@ -14,6 +15,15 @@ from ray._private.telemetry.metric_cardinality import MetricCardinality
 logger = logging.getLogger(__name__)
 
 NAMESPACE = "ray"
+
+
+class MetricType(Enum):
+    """Metric type for internal routing in set_metric_value."""
+
+    GAUGE = "gauge"
+    COUNTER = "counter"
+    SUM = "sum"
+    HISTOGRAM = "histogram"
 
 
 class OpenTelemetryMetricRecorder:
@@ -29,7 +39,18 @@ class OpenTelemetryMetricRecorder:
     def __init__(self):
         self._lock = threading.Lock()
         self._registered_instruments = {}
-        self._observations_by_name = defaultdict(dict)
+        # Maps metric name -> metric type for routing in set_metric_value
+        self._metric_name_to_type: Dict[str, MetricType] = {}
+        # Lazy observation storage for gauges, counters, and sums
+        # For gauges: stores latest value per tag set (cleared on collection)
+        # For counters/sums: stores accumulated value per tag set (persisted)
+        self._observations_by_name: Dict[str, Dict[frozenset, float]] = defaultdict(
+            dict
+        )
+        # Buffer for histogram recordings: metric name -> list of (tags_frozenset, value)
+        self._histogram_recordings: Dict[
+            str, List[Tuple[frozenset, float]]
+        ] = defaultdict(list)
         self._histogram_bucket_midpoints = defaultdict(list)
         self._init_metrics()
         self.meter = metrics.get_meter(__name__)
@@ -46,46 +67,63 @@ class OpenTelemetryMetricRecorder:
             metrics.set_meter_provider(provider)
             self._metrics_initialized = True
 
-    def register_gauge_metric(self, name: str, description: str) -> None:
-        with self._lock:
-            if name in self._registered_instruments:
-                # Gauge with the same name is already registered.
-                return
+    def _create_observable_callback(self, name: str, is_cumulative: bool = False):
+        """Create a callback for observable metrics (gauges and counters).
 
-            # Register ObservableGauge with a dynamic callback. Callbacks are special
-            # features in OpenTelemetry that allow you to provide a function that will
-            # compute the telemetry at collection time.
-            def callback(options):
-                # Take snapshot of current observations.
-                with self._lock:
-                    observations = self._observations_by_name[name]
-                    # Clear the observations to avoid emitting dead observations.
+        Args:
+            name: The metric name
+            is_cumulative: If True, don't clear observations after collection (for counters/sums)
+
+        Returns:
+            A callback function that can be used to record metric values.
+        """
+
+        def callback(options):
+            with self._lock:
+                observations = self._observations_by_name.get(name, {})
+                if not is_cumulative:
+                    # For gauges, clear after collection to avoid stale data
                     self._observations_by_name[name] = {}
-                    # Drop high cardinality from tag_set and sum up the value for
-                    # same tag set after dropping
-                    aggregated_observations = defaultdict(float)
-                    high_cardinality_labels = (
-                        MetricCardinality.get_high_cardinality_labels_to_drop(name)
-                    )
-                    for tag_set, val in observations.items():
-                        # Convert frozenset back to dict
-                        tags_dict = dict(tag_set)
-                        # Filter out high cardinality labels
-                        filtered_tags = {
-                            k: v
-                            for k, v in tags_dict.items()
-                            if k not in high_cardinality_labels
-                        }
-                        # Create a key for aggregation
-                        filtered_key = frozenset(filtered_tags.items())
-                        # Sum up values for the same filtered tag set
+
+                # Drop high cardinality labels and aggregate
+                aggregated_observations: Dict[frozenset, float] = defaultdict(float)
+                high_cardinality_labels = (
+                    MetricCardinality.get_high_cardinality_labels_to_drop(name)
+                )
+                for tag_set, val in observations.items():
+                    tags_dict = dict(tag_set)
+                    filtered_tags = {
+                        k: v
+                        for k, v in tags_dict.items()
+                        if k not in high_cardinality_labels
+                    }
+                    filtered_key = frozenset(filtered_tags.items())
+                    if is_cumulative:
+                        # For counters/sums, take max (they report cumulative values)
+                        aggregated_observations[filtered_key] = max(
+                            aggregated_observations[filtered_key], val
+                        )
+                    else:
+                        # For gauges, sum up values with same filtered tags
                         aggregated_observations[filtered_key] += val
 
-                    return [
-                        Observation(val, attributes=dict(tag_set))
-                        for tag_set, val in aggregated_observations.items()
-                    ]
+                return [
+                    Observation(val, attributes=dict(tag_set))
+                    for tag_set, val in aggregated_observations.items()
+                ]
 
+        return callback
+
+    def register_gauge_metric(self, name: str, description: str) -> None:
+        """Register a gauge metric using ObservableGauge.
+
+        Values are stored in memory and cleared after each Prometheus collection.
+        """
+        with self._lock:
+            if name in self._registered_instruments:
+                return
+
+            callback = self._create_observable_callback(name, is_cumulative=False)
             instrument = self.meter.create_observable_gauge(
                 name=f"{NAMESPACE}_{name}",
                 description=description,
@@ -93,53 +131,57 @@ class OpenTelemetryMetricRecorder:
                 callbacks=[callback],
             )
             self._registered_instruments[name] = instrument
+            self._metric_name_to_type[name] = MetricType.GAUGE
             self._observations_by_name[name] = {}
 
     def register_counter_metric(self, name: str, description: str) -> None:
-        """
-        Register a counter metric with the given name and description.
+        """Register a counter metric using ObservableCounter for lazy collection.
+
+        Values are accumulated in memory and only exported during Prometheus scrape.
+        This avoids synchronous OTEL SDK calls in the hot path.
         """
         with self._lock:
             if name in self._registered_instruments:
-                # Counter with the same name is already registered. This is a common
-                # case when metrics are exported from multiple Ray components (e.g.,
-                # raylet, worker, etc.) running in the same node. Since each component
-                # may export metrics with the same name, the same metric might be
-                # registered multiple times.
                 return
 
-            instrument = self.meter.create_counter(
+            callback = self._create_observable_callback(name, is_cumulative=True)
+            instrument = self.meter.create_observable_counter(
                 name=f"{NAMESPACE}_{name}",
                 description=description,
                 unit="1",
+                callbacks=[callback],
             )
             self._registered_instruments[name] = instrument
+            self._metric_name_to_type[name] = MetricType.COUNTER
+            self._observations_by_name[name] = {}
 
     def register_sum_metric(self, name: str, description: str) -> None:
-        """
-        Register a sum metric with the given name and description.
+        """Register a sum metric (up-down counter) using ObservableUpDownCounter.
+
+        Values are accumulated in memory and only exported during Prometheus scrape.
         """
         with self._lock:
             if name in self._registered_instruments:
-                # Sum with the same name is already registered. This is a common
-                # case when metrics are exported from multiple Ray components (e.g.,
-                # raylet, worker, etc.) running in the same node. Since each component
-                # may export metrics with the same name, the same metric might be
-                # registered multiple times.
                 return
 
-            instrument = self.meter.create_up_down_counter(
+            callback = self._create_observable_callback(name, is_cumulative=True)
+            instrument = self.meter.create_observable_up_down_counter(
                 name=f"{NAMESPACE}_{name}",
                 description=description,
                 unit="1",
+                callbacks=[callback],
             )
             self._registered_instruments[name] = instrument
+            self._metric_name_to_type[name] = MetricType.SUM
+            self._observations_by_name[name] = {}
 
     def register_histogram_metric(
         self, name: str, description: str, buckets: List[float]
     ) -> None:
-        """
-        Register a histogram metric with the given name and description.
+        """Register a histogram metric.
+
+        Histograms use synchronous recording since OTEL doesn't support observable
+        histograms.
         """
         with self._lock:
             if name in self._registered_instruments:
@@ -157,6 +199,7 @@ class OpenTelemetryMetricRecorder:
                 explicit_bucket_boundaries_advisory=buckets,
             )
             self._registered_instruments[name] = instrument
+            self._metric_name_to_type[name] = MetricType.HISTOGRAM
 
             # calculate the bucket midpoints; this is used for converting histogram
             # internal representation to approximated histogram data points.
@@ -183,40 +226,73 @@ class OpenTelemetryMetricRecorder:
         return self._histogram_bucket_midpoints[name]
 
     def set_metric_value(self, name: str, tags: dict, value: float):
+        """Set the value of a metric.
+
+        - Gauges: stores latest value, cleared on collection (lazy)
+        - Counters/Sums: accumulates value, persisted across collections (lazy)
+        - Histograms: buffers recordings, flushed via flush_histograms()
+
+        this method only writes to memory, and does not call the OTEL SDK.
         """
-        Set the value of a metric with the given name and tags. If the metric is not
-        registered, it lazily records the value for observable metrics or is a no-op for
-        synchronous metrics.
+        tag_key = frozenset(tags.items())
+
+        with self._lock:
+            metric_type = self._metric_name_to_type.get(name)
+
+            if metric_type == MetricType.GAUGE:
+                # Gauge: store latest value (will be cleared on collection)
+                self._observations_by_name[name][tag_key] = value
+                return
+
+            if metric_type in (MetricType.COUNTER, MetricType.SUM):
+                # Counter/Sum: accumulate value (persisted across collections)
+                current = self._observations_by_name[name].get(tag_key, 0.0)
+                self._observations_by_name[name][tag_key] = current + value
+                return
+
+            if metric_type == MetricType.HISTOGRAM:
+                # Histogram: buffer the recording for later flush
+                self._histogram_recordings[name].append((tag_key, value))
+                return
+
+        # Metric not registered
+        logger.warning(f"Metric not registered: {name}")
+
+    def flush_histograms(self):
+        """Flush buffered histogram recordings to the OTEL SDK.
+
+        Call this after recording a batch of histogram values. This allows
+        high-frequency histogram recording to be fast (just list appends),
+        with the OTEL SDK calls batched outside the hot path.
         """
         with self._lock:
-            if self._observations_by_name.get(name) is not None:
-                # Set the value of an observable metric with the given name and tags. It
-                # lazily records the metric value by storing it in a dictionary until
-                # the value actually gets exported by OpenTelemetry.
-                self._observations_by_name[name][frozenset(tags.items())] = value
-            else:
-                instrument = self._registered_instruments.get(name)
+            recordings_to_flush = dict(self._histogram_recordings)
+            self._histogram_recordings = defaultdict(list)
+            histogram_instruments = {
+                name: inst
+                for name, inst in self._registered_instruments.items()
+                if self._metric_name_to_type.get(name) == MetricType.HISTOGRAM
+            }
+
+        # Flush outside lock - OTEL SDK handles its own thread safety
+        for name, recordings in recordings_to_flush.items():
+            instrument = histogram_instruments.get(name)
+            if instrument is None:
+                continue
+
+            high_cardinality_labels = (
+                MetricCardinality.get_high_cardinality_labels_to_drop(name)
+            )
+            for tag_key, value in recordings:
                 tags = {
                     k: v
-                    for k, v in tags.items()
-                    if k
-                    not in MetricCardinality.get_high_cardinality_labels_to_drop(name)
+                    for k, v in dict(tag_key).items()
+                    if k not in high_cardinality_labels
                 }
-                if isinstance(instrument, metrics.Counter):
-                    instrument.add(value, attributes=tags)
-                elif isinstance(instrument, metrics.UpDownCounter):
-                    instrument.add(value, attributes=tags)
-                elif isinstance(instrument, metrics.Histogram):
-                    instrument.record(value, attributes=tags)
-                else:
-                    logger.warning(
-                        f"Unsupported synchronous instrument type for metric: {name}."
-                    )
+                instrument.record(value, attributes=tags)
 
     def record_and_export(self, records: List[Record], global_tags=None):
-        """
-        Record a list of telemetry records and export them to Prometheus.
-        """
+        """Record a list of telemetry records and export them to Prometheus."""
         global_tags = global_tags or {}
 
         for record in records:
@@ -228,5 +304,6 @@ class OpenTelemetryMetricRecorder:
                 self.set_metric_value(gauge.name, tags, value)
             except Exception as e:
                 logger.error(
-                    f"Failed to record metric {gauge.name} with value {value} with tags {tags!r} and global tags {global_tags!r} due to: {e!r}"
+                    f"Failed to record metric {gauge.name} with value {value} "
+                    f"with tags {tags!r} and global tags {global_tags!r} due to: {e!r}"
                 )

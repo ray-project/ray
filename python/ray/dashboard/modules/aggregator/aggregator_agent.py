@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 # Max number of threads for the thread pool executor handling CPU intensive tasks
 THREAD_POOL_EXECUTOR_MAX_WORKERS = ray_constants.env_integer(
-    "RAY_DASHBOARD_AGGREGATOR_AGENT_THREAD_POOL_EXECUTOR_MAX_WORKERS", 1
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_THREAD_POOL_EXECUTOR_MAX_WORKERS", 2
 )
 # Interval to check the main thread liveness
 CHECK_MAIN_THREAD_LIVENESS_INTERVAL_SECONDS = ray_constants.env_float(
@@ -53,11 +53,11 @@ EVENTS_EXPORT_ADDR = os.environ.get(
 )
 # flag to enable publishing events to the external HTTP service
 PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE = ray_constants.env_bool(
-    "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE", True
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE", False
 )
 # flag to enable publishing events to GCS
 PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
-    "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", False
+    "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", True
 )
 # flag to control whether preserve the proto field name when converting the events to
 # JSON. If True, the proto field name will be preserved. If False, the proto field name
