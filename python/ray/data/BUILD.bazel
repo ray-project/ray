@@ -848,6 +848,20 @@ py_test(
 )
 
 py_test(
+    name = "test_projection_pass_through",
+    size = "small",
+    srcs = ["tests/test_projection_pass_through.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_predicate_pushdown",
     size = "small",
     srcs = ["tests/test_predicate_pushdown.py"],

@@ -1,10 +1,12 @@
-from typing import Optional
+from typing import List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     PredicatePassThroughBehavior,
 )
+from ray.data._internal.logical.operators.map_operator import Project
 
 
 class NAry(LogicalOperator):
@@ -22,7 +24,7 @@ class NAry(LogicalOperator):
         super().__init__(self.__class__.__name__, list(input_ops), num_outputs)
 
 
-class Zip(NAry):
+class Zip(NAry, LogicalOperatorSupportsProjectionPassThrough):
     """Logical operator for zip."""
 
     def __init__(
@@ -40,8 +42,36 @@ class Zip(NAry):
             total_num_outputs = max(total_num_outputs, num_outputs)
         return total_num_outputs
 
+    def requires_schema_based_branch_selection(self) -> bool:
+        """Zip requires schema analysis to determine which columns go to which branch."""
+        return True
 
-class Union(NAry, LogicalOperatorSupportsPredicatePassThrough):
+    def get_referenced_keys(self) -> List[List[str]]:
+        """Return empty lists for each input (Zip has no keys)."""
+        return [[] for _ in self.input_dependencies]
+
+    def apply_projection_pass_through(
+        self,
+        renamed_keys: List[List[str]],
+        upstream_projects: List["Project"],
+    ) -> LogicalOperator:
+        """Recreate Zip with upstream projects.
+
+        Args:
+            renamed_keys: Empty lists for Zip (no keys to rename)
+            upstream_projects: List of projects, one per input
+
+        Returns:
+            New Zip operator with updated inputs.
+        """
+        return Zip(*upstream_projects)
+
+
+class Union(
+    NAry,
+    LogicalOperatorSupportsProjectionPassThrough,
+    LogicalOperatorSupportsPredicatePassThrough,
+):
     """Logical operator for union."""
 
     def __init__(
@@ -58,6 +88,14 @@ class Union(NAry, LogicalOperatorSupportsPredicatePassThrough):
                 return None
             total_num_outputs += num_outputs
         return total_num_outputs
+
+    def apply_projection_pass_through(
+        self,
+        renamed_keys: List[List[str]],
+        upstream_projects: List["Project"],
+    ) -> LogicalOperator:
+        """Recreate Union with upstream projects for all branches."""
+        return Union(*upstream_projects)
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Union allows pushing filter into each branch
