@@ -35,7 +35,7 @@ sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm
 # Fetch and run vLLM install scripts at pinned commit
 VLLM_RAW="https://raw.githubusercontent.com/vllm-project/vllm/${VLLM_SCRIPTS_REF}"
 
-# Tell uv to use system Python (no virtualenv in this image)
+# Tell uv to use system Python since the vLLM scripts use uv
 export UV_SYSTEM_PYTHON=1
 
 # Install EP kernels (PPLX, DeepEP, and NVSHMEM)
