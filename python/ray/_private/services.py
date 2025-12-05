@@ -25,6 +25,7 @@ from ray._common.network_utils import (
     build_address,
     get_localhost_ip,
     is_ipv6,
+    is_localhost,
     node_ip_address_from_perspective,
     parse_address,
 )
@@ -547,7 +548,7 @@ def canonicalize_bootstrap_address(
     host, port = parsed
 
     try:
-        if preserve_localhost and (host == "127.0.0.1" or host == "::1" or host == "localhost"):
+        if preserve_localhost and is_localhost(host):
             # Preserve localhost addresses when explicitly requested
             bootstrap_host = host
         else:
