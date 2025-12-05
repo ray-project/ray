@@ -275,7 +275,7 @@ def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_pe
 @pytest.mark.parametrize("num_cpus", [None, 1, 0.5])
 @pytest.mark.parametrize("memory", [None, 1024 * 1024 * 1024])  # 1GB
 def test_read_webdataset_resource_args(
-    ray_start_2_cpus, tmp_path, mocker, num_cpus, memory
+    ray_start_regular_shared, tmp_path, mocker, num_cpus, memory
 ):
     """Test that num_cpus and memory parameters are correctly passed to read_datasource."""
     from unittest.mock import MagicMock
@@ -313,7 +313,7 @@ def test_read_webdataset_resource_args(
         assert call_kwargs["memory"] is None
 
 
-def test_read_webdataset_resource_integration(ray_start_2_cpus, tmp_path):
+def test_read_webdataset_resource_integration(ray_start_regular_shared, tmp_path):
     """Integration test to verify num_cpus and memory parameters work end-to-end."""
     # Create a simple webdataset file
     path = os.path.join(tmp_path, "integration_000000.tar")
