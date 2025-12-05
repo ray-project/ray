@@ -4299,14 +4299,16 @@ class Dataset:
                 incoming_schema = base_schema
             else:
                 # For Pandas schemas, Schema.types converts to Arrow types but may
-                # return Python's `object` for unsupported types (e.g., strings).
-                # Convert `object` types to pa.large_string() for Iceberg compatibility.
+                # return Python's `object` for unsupported types (e.g., strings) or
+                # `None` for columns where type conversion fails. Convert both to
+                # pa.large_string() to ensure all columns are included in schema
+                # evolution, avoiding PyIceberg name mapping errors.
                 fields = []
                 for name, dtype in zip(ds_schema.names, ds_schema.types):
                     if isinstance(dtype, pa.DataType):
                         fields.append((name, dtype))
-                    elif dtype is object:
-                        # Python object type typically means string in Pandas
+                    elif dtype is object or dtype is None:
+                        # Use large_string as fallback for unknown types
                         fields.append((name, pa.large_string()))
                 if fields:
                     incoming_schema = pa.schema(fields)
