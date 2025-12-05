@@ -598,6 +598,11 @@ class _MapWorker:
                 return  # Success
             except Exception as e:
                 last_exception = e
+                logger.debug(
+                    f"Failed to initialize UDF on attempt {attempt + 1} "
+                    f"(max_retries={'infinite' if max_retries < 0 else max_retries}): {e}",
+                    exc_info=True,
+                )
                 attempt += 1
         # All retries exhausted
         raise last_exception
