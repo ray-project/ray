@@ -131,6 +131,10 @@ amqp==5.3.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   kombu
+annotated-doc==0.0.4 \
+    --hash=sha256:571ac1dc6991c450b25a9c2d84a3705e2ae7a53467b5d111c24fa8baabbed320 \
+    --hash=sha256:fbcda96e87e9c92ad167c2e53839e57503ecfda18804ea28102353485033faa4
+    # via fastapi
 annotated-types==0.6.0 \
     --hash=sha256:0641064de18ba7a25dee8f96403ebc39113d0cb953a01429249d5c7564666a43 \
     --hash=sha256:563339e807e53ffd9c267e99fc6d9ea23eb8443c08f112651963e24e22f84a5d
@@ -727,9 +731,9 @@ farama-notifications==0.0.4 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gymnasium
-fastapi==0.115.12 \
-    --hash=sha256:1e2c2a2646905f9e83d32f04a3f86aff4a286669c6c950ca95b5fd68c2602681 \
-    --hash=sha256:e94613d6c05e27be7ffebdd6ea5f388112e5e430c8f7d6494a9d1d88d43e814d
+fastapi==0.121.0 \
+    --hash=sha256:06663356a0b1ee93e875bbf05a31fb22314f5bed455afaaad2b2dad7f26e98fa \
+    --hash=sha256:8bdf1b15a55f4e4b0d6201033da9109ea15632cb76cf156e7b8b4019f2172106
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ray
@@ -2948,9 +2952,9 @@ rfc3986-validator==0.1.1 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   jsonschema
     #   jupyter-events
-rich==13.3.3 \
-    --hash=sha256:540c7d6d26a1178e8e8b37e9ba44573a3cd1464ff6348b99ee7061b95d1c6333 \
-    --hash=sha256:dc84400a9d842b3a9c5ff74addd8eb798d155f36c1c91303888e0a66850d2a15
+rich==13.7.1 \
+    --hash=sha256:4edbae314f59eb482f54e9e30bf00d33350aaa94f4bfcd4e9e3110e64d0d7222 \
+    --hash=sha256:9be308cb1fe2f1f57d67ce99e95af38a1e2bc71ad9813b0e247cf7ffbcc3a432
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   anyscale
@@ -3168,9 +3172,9 @@ stack-data==0.6.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   ipython
-starlette==0.46.2 \
-    --hash=sha256:595633ce89f8ffa71a015caed34a5b2dc1c0cdb3f0f1fbd1e69339cf2abeec35 \
-    --hash=sha256:7f7361f34eed179294600af672f565727419830b54b7b084efe44bb82d2fccd5
+starlette==0.49.1 \
+    --hash=sha256:481a43b71e24ed8c43b11ea02f5353d77840e01480881b8cb5a26b8cae64a8cb \
+    --hash=sha256:d92ce9f07e4a3caa3ac13a79523bd18e3bc0042bb8ff2d759a8e7dd0e1859875
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   fastapi
@@ -3285,6 +3289,7 @@ typing-extensions==4.15.0 \
     #   pydantic-core
     #   pyopenssl
     #   referencing
+    #   starlette
     #   textual
     #   typing-inspection
 typing-inspection==0.4.2 \

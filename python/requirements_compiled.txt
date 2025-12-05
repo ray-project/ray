@@ -522,7 +522,7 @@ fairscale==0.4.6
     # via -r python/requirements/ml/tune-test-requirements.txt
 farama-notifications==0.0.4
     # via gymnasium
-fastapi==0.115.12
+fastapi==0.121.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1999,7 +1999,7 @@ rfc3986-validator==0.1.1
     # via
     #   jsonschema
     #   jupyter-events
-rich==13.3.3
+rich==13.7.1
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -2214,7 +2214,7 @@ stack-data==0.6.3
     # via ipython
 stanio==0.3.0
     # via cmdstanpy
-starlette==0.46.2
+starlette==0.49.1
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -2438,7 +2438,7 @@ trustme==0.9.0
     # via -r python/requirements/test-requirements.txt
 typeguard==2.13.3
     # via ax-platform
-typer==0.12.3
+typer==0.15.1
     # via -r python/requirements.txt
 types-pycurl==7.45.3.20240421
     # via -r python/requirements/lint-requirements.txt
