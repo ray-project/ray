@@ -44,6 +44,81 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                     self._derive_target_scaling_config(actor_pool, op, state)
                 )
 
+    def _compute_utilization(
+        self, actor_pool: "AutoscalingActorPool"
+    ) -> Optional[float]:
+        """Compute the utilization of the actor pool.
+
+        Args:
+            actor_pool: The actor pool to compute utilization for.
+
+        Returns:
+            The utilization value, or None if utilization cannot be computed
+            (e.g., no running actors).
+        """
+        return actor_pool.get_pool_util()
+
+    def _compute_upscale_delta(
+        self,
+        actor_pool: "AutoscalingActorPool",
+        max_scale_up: Optional[int],
+    ) -> int:
+        """Compute how many actors to add when scaling up.
+
+        Override this to customize upscale delta calculation.
+
+        Args:
+            actor_pool: The actor pool to scale.
+            max_scale_up: Maximum actors that can be added based on resource budget,
+                or None if unlimited.
+
+        Returns:
+            The number of actors to add (must be >= 1).
+        """
+        util = self._compute_utilization(actor_pool)
+        # Calculate desired delta based on utilization
+        plan_delta = math.ceil(
+            actor_pool.current_size()
+            * (util / self._actor_pool_scaling_up_threshold - 1)
+        )
+
+        upscale_capacities = self._get_upscale_capacities(actor_pool, max_scale_up)
+        delta = min(plan_delta, *upscale_capacities)
+        return max(1, delta)  # At least scale up by 1
+
+    def _compute_downscale_delta(self, actor_pool: "AutoscalingActorPool") -> int:
+        """Compute how many actors to remove when scaling down.
+
+        Override this to customize downscale delta calculation.
+
+        Args:
+            actor_pool: The actor pool to scale down.
+
+        Returns:
+            The number of actors to remove (must be >= 1).
+        """
+        return 1
+
+    def _should_skip_upscale(
+        self,
+        actor_pool: "AutoscalingActorPool",
+        op: "PhysicalOperator",
+        op_state: "OpState",
+    ) -> Optional[str]:
+        """Check if upscaling should be skipped.
+
+        Override this to add custom skip conditions.
+
+        Args:
+            actor_pool: The actor pool to check.
+            op: The physical operator.
+            op_state: The operator state.
+
+        Returns:
+            A reason string if upscaling should be skipped, or None to proceed.
+        """
+        return None
+
     def _derive_target_scaling_config(
         self,
         actor_pool: "AutoscalingActorPool",
@@ -54,8 +129,9 @@ class DefaultActorAutoscaler(ActorAutoscaler):
         if op.completed() or (
             op._inputs_complete and op_state.total_enqueued_input_blocks() == 0
         ):
+            num_to_scale_down = self._compute_downscale_delta(actor_pool)
             return ActorPoolScalingRequest.downscale(
-                delta=-1, force=True, reason="consumed all inputs"
+                delta=-num_to_scale_down, force=True, reason="consumed all inputs"
             )
 
         if actor_pool.current_size() < actor_pool.min_size():
@@ -65,22 +141,30 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 reason="pool below min size",
             )
         elif actor_pool.current_size() > actor_pool.max_size():
-            # Do not scale up, if the actor pool is already at max size.
+            num_to_scale_down = min(
+                self._compute_downscale_delta(actor_pool),
+                actor_pool.current_size() - actor_pool.max_size(),
+            )
             return ActorPoolScalingRequest.downscale(
-                # NOTE: For scale down delta has to be negative
-                delta=-(actor_pool.current_size() - actor_pool.max_size()),
+                delta=-num_to_scale_down,
                 reason="pool exceeding max size",
             )
 
         # Determine whether to scale up based on the actor pool utilization.
-        util = actor_pool.get_pool_util()
+        util = self._compute_utilization(actor_pool)
+        if util is None:
+            return ActorPoolScalingRequest.no_op(reason="no running actors")
+
         if util >= self._actor_pool_scaling_up_threshold:
+            # Check for custom skip conditions first
+            skip_reason = self._should_skip_upscale(actor_pool, op, op_state)
+            if skip_reason is not None:
+                return ActorPoolScalingRequest.no_op(reason=skip_reason)
+
             # Do not scale up if either
             #   - Previous scale up has not finished yet
             #   - Actor Pool is at max size already
             #   - Op is throttled (ie exceeding allocated resource quota)
-            #   - Actor Pool has sufficient amount of slots available to handle
-            #   pending tasks
             if actor_pool.num_pending_actors() > 0:
                 return ActorPoolScalingRequest.no_op(reason="pending actors")
             elif actor_pool.current_size() >= actor_pool.max_size():
@@ -93,19 +177,7 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             max_scale_up = _get_max_scale_up(actor_pool, budget)
             if max_scale_up == 0:
                 return ActorPoolScalingRequest.no_op(reason="exceeded resource limits")
-
-            # Calculate desired delta based on utilization
-            plan_delta = math.ceil(
-                actor_pool.current_size()
-                * (util / self._actor_pool_scaling_up_threshold - 1)
-            )
-
-            upscale_capacities = self._get_upscale_capacities(actor_pool, max_scale_up)
-            delta = min(
-                plan_delta,
-                *upscale_capacities,
-            )
-            delta = max(1, delta)  # At least scale up by 1
+            delta = self._compute_upscale_delta(actor_pool, max_scale_up)
 
             return ActorPoolScalingRequest.upscale(
                 delta=delta,
@@ -118,8 +190,12 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             if actor_pool.current_size() <= actor_pool.min_size():
                 return ActorPoolScalingRequest.no_op(reason="reached min size")
 
+            num_to_scale_down = self._compute_downscale_delta(actor_pool)
+            max_can_remove = actor_pool.current_size() - actor_pool.min_size()
+            num_to_scale_down = min(num_to_scale_down, max_can_remove)
+
             return ActorPoolScalingRequest.downscale(
-                delta=-1,
+                delta=-num_to_scale_down,
                 reason=(
                     f"utilization of {util} <= "
                     f"{self._actor_pool_scaling_down_threshold}"
