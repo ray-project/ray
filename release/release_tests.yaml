@@ -1914,6 +1914,7 @@
 
 
 - name: torch_local_mode
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/local_mode
 
@@ -1947,6 +1948,7 @@
     script: RAY_TRAIN_V2_ENABLED=1 python test_lightning.py
 
 - name: huggingface_transformers
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/huggingface_transformers
 
@@ -1964,6 +1966,7 @@
     script: RAY_TRAIN_V2_ENABLED=1 python test_huggingface_transformers.py
 
 - name: huggingface_accelerate
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/huggingface_accelerate
 
