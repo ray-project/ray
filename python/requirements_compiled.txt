@@ -1246,7 +1246,7 @@ numexpr==2.8.4
     # via
     #   -r python/requirements/test-requirements.txt
     #   pymars
-numpy==1.26.4 ; python_version < "3.13"
+numpy==1.26.4
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -2250,7 +2250,7 @@ tenacity==8.5.0
     # via
     #   plotly
     #   pyiceberg
-tensorboard==2.15.2 ; python_version < "3.13"
+tensorboard==2.15.2
     # via
     #   -r python/requirements/test-requirements.txt
     #   tensorflow
