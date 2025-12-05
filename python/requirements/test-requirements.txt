@@ -39,7 +39,7 @@ openpyxl==3.0.10
 opentelemetry-api
 opentelemetry-sdk
 pexpect==4.8.0
-Pillow==10.4.0; platform_system != "Windows"
+Pillow>=10.4.0; platform_system != "Windows"
 proxy.py==2.4.3
 pydantic>=2.10.0
 pydot==1.4.2

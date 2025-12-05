@@ -56,12 +56,6 @@ DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 1024 * 1024 * 1024
 # blocks larger than this threshold.
 MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
 
-# We will attempt to slice blocks whose size exceeds this factor *
-# target_num_rows_per_block. We will warn the user if slicing fails and we produce
-# blocks with more rows than this threshold.
-MAX_SAFE_ROWS_PER_BLOCK_FACTOR = 1.5
-
-
 DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 
 # This default appears to work well with most file sizes on remote storage systems,
@@ -143,6 +137,9 @@ DEFAULT_ENABLE_PROGRESS_BARS = not bool(
 DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
     "RAY_DATA_ENABLE_PROGRESS_BAR_NAME_TRUNCATION", True
 )
+
+# Progress bar log interval in seconds
+DEFAULT_PROGRESS_BAR_LOG_INTERVAL = env_integer("RAY_DATA_PROGRESS_LOG_INTERVAL", 5)
 
 # Globally enable or disable experimental rich progress bars. This is a new
 # interface to replace the old tqdm progress bar implementation.
@@ -395,6 +392,8 @@ class DataContext:
             `ProgressBar.MAX_NAME_LENGTH`. Otherwise, the full operator name is shown.
         enable_rich_progress_bars: Whether to use the new rich progress bars instead
             of the tqdm TUI.
+        progress_bar_log_interval: The interval in seconds for logging progress bar
+            updates in non-interactive terminals.
         enable_get_object_locations_for_metrics: Whether to enable
             ``get_object_locations`` for metrics. This is useful for tracking whether
             the object input of a task is local (cache hit) or not local (cache miss)
@@ -567,6 +566,7 @@ class DataContext:
         DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION
     )
     enable_rich_progress_bars: bool = DEFAULT_ENABLE_RICH_PROGRESS_BARS
+    progress_bar_log_interval: int = DEFAULT_PROGRESS_BAR_LOG_INTERVAL
     enable_get_object_locations_for_metrics: bool = (
         DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS
     )
@@ -645,6 +645,10 @@ class DataContext:
         self._max_num_blocks_in_streaming_gen_buffer = (
             DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER
         )
+
+        # The current epoch index.
+        # This is updated at the end of each execution.
+        self._epoch_idx = 0
 
         is_ray_job = os.environ.get("RAY_JOB_ID") is not None
         if is_ray_job:
