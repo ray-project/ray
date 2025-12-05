@@ -66,6 +66,7 @@ class InstanceUtil:
             Instance.TERMINATING,
             Instance.RAY_INSTALL_FAILED,
             Instance.TERMINATION_FAILED,
+            Instance.ALLOCATION_TIMEOUT,
         }
 
     @staticmethod
@@ -225,6 +226,10 @@ class InstanceUtil:
                 # Ray is already installed on the provisioned cloud
                 # instance. It could be any valid ray status.
                 Instance.RAY_RUNNING,
+                # The cloud provider timed out for allocating running cloud instance.
+                # The CloudResourceMonitor subscriber will lower this node-type's priority
+                # in feature schedules.
+                Instance.ALLOCATION_TIMEOUT,
                 Instance.RAY_STOPPING,
                 Instance.RAY_STOPPED,
                 # Instance is requested to be stopped, e.g. instance leaked: no matching
@@ -283,6 +288,13 @@ class InstanceUtil:
                 Instance.RAY_RUNNING,
                 # cloud instance somehow failed.
                 Instance.TERMINATED,
+            },
+            # An instance has been allocated to a cloud instance, but the cloud
+            # provider timed out for allocating running cloud instance, e.g. the
+            # a kubernetes pod remains pending due to insufficient resources.
+            Instance.ALLOCATION_TIMEOUT: {
+                # Instance is requested to be stopped
+                Instance.TERMINATING
             },
             # When in this status, the ray process is requested to be stopped to the
             # ray cluster, but not yet present in the dead ray node list reported by

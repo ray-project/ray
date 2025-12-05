@@ -1,7 +1,7 @@
-from pathlib import Path
 import unittest
-import ray
+from pathlib import Path
 
+import ray
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -21,7 +21,7 @@ class TestBC(unittest.TestCase):
 
     def test_bc_compilation_and_learning_from_offline_file(self):
         # Define the data paths.
-        data_path = "tests/data/cartpole/cartpole-v1_large"
+        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
         base_path = Path(__file__).parents[3]
         print(f"base_path={base_path}")
         data_path = "local://" / base_path / data_path
@@ -88,7 +88,8 @@ class TestBC(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

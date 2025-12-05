@@ -70,7 +70,9 @@ documentation, sorted alphabetically.
         data-parallel training for :ref:`Ray Train’s built-in trainers<train-api>`.
 
     Batch format
-        The way Ray Data represents batches of data.
+        The way Ray Data represents batches of data. The batch format is independent
+        from how Ray Data stores the underlying blocks, so you can use any batch format
+        regardless of the internal block representation.
 
         Set ``batch_format`` in methods like
         :meth:`Dataset.iter_batches() <ray.data.Dataset.iter_batches>` and
@@ -80,7 +82,7 @@ documentation, sorted alphabetically.
         .. doctest::
 
             >>> import ray
-            >>> dataset = ray.data.range(10)
+            >>> dataset = ray.data.range(15)
             >>> next(iter(dataset.iter_batches(batch_format="numpy", batch_size=5)))
             {'id': array([0, 1, 2, 3, 4])}
             >>> next(iter(dataset.iter_batches(batch_format="pandas", batch_size=5)))
@@ -90,6 +92,11 @@ documentation, sorted alphabetically.
             2   2
             3   3
             4   4
+            >>> next(iter(dataset.iter_batches(batch_format="pyarrow", batch_size=5)))
+            pyarrow.Table
+            id: int64
+            ----
+            id: [[0],[1],...,[3],[4]]
 
         To learn more about batch formats, read
         :ref:`Configuring batch formats <configure_batch_format>`.

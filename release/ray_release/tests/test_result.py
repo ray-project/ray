@@ -1,11 +1,11 @@
-import sys
 import os
+import sys
 from unittest import mock
 
 import pytest
 
-from ray_release.result import handle_exception, ResultStatus
 from ray_release.exception import ExitCode, ReleaseTestError, ReleaseTestSetupError
+from ray_release.result import ResultStatus, handle_exception
 
 
 def test_handle_exception():

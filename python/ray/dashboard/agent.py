@@ -10,12 +10,13 @@ import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._common.network_utils import build_address, is_localhost
+from ray._common.retry import call_with_retry
 from ray._common.utils import get_or_create_event_loop
 from ray._private import logging_utils
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
 from ray._private.ray_logging import setup_component_logger
-from ray._raylet import GcsClient
+from ray._raylet import GcsClient, NodeID
 
 logger = logging.getLogger(__name__)
 
@@ -76,12 +77,27 @@ class DashboardAgent:
             cluster_id=self.cluster_id_hex,
         )
 
+        # Fetch node info and save is_head.
+        node_info = call_with_retry(
+            lambda: self.gcs_client.get_all_node_info()[NodeID.from_hex(self.node_id)],
+            description="get self node info",
+            max_attempts=30,
+            max_backoff_s=1,
+        )
+        self.is_head = node_info.is_head_node
+
         if not self.minimal:
             self._init_non_minimal()
 
     def _init_non_minimal(self):
         from grpc import aio as aiogrpc
 
+        from ray._private.authentication.authentication_utils import (
+            is_token_auth_enabled,
+        )
+        from ray._private.authentication.grpc_authentication_server_interceptor import (
+            AsyncAuthenticationServerInterceptor,
+        )
         from ray._private.tls_utils import add_port_to_grpc_server
         from ray.dashboard.http_server_agent import HttpServerAgent
 
@@ -98,7 +114,13 @@ class DashboardAgent:
         else:
             aiogrpc.init_grpc_aio()
 
+        # Add authentication interceptor if token auth is enabled
+        interceptors = []
+        if is_token_auth_enabled():
+            interceptors.append(AsyncAuthenticationServerInterceptor())
+
         self.server = aiogrpc.server(
+            interceptors=interceptors,
             options=(
                 ("grpc.so_reuseport", 0),
                 (
@@ -109,7 +131,7 @@ class DashboardAgent:
                     "grpc.max_receive_message_length",
                     AGENT_GRPC_MAX_MESSAGE_LENGTH,
                 ),
-            )  # noqa
+            ),  # noqa
         )
         try:
             add_port_to_grpc_server(self.server, build_address(self.ip, self.grpc_port))

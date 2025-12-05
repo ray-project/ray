@@ -159,10 +159,14 @@ class RayletClient : public RayletClientInterface {
 
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
-  int64_t GetPinsInFlight() const override { return pins_in_flight_.load(); }
+  int64_t GetPinsInFlight() const override { return pins_in_flight_->load(); }
 
   void GetNodeStats(const rpc::GetNodeStatsRequest &request,
                     const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback) override;
+
+  void KillLocalActor(
+      const rpc::KillLocalActorRequest &request,
+      const rpc::ClientCallback<rpc::KillLocalActorReply> &callback) override;
 
   /// Get the worker pids from raylet.
   /// \param callback The callback to set the worker pids.
@@ -183,7 +187,9 @@ class RayletClient : public RayletClientInterface {
   ResourceMappingType resource_ids_;
 
   /// The number of object ID pin RPCs currently in flight.
-  std::atomic<int64_t> pins_in_flight_ = 0;
+  /// NOTE: `shared_ptr` because it is captured in a callback that can outlive this
+  /// instance.
+  std::shared_ptr<std::atomic<int64_t>> pins_in_flight_;
 };
 
 }  // namespace rpc
