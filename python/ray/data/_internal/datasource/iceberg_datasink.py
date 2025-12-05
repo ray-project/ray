@@ -99,6 +99,10 @@ class IcebergDatasink(
             raise ValueError(
                 f"overwrite_kwargs can only be specified when mode is SaveMode.OVERWRITE, but mode is {self._mode}"
             )
+        if self._overwrite_filter and self._mode != SaveMode.OVERWRITE:
+            raise ValueError(
+                f"overwrite_filter can only be specified when mode is SaveMode.OVERWRITE, but mode is {self._mode}"
+            )
 
         # Remove invalid parameters from overwrite_kwargs if present
         for invalid_param, reason in [
@@ -378,9 +382,15 @@ class IcebergDatasink(
             if len(keys_table) > 0:
                 # Use PyIceberg's helper to build delete filter
                 delete_filter = create_match_filter(keys_table, join_cols)
+
+                # Prepare kwargs for delete
+                delete_kwargs = self._upsert_kwargs.copy()
+                delete_kwargs.pop(_JOIN_COLS_KEY, None)
+
                 txn.delete(
                     delete_filter=delete_filter,
                     snapshot_properties=self._snapshot_properties,
+                    **delete_kwargs,
                 )
 
         # Append new data files (includes updates and inserts) and commit

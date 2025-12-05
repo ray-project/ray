@@ -970,6 +970,25 @@ class TestBasicWriteModes:
         )
         assert rows_same(result_df, expected)
 
+    def test_overwrite_filter_incompatible_mode(self, clean_table):
+        """Test that passing overwrite_filter with non-OVERWRITE mode raises ValueError."""
+        data = _create_typed_dataframe({"col_a": [1], "col_b": ["row_1"], "col_c": [1]})
+
+        # With APPEND
+        with pytest.raises(ValueError, match="overwrite_filter can only be specified"):
+            _write_to_iceberg(
+                data, mode=SaveMode.APPEND, overwrite_filter=col("col_c") > 0
+            )
+
+        # With UPSERT
+        with pytest.raises(ValueError, match="overwrite_filter can only be specified"):
+            _write_to_iceberg(
+                data,
+                mode=SaveMode.UPSERT,
+                overwrite_filter=col("col_c") > 0,
+                upsert_kwargs={"join_cols": ["col_a"]},
+            )
+
     def test_overwrite_full_table_missing_columns(self, clean_table):
         """Test full table overwrite when new data is missing columns - they become NULL."""
         # Initial data with 3 columns
