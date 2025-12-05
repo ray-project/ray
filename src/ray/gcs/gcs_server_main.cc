@@ -249,7 +249,12 @@ int main(int argc, char *argv[]) {
   if (gcs_port_write_handle >= 0) {
     gcs_server.SetPortReadyCallback([handle = gcs_port_write_handle](int bound_port) {
       auto pipe = ray::Pipe::FromWriterHandle(handle);
-      pipe.Write(std::to_string(bound_port) + "\n");
+      auto status = pipe.Write(std::to_string(bound_port));
+      if (!status.ok()) {
+        RAY_LOG(WARNING) << "Failed to write GCS port to pipe: " << status.message()
+                         << ". Please check the error log of the process that passed "
+                            "the pipe.";
+      }
       pipe.Close();
     });
   }

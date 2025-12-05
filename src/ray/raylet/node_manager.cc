@@ -55,6 +55,7 @@
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/network_util.h"
+#include "ray/util/pipe.h"
 #include "ray/util/string_utils.h"
 #include "ray/util/time.h"
 
@@ -3328,12 +3329,12 @@ std::pair<std::unique_ptr<AgentManager>, int> NodeManager::CreateRuntimeEnvAgent
     }
   }
 
-  std::unique_ptr<Pipe> node_manager_pipe;
+  std::unique_ptr<Pipe> runtime_env_agent_port_pipe;
   if (runtime_env_agent_port == 0) {
-    node_manager_pipe = std::make_unique<Pipe>();
+    runtime_env_agent_port_pipe = std::make_unique<Pipe>();
     agent_command_line.emplace_back(
-        "--runtime-env-agent-port-write-handles=" +
-        Pipe::FormatHandles({node_manager_pipe->MakeWriterHandle()}));
+        "--runtime-env-agent-port-write-handle=" +
+        std::to_string(runtime_env_agent_port_pipe->MakeWriterHandle()));
   }
 
   std::string agent_name = "runtime_env_agent";
@@ -3353,15 +3354,25 @@ std::pair<std::unique_ptr<AgentManager>, int> NodeManager::CreateRuntimeEnvAgent
       true,
       add_process_to_system_cgroup_hook_);
 
-  if (node_manager_pipe) {
-    node_manager_pipe->CloseWriterHandle();
-    runtime_env_agent_port = std::stoi(node_manager_pipe->Read());
-    node_manager_pipe->Close();
+  if (runtime_env_agent_port_pipe) {
+    runtime_env_agent_port_pipe->CloseWriterHandle();
+    auto port_result = runtime_env_agent_port_pipe->Read();
+    RAY_CHECK(port_result.ok())
+        << "Failed to read runtime env agent port: " << port_result.status().message()
+        << ". Please check if the runtime env agent started successfully.";
+    runtime_env_agent_port = std::stoi(*port_result);
+    runtime_env_agent_port_pipe->Close();
   }
 
   for (intptr_t handle : config.runtime_env_agent_port_write_handles) {
     Pipe pipe = Pipe::FromWriterHandle(handle);
-    pipe.Write(std::to_string(runtime_env_agent_port));
+    auto status = pipe.Write(std::to_string(runtime_env_agent_port));
+    if (!status.ok()) {
+      RAY_LOG(WARNING) << "Failed to write runtime env agent port to pipe: "
+                       << status.message()
+                       << ". Please check the error log of the process that passed "
+                          "the pipe.";
+    }
     pipe.Close();
   }
 

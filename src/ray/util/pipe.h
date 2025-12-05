@@ -34,6 +34,8 @@
 #include <unistd.h>
 #endif
 
+#include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -129,9 +131,11 @@ class Pipe {
 #endif
   }
 
-  /// Read from pipe with timeout. Returns data or FAILs on timeout/EOF.
-  std::string Read(int timeout_s = 30, size_t chunk_size = 64) {
-    RAY_CHECK(read_fd_ >= 0) << "read_fd already taken or closed";
+  /// Read from pipe with timeout. Returns data or error Status on timeout/EOF.
+  StatusOr<std::string> Read(int timeout_s = 30, size_t chunk_size = 64) {
+    if (read_fd_ < 0) {
+      return Status::Invalid("read_fd already taken or closed");
+    }
     const double deadline = static_cast<double>(timeout_s) + CurrentMonotonicSeconds();
     std::vector<char> buffer;
     buffer.reserve(chunk_size);
@@ -146,7 +150,8 @@ class Pipe {
       HANDLE h = reinterpret_cast<HANDLE>(_get_osfhandle(read_fd_));
       if (!PeekNamedPipe(h, nullptr, 0, nullptr, &bytes_avail, nullptr)) {
         if (GetLastError() == ERROR_BROKEN_PIPE) break;
-        RAY_LOG(FATAL) << "PeekNamedPipe failed, err=" << GetLastError();
+        return Status::IOError("PeekNamedPipe failed, err=" +
+                               std::to_string(GetLastError()));
       }
       if (bytes_avail == 0) {
         Sleep(static_cast<DWORD>(std::min(50.0, remaining * 1000)));
@@ -166,7 +171,7 @@ class Pipe {
       if (ready == 0) continue;
       if (ready < 0) {
         if (errno == EINTR) continue;
-        RAY_LOG(FATAL) << "select failed, errno=" << errno;
+        return Status::IOError("select failed, errno=" + std::to_string(errno));
       }
       std::vector<char> chunk(chunk_size);
       ssize_t n = read(read_fd_, chunk.data(), chunk.size());
@@ -178,13 +183,14 @@ class Pipe {
     if (!buffer.empty()) {
       return std::string(buffer.begin(), buffer.end());
     }
-    RAY_LOG(FATAL) << "Timed out or EOF before any data was read.";
-    return "";
+    return Status::IOError("Timed out or EOF before any data was read");
   }
 
-  /// Write data to the pipe.
-  void Write(const std::string &payload) {
-    RAY_CHECK(write_fd_ >= 0) << "write_fd already taken or closed";
+  /// Write data to the pipe. Returns Status on error.
+  Status Write(const std::string &payload) {
+    if (write_fd_ < 0) {
+      return Status::Invalid("write_fd already taken or closed");
+    }
     std::string_view remaining(payload);
     while (!remaining.empty()) {
 #ifdef _WIN32
@@ -195,10 +201,11 @@ class Pipe {
 #endif
       if (n <= 0) {
         if (n < 0 && errno == EINTR) continue;
-        RAY_LOG(FATAL) << "Failed to write to pipe, errno=" << errno;
+        return Status::IOError("Failed to write to pipe, errno=" + std::to_string(errno));
       }
       remaining.remove_prefix(static_cast<size_t>(n));
     }
+    return Status::OK();
   }
 
   void CloseReaderHandle() { ResetFd(read_fd_for_close_); }

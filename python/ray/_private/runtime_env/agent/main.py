@@ -49,12 +49,12 @@ if __name__ == "__main__":
         help="The port on which the runtime env agent will receive HTTP requests.",
     )
     parser.add_argument(
-        "--runtime-env-agent-port-write-handles",
+        "--runtime-env-agent-port-write-handle",
         required=False,
-        type=Pipe.parse_handles,
+        type=int,
         default=None,
-        help="Comma-separated pipe write handles (fd on POSIX, HANDLE on Windows) "
-        "to report the bound runtime env agent port back to multiple consumers.",
+        help="Pipe write handle (fd on POSIX, HANDLE on Windows) "
+        "to report the bound runtime env agent port.",
     )
 
     parser.add_argument(
@@ -240,11 +240,16 @@ if __name__ == "__main__":
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(sockaddr)
 
-    if args.runtime_env_agent_port_write_handles:
+    if args.runtime_env_agent_port_write_handle:
         port_str = str(sock.getsockname()[1])
-        for handle in args.runtime_env_agent_port_write_handles:
-            with Pipe.from_writer_handle(handle) as pipe:
+        with Pipe.from_writer_handle(args.runtime_env_agent_port_write_handle) as pipe:
+            try:
                 pipe.write(port_str)
+            except Exception as e:
+                logging.warning(
+                    f"Failed to write runtime env agent port to pipe: {e}. "
+                    "Please check the error log of the process that passed the pipe."
+                )
 
     try:
         web.run_app(app, sock=sock, loop=loop)

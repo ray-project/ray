@@ -670,6 +670,9 @@ class Node:
     def is_head(self):
         return self.head
 
+    def should_start_ray_client_server(self):
+        return bool(self._ray_params.ray_client_server_port)
+
     def get_gcs_client(self):
         if self._gcs_client is None:
             self._init_gcs_client()
@@ -1167,7 +1170,14 @@ class Node:
             process_info,
         ]
 
-        self._ray_params.gcs_server_port = int(gcs_server_port_pipe.read().strip())
+        try:
+            gcs_server_port = gcs_server_port_pipe.read().strip()
+        except RuntimeError as e:
+            raise RuntimeError(
+                "Failed to receive GCS port. "
+                "Check GCS logs to see if it started successfully."
+            ) from e
+        self._ray_params.gcs_server_port = int(gcs_server_port)
         gcs_server_port_pipe.close()
 
         # Connecting via non-localhost address may be blocked by firewall rule,
@@ -1233,8 +1243,7 @@ class Node:
             )
             runtime_env_agent_port_write_handles.append(handle_for_raylet)
 
-            # Only create pipe for ray_client if ray_client_server will be started
-            if self._ray_params.ray_client_server_port:
+            if self.should_start_ray_client_server():
                 if self._runtime_env_agent_port_pipe_for_ray_client is None:
                     self._runtime_env_agent_port_pipe_for_ray_client = Pipe()
                 handle_for_ray_client = (
@@ -1299,9 +1308,16 @@ class Node:
 
         if runtime_env_agent_port_pipe_for_raylet:
             runtime_env_agent_port_pipe_for_raylet.close_writer_handle()
-            self._ray_params.runtime_env_agent_port = int(
-                runtime_env_agent_port_pipe_for_raylet.read().strip()
-            )
+            try:
+                runtime_env_agent_port = (
+                    runtime_env_agent_port_pipe_for_raylet.read().strip()
+                )
+            except RuntimeError as e:
+                raise RuntimeError(
+                    "Failed to receive runtime env agent port. "
+                    "Check raylet/runtime env agent logs to see if it started successfully."
+                ) from e
+            self._ray_params.runtime_env_agent_port = int(runtime_env_agent_port)
             runtime_env_agent_port_pipe_for_raylet.close()
 
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
@@ -1436,7 +1452,7 @@ class Node:
         if not self._ray_params.no_monitor:
             self.start_monitor()
 
-        if self._ray_params.ray_client_server_port:
+        if self.should_start_ray_client_server():
             self.start_ray_client_server()
 
         if self._ray_params.include_dashboard is None:

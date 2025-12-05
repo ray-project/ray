@@ -143,7 +143,13 @@ class ProxyManager:
 
         if runtime_env_agent_port_read_handle is not None:
             with Pipe.from_reader_handle(runtime_env_agent_port_read_handle) as pipe:
-                runtime_env_agent_port = int(pipe.read().strip())
+                try:
+                    runtime_env_agent_port = int(pipe.read().strip())
+                except RuntimeError as e:
+                    raise RuntimeError(
+                        "Failed to receive runtime env agent port. "
+                        "Please check if the runtime env agent started successfully."
+                    ) from e
         elif runtime_env_agent_port == 0:
             raise ValueError(
                 "runtime_env_agent_port is 0 but runtime_env_agent_port_read_handle "
