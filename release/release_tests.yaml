@@ -1382,6 +1382,7 @@
 # Runtime env tests
 ########################
 - name: runtime_env_rte_many_tasks_actors
+  python: "3.10"
   group: Runtime env tests
   working_dir: runtime_env_tests
 
@@ -1814,6 +1815,7 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=ray_data --num_workers=8 --train_batch_size=8192 --validation_batch_size=16384 --num_epochs=1
 
 - name: training_ingest_benchmark-soak_test
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -1871,6 +1873,7 @@
   alert: default
 
 - name: train_async_checkpointing_validation_benchmark
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/async_checkpointing_validation_benchmark
   frequency: nightly

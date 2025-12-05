@@ -96,7 +96,7 @@ documentation, sorted alphabetically.
             pyarrow.Table
             id: int64
             ----
-            id: [[0],[1],...,[3],[4]]                                                                                                         
+            id: [[0],[1],...,[3],[4]]
 
         To learn more about batch formats, read
         :ref:`Configuring batch formats <configure_batch_format>`.
