@@ -69,13 +69,18 @@ def get_token_auth_middleware(
                 )
 
         if not auth_header:
-            return aiohttp_module.web.Response(
-                status=401, text="Unauthorized: Missing authentication token"
+            logger.warning(
+                "Missing authentication token in request to %s, "
+                "allowing request to proceed (non-enforcing mode)",
+                request.path,
             )
+            return await handler(request)
 
         if not auth_utils.validate_request_token(auth_header):
-            return aiohttp_module.web.Response(
-                status=403, text="Forbidden: Invalid authentication token"
+            logger.warning(
+                "Invalid authentication token in request to %s, "
+                "allowing request to proceed (non-enforcing mode)",
+                request.path,
             )
 
         return await handler(request)

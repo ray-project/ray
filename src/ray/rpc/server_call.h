@@ -347,8 +347,8 @@ class ServerCallImpl : public ServerCall {
 
  private:
   /// Validates token-based authentication.
-  /// Returns true if authentication succeeds or is not required.
-  /// Returns false if authentication is required but fails.
+  /// Returns true always (non-enforcing mode) but logs warnings for missing/invalid
+  /// tokens.
   bool ValidateAuthenticationToken() {
     // If auth token is empty, we assume auth is not required.
     // The only exception is when auth mode is 'k8s' where the server
@@ -361,14 +361,19 @@ class ServerCallImpl : public ServerCall {
     const auto &metadata = context_.client_metadata();
     auto it = metadata.find(kAuthTokenKey);
     if (it == metadata.end()) {
-      RAY_LOG(WARNING) << "Missing authorization header in request!";
-      return false;
+      RAY_LOG(WARNING) << "Missing authorization header in request to " << call_name_
+                       << ", allowing request to proceed (non-enforcing mode)";
+      return true;
     }
 
     const std::string_view header(it->second.data(), it->second.length());
     AuthenticationToken provided_token = AuthenticationToken::FromMetadata(header);
-    return ray::rpc::AuthenticationTokenValidator::instance().ValidateToken(
-        auth_token_, provided_token);
+    if (!ray::rpc::AuthenticationTokenValidator::instance().ValidateToken(
+            auth_token_, provided_token)) {
+      RAY_LOG(WARNING) << "Invalid authentication token in request to " << call_name_
+                       << ", allowing request to proceed (non-enforcing mode)";
+    }
+    return true;
   }
 
   /// Log the duration this query used
