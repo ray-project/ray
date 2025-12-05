@@ -26,24 +26,6 @@ logger = logging.getLogger(__name__)
 _JOIN_COLS_KEY = "join_cols"
 
 
-def _append_and_commit(
-    txn: "Transaction",
-    data_files: List["DataFile"],
-    snapshot_properties: Dict[str, str],
-) -> None:
-    """Helper to append data files to a transaction and commit.
-
-    Args:
-        txn: PyIceberg transaction object
-        data_files: List of DataFile objects to append
-        snapshot_properties: Custom properties to write to snapshot summary
-    """
-    with txn._append_snapshot_producer(snapshot_properties) as append_files:
-        for data_file in data_files:
-            append_files.append_data_file(data_file)
-    txn.commit_transaction()
-
-
 @DeveloperAPI
 class IcebergDatasink(
     Datasink[Union[List["DataFile"], tuple[List["DataFile"], Dict[str, List[Any]]]]]
@@ -179,6 +161,20 @@ class IcebergDatasink(
                     join_cols.append(col_name)
         return join_cols
 
+    def _append_and_commit(
+        self, txn: "Transaction", data_files: List["DataFile"]
+    ) -> None:
+        """Append data files to a transaction and commit.
+
+        Args:
+            txn: PyIceberg transaction object
+            data_files: List of DataFile objects to append
+        """
+        with txn._append_snapshot_producer(self._snapshot_properties) as append_files:
+            for data_file in data_files:
+                append_files.append_data_file(data_file)
+        txn.commit_transaction()
+
     def _update_schema(self, incoming_schema: "pa.Schema") -> None:
         """
         Update the table schema to accommodate incoming data using union-by-name semantics.
@@ -250,9 +246,11 @@ class IcebergDatasink(
                 self.table_identifier, schema=self._incoming_schema
             )
 
+        assert self._table is not None, "Table should be created/loaded on_write_start"
+
         # Evolve schema BEFORE any files are written
         # This prevents PyIceberg name mapping errors when incoming data has new columns
-        if self._table is not None and self._incoming_schema is not None:
+        if self._incoming_schema is not None:
             self._evolve_schema_if_needed(self._incoming_schema)
 
         # Validate join_cols for UPSERT mode before writing any files
@@ -386,7 +384,7 @@ class IcebergDatasink(
                 )
 
         # Append new data files (includes updates and inserts) and commit
-        _append_and_commit(txn, data_files, self._snapshot_properties)
+        self._append_and_commit(txn, data_files)
 
     def on_write_complete(self, write_result: WriteResult) -> None:
         """
@@ -472,7 +470,7 @@ class IcebergDatasink(
     def _commit_append(self, data_files: List["DataFile"]) -> None:
         """Commit data files using APPEND mode."""
         txn = self._table.transaction()
-        _append_and_commit(txn, data_files, self._snapshot_properties)
+        self._append_and_commit(txn, data_files)
 
     def _commit_overwrite(self, data_files: List["DataFile"]) -> None:
         """Commit data files using OVERWRITE mode."""
@@ -502,4 +500,4 @@ class IcebergDatasink(
             )
 
         # Append new data files and commit
-        _append_and_commit(txn, data_files, self._snapshot_properties)
+        self._append_and_commit(txn, data_files)
