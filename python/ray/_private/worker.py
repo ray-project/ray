@@ -2664,9 +2664,10 @@ def connect(
             job_config._py_driver_sys_path.extend(code_paths)
 
     serialized_job_config = job_config._serialize()
-    # When worker logs are disabled or not redirecting to files,
+    # When worker logs are disabled (only for non-driver workers) or not redirecting to files,
     # give core worker empty logs directory.
-    if ray_constants.RAY_DISABLE_WORKER_LOGS or not node.should_redirect_logs():
+    is_driver = mode in (SCRIPT_MODE, LOCAL_MODE)
+    if (ray_constants.RAY_DISABLE_WORKER_LOGS and not is_driver) or not node.should_redirect_logs():
         logs_dir = ""
     else:
         logs_dir = node.get_logs_dir_path()
