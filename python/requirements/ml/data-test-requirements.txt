@@ -10,7 +10,7 @@ fastavro
 google-cloud-bigquery
 google-cloud-core
 google-cloud-bigquery-storage
-google-api-core>=2.24.2
+google-api-core
 webdataset
 raydp==1.7.0b20250423.dev0
 pylance==0.22
