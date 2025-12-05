@@ -81,13 +81,13 @@ Serialization notes
 
 Zero-Copy Serialization for Read-Only Tensors
 ----------------------------------------------
-Ray provides zero-copy serialization for read-only PyTorch tensors. 
+Ray provides optional zero-copy serialization for read-only PyTorch tensors. 
 Ray serializes these tensors by converting them to NumPy arrays and leveraging pickle5's zero-copy buffer sharing. 
 This avoids copying the underlying tensor data, which can improve performance when passing large tensors across tasks or actors.
 However, PyTorch does not natively support read-only tensors, so this feature must be used with caution.
 
 When the feature is enabled, Ray won't copy and allow a write to shared memory.
-One process changing a tensor after `ray.get()` could be reflected in another process.
+One process changing a tensor after `ray.get()` could be reflected in another process if both processes are colocated on the same node.
 This feature works best under the following conditions:
 
 - The tensor has `requires_grad = False` (i.e., is detached from the autograd graph).
@@ -117,7 +117,7 @@ The following example calculates the sum of a 1GiB tensor using `ray.get()`, lev
 
     import ray
     import torch
-    from datetime import datetime
+    import time
 
     ray.init(runtime_env={"env_vars": {"RAY_ENABLE_ZERO_COPY_TORCH_TENSORS": "1"}})
 
@@ -126,21 +126,21 @@ The following example calculates the sum of a 1GiB tensor using `ray.get()`, lev
         return tensor.sum()
 
     x = torch.ones(1024, 1024, 256)
-    start_time = datetime.now()
+    start_time = time.perf_counter()
     result = ray.get(process.remote(x))
-    time_diff = datetime.now() - start_time
-    print(f"between time: {time_diff.total_seconds()}s")
+    elapsed_time = time.perf_counter() - start_time
+    print(f"Elapsed time: {elapsed_time}s")
 
     assert result == x.sum()
 
-In this example, enabling zero-copy serialization reduces end-to-end latency by **64.5%**:
+In this example, enabling zero-copy serialization reduces end-to-end latency by **66.3%**:
 
 .. code-block:: bash
 
     # Without Zero-Copy Serialization
-    between time: 22.837529s
+    Elapsed time: 23.53883756196592s
     # With Zero-Copy Serialization
-    between time: 8.110477s
+    Elapsed time: 7.933729998010676s
 
 Customized Serialization
 ------------------------
