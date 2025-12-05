@@ -4213,7 +4213,6 @@ class Dataset:
 
                 # Basic append (current behavior)
                 docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
-                docs = [{"title": "Iceberg data sink test"} for key in range(4)]
                 ds = ray.data.from_pandas(pd.DataFrame(docs))
                 ds.write_iceberg(
                     table_identifier="db_name.table_name",

@@ -100,7 +100,7 @@ class IcebergDatasink(
         """
         self.table_identifier = table_identifier
         self._catalog_kwargs = (catalog_kwargs or {}).copy()
-        self._snapshot_properties = snapshot_properties or {}
+        self._snapshot_properties = (snapshot_properties or {}).copy()
         self._mode = mode
         self._overwrite_filter = overwrite_filter
         self._upsert_kwargs = (upsert_kwargs or {}).copy()
@@ -243,6 +243,13 @@ class IcebergDatasink(
 
         self._write_uuid = uuid.uuid4()
 
+        # Create table if it doesn't exist (must happen on driver to avoid race conditions)
+        if self._table is None and self._incoming_schema is not None:
+            catalog = self._get_catalog()
+            self._table = catalog.create_table(
+                self.table_identifier, schema=self._incoming_schema
+            )
+
         # Evolve schema BEFORE any files are written
         # This prevents PyIceberg name mapping errors when incoming data has new columns
         if self._table is not None and self._incoming_schema is not None:
@@ -311,17 +318,6 @@ class IcebergDatasink(
                         join_keys_dict[col].extend(pa_table[col].to_pylist())
 
                 # Write data files to storage
-                # Note: We need table metadata to write files. If table doesn't exist,
-                # we'll create it in on_write_complete after schema reconciliation.
-                # For now, create a temporary table if needed - it will be updated
-                # with the reconciled schema in on_write_complete.
-                if self._table is None:
-                    # Create table with first schema - will be updated with reconciled schema later
-                    catalog = self._get_catalog()
-                    self._table = catalog.create_table(
-                        self.table_identifier, schema=first_schema
-                    )
-
                 data_files = list(
                     _dataframe_to_data_files(
                         table_metadata=self._table.metadata,
