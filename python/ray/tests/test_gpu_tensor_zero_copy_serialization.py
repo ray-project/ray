@@ -11,23 +11,6 @@ from ray._common.test_utils import assert_tensors_equivalent
 USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
 
 
-@pytest.fixture
-def ray_start_cluster_with_zero_copy_tensors(monkeypatch):
-    """Start a Ray cluster with zero-copy PyTorch tensors enabled."""
-    with monkeypatch.context() as m:
-        # Enable zero-copy sharing of PyTorch tensors in Ray
-        m.setenv("RAY_ENABLE_ZERO_COPY_TORCH_TENSORS", "1")
-
-        # Initialize Ray with the required environment variable.
-        ray.init(runtime_env={"env_vars": {"RAY_ENABLE_ZERO_COPY_TORCH_TENSORS": "1"}})
-
-        # Yield control to the test session
-        yield
-
-        # Shutdown Ray after tests complete
-        ray.shutdown()
-
-
 @pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 def test_gpu_tensor_serialization(ray_start_cluster_with_zero_copy_tensors):
     if not torch.cuda.is_available():

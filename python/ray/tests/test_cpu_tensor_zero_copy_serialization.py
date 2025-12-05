@@ -9,23 +9,6 @@ import ray
 from ray._common.test_utils import assert_tensors_equivalent
 
 
-@pytest.fixture
-def ray_start_cluster_with_zero_copy_tensors(monkeypatch):
-    """Start a Ray cluster with zero-copy PyTorch tensors enabled."""
-    with monkeypatch.context() as m:
-        # Enable zero-copy sharing of PyTorch tensors in Ray
-        m.setenv("RAY_ENABLE_ZERO_COPY_TORCH_TENSORS", "1")
-
-        # Initialize Ray with the required environment variable.
-        ray.init(runtime_env={"env_vars": {"RAY_ENABLE_ZERO_COPY_TORCH_TENSORS": "1"}})
-
-        # Yield control to the test session
-        yield
-
-        # Shutdown Ray after tests complete
-        ray.shutdown()
-
-
 def test_cpu_tensor_serialization(ray_start_cluster_with_zero_copy_tensors):
     PRIMITIVE_OBJECTS = [
         # Scalars and basic types
