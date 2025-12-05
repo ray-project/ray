@@ -272,22 +272,21 @@ def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_pe
         assert len(list(dataset)) == min_rows_per_file
 
 
-@pytest.mark.parametrize("num_cpus", [None, 1, 2])
+@pytest.mark.parametrize("num_cpus", [None, 1, 0.5])
 @pytest.mark.parametrize("memory", [None, 1024 * 1024 * 1024])  # 1GB
 def test_read_webdataset_resource_args(
     ray_start_2_cpus, tmp_path, mocker, num_cpus, memory
 ):
     """Test that num_cpus and memory parameters are correctly passed to read_datasource."""
+    from unittest.mock import MagicMock
+
     # Create a simple webdataset file
     path = os.path.join(tmp_path, "test_000000.tar")
     with TarWriter(path) as tf:
         tf.write("0.txt", b"test data")
 
-    # Mock read_datasource to capture the arguments
     mock_read_datasource = mocker.patch("ray.data.read_api.read_datasource")
-    mock_read_datasource.return_value = ray.data.from_items(
-        [{"__key__": "0", "txt": b"test data"}]
-    )
+    mock_read_datasource.return_value = MagicMock()
 
     # Call read_webdataset with resource parameters
     kwargs = {"paths": [str(tmp_path)]}
