@@ -2,7 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import collections
-from typing import TYPE_CHECKING, Deque, Iterator, Optional
+from typing import (
+    TYPE_CHECKING,
+    AsyncGenerator,
+    Deque,
+    Generator,
+    Generic,
+    Iterable,
+    Iterator,
+    NoReturn,
+    Optional,
+    TypeVar,
+)
 
 import ray
 from ray.exceptions import ObjectRefStreamEndOfStreamError
@@ -12,15 +23,18 @@ if TYPE_CHECKING:
     from ray._private.worker import Worker
 
 
+_R = TypeVar("_R")  # for ObjectRefs
+
+
 @DeveloperAPI
-class DynamicObjectRefGenerator:
-    def __init__(self, refs: Deque["ray.ObjectRef"]):
+class DynamicObjectRefGenerator(Iterable["ray.ObjectRef[_R]"]):
+    def __init__(self, refs: Deque["ray.ObjectRef[_R]"]):
         # TODO(swang): As an optimization, can also store the generator
         # ObjectID so that we don't need to keep individual ref counts for the
         # inner ObjectRefs.
-        self._refs: Deque["ray.ObjectRef"] = collections.deque(refs)
+        self._refs: Deque["ray.ObjectRef[_R]"] = collections.deque(refs)
 
-    def __iter__(self) -> Iterator("ray.ObjectRef"):
+    def __iter__(self) -> Iterator["ray.ObjectRef[_R]"]:
         while self._refs:
             yield self._refs.popleft()
 
@@ -28,8 +42,15 @@ class DynamicObjectRefGenerator:
         return len(self._refs)
 
 
+_ORG = TypeVar("_ORG", bound="ObjectRefGenerator")  # Self typing pre-3.11
+
+
 @PublicAPI
-class ObjectRefGenerator:
+class ObjectRefGenerator(
+    Generic[_R],
+    Generator["ray.ObjectRef[_R]", None, None],
+    AsyncGenerator["ray.ObjectRef[_R]", None],
+):
     """A generator to obtain object references from a task in a streaming manner.
 
     The class is compatible with the Python generator and async generator interfaces.
@@ -54,7 +75,7 @@ class ObjectRefGenerator:
             print("Got:", ray.get(obj_ref))
     """
 
-    def __init__(self, generator_ref: "ray.ObjectRef", worker: "Worker"):
+    def __init__(self, generator_ref: "ray.ObjectRef[None]", worker: "Worker"):
         # The reference to a generator task.
         self._generator_ref = generator_ref
         # True if an exception has been raised from the generator task.
@@ -66,10 +87,10 @@ class ObjectRefGenerator:
 
     # Public APIs
 
-    def __iter__(self) -> "ObjectRefGenerator":
+    def __iter__(self: _ORG) -> _ORG:
         return self
 
-    def __next__(self) -> "ray.ObjectRef":
+    def __next__(self) -> "ray.ObjectRef[_R]":
         """Waits until a next ref is available and returns the object ref.
 
         Raises StopIteration if there's no more objects
@@ -82,31 +103,31 @@ class ObjectRefGenerator:
         """
         return self._next_sync()
 
-    def send(self, value):
+    def send(self, value) -> NoReturn:
         raise NotImplementedError("`gen.send` is not supported.")
 
-    def throw(self, value):
+    def throw(self, value, val=None, tb=None) -> NoReturn:
         raise NotImplementedError("`gen.throw` is not supported.")
 
-    def close(self):
+    def close(self) -> NoReturn:
         raise NotImplementedError("`gen.close` is not supported.")
 
-    def __aiter__(self) -> "ObjectRefGenerator":
+    def __aiter__(self: _ORG) -> _ORG:
         return self
 
-    async def __anext__(self):
+    async def __anext__(self) -> "ray.ObjectRef[_R]":
         return await self._next_async()
 
-    async def asend(self, value):
+    async def asend(self, value) -> NoReturn:
         raise NotImplementedError("`gen.asend` is not supported.")
 
-    async def athrow(self, value):
+    async def athrow(self, value, val=None, tb=None) -> NoReturn:
         raise NotImplementedError("`gen.athrow` is not supported.")
 
-    async def aclose(self):
+    async def aclose(self) -> NoReturn:
         raise NotImplementedError("`gen.aclose` is not supported.")
 
-    def completed(self) -> "ray.ObjectRef":
+    def completed(self) -> "ray.ObjectRef[None]":
         """Returns an object ref that is ready when
         a generator task completes.
 
@@ -175,7 +196,7 @@ class ObjectRefGenerator:
 
     # Private APIs
 
-    def _get_next_ref(self) -> "ray.ObjectRef":
+    def _get_next_ref(self) -> "ray.ObjectRef[_R]":
         """Return the next reference from a generator.
 
         Note that the ObjectID generated from a generator
@@ -185,7 +206,9 @@ class ObjectRefGenerator:
         core_worker = self.worker.core_worker
         return core_worker.peek_object_ref_stream(self._generator_ref)[0]
 
-    def _next_sync(self, timeout_s: Optional[int | float] = None) -> "ray.ObjectRef":
+    def _next_sync(
+        self, timeout_s: Optional[int | float] = None
+    ) -> "ray.ObjectRef[_R]":  # ObjectRef could be nil here
         """Waits for timeout_s and returns the object ref if available.
 
         If an object is not available within the given timeout, it
@@ -251,7 +274,9 @@ class ObjectRefGenerator:
         except Exception:
             pass
 
-    async def _next_async(self, timeout_s: Optional[int | float] = None):
+    async def _next_async(
+        self, timeout_s: Optional[int | float] = None
+    ) -> "ray.ObjectRef[_R]":  # ObjectRef could be nil here
         """Same API as _next_sync, but it is for async context."""
         core_worker = self.worker.core_worker
         ref, is_ready = core_worker.peek_object_ref_stream(self._generator_ref)
@@ -294,7 +319,7 @@ class ObjectRefGenerator:
             # only once.
             self.worker.core_worker.async_delete_object_ref_stream(self._generator_ref)
 
-    def __getstate__(self):
+    def __getstate__(self) -> NoReturn:
         raise TypeError(
             "You cannot return or pass a generator to other task. "
             "Serializing a ObjectRefGenerator is not allowed."
