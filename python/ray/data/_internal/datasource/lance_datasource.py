@@ -61,7 +61,10 @@ class LanceDatasource(Datasource):
         }
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        epoch_idx: int = 0,
     ) -> List[ReadTask]:
         read_tasks = []
         ds_fragments = self.scanner_options.get("fragments")
