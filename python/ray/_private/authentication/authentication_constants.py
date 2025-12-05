@@ -1,6 +1,6 @@
 # Authentication error messages
 TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE = (
-    "Token authentication is enabled but no authentication token was found."
+    "Token authentication is enabled but no authentication token was found"
 )
 
 TOKEN_INVALID_ERROR_MESSAGE = "Token authentication is enabled but the authentication token is invalid or incorrect."  # noqa: E501

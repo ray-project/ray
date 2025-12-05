@@ -439,6 +439,7 @@ py_library(
         "ray_release/schema.json",
         "//doc:deployment_serve_llm_example_configs",
         "//doc:example_configs",
+        "//doc/source/data/examples:data_example_configs",
         "//doc/source/train/examples/pytorch/deepspeed_finetune/ci:ci_yamls",
         "//doc/source/train/examples/pytorch/distributing-pytorch/ci:ci_yamls",
         "//doc/source/train/examples/pytorch/pytorch-fsdp/ci:ci_yamls",
