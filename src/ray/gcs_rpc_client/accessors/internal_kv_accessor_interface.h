@@ -51,6 +51,13 @@ class InternalKVAccessorInterface {
     @param  prefix The prefix to scan.
     @param  timeout_ms -1 means infinite.
     @param callback Callback that will be called after scanning.
+                    On success: status.ok() == true, result contains vector of matching
+                    keys (empty if none found).
+                    On failure: status.ok() == false. Possible error statuses:
+                    - TimedOut: Request exceeded timeout_ms.
+                    - Disconnected: GRPC client shut down or connection lost.
+                    - RpcError: GRPC error (use status.rpc_code() for grpc::StatusCode).
+                    - KeyError: Prefix validation failed (reserved prefix).
    */
   virtual void AsyncInternalKVKeys(
       const std::string &ns,
@@ -65,6 +72,13 @@ class InternalKVAccessorInterface {
     @param key The key to lookup.
     @param timeout_ms -1 means infinite.
     @param callback Callback that will be called after get the value.
+                    On success: status.ok() == true, result contains the value or
+                    std::nullopt if the key was not found.
+                    On failure: status.ok() == false. Possible error statuses:
+                    - TimedOut: Request exceeded timeout_ms.
+                    - Disconnected: GRPC client shut down or connection lost.
+                    - RpcError: GRPC error (use status.rpc_code() for grpc::StatusCode).
+                    - KeyError: Key validation failed (reserved prefix).
    */
   virtual void AsyncInternalKVGet(const std::string &ns,
                                   const std::string &key,
@@ -78,6 +92,13 @@ class InternalKVAccessorInterface {
     @param keys The keys to lookup.
     @param timeout_ms -1 means infinite.
     @param callback Callback that will be called after get the values.
+                    On success: status.ok() == true, result contains a map of key->value
+                    for keys that were found (missing keys are omitted from the map).
+                    On failure: status.ok() == false. Possible error statuses:
+                    - TimedOut: Request exceeded timeout_ms.
+                    - Disconnected: GRPC client shut down or connection lost.
+                    - RpcError: GRPC error (use status.rpc_code() for grpc::StatusCode).
+                    - KeyError: Key validation failed (reserved prefix).
    */
   virtual void AsyncInternalKVMultiGet(
       const std::string &ns,
@@ -95,6 +116,13 @@ class InternalKVAccessorInterface {
     @param overwrite If it's true, it'll overwrite existing <key, value> if it exists.
     @param timeout_ms -1 means infinite.
     @param callback Callback that will be called after the operation.
+                    On success: status.ok() == true, result contains true if the key was
+                    newly added, false if an existing key was updated.
+                    On failure: status.ok() == false. Possible error statuses:
+                    - TimedOut: Request exceeded timeout_ms.
+                    - Disconnected: GRPC client shut down or connection lost.
+                    - RpcError: GRPC error (use status.rpc_code() for grpc::StatusCode).
+                    - KeyError: Key validation failed (reserved prefix).
    */
   virtual void AsyncInternalKVPut(const std::string &ns,
                                   const std::string &key,
@@ -109,8 +137,14 @@ class InternalKVAccessorInterface {
     @param ns The namespace to check.
     @param key The key to check.
     @param timeout_ms -1 means infinite.
-    @param callback Callback that will be called after the operation. Called with `true`
-                    if the key is deleted; `false` if it doesn't exist.
+    @param callback Callback that will be called after the operation.
+                    On success: status.ok() == true, result contains true if the key
+                    exists, false otherwise.
+                    On failure: status.ok() == false. Possible error statuses:
+                    - TimedOut: Request exceeded timeout_ms.
+                    - Disconnected: GRPC client shut down or connection lost.
+                    - RpcError: GRPC error (use status.rpc_code() for grpc::StatusCode).
+                    - KeyError: Key validation failed (reserved prefix).
    */
   virtual void AsyncInternalKVExists(const std::string &ns,
                                      const std::string &key,
@@ -124,8 +158,14 @@ class InternalKVAccessorInterface {
     @param key The key to delete.
     @param del_by_prefix If set to be true, delete all keys with prefix as `key`.
     @param timeout_ms -1 means infinite.
-    @param callback Callback that will be called after the operation. Called with number
-                    of keys deleted.
+    @param callback Callback that will be called after the operation.
+                    On success: status.ok() == true, result contains the number of keys
+                    deleted (0 if key did not exist).
+                    On failure: status.ok() == false. Possible error statuses:
+                    - TimedOut: Request exceeded timeout_ms.
+                    - Disconnected: GRPC client shut down or connection lost.
+                    - RpcError: GRPC error (use status.rpc_code() for grpc::StatusCode).
+                    - KeyError: Key validation failed (reserved prefix).
    */
   virtual void AsyncInternalKVDel(const std::string &ns,
                                   const std::string &key,
@@ -240,7 +280,12 @@ class InternalKVAccessorInterface {
   /**
     Get the internal config string from GCS.
 
-    @param callback Processes a map of config options
+    @param callback Callback that will be called after the operation.
+                    On success: status.ok() == true, result contains the config string.
+                    On failure: status.ok() == false. Possible error statuses:
+                    - TimedOut: Request exceeded timeout.
+                    - Disconnected: GRPC client shut down or connection lost.
+                    - RpcError: GRPC error (use status.rpc_code() for grpc::StatusCode).
    */
   virtual void AsyncGetInternalConfig(
       const OptionalItemCallback<std::string> &callback) = 0;
