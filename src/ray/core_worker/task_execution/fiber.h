@@ -161,7 +161,17 @@ class FiberState {
     RAY_CHECK(op_status == boost::fibers::channel_op_status::success);
   }
 
-  void Stop() { channel_.close(); }
+  void Stop() {
+    // Give inflight fibers time to complete and send task replies before
+    // closing the channel. This delay is necessary because:
+    // 1. Fibers are detached and cannot be joined (see fiber_runner_thread below).
+    // 2. Once the channel is closed, the fiber thread exits the event loop
+    //    and enters infinite sleep, freezing any remaining fibers.
+    // 3. Task replies must be sent before actor DEAD notification.
+    // The 100ms allows most inflight tasks to complete their RPC replies.
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    channel_.close();
+  }
 
   void Join() { fiber_stopped_event_->Wait(); }
 
