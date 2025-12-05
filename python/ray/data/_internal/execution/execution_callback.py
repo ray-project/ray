@@ -60,12 +60,16 @@ def get_execution_callbacks(context: DataContext) -> List[ExecutionCallback]:
         _initialize_env_callbacks(context)
         context.set_config(ENV_CALLBACKS_INITIALIZED_KEY, True)
 
+    from ray.data._internal.execution.callbacks.epoch_idx_update_callback import (
+        EpochIdxUpdateCallback,
+    )
     from ray.data._internal.execution.callbacks.insert_issue_detectors import (
         IssueDetectionExecutionCallback,
     )
 
     return context.get_config(
-        EXECUTION_CALLBACKS_CONFIG_KEY, [IssueDetectionExecutionCallback()]
+        EXECUTION_CALLBACKS_CONFIG_KEY,
+        [IssueDetectionExecutionCallback(), EpochIdxUpdateCallback()],
     )
 
 
