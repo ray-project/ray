@@ -173,10 +173,17 @@ void MutableObjectProvider::HandlePushMutableObject(
       // This is a new chunk - check tracking but don't mark as received yet.
       // We'll mark it as received only after successfully writing it.
       is_new_chunk = true;
-      tmp_written_so_far = written_so_far_[writer_object_id];
+      auto written_it = written_so_far_.find(writer_object_id);
+      bool is_new_write = (written_it == written_so_far_.end());
+      tmp_written_so_far = is_new_write ? 0 : written_it->second;
 
       // Check if WriteAcquire needs to be called. This handles out-of-order chunks:
       // only the first chunk (or first chunk to arrive) will call WriteAcquire.
+      // Reset write_acquired_ flag if this is a new write (after previous WriteRelease).
+      if (is_new_write) {
+        write_acquired_[writer_object_id] = false;
+        received_chunks_[writer_object_id].clear();
+      }
       if (!write_acquired_[writer_object_id]) {
         needs_write_acquire = true;
         write_acquired_[writer_object_id] = true;
@@ -225,12 +232,16 @@ void MutableObjectProvider::HandlePushMutableObject(
     received_chunks_[writer_object_id].insert(offset);
     // Update written_so_far_ by adding this chunk's size.
     // Note: We increment rather than set to handle potential out-of-order chunks.
+    // Initialize to 0 if this is the first chunk of a new write.
+    if (written_so_far_.find(writer_object_id) == written_so_far_.end()) {
+      written_so_far_[writer_object_id] = 0;
+    }
     written_so_far_[writer_object_id] += chunk_size;
     if (written_so_far_[writer_object_id] == total_data_size) {
       object_complete = true;
-      // Note: We keep received_chunks_ and written_so_far_ entries to handle
-      // retries. They will be cleaned up when the object is overwritten (next
-      // WriteAcquire will reset state) or when the object is unregistered.
+      // Note: We keep received_chunks_ and written_so_far_ entries until WriteRelease
+      // completes to handle retries. They will be cleaned up after WriteRelease() is
+      // called.
     }
   }
 
@@ -241,6 +252,16 @@ void MutableObjectProvider::HandlePushMutableObject(
            total_metadata_size);
     // The entire object has been written, so call `WriteRelease()`.
     RAY_CHECK_OK(object_manager_->WriteRelease(info.local_object_id));
+
+    // Clean up tracking state after WriteRelease to prepare for the next write.
+    // This ensures that subsequent writes to the same channel start fresh.
+    {
+      absl::MutexLock guard(&written_so_far_lock_);
+      written_so_far_.erase(writer_object_id);
+      received_chunks_.erase(writer_object_id);
+      write_acquired_.erase(writer_object_id);
+    }
+
     reply->set_done(true);
   } else {
     reply->set_done(false);
