@@ -1550,9 +1550,9 @@ pycparser==2.21 ; platform_python_implementation != 'PyPy' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   cffi
-pydantic==2.11.7 \
-    --hash=sha256:d989c3c6cb79469287b1569f7447a17848c998458d49ebe294e975b9baf0f0db \
-    --hash=sha256:dde5df002701f6de26248661f6835bbe296a47bf73990135c7d07ce741b9623b
+pydantic==2.11.10 \
+    --hash=sha256:802a655709d49bd004c31e865ef37da30b540786a46bfce02333e0e24b5fe29a \
+    --hash=sha256:dc280f0982fbda6c38fada4e476dc0a4f3aeaf9c6ad4c28df68a666ec3c61423
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   fastapi
