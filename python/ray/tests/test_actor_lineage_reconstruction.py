@@ -1,4 +1,5 @@
 import gc
+import json
 import os
 import signal
 import sys
@@ -26,10 +27,25 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(
     # -> actor is permanently dead when there is no reference.
     # This test also injects network failure to make sure relevant rpcs are retried.
     failure = RPC_FAILURE_MAP[deterministic_failure]
+    parts = failure.split(":")
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        f"ray::rpc::ActorInfoGcsService.grpc_client.RestartActorForLineageReconstruction=1:{failure},"
-        f"ray::rpc::ActorInfoGcsService.grpc_client.ReportActorOutOfScope=1:{failure}",
+        json.dumps(
+            {
+                "ray::rpc::ActorInfoGcsService.grpc_client.RestartActorForLineageReconstruction": {
+                    "num_failures": 1,
+                    "req_failure_prob": int(parts[0]),
+                    "resp_failure_prob": int(parts[1]),
+                    "in_flight_failure_prob": int(parts[2]),
+                },
+                "ray::rpc::ActorInfoGcsService.grpc_client.ReportActorOutOfScope": {
+                    "num_failures": 1,
+                    "req_failure_prob": int(parts[0]),
+                    "resp_failure_prob": int(parts[1]),
+                    "in_flight_failure_prob": int(parts[2]),
+                },
+            }
+        ),
     )
     cluster = ray_start_cluster
     cluster.add_node(resources={"head": 1})

@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -20,6 +21,20 @@ from ray.util.scheduling_strategies import (
 import psutil
 
 
+def create_failure_json(method, num_failures, failure_str):
+    parts = failure_str.split(":")
+    return json.dumps(
+        {
+            method: {
+                "num_failures": num_failures,
+                "req_failure_prob": int(parts[0]),
+                "resp_failure_prob": int(parts[1]),
+                "in_flight_failure_prob": int(parts[2]),
+            }
+        }
+    )
+
+
 @pytest.mark.parametrize("deterministic_failure", RPC_FAILURE_TYPES)
 def test_request_worker_lease_idempotent(
     monkeypatch, shutdown_only, deterministic_failure, ray_start_cluster
@@ -27,7 +42,9 @@ def test_request_worker_lease_idempotent(
     failure = RPC_FAILURE_MAP[deterministic_failure]
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        f"NodeManagerService.grpc_client.RequestWorkerLease=1:{failure}",
+        create_failure_json(
+            "NodeManagerService.grpc_client.RequestWorkerLease", 1, failure
+        ),
     )
 
     @ray.remote
@@ -62,7 +79,16 @@ def test_drain_node_idempotent(monkeypatch, shutdown_only, ray_start_cluster):
     # NOTE: not testing response failure since the node is already marked as draining and shuts down gracefully.
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "NodeManagerService.grpc_client.DrainRaylet=1:100:0:0",
+        json.dumps(
+            {
+                "NodeManagerService.grpc_client.DrainRaylet": {
+                    "num_failures": 1,
+                    "req_failure_prob": 100,
+                    "resp_failure_prob": 0,
+                    "in_flight_failure_prob": 0,
+                }
+            }
+        ),
     )
 
     cluster = ray_start_cluster
@@ -100,10 +126,25 @@ def test_drain_node_idempotent(monkeypatch, shutdown_only, ray_start_cluster):
 def inject_release_unused_bundles_rpc_failure(monkeypatch, request):
     deterministic_failure = request.param
     failure = RPC_FAILURE_MAP[deterministic_failure]
+    parts = failure.split(":")
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        f"NodeManagerService.grpc_client.ReleaseUnusedBundles=1:{failure}"
-        + ",NodeManagerService.grpc_client.CancelResourceReserve=-1:100:0:0",
+        json.dumps(
+            {
+                "NodeManagerService.grpc_client.ReleaseUnusedBundles": {
+                    "num_failures": 1,
+                    "req_failure_prob": int(parts[0]),
+                    "resp_failure_prob": int(parts[1]),
+                    "in_flight_failure_prob": int(parts[2]),
+                },
+                "NodeManagerService.grpc_client.CancelResourceReserve": {
+                    "num_failures": -1,
+                    "req_failure_prob": 100,
+                    "resp_failure_prob": 0,
+                    "in_flight_failure_prob": 0,
+                },
+            }
+        ),
     )
 
 
@@ -156,7 +197,9 @@ def inject_notify_gcs_restart_rpc_failure(monkeypatch, request):
     failure = RPC_FAILURE_MAP[deterministic_failure]
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        f"NodeManagerService.grpc_client.NotifyGCSRestart=1:{failure}",
+        create_failure_json(
+            "NodeManagerService.grpc_client.NotifyGCSRestart", 1, failure
+        ),
     )
 
 
@@ -216,7 +259,16 @@ def test_kill_local_actor_rpc_retry_and_idempotency(monkeypatch, shutdown_only):
 
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "NodeManagerService.grpc_client.KillLocalActor=1:100:0:0",
+        json.dumps(
+            {
+                "NodeManagerService.grpc_client.KillLocalActor": {
+                    "num_failures": 1,
+                    "req_failure_prob": 100,
+                    "resp_failure_prob": 0,
+                    "in_flight_failure_prob": 0,
+                }
+            }
+        ),
     )
 
     ray.init()
