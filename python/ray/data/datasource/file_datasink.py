@@ -85,7 +85,7 @@ class _FileDatasink(Datasink[None]):
     def open_output_stream(self, path: str) -> "pyarrow.NativeFile":
         return self.filesystem.open_output_stream(path, **self.open_stream_args)
 
-    def on_write_start(self) -> None:
+    def on_write_start(self, schema: Optional["pyarrow.Schema"] = None) -> None:
         from pyarrow.fs import FileType
 
         dir_exists = (

@@ -1,5 +1,6 @@
 import os
 import random
+from typing import Any, Dict, Generator, List, Tuple, Type
 
 import numpy as np
 import pandas as pd
@@ -12,8 +13,10 @@ from pyiceberg import (
     schema as pyi_schema,
     types as pyi_types,
 )
+from pyiceberg.catalog import Catalog
 from pyiceberg.catalog.sql import SqlCatalog
 from pyiceberg.partitioning import PartitionField, PartitionSpec
+from pyiceberg.table import Table
 from pyiceberg.transforms import IdentityTransform
 
 import ray
@@ -22,6 +25,7 @@ from ray.data import read_iceberg
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.logical.operators.map_operator import Filter, Project
 from ray.data._internal.logical.optimizers import LogicalOptimizer
+from ray.data._internal.savemode import SaveMode
 from ray.data._internal.util import rows_same
 from ray.data.expressions import col
 from ray.data.tests.test_util import (
@@ -213,9 +217,8 @@ def test_read_basic():
     )
     table: pa.Table = pa.concat_tables((ray.get(ref) for ref in ray_ds.to_arrow_refs()))
 
-    # string -> large_string because pyiceberg by default chooses large_string
     expected_schema = pa.schema(
-        [pa.field("col_a", pa.int32()), pa.field("col_b", pa.large_string())]
+        [pa.field("col_a", pa.int32()), pa.field("col_b", pa.string())]
     )
     assert table.schema.equals(expected_schema)
 
@@ -737,6 +740,429 @@ def test_predicate_pushdown_complex_expression():
     )
 
     assert rows_same(result, expected_table)
+
+
+# Helper functions and fixtures for schema evolution tests
+
+
+@pytest.fixture
+def clean_table() -> Generator[Tuple[Catalog, Table], None, None]:
+    """Pytest fixture to get a clean Iceberg table by deleting all data."""
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+    table.delete()
+    yield sql_catalog, table
+
+
+def _create_typed_dataframe(data_dict: Dict[str, List[Any]]) -> pd.DataFrame:
+    """Create a pandas DataFrame with proper int32 dtypes for col_a and col_c."""
+    df = pd.DataFrame(data_dict)
+    if "col_a" in df.columns:
+        # Use nullable Int32 to support NaN values
+        df["col_a"] = df["col_a"].astype("Int32")
+    if "col_c" in df.columns:
+        # Use nullable Int32 to support NaN values
+        df["col_c"] = df["col_c"].astype("Int32")
+    return df
+
+
+def _write_to_iceberg(df: pd.DataFrame, **kwargs: Any) -> None:
+    """Write a DataFrame to the test Iceberg table."""
+    ds = ray.data.from_pandas(df)
+    write_kwargs: Dict[str, Any] = {
+        "table_identifier": f"{_DB_NAME}.{_TABLE_NAME}",
+        "catalog_kwargs": _CATALOG_KWARGS.copy(),
+    }
+    write_kwargs.update(kwargs)
+    ds.write_iceberg(**write_kwargs)
+
+
+def _read_from_iceberg(sort_by: str = None) -> pd.DataFrame:
+    """Read data from the test Iceberg table and optionally sort."""
+    ds = ray.data.read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    result_df = ds.to_pandas()
+    if sort_by:
+        result_df = result_df.sort_values(sort_by).reset_index(drop=True)
+    return result_df
+
+
+def _verify_schema(expected_fields: Dict[str, Type[pyi_types.IcebergType]]) -> None:
+    """
+    Verify the Iceberg table schema matches expected fields.
+
+    Args:
+        expected_fields: Dict mapping field names to PyIceberg type classes
+                        e.g., {"col_a": pyi_types.IntegerType, "col_b": pyi_types.StringType}
+    """
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+    schema = {field.name: field.field_type for field in table.schema().fields}
+
+    assert len(schema) == len(
+        expected_fields
+    ), f"Expected {len(expected_fields)} fields, got {len(schema)}"
+
+    for field_name, expected_type in expected_fields.items():
+        assert field_name in schema, f"Field {field_name} not found in schema"
+        assert isinstance(schema[field_name], expected_type), (
+            f"Field {field_name} expected type {expected_type}, "
+            f"got {type(schema[field_name])}"
+        )
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+class TestSchemaEvolution:
+    """Test schema evolution during writes."""
+
+    def test_schema_evolution_add_column(self, clean_table):
+        """Test adding new columns works."""
+        initial_data = _create_typed_dataframe(
+            {"col_a": [1, 2], "col_b": ["row_1", "row_2"], "col_c": [1, 2]}
+        )
+        _write_to_iceberg(initial_data)
+
+        new_data = _create_typed_dataframe(
+            {
+                "col_a": [3, 4],
+                "col_b": ["row_3", "row_4"],
+                "col_c": [3, 4],
+                "col_d": ["extra_3", "extra_4"],
+            }
+        )
+        _write_to_iceberg(new_data)
+
+        _verify_schema(
+            {
+                "col_a": pyi_types.IntegerType,
+                "col_b": pyi_types.StringType,
+                "col_c": pyi_types.IntegerType,
+                "col_d": pyi_types.StringType,
+            }
+        )
+
+        result_df = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4],
+                "col_b": ["row_1", "row_2", "row_3", "row_4"],
+                "col_c": [1, 2, 3, 4],
+                "col_d": [None, None, "extra_3", "extra_4"],
+            }
+        )
+        assert rows_same(result_df, expected)
+
+    def test_multiple_schema_evolutions(self, clean_table):
+        """Test multiple sequential schema evolutions."""
+        initial_data = _create_typed_dataframe(
+            {"col_a": [1], "col_b": ["row_1"], "col_c": [10]}
+        )
+        _write_to_iceberg(initial_data)
+
+        # First evolution: add col_d
+        data_with_d = _create_typed_dataframe(
+            {"col_a": [2], "col_b": ["row_2"], "col_c": [20], "col_d": ["extra_2"]}
+        )
+        _write_to_iceberg(data_with_d)
+
+        _verify_schema(
+            {
+                "col_a": pyi_types.IntegerType,
+                "col_b": pyi_types.StringType,
+                "col_c": pyi_types.IntegerType,
+                "col_d": pyi_types.StringType,
+            }
+        )
+
+        # Second evolution: add col_e
+        data_with_e = _create_typed_dataframe(
+            {
+                "col_a": [3],
+                "col_b": ["row_3"],
+                "col_c": [30],
+                "col_d": ["extra_3"],
+                "col_e": ["bonus_3"],
+            }
+        )
+        _write_to_iceberg(data_with_e)
+
+        _verify_schema(
+            {
+                "col_a": pyi_types.IntegerType,
+                "col_b": pyi_types.StringType,
+                "col_c": pyi_types.IntegerType,
+                "col_d": pyi_types.StringType,
+                "col_e": pyi_types.StringType,
+            }
+        )
+
+        result_df = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3],
+                "col_b": ["row_1", "row_2", "row_3"],
+                "col_c": [10, 20, 30],
+                "col_d": [None, "extra_2", "extra_3"],
+                "col_e": [None, None, "bonus_3"],
+            }
+        )
+        assert rows_same(result_df, expected)
+
+    def test_column_order_independence(self, clean_table):
+        """Test writing data with columns in different order works."""
+        initial_data = _create_typed_dataframe(
+            {"col_a": [1, 2], "col_b": ["row_1", "row_2"], "col_c": [1, 2]}
+        )
+        _write_to_iceberg(initial_data)
+
+        # Append data with columns in different order
+        reordered_data = _create_typed_dataframe(
+            {"col_c": [3, 4], "col_a": [3, 4], "col_b": ["row_3", "row_4"]}
+        )
+        _write_to_iceberg(reordered_data)
+
+        result_df = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4],
+                "col_b": ["row_1", "row_2", "row_3", "row_4"],
+                "col_c": [1, 2, 3, 4],
+            }
+        )
+        assert rows_same(result_df, expected)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+class TestOverwriteMode:
+    """Test OVERWRITE mode for Iceberg writes."""
+
+    def test_overwrite_full_table(self, clean_table):
+        """Test full table overwrite - replace all data."""
+        initial_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4, 5],
+                "col_b": ["old_1", "old_2", "old_3", "old_4", "old_5"],
+                "col_c": [1, 2, 3, 4, 5],
+            }
+        )
+        _write_to_iceberg(initial_data)
+
+        new_data = _create_typed_dataframe(
+            {
+                "col_a": [10, 20, 30],
+                "col_b": ["new_10", "new_20", "new_30"],
+                "col_c": [100, 200, 300],
+            }
+        )
+        _write_to_iceberg(new_data, mode=SaveMode.OVERWRITE)
+
+        result_df = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [10, 20, 30],
+                "col_b": ["new_10", "new_20", "new_30"],
+                "col_c": [100, 200, 300],
+            }
+        )
+        assert rows_same(result_df, expected)
+
+    def test_overwrite_with_filter(self, clean_table):
+        """Test partial overwrite using filter expression."""
+        initial_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4, 5],
+                "col_b": ["data_1", "data_2", "data_3", "data_4", "data_5"],
+                "col_c": [1, 1, 2, 2, 3],
+            }
+        )
+        _write_to_iceberg(initial_data)
+
+        # Replace only rows where col_c == 2
+        overwrite_data = _create_typed_dataframe(
+            {
+                "col_a": [10, 20],
+                "col_b": ["replaced_10", "replaced_20"],
+                "col_c": [2, 2],
+            }
+        )
+        _write_to_iceberg(
+            overwrite_data, mode=SaveMode.OVERWRITE, overwrite_filter=col("col_c") == 2
+        )
+
+        result_df = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 5, 10, 20],
+                "col_b": ["data_1", "data_2", "data_5", "replaced_10", "replaced_20"],
+                "col_c": [1, 1, 3, 2, 2],
+            }
+        )
+        assert rows_same(result_df, expected)
+
+    def test_overwrite_filter_incompatible_mode(self, clean_table):
+        """Test that passing overwrite_filter with non-OVERWRITE mode raises ValueError."""
+        data = _create_typed_dataframe({"col_a": [1], "col_b": ["row_1"], "col_c": [1]})
+
+        # With APPEND mode
+        with pytest.raises(ValueError, match="overwrite_filter can only be specified"):
+            _write_to_iceberg(
+                data, mode=SaveMode.APPEND, overwrite_filter=col("col_c") > 0
+            )
+
+    def test_overwrite_empty_table(self, clean_table):
+        """Test overwriting an empty table."""
+        data = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3],
+                "col_b": ["row_1", "row_2", "row_3"],
+                "col_c": [10, 20, 30],
+            }
+        )
+        _write_to_iceberg(data, mode=SaveMode.OVERWRITE)
+
+        result_df = _read_from_iceberg(sort_by="col_a")
+        assert rows_same(result_df, data)
+
+    def test_overwrite_with_schema_evolution(self, clean_table):
+        """Test OVERWRITE mode with schema evolution (adding new columns)."""
+        initial_data = _create_typed_dataframe(
+            {"col_a": [1, 2], "col_b": ["row_1", "row_2"], "col_c": [1, 2]}
+        )
+        _write_to_iceberg(initial_data)
+
+        # Overwrite with new column col_d
+        new_data = _create_typed_dataframe(
+            {
+                "col_a": [3, 4],
+                "col_b": ["row_3", "row_4"],
+                "col_c": [3, 4],
+                "col_d": ["extra_3", "extra_4"],
+            }
+        )
+        _write_to_iceberg(new_data, mode=SaveMode.OVERWRITE)
+
+        _verify_schema(
+            {
+                "col_a": pyi_types.IntegerType,
+                "col_b": pyi_types.StringType,
+                "col_c": pyi_types.IntegerType,
+                "col_d": pyi_types.StringType,
+            }
+        )
+
+        result_df = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [3, 4],
+                "col_b": ["row_3", "row_4"],
+                "col_c": [3, 4],
+                "col_d": ["extra_3", "extra_4"],
+            }
+        )
+        assert rows_same(result_df, expected)
+
+    def test_overwrite_full_table_missing_columns(self, clean_table):
+        """Test full table overwrite when new data is missing columns - they become NULL."""
+        # Initial data with 3 columns
+        initial_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3],
+                "col_b": ["alice", "bob", "charlie"],
+                "col_c": [10, 20, 30],
+            }
+        )
+        _write_to_iceberg(initial_data)
+
+        # Overwrite with data that's missing col_b (non-partition column)
+        # Note: col_c must be present since table is partitioned by col_c
+        new_data = _create_typed_dataframe(
+            {
+                "col_a": [10, 20],
+                # col_b is intentionally missing (non-partition column)
+                "col_c": [100, 200],
+            }
+        )
+        _write_to_iceberg(new_data, mode=SaveMode.OVERWRITE)
+
+        # Read back and verify
+        result_df = _read_from_iceberg(sort_by="col_a")
+
+        # All old data should be gone
+        assert len(result_df) == 2
+        assert result_df["col_a"].tolist() == [10, 20]
+        assert result_df["col_c"].tolist() == [100, 200]
+
+        # col_b should still exist in schema but be NULL for new rows
+        assert "col_b" in result_df.columns
+        assert pd.isna(result_df["col_b"].iloc[0])
+        assert pd.isna(result_df["col_b"].iloc[1])
+
+    @pytest.mark.parametrize(
+        "filter_expr,overwrite_col_c,expected_data",
+        [
+            # Filter matches nothing (behaves like append)
+            (
+                col("col_c") == 999,
+                [999, 999],
+                {
+                    "col_a": [1, 2, 3, 4, 5],
+                    "col_b": ["row_1", "row_2", "row_3", "row_4", "row_5"],
+                    "col_c": [10, 20, 30, 999, 999],
+                },
+            ),
+            # Filter matches some rows
+            (
+                col("col_c") >= 20,
+                [200, 300],
+                {
+                    "col_a": [1, 4, 5],
+                    "col_b": ["row_1", "row_4", "row_5"],
+                    "col_c": [10, 200, 300],
+                },
+            ),
+            # Filter matches all rows (full overwrite)
+            (
+                col("col_c") < 100,
+                [40, 50],
+                {
+                    "col_a": [4, 5],
+                    "col_b": ["row_4", "row_5"],
+                    "col_c": [40, 50],
+                },
+            ),
+        ],
+    )
+    def test_overwrite_filter_scenarios(
+        self, clean_table, filter_expr, overwrite_col_c, expected_data
+    ):
+        """Test partial overwrite with different filter matching patterns."""
+        initial_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3],
+                "col_b": ["row_1", "row_2", "row_3"],
+                "col_c": [10, 20, 30],
+            }
+        )
+        _write_to_iceberg(initial_data)
+
+        overwrite_data = _create_typed_dataframe(
+            {"col_a": [4, 5], "col_b": ["row_4", "row_5"], "col_c": overwrite_col_c}
+        )
+        _write_to_iceberg(
+            overwrite_data, mode=SaveMode.OVERWRITE, overwrite_filter=filter_expr
+        )
+
+        result_df = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(expected_data)
+        assert rows_same(result_df, expected)
 
 
 if __name__ == "__main__":
