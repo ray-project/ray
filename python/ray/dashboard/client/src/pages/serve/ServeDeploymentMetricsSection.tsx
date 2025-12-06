@@ -27,15 +27,15 @@ import {
 const METRICS_CONFIG: MetricConfig[] = [
   {
     title: "QPS per replica",
-    pathParams: "theme=light&panelId=2",
+    pathParams: "panelId=2",
   },
   {
     title: "Error QPS per replica",
-    pathParams: "&theme=light&panelId=3",
+    pathParams: "panelId=3",
   },
   {
     title: "P90 latency per replica",
-    pathParams: "&theme=light&panelId=5",
+    pathParams: "panelId=5",
   },
 ];
 
@@ -58,6 +58,7 @@ export const ServeReplicaMetricsSection = ({
     dashboardUids,
     dashboardDatasource,
     currentTimeZone,
+    themeMode,
   } = useContext(GlobalContext);
   const grafanaServeDashboardUid =
     dashboardUids?.serveDeployment ?? "rayServeDashboard";
@@ -184,7 +185,7 @@ export const ServeReplicaMetricsSection = ({
         >
           {METRICS_CONFIG.map(({ title, pathParams }) => {
             const path =
-              `/d-solo/${grafanaServeDashboardUid}?orgId=${grafanaOrgId}&${pathParams}` +
+              `/d-solo/${grafanaServeDashboardUid}?orgId=${grafanaOrgId}&theme=${themeMode}&${pathParams}` +
               `${refreshParams}&timezone=${currentTimeZone}${timeRangeParams}&var-Deployment=${encodeURIComponent(
                 deploymentName,
               )}&var-Replica=${encodeURIComponent(
