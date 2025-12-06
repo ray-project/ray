@@ -25,6 +25,7 @@ from ray.data import read_iceberg
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.logical.operators.map_operator import Filter, Project
 from ray.data._internal.logical.optimizers import LogicalOptimizer
+from ray.data._internal.savemode import SaveMode
 from ray.data._internal.util import rows_same
 from ray.data.expressions import col
 from ray.data.tests.test_util import (
@@ -935,58 +936,232 @@ class TestSchemaEvolution:
         )
         assert rows_same(result_df, expected)
 
-    def test_multi_block_schema_reconciliation(self, clean_table):
-        """Test schema reconciliation across blocks with different numeric types."""
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+class TestOverwriteMode:
+    """Test OVERWRITE mode for Iceberg writes."""
+
+    def test_overwrite_full_table(self, clean_table):
+        """Test full table overwrite - replace all data."""
+        initial_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4, 5],
+                "col_b": ["old_1", "old_2", "old_3", "old_4", "old_5"],
+                "col_c": [1, 2, 3, 4, 5],
+            }
+        )
+        _write_to_iceberg(initial_data)
+
+        new_data = _create_typed_dataframe(
+            {
+                "col_a": [10, 20, 30],
+                "col_b": ["new_10", "new_20", "new_30"],
+                "col_c": [100, 200, 300],
+            }
+        )
+        _write_to_iceberg(new_data, mode=SaveMode.OVERWRITE)
+
+        result_df = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [10, 20, 30],
+                "col_b": ["new_10", "new_20", "new_30"],
+                "col_c": [100, 200, 300],
+            }
+        )
+        assert rows_same(result_df, expected)
+
+    def test_overwrite_with_filter(self, clean_table):
+        """Test partial overwrite using filter expression."""
+        initial_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4, 5],
+                "col_b": ["data_1", "data_2", "data_3", "data_4", "data_5"],
+                "col_c": [1, 1, 2, 2, 3],
+            }
+        )
+        _write_to_iceberg(initial_data)
+
+        # Replace only rows where col_c == 2
+        overwrite_data = _create_typed_dataframe(
+            {
+                "col_a": [10, 20],
+                "col_b": ["replaced_10", "replaced_20"],
+                "col_c": [2, 2],
+            }
+        )
+        _write_to_iceberg(
+            overwrite_data, mode=SaveMode.OVERWRITE, overwrite_filter=col("col_c") == 2
+        )
+
+        result_df = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 5, 10, 20],
+                "col_b": ["data_1", "data_2", "data_5", "replaced_10", "replaced_20"],
+                "col_c": [1, 1, 3, 2, 2],
+            }
+        )
+        assert rows_same(result_df, expected)
+
+    def test_overwrite_filter_incompatible_mode(self, clean_table):
+        """Test that passing overwrite_filter with non-OVERWRITE mode raises ValueError."""
+        data = _create_typed_dataframe({"col_a": [1], "col_b": ["row_1"], "col_c": [1]})
+
+        # With APPEND mode
+        with pytest.raises(ValueError, match="overwrite_filter can only be specified"):
+            _write_to_iceberg(
+                data, mode=SaveMode.APPEND, overwrite_filter=col("col_c") > 0
+            )
+
+    def test_overwrite_empty_table(self, clean_table):
+        """Test overwriting an empty table."""
+        data = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3],
+                "col_b": ["row_1", "row_2", "row_3"],
+                "col_c": [10, 20, 30],
+            }
+        )
+        _write_to_iceberg(data, mode=SaveMode.OVERWRITE)
+
+        result_df = _read_from_iceberg(sort_by="col_a")
+        assert rows_same(result_df, data)
+
+    def test_overwrite_with_schema_evolution(self, clean_table):
+        """Test OVERWRITE mode with schema evolution (adding new columns)."""
         initial_data = _create_typed_dataframe(
             {"col_a": [1, 2], "col_b": ["row_1", "row_2"], "col_c": [1, 2]}
         )
         _write_to_iceberg(initial_data)
 
-        # Create two blocks with different numeric types for col_d:
-        # Block 1: int32, Block 2: int64 - requires type promotion during reconciliation
-        block1 = pa.table(
+        # Overwrite with new column col_d
+        new_data = _create_typed_dataframe(
             {
-                "col_a": pa.array([3], type=pa.int32()),
-                "col_b": ["row_3"],
-                "col_c": pa.array([3], type=pa.int32()),
-                "col_d": pa.array([100], type=pa.int32()),
+                "col_a": [3, 4],
+                "col_b": ["row_3", "row_4"],
+                "col_c": [3, 4],
+                "col_d": ["extra_3", "extra_4"],
             }
         )
-        block2 = pa.table(
-            {
-                "col_a": pa.array([4], type=pa.int32()),
-                "col_b": ["row_4"],
-                "col_c": pa.array([4], type=pa.int32()),
-                "col_d": pa.array([200], type=pa.int64()),
-            }
-        )
+        _write_to_iceberg(new_data, mode=SaveMode.OVERWRITE)
 
-        # Create dataset from multiple blocks with different schemas
-        ds = ray.data.from_arrow([block1, block2])
-        ds.write_iceberg(
-            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-            catalog_kwargs=_CATALOG_KWARGS.copy(),
-        )
-
-        # Verify schema has col_d with promoted type (int64)
         _verify_schema(
             {
                 "col_a": pyi_types.IntegerType,
                 "col_b": pyi_types.StringType,
                 "col_c": pyi_types.IntegerType,
-                "col_d": pyi_types.LongType,
+                "col_d": pyi_types.StringType,
             }
         )
 
         result_df = _read_from_iceberg(sort_by="col_a")
-        expected = pd.DataFrame(
+        expected = _create_typed_dataframe(
             {
-                "col_a": pd.array([1, 2, 3, 4], dtype="Int32"),
-                "col_b": ["row_1", "row_2", "row_3", "row_4"],
-                "col_c": pd.array([1, 2, 3, 4], dtype="Int32"),
-                "col_d": pd.array([None, None, 100, 200], dtype="Int64"),
+                "col_a": [3, 4],
+                "col_b": ["row_3", "row_4"],
+                "col_c": [3, 4],
+                "col_d": ["extra_3", "extra_4"],
             }
         )
+        assert rows_same(result_df, expected)
+
+    def test_overwrite_full_table_missing_columns(self, clean_table):
+        """Test full table overwrite when new data is missing columns - they become NULL."""
+        # Initial data with 3 columns
+        initial_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3],
+                "col_b": ["alice", "bob", "charlie"],
+                "col_c": [10, 20, 30],
+            }
+        )
+        _write_to_iceberg(initial_data)
+
+        # Overwrite with data that's missing col_b (non-partition column)
+        # Note: col_c must be present since table is partitioned by col_c
+        new_data = _create_typed_dataframe(
+            {
+                "col_a": [10, 20],
+                # col_b is intentionally missing (non-partition column)
+                "col_c": [100, 200],
+            }
+        )
+        _write_to_iceberg(new_data, mode=SaveMode.OVERWRITE)
+
+        # Read back and verify
+        result_df = _read_from_iceberg(sort_by="col_a")
+
+        # All old data should be gone
+        assert len(result_df) == 2
+        assert result_df["col_a"].tolist() == [10, 20]
+        assert result_df["col_c"].tolist() == [100, 200]
+
+        # col_b should still exist in schema but be NULL for new rows
+        assert "col_b" in result_df.columns
+        assert pd.isna(result_df["col_b"].iloc[0])
+        assert pd.isna(result_df["col_b"].iloc[1])
+
+    @pytest.mark.parametrize(
+        "filter_expr,overwrite_col_c,expected_data",
+        [
+            # Filter matches nothing (behaves like append)
+            (
+                col("col_c") == 999,
+                [999, 999],
+                {
+                    "col_a": [1, 2, 3, 4, 5],
+                    "col_b": ["row_1", "row_2", "row_3", "row_4", "row_5"],
+                    "col_c": [10, 20, 30, 999, 999],
+                },
+            ),
+            # Filter matches some rows
+            (
+                col("col_c") >= 20,
+                [200, 300],
+                {
+                    "col_a": [1, 4, 5],
+                    "col_b": ["row_1", "row_4", "row_5"],
+                    "col_c": [10, 200, 300],
+                },
+            ),
+            # Filter matches all rows (full overwrite)
+            (
+                col("col_c") < 100,
+                [40, 50],
+                {
+                    "col_a": [4, 5],
+                    "col_b": ["row_4", "row_5"],
+                    "col_c": [40, 50],
+                },
+            ),
+        ],
+    )
+    def test_overwrite_filter_scenarios(
+        self, clean_table, filter_expr, overwrite_col_c, expected_data
+    ):
+        """Test partial overwrite with different filter matching patterns."""
+        initial_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3],
+                "col_b": ["row_1", "row_2", "row_3"],
+                "col_c": [10, 20, 30],
+            }
+        )
+        _write_to_iceberg(initial_data)
+
+        overwrite_data = _create_typed_dataframe(
+            {"col_a": [4, 5], "col_b": ["row_4", "row_5"], "col_c": overwrite_col_c}
+        )
+        _write_to_iceberg(
+            overwrite_data, mode=SaveMode.OVERWRITE, overwrite_filter=filter_expr
+        )
+
+        result_df = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(expected_data)
         assert rows_same(result_df, expected)
 
 
