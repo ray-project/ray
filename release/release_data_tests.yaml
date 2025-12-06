@@ -413,7 +413,7 @@
 ########################
 
 - name: "random_shuffle_{{scaling}}"
-
+  python: "3.10"
   matrix:
     setup:
       # This release test consistently fails on autoscaling clusters. So, we only run
@@ -433,6 +433,7 @@
 
 
 - name: random_shuffle_chaos
+  python: "3.10"
   working_dir: nightly_tests
   stable: False
 
@@ -453,7 +454,7 @@
 
 
 - name: "sort_{{scaling}}"
-
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -470,6 +471,7 @@
 
 
 - name: sort_chaos
+  python: "3.10"
   working_dir: nightly_tests
   stable: False
 
@@ -562,6 +564,7 @@
 
 
 - name: image_embedding_from_jsonl_{{case}}
+  python: "3.10"
   frequency: "{{frequency}}"
   group: data-batch-inference
 
@@ -638,7 +641,7 @@
 ##############
 
 - name: "tpch_q1_{{scaling}}"
-
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
