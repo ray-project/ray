@@ -20,6 +20,7 @@
 #include <string>
 
 #include "gtest/gtest.h"
+#include "ray/observability/fake_metric.h"
 
 namespace ray {
 
@@ -58,6 +59,7 @@ class LocalResourceManagerTest : public ::testing::Test {
 
   scheduling::NodeID local_node_id = scheduling::NodeID(0);
   std::unique_ptr<LocalResourceManager> manager;
+  ray::observability::FakeGauge fake_resource_usage_gauge_;
 };
 
 TEST_F(LocalResourceManagerTest, BasicGetResourceUsageMapTest) {
@@ -80,7 +82,8 @@ TEST_F(LocalResourceManagerTest, BasicGetResourceUsageMapTest) {
       nullptr,
       nullptr,
       nullptr,
-      nullptr);
+      nullptr,
+      fake_resource_usage_gauge_);
 
   ///
   /// Test when there's no allocation.
@@ -147,7 +150,8 @@ TEST_F(LocalResourceManagerTest, NodeDrainingTest) {
       nullptr,
       nullptr,
       [](const rpc::NodeDeathInfo &node_death_info) { _Exit(1); },
-      nullptr);
+      nullptr,
+      fake_resource_usage_gauge_);
 
   // Make the node non-idle.
   {
@@ -180,7 +184,8 @@ TEST_F(LocalResourceManagerTest, ObjectStoreMemoryDrainingTest) {
       [&used_object_store]() { return *used_object_store; },
       nullptr,
       [](const rpc::NodeDeathInfo &node_death_info) { _Exit(1); },
-      nullptr);
+      nullptr,
+      fake_resource_usage_gauge_);
 
   // Make the node non-idle.
   *used_object_store = 1;
@@ -216,7 +221,8 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
       [&used_object_store]() { return *used_object_store; },
       nullptr,
       nullptr,
-      nullptr);
+      nullptr,
+      fake_resource_usage_gauge_);
 
   /// Test when the resource is all idle when initialized.
   {
@@ -362,7 +368,8 @@ TEST_F(LocalResourceManagerTest, CreateSyncMessageNegativeResourceAvailability) 
       [&used_object_store]() { return *used_object_store; },
       nullptr,
       nullptr,
-      nullptr);
+      nullptr,
+      fake_resource_usage_gauge_);
 
   manager->SubtractResourceInstances(
       ResourceID::CPU(), {2.0}, /*allow_going_negative=*/true);
@@ -376,8 +383,13 @@ TEST_F(LocalResourceManagerTest, PopulateResourceViewSyncMessage) {
   NodeResources resources = CreateNodeResources({{ResourceID::CPU(), 2.0}});
   resources.labels = {{"label1", "value1"}, {"label2", "value2"}};
 
-  manager = std::make_unique<LocalResourceManager>(
-      local_node_id, resources, nullptr, nullptr, nullptr, nullptr);
+  manager = std::make_unique<LocalResourceManager>(local_node_id,
+                                                   resources,
+                                                   nullptr,
+                                                   nullptr,
+                                                   nullptr,
+                                                   nullptr,
+                                                   fake_resource_usage_gauge_);
 
   // Populate the sync message and verify labels are copied over.
   syncer::ResourceViewSyncMessage msg;

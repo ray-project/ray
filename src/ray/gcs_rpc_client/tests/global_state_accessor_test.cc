@@ -86,7 +86,10 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
         /*storage_operation_latency_in_ms_histogram=*/
         fake_storage_operation_latency_in_ms_histogram_,
         /*storage_operation_count_counter=*/fake_storage_operation_count_counter_,
+        /*resource_usage_gauge=*/fake_resource_usage_gauge_,
         fake_scheduler_placement_time_ms_histogram_,
+        /*health_check_rpc_latency_ms_histogram=*/
+        fake_health_check_rpc_latency_ms_histogram_,
     };
 
     gcs_server_.reset(new gcs::GcsServer(config, gcs_server_metrics, *io_service_));
@@ -159,7 +162,9 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
   observability::FakeGauge fake_task_events_stored_gauge_;
   observability::FakeHistogram fake_storage_operation_latency_in_ms_histogram_;
   observability::FakeCounter fake_storage_operation_count_counter_;
+  observability::FakeGauge fake_resource_usage_gauge_;
   observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
+  observability::FakeHistogram fake_health_check_rpc_latency_ms_histogram_;
 
   std::unique_ptr<gcs::GlobalStateAccessor> global_state_;
 

@@ -58,7 +58,11 @@ class LocalObjectManager : public LocalObjectManagerInterface {
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
       pubsub::SubscriberInterface *core_worker_subscriber,
       IObjectDirectory *object_directory,
-      ray::observability::MetricInterface &object_store_memory_gauge)
+      ray::observability::MetricInterface &object_store_memory_gauge,
+      ray::observability::MetricInterface &spill_manager_objects_gauge,
+      ray::observability::MetricInterface &spill_manager_objects_bytes_gauge,
+      ray::observability::MetricInterface &spill_manager_request_total_gauge,
+      ray::observability::MetricInterface &spill_manager_throughput_mb_gauge)
       : self_node_id_(node_id),
         self_node_address_(std::move(self_node_address)),
         self_node_port_(self_node_port),
@@ -78,7 +82,11 @@ class LocalObjectManager : public LocalObjectManagerInterface {
         next_spill_error_log_bytes_(RayConfig::instance().verbose_spill_logs()),
         core_worker_subscriber_(core_worker_subscriber),
         object_directory_(object_directory),
-        object_store_memory_gauge_(object_store_memory_gauge) {}
+        object_store_memory_gauge_(object_store_memory_gauge),
+        spill_manager_objects_gauge_(spill_manager_objects_gauge),
+        spill_manager_objects_bytes_gauge_(spill_manager_objects_bytes_gauge),
+        spill_manager_request_total_gauge_(spill_manager_request_total_gauge),
+        spill_manager_throughput_mb_gauge_(spill_manager_throughput_mb_gauge) {}
 
   /// Pin objects.
   ///
@@ -392,6 +400,10 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   std::atomic<int64_t> num_failed_deletion_requests_ = 0;
 
   ray::observability::MetricInterface &object_store_memory_gauge_;
+  ray::observability::MetricInterface &spill_manager_objects_gauge_;
+  ray::observability::MetricInterface &spill_manager_objects_bytes_gauge_;
+  ray::observability::MetricInterface &spill_manager_request_total_gauge_;
+  ray::observability::MetricInterface &spill_manager_throughput_mb_gauge_;
 
   friend class LocalObjectManagerTestWithMinSpillingSize;
 };

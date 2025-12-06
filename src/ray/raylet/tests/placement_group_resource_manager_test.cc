@@ -25,6 +25,7 @@
 #include "ray/common/id.h"
 #include "ray/common/scheduling/placement_group_util.h"
 #include "ray/common/scheduling/resource_set.h"
+#include "ray/observability/fake_metric.h"
 
 namespace ray {
 
@@ -73,6 +74,7 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
   std::unique_ptr<raylet::NewPlacementGroupResourceManager>
       new_placement_group_resource_manager_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+  ray::observability::FakeGauge fake_gauge_;
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
   std::function<bool(scheduling::NodeID)> is_node_available_fn_;
   rpc::GcsNodeAddressAndLiveness node_info_;
@@ -87,8 +89,12 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
   }
   void InitLocalAvailableResource(
       absl::flat_hash_map<std::string, double> &unit_resource) {
-    cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
-        io_context, scheduling::NodeID("local"), unit_resource, is_node_available_fn_);
+    cluster_resource_scheduler_ =
+        std::make_shared<ClusterResourceScheduler>(io_context,
+                                                   scheduling::NodeID("local"),
+                                                   unit_resource,
+                                                   is_node_available_fn_,
+                                                   fake_gauge_);
     new_placement_group_resource_manager_ =
         std::make_unique<raylet::NewPlacementGroupResourceManager>(
             *cluster_resource_scheduler_);

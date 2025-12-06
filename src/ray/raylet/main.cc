@@ -43,6 +43,7 @@
 #include "ray/object_manager_rpc_client/object_manager_client.h"
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
+#include "ray/raylet/metrics.h"
 #include "ray/raylet/node_manager.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
@@ -331,7 +332,52 @@ int main(int argc, char *argv[]) {
   RAY_CHECK_OK(gcs_client->Connect(main_service));
 
   ray::stats::Gauge task_by_state_counter = ray::core::GetTaskByStateGaugeMetric();
+  ray::stats::Gauge resource_usage_gauge = ray::raylet::GetResourceUsageGaugeMetric();
   ray::stats::Gauge object_store_memory_gauge = ray::GetObjectStoreMemoryGaugeMetric();
+  ray::stats::Gauge spill_manager_objects_gauge =
+      ray::raylet::GetSpillManagerObjectsGaugeMetric();
+  ray::stats::Gauge spill_manager_objects_bytes_gauge =
+      ray::raylet::GetSpillManagerObjectsBytesGaugeMetric();
+  ray::stats::Gauge spill_manager_request_total_gauge =
+      ray::raylet::GetSpillManagerRequestTotalGaugeMetric();
+  ray::stats::Gauge spill_manager_throughput_mb_gauge =
+      ray::raylet::GetSpillManagerThroughputMBGaugeMetric();
+  ray::stats::Gauge memory_manager_worker_eviction_total_gauge =
+      ray::raylet::GetMemoryManagerWorkerEvictionTotalGaugeMetric();
+  ray::stats::Gauge scheduler_tasks_gauge = ray::raylet::GetSchedulerTasksGaugeMetric();
+  ray::stats::Gauge scheduler_unscheduleable_tasks_gauge =
+      ray::raylet::GetSchedulerUnscheduleableTasksGaugeMetric();
+  ray::stats::Gauge scheduler_failed_worker_startup_total_gauge =
+      ray::raylet::GetSchedulerFailedWorkerStartupTotalGaugeMetric();
+  ray::stats::Gauge internal_num_spilled_tasks_gauge =
+      ray::raylet::GetInternalNumSpilledTasksGaugeMetric();
+  ray::stats::Gauge internal_num_infeasible_scheduling_classes_gauge =
+      ray::raylet::GetInternalNumInfeasibleSchedulingClassesGaugeMetric();
+  ray::stats::Sum num_workers_started_sum = ray::raylet::GetNumWorkersStartedMetric();
+  ray::stats::Sum num_cached_workers_skipped_job_mismatch_sum =
+      ray::raylet::GetNumCachedWorkersSkippedJobMismatchMetric();
+  ray::stats::Sum num_cached_workers_skipped_runtime_environment_mismatch_sum =
+      ray::raylet::GetNumCachedWorkersSkippedRuntimeEnvironmentMismatchMetric();
+  ray::stats::Sum num_cached_workers_skipped_dynamic_options_mismatch_sum =
+      ray::raylet::GetNumCachedWorkersSkippedDynamicOptionsMismatchMetric();
+  ray::stats::Sum num_workers_started_from_cache_sum =
+      ray::raylet::GetNumWorkersStartedFromCacheMetric();
+  ray::stats::Histogram worker_register_time_ms_histogram =
+      ray::raylet::GetWorkerRegisterTimeMsHistogramMetric();
+
+  ray::raylet::SchedulerMetrics scheduler_metrics = {
+      scheduler_tasks_gauge,
+      scheduler_unscheduleable_tasks_gauge,
+      scheduler_failed_worker_startup_total_gauge,
+      internal_num_spilled_tasks_gauge,
+      internal_num_infeasible_scheduling_classes_gauge};
+  ray::raylet::WorkerPoolMetrics worker_pool_metrics = {
+      num_workers_started_sum,
+      num_cached_workers_skipped_job_mismatch_sum,
+      num_cached_workers_skipped_runtime_environment_mismatch_sum,
+      num_cached_workers_skipped_dynamic_options_mismatch_sum,
+      num_workers_started_from_cache_sum,
+      worker_register_time_ms_histogram};
   std::shared_ptr<plasma::PlasmaClient> plasma_client;
   std::unique_ptr<ray::raylet::PlacementGroupResourceManager>
       placement_group_resource_manager;
@@ -635,6 +681,7 @@ int main(int argc, char *argv[]) {
         [&] { cluster_lease_manager->ScheduleAndGrantLeases(); },
         node_manager_config.ray_debugger_external,
         /*get_time=*/[]() { return absl::Now(); },
+        worker_pool_metrics,
         std::move(add_process_to_workers_cgroup_hook));
 
     client_call_manager = std::make_unique<ray::rpc::ClientCallManager>(
@@ -801,7 +848,11 @@ int main(int argc, char *argv[]) {
         },
         /*core_worker_subscriber_=*/core_worker_subscriber.get(),
         object_directory.get(),
-        object_store_memory_gauge);
+        object_store_memory_gauge,
+        spill_manager_objects_gauge,
+        spill_manager_objects_bytes_gauge,
+        spill_manager_request_total_gauge,
+        spill_manager_throughput_mb_gauge);
 
     lease_dependency_manager = std::make_unique<ray::raylet::LeaseDependencyManager>(
         *object_manager, task_by_state_counter);
@@ -814,6 +865,7 @@ int main(int argc, char *argv[]) {
         [&](ray::scheduling::NodeID id) {
           return gcs_client->Nodes().IsNodeAlive(ray::NodeID::FromBinary(id.Binary()));
         },
+        resource_usage_gauge,
         /*get_used_object_store_memory*/
         [&]() {
           if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
@@ -897,7 +949,8 @@ int main(int argc, char *argv[]) {
             std::vector<std::unique_ptr<ray::RayObject>> *results) {
           return node_manager->GetObjectsFromPlasma(object_ids, results);
         },
-        max_task_args_memory);
+        max_task_args_memory,
+        scheduler_metrics);
 
     cluster_lease_manager =
         std::make_unique<ray::raylet::ClusterLeaseManager>(raylet_node_id,
@@ -954,7 +1007,8 @@ int main(int argc, char *argv[]) {
         shutting_down,
         *placement_group_resource_manager,
         std::move(acceptor),
-        std::move(socket));
+        std::move(socket),
+        memory_manager_worker_eviction_total_gauge);
 
     // Initializing stats should be done after the node manager is initialized because
     // <explain why>. Metrics exported before this call will be buffered until `Init` is
