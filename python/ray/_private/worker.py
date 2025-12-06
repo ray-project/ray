@@ -3389,7 +3389,9 @@ def _make_remote(function_or_class, options):
         function_or_class.__module__ = "global"
 
     if inspect.isfunction(function_or_class) or is_cython(function_or_class):
-        ray_option_utils.validate_task_options(options, in_options=False)
+        ray_option_utils.validate_task_options(
+            options, in_options=False, func=function_or_class
+        )
         return ray.remote_function.RemoteFunction(
             Language.PYTHON,
             function_or_class,
@@ -3694,12 +3696,12 @@ def remote(
 
     Args:
         num_returns: This is only for *remote functions*. It specifies
-            the number of object refs returned by the remote function
-            invocation. The default value is 1.
-            Pass "dynamic" to allow the task to decide how many
-            return values to return during execution, and the caller will
-            receive an ObjectRef[DynamicObjectRefGenerator].
-            See :ref:`dynamic generators <dynamic-generators>` for more details.
+            the number of object refs returned by the remote function invocation.
+            For non-generator functions, the default value is 1.
+            For generator functions, the default value is "streaming" and an ObjectRefGenerator
+            will be returned. See "ref" `ray generator <ray-generator>` for more details.
+            Raises ValueError if num_returns < 0 or num_returns="streaming" with a non-generator
+            function.
         num_cpus: The quantity of CPU resources to reserve
             for this task or for the lifetime of the actor.
             By default, tasks use 1 CPU resource and actors use 1 CPU
