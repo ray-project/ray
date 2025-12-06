@@ -46,16 +46,10 @@ void GcsResourceManager::ConsumeSyncMessage(
   // io context for thread safety.
   io_context_.dispatch(
       [this, message]() {
-        if (message->message_type() == syncer::MessageType::COMMANDS) {
-          // COMMANDS channel is currently unused.
-        } else if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
-          syncer::ResourceViewSyncMessage resource_view_sync_message;
-          resource_view_sync_message.ParseFromString(message->sync_message());
-          UpdateFromResourceView(NodeID::FromBinary(message->node_id()),
-                                 resource_view_sync_message);
-        } else {
-          RAY_LOG(FATAL) << "Unsupported message type: " << message->message_type();
-        }
+        syncer::ResourceViewSyncMessage resource_view_sync_message;
+        resource_view_sync_message.ParseFromString(message->sync_message());
+        UpdateFromResourceView(NodeID::FromBinary(message->node_id()),
+                               resource_view_sync_message);
       },
       "GcsResourceManager::Update");
 }

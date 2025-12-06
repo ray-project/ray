@@ -34,8 +34,6 @@
 
 namespace ray::syncer {
 
-using ray::rpc::syncer::CommandsSyncMessage;
-using ray::rpc::syncer::MessageType;
 using ray::rpc::syncer::RaySyncMessage;
 using ray::rpc::syncer::RaySyncMessageBatch;
 using ray::rpc::syncer::ResourceViewSyncMessage;
@@ -51,13 +49,12 @@ struct ReporterInterface {
   ///
   /// \param version_after Request message with version after `version_after`. If the
   /// reporter doesn't have the qualified one, just return std::nullopt
-  /// \param message_type The message type asked for.
   ///
   /// \return std::nullopt if the reporter doesn't have such component or the current
   /// snapshot of the component is not newer the asked one. Otherwise, return the
   /// actual message.
   virtual std::optional<RaySyncMessage> CreateSyncMessage(
-      int64_t version_after, MessageType message_type) const = 0;
+      int64_t version_after) const = 0;
   virtual ~ReporterInterface() {}
 };
 
@@ -77,11 +74,11 @@ struct ReceiverInterface {
 class NodeState;
 class RaySyncerBidiReactor;
 
-/// RaySyncer is an embedding service for component synchronization.
+/// RaySyncer is an embedding service for resource view synchronization.
 /// All operations in this class needs to be finished GetIOContext()
 /// for thread-safety.
 /// RaySyncer is the control plane to make sure all connections eventually
-/// have the latest view of the cluster components registered.
+/// have the latest view of the cluster resource state.
 /// RaySyncer has two components:
 ///    1. RaySyncerBidiReactor: keeps track of the sending and receiving information
 ///       and make sure not sending the information the remote node knows.
@@ -117,39 +114,30 @@ class RaySyncer {
   /// Get the latest sync message sent from a specific node.
   ///
   /// \param node_id The node id where the message comes from.
-  /// \param message_type The message type of the component.
   ///
   /// \return The latest sync message sent from the node. If the node doesn't
   /// have one, nullptr will be returned.
-  std::shared_ptr<const RaySyncMessage> GetSyncMessage(const std::string &node_id,
-                                                       MessageType message_type) const;
+  std::shared_ptr<const RaySyncMessage> GetSyncMessage(const std::string &node_id) const;
 
   /// Register the components to the syncer module. Syncer will make sure eventually
   /// it'll have a global view of the cluster.
   ///
-  ///
-  /// \param message_type The message type of the component.
-  /// \param reporter The local component to be broadcasted.
-  /// \param receiver The consumer of the sync message sent by the other nodes in the
-  /// cluster.
-  /// \param pull_from_reporter_interval_ms The frequence to pull a message. 0 means
-  /// never pull a message in syncer.
-  /// from reporter and push it to sending queue.
-  void Register(MessageType message_type,
-                const ReporterInterface *reporter,
+  /// \param reporter The producer that generates the resource view message to be
+  /// broadcasted. \param receiver The consumer that consumes the resource view message
+  /// sent by other nodes in the cluster. \param broadcast_local_resource_view_update_ms
+  /// How often to broadcast the local resource view (ms). 0 means never broadcast.
+  void Register(const ReporterInterface *reporter,
                 ReceiverInterface *receiver,
-                int64_t pull_from_reporter_interval_ms = 100);
+                int64_t broadcast_local_resource_view_update_ms = 100);
 
   /// Get the current node id.
   const std::string &GetLocalNodeID() const { return local_node_id_; }
 
-  /// Request trigger a broadcasting for a specific component immediately instead of
-  /// waiting for ray syncer to poll the message.
+  /// Broadcasts the local resource view update to all connected nodes.
   ///
-  /// \param message_type The component to check.
-  /// \return true if a message is generated. If the component doesn't have a new
-  /// version of message, false will be returned.
-  bool OnDemandBroadcasting(MessageType message_type);
+  /// \return true if a message was generated and broadcast. Returns false if
+  /// the local resource view has not changed since the last broadcast.
+  bool BroadcastLocalResourceViewUpdate();
 
   /// Function to broadcast the messages to other nodes.
   /// A message will be sent to a node if that node doesn't have this message.
