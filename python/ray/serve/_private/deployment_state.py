@@ -40,7 +40,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FAIL_ON_RANK_ERROR,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
-    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -3647,7 +3647,7 @@ class DeploymentStateManager:
             and len(ds._replicas.get()) == ds.target_num_replicas
             for ds in self._deployment_states.values()
         )
-        if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY:
+        if RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY:
             # Tuple of target node to compact, and its draining deadline
             node_info: Optional[
                 Tuple[str, float]
