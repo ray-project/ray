@@ -364,7 +364,8 @@ class ClientCallManager {
   /// The main event loop, to which the callback functions will be posted.
   instrumented_io_context &main_service_;
 
-  /// The number of polling threads.
+  /// The number of threads that are polling for replies and creating the proto reply
+  /// objects.
   int num_threads_;
 
   /// Whether to record stats for these client calls.
