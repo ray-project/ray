@@ -154,11 +154,19 @@ class VLLMEngineConfig(BaseModelExtended):
     def get_runtime_env_with_local_env_vars(self) -> dict:
         runtime_env = self.runtime_env or {}
         runtime_env.setdefault("env_vars", {})
+        env_vars = runtime_env["env_vars"]
 
         # Propagate env vars to the runtime env
         for env_var in ENV_VARS_TO_PROPAGATE:
             if env_var in os.environ:
-                runtime_env["env_vars"][env_var] = os.getenv(env_var)
+                env_vars[env_var] = os.getenv(env_var)
+
+        if "VLLM_RAY_PER_WORKER_GPUS" not in env_vars:
+            fractional_gpu = self._detect_fractional_gpu_from_pg(
+                self.placement_group_config
+            )
+            if fractional_gpu is not None:
+                env_vars["VLLM_RAY_PER_WORKER_GPUS"] = str(fractional_gpu)
         return runtime_env
 
     @classmethod
@@ -209,7 +217,6 @@ class VLLMEngineConfig(BaseModelExtended):
 
         # placement_group_config is already validated and stored as dict in LLMConfig
         placement_group_config = llm_config.placement_group_config
-
         return VLLMEngineConfig(
             model_id=llm_config.model_id,
             hf_model_id=hf_model_id,
@@ -333,3 +340,24 @@ class VLLMEngineConfig(BaseModelExtended):
 
             logger.info(f"Using new placement group {pg}. {placement_group_table(pg)}")
         return pg
+
+    @staticmethod
+    def _detect_fractional_gpu_from_pg(
+        placement_group_config: Optional[Dict[str, Any]]
+    ) -> Optional[float]:
+        if not placement_group_config:
+            return None
+
+        bundles = placement_group_config.get("bundles") or []
+
+        for bundle in bundles:
+            if "GPU" not in bundle:
+                continue
+
+            gpu_value = bundle["GPU"]
+            if gpu_value <= 0 or gpu_value >= 1:
+                return None
+
+            return gpu_value
+
+        return None

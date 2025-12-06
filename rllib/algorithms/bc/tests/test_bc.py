@@ -21,7 +21,7 @@ class TestBC(unittest.TestCase):
 
     def test_bc_compilation_and_learning_from_offline_file(self):
         # Define the data paths.
-        data_path = "tests/data/cartpole/cartpole-v1_large"
+        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
         base_path = Path(__file__).parents[3]
         print(f"base_path={base_path}")
         data_path = "local://" / base_path / data_path
