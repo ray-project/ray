@@ -15,8 +15,9 @@ from ray.rllib.examples.algorithms.ppo.multi_agent_footsies_ppo import (
     env_creator,
     stop,
 )
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
 )
 from ray.tune.registry import register_env
 
@@ -120,8 +121,6 @@ config.environment(
 
 
 if __name__ == "__main__":
-    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
-
     results = run_rllib_example_script_experiment(
         base_config=config,
         args=args,

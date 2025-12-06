@@ -71,7 +71,7 @@ from ray.rllib.examples.envs.classes.action_mask_env import ActionMaskEnv
 from ray.rllib.examples.rl_modules.classes.action_masking_rlm import (
     ActionMaskingTorchRLModule,
 )
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )

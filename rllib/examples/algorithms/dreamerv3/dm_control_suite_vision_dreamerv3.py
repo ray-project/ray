@@ -17,7 +17,10 @@ https://arxiv.org/pdf/2010.02193.pdf
 from ray import tune
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 from ray.rllib.env.wrappers.dm_control_wrapper import ActionClip, DMCEnv
-from ray.rllib.utils.test_utils import add_rllib_example_script_args
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 
 parser = add_rllib_example_script_args(
     default_iters=1000000,
@@ -82,6 +85,4 @@ config = (
 
 
 if __name__ == "__main__":
-    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
-
     run_rllib_example_script_experiment(config, args)

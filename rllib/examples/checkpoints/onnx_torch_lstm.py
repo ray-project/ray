@@ -5,8 +5,8 @@ import onnxruntime
 
 import ray
 import ray.rllib.algorithms.ppo as ppo
+from ray.rllib.examples.utils import add_rllib_example_script_args, check
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.test_utils import add_rllib_example_script_args, check
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 torch, _ = try_import_torch()

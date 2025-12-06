@@ -67,7 +67,7 @@ from ray.rllib.examples.envs.classes.correlated_actions_env import CorrelatedAct
 from ray.rllib.examples.rl_modules.classes.autoregressive_actions_rlm import (
     AutoregressiveActionsRLM,
 )
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
