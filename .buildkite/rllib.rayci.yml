@@ -105,7 +105,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
-        --build-name rllibgpubuild
         --only-tags gpu
         --test-env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         --test-env=RLLIB_NUM_GPUS=1
@@ -200,7 +199,6 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --parallelism-per-worker 2
         --gpus 4
-        --build-name rllibgpubuild
         --only-tags multi_gpu
         --build-name rllibgpubuild-py3.10
         --python-version 3.10
@@ -218,7 +216,6 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib --run-flaky-tests
         --parallelism-per-worker 2
         --gpus 4
-        --build-name rllibgpubuild
         --only-tags multi_gpu
         --build-name rllibgpubuild-py3.10
         --python-version 3.10
@@ -235,7 +232,6 @@ steps:
     instance_type: gpu
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib --run-flaky-tests
-        --build-name rllibgpubuild
         --only-tags gpu
         --test-env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         --test-env=RLLIB_NUM_GPUS=1
