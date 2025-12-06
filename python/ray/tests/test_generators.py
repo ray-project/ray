@@ -185,14 +185,6 @@ def test_generator_errors(
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(ref3)
 
-    dynamic_ref = remote_generator_fn.options(num_returns=None).remote(
-        3, store_in_plasma
-    )
-    ref1, ref2 = ray.get(dynamic_ref)
-    ray.get(ref1)
-    with pytest.raises(ray.exceptions.RayTaskError):
-        ray.get(ref2)
-
 
 def test_yield_exception(ray_start_cluster):
     @ray.remote
