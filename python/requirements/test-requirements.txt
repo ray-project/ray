@@ -132,7 +132,18 @@ pyopenssl>=25.0.0
 starlette>=0.40.0
 requests>=2.32.3
 docker>=7.1.0
-protobuf>=4,<5
+protobuf>=5.26.1,<6
+grpcio>=1.76.0
+googleapis-common-protos>=1.72.0
+grpcio-tools>=1.66.2
+proto-plus>=1.26.1
+opentelemetry-proto>=1.39.0
+google-cloud-bigquery>=3.38.0
+google-cloud-bigquery-storage>=2.35.0
+tensorboard>=2.20.0
+tensorflow-metadata>=1.17.2
+# packaging>=25.0
+
 # cupy-cuda12x requires fastrlock
 fastrlock>=0.8.3; sys_platform != 'darwin'
 

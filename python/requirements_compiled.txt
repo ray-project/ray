@@ -7,6 +7,7 @@ absl-py==1.4.0
     #   dm-control
     #   dm-env
     #   etils
+    #   keras
     #   labmaze
     #   ml-collections
     #   mujoco
@@ -480,8 +481,6 @@ docker==7.1.0
     #   moto
     #   pytest-docker-tools
     #   testcontainers
-docker-pycreds==0.4.0
-    # via wandb
 docstring-parser==0.15
     # via yahp
 docutils==0.19
@@ -567,7 +566,7 @@ flask-cors==4.0.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   moto
-flatbuffers==23.5.26
+flatbuffers==25.9.23
     # via
     #   onnxruntime
     #   tensorflow
@@ -649,20 +648,22 @@ google-auth==2.23.4
     #   google-api-core
     #   google-api-python-client
     #   google-auth-httplib2
-    #   google-auth-oauthlib
+    #   google-cloud-bigquery
+    #   google-cloud-bigquery-storage
     #   google-cloud-core
     #   google-cloud-storage
     #   gsutil
     #   kubernetes
-    #   tensorboard
 google-auth-httplib2==0.1.1
     # via google-api-python-client
-google-auth-oauthlib==1.0.0
-    # via tensorboard
-google-cloud-bigquery==3.13.0
-    # via -r python/requirements/ml/data-test-requirements.txt
-google-cloud-bigquery-storage==2.24.0
-    # via -r python/requirements/ml/data-test-requirements.txt
+google-cloud-bigquery==3.38.0
+    # via
+    #   -r python/requirements/ml/data-test-requirements.txt
+    #   -r python/requirements/test-requirements.txt
+google-cloud-bigquery-storage==2.35.0
+    # via
+    #   -r python/requirements/ml/data-test-requirements.txt
+    #   -r python/requirements/test-requirements.txt
 google-cloud-core==2.4.1
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
@@ -687,8 +688,9 @@ google-resumable-media==2.6.0
     # via
     #   google-cloud-bigquery
     #   google-cloud-storage
-googleapis-common-protos==1.61.0
+googleapis-common-protos==1.72.0
     # via
+    #   -r python/requirements/test-requirements.txt
     #   google-api-core
     #   grpcio-status
     #   tensorflow-metadata
@@ -713,12 +715,13 @@ graphviz==0.20.3
     # via -r python/requirements/test-requirements.txt
 greenlet==3.0.1
     # via sqlalchemy
-grpcio==1.74.0 ; python_version >= "3.10"
+grpcio==1.76.0 ; python_version >= "3.10"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/test-requirements.txt
     #   google-api-core
-    #   google-cloud-bigquery
+    #   google-cloud-bigquery-storage
     #   grpcio-status
     #   grpcio-tools
     #   mlagents-envs
@@ -726,8 +729,10 @@ grpcio==1.74.0 ; python_version >= "3.10"
     #   tensorflow
 grpcio-status==1.62.3
     # via google-api-core
-grpcio-tools==1.62.3
-    # via -r python/requirements/cloud-requirements.txt
+grpcio-tools==1.66.2
+    # via
+    #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/test-requirements.txt
 gsutil==5.27
     # via -r python/requirements/docker/ray-docker-requirements.txt
 gunicorn==20.1.0
@@ -747,6 +752,7 @@ h11==0.16.0
 h5py==3.12.1
     # via
     #   -r python/requirements/ml/rllib-test-requirements.txt
+    #   keras
     #   tensorflow
 halo==0.0.31
     # via -r python/requirements/cloud-requirements.txt
@@ -1001,7 +1007,7 @@ jupytext==1.16.3
     # via -r python/requirements/test-requirements.txt
 kafka-python==2.2.15
     # via -r python/requirements/ml/data-test-requirements.txt
-keras==2.15.0
+keras==3.12.0
     # via tensorflow
 kiwisolver==1.4.5
     # via matplotlib
@@ -1099,10 +1105,11 @@ mistune==0.8.4
     # via nbconvert
 ml-collections==0.1.1
     # via open-spiel
-ml-dtypes==0.3.2
+ml-dtypes==0.5.4
     # via
     #   jax
     #   jaxlib
+    #   keras
     #   tensorflow
 mlagents-envs==0.28.0
     # via -r python/requirements/ml/rllib-test-requirements.txt
@@ -1182,6 +1189,8 @@ myst-parser==1.0.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   myst-nb
+namex==0.1.0
+    # via keras
 nbclassic==1.0.0
     # via
     #   jupyterlab
@@ -1278,6 +1287,7 @@ numpy==1.26.4
     #   imageio
     #   jax
     #   jaxlib
+    #   keras
     #   labmaze
     #   lightgbm
     #   matplotlib
@@ -1386,8 +1396,10 @@ opentelemetry-instrumentation-asgi==0.55b1
     # via opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-fastapi==0.55b1
     # via -r python/requirements/test-requirements.txt
-opentelemetry-proto==1.27.0
-    # via -r python/requirements.txt
+opentelemetry-proto==1.39.0
+    # via
+    #   -r python/requirements.txt
+    #   -r python/requirements/test-requirements.txt
 opentelemetry-sdk==1.34.1
     # via
     #   -r python/requirements.txt
@@ -1409,6 +1421,8 @@ opt-einsum==3.3.0
     #   jax
     #   pyro-ppl
     #   tensorflow
+optree==0.18.0
+    # via keras
 optuna==4.1.0
     # via -r python/requirements/ml/tune-requirements.txt
 orjson==3.9.15
@@ -1417,7 +1431,7 @@ orjson==3.9.15
     #   tensordict
 ormsgpack==1.7.0
     # via -r python/requirements/ml/rllib-requirements.txt
-packaging==23.0
+packaging==24.2
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -1442,6 +1456,7 @@ packaging==23.0
     #   jupyterlab
     #   jupyterlab-server
     #   jupytext
+    #   keras
     #   knack
     #   kombu
     #   lazy-loader
@@ -1465,12 +1480,14 @@ packaging==23.0
     #   snowflake-connector-python
     #   sphinx
     #   statsmodels
+    #   tensorboard
     #   tensorboardx
     #   tensordict
     #   tensorflow
     #   torchmetrics
     #   transformers
     #   utilsforecast
+    #   wandb
 pandas==1.5.3 ; python_version < "3.12"
     # via
     #   -r python/requirements.txt
@@ -1535,6 +1552,7 @@ pillow==10.4.0 ; platform_system != "Windows"
     #   matplotlib
     #   mlagents-envs
     #   scikit-image
+    #   tensorboard
     #   torchvision
 pkginfo==1.9.6
     # via azure-cli-core
@@ -1577,18 +1595,17 @@ propcache==0.3.0
     #   yarl
 prophet==1.1.5
     # via -r python/requirements/ml/tune-test-requirements.txt
-proto-plus==1.22.3
+proto-plus==1.26.1
     # via
+    #   -r python/requirements/test-requirements.txt
     #   google-api-core
-    #   google-cloud-bigquery
     #   google-cloud-bigquery-storage
-protobuf==4.25.8
+protobuf==5.29.5
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   dm-control
     #   google-api-core
-    #   google-cloud-bigquery
     #   google-cloud-bigquery-storage
     #   googleapis-common-protos
     #   grpcio-status
@@ -1623,7 +1640,6 @@ psutil==5.9.6
     #   raydp
     #   tensorflow-datasets
     #   torch-geometric
-    #   wandb
 ptyprocess==0.7.0
     # via
     #   pexpect
@@ -1682,6 +1698,7 @@ pydantic==2.11.7
     #   gradio
     #   mlflow-skinny
     #   pyiceberg
+    #   wandb
 pydantic-core==2.33.2
     # via pydantic
 pydot==1.4.2
@@ -1966,7 +1983,7 @@ requests==2.32.5
     #   smart-open
     #   snowflake-connector-python
     #   sphinx
-    #   tensorboard
+    #   tensorflow
     #   tensorflow-datasets
     #   torch-geometric
     #   torchtext
@@ -1975,7 +1992,6 @@ requests==2.32.5
     #   wandb
 requests-oauthlib==2.0.0
     # via
-    #   google-auth-oauthlib
     #   kubernetes
     #   msrest
 requests-toolbelt==1.0.0
@@ -2005,6 +2021,7 @@ rich==13.3.3
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/ml/rllib-requirements.txt
     #   comet-ml
+    #   keras
     #   memray
     #   pyiceberg
     #   semgrep
@@ -2102,8 +2119,6 @@ serpent==1.41
     # via
     #   hpbandster
     #   pyro4
-setproctitle==1.3.6
-    # via wandb
 shellcheck-py==0.7.1.1
     # via -r python/requirements/lint-requirements.txt
 shellingham==1.5.4
@@ -2122,7 +2137,6 @@ six==1.16.0
     #   azure-core
     #   bleach
     #   configobj
-    #   docker-pycreds
     #   ecdsa
     #   fs
     #   gcs-oauth2-boto-plugin
@@ -2149,7 +2163,6 @@ six==1.16.0
     #   pyvmomi
     #   responses
     #   rfc3339-validator
-    #   tensorboard
     #   tensorflow
     #   tensorflow-probability
     #   triad
@@ -2247,7 +2260,7 @@ tenacity==8.5.0
     # via
     #   plotly
     #   pyiceberg
-tensorboard==2.15.2
+tensorboard==2.20.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   tensorflow
@@ -2262,22 +2275,20 @@ tensorboardx==2.6.2.2
     #   pytorch-lightning
 tensordict==0.8.3 ; sys_platform != "darwin"
     # via -r python/requirements/test-requirements.txt
-tensorflow==2.15.1 ; python_version < "3.12" and (sys_platform != "darwin" or platform_machine != "arm64")
+tensorflow==2.20.0 ; python_version < "3.12" and (sys_platform != "darwin" or platform_machine != "arm64")
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 tensorflow-datasets==4.9.3 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
 tensorflow-estimator==2.15.0
-    # via
-    #   -r python/requirements/ml/rllib-test-requirements.txt
-    #   tensorflow
+    # via -r python/requirements/ml/rllib-test-requirements.txt
 tensorflow-io-gcs-filesystem==0.31.0 ; python_version < "3.12"
+    # via -r python/requirements/ml/dl-cpu-requirements.txt
+tensorflow-metadata==1.17.2
     # via
-    #   -r python/requirements/ml/dl-cpu-requirements.txt
-    #   tensorflow
-tensorflow-metadata==1.13.1
-    # via tensorflow-datasets
+    #   -r python/requirements/test-requirements.txt
+    #   tensorflow-datasets
 tensorflow-probability==0.23.0 ; python_version < "3.12"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 termcolor==2.4.0
@@ -2467,6 +2478,7 @@ typing-extensions==4.12.2
     #   gradio
     #   gradio-client
     #   graphene
+    #   grpcio
     #   gymnasium
     #   huggingface-hub
     #   lightning-utilities
@@ -2477,6 +2489,7 @@ typing-extensions==4.12.2
     #   opentelemetry-api
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
+    #   optree
     #   pydantic
     #   pydantic-core
     #   pyopenssl
@@ -2491,6 +2504,7 @@ typing-extensions==4.12.2
     #   torch
     #   typer
     #   typing-inspection
+    #   wandb
 typing-inspection==0.4.1
     # via pydantic
 tzdata==2025.2
@@ -2567,7 +2581,7 @@ virtualenv==20.29.1
     # via vsphere-automation-sdk
 vsphere-automation-sdk @ git+https://github.com/vmware/vsphere-automation-sdk-python.git@v8.0.1.0
     # via -r python/requirements/test-requirements.txt
-wandb==0.17.0
+wandb==0.23.1
     # via -r python/requirements/ml/core-requirements.txt
 watchfiles==0.19.0
     # via
