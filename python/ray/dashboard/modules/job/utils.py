@@ -308,7 +308,7 @@ async def find_jobs_by_job_ids(
 def fast_tail_last_n_lines(
     path: str,
     num_lines: int,
-    max_chars: int = 20000,
+    max_chars: int,
     block_size: int = 8192,
 ) -> str:
     """Return the last ``num_lines`` lines from a large log file efficiently.
@@ -373,4 +373,4 @@ def fast_tail_last_n_lines(
         return result[-max_chars:]
     except Exception as e:
         logger.exception(f"Failed to read log file {path}: {e}")
-        return ""
+        raise
