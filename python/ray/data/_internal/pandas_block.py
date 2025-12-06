@@ -1,6 +1,5 @@
 import collections
 import logging
-import sys
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -16,7 +15,7 @@ from typing import (
 
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_object_dtype, is_scalar, is_string_dtype
+from pandas.api.types import is_scalar
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.utils import _should_convert_to_tensor
@@ -499,106 +498,65 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
-        from ray.air.util.tensor_extensions.pandas import TensorArray
-        from ray.data.extensions import TensorArrayElement, TensorDtype
+        # Pandas DataFrames are serialized as Arrow tables in Ray's object store.
+        # The in-memory Pandas representation size doesn't reflect the actual
+        # serialized size. We use PyArrow IPC serialization to efficiently
+        # estimate the serialized size, which is close to the actual object store
+        # size (Ray adds a small overhead on top of IPC).
+        import pyarrow as pa
 
         pd = lazy_import_pandas()
 
-        def get_deep_size(obj):
-            """Calculates the memory size of objects,
-            including nested objects using an iterative approach."""
-            seen = set()
-            total_size = 0
-            objects = collections.deque([obj])
-            while objects:
-                current = objects.pop()
+        # Check for columns that need special handling:
+        # 1. Boolean columns: Arrow IPC bit-packs (8 per byte), but Ray doesn't
+        # 2. Object columns: Arrow IPC can overestimate nested structures
+        # 3. String dtype: Pandas nullable string dtype serializes differently
+        has_boolean_columns = any(
+            isinstance(self._table[col].dtype, pd.BooleanDtype)
+            or self._table[col].dtype == "boolean"
+            for col in self._table.columns
+        )
+        has_object_columns = any(
+            self._table[col].dtype == "object" for col in self._table.columns
+        )
+        has_string_columns = any(
+            isinstance(self._table[col].dtype, pd.StringDtype)
+            or self._table[col].dtype == "string"
+            for col in self._table.columns
+        )
 
-                # Skip interning-eligible immutable objects
-                if isinstance(current, (str, bytes, int, float)):
-                    size = sys.getsizeof(current)
-                    total_size += size
-                    continue
+        # If we have boolean, object, or string columns, use Ray's
+        # serialization context for accurate sizing (slower but exact)
+        if has_boolean_columns or has_object_columns or has_string_columns:
+            import ray
 
-                # Check if the object has been seen before
-                # i.e. a = np.ndarray([1,2,3]), b = [a,a]
-                # The patten above will have only one memory copy
-                if id(current) in seen:
-                    continue
-                seen.add(id(current))
+            serialization_context = (
+                ray._private.worker.global_worker.get_serialization_context()
+            )
+            serialized = serialization_context.serialize(self._table)
+            return serialized.total_bytes
 
-                try:
-                    size = sys.getsizeof(current)
-                except TypeError:
-                    size = 0
-                total_size += size
+        try:
+            # Convert to Arrow table (same as what happens during serialization)
+            arrow_table = self.to_arrow()
 
-                # Handle specific cases
-                if isinstance(current, np.ndarray):
-                    total_size += current.nbytes - size  # Avoid double counting
-                elif isinstance(current, pd.DataFrame):
-                    total_size += (
-                        current.memory_usage(index=True, deep=True).sum() - size
-                    )
-                elif isinstance(current, (list, tuple, set)):
-                    objects.extend(current)
-                elif isinstance(current, dict):
-                    objects.extend(current.keys())
-                    objects.extend(current.values())
-                elif isinstance(current, TensorArrayElement):
-                    objects.extend(current.to_numpy())
-            return total_size
+            # Use PyArrow IPC serialization for simple columns (fast path)
+            sink = pa.BufferOutputStream()
+            with pa.ipc.new_stream(sink, arrow_table.schema) as writer:
+                writer.write_table(arrow_table)
+            return len(sink.getvalue())
+        except (TypeError, ValueError, pa.lib.ArrowCapacityError):
+            # Fallback: Some data types (e.g., bytes objects, mixed-dimension
+            # tensors) cannot be converted to Arrow. In these cases, use Ray's
+            # serialization context directly on the DataFrame, which handles
+            # these edge cases.
+            import ray
 
-        # Get initial memory usage.
-        # No need for deep inspection here, as we will handle the str, object and
-        # extension columns separately.
-        memory_usage = self._table.memory_usage(index=True, deep=False)
-
-        # TensorDtype for ray.air.util.tensor_extensions.pandas.TensorDtype
-        object_need_check = (TensorDtype,)
-        max_sample_count = _PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT
-
-        # Handle object columns separately
-        for column in self._table.columns:
-            # For str, object and extension dtypes, we calculate the size
-            # by sampling the data.
-            dtype = self._table[column].dtype
-            if (
-                is_string_dtype(dtype)
-                or is_object_dtype(dtype)
-                or isinstance(dtype, object_need_check)
-            ):
-                total_size = len(self._table[column])
-
-                # Determine the sample size based on max_sample_count
-                sample_size = min(total_size, max_sample_count)
-                # Skip size calculation for empty columns
-                if sample_size == 0:
-                    continue
-                # Following codes can also handel case that sample_size == total_size
-                sampled_data = self._table[column].sample(n=sample_size).values
-
-                try:
-                    if isinstance(sampled_data, TensorArray) and np.issubdtype(
-                        sampled_data[0].numpy_dtype, np.number
-                    ):
-                        column_memory_sample = sampled_data.nbytes
-                    else:
-                        vectorized_size_calc = np.vectorize(lambda x: get_deep_size(x))
-                        column_memory_sample = np.sum(
-                            vectorized_size_calc(sampled_data)
-                        )
-                    # Scale back to the full column size if we sampled
-                    column_memory = column_memory_sample * (total_size / sample_size)
-                    # Add the data memory usage on top of the index memory usage.
-                    memory_usage[column] += int(column_memory)
-                except Exception as e:
-                    # Handle or log the exception as needed
-                    logger.warning(f"Error calculating size for column '{column}': {e}")
-
-        # Sum up total memory usage
-        total_memory_usage = memory_usage.sum()
-
-        return int(total_memory_usage)
+            serialization_context = (
+                ray._private.worker.global_worker.get_serialization_context()
+            )
+            serialized = serialization_context.serialize(self._table)
+            return serialized.total_bytes
 
     def _zip(self, acc: BlockAccessor) -> "pandas.DataFrame":
         r = self.to_pandas().copy(deep=False)
