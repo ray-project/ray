@@ -38,7 +38,6 @@ class IcebergDatasink(Datasink[Tuple[List["DataFile"], "pa.Schema"]]):
         table_identifier: str,
         catalog_kwargs: Optional[Dict[str, Any]] = None,
         snapshot_properties: Optional[Dict[str, str]] = None,
-        incoming_schema: Optional["pa.Schema"] = None,
     ):
         """
         Initialize the IcebergDatasink
@@ -47,17 +46,15 @@ class IcebergDatasink(Datasink[Tuple[List["DataFile"], "pa.Schema"]]):
             table_identifier: The identifier of the table such as `default.taxi_dataset`
             catalog_kwargs: Optional arguments to use when setting up the Iceberg catalog
             snapshot_properties: Custom properties to write to snapshot summary
-            incoming_schema: Optional PyArrow schema of the incoming data. Used to evolve
-                table schema before writing to avoid name mapping errors.
 
         Note:
             Schema evolution is automatically enabled. New columns in the incoming data
-            are automatically added to the table schema.
+            are automatically added to the table schema. The schema is extracted from
+            the first input bundle when on_write_start is called.
         """
         self.table_identifier = table_identifier
         self._catalog_kwargs = (catalog_kwargs or {}).copy()
         self._snapshot_properties = (snapshot_properties or {}).copy()
-        self._incoming_schema = incoming_schema
 
         if "name" in self._catalog_kwargs:
             self._catalog_name = self._catalog_kwargs.pop("name")
@@ -91,37 +88,24 @@ class IcebergDatasink(Datasink[Tuple[List["DataFile"], "pa.Schema"]]):
         """
         Update the table schema to accommodate incoming data using union-by-name semantics.
 
-        This is called from the driver after reconciling all schemas.
+        .. warning::
+            This method must only be called from the driver process.
+            It performs schema evolution which requires exclusive table access.
 
         Args:
             incoming_schema: The PyArrow schema to merge with the table schema
         """
-        from pyiceberg.exceptions import CommitFailedException
+        import ray
+        from ray._private.worker import WORKER_MODE
 
-        max_retries = 3
+        is_driver = ray.get_runtime_context().worker.mode != WORKER_MODE
+        assert is_driver, "Schema update must be called from the driver process"
+        with self._table.update_schema() as update:
+            update.union_by_name(incoming_schema)
+        # Succeeded, reload to get latest table version and exit.
+        self._reload_table()
 
-        for attempt in range(max_retries):
-            try:
-                with self._table.update_schema() as update:
-                    update.union_by_name(incoming_schema)
-                # Succeeded, reload to get latest table version and exit.
-                self._reload_table()
-                return
-            except CommitFailedException:
-                if attempt < max_retries - 1:
-                    logger.debug(
-                        f"Schema update conflict - reloading and retrying "
-                        f"(attempt {attempt + 1}/{max_retries})"
-                    )
-                    self._reload_table()
-                else:
-                    logger.error(
-                        "Failed to update schema after %d retries due to conflicts.",
-                        max_retries,
-                    )
-                    raise
-
-    def _evolve_schema_if_needed(self, incoming_schema: "pa.Schema") -> None:
+    def _try_update_schema(self, incoming_schema: "pa.Schema") -> None:
         """
         Evolve table schema if incoming data has new columns.
 
@@ -145,15 +129,36 @@ class IcebergDatasink(Datasink[Tuple[List["DataFile"], "pa.Schema"]]):
         if new_columns:
             self._update_schema(incoming_schema)
 
-    def on_write_start(self) -> None:
-        """Initialize table for writing and create a shared write UUID."""
+    def _append_and_commit(
+        self, txn: "Table.transaction", data_files: List["DataFile"]
+    ) -> None:
+        """Append data files to a transaction and commit.
+
+        Args:
+            txn: PyIceberg transaction object
+            data_files: List of DataFile objects to append
+        """
+        with txn._append_snapshot_producer(self._snapshot_properties) as append_files:
+            for data_file in data_files:
+                append_files.append_data_file(data_file)
+        txn.commit_transaction()
+
+    def on_write_start(self, schema: Optional["pa.Schema"] = None) -> None:
+        """Initialize table for writing and create a shared write UUID.
+
+        Args:
+            schema: The PyArrow schema of the data being written. This is
+                automatically extracted from the first input bundle by the
+                Write operator. Used to evolve the table schema before writing
+                to avoid PyIceberg name mapping errors.
+        """
         self._reload_table()
         self._write_uuid = uuid.uuid4()
 
         # Evolve schema BEFORE any files are written
         # This prevents PyIceberg name mapping errors when incoming data has new columns
-        if self._incoming_schema is not None:
-            self._evolve_schema_if_needed(self._incoming_schema)
+        if schema is not None:
+            self._try_update_schema(schema)
 
     def write(
         self, blocks: Iterable[Block], ctx: TaskContext
@@ -175,6 +180,8 @@ class IcebergDatasink(Datasink[Tuple[List["DataFile"], "pa.Schema"]]):
         import pyarrow as pa
         from pyiceberg.io.pyarrow import _dataframe_to_data_files
 
+        # Workers receive a pickled datasink with _table=None (excluded during
+        # serialization), so we reload it on first use.
         if self._table is None:
             self._reload_table()
 
@@ -246,21 +253,19 @@ class IcebergDatasink(Datasink[Tuple[List["DataFile"], "pa.Schema"]]):
         from pyiceberg.io import pyarrow as pyi_pa_io
 
         table_schema = pyi_pa_io.schema_to_pyarrow(self._table.schema())
-        all_schemas_with_table = [table_schema, reconciled_schema]
         final_reconciled_schema = unify_schemas(
-            all_schemas_with_table, promote_types=True
+            [table_schema, reconciled_schema], promote_types=True
         )
 
-        # Update table schema if it differs
+        # Create transaction and commit schema update + data files atomically
+        txn = self._table.transaction()
+
+        # Update table schema within the transaction if it differs
         if not final_reconciled_schema.equals(table_schema):
-            self._update_schema(final_reconciled_schema)
+            with txn.update_schema() as update:
+                update.union_by_name(final_reconciled_schema)
 
         # Reload table to get latest metadata after schema update
         self._reload_table()
-
-        # Create transaction and commit
         txn = self._table.transaction()
-        with txn._append_snapshot_producer(self._snapshot_properties) as append_files:
-            for data_file in all_data_files:
-                append_files.append_data_file(data_file)
-        txn.commit_transaction()
+        self._append_and_commit(txn, all_data_files)

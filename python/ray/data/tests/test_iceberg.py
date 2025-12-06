@@ -935,60 +935,6 @@ class TestSchemaEvolution:
         )
         assert rows_same(result_df, expected)
 
-    def test_multi_block_schema_reconciliation(self, clean_table):
-        """Test schema reconciliation across blocks with different numeric types."""
-        initial_data = _create_typed_dataframe(
-            {"col_a": [1, 2], "col_b": ["row_1", "row_2"], "col_c": [1, 2]}
-        )
-        _write_to_iceberg(initial_data)
-
-        # Create two blocks with different numeric types for col_d:
-        # Block 1: int32, Block 2: int64 - requires type promotion during reconciliation
-        block1 = pa.table(
-            {
-                "col_a": pa.array([3], type=pa.int32()),
-                "col_b": ["row_3"],
-                "col_c": pa.array([3], type=pa.int32()),
-                "col_d": pa.array([100], type=pa.int32()),
-            }
-        )
-        block2 = pa.table(
-            {
-                "col_a": pa.array([4], type=pa.int32()),
-                "col_b": ["row_4"],
-                "col_c": pa.array([4], type=pa.int32()),
-                "col_d": pa.array([200], type=pa.int64()),
-            }
-        )
-
-        # Create dataset from multiple blocks with different schemas
-        ds = ray.data.from_arrow([block1, block2])
-        ds.write_iceberg(
-            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-            catalog_kwargs=_CATALOG_KWARGS.copy(),
-        )
-
-        # Verify schema has col_d with promoted type (int64)
-        _verify_schema(
-            {
-                "col_a": pyi_types.IntegerType,
-                "col_b": pyi_types.StringType,
-                "col_c": pyi_types.IntegerType,
-                "col_d": pyi_types.LongType,
-            }
-        )
-
-        result_df = _read_from_iceberg(sort_by="col_a")
-        expected = pd.DataFrame(
-            {
-                "col_a": pd.array([1, 2, 3, 4], dtype="Int32"),
-                "col_b": ["row_1", "row_2", "row_3", "row_4"],
-                "col_c": pd.array([1, 2, 3, 4], dtype="Int32"),
-                "col_d": pd.array([None, None, 100, 200], dtype="Int64"),
-            }
-        )
-        assert rows_same(result_df, expected)
-
 
 if __name__ == "__main__":
     import sys

@@ -4204,8 +4204,10 @@ class Dataset:
 
                 import ray
                 import pandas as pd
+                from ray.data import SaveMode
+                from ray.data.expressions import col
 
-                # Basic write
+                # Basic append (default behavior)
                 docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
                 ds = ray.data.from_pandas(pd.DataFrame(docs))
                 ds.write_iceberg(
@@ -4238,41 +4240,13 @@ class Dataset:
 
         Note:
             Schema evolution is automatically enabled. New columns in the incoming data
-            are automatically added to the table schema.
+            are automatically added to the table schema. The schema is extracted
+            automatically from the data being written.
         """
-        # Get the dataset's schema to pass to datasink for early schema evolution
-        # This allows evolving the table schema before files are written,
-        # avoiding PyIceberg name mapping errors when incoming data has new columns
-        incoming_schema = None
-        ds_schema = self.schema(fetch_if_missing=True)
-        if ds_schema is not None:
-            import pyarrow as pa
-
-            base_schema = ds_schema.base_schema
-            if isinstance(base_schema, pa.Schema):
-                # Already a PyArrow schema, use directly
-                incoming_schema = base_schema
-            else:
-                # For Pandas schemas, Schema.types converts to Arrow types but may
-                # return Python's `object` for unsupported types (e.g., strings) or
-                # `None` for columns where type conversion fails. Convert both to
-                # pa.large_string() to ensure all columns are included in schema
-                # evolution, avoiding PyIceberg name mapping errors.
-                fields = []
-                for name, dtype in zip(ds_schema.names, ds_schema.types):
-                    if isinstance(dtype, pa.DataType):
-                        fields.append((name, dtype))
-                    elif dtype is object or dtype is None:
-                        # Use large_string as fallback for unknown types
-                        fields.append((name, pa.large_string()))
-                if fields:
-                    incoming_schema = pa.schema(fields)
-
         datasink = IcebergDatasink(
             table_identifier=table_identifier,
             catalog_kwargs=catalog_kwargs,
             snapshot_properties=snapshot_properties,
-            incoming_schema=incoming_schema,
         )
 
         self.write_datasink(
@@ -5297,8 +5271,14 @@ class Dataset:
         logical_plan = LogicalPlan(write_op, self.context)
 
         try:
-            datasink.on_write_start()
+            # NOTE: on_write_start is now called automatically by the Write operator
+            # when the first input bundle arrives, with the schema extracted from
+            # the data. This enables schema-dependent initialization (e.g., Iceberg
+            # schema evolution) without requiring upfront schema computation.
             if isinstance(datasink, _FileDatasink):
+                # For file datasinks, we still need to check mode before execution.
+                # Call on_write_start early to create the directory.
+                datasink.on_write_start()
                 if not datasink.has_created_dir and datasink.mode == SaveMode.IGNORE:
                     logger.info(
                         f"Ignoring write because {datasink.path} already exists"
@@ -6812,23 +6792,12 @@ class Schema:
 
         For non-Arrow compatible types, we return "object".
         """
-        import pandas as pd
         import pyarrow as pa
-        from pandas.core.dtypes.dtypes import BaseMaskedDtype
 
+        from ray.data._internal.arrow_ops.transform_pyarrow import (
+            convert_pandas_dtype_to_pyarrow,
+        )
         from ray.data.extensions import ArrowTensorType, TensorDtype
-
-        def _convert_to_pa_type(
-            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype]
-        ) -> pa.DataType:
-            if isinstance(dtype, pd.ArrowDtype):
-                return dtype.pyarrow_dtype
-            elif isinstance(dtype, pd.StringDtype):
-                # StringDtype is not a BaseMaskedDtype, handle separately
-                return pa.string()
-            elif isinstance(dtype, BaseMaskedDtype):
-                dtype = dtype.numpy_dtype
-            return pa.from_numpy_dtype(dtype)
 
         if isinstance(self.base_schema, pa.lib.Schema):
             return list(self.base_schema.types)
@@ -6844,13 +6813,14 @@ class Schema:
                 # Manually convert our Pandas tensor extension type to Arrow.
                 arrow_types.append(
                     pa_tensor_type_class(
-                        shape=dtype._shape, dtype=_convert_to_pa_type(dtype._dtype)
+                        shape=dtype._shape,
+                        dtype=convert_pandas_dtype_to_pyarrow(dtype._dtype),
                     )
                 )
 
             else:
                 try:
-                    arrow_types.append(_convert_to_pa_type(dtype))
+                    arrow_types.append(convert_pandas_dtype_to_pyarrow(dtype))
                 except pa.ArrowNotImplementedError:
                     arrow_types.append(object)
                 except Exception:
