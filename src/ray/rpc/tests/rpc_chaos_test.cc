@@ -126,4 +126,11 @@ TEST(RpcChaosTest, LowerBoundWithWildcard) {
   }
 }
 
+TEST(RpcChaosTest, TestInvalidJson) {
+  RayConfig::instance().testing_rpc_failure() =
+      R"({"*":{"num_failures":-1,"invalid_key":1}})";
+  ASSERT_DEATH(Init(),
+               "Unknown key specified in testing_rpc_failure config: invalid_key");
+}
+
 }  // namespace ray::rpc::testing

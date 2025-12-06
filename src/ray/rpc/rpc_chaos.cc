@@ -81,23 +81,34 @@ class RpcFailureManager {
         return;
       }
 
-      for (auto &[key, value] : json.items()) {
+      for (auto &[method, config] : json.items()) {
+        for (const auto &[config_key, _] : config.items()) {
+          if (config_key != "num_failures" && config_key != "req_failure_prob" &&
+              config_key != "resp_failure_prob" &&
+              config_key != "in_flight_failure_prob" &&
+              config_key != "num_lower_bound_req_failures" &&
+              config_key != "num_lower_bound_resp_failures" &&
+              config_key != "num_lower_bound_in_flight_failures") {
+            RAY_LOG(FATAL) << "Unknown key specified in testing_rpc_failure config: "
+                           << config_key;
+          }
+        }
         auto [iter, _] = failable_methods_.emplace(
-            key,
+            method,
             Failable{
-                value.value("num_failures", 0L),
-                value.value("req_failure_prob", 0UL),
-                value.value("resp_failure_prob", 0UL),
-                value.value("in_flight_failure_prob", 0UL),
-                value.value("num_lower_bound_req_failures", 0UL),
-                value.value("num_lower_bound_resp_failures", 0UL),
-                value.value("num_lower_bound_in_flight_failures", 0UL),
+                config.value("num_failures", 0L),
+                config.value("req_failure_prob", 0UL),
+                config.value("resp_failure_prob", 0UL),
+                config.value("in_flight_failure_prob", 0UL),
+                config.value("num_lower_bound_req_failures", 0UL),
+                config.value("num_lower_bound_resp_failures", 0UL),
+                config.value("num_lower_bound_in_flight_failures", 0UL),
             });
         const auto &failable = iter->second;
         RAY_CHECK_LE(failable.req_failure_prob + failable.resp_failure_prob +
                          failable.in_flight_failure_prob,
                      100UL);
-        if (key == "*") {
+        if (method == "*") {
           wildcard_set_ = true;
           // The wildcard overrides all other method configurations.
           break;
