@@ -3,6 +3,7 @@ import hashlib
 import logging
 import os
 import shutil
+import sys
 import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -55,6 +56,36 @@ MAC_OS_ZIP_HIDDEN_DIR_NAME = "__MACOSX"
 def _mib_string(num_bytes: float) -> str:
     size_mib = float(num_bytes / 1024**2)
     return f"{size_mib:.2f}MiB"
+
+
+def _to_extended_path_if_needed(path: str) -> str:
+    """Convert Windows paths to extended-length format if needed.
+
+    Extended-length paths (\\?\) support paths up to 32,767 characters on Windows.
+    This is a no-op on non-Windows platforms.
+
+    Args:
+        path: The path to convert.
+
+    Returns:
+        The path with extended-length prefix on Windows if needed, unchanged on other platforms.
+    """
+    if sys.platform != "win32":
+        return path
+
+    # Convert to absolute path and normalize
+    abs_path = os.path.abspath(path)
+
+    # Already in extended format
+    if abs_path.startswith(r"\\?"):
+        return abs_path
+
+    # UNC paths need special handling: \\server\share -> \\?\UNC\server\share
+    if abs_path.startswith(r"\\"):
+        return r"\\?\UNC" + abs_path[1:]
+
+    # Local paths: C:\path -> \\?\C:\path
+    return r"\\?" + "\\" + abs_path
 
 
 class _AsyncFileLock:
@@ -459,7 +490,9 @@ def _zip_files(
         directory inside the zip file.
     """
     pkg_file = Path(output_path).absolute()
-    with ZipFile(pkg_file, "w", strict_timestamps=False) as zip_handler:
+    # Use extended-length paths on Windows to avoid MAX_PATH limitations
+    extended_pkg_file = _to_extended_path_if_needed(str(pkg_file))
+    with ZipFile(extended_pkg_file, "w", strict_timestamps=False) as zip_handler:
         # Put all files in the directory into the zip file.
         file_path = Path(path_str).absolute()
         dir_path = file_path
@@ -953,15 +986,43 @@ def unzip_package(
         logger: Optional logger to use for logging.
 
     """
+    # Use extended-length paths on Windows to avoid MAX_PATH limitations
+    extended_target_dir = _to_extended_path_if_needed(target_dir)
+
     try:
-        os.mkdir(target_dir)
+        os.mkdir(extended_target_dir)
     except FileExistsError:
         logger.info(f"Directory at {target_dir} already exists")
 
     logger.debug(f"Unpacking {package_path} to {target_dir}")
 
+    # Custom extraction that preserves extended paths throughout
+    logger.info(
+        f"Using custom extraction with extended paths. "
+        f"Base path: {extended_target_dir}"
+    )
     with ZipFile(str(package_path), "r") as zip_ref:
-        zip_ref.extractall(target_dir)
+        # ZipFile.extractall() doesn't support extended paths
+        # on Windows, which are needed to handle paths longer than 260
+        # characters, so we implement our own extraction logic here.
+        for member in zip_ref.namelist():
+            # Build the full extraction path with extended-length prefix
+            member_path = os.path.join(extended_target_dir, member)
+            member_path = _to_extended_path_if_needed(member_path)
+            logger.debug(f"Extracting {member} to {member_path}")
+
+            # Create directories if this is a directory entry
+            if member.endswith("/"):
+                os.makedirs(member_path, exist_ok=True)
+            else:
+                # Ensure parent directory exists
+                parent_dir = os.path.dirname(member_path)
+                if parent_dir:
+                    os.makedirs(parent_dir, exist_ok=True)
+
+                # Extract the file
+                with zip_ref.open(member) as source, open(member_path, "wb") as target:
+                    shutil.copyfileobj(source, target)
     if remove_top_level_directory:
         top_level_directory = get_top_level_dir_from_compressed_package(package_path)
         if top_level_directory is not None:
