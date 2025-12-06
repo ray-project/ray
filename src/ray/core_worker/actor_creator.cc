@@ -33,14 +33,14 @@ Status ActorCreator::RegisterActor(const TaskSpecification &task_spec) const {
 }
 
 void ActorCreator::AsyncRegisterActor(const TaskSpecification &task_spec,
-                                      gcs::StatusCallback callback) {
+                                      rpc::StatusCallback callback) {
   auto actor_id = task_spec.ActorCreationId();
   (*registering_actors_)[actor_id] = {};
   if (callback != nullptr) {
     (*registering_actors_)[actor_id].emplace_back(std::move(callback));
   }
   actor_client_.AsyncRegisterActor(task_spec, [actor_id, this](Status status) {
-    std::vector<ray::gcs::StatusCallback> cbs;
+    std::vector<rpc::StatusCallback> cbs;
     cbs = std::move((*registering_actors_)[actor_id]);
     registering_actors_->erase(actor_id);
     for (auto &cb : cbs) {
@@ -52,7 +52,7 @@ void ActorCreator::AsyncRegisterActor(const TaskSpecification &task_spec,
 void ActorCreator::AsyncRestartActorForLineageReconstruction(
     const ActorID &actor_id,
     uint64_t num_restarts_due_to_lineage_reconstructions,
-    gcs::StatusCallback callback) {
+    rpc::StatusCallback callback) {
   actor_client_.AsyncRestartActorForLineageReconstruction(
       actor_id, num_restarts_due_to_lineage_reconstructions, callback);
 }
@@ -60,7 +60,7 @@ void ActorCreator::AsyncRestartActorForLineageReconstruction(
 void ActorCreator::AsyncReportActorOutOfScope(
     const ActorID &actor_id,
     uint64_t num_restarts_due_to_lineage_reconstruction,
-    gcs::StatusCallback callback) {
+    rpc::StatusCallback callback) {
   actor_client_.AsyncReportActorOutOfScope(
       actor_id, num_restarts_due_to_lineage_reconstruction, callback);
 }
@@ -70,7 +70,7 @@ bool ActorCreator::IsActorInRegistering(const ActorID &actor_id) const {
 }
 
 void ActorCreator::AsyncWaitForActorRegisterFinish(const ActorID &actor_id,
-                                                   gcs::StatusCallback callback) {
+                                                   rpc::StatusCallback callback) {
   auto iter = registering_actors_->find(actor_id);
   RAY_CHECK(iter != registering_actors_->end());
   iter->second.emplace_back(std::move(callback));

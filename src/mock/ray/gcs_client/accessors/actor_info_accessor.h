@@ -32,15 +32,15 @@ class FakeActorInfoAccessor : public gcs::ActorInfoAccessorInterface {
 
   // Stub implementations for interface methods not used by this test
   void AsyncGet(const ActorID &,
-                const gcs::OptionalItemCallback<rpc::ActorTableData> &) override {}
+                const rpc::OptionalItemCallback<rpc::ActorTableData> &) override {}
   void AsyncGetAllByFilter(const std::optional<ActorID> &,
                            const std::optional<JobID> &,
                            const std::optional<std::string> &,
-                           const gcs::MultiItemCallback<rpc::ActorTableData> &,
+                           const rpc::MultiItemCallback<rpc::ActorTableData> &,
                            int64_t = -1) override {}
   void AsyncGetByName(const std::string &,
                       const std::string &,
-                      const gcs::OptionalItemCallback<rpc::ActorTableData> &,
+                      const rpc::OptionalItemCallback<rpc::ActorTableData> &,
                       int64_t = -1) override {}
   Status SyncGetByName(const std::string &,
                        const std::string &,
@@ -56,20 +56,20 @@ class FakeActorInfoAccessor : public gcs::ActorInfoAccessorInterface {
   }
   void AsyncReportActorOutOfScope(const ActorID &,
                                   uint64_t,
-                                  const gcs::StatusCallback &,
+                                  const rpc::StatusCallback &,
                                   int64_t = -1) override {}
   void AsyncRegisterActor(const TaskSpecification &task_spec,
-                          const gcs::StatusCallback &callback,
+                          const rpc::StatusCallback &callback,
                           int64_t = -1) override {
     async_register_actor_callback_ = callback;
   }
   void AsyncRestartActorForLineageReconstruction(const ActorID &,
                                                  uint64_t,
-                                                 const gcs::StatusCallback &,
+                                                 const rpc::StatusCallback &,
                                                  int64_t = -1) override {}
   Status SyncRegisterActor(const TaskSpecification &) override { return Status::OK(); }
   void AsyncKillActor(
-      const ActorID &, bool, bool, const gcs::StatusCallback &, int64_t = -1) override {}
+      const ActorID &, bool, bool, const rpc::StatusCallback &, int64_t = -1) override {}
   void AsyncCreateActor(
       const TaskSpecification &task_spec,
       const rpc::ClientCallback<rpc::CreateActorReply> &callback) override {
@@ -78,8 +78,8 @@ class FakeActorInfoAccessor : public gcs::ActorInfoAccessorInterface {
 
   void AsyncSubscribe(
       const ActorID &actor_id,
-      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const gcs::StatusCallback &done) override {
+      const rpc::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const rpc::StatusCallback &done) override {
     auto callback_entry = std::make_pair(actor_id, subscribe);
     callback_map_.emplace(actor_id, subscribe);
     subscribe_finished_callback_map_[actor_id] = done;
@@ -124,14 +124,14 @@ class FakeActorInfoAccessor : public gcs::ActorInfoAccessorInterface {
     return true;
   }
 
-  absl::flat_hash_map<ActorID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>
+  absl::flat_hash_map<ActorID, rpc::SubscribeCallback<ActorID, rpc::ActorTableData>>
       callback_map_;
-  absl::flat_hash_map<ActorID, gcs::StatusCallback> subscribe_finished_callback_map_;
+  absl::flat_hash_map<ActorID, rpc::StatusCallback> subscribe_finished_callback_map_;
   absl::flat_hash_map<ActorID, uint32_t> actor_subscribed_times_;
 
   // Callbacks for AsyncCreateActor and AsyncRegisterActor
   rpc::ClientCallback<rpc::CreateActorReply> async_create_actor_callback_;
-  gcs::StatusCallback async_register_actor_callback_;
+  rpc::StatusCallback async_register_actor_callback_;
 };
 
 }  // namespace gcs
