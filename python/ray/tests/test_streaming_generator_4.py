@@ -1,5 +1,6 @@
 import asyncio
 import gc
+import json
 import os
 import random
 import signal
@@ -190,7 +191,16 @@ def test_many_tasks_lineage_reconstruction_mini_stress_test(
         )
         m.setenv(
             "RAY_testing_rpc_failure",
-            "CoreWorkerService.grpc_client.ReportGeneratorItemReturns=5:25:25:25",
+            json.dumps(
+                {
+                    "CoreWorkerService.grpc_client.ReportGeneratorItemReturns": {
+                        "num_failures": 5,
+                        "req_failure_prob": 25,
+                        "resp_failure_prob": 25,
+                        "in_flight_failure_prob": 25,
+                    }
+                }
+            ),
         )
         cluster = ray_start_cluster
         cluster.add_node(
