@@ -25,6 +25,7 @@ from ray._common.network_utils import (
     build_address,
     get_localhost_ip,
     is_ipv6,
+    is_localhost,
     node_ip_address_from_perspective,
     parse_address,
 )
@@ -516,13 +517,21 @@ def remaining_processes_alive():
 
 
 def canonicalize_bootstrap_address(
-    addr: str, temp_dir: Optional[str] = None
+    addr: str, temp_dir: Optional[str] = None, preserve_localhost: bool = False
 ) -> Optional[str]:
     """Canonicalizes Ray cluster bootstrap address to host:port.
     Reads address from the environment if needed.
 
     This function should be used to process user supplied Ray cluster address,
     via ray.init() or `--address` flags, before using the address to connect.
+
+    Args:
+        addr: The address to canonicalize.
+        temp_dir: Optional temporary directory for finding bootstrap address.
+        preserve_localhost: If True, preserve "127.0.0.1", "::1", or "localhost"
+            addresses instead of converting them to the public IP. This is useful
+            when connecting to an existing cluster where the user explicitly
+            specified a localhost address.
 
     Returns:
         Ray cluster address string in <host:port> format or None if the caller
@@ -539,7 +548,11 @@ def canonicalize_bootstrap_address(
     host, port = parsed
 
     try:
-        bootstrap_host = resolve_ip_for_localhost(host)
+        if preserve_localhost and is_localhost(host):
+            # Preserve localhost addresses when explicitly requested
+            bootstrap_host = host
+        else:
+            bootstrap_host = resolve_ip_for_localhost(host)
     except Exception:
         logger.exception(f"Failed to convert {addr} to host:port")
         raise
