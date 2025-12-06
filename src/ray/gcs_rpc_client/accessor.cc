@@ -296,7 +296,9 @@ void NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &ca
 }
 
 void NodeInfoAccessor::AsyncSubscribeToNodeAddressAndLivenessChange(
-    std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe,
+    std::function<void(NodeID,
+                       const rpc::GcsNodeAddressAndLiveness &,
+                       const bool is_initializing)> subscribe,
     StatusCallback done) {
   /**
   1. Subscribe to node info
@@ -319,7 +321,7 @@ void NodeInfoAccessor::AsyncSubscribeToNodeAddressAndLivenessChange(
                 const Status &status,
                 std::vector<rpc::GcsNodeAddressAndLiveness> &&node_info_list) {
               for (auto &node_info : node_info_list) {
-                HandleNotification(std::move(node_info));
+                HandleNotification(std::move(node_info), true);
               }
               if (done_callback) {
                 done_callback(status);
@@ -401,9 +403,11 @@ bool NodeInfoAccessor::IsNodeAlive(const NodeID &node_id) const {
          node_iter->second.state() == rpc::GcsNodeInfo::ALIVE;
 }
 
-void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_info) {
+void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_info,
+                                          const bool is_initializing) {
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   bool is_alive = (node_info.state() == rpc::GcsNodeInfo::ALIVE);
+  bool is_alive_to_dead_transition = false;
   std::optional<rpc::GcsNodeAddressAndLiveness> node_info_copy_for_callback;
   {
     absl::MutexLock lock(&node_cache_address_and_liveness_mutex_);
@@ -418,6 +422,7 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_
       // was alive and is now dead.
       bool was_alive = (entry->second.state() == rpc::GcsNodeInfo::ALIVE);
       is_notif_new = was_alive && !is_alive;
+      is_alive_to_dead_transition = is_notif_new;
 
       // Handle the same logic as in HandleNotification for preventing re-adding removed
       // nodes
@@ -451,7 +456,14 @@ void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_
 
   // If the notification is new, call registered callback.
   if (node_info_copy_for_callback) {
-    node_change_callback_address_and_liveness_(node_id, *node_info_copy_for_callback);
+    // If we're seeing a DEAD notification during initialization, but the cache
+    // already had this node as ALIVE (meaning polling saw it first), pass
+    // is_initializing=false.  Intention being to articulate that there's been
+    // an advancement in state, HOWEVER we should remove his logic once it's guaranteed
+    // that initialization callbacks are triggered before streaming callbacks
+    bool effective_is_initializing = is_initializing && !is_alive_to_dead_transition;
+    node_change_callback_address_and_liveness_(
+        node_id, *node_info_copy_for_callback, effective_is_initializing);
   }
 }
 
