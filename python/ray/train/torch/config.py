@@ -2,7 +2,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Optional
+from typing import Dict, Optional
 
 import torch
 import torch.distributed as dist
@@ -20,6 +20,7 @@ from ray.train.constants import (
     DEFAULT_TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
     TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
 )
+from ray.train.v2._internal.callbacks.state_manager import TrainingFramework
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,18 @@ class TorchConfig(BackendConfig):
     @property
     def train_func_context(self):
         return TorchConfigContextManager
+
+    def to_dict(self) -> Dict[str, str | int]:
+        config_dict = super().to_dict()
+        config_dict["framework"] = TrainingFramework.TORCH.value
+        config_dict.update(
+            {
+                "backend": self.backend,
+                "init_method": self.init_method,
+                "timeout_s": self.timeout_s,
+            }
+        )
+        return config_dict
 
 
 def _setup_torch_process_group(
