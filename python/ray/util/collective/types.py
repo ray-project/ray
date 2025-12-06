@@ -34,14 +34,13 @@ def torch_available():
 class Backend(object):
     """A class to represent different backends."""
 
-    NCCL = "nccl"
-    MPI = "mpi"
+    NCCL = "NCCL"
+    MPI = "MPI"
     # `pygloo` is deprecated. Use gloo through torch.distributed for both
     # `GLOO` and `TORCH_GLOO`.
-    GLOO = "gloo"
+    GLOO = "GLOO"
     # Use gloo through torch.distributed.
-    TORCH_GLOO = "torch_gloo"
-    NIXL = "nixl"
+    TORCH_GLOO = "TORCH_GLOO"
     UNRECOGNIZED = "unrecognized"
 
     def __new__(cls, name: str):
