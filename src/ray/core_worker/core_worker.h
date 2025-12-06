@@ -201,7 +201,8 @@ class CoreWorker {
              std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
              uint32_t pid,
              ray::observability::MetricInterface &task_by_state_counter,
-             ray::observability::MetricInterface &actor_by_state_counter);
+             ray::observability::MetricInterface &actor_by_state_counter,
+             int runtime_env_agent_port);
 
   CoreWorker(CoreWorker const &) = delete;
 
@@ -255,6 +256,8 @@ class CoreWorker {
   WorkerType GetWorkerType() const { return options_.worker_type; }
 
   Language GetLanguage() const { return options_.language; }
+
+  int GetRuntimeEnvAgentPort() const { return runtime_env_agent_port_; }
 
   WorkerContext &GetWorkerContext() { return *worker_context_; }
 
@@ -1617,6 +1620,9 @@ class CoreWorker {
   }
 
   const CoreWorkerOptions options_;
+
+  /// Runtime env agent port on the local node (obtained from raylet during registration).
+  const int runtime_env_agent_port_;
 
   /// Callback to get the current language (e.g., Python) call site.
   std::function<void(std::string *)> get_call_site_;

@@ -7,6 +7,7 @@ import urllib.request
 import pytest
 
 import ray
+from ray._common.network_utils import build_address
 from ray._common.test_utils import wait_for_condition
 from ray._private.authentication.http_token_authentication import (
     format_authentication_http_error,
@@ -22,6 +23,12 @@ from ray.core.generated import runtime_env_agent_pb2
 
 def _agent_url(agent_address: str, path: str) -> str:
     return urllib.parse.urljoin(agent_address, path)
+
+
+def _get_runtime_env_agent_address() -> str:
+    port = ray.get_runtime_context().get_runtime_env_agent_port()
+    node_ip = ray._private.worker.global_worker.node.node_ip_address
+    return f"http://{build_address(node_ip, port)}"
 
 
 def _make_get_or_create_request() -> runtime_env_agent_pb2.GetOrCreateRuntimeEnvRequest:
@@ -47,7 +54,7 @@ def _wait_for_runtime_env_agent(agent_address: str) -> None:
 
 
 def test_runtime_env_agent_requires_auth_missing_token(setup_cluster_with_token_auth):
-    agent_address = ray._private.worker.global_worker.node.runtime_env_agent_address
+    agent_address = _get_runtime_env_agent_address()
     _wait_for_runtime_env_agent(agent_address)
     request = _make_get_or_create_request()
 
@@ -70,7 +77,7 @@ def test_runtime_env_agent_requires_auth_missing_token(setup_cluster_with_token_
 
 
 def test_runtime_env_agent_rejects_invalid_token(setup_cluster_with_token_auth):
-    agent_address = ray._private.worker.global_worker.node.runtime_env_agent_address
+    agent_address = _get_runtime_env_agent_address()
     _wait_for_runtime_env_agent(agent_address)
     request = _make_get_or_create_request()
 
@@ -96,7 +103,7 @@ def test_runtime_env_agent_rejects_invalid_token(setup_cluster_with_token_auth):
 
 
 def test_runtime_env_agent_accepts_valid_token(setup_cluster_with_token_auth):
-    agent_address = ray._private.worker.global_worker.node.runtime_env_agent_address
+    agent_address = _get_runtime_env_agent_address()
     _wait_for_runtime_env_agent(agent_address)
     token = setup_cluster_with_token_auth["token"]
     request = _make_get_or_create_request()

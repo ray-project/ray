@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -110,6 +111,11 @@ class GcsServer {
 
   /// Get the port of this gcs server.
   int GetPort() const { return rpc_server_.GetPort(); }
+
+  /// Set a callback invoked once the RPC server has bound to a port.
+  void SetPortReadyCallback(std::function<void(int)> cb) {
+    port_ready_callback_ = std::move(cb);
+  }
 
   /// Check if gcs server is started.
   bool IsStarted() const { return is_started_; }
@@ -315,6 +321,8 @@ class GcsServer {
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
   int task_pending_schedule_detected_ = 0;
+  // Invoked when the RPC server has bound to a port.
+  std::function<void(int)> port_ready_callback_;
   /// Throttler for global gc
   std::unique_ptr<Throttler> global_gc_throttler_;
   /// Client to call a metrics agent gRPC server.

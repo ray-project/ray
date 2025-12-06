@@ -221,6 +221,19 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "pipe_test",
+    size = "small",
+    srcs = ["pipe_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:pipe",
+        "//src/ray/util:process",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "pipe_logger_test",
     size = "small",
     srcs = ["pipe_logger_test.cc"],

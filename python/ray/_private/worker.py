@@ -586,6 +586,10 @@ class Worker:
         return self.core_worker.get_placement_group_id()
 
     @property
+    def runtime_env_agent_port(self):
+        return self.core_worker.get_runtime_env_agent_port()
+
+    @property
     def worker_id(self):
         return self.core_worker.get_worker_id().binary()
 
