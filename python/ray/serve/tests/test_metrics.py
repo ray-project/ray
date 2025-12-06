@@ -1172,6 +1172,158 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
     ), f"Latency metrics should use route patterns. Found: {latency_routes}"
 
 
+def test_autoscaling_metrics(metrics_start_shutdown):
+    """Test that autoscaling metrics are emitted correctly.
+
+    This tests the following metrics:
+    - ray_serve_deployment_target_replicas: Target number of replicas
+        Tags: deployment, application
+    - ray_serve_autoscaling_decision_replicas: Raw decision before bounds
+        Tags: deployment, application
+    - ray_serve_autoscaling_total_requests: Total requests seen by autoscaler
+        Tags: deployment, application
+    - ray_serve_autoscaling_policy_execution_time_ms: Policy execution time
+        Tags: deployment, application, policy_scope
+    - ray_serve_autoscaling_replica_metrics_delay_ms: Replica metrics delay
+        Tags: deployment, application, replica
+    - ray_serve_autoscaling_handle_metrics_delay_ms: Handle metrics delay
+        Tags: deployment, application, handle
+    """
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        autoscaling_config={
+            "metrics_interval_s": 0.1,
+            "min_replicas": 1,
+            "max_replicas": 5,
+            "target_ongoing_requests": 2,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 5,
+            "look_back_period_s": 1,
+        },
+        max_ongoing_requests=10,
+        graceful_shutdown_timeout_s=0.1,
+    )
+    class AutoscalingDeployment:
+        async def __call__(self):
+            await signal.wait.remote()
+
+    serve.run(AutoscalingDeployment.bind(), name="autoscaling_app")
+
+    # Send requests to trigger autoscaling
+    handle = serve.get_deployment_handle("AutoscalingDeployment", "autoscaling_app")
+    [handle.remote() for _ in range(10)]
+
+    timeseries = PrometheusTimeseries()
+    base_tags = {
+        "deployment": "AutoscalingDeployment",
+        "application": "autoscaling_app",
+    }
+
+    # Test 1: Check that target_replicas metric is 5 (10 requests / target_ongoing_requests=2)
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="ray_serve_deployment_target_replicas",
+        expected=5,
+        expected_tags=base_tags,
+        timeseries=timeseries,
+    )
+    print("Target replicas metric verified.")
+
+    # Test 2: Check that autoscaling decision metric is 5 (10 requests / target_ongoing_requests=2)
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="ray_serve_autoscaling_decision_replicas",
+        expected=5,
+        expected_tags=base_tags,
+        timeseries=timeseries,
+    )
+    print("Autoscaling decision metric verified.")
+
+    # Test 3: Check that total requests metric is 10
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="ray_serve_autoscaling_total_requests",
+        expected=10,
+        expected_tags=base_tags,
+        timeseries=timeseries,
+    )
+    print("Total requests metric verified.")
+
+    # Test 4: Check that policy execution time metric is emitted with policy_scope=deployment
+    def check_policy_execution_time_metric():
+        value = get_metric_float(
+            "ray_serve_autoscaling_policy_execution_time_ms",
+            expected_tags={**base_tags, "policy_scope": "deployment"},
+            timeseries=timeseries,
+        )
+        assert value >= 0
+        return True
+
+    wait_for_condition(check_policy_execution_time_metric, timeout=15)
+    print("Policy execution time metric verified.")
+
+    # Test 5: Check that metrics delay gauges are emitted with proper tags
+    def check_metrics_delay_metrics():
+        # Check for handle metrics delay (depends on where metrics are collected)
+        value = get_metric_float(
+            "ray_serve_autoscaling_handle_metrics_delay_ms",
+            expected_tags=base_tags,
+            timeseries=timeseries,
+        )
+        if value >= 0:
+            # Verify handle tag exists by checking metric dictionaries
+            metrics_dicts = get_metric_dictionaries(
+                "ray_serve_autoscaling_handle_metrics_delay_ms",
+                timeout=5,
+                timeseries=timeseries,
+            )
+            for m in metrics_dicts:
+                if (
+                    m.get("deployment") == "AutoscalingDeployment"
+                    and m.get("application") == "autoscaling_app"
+                ):
+                    assert m.get("handle") is not None
+                    print(
+                        f"Handle delay metric verified with handle tag: {m.get('handle')}"
+                    )
+                    return True
+
+        # Fallback: Check for replica metrics delay
+        value = get_metric_float(
+            "ray_serve_autoscaling_replica_metrics_delay_ms",
+            expected_tags=base_tags,
+            timeseries=timeseries,
+        )
+        if value >= 0:
+            metrics_dicts = get_metric_dictionaries(
+                "ray_serve_autoscaling_replica_metrics_delay_ms",
+                timeout=5,
+                timeseries=timeseries,
+            )
+            for m in metrics_dicts:
+                if (
+                    m.get("deployment") == "AutoscalingDeployment"
+                    and m.get("application") == "autoscaling_app"
+                ):
+                    assert m.get("replica") is not None
+                    print(
+                        f"Replica delay metric verified with replica tag: {m.get('replica')}"
+                    )
+                    return True
+
+        return False
+
+    wait_for_condition(check_metrics_delay_metrics, timeout=15)
+    print("Metrics delay metrics verified.")
+
+    # Release signal to complete requests
+    ray.get(signal.send.remote())
+
+
 def test_long_poll_host_sends_counted(serve_instance):
     """Check that the transmissions by the long_poll are counted."""
 
