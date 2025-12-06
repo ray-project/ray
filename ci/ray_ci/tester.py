@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 from typing import List, Optional, Set, Tuple
 
@@ -411,18 +412,20 @@ def _get_test_targets(
     get_flaky_tests: bool = False,
     get_high_impact_tests: bool = False,
     lookup_test_database: bool = True,
+    workspace_dir: Optional[str] = None,
 ) -> List[str]:
     """
     Get test targets that are owned by a particular team
     """
     query = _get_all_test_query(targets, team, except_tags, only_tags)
+    if not workspace_dir:
+        workspace_dir = bazel_workspace_dir
     test_targets = {
         target
-        for target in container.run_script_with_output(
-            [
-                f'bazel query "{query}"',
-            ]
-        )
+        for target in subprocess.check_output(
+            ["bazel", "query", query],
+            cwd=workspace_dir,
+        ).decode("utf-8")
         .strip()
         .split(os.linesep)
         if target
@@ -456,18 +459,21 @@ def _get_test_targets(
             prefix=prefix,
             bazel_workspace_dir=bazel_workspace_dir,
             team=team,
-        ).union(_get_new_tests(prefix, container))
+        ).union(_get_new_tests(prefix, workspace_dir))
         final_targets = high_impact_tests.intersection(final_targets)
 
     return sorted(final_targets)
 
 
-def _get_new_tests(prefix: str, container: TesterContainer) -> Set[str]:
+def _get_new_tests(prefix: str, workspace_dir: str) -> Set[str]:
     """
     Get all local test targets that are not in database
     """
     local_test_targets = set(
-        container.run_script_with_output(['bazel query "tests(//...)"'])
+        subprocess.check_output(
+            ["bazel", "query", "tests(//...)"],
+            cwd=workspace_dir,
+        ).decode("utf-8")
         .strip()
         .split(os.linesep)
     )
