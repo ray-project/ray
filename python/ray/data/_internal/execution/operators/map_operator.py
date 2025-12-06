@@ -169,12 +169,27 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # Callback functions that generate additional task kwargs
         # for the map task.
         self._map_task_kwargs_fns: List[Callable[[], Dict[str, Any]]] = []
+        # Callback for when first input bundle is ready (before task submission).
+        # Used for deferred initialization that needs schema from actual data.
+        self._on_first_input_callback: Optional[Callable[[RefBundle], None]] = None
+        self._first_input_processed = False
 
     def add_map_task_kwargs_fn(self, map_task_kwargs_fn: Callable[[], Dict[str, Any]]):
         """Add a callback function that generates additional kwargs for the map tasks.
         In the map tasks, the kwargs can be accessible via `TaskContext.kwargs`.
         """
         self._map_task_kwargs_fns.append(map_task_kwargs_fn)
+
+    def set_on_first_input_callback(
+        self, callback: Callable[["RefBundle"], None]
+    ) -> None:
+        """Set a callback to be invoked when the first input bundle is ready.
+
+        The callback receives the first RefBundle before any tasks are submitted.
+        This runs on the driver and can be used for deferred initialization that
+        requires schema from actual data (e.g., schema evolution for Iceberg writes).
+        """
+        self._on_first_input_callback = callback
 
     def get_map_task_kwargs(self) -> Dict[str, Any]:
         """Get the kwargs for the map task.
@@ -414,6 +429,12 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             (input_refs, bundled_input) = self._block_ref_bundler.get_next_bundle()
             for bundle in input_refs:
                 self._metrics.on_input_dequeued(bundle)
+
+            # Invoke first-input callback before task submission (for deferred init).
+            # This is used by write operators to call on_write_start with schema.
+            if not self._first_input_processed and self._on_first_input_callback:
+                self._on_first_input_callback(bundled_input)
+                self._first_input_processed = True
 
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue

@@ -4204,9 +4204,21 @@ class Dataset:
 
                 import ray
                 import pandas as pd
-                docs = [{"title": "Iceberg data sink test"} for key in range(4)]
+                from ray.data import SaveMode
+                from ray.data.expressions import col
+
+                # Basic append (default behavior)
+                docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
                 ds = ray.data.from_pandas(pd.DataFrame(docs))
                 ds.write_iceberg(
+                    table_identifier="db_name.table_name",
+                    catalog_kwargs={"name": "default", "type": "sql"}
+                )
+
+                # Schema evolution is automatic - new columns are added automatically
+                enriched_docs = [{"id": i, "title": f"Doc {i}", "category": "new"} for i in range(3)]
+                ds_enriched = ray.data.from_pandas(pd.DataFrame(enriched_docs))
+                ds_enriched.write_iceberg(
                     table_identifier="db_name.table_name",
                     catalog_kwargs={"name": "default", "type": "sql"}
                 )
@@ -4214,21 +4226,27 @@ class Dataset:
         Args:
             table_identifier: Fully qualified table identifier (``db_name.table_name``)
             catalog_kwargs: Optional arguments to pass to PyIceberg's catalog.load_catalog()
-                function (e.g., name, type, etc.). For the function definition, see
+                function (such as name, type, etc.). For the function definition, see
                 `pyiceberg catalog
                 <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
                 #pyiceberg.catalog.load_catalog>`_.
-            snapshot_properties: custom properties write to snapshot when committing
+            snapshot_properties: Custom properties to write to snapshot when committing
                 to an iceberg table.
             ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
-        """
 
+        Note:
+            Schema evolution is automatically enabled. New columns in the incoming data
+            are automatically added to the table schema. The schema is extracted
+            automatically from the data being written.
+        """
         datasink = IcebergDatasink(
-            table_identifier, catalog_kwargs, snapshot_properties
+            table_identifier=table_identifier,
+            catalog_kwargs=catalog_kwargs,
+            snapshot_properties=snapshot_properties,
         )
 
         self.write_datasink(
@@ -5253,8 +5271,14 @@ class Dataset:
         logical_plan = LogicalPlan(write_op, self.context)
 
         try:
-            datasink.on_write_start()
+            # NOTE: on_write_start is now called automatically by the Write operator
+            # when the first input bundle arrives, with the schema extracted from
+            # the data. This enables schema-dependent initialization (e.g., Iceberg
+            # schema evolution) without requiring upfront schema computation.
             if isinstance(datasink, _FileDatasink):
+                # For file datasinks, we still need to check mode before execution.
+                # Call on_write_start early to create the directory.
+                datasink.on_write_start()
                 if not datasink.has_created_dir and datasink.mode == SaveMode.IGNORE:
                     logger.info(
                         f"Ignoring write because {datasink.path} already exists"
@@ -6768,23 +6792,12 @@ class Schema:
 
         For non-Arrow compatible types, we return "object".
         """
-        import pandas as pd
         import pyarrow as pa
-        from pandas.core.dtypes.dtypes import BaseMaskedDtype
 
+        from ray.data._internal.arrow_ops.transform_pyarrow import (
+            convert_pandas_dtype_to_pyarrow,
+        )
         from ray.data.extensions import ArrowTensorType, TensorDtype
-
-        def _convert_to_pa_type(
-            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype]
-        ) -> pa.DataType:
-            if isinstance(dtype, pd.ArrowDtype):
-                return dtype.pyarrow_dtype
-            elif isinstance(dtype, pd.StringDtype):
-                # StringDtype is not a BaseMaskedDtype, handle separately
-                return pa.string()
-            elif isinstance(dtype, BaseMaskedDtype):
-                dtype = dtype.numpy_dtype
-            return pa.from_numpy_dtype(dtype)
 
         if isinstance(self.base_schema, pa.lib.Schema):
             return list(self.base_schema.types)
@@ -6800,13 +6813,14 @@ class Schema:
                 # Manually convert our Pandas tensor extension type to Arrow.
                 arrow_types.append(
                     pa_tensor_type_class(
-                        shape=dtype._shape, dtype=_convert_to_pa_type(dtype._dtype)
+                        shape=dtype._shape,
+                        dtype=convert_pandas_dtype_to_pyarrow(dtype._dtype),
                     )
                 )
 
             else:
                 try:
-                    arrow_types.append(_convert_to_pa_type(dtype))
+                    arrow_types.append(convert_pandas_dtype_to_pyarrow(dtype))
                 except pa.ArrowNotImplementedError:
                     arrow_types.append(object)
                 except Exception:
