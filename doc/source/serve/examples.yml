@@ -149,3 +149,7 @@ examples:
     skill_level: advanced
     link: tutorials/java
     related_technology: integrations
+  - title: Integrate with MLflow Model Registry
+    skill_level: intermediate
+    link: mlflow-serving-intig
+    related_technology: integrations
