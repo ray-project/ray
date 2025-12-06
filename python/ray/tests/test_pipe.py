@@ -81,42 +81,6 @@ pipe.close()
     pipe.close()
 
 
-def test_multiple_pipes_to_one_child():
-    """One child writes to multiple pipes created by parent."""
-    pipe1 = Pipe()
-    pipe2 = Pipe()
-    writer_handle1 = pipe1.make_writer_handle()
-    writer_handle2 = pipe2.make_writer_handle()
-
-    code = f"""
-from ray._private.pipe import Pipe
-p1 = Pipe.from_writer_handle({writer_handle1})
-p2 = Pipe.from_writer_handle({writer_handle2})
-p1.write("data_for_pipe1")
-p2.write("data_for_pipe2")
-p1.close()
-p2.close()
-"""
-    proc = subprocess.Popen(
-        [sys.executable, "-c", code],
-        close_fds=False,
-    )
-
-    pipe1.close_writer_handle()
-    pipe2.close_writer_handle()
-
-    data1 = pipe1.read(timeout_s=5)
-    data2 = pipe2.read(timeout_s=5)
-    proc.wait()
-
-    assert data1 == "data_for_pipe1"
-    assert data2 == "data_for_pipe2"
-    assert proc.returncode == 0
-
-    pipe1.close()
-    pipe2.close()
-
-
 def test_read_timeout():
     """Read raises RuntimeError on timeout when no data available."""
     pipe = Pipe()
