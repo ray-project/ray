@@ -1,6 +1,6 @@
 import logging
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from typing import TYPE_CHECKING, Any, Dict, List
 
 import ray
@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 VALIDATION_TASK_POLL_INTERVAL_S = 1
+MAX_IN_FLIGHT_VALIDATIONS = 1
 
 
 @ray.remote
@@ -45,7 +46,10 @@ class ValidationManager(ControllerCallback, ReportCallback):
     ):
         self._checkpoint_manager = checkpoint_manager
 
-        # Map from validation task to checkpoint
+        # _TrainingReports that we will validate
+        self._training_report_queue = deque()
+
+        # Map from in flight validation task to checkpoint
         self._pending_validations = OrderedDict()
 
         # Map from validation task to checkpoint
@@ -63,20 +67,10 @@ class ValidationManager(ControllerCallback, ReportCallback):
             training_report.validation_spec
             and training_report.validation_spec.validate_fn
         ):
-            # TODO: rate limit this by using a queue?
-            # TODO: figure out where to place run_validate_fn task:
-            # head node is faster but want to avoid putting too much there
-            # TODO: provide option to run this on gpu
-            validate_task = run_validate_fn.remote(
-                training_report.validation_spec, training_report.checkpoint
-            )
-            self._pending_validations[validate_task] = training_report.checkpoint
-            logger.info(
-                f"Launched async validation task for checkpoint {training_report.checkpoint}"
-            )
+            self._training_report_queue.append(training_report)
 
     def _poll_validations(self) -> int:
-        """Poll/process validations, update checkpoint manager, return num pending validations."""
+        """Poll/process validations, update checkpoint manager, kick off validations, return num pending validations."""
         # Move pending validations to finished validations
         validation_tasks = list(self._pending_validations.keys())
         done, _ = ray.wait(
@@ -90,7 +84,8 @@ class ValidationManager(ControllerCallback, ReportCallback):
         if done_checkpoints:
             logger.info(
                 f"Finished async validation task(s) for checkpoint(s) {done_checkpoints}. "
-                f"Remaining pending validations for checkpoint(s): {list(self._pending_validations.values())}"
+                f"In flight validations for checkpoint(s): {list(self._pending_validations.values())}. "
+                f"We will run validations for checkpoint(s): {[tr.checkpoint for tr in self._training_report_queue]}"
             )
 
         # Process next finished validation
@@ -102,6 +97,29 @@ class ValidationManager(ControllerCallback, ReportCallback):
             self._checkpoint_manager.update_checkpoints_with_metrics(
                 checkpoint_to_metrics
             )
+
+        # Kick off validation
+        # TODO: figure out where to place run_validate_fn task:
+        # head node is faster but want to avoid putting too much there
+        # TODO: provide option to run this on gpu?
+        num_validations_to_start = MAX_IN_FLIGHT_VALIDATIONS - len(
+            self._pending_validations
+        )
+        for _ in range(num_validations_to_start):
+            if not self._training_report_queue:
+                break
+            training_report = self._training_report_queue.popleft()
+            # TODO: handle timeouts - ray.remote() does not have them
+            validate_task_config = training_report.validation_spec.validate_task_config
+            validate_task = run_validate_fn.options(
+                max_retries=validate_task_config.max_retries,
+                retry_exceptions=validate_task_config.retry_exceptions or False,
+            ).remote(training_report.validation_spec, training_report.checkpoint)
+            self._pending_validations[validate_task] = training_report.checkpoint
+            logger.info(
+                f"Launched async validation task for checkpoint {training_report.checkpoint}"
+            )
+
         return len(self._pending_validations)
 
     def _process_finished_validation(
@@ -114,7 +132,6 @@ class ValidationManager(ControllerCallback, ReportCallback):
         except (ray.exceptions.RayTaskError, ray.exceptions.TaskCancelledError):
             checkpoint_to_metrics[checkpoint] = {}
             logger.exception(f"Validation failed for checkpoint {checkpoint}")
-            # TODO: retry validations and time out appropriately.
             # TODO: track failed validations - see ed45912bb6ed435de06ac1cd58e9918e6825b4fe
         return checkpoint_to_metrics
 

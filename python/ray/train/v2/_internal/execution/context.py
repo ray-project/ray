@@ -26,6 +26,7 @@ from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.report_config import (
     CheckpointConsistencyMode,
     CheckpointUploadMode,
+    ValidateTaskConfig,
 )
 
 if TYPE_CHECKING:
@@ -330,6 +331,7 @@ class TrainContext:
         ] = None,
         validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
         validate_config: Optional[Dict] = None,
+        validate_task_config: Optional[ValidateTaskConfig] = None,
     ) -> None:
         """
         Upload checkpoint to remote storage and put a training
@@ -362,6 +364,7 @@ class TrainContext:
                 validation_spec = _ValidationSpec(
                     validate_fn=validate_fn,
                     validate_config=validate_config,
+                    validate_task_config=validate_task_config or ValidateTaskConfig(),
                 )
             else:
                 validation_spec = None
