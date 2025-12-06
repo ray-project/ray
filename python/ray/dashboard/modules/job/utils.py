@@ -332,6 +332,10 @@ def fast_tail_last_n_lines(
         raise ValueError(f"num_lines must be non-negative, got {num_lines}")
     if num_lines == 0:
         return ""
+    if max_chars < 0:
+        raise ValueError(f"max_chars must be non-negative, got {max_chars}")
+    if max_chars == 0:
+        return ""
 
     if not os.path.exists(path):
         logger.debug(f"Log file {path} does not exist.")
