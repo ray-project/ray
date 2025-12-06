@@ -2856,11 +2856,11 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
       });
 }
 
-void NodeManager::HandleGlobalGC(rpc::GlobalGCRequest request,
-                                 rpc::GlobalGCReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleTriggerGC(rpc::TriggerGCRequest request,
+                                  rpc::TriggerGCReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) {
   local_gc_triggered_by_global_gc_ = true;
-  if (request.propagate_gc()) {
+  if (request.global_gc()) {
     // Set should_global_gc_ so TriggerLocalOrGlobalGCIfNeeded will propagate to all other
     // raylets. NOTE: We don't want to retrigger global GC if this is a propagation from
     // GCS/Raylet.
@@ -2879,8 +2879,8 @@ void NodeManager::TriggerLocalOrGlobalGCIfNeeded() {
   }
 
   if (should_global_gc_) {
-    // Propagate GlobalGC to all other raylets.
-    PropagateGlobalGC();
+    // Propagate TriggerGC to all other raylets.
+    PropagateTriggerGC();
     should_global_gc_ = false;
   }
 
@@ -2910,21 +2910,21 @@ void NodeManager::SetShouldGlobalGC() {
   local_gc_triggered_by_global_gc_ = true;
 }
 
-void NodeManager::PropagateGlobalGC() {
-  rpc::GlobalGCRequest request;
-  request.set_propagate_gc(false);
+void NodeManager::PropagateTriggerGC() {
+  rpc::TriggerGCRequest request;
+  request.set_global_gc(false);
 
   for (const auto &[node_id, address] : remote_node_manager_addresses_) {
     auto addr = rpc::RayletClientPool::GenerateRayletAddress(
         node_id, address.first, address.second);
     auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(addr);
-    raylet_client->GlobalGC(request,
-                            [node_id](const Status &status, rpc::GlobalGCReply &&) {
-                              if (!status.ok()) {
-                                RAY_LOG(INFO) << "Failed to send GlobalGC to node "
-                                              << node_id << ": " << status.message();
-                              }
-                            });
+    raylet_client->TriggerGC(
+        request, [node_id](const Status &status, const rpc::TriggerGCReply &) {
+          if (!status.ok()) {
+            RAY_LOG(INFO) << "Failed to send TriggerGC to node " << node_id << ": "
+                          << status.message();
+          }
+        });
   }
 }
 

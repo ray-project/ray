@@ -255,14 +255,15 @@ message GetNodeStatsReply {
   ObjectStoreStats store_stats = 6;
 }
 
-message GlobalGCRequest {
-  // If true, this raylet should propagate GlobalGC to all other nodes.
+message TriggerGCRequest {
+  // If true, this is a global (cluster-wide) GC request and this raylet should
+  // propagate it to all other nodes.
   // Workers set this to true when requesting cluster-wide GC from their local raylet.
-  // GlobalGC sent from GCS/Raylet sets this to false to prevent re-propagation.
-  bool propagate_gc = 1;
+  // GCS/Raylet sets this to false to prevent re-propagation.
+  bool global_gc = 1;
 }
 
-message GlobalGCReply {}
+message TriggerGCReply {}
 
 // Accumulates memory info across all nodes. To access per-node memory info,
 // use GetNodeStats() calls instead.
@@ -504,9 +505,9 @@ service NodeManagerService {
   // Get the current node stats.
   // Failure: For observability, periodically called so failure is ok.
   rpc GetNodeStats(GetNodeStatsRequest) returns (GetNodeStatsReply);
-  // Trigger garbage collection in all workers across the cluster.
-  // Failure: Requests are sent periodically sent, so failure is ok.
-  rpc GlobalGC(GlobalGCRequest) returns (GlobalGCReply);
+  // Trigger garbage collection on this raylet and optionally across the cluster.
+  // Failure: Retries, it's idempotent.
+  rpc TriggerGC(TriggerGCRequest) returns (TriggerGCReply);
   // Get global object reference stats in formatted form.
   // Failure: For observability, caller can retry on failure.
   rpc FormatGlobalMemoryInfo(FormatGlobalMemoryInfoRequest)

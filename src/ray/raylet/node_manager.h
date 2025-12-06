@@ -210,9 +210,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// or object ids can be freed up across the cluster.
   void SetShouldGlobalGC();
 
-  /// Propagate GlobalGC request to all other raylets.
+  /// Propagate TriggerGC request to all other raylets.
   /// Called when this node initiates a global GC (e.g., due to memory pressure).
-  void PropagateGlobalGC();
+  void PropagateTriggerGC();
 
   /// Mark the specified objects as failed with the given error type.
   ///
@@ -628,10 +628,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                           rpc::GetNodeStatsReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `GlobalGC` request.
-  void HandleGlobalGC(rpc::GlobalGCRequest request,
-                      rpc::GlobalGCReply *reply,
-                      rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a `TriggerGC` request.
+  void HandleTriggerGC(rpc::TriggerGCRequest request,
+                       rpc::TriggerGCReply *reply,
+                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `FormatGlobalMemoryInfo`` request.
   void HandleFormatGlobalMemoryInfo(rpc::FormatGlobalMemoryInfoRequest request,

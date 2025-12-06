@@ -149,8 +149,8 @@ class RayletClient : public RayletClientInterface {
   void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;
 
-  void GlobalGC(const rpc::GlobalGCRequest &request,
-                const rpc::ClientCallback<rpc::GlobalGCReply> &callback) override;
+  void TriggerGC(const rpc::TriggerGCRequest &request,
+                 const rpc::ClientCallback<rpc::TriggerGCReply> &callback) override;
 
   void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) override;

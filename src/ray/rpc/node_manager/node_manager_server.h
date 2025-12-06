@@ -48,7 +48,7 @@ class ServerCallFactory;
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelWorkerLease)              \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PinObjectIDs)                   \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetNodeStats)                   \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GlobalGC)                       \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(TriggerGC)                      \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(FormatGlobalMemoryInfo)         \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrepareBundleResources)         \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CommitBundleResources)          \
@@ -157,9 +157,9 @@ class NodeManagerServiceHandler {
                                   GetNodeStatsReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGlobalGC(GlobalGCRequest request,
-                              GlobalGCReply *reply,
-                              SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleTriggerGC(TriggerGCRequest request,
+                               TriggerGCReply *reply,
+                               SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleFormatGlobalMemoryInfo(FormatGlobalMemoryInfoRequest request,
                                             FormatGlobalMemoryInfoReply *reply,

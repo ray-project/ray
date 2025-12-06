@@ -977,20 +977,20 @@ void GcsServer::TryGlobalGC() {
   // `NodeManager::WarnResourceDeadlock()`).
   if (task_pending_schedule_detected_++ > 0 &&
       global_gc_throttler_->CheckAndUpdateIfPossible()) {
-    rpc::GlobalGCRequest request;
-    request.set_propagate_gc(false);
+    rpc::TriggerGCRequest request;
+    request.set_global_gc(false);
 
     for (const auto &[node_id, node_info] : gcs_node_manager_->GetAllAliveNodes()) {
       auto addr = rpc::RayletClientPool::GenerateRayletAddress(
           node_id, node_info->node_manager_address(), node_info->node_manager_port());
       auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(addr);
-      raylet_client->GlobalGC(request,
-                              [node_id](const Status &status, rpc::GlobalGCReply &&) {
-                                if (!status.ok()) {
-                                  RAY_LOG(INFO) << "Failed to send GlobalGC to node "
-                                                << node_id << ": " << status.message();
-                                }
-                              });
+      raylet_client->TriggerGC(
+          request, [node_id](const Status &status, const rpc::TriggerGCReply &) {
+            if (!status.ok()) {
+              RAY_LOG(INFO) << "Failed to send TriggerGC to node " << node_id << ": "
+                            << status.message();
+            }
+          });
     }
   }
 }

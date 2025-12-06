@@ -181,8 +181,8 @@ class RayletClientInterface {
   virtual void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) = 0;
 
-  virtual void GlobalGC(const rpc::GlobalGCRequest &request,
-                        const rpc::ClientCallback<rpc::GlobalGCReply> &callback) = 0;
+  virtual void TriggerGC(const rpc::TriggerGCRequest &request,
+                         const rpc::ClientCallback<rpc::TriggerGCReply> &callback) = 0;
 
   virtual void NotifyGCSRestart(
       const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) = 0;

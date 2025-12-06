@@ -286,8 +286,8 @@ class FakeRayletClient : public RayletClientInterface {
     killed_actors.push_back(ActorID::FromBinary(request.intended_actor_id()));
   }
 
-  void GlobalGC(const GlobalGCRequest &request,
-                const ClientCallback<GlobalGCReply> &callback) override {}
+  void TriggerGC(const TriggerGCRequest &request,
+                 const ClientCallback<TriggerGCReply> &callback) override {}
 
   int64_t GetPinsInFlight() const override { return 0; }
 
