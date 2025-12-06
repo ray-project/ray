@@ -79,8 +79,6 @@ class NixlTensorTransport(TensorTransportManager):
 
     def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
         # TODO(dayshah): This is called on a .remote RDT call, so it's quite expensive.
-        print("checking nixl tensor transport")
-
         def __ray_actor_has_tensor_transport__(
             self: "ray.actor.ActorHandle",
         ) -> bool:
