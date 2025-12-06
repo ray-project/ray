@@ -484,9 +484,11 @@ class PandasBlockAccessor(TableBlockAccessor):
         for idx, col_name in enumerate(self._table.columns):
             col = self._table[col_name]
 
+            # Skip coercing tensors to null-type to avoid type information loss
+            # See https://github.com/ray-project/ray/issues/59087 for context
             if isinstance(
                 col.dtype, TensorDtype
-            ):  # Skip TensorDtype columns: tensors containing all NaN or empty strings are still valid data, and shouldn't be treated as nulls
+            ):
                 continue
 
             if not col.notna().any():
