@@ -449,6 +449,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         task_type: vLLMTaskType = vLLMTaskType.GENERATE,
         max_pending_requests: Optional[int] = None,
         dynamic_lora_loading_path: Optional[str] = None,
+        continue_on_error: bool = False,
     ):
         """
         Initialize the vLLMEngineStageUDF.
@@ -463,9 +464,13 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 it will be set to 1.1 * max_num_seqs * pipeline_parallel_size.
             dynamic_lora_loading_path: The path to the dynamic LoRA adapter. It is expected
                 to hold subfolders each for a different lora checkpoint.
+            continue_on_error: If True, continue processing when inference fails for
+                a row instead of raising. Failed rows will have '__inference_error__'
+                set to the error message.
         """
         super().__init__(data_column, expected_input_keys)
         self.model = model
+        self.continue_on_error = continue_on_error
 
         # Setup vLLM engine kwargs.
         self.task_type = task_type
@@ -557,6 +562,48 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         engine_kwargs["task"] = task_type
         return engine_kwargs
 
+    async def _generate_with_error_handling(
+        self,
+        row: Dict[str, Any],
+        batch_uuid: uuid.UUID,
+    ) -> Dict[str, Any]:
+        """Generate output for a single row, catching errors if continue_on_error is set.
+
+        Args:
+            row: The input row.
+            batch_uuid: The batch UUID for logging.
+
+        Returns:
+            The output dict, with __inference_error__ set if an error occurred.
+        """
+        idx_in_batch = row[self.IDX_IN_BATCH_COLUMN]
+        try:
+            request, output, time_taken_llm = await self.llm.generate_async(row)
+            return {
+                **output,
+                "request_id": request.request_id,
+                self.IDX_IN_BATCH_COLUMN: request.idx_in_batch,
+                "batch_uuid": batch_uuid.hex,
+                "time_taken_llm": time_taken_llm,
+                "params": str(request.params),
+                "__inference_error__": None,
+            }
+        except Exception as e:
+            if not self.continue_on_error:
+                raise
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            logger.warning(
+                "[vLLM] Inference failed for row %d in batch %s: %s",
+                idx_in_batch,
+                batch_uuid.hex,
+                error_msg,
+            )
+            return {
+                self.IDX_IN_BATCH_COLUMN: idx_in_batch,
+                "batch_uuid": batch_uuid.hex,
+                "__inference_error__": error_msg,
+            }
+
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """Run the vLLM engine.
 
@@ -569,19 +616,14 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         batch_uuid = uuid.uuid4()
         batch_start_time = time.perf_counter()
 
-        tasks = [asyncio.create_task(self.llm.generate_async(row)) for row in batch]
+        tasks = [
+            asyncio.create_task(self._generate_with_error_handling(row, batch_uuid))
+            for row in batch
+        ]
 
         for resp in asyncio.as_completed(tasks):
-            request, output, time_taken_llm = await resp
-
-            yield {
-                **output,
-                "request_id": request.request_id,
-                self.IDX_IN_BATCH_COLUMN: request.idx_in_batch,
-                "batch_uuid": batch_uuid.hex,
-                "time_taken_llm": time_taken_llm,
-                "params": str(request.params),
-            }
+            output = await resp
+            yield output
 
         batch_time_taken = time.perf_counter() - batch_start_time
         # TODO: Add metrics to the UDf wrapper so that we don't need

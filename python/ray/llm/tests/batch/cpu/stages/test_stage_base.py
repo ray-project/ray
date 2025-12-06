@@ -39,6 +39,43 @@ def test_wrap_postprocess():
         wrapped({"wrong_key": 42})
 
 
+def test_wrap_postprocess_bypasses_error_rows():
+    """Error rows with __inference_error__ set bypass user postprocess."""
+
+    def user_fn(data: dict) -> dict:
+        # Would crash if called with error row (missing generated_text)
+        return {"response": data["generated_text"].upper()}
+
+    wrapped = wrap_postprocess(user_fn, "__data")
+
+    error_row = {
+        "__data": {
+            "__inference_error__": "ValueError: prompt too long",
+        }
+    }
+    result = wrapped(error_row)
+    assert result == {"__inference_error__": "ValueError: prompt too long"}
+
+
+def test_wrap_postprocess_success_rows_run_postprocess():
+    """Success rows (__inference_error__ is None) run user postprocess."""
+
+    def user_fn(data: dict) -> dict:
+        return {"response": data["generated_text"], "tokens": data["num_tokens"]}
+
+    wrapped = wrap_postprocess(user_fn, "__data")
+
+    success_row = {
+        "__data": {
+            "generated_text": "Hello world",
+            "num_tokens": 10,
+            "__inference_error__": None,
+        }
+    }
+    result = wrapped(success_row)
+    assert result == {"response": "Hello world", "tokens": 10}
+
+
 class TestStatefulStageUDF:
     class SimpleUDF(StatefulStageUDF):
         def __init__(

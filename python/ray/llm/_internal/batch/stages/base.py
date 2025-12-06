@@ -44,6 +44,9 @@ def wrap_postprocess(
     """Wrap the postprocess function to remove the processor_data_column.
     Note that we fully rely on users to determine which columns to carry over.
 
+    Error rows (with __inference_error__ set) bypass the user's postprocess
+    function and return directly with the error information preserved.
+
     Args:
         fn: The function to be applied.
         processor_data_column: The internal data column name of the processor.
@@ -58,7 +61,16 @@ def wrap_postprocess(
                 f"[Internal] {processor_data_column} not found in row {row}"
             )
 
-        return fn(row[processor_data_column])
+        data = row[processor_data_column]
+
+        # Error rows bypass user postprocess to avoid crashes when
+        # expected output fields are missing.
+        if data.get("__inference_error__") is not None:
+            return {
+                "__inference_error__": data["__inference_error__"],
+            }
+
+        return fn(data)
 
     return _postprocess
 
