@@ -2,7 +2,6 @@
 Module to write a Ray Dataset into an iceberg table, by using the Ray Datasink API.
 """
 import logging
-import uuid
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import TaskContext
@@ -62,7 +61,6 @@ class IcebergDatasink(Datasink[Tuple[List["DataFile"], "pa.Schema"]]):
             self._catalog_name = "default"
 
         self._table: "Table" = None
-        self._write_uuid: uuid.UUID = None
 
     def __getstate__(self) -> dict:
         """Exclude `_table` during pickling."""
@@ -153,7 +151,6 @@ class IcebergDatasink(Datasink[Tuple[List["DataFile"], "pa.Schema"]]):
                 to avoid PyIceberg name mapping errors.
         """
         self._reload_table()
-        self._write_uuid = uuid.uuid4()
 
         # Evolve schema BEFORE any files are written
         # This prevents PyIceberg name mapping errors when incoming data has new columns
@@ -201,7 +198,6 @@ class IcebergDatasink(Datasink[Tuple[List["DataFile"], "pa.Schema"]]):
                 data_files = list(
                     _dataframe_to_data_files(
                         table_metadata=self._table.metadata,
-                        write_uuid=self._write_uuid,
                         df=pa_table,
                         io=self._table.io,
                     )
