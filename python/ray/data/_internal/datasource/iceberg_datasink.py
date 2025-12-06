@@ -263,5 +263,4 @@ class IcebergDatasink(Datasink[Tuple[List["DataFile"], "pa.Schema"]]):
 
         # Reload table to get latest metadata after schema update
         self._reload_table()
-        txn = self._table.transaction()
         self._append_and_commit(txn, all_data_files)

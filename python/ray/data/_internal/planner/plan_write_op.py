@@ -126,16 +126,22 @@ def _plan_write_op_internal(
     # Set up deferred on_write_start callback for datasinks.
     # This allows on_write_start to receive the schema from the first input bundle,
     # enabling schema-dependent initialization (e.g., Iceberg schema evolution).
+    # NOTE: _FileDatasink is excluded because dataset.py already calls on_write_start()
+    # explicitly before execution to handle SaveMode checks and directory creation.
     if isinstance(datasink, Datasink):
+        # Lazy import to avoid circular dependency
+        from ray.data.datasource.file_datasink import _FileDatasink
 
-        def on_first_input(bundle: RefBundle):
-            # Extract PyArrow schema from the bundle by fetching the first block.
-            # We fetch the actual block to get accurate type information, as the
-            # bundle's schema metadata may have degraded type info (e.g., object dtype).
-            schema: Optional["pa.Schema"] = _get_pyarrow_schema_from_bundle(bundle)
-            datasink.on_write_start(schema)
+        if not isinstance(datasink, _FileDatasink):
 
-        map_op.set_on_first_input_callback(on_first_input)
+            def on_first_input(bundle: RefBundle):
+                # Extract PyArrow schema from the bundle by fetching the first block.
+                # We fetch the actual block to get accurate type information, as the
+                # bundle's schema metadata may have degraded type info (e.g., object dtype).
+                schema: Optional["pa.Schema"] = _get_pyarrow_schema_from_bundle(bundle)
+                datasink.on_write_start(schema)
+
+            map_op.set_on_first_input_callback(on_first_input)
 
     return map_op
 
