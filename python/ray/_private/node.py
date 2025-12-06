@@ -207,23 +207,30 @@ class Node:
                     ray_params.dashboard_host, ray_params.dashboard_port
                 )
 
-        # It creates a session_dir.
-        self._init_temp()
-
         node_ip_address = ray_params.node_ip_address
+        resolved_node_ip_address = None
+        node_to_connect_info = None
+        if connect_only:
+            (
+                resolved_node_ip_address,
+                node_to_connect_info,
+            ) = ray._private.services.get_node_to_connect_ip_address(
+                self.get_gcs_client()
+            )
+            print(f"[Kunchd] resolved node ip address: {resolved_node_ip_address}")
         if node_ip_address is None:
             if connect_only:
-                node_ip_address = self._wait_and_get_for_node_address()
+                assert resolved_node_ip_address is not None
+                node_ip_address = resolved_node_ip_address
             else:
                 node_ip_address = ray.util.get_node_ip_address()
 
         assert node_ip_address is not None
         ray_params.update_if_absent(node_ip_address=node_ip_address)
         self._node_ip_address = node_ip_address
-        if not connect_only:
-            ray._private.services.write_node_ip_address(
-                self.get_session_dir_path(), node_ip_address
-            )
+
+        # It creates a session_dir.
+        self._init_temp()
 
         self._object_spilling_config = self._get_object_spilling_config()
         logger.debug(
@@ -262,14 +269,15 @@ class Node:
             ):
                 # Get the address info of the processes to connect to
                 # from Redis or GCS.
-                node_info = ray._private.services.get_node_to_connect_for_driver(
-                    self.gcs_address,
-                    self._node_ip_address,
+                assert node_to_connect_info is not None
+                self._plasma_store_socket_name = (
+                    node_to_connect_info.object_store_socket_name
                 )
-                self._plasma_store_socket_name = node_info["object_store_socket_name"]
-                self._raylet_socket_name = node_info["raylet_socket_name"]
-                self._ray_params.node_manager_port = node_info["node_manager_port"]
-                self._node_id = node_info["node_id"]
+                self._raylet_socket_name = node_to_connect_info.raylet_socket_name
+                self._ray_params.node_manager_port = (
+                    node_to_connect_info.node_manager_port
+                )
+                self._node_id = node_to_connect_info.node_id.hex()
         else:
             # If the user specified a socket name, use it.
             self._plasma_store_socket_name = self._prepare_socket_file(
@@ -1003,43 +1011,6 @@ class Node:
                     json.dump(ports_by_node, f)
 
         return port
-
-    def _wait_and_get_for_node_address(self, timeout_s: int = 60) -> str:
-        """Wait until the RAY_NODE_IP_FILENAME file is avialable.
-
-        RAY_NODE_IP_FILENAME is created when a ray instance is started.
-
-        Args:
-            timeout_s: If the ip address is not found within this
-                timeout, it will raise ValueError.
-        Returns:
-            The node_ip_address of the current session if it finds it
-            within timeout_s.
-        """
-        for i in range(timeout_s):
-            node_ip_address = ray._private.services.get_cached_node_ip_address(
-                self.get_session_dir_path()
-            )
-
-            if node_ip_address is not None:
-                return node_ip_address
-
-            time.sleep(1)
-            if i % 10 == 0:
-                logger.info(
-                    f"Can't find a `{ray_constants.RAY_NODE_IP_FILENAME}` "
-                    f"file from {self.get_session_dir_path()}. "
-                    "Have you started Ray instance using "
-                    "`ray start` or `ray.init`?"
-                )
-
-        raise ValueError(
-            f"Can't find a `{ray_constants.RAY_NODE_IP_FILENAME}` "
-            f"file from {self.get_session_dir_path()}. "
-            f"for {timeout_s} seconds. "
-            "A ray instance hasn't started. "
-            "Did you do `ray start` or `ray.init` on this host?"
-        )
 
     def start_reaper_process(self):
         """

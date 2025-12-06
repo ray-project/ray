@@ -32,6 +32,8 @@ from ray._private.ray_constants import RAY_NODE_IP_FILENAME
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
+from ray.core.generated.gcs_pb2 import GcsNodeInfo
+from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -370,6 +372,11 @@ def find_gcs_addresses():
     return _find_address_from_flag("--gcs-address")
 
 
+def find_node_ip_addresses():
+    """Finds any local raylet processes and returns the node ip address."""
+    return _find_address_from_flag("--node-ip-address")
+
+
 def find_bootstrap_address(temp_dir: Optional[str]):
     """Finds the latest Ray cluster address to connect to, if any. This is the
     GCS address connected to by the last successful `ray start`."""
@@ -642,6 +649,44 @@ def get_node_ip_address(address=None):
     return node_ip_address_from_perspective(address)
 
 
+def get_node_to_connect_ip_address(gcs_client: GcsClient) -> (str, GcsNodeInfo):
+    node_to_connect_info = None
+    # node specific temp_dir resolution requires knowledge of the node we are connecting to
+    possible_node_ip_addresses = find_node_ip_addresses()
+    node_selectors = []
+    for ip in possible_node_ip_addresses:
+        ip_node_selector = GetAllNodeInfoRequest.NodeSelector(node_ip_address=ip)
+        node_selectors.append(ip_node_selector)
+    try:
+        node_to_connect_infos = gcs_client.get_all_node_info(
+            timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
+            node_selectors=node_selectors,
+        ).values()
+    except Exception as e:
+        raise Exception(
+            f"Failed to get node info for possible node ip addresses: {possible_node_ip_addresses}"
+            f"when trying to resolve node to connect to. Error: {repr(e)}"
+        )
+    if not node_to_connect_infos:
+        raise Exception(
+            f"No node info found matching node ip addresses: {possible_node_ip_addresses}"
+            f"when trying to resolve node to connect to."
+        )
+
+    # Prioritize head node if available
+    for node_info in node_to_connect_infos:
+        if node_info.is_head_node:
+            node_to_connect_info = node_info
+            break
+    if node_to_connect_info is None:
+        node_to_connect_info = node_to_connect_infos[0]
+
+    node_ip_address = getattr(node_to_connect_info, "node_manager_address", None)
+
+    return node_ip_address, node_to_connect_info
+
+
+# TODO(Kunchd): Deprecate this API
 def get_cached_node_ip_address(session_dir: str) -> str:
     """Get a node address cached on this session.
 
@@ -676,67 +721,6 @@ def get_cached_node_ip_address(session_dir: str) -> str:
             return cached_node_ip_address["node_ip_address"]
         else:
             return ray.util.get_node_ip_address()
-
-
-def write_node_ip_address(session_dir: str, node_ip_address: Optional[str]) -> None:
-    """Write a node ip address of the current session to
-    RAY_NODE_IP_FILENAME.
-
-    If a ray instance is started by `ray start --node-ip-address`,
-    the node ip address is cached to a file RAY_NODE_IP_FILENAME.
-
-    This API is process-safe, meaning the file access is protected by
-    a file lock.
-
-    The file contains a single string node_ip_address. If nothing
-    is written, it means --node-ip-address was not given, and Ray
-    resolves the IP address on its own. It assumes in a single node,
-    you can have only 1 IP address (which is the assumption ray
-    has in general).
-
-    node_ip_address is the ip address of the current node.
-
-    Args:
-        session_dir: The path to Ray session directory.
-        node_ip_address: The node IP address of the current node.
-            If None, it means the node ip address is not given
-            by --node-ip-address. In this case, we don't write
-            anything to a file.
-    """
-    file_path = Path(os.path.join(session_dir, RAY_NODE_IP_FILENAME))
-    cached_node_ip_address = {}
-
-    with FileLock(str(file_path.absolute()) + ".lock"):
-        if not file_path.exists():
-            with file_path.open(mode="w") as f:
-                json.dump({}, f)
-
-        with file_path.open() as f:
-            cached_node_ip_address.update(json.load(f))
-
-        cached_node_ip = cached_node_ip_address.get("node_ip_address")
-
-        if node_ip_address is not None:
-            if cached_node_ip:
-                if cached_node_ip == node_ip_address:
-                    # Nothing to do.
-                    return
-                else:
-                    logger.warning(
-                        "The node IP address of the current host recorded "
-                        f"in {RAY_NODE_IP_FILENAME} ({cached_node_ip}) "
-                        "is different from the current IP address: "
-                        f"{node_ip_address}. Ray will use {node_ip_address} "
-                        "as the current node's IP address. "
-                        "Creating 2 instances in the same host with different "
-                        "IP address is not supported. "
-                        "Please create an enhnacement request to"
-                        "https://github.com/ray-project/ray/issues."
-                    )
-
-            cached_node_ip_address["node_ip_address"] = node_ip_address
-            with file_path.open(mode="w") as f:
-                json.dump(cached_node_ip_address, f)
 
 
 def get_node_instance_id():

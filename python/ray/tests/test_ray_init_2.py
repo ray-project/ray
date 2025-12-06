@@ -283,14 +283,23 @@ def test_non_default_ports_visible_on_init(shutdown_only):
         subprocess.check_output("ray stop --force", shell=True)
 
 
-def test_get_and_write_node_ip_address(shutdown_only):
+# TODO(Kunchd): Create replacement test for this
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head"],
+    indirect=True,
+)
+def test_get_node_to_connect_ip_address(shutdown_only, call_ray_start):
+    """
+    Make sure the node ip address is correctly fetched from the raylet process when
+    using get_node_to_connect_ip_address to resolve the node to connect to.
+    """
     ray.init()
     node_ip = ray.util.get_node_ip_address()
-    session_dir = ray._private.worker._global_node.get_session_dir_path()
-    cached_node_ip_address = ray._private.services.get_cached_node_ip_address(
-        session_dir
+    resolved_node_ip_address, _ = ray._private.services.get_node_to_connect_ip_address(
+        ray._private.worker.global_worker.gcs_client
     )
-    assert cached_node_ip_address == node_ip
+    assert resolved_node_ip_address == node_ip
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="skip except linux")

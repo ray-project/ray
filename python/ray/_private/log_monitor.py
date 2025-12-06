@@ -596,7 +596,14 @@ if __name__ == "__main__":
         logging_rotation_backup_count,
     )
 
-    node_ip = services.get_cached_node_ip_address(args.session_dir)
+    possible_node_ips = List(services.find_node_ip_addresses())
+    if len(possible_node_ips) > 0:
+        logger.warning(
+            f"Multiple possible node ip addresses found: {possible_node_ips}. "
+            "If you are running multiple nodes on the same host, log monitor may connect to the wrong node."
+            "Choosing the first one."
+        )
+    node_ip = possible_node_ips.pop()
     gcs_client = GcsClient(address=args.gcs_address)
     log_monitor = LogMonitor(
         node_ip,
