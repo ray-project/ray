@@ -28,6 +28,7 @@ PDFs
 Predibase('s)?
 [Pp]refetch
 [Pp]refetching
+[Pp]ostprocess
 [Pp]reprocess
 [Pp]reprocessor(s)?
 process_file
@@ -36,8 +37,10 @@ queryable
 RGB
 runai
 [Ss]calers
+SGLang
 Spotify('s)?
 TFRecord(s)?
+[Tt]okenizer(s)?
 UDF(s)?
 VLM(s)?
 XGBoost

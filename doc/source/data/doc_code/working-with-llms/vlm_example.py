@@ -44,17 +44,15 @@ vision_processor_config = vLLMEngineProcessorConfig(
         enable_chunked_prefill=True,
         max_num_batched_tokens=2048,
     ),
-    # Override Ray's runtime env to include the Hugging Face token. Ray Data uses Ray under the hood to orchestrate the inference pipeline.
     runtime_env=dict(
         env_vars=dict(
-            # HF_TOKEN=HF_TOKEN, # Token not needed for public models
             VLLM_USE_V1="1",
         ),
     ),
     batch_size=16,
     accelerator_type="L4",
     concurrency=1,
-    has_image=True,
+    prepare_image_stage=True,  # Enable image processing for VLMs
 )
 # __vlm_config_example_end__
 
@@ -173,13 +171,10 @@ def create_vlm_config():
             trust_remote_code=True,
             limit_mm_per_prompt={"image": 1},
         ),
-        runtime_env={
-            # "env_vars": {"HF_TOKEN": "your-hf-token-here"}  # Token not needed for public models
-        },
         batch_size=1,
         accelerator_type="L4",
         concurrency=1,
-        has_image=True,
+        prepare_image_stage=True,
     )
 
 
@@ -194,7 +189,7 @@ def run_vlm_example():
 
         print("VLM processor configured successfully")
         print(f"Model: {config.model_source}")
-        print(f"Has image support: {config.has_image}")
+        print(f"Image processing enabled: {config.prepare_image_stage}")
         result = processor(vision_dataset).take_all()
         return config, processor, result
     return None, None, None

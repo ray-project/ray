@@ -8,7 +8,9 @@ The :ref:`ray.data.llm <llm-ref>` module integrates with key large language mode
 This guide shows you how to use :ref:`ray.data.llm <llm-ref>` to:
 
 * :ref:`Quickstart: vLLM batch inference <vllm_quickstart>`
+* :ref:`Understand the processor architecture <processor_architecture>`
 * :ref:`Perform batch inference with LLMs <batch_inference_llm>`
+* :ref:`Configure processing stages <stage_configuration>`
 * :ref:`Configure vLLM for LLM inference <vllm_llm>`
 * :ref:`Batch inference with embedding models <embedding_models>`
 * :ref:`Query deployed models with an OpenAI compatible API endpoint <openai_compatible_api_endpoint>`
@@ -47,6 +49,67 @@ This example:
 The processor expects input rows with a ``prompt`` field and outputs rows with both ``prompt`` and ``response`` fields. You can consume results using ``iter_rows()``, ``take()``, ``show()``, or save to files with ``write_parquet()``.
 
 For more configuration options and advanced features, see the sections below.
+
+.. _processor_architecture:
+
+Processor architecture
+----------------------
+
+Ray Data LLM uses a **multi-stage processor pipeline** to transform your data through LLM inference. Understanding this architecture helps you optimize performance and debug issues.
+
+.. code-block:: text
+
+    Input Dataset
+         |
+         v
+    +------------------+
+    | Preprocess       |  (your custom function)
+    +------------------+
+         |
+         v
+    +------------------+
+    | PrepareImage     |  (optional, for VLMs)
+    +------------------+
+         |
+         v
+    +------------------+
+    | ChatTemplate     |  (applies chat template to messages)
+    +------------------+
+         |
+         v
+    +------------------+
+    | Tokenize         |  (converts text to token IDs)
+    +------------------+
+         |
+         v
+    +------------------+
+    | LLM Engine       |  (vLLM/SGLang inference on GPU)
+    +------------------+
+         |
+         v
+    +------------------+
+    | Detokenize       |  (converts token IDs back to text)
+    +------------------+
+         |
+         v
+    +------------------+
+    | Postprocess      |  (your custom function)
+    +------------------+
+         |
+         v
+    Output Dataset
+
+**Stage descriptions:**
+
+- **Preprocess**: Your custom function that transforms input rows into the format expected by downstream stages (typically OpenAI chat format with ``messages``).
+- **PrepareImage**: Extracts and prepares images from multimodal inputs. Enable with ``prepare_image_stage=True``.
+- **ChatTemplate**: Applies the model's chat template to convert messages into a prompt string.
+- **Tokenize**: Converts the prompt string into token IDs for the model.
+- **LLM Engine**: The GPU-accelerated inference stage running vLLM or SGLang.
+- **Detokenize**: Converts output token IDs back to readable text.
+- **Postprocess**: Your custom function that extracts and formats the final output.
+
+Each stage runs as a separate Ray actor pool, enabling independent scaling and resource allocation. CPU stages (ChatTemplate, Tokenize, Detokenize) use autoscaling actor pools, while the GPU stage uses a fixed pool.
 
 .. _batch_inference_llm:
 
@@ -116,7 +179,7 @@ To optimize model loading, you can configure the `load_format` to `runai_streame
     :start-after: __runai_config_example_start__
     :end-before: __runai_config_example_end__
 
-If your model is hosted on AWS S3, you can specify the S3 path in the `model_source` argument, and specify `load_format="runai_streamer"` in the `engine_kwargs` argument.
+If your model is hosted on AWS S3, you can specify the S3 path in the ``model_source`` argument and ``load_format="runai_streamer"`` in the ``engine_kwargs`` argument.
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
@@ -130,19 +193,80 @@ To do multi-LoRA batch inference, you need to set LoRA related parameters in `en
     :start-after: __lora_config_example_start__
     :end-before: __lora_config_example_end__
 
+.. _stage_configuration:
+
+Configure processing stages
+---------------------------
+
+Each stage in the processor pipeline can be individually configured for fine-grained control over resources and behavior. This is useful when you need to:
+
+- Adjust batch sizes per stage for memory optimization
+- Scale CPU stages independently from the GPU stage
+- Set different runtime environments per stage
+- Control CPU and memory allocation per worker
+
+**Stage configuration options:**
+
+You can configure stages using boolean values, dictionaries, or typed config objects:
+
+.. code-block:: python
+
+    from ray.data.llm import vLLMEngineProcessorConfig
+
+    # Simple: enable/disable with boolean
+    config = vLLMEngineProcessorConfig(
+        model_source="meta-llama/Llama-3.1-8B-Instruct",
+        chat_template_stage=True,       # Enable (default)
+        tokenize_stage=True,            # Enable (default)
+        detokenize_stage=True,          # Enable (default)
+        prepare_image_stage=False,      # Disable (default)
+    )
+
+    # Advanced: per-stage control with dict
+    config = vLLMEngineProcessorConfig(
+        model_source="meta-llama/Llama-3.1-8B-Instruct",
+        chat_template_stage={
+            "enabled": True,
+            "batch_size": 256,          # Override batch size for this stage
+            "concurrency": 4,           # Scale this stage independently
+        },
+        tokenize_stage={
+            "enabled": True,
+            "batch_size": 512,
+            "num_cpus": 0.5,            # CPU allocation per worker
+        },
+        detokenize_stage={
+            "enabled": True,
+            "concurrency": (2, 8),      # Autoscaling pool from 2-8 workers
+        },
+    )
+
+**Available stage config fields:**
+
+All stages support these common fields:
+
+- ``enabled`` (bool): Enable or disable the stage
+- ``batch_size`` (int): Number of rows per batch for this stage
+- ``concurrency`` (int or tuple): Actor pool size; tuple ``(min, max)`` enables autoscaling
+- ``runtime_env`` (dict): Runtime environment for this stage's workers
+- ``num_cpus`` (float): CPUs to reserve per worker
+- ``memory`` (float): Heap memory in bytes per worker
+
+Stage-specific fields:
+
+- ``chat_template_stage``: Also accepts ``chat_template`` (str) and ``chat_template_kwargs`` (dict)
+- ``tokenize_stage``, ``detokenize_stage``: Also accept ``model_source`` (str) to use a different tokenizer
+
+When a stage config field isn't specified, it inherits from the processor-level defaults (``batch_size``, ``concurrency``, ``runtime_env``).
+
 .. _vision_language_model:
 
-Batch inference with vision-language-model (VLM)
---------------------------------------------------------
+Batch inference with vision-language models (VLMs)
+--------------------------------------------------
 
-Ray Data LLM also supports running batch inference with vision language
-models. This example shows how to prepare a dataset with images and run
-batch inference with a vision language model.
+Ray Data LLM supports batch inference with vision language models. This example shows how to prepare a dataset with images and run batch inference with a VLM.
 
-This example applies 2 adjustments on top of the previous example:
-
-- set `has_image=True` in `vLLMEngineProcessorConfig`
-- prepare image input inside preprocessor
+To enable image processing, set ``prepare_image_stage=True`` in your config and include images in your preprocessor output:
 
 First, install the required dependencies:
 
@@ -202,9 +326,9 @@ Ray Data LLM supports batch inference with embedding models using vLLM:
 Key differences for embedding models:
 
 - Set ``task_type="embed"``
-- Set ``apply_chat_template=False`` and ``detokenize=False``
+- Disable chat templating and detokenization: ``chat_template_stage=False`` and ``detokenize_stage=False``
 - Use direct ``prompt`` input instead of ``messages``
-- Access embeddings through``row["embeddings"]``
+- Access embeddings through ``row["embeddings"]``
 
 For a complete embedding configuration example, see:
 
