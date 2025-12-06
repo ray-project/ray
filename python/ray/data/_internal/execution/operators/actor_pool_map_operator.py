@@ -385,7 +385,6 @@ class ActorPoolMapOperator(MapOperator):
         # Call base implementation to handle any leftover bundles. This may or may not
         # trigger task dispatch.
         super().all_inputs_done()
-
         # Mark inputs as done so future task dispatch will kill all inactive workers
         # once the bundle queue is exhausted.
         self._inputs_done = True

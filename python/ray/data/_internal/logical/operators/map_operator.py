@@ -11,7 +11,7 @@ from ray.data._internal.logical.interfaces import (
 )
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
-from ray.data.expressions import Expr, StarExpr
+from ray.data.expressions import Expr, NamedExpr, StarExpr
 from ray.data.preprocessor import Preprocessor
 
 logger = logging.getLogger(__name__)
@@ -299,7 +299,7 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
     def __init__(
         self,
         input_op: LogicalOperator,
-        exprs: list["Expr"],
+        exprs: List["NamedExpr"],
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -315,7 +315,7 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
         self._zero_copy_batch = True
 
         for expr in self._exprs:
-            if expr.name is None and not isinstance(expr, StarExpr):
+            if not isinstance(expr, NamedExpr):
                 raise TypeError(
                     "All Project expressions must be named (use .alias(name) or col(name)), "
                     "or be a star() expression."
@@ -333,7 +333,7 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
         return None
 
     @property
-    def exprs(self) -> List["Expr"]:
+    def exprs(self) -> List["NamedExpr"]:
         return self._exprs
 
     def can_modify_num_rows(self) -> bool:
