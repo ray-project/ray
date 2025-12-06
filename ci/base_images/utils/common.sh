@@ -1,5 +1,9 @@
 #!/bin/bash
 
+
+[[ -n "${_CI_BASE_IMAGES_UTILS_COMMON_SH_SOURCED:-}" ]] && return 0
+_CI_BASE_IMAGES_UTILS_COMMON_SH_SOURCED=1
+
 printInfo() {
     local blue=$'\033[0;34m'
     local reset=$'\033[0m'
@@ -9,13 +13,13 @@ printInfo() {
 printWarn() {
     local yellow=$'\033[0;33m'
     local reset=$'\033[0m'
-    printf '%sWARN:%s %s\n' "$yellow" "$reset" "$@"
+    printf '%sWARN:%s %s\n' "$yellow" "$reset" "$@" >&2
 }
 
 printError() {
     local red=$'\033[0;31m'
     local reset=$'\033[0m'
-    printf '%sERROR:%s %s\n' "$red" "$reset" "$@"
+    printf '%sERROR:%s %s\n' "$red" "$reset" "$@" >&2
 }
 
 printHeader() {
