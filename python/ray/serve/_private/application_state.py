@@ -641,6 +641,15 @@ class ApplicationState:
                     config,
                 )
                 self._route_prefix = self._check_routes(overrided_infos)
+                
+                # Log the declarative + imperative deployment config after update
+                _log_deployment_configs(
+                    app_name=self._name,
+                    declarative_config=config,
+                    imperative_configs=self._target_state.deployment_infos,
+                    merged_configs=overrided_infos,
+                )
+                
                 self._set_target_state(
                     # Code version doesn't change.
                     code_version=self._target_state.code_version,
@@ -872,6 +881,15 @@ class ApplicationState:
                 deployment_to_serialized_request_router_cls,
             )
             self._route_prefix = self._check_routes(overrided_infos)
+            
+            # Log the declarative + imperative deployment config after update
+            _log_deployment_configs(
+                app_name=self._name,
+                declarative_config=self._build_app_task_info.config,
+                imperative_configs=deployment_infos,
+                merged_configs=overrided_infos,
+            )
+            
             return (
                 serialized_application_autoscaling_policy_def,
                 overrided_infos,
@@ -1747,3 +1765,73 @@ def override_deployment_info(
             deployment.route_prefix = app_route_prefix
 
     return deployment_infos
+
+
+def _log_deployment_configs(
+    app_name: str,
+    declarative_config: ServeApplicationSchema,
+    imperative_configs: Dict[str, DeploymentInfo],
+    merged_configs: Dict[str, DeploymentInfo],
+) -> None:
+    """Log the declarative, imperative, and merged deployment configs.
+    
+    This function logs the deployment configuration after each update to help
+    with debugging and understanding how declarative (from YAML/config) and
+    imperative (from code) configurations are merged.
+    
+    Args:
+        app_name: Name of the application.
+        declarative_config: The declarative config from the YAML/config file.
+        imperative_configs: The imperative configs from the application code.
+        merged_configs: The final merged configs after applying overrides.
+    """
+    try:
+        # Format declarative config
+        declarative_dict = {}
+        if declarative_config.deployments:
+            for dep in declarative_config.deployments:
+                dep_dict = dep.dict(exclude_unset=True) if hasattr(dep, "dict") else {}
+                declarative_dict[dep.name] = dep_dict
+        
+        # Format imperative configs
+        imperative_dict = {}
+        for dep_name, dep_info in imperative_configs.items():
+            imperative_dict[dep_name] = {
+                "deployment_config": dep_info.deployment_config.dict(),
+                "replica_config": {
+                    "ray_actor_options": dep_info.replica_config.ray_actor_options,
+                    "placement_group_bundles": dep_info.replica_config.placement_group_bundles,
+                    "placement_group_strategy": dep_info.replica_config.placement_group_strategy,
+                    "max_replicas_per_node": dep_info.replica_config.max_replicas_per_node,
+                },
+                "route_prefix": dep_info.route_prefix,
+                "version": dep_info.version,
+            }
+        
+        # Format merged configs
+        merged_dict = {}
+        for dep_name, dep_info in merged_configs.items():
+            merged_dict[dep_name] = {
+                "deployment_config": dep_info.deployment_config.dict(),
+                "replica_config": {
+                    "ray_actor_options": dep_info.replica_config.ray_actor_options,
+                    "placement_group_bundles": dep_info.replica_config.placement_group_bundles,
+                    "placement_group_strategy": dep_info.replica_config.placement_group_strategy,
+                    "max_replicas_per_node": dep_info.replica_config.max_replicas_per_node,
+                },
+                "route_prefix": dep_info.route_prefix,
+                "version": dep_info.version,
+            }
+        
+        # Log the configurations
+        logger.info(
+            f"Application '{app_name}' deployment configs after update:\n"
+            f"Declarative config (from YAML/config): {json.dumps(declarative_dict, indent=2, default=str)}\n"
+            f"Imperative config (from code): {json.dumps(imperative_dict, indent=2, default=str)}\n"
+            f"Merged config (final): {json.dumps(merged_dict, indent=2, default=str)}"
+        )
+    except Exception as e:
+        # Don't fail the deployment if logging fails
+        logger.warning(
+            f"Failed to log deployment configs for application '{app_name}': {e}"
+        )
