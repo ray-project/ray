@@ -4,7 +4,11 @@ import os
 from enum import Enum
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
 
-from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.usage.usage_lib import (
+    TagKey,
+    record_extra_usage_tag,
+    record_trainer_type_usage,
+)
 
 if TYPE_CHECKING:
     from ray.train._internal.storage import StorageContext
@@ -29,6 +33,17 @@ TRAIN_V2_TRAINERS = {
     "TensorflowTrainer",
     "TorchTrainer",
     "XGBoostTrainer",
+}
+
+# Mapping from trainer class names to framework types for telemetry
+TRAINER_TO_FRAMEWORK_TYPE = {
+    "TorchTrainer": "pytorch",
+    "XGBoostTrainer": "xgboost",
+    "TensorflowTrainer": "tensorflow",
+    "LightGBMTrainer": "lightgbm",
+    "HorovodTrainer": "horovod",
+    "JaxTrainer": "jax",
+    "DataParallelTrainer": "custom",  # Generic data parallel trainer
 }
 
 # searchers implemented by Ray Tune.
@@ -94,19 +109,55 @@ def _find_class_name(obj, allowed_module_path_prefix: str, whitelist: Set[str]):
 
 
 def tag_air_trainer(trainer: "BaseTrainer"):
-    from ray.train.trainer import BaseTrainer
+    """Record Ray Train V1 (AIR) trainer usage for telemetry.
 
-    assert isinstance(trainer, BaseTrainer)
-    trainer_name = _find_class_name(trainer, "ray.train", AIR_TRAINERS)
-    record_extra_usage_tag(TagKey.AIR_TRAINER, trainer_name)
+    Args:
+        trainer: The trainer instance to tag.
+    """
+    try:
+        from ray.train.trainer import BaseTrainer
+
+        if not isinstance(trainer, BaseTrainer):
+            return
+
+        trainer_name = _find_class_name(trainer, "ray.train", AIR_TRAINERS)
+        record_extra_usage_tag(TagKey.AIR_TRAINER, trainer_name)
+
+        # Also record the framework type for aggregate tracking
+        # Only track if it's a known trainer (not "Custom")
+        if trainer_name != "Custom":
+            trainer_type = TRAINER_TO_FRAMEWORK_TYPE.get(trainer_name)
+            if trainer_type:
+                record_trainer_type_usage(trainer_type)
+    except Exception:
+        # Silently fail to avoid breaking trainer initialization
+        pass
 
 
 def tag_train_v2_trainer(trainer):
-    from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+    """Record Ray Train V2 trainer usage for telemetry.
 
-    assert isinstance(trainer, DataParallelTrainer)
-    trainer_name = _find_class_name(trainer, "ray.train", TRAIN_V2_TRAINERS)
-    record_extra_usage_tag(TagKey.TRAIN_TRAINER, trainer_name)
+    Args:
+        trainer: The trainer instance to tag.
+    """
+    try:
+        from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+
+        if not isinstance(trainer, DataParallelTrainer):
+            return
+
+        trainer_name = _find_class_name(trainer, "ray.train", TRAIN_V2_TRAINERS)
+        record_extra_usage_tag(TagKey.TRAIN_TRAINER, trainer_name)
+
+        # Also record the framework type for aggregate tracking
+        # Only track if it's a known trainer (not "Custom")
+        if trainer_name != "Custom":
+            trainer_type = TRAINER_TO_FRAMEWORK_TYPE.get(trainer_name)
+            if trainer_type:
+                record_trainer_type_usage(trainer_type)
+    except Exception:
+        # Silently fail to avoid breaking trainer initialization
+        pass
 
 
 def tag_searcher(searcher: Union["BasicVariantGenerator", "Searcher"]):
