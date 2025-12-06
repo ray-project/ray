@@ -62,7 +62,7 @@ import {
 } from "./pages/serve/ServeSystemDetailPage";
 import { TaskPage } from "./pages/task/TaskPage";
 import { getNodeList } from "./service/node";
-import { lightTheme } from "./theme";
+import { darkTheme, lightTheme } from "./theme";
 
 dayjs.extend(duration);
 
@@ -118,6 +118,14 @@ export type GlobalContextType = {
    * The globally selected current time zone.
    */
   currentTimeZone: string | undefined;
+  /**
+   * The current theme mode (light or dark)
+   */
+  themeMode: "light" | "dark";
+  /**
+   * Function to toggle between light and dark mode
+   */
+  toggleTheme: () => void;
 };
 export const GlobalContext = React.createContext<GlobalContextType>({
   nodeMap: {},
@@ -133,12 +141,36 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   dashboardDatasource: undefined,
   serverTimeZone: undefined,
   currentTimeZone: undefined,
+  themeMode: "light",
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  toggleTheme: () => {},
 });
 
 const App = () => {
   const [currentTimeZone, setCurrentTimeZone] = useState<string>();
+  const [themeMode, setThemeMode] = useState<"light" | "dark">(() => {
+    // Check URL query param first (for embedded views)
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlTheme = urlParams.get("theme");
+    if (urlTheme === "dark" || urlTheme === "light") {
+      return urlTheme;
+    }
+    // Then check localStorage
+    const stored = localStorage.getItem("themeMode");
+    if (stored === "dark" || stored === "light") {
+      return stored;
+    }
+    // Fall back to system preference
+    if (
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches
+    ) {
+      return "dark";
+    }
+    return "light";
+  });
   const [context, setContext] = useState<
-    Omit<GlobalContextType, "currentTimeZone">
+    Omit<GlobalContextType, "currentTimeZone" | "themeMode" | "toggleTheme">
   >({
     nodeMap: {},
     nodeMapByIp: {},
@@ -153,6 +185,31 @@ const App = () => {
     dashboardDatasource: undefined,
     serverTimeZone: undefined,
   });
+
+  const toggleTheme = () => {
+    setThemeMode((prevMode) => {
+      const newMode = prevMode === "light" ? "dark" : "light";
+      localStorage.setItem("themeMode", newMode);
+      return newMode;
+    });
+  };
+
+  // Listen for system theme changes
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = (e: MediaQueryListEvent) => {
+      // Only update if user hasn't explicitly set a preference via localStorage or URL
+      const stored = localStorage.getItem("themeMode");
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlTheme = urlParams.get("theme");
+      if (!stored && !urlTheme) {
+        setThemeMode(e.matches ? "dark" : "light");
+      }
+    };
+
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
 
   // Authentication state
   const [authenticationDialogOpen, setAuthenticationDialogOpen] =
@@ -307,11 +364,15 @@ const App = () => {
     }
   };
 
+  const currentTheme = themeMode === "dark" ? darkTheme : lightTheme;
+
   return (
     <StyledEngineProvider injectFirst>
-      <ThemeProvider theme={lightTheme}>
+      <ThemeProvider theme={currentTheme}>
         <Suspense fallback={Loading}>
-          <GlobalContext.Provider value={{ ...context, currentTimeZone }}>
+          <GlobalContext.Provider
+            value={{ ...context, currentTimeZone, themeMode, toggleTheme }}
+          >
             <CssBaseline />
             <TokenAuthenticationDialog
               open={authenticationDialogOpen}

@@ -50,12 +50,12 @@ export const TaskProgressBar = ({
     {
       label: "Waiting for scheduling",
       value: numPendingNodeAssignment + numSubmittedToWorker,
-      color: "#cfcf08",
+      color: theme.palette.warning.light,
     },
     {
       label: "Waiting for dependencies",
       value: numPendingArgsAvail,
-      color: "#f79e02",
+      color: theme.palette.warning.main,
     },
     {
       label: "Cancelled",
@@ -65,7 +65,10 @@ export const TaskProgressBar = ({
     {
       label: "Unknown",
       value: numUnknown,
-      color: "#5f6469",
+      color:
+        theme.palette.mode === "dark"
+          ? theme.palette.grey[500]
+          : theme.palette.grey[600],
     },
   ];
   return (
@@ -158,17 +161,20 @@ export const MiniTaskProgressBar = ({
       {
         label: "Waiting for scheduling",
         value: numPendingNodeAssignment + numSubmittedToWorker,
-        color: "#cfcf08",
+        color: theme.palette.warning.light,
       },
       {
         label: "Waiting for dependencies",
         value: numPendingArgsAvail,
-        color: "#f79e02",
+        color: theme.palette.warning.main,
       },
       {
         label: "Unknown",
         value: numUnknown,
-        color: "#5f6469",
+        color:
+          theme.palette.mode === "dark"
+            ? theme.palette.grey[500]
+            : theme.palette.grey[600],
       },
     ];
     return (

@@ -257,7 +257,10 @@ export const ProfilerButton = ({
           <Button
             onClick={handleClose}
             variant="text"
-            sx={{ textTransform: "capitalize", color: "#5F6469" }}
+            sx={(theme) => ({
+              textTransform: "capitalize",
+              color: theme.palette.text.secondary,
+            })}
           >
             Cancel
           </Button>
