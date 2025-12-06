@@ -486,12 +486,11 @@ class PandasBlockAccessor(TableBlockAccessor):
 
             # Skip coercing tensors to null-type to avoid type information loss
             # See https://github.com/ray-project/ray/issues/59087 for context
-            if isinstance(
-                col.dtype, TensorDtype
-            ):
+            if isinstance(col.dtype, TensorDtype):
                 continue
 
             if not col.notna().any():
+                # If there are only null-values, coerce column to Arrow's `NullType`
                 null_coerced_columns[(idx, col_name)] = pa.nulls(
                     len(col), type=pa.null()
                 )
@@ -567,6 +566,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         # Handle object columns separately
         for column in self._table.columns:
+
             # For str, object and extension dtypes, we calculate the size
             # by sampling the data.
             dtype = self._table[column].dtype
