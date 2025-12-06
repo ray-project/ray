@@ -447,11 +447,11 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                 y = y.detach().cpu().numpy()
 
         # Stats objects.
-        from ray.rllib.utils.metrics.stats import Stats
+        from ray.rllib.utils.metrics.stats import StatsBase
 
-        if isinstance(x, Stats):
+        if isinstance(x, StatsBase):
             x = x.peek()
-        if isinstance(y, Stats):
+        if isinstance(y, StatsBase):
             y = y.peek()
 
         # Using decimals.

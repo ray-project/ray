@@ -278,8 +278,6 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
         train: bool,
     ) -> None:
 
-        self.metrics.activate_tensor_mode()
-
         num_env_steps = 0
         for iteration, tensor_minibatch in enumerate(self._batch_iterator):
             for episode in tensor_minibatch:
@@ -329,15 +327,12 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
             (ALL_MODULES, DATASET_NUM_ITERS_EVALUATED),
             iteration + 1,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             (ALL_MODULES, DATASET_NUM_ITERS_EVALUATED_LIFETIME),
             iteration + 1,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
-
-        self.metrics.deactivate_tensor_mode()
 
         return self.metrics.reduce()
 
@@ -452,16 +447,6 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
             if weights_seq_no > 0:
                 self._weights_seq_no = weights_seq_no
 
-        # Update our lifetime counters.
-        # TODO (simon): Create extra metrics.
-        if NUM_ENV_STEPS_SAMPLED_LIFETIME in state:
-            self.metrics.set_value(
-                key=NUM_ENV_STEPS_SAMPLED_LIFETIME,
-                value=state[NUM_ENV_STEPS_SAMPLED_LIFETIME],
-                reduce="sum",
-                with_throughput=True,
-            )
-
     def _log_episode_metrics(self, episode_len: int, episode_return: float) -> None:
         """Logs episode metrics for each episode."""
 
@@ -522,36 +507,33 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
             key=(DEFAULT_MODULE_ID, NUM_MODULE_STEPS_SAMPLED),
             value=num_env_steps,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             key=(DEFAULT_MODULE_ID, NUM_MODULE_STEPS_SAMPLED_LIFETIME),
             value=num_env_steps,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
         # Log module steps (sum of all modules).
         self.metrics.log_value(
             key=(ALL_MODULES, NUM_MODULE_STEPS_SAMPLED),
             value=num_env_steps,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             key=(ALL_MODULES, NUM_MODULE_STEPS_SAMPLED_LIFETIME),
             value=num_env_steps,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
         # Log env steps (all modules).
         self.metrics.log_value(
             key=(ALL_MODULES, NUM_ENV_STEPS_SAMPLED),
             value=num_env_steps,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             key=(ALL_MODULES, NUM_ENV_STEPS_SAMPLED_LIFETIME),
             value=num_env_steps,
-            reduce="sum",
+            reduce="lifetime_sum",
             with_throughput=True,
         )
 
