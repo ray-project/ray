@@ -240,7 +240,7 @@ if __name__ == "__main__":
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(sockaddr)
 
-    if args.runtime_env_agent_port_write_handle:
+    if args.runtime_env_agent_port_write_handle is not None:
         port_str = str(sock.getsockname()[1])
         with Pipe.from_writer_handle(args.runtime_env_agent_port_write_handle) as pipe:
             try:

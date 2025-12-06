@@ -246,13 +246,6 @@ class Pipe:
         self.close()
 
     @staticmethod
-    def parse_handles(handles_str: str) -> list:
-        """Parse comma-separated handles string into a list of integers."""
-        if not handles_str:
-            return []
-        return [int(h) for h in handles_str.split(",") if h]
-
-    @staticmethod
     def format_handles(handles: list) -> str:
         """Format a list of handles into a comma-separated string."""
         return ",".join(str(h) for h in handles)

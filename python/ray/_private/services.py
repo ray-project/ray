@@ -1480,7 +1480,9 @@ def start_gcs_server(
     Returns:
         ProcessInfo for the process that was started.
     """
-    assert gcs_server_port >= 0
+    assert gcs_server_port > 0 or (
+        gcs_server_port == 0 and gcs_port_write_handle is not None
+    )
 
     command = [
         GCS_SERVER_EXECUTABLE,
@@ -2408,7 +2410,10 @@ def start_ray_client_server(
 
     if server_type == "proxy":
         assert len(runtime_env_agent_ip) > 0
-        assert runtime_env_agent_port >= 0
+        assert runtime_env_agent_port > 0 or (
+            runtime_env_agent_port == 0
+            and runtime_env_agent_port_read_handle is not None
+        )
 
     if runtime_env_agent_ip:
         command.append(f"--runtime-env-agent-ip={runtime_env_agent_ip}")

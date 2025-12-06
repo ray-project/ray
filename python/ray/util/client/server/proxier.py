@@ -141,6 +141,11 @@ class ProxyManager:
         self.fate_share = bool(detect_fate_sharing_support())
         self._node: Optional[ray._private.node.Node] = None
 
+        assert runtime_env_agent_port > 0 or (
+            runtime_env_agent_port == 0
+            and runtime_env_agent_port_read_handle is not None
+        )
+
         if runtime_env_agent_port_read_handle is not None:
             with Pipe.from_reader_handle(runtime_env_agent_port_read_handle) as pipe:
                 try:
@@ -150,11 +155,6 @@ class ProxyManager:
                         "Failed to receive runtime env agent port. "
                         "Please check if the runtime env agent started successfully."
                     ) from e
-        elif runtime_env_agent_port == 0:
-            raise ValueError(
-                "runtime_env_agent_port is 0 but runtime_env_agent_port_read_handle "
-                "is not provided. Either specify a valid port or provide a pipe handle."
-            )
 
         self._runtime_env_agent_address = (
             f"http://{build_address(runtime_env_agent_ip, runtime_env_agent_port)}"
