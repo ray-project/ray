@@ -216,6 +216,9 @@ class ApplicationTargetState:
     external_scaler_enabled: whether external autoscaling is enabled for
         this application.
     serialized_application_autoscaling_policy_def: Optional[bytes]
+    imperative_deployment_infos: Optional[Dict[str, DeploymentInfo]] - The
+        original deployment infos loaded from code (before any declarative
+        overrides). Used for accurate logging of imperative vs declarative configs.
     """
 
     deployment_infos: Optional[Dict[str, DeploymentInfo]]
@@ -227,6 +230,7 @@ class ApplicationTargetState:
     api_type: APIType
     serialized_application_autoscaling_policy_def: Optional[bytes]
     external_scaler_enabled: bool
+    imperative_deployment_infos: Optional[Dict[str, DeploymentInfo]] = None
 
 
 class ApplicationState:
@@ -348,6 +352,9 @@ class ApplicationState:
             target_capacity_direction=checkpoint_data.target_capacity_direction,
             deleting=checkpoint_data.deleting,
             external_scaler_enabled=checkpoint_data.external_scaler_enabled,
+            imperative_deployment_infos=getattr(
+                checkpoint_data, "imperative_deployment_infos", None
+            ),
         )
 
         # Restore route prefix and docs path from checkpointed deployments when
@@ -380,6 +387,7 @@ class ApplicationState:
         deleting: bool = False,
         external_scaler_enabled: bool = False,
         serialized_application_autoscaling_policy_def: Optional[bytes] = None,
+        imperative_deployment_infos: Optional[Dict[str, DeploymentInfo]] = None,
     ):
         """Set application target state.
 
@@ -402,6 +410,10 @@ class ApplicationState:
                 if info.ingress:
                     self._ingress_deployment_name = name
 
+        # Preserve existing imperative_deployment_infos if not provided
+        if imperative_deployment_infos is None and self._target_state is not None:
+            imperative_deployment_infos = self._target_state.imperative_deployment_infos
+
         target_state = ApplicationTargetState(
             deployment_infos,
             code_version,
@@ -412,6 +424,7 @@ class ApplicationState:
             api_type=api_type,
             external_scaler_enabled=external_scaler_enabled,
             serialized_application_autoscaling_policy_def=serialized_application_autoscaling_policy_def,
+            imperative_deployment_infos=imperative_deployment_infos,
         )
 
         self._target_state = target_state
@@ -636,6 +649,14 @@ class ApplicationState:
         config_version = get_app_code_version(config)
         if config_version == self._target_state.code_version:
             try:
+                # Use saved imperative configs if available, otherwise fall back to
+                # current deployment_infos (which may be merged from previous updates)
+                imperative_configs = (
+                    self._target_state.imperative_deployment_infos
+                    if self._target_state.imperative_deployment_infos is not None
+                    else self._target_state.deployment_infos
+                )
+                
                 overrided_infos = override_deployment_info(
                     self._target_state.deployment_infos,
                     config,
@@ -646,7 +667,7 @@ class ApplicationState:
                 _log_deployment_configs(
                     app_name=self._name,
                     declarative_config=config,
-                    imperative_configs=self._target_state.deployment_infos,
+                    imperative_configs=imperative_configs,
                     merged_configs=overrided_infos,
                 )
                 
@@ -803,7 +824,7 @@ class ApplicationState:
 
     def _reconcile_build_app_task(
         self,
-    ) -> Tuple[Optional[bytes], Optional[Dict], BuildAppStatus, str]:
+    ) -> Tuple[Optional[bytes], Optional[Dict], Optional[Dict], BuildAppStatus, str]:
         """If necessary, reconcile the in-progress build task.
 
         Returns:
@@ -813,6 +834,9 @@ class ApplicationState:
             Deploy arguments (Dict[str, DeploymentInfo]):
                 The deploy arguments returned from the build app task
                 and their code version.
+            Imperative deployment infos (Dict[str, DeploymentInfo]):
+                The original deployment infos from code before any declarative overrides.
+                None if the task didn't succeed.
             Status (BuildAppStatus):
                 NO_TASK_IN_PROGRESS: There is no build task to reconcile.
                 SUCCEEDED: Task finished successfully.
@@ -822,10 +846,10 @@ class ApplicationState:
                 Non-empty string if status is DEPLOY_FAILED or UNHEALTHY
         """
         if self._build_app_task_info is None or self._build_app_task_info.finished:
-            return None, None, BuildAppStatus.NO_TASK_IN_PROGRESS, ""
+            return None, None, None, BuildAppStatus.NO_TASK_IN_PROGRESS, ""
 
         if not check_obj_ref_ready_nowait(self._build_app_task_info.obj_ref):
-            return None, None, BuildAppStatus.IN_PROGRESS, ""
+            return None, None, None, BuildAppStatus.IN_PROGRESS, ""
 
         # Retrieve build app task result
         self._build_app_task_info.finished = True
@@ -839,6 +863,7 @@ class ApplicationState:
                 return (
                     None,
                     None,
+                    None,
                     BuildAppStatus.FAILED,
                     f"Deploying app '{self._name}' failed with exception:\n{err}",
                 )
@@ -847,13 +872,13 @@ class ApplicationState:
                 f"Runtime env setup for app '{self._name}' failed:\n"
                 + traceback.format_exc()
             )
-            return None, None, BuildAppStatus.FAILED, error_msg
+            return None, None, None, BuildAppStatus.FAILED, error_msg
         except Exception:
             error_msg = (
                 f"Unexpected error occurred while deploying application "
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
-            return None, None, BuildAppStatus.FAILED, error_msg
+            return None, None, None, BuildAppStatus.FAILED, error_msg
 
         # Convert serialized deployment args (returned by build app task)
         # to deployment infos and apply option overrides from config
@@ -874,6 +899,9 @@ class ApplicationState:
                 for params in args
                 if params["serialized_request_router_cls"] is not None
             }
+            # Save the original imperative configs from code before applying overrides
+            imperative_deployment_infos = deepcopy(deployment_infos)
+            
             overrided_infos = override_deployment_info(
                 deployment_infos,
                 self._build_app_task_info.config,
@@ -886,24 +914,25 @@ class ApplicationState:
             _log_deployment_configs(
                 app_name=self._name,
                 declarative_config=self._build_app_task_info.config,
-                imperative_configs=deployment_infos,
+                imperative_configs=imperative_deployment_infos,
                 merged_configs=overrided_infos,
             )
             
             return (
                 serialized_application_autoscaling_policy_def,
                 overrided_infos,
+                imperative_deployment_infos,
                 BuildAppStatus.SUCCEEDED,
                 "",
             )
         except (TypeError, ValueError, RayServeException):
-            return None, None, BuildAppStatus.FAILED, traceback.format_exc()
+            return None, None, None, BuildAppStatus.FAILED, traceback.format_exc()
         except Exception:
             error_msg = (
                 f"Unexpected error occurred while applying config for application "
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
-            return None, None, BuildAppStatus.FAILED, error_msg
+            return None, None, None, BuildAppStatus.FAILED, error_msg
 
     def _check_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]
@@ -1037,6 +1066,7 @@ class ApplicationState:
             (
                 serialized_application_autoscaling_policy_def,
                 infos,
+                imperative_infos,
                 task_status,
                 msg,
             ) = self._reconcile_build_app_task()
@@ -1053,6 +1083,7 @@ class ApplicationState:
                     ),
                     external_scaler_enabled=self._target_state.external_scaler_enabled,
                     serialized_application_autoscaling_policy_def=serialized_application_autoscaling_policy_def,
+                    imperative_deployment_infos=imperative_infos,
                 )
                 # Handling the case where the user turns off/turns on app-level autoscaling policy,
                 # between app deployment.
@@ -1786,42 +1817,32 @@ def _log_deployment_configs(
         merged_configs: The final merged configs after applying overrides.
     """
     try:
+        def _format_deployment_infos(infos: Dict[str, DeploymentInfo]) -> Dict[str, Dict]:
+            """Helper to format DeploymentInfo objects for logging."""
+            return {
+                dep_name: {
+                    "deployment_config": dep_info.deployment_config.dict(),
+                    "replica_config": {
+                        "ray_actor_options": dep_info.replica_config.ray_actor_options,
+                        "placement_group_bundles": dep_info.replica_config.placement_group_bundles,
+                        "placement_group_strategy": dep_info.replica_config.placement_group_strategy,
+                        "max_replicas_per_node": dep_info.replica_config.max_replicas_per_node,
+                    },
+                    "route_prefix": dep_info.route_prefix,
+                    "version": dep_info.version,
+                }
+                for dep_name, dep_info in infos.items()
+            }
+
         # Format declarative config
-        declarative_dict = {}
-        if declarative_config.deployments:
-            for dep in declarative_config.deployments:
-                dep_dict = dep.dict(exclude_unset=True) if hasattr(dep, "dict") else {}
-                declarative_dict[dep.name] = dep_dict
+        declarative_dict = {
+            dep.name: dep.dict(exclude_unset=True)
+            for dep in declarative_config.deployments
+        } if declarative_config.deployments else {}
         
-        # Format imperative configs
-        imperative_dict = {}
-        for dep_name, dep_info in imperative_configs.items():
-            imperative_dict[dep_name] = {
-                "deployment_config": dep_info.deployment_config.dict(),
-                "replica_config": {
-                    "ray_actor_options": dep_info.replica_config.ray_actor_options,
-                    "placement_group_bundles": dep_info.replica_config.placement_group_bundles,
-                    "placement_group_strategy": dep_info.replica_config.placement_group_strategy,
-                    "max_replicas_per_node": dep_info.replica_config.max_replicas_per_node,
-                },
-                "route_prefix": dep_info.route_prefix,
-                "version": dep_info.version,
-            }
-        
-        # Format merged configs
-        merged_dict = {}
-        for dep_name, dep_info in merged_configs.items():
-            merged_dict[dep_name] = {
-                "deployment_config": dep_info.deployment_config.dict(),
-                "replica_config": {
-                    "ray_actor_options": dep_info.replica_config.ray_actor_options,
-                    "placement_group_bundles": dep_info.replica_config.placement_group_bundles,
-                    "placement_group_strategy": dep_info.replica_config.placement_group_strategy,
-                    "max_replicas_per_node": dep_info.replica_config.max_replicas_per_node,
-                },
-                "route_prefix": dep_info.route_prefix,
-                "version": dep_info.version,
-            }
+        # Format imperative and merged configs
+        imperative_dict = _format_deployment_infos(imperative_configs)
+        merged_dict = _format_deployment_infos(merged_configs)
         
         # Log the configurations
         logger.info(
