@@ -91,10 +91,8 @@ class NixlTensorTransport(TensorTransportManager):
                 )
 
                 get_tensor_transport_manager("NIXL").get_nixl_agent()
-                print("nixl found")
                 return True
             except Exception:
-                print("nixl not found")
                 return False
 
         return ray.get(
