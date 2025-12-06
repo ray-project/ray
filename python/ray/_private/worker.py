@@ -3696,10 +3696,6 @@ def remote(
         num_returns: This is only for *remote functions*. It specifies
             the number of object refs returned by the remote function
             invocation. The default value is 1.
-            Pass "dynamic" to allow the task to decide how many
-            return values to return during execution, and the caller will
-            receive an ObjectRef[DynamicObjectRefGenerator].
-            See :ref:`dynamic generators <dynamic-generators>` for more details.
         num_cpus: The quantity of CPU resources to reserve
             for this task or for the lifetime of the actor.
             By default, tasks use 1 CPU resource and actors use 1 CPU

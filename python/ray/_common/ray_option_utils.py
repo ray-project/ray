@@ -180,15 +180,13 @@ _task_only_options = {
     "num_returns": Option(
         (int, str, type(None)),
         lambda x: None
-        if (x is None or x == "dynamic" or x == "streaming" or x >= 0)
+        if (x is None or x == "streaming" or x >= 0)
         else "Default None. When None is passed, "
         "The default value is 1 for a task and actor task, and "
         "'streaming' for generator tasks and generator actor tasks. "
         "The keyword 'num_returns' only accepts None, "
-        "a non-negative integer, "
-        "'streaming' (for generators), or 'dynamic'. 'dynamic' flag "
-        "will be deprecated in the future, and it is recommended to use "
-        "'streaming' instead.",
+        "a non-negative integer or "
+        "'streaming' (for generators).",
         default_value=None,
     ),
     "object_store_memory": Option(  # override "_common_options"
