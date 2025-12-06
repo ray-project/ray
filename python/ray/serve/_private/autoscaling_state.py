@@ -253,6 +253,23 @@ class DeploymentAutoscalingState:
                         f"Ongoing requests was: {handle_metric.total_requests}."
                     )
 
+    def record_autoscaling_metrics(
+        self,
+        decision_num_replicas: int,
+        total_num_requests: float,
+        policy_execution_time_ms: float,
+        policy_scope: str,
+    ):
+        tags = {
+            "deployment": self._deployment_id.name,
+            "application": self._deployment_id.app_name,
+        }
+        self.autoscaling_decision_gauge.set(decision_num_replicas, tags=tags)
+        self.autoscaling_total_requests_gauge.set(total_num_requests, tags=tags)
+        self.autoscaling_policy_execution_time_gauge.set(
+            policy_execution_time_ms, tags={**tags, "policy_scope": policy_scope}
+        )
+
     def get_decision_num_replicas(
         self, curr_target_num_replicas: int, _skip_bound_check: bool = False
     ) -> int:
@@ -273,16 +290,11 @@ class DeploymentAutoscalingState:
         decision_num_replicas, self._policy_state = self._policy(autoscaling_context)
         policy_execution_time_ms = (time.time() - start_time) * 1000
 
-        tags = {
-            "deployment": self._deployment_id.name,
-            "application": self._deployment_id.app_name,
-        }
-        self.autoscaling_decision_gauge.set(decision_num_replicas, tags=tags)
-        self.autoscaling_total_requests_gauge.set(
-            autoscaling_context.total_num_requests, tags=tags
-        )
-        self.autoscaling_policy_execution_time_gauge.set(
-            policy_execution_time_ms, tags={**tags, "policy_scope": "deployment"}
+        self.record_autoscaling_metrics(
+            decision_num_replicas,
+            autoscaling_context.total_num_requests,
+            policy_execution_time_ms,
+            "deployment",
         )
 
         if _skip_bound_check:
@@ -827,20 +839,11 @@ class ApplicationAutoscalingState:
                 deployment_autoscaling_state = self._deployment_autoscaling_states[
                     deployment_id
                 ]
-                tags = {
-                    "deployment": deployment_id.name,
-                    "application": deployment_id.app_name,
-                }
-                deployment_autoscaling_state.autoscaling_decision_gauge.set(
-                    num_replicas, tags=tags
-                )
-                deployment_autoscaling_state.autoscaling_total_requests_gauge.set(
-                    autoscaling_contexts[deployment_id].total_num_requests, tags=tags
-                )
-                # Record policy execution time for each deployment
-                deployment_autoscaling_state.autoscaling_policy_execution_time_gauge.set(
+                deployment_autoscaling_state.record_autoscaling_metrics(
+                    num_replicas,
+                    autoscaling_contexts[deployment_id].total_num_requests,
                     policy_execution_time_ms,
-                    tags={**tags, "policy_scope": "application"},
+                    "application",
                 )
                 results[deployment_id] = (
                     self._deployment_autoscaling_states[deployment_id].apply_bounds(
