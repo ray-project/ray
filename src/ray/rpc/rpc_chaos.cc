@@ -82,6 +82,12 @@ class RpcFailureManager {
       }
 
       for (auto &[method, config] : json.items()) {
+        if (!config.is_object()) {
+          RAY_LOG(FATAL) << "Value for method '" << method
+                         << "' in testing_rpc_failure config is not a JSON object: "
+                         << config.dump();
+          continue;
+        }
         for (const auto &[config_key, _] : config.items()) {
           if (config_key != "num_failures" && config_key != "req_failure_prob" &&
               config_key != "resp_failure_prob" &&
