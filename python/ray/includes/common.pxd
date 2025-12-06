@@ -468,7 +468,7 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
         CStatusOr[c_vector[CGcsNodeInfo]] GetAllNoCache(
             int64_t timeout_ms,
             optional[CGcsNodeState] state_filter,
-            optional[CNodeSelector] node_selector)
+            const c_vector[CNodeSelector] &node_selectors)
 
         void AsyncGetAll(
             const MultiItemPyCallback[CGcsNodeInfo] &callback,
@@ -720,7 +720,12 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         ALIVE "ray::rpc::GcsNodeInfo_GcsNodeState_ALIVE",
 
     cdef cppclass CNodeSelector "ray::rpc::GetAllNodeInfoRequest::NodeSelector":
-        pass
+        CNodeSelector()
+        void set_node_id(const c_string &node_id)
+        void set_node_name(const c_string &node_name)
+        void set_node_ip_address(const c_string &node_ip_address)
+        void set_is_head_node(c_bool is_head_node)
+        void ParseFromString(const c_string &serialized)
 
     cdef cppclass CJobTableData "ray::rpc::JobTableData":
         c_string job_id() const
