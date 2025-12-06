@@ -496,7 +496,10 @@ class NormalTaskSubmitterTest : public testing::Test {
         rate_limiter,
         [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
         boost::asio::steady_timer(io_context),
-        fake_scheduler_placement_time_ms_histogram_);
+        fake_scheduler_placement_time_ms_histogram_,
+        fake_task_total_submitter_preprocessing_time_ms_histogram_,
+        fake_task_dependency_resolution_time_ms_histogram_,
+        fake_task_push_time_ms_histogram_);
   }
 
   NodeID local_node_id;
@@ -514,6 +517,10 @@ class NormalTaskSubmitterTest : public testing::Test {
   MockLeasePolicy *lease_policy_ptr = nullptr;
   instrumented_io_context io_context;
   ray::observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
+  ray::observability::FakeHistogram
+      fake_task_total_submitter_preprocessing_time_ms_histogram_;
+  ray::observability::FakeHistogram fake_task_dependency_resolution_time_ms_histogram_;
+  ray::observability::FakeHistogram fake_task_push_time_ms_histogram_;
 };
 
 TEST_F(NormalTaskSubmitterTest, TestLocalityAwareSubmitOneTask) {
@@ -1446,6 +1453,9 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   auto lease_policy = std::make_unique<MockLeasePolicy>();
   lease_policy->SetNodeID(local_node_id);
   instrumented_io_context io_context;
+  ray::observability::FakeHistogram fake_task_preprocessing_histogram;
+  ray::observability::FakeHistogram fake_dep_resolution_histogram;
+  ray::observability::FakeHistogram fake_push_time_histogram;
   NormalTaskSubmitter submitter(
       address,
       raylet_client,
@@ -1462,7 +1472,10 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
       std::make_shared<StaticLeaseRequestRateLimiter>(1),
       [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
       boost::asio::steady_timer(io_context),
-      fake_scheduler_placement_time_ms_histogram_);
+      fake_scheduler_placement_time_ms_histogram_,
+      fake_task_preprocessing_histogram,
+      fake_dep_resolution_histogram,
+      fake_push_time_histogram);
 
   submitter.SubmitTask(same1);
   submitter.SubmitTask(same2);
