@@ -181,7 +181,7 @@ class GcsServer {
       ray::observability::MetricInterface &placement_group_count_gauge);
 
   /// Initialize gcs worker manager.
-  void InitGcsWorkerManager();
+  void InitGcsWorkerManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs task manager.
   void InitGcsTaskManager(ray::observability::MetricInterface &task_events_reported_gauge,
