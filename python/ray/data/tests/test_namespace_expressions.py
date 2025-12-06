@@ -587,6 +587,75 @@ def test_dt_namespace_invalid_dtype_raises(ray_start_regular):
 
 
 # ──────────────────────────────────────
+# Array Namespace Tests
+# ──────────────────────────────────────
+
+
+def _make_fixed_size_list_table() -> pa.Table:
+    # Build a FixedSizeListArray with 3 rows, each of length 2:
+    # [[1, 2], [3, 4], [5, 6]]
+    values = pa.array([1, 2, 3, 4, 5, 6], type=pa.int64())
+    fixed = pa.FixedSizeListArray.from_arrays(values, list_size=2)
+    return pa.Table.from_arrays([fixed], names=["features"])
+
+
+def _make_nested_fixed_size_list_table() -> pa.Table:
+    # Build a nested FixedSizeListArray with 3 rows:
+    #
+    # row0 -> [[1, 2], [3, 4]]
+    # row1 -> [[5, 6], [7, 8]]
+    # row2 -> [[9, 10], [11, 12]]
+    #
+    # Type is: fixed_size_list(list<int64>, 2)
+    inner_type = pa.list_(pa.int64())
+    inner_values = pa.array(
+        [
+            [1, 2],
+            [3, 4],
+            [5, 6],
+            [7, 8],
+            [9, 10],
+            [11, 12],
+        ],
+        type=inner_type,
+    )
+    fixed_nested = pa.FixedSizeListArray.from_arrays(inner_values, list_size=2)
+    return pa.Table.from_arrays([fixed_nested], names=["features"])
+
+
+def test_arr_to_list(ray_start_regular):
+    table = _make_fixed_size_list_table()
+    ds = ray.data.from_arrow(table)
+
+    result = ds.select(col("features").arr.to_list().alias("features")).to_pandas()
+    expected = pd.DataFrame(
+        [
+            {"features": [1, 2]},
+            {"features": [3, 4]},
+            {"features": [5, 6]},
+        ]
+    )
+
+    assert rows_same(result, expected)
+
+
+def test_arr_flatten(ray_start_regular):
+    table = _make_nested_fixed_size_list_table()
+    ds = ray.data.from_arrow(table)
+
+    result = ds.select(col("features").arr.flatten().alias("features")).to_pandas()
+    expected = pd.DataFrame(
+        [
+            {"features": [1, 2, 3, 4]},
+            {"features": [5, 6, 7, 8]},
+            {"features": [9, 10, 11, 12]},
+        ]
+    )
+
+    assert rows_same(result, expected)
+
+
+# ──────────────────────────────────────
 # Integration Tests
 # ──────────────────────────────────────
 
