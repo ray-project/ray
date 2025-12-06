@@ -193,8 +193,10 @@ void RayletClient::PushMutableObject(
     // metadata from any message can be used.
     request.set_metadata(static_cast<char *>(metadata), metadata_size);
 
-    // TODO(jackhumphries): Add failure recovery, retries, and timeout.
-    INVOKE_RPC_CALL(
+    // Use retryable RPC call to handle failure recovery, retries, and timeout.
+    // Each chunk is retried automatically on transient network errors.
+    INVOKE_RETRYABLE_RPC_CALL(
+        retryable_grpc_client_,
         NodeManagerService,
         PushMutableObject,
         request,
