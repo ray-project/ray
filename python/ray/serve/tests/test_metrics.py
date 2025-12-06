@@ -1324,6 +1324,133 @@ def test_autoscaling_metrics(metrics_start_shutdown):
     ray.get(signal.send.remote())
 
 
+def test_user_autoscaling_stats_metrics(metrics_start_shutdown):
+    """Test that user-defined autoscaling stats metrics are emitted correctly.
+
+    This tests the following metrics:
+    - ray_serve_user_autoscaling_stats_latency_ms: Time to execute user stats function
+        Tags: application, deployment, replica
+    - ray_serve_record_autoscaling_stats_failed_total: Failed stats collection
+        Tags: application, deployment, replica, exception_name
+    """
+
+    @serve.deployment(
+        autoscaling_config={
+            "metrics_interval_s": 0.1,
+            "min_replicas": 1,
+            "max_replicas": 5,
+            "target_ongoing_requests": 2,
+        },
+    )
+    class DeploymentWithCustomStats:
+        def __init__(self):
+            self.call_count = 0
+
+        async def record_autoscaling_stats(self):
+            """Custom autoscaling stats function."""
+            self.call_count += 1
+            return {"custom_metric": self.call_count}
+
+        def __call__(self):
+            return "ok"
+
+    serve.run(DeploymentWithCustomStats.bind(), name="custom_stats_app")
+
+    # Make a request to ensure the deployment is running
+    handle = serve.get_deployment_handle(
+        "DeploymentWithCustomStats", "custom_stats_app"
+    )
+    handle.remote().result()
+
+    timeseries = PrometheusTimeseries()
+    base_tags = {
+        "deployment": "DeploymentWithCustomStats",
+        "application": "custom_stats_app",
+    }
+
+    # Test: Check that user autoscaling stats latency metric is emitted
+    def check_user_stats_latency_metric():
+        value = get_metric_float(
+            "ray_serve_user_autoscaling_stats_latency_ms_sum",
+            expected_tags=base_tags,
+            timeseries=timeseries,
+        )
+        if value >= 0:
+            # Verify replica tag exists
+            metrics_dicts = get_metric_dictionaries(
+                "ray_serve_user_autoscaling_stats_latency_ms_sum",
+                timeout=5,
+                timeseries=timeseries,
+            )
+            for m in metrics_dicts:
+                if (
+                    m.get("deployment") == "DeploymentWithCustomStats"
+                    and m.get("application") == "custom_stats_app"
+                ):
+                    assert m.get("replica") is not None
+                    print(
+                        f"User stats latency metric verified with replica tag: {m.get('replica')}"
+                    )
+                    return True
+        return False
+
+    wait_for_condition(check_user_stats_latency_metric, timeout=15)
+    print("User autoscaling stats latency metric verified.")
+
+
+def test_user_autoscaling_stats_failure_metrics(metrics_start_shutdown):
+    """Test that user autoscaling stats failure metrics are emitted on error."""
+
+    @serve.deployment(
+        autoscaling_config={
+            "metrics_interval_s": 0.1,
+            "min_replicas": 1,
+            "max_replicas": 5,
+            "target_ongoing_requests": 2,
+        },
+    )
+    class DeploymentWithFailingStats:
+        async def record_autoscaling_stats(self):
+            """Custom autoscaling stats function that raises an error."""
+            raise ValueError("Intentional error for testing")
+
+        def __call__(self):
+            return "ok"
+
+    serve.run(DeploymentWithFailingStats.bind(), name="failing_stats_app")
+
+    # Make a request to ensure the deployment is running
+    handle = serve.get_deployment_handle(
+        "DeploymentWithFailingStats", "failing_stats_app"
+    )
+    handle.remote().result()
+
+    timeseries = PrometheusTimeseries()
+
+    # Test: Check that failure counter is incremented
+    def check_stats_failure_metric():
+        metrics_dicts = get_metric_dictionaries(
+            "ray_serve_record_autoscaling_stats_failed_total",
+            timeout=5,
+            timeseries=timeseries,
+        )
+        for m in metrics_dicts:
+            if (
+                m.get("deployment") == "DeploymentWithFailingStats"
+                and m.get("application") == "failing_stats_app"
+            ):
+                assert m.get("replica") is not None
+                assert m.get("exception_name") == "ValueError"
+                print(
+                    f"Stats failure metric verified with exception_name: {m.get('exception_name')}"
+                )
+                return True
+        return False
+
+    wait_for_condition(check_stats_failure_metric, timeout=15)
+    print("User autoscaling stats failure metric verified.")
+
+
 def test_long_poll_host_sends_counted(serve_instance):
     """Check that the transmissions by the long_poll are counted."""
 
