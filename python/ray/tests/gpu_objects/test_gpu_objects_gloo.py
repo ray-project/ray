@@ -10,7 +10,6 @@ import torch
 
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.custom_types import TensorTransportEnum
 from ray.experimental.collective import create_collective_group
 
 # tensordict is not supported on macos ci, so we skip the tests
@@ -519,7 +518,7 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
     assert torch.equal(ret_val_src[0], tensor)
 
     gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-    gpu_object_manager.add_gpu_object_ref(gpu_ref, src_actor, TensorTransportEnum.GLOO)
+    gpu_object_manager.add_gpu_object_ref(gpu_ref, src_actor, "GLOO")
 
     # Trigger out-of-band tensor transfer from src_actor to dst_actor.
     task_args = (gpu_ref,)

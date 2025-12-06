@@ -17,15 +17,15 @@ if TYPE_CHECKING:
 
 # Class definitions for transport managers
 transport_manager_classes: dict[str, TensorTransportManager] = {
-    "nixl": NixlTensorTransport,
-    "torch_gloo": CollectiveTensorTransport,
-    "nccl": CollectiveTensorTransport,
+    "NIXL": NixlTensorTransport,
+    "GLOO": CollectiveTensorTransport,
+    "NCCL": CollectiveTensorTransport,
 }
 
 transport_devices = {
-    "nixl": ["cuda", "cpu"],
-    "torch_gloo": ["cpu"],
-    "nccl": ["cuda"],
+    "NIXL": ["cuda", "cpu"],
+    "GLOO": ["cpu"],
+    "NCCL": ["cuda"],
 }
 
 
