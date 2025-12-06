@@ -219,6 +219,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
             # Sample "num_timesteps" timesteps.
             if num_timesteps is not None:
+                assert num_timesteps >= 0
                 samples = self._sample(
                     num_timesteps=num_timesteps,
                     explore=explore,
@@ -227,6 +228,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 )
             # Sample "num_episodes" episodes.
             elif num_episodes is not None:
+                assert num_episodes >= 0
                 samples = self._sample(
                     num_episodes=num_episodes,
                     explore=explore,
