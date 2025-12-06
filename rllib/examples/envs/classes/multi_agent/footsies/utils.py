@@ -278,25 +278,22 @@ class MixManagerCallback(RLlibCallback):
                 ]
             ).agent_to_module_mapping_fn
 
-            # update (training) env runners with the new mapping function
-            algorithm.env_runner_group.foreach_env_runner(
-                lambda er: er.config.multi_agent(policy_mapping_fn=new_mapping_fn),
-                local_env_runner=True,
+            # For fixed modules, get the module spec from the config
+            if new_module_id in self.fixed_modules_progression_sequence:
+                new_module_spec = algorithm.config.rl_module_spec.rl_module_specs[
+                    new_module_id
+                ]
+
+            # Add the module FIRST before updating mapping functions
+            # This ensures the module exists in the learner before any batches reference it
+            algorithm.add_module(
+                module_id=new_module_id,
+                module_spec=new_module_spec,
+                new_agent_to_module_mapping_fn=new_mapping_fn,
             )
 
-            # update (eval) env runners with the new mapping function
-            algorithm.eval_env_runner_group.foreach_env_runner(
-                lambda er: er.config.multi_agent(policy_mapping_fn=new_mapping_fn),
-                local_env_runner=True,
-            )
-
+            # For trained modules (not fixed), initialize with the state of the main policy
             if new_module_id not in self.fixed_modules_progression_sequence:
-                algorithm.add_module(
-                    module_id=new_module_id,
-                    module_spec=new_module_spec,
-                    new_agent_to_module_mapping_fn=new_mapping_fn,
-                )
-                # newly added trained policy should be initialized with the state of the main policy
                 algorithm.set_state(
                     {
                         "learner_group": {
