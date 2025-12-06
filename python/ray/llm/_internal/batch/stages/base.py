@@ -154,7 +154,7 @@ class StatefulStageUDF:
 
         # Assign the index of the row in the batch to the idx_in_batch_column.
         # This is beacuse the UDF output may be out-of-order (if asyncio.as_completed
-        # is used interanlly for example), and we need to carry over unused input
+        # is used internally for example), and we need to carry over unused input
         # columns to the next stage. Thus, we use the row index in batch to match
         # the output of the UDF with the input.
         for idx, row in enumerate(inputs):
