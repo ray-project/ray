@@ -53,12 +53,11 @@ class LocalNode : public ray::syncer::ReporterInterface {
   }
 
   std::optional<ray::syncer::RaySyncMessage> CreateSyncMessage(
-      int64_t current_version, ray::syncer::MessageType) const override {
+      int64_t current_version) const override {
     if (current_version > version_) {
       return std::nullopt;
     }
     ray::rpc::syncer::RaySyncMessage msg;
-    msg.set_message_type(ray::rpc::syncer::MessageType::RESOURCE_VIEW);
     msg.set_version(version_);
     msg.set_sync_message(
         std::string(reinterpret_cast<const char *>(&state_), sizeof(state_)));
@@ -107,8 +106,7 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<ray::syncer::RaySyncerService> service;
   std::unique_ptr<grpc::Server> server;
   std::shared_ptr<grpc::Channel> channel;
-  syncer.Register(
-      ray::rpc::syncer::MessageType::RESOURCE_VIEW, local_node.get(), remote_node.get());
+  syncer.Register(local_node.get(), remote_node.get());
   if (server_port != ".") {
     RAY_LOG(INFO) << "Start server on port " << server_port;
     auto server_address = ray::BuildAddress("0.0.0.0", server_port);

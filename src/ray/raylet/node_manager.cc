@@ -323,8 +323,6 @@ void NodeManager::RegisterGcs() {
   auto on_node_change_subscribe_done = [this](Status status) {
     RAY_CHECK_OK(status);
 
-    // RESOURCE_VIEW is used to synchronize available resources across Raylets.
-    //
     // LocalResourceManager::CreateSyncMessage will be called periodically to collect
     // the local Raylet's usage to broadcast to others (via the GCS). The updates are
     // versioned inside of `LocalResourceManager` to avoid unnecessary broadcasts.
@@ -332,25 +330,9 @@ void NodeManager::RegisterGcs() {
     // NodeManager::ConsumeSyncMessage will be called when a sync message containing
     // other Raylets' resource usage is received.
     ray_syncer_.Register(
-        /* message_type */ syncer::MessageType::RESOURCE_VIEW,
         /* reporter */ &cluster_resource_scheduler_.GetLocalResourceManager(),
         /* receiver */ this,
-        /* pull_from_reporter_interval_ms */
-        report_resources_period_ms_);
-
-    // COMMANDS is used only to broadcast a global request to call the Python garbage
-    // collector on all Raylets when the cluster is under memory pressure.
-    //
-    // Periodic collection is disabled, so this command is only broadcasted via
-    // `OnDemandBroadcasting` (which will call NodeManager::CreateSyncMessage).
-    //
-    // NodeManager::ConsumeSyncMessage is called to execute the GC command from other
-    // Raylets.
-    ray_syncer_.Register(
-        /* message_type */ syncer::MessageType::COMMANDS,
-        /* reporter */ this,
-        /* receiver */ this,
-        /* pull_from_reporter_interval_ms */ 0);
+        /* broadcast_local_resource_view_update_ms */ report_resources_period_ms_);
 
     auto gcs_channel = gcs_client_.GetGcsRpcClient().GetChannel();
     ray_syncer_.Connect(kGCSNodeID.Binary(), gcs_channel);
@@ -885,8 +867,7 @@ void NodeManager::NodeAdded(const rpc::GcsNodeAddressAndLiveness &node_info) {
       std::make_pair(node_info.node_manager_address(), node_info.node_manager_port());
 
   // Update the resource view if a new message has been sent.
-  if (auto sync_msg = ray_syncer_.GetSyncMessage(node_id.Binary(),
-                                                 syncer::MessageType::RESOURCE_VIEW)) {
+  if (auto sync_msg = ray_syncer_.GetSyncMessage(node_id.Binary())) {
     if (sync_msg) {
       ConsumeSyncMessage(sync_msg);
     }
@@ -2878,7 +2859,15 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 void NodeManager::HandleGlobalGC(rpc::GlobalGCRequest request,
                                  rpc::GlobalGCReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
-  SetShouldGlobalGC();
+  local_gc_triggered_by_global_gc_ = true;
+  if (request.propagate_gc()) {
+    // Set should_global_gc_ so TriggerLocalOrGlobalGCIfNeeded will propagate to all other
+    // raylets. NOTE: We don't want to retrigger global GC if this is a propagation from
+    // GCS/Raylet.
+    should_global_gc_ = true;
+  }
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::TriggerLocalOrGlobalGCIfNeeded() {
@@ -2890,10 +2879,8 @@ void NodeManager::TriggerLocalOrGlobalGCIfNeeded() {
   }
 
   if (should_global_gc_) {
-    // Always increment the sync message version number so it's always triggered once per
-    // call.
-    gc_command_sync_version_++;
-    ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
+    // Propagate GlobalGC to all other raylets.
+    PropagateGlobalGC();
     should_global_gc_ = false;
   }
 
@@ -2921,6 +2908,24 @@ void NodeManager::SetShouldGlobalGC() {
   should_global_gc_ = true;
   // We won't see our own request, so trigger local GC in the next heartbeat.
   local_gc_triggered_by_global_gc_ = true;
+}
+
+void NodeManager::PropagateGlobalGC() {
+  rpc::GlobalGCRequest request;
+  request.set_propagate_gc(false);
+
+  for (const auto &[node_id, address] : remote_node_manager_addresses_) {
+    auto addr = rpc::RayletClientPool::GenerateRayletAddress(
+        node_id, address.first, address.second);
+    auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(addr);
+    raylet_client->GlobalGC(request,
+                            [node_id](const Status &status, rpc::GlobalGCReply &&) {
+                              if (!status.ok()) {
+                                RAY_LOG(INFO) << "Failed to send GlobalGC to node "
+                                              << node_id << ": " << status.message();
+                              }
+                            });
+  }
 }
 
 void NodeManager::HandleGetWorkerPIDs(rpc::GetWorkerPIDsRequest request,
@@ -2985,53 +2990,23 @@ void NodeManager::RecordMetrics() {
 
 void NodeManager::ConsumeSyncMessage(
     std::shared_ptr<const syncer::RaySyncMessage> message) {
-  if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
-    syncer::ResourceViewSyncMessage resource_view_sync_message;
-    resource_view_sync_message.ParseFromString(message->sync_message());
-    NodeID node_id = NodeID::FromBinary(message->node_id());
-    // Set node labels when node added.
-    auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
-    cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(
-        scheduling::NodeID(node_id.Binary()), std::move(node_labels));
-    ResourceRequest resources;
-    for (auto &resource_entry : resource_view_sync_message.resources_total()) {
-      resources.Set(scheduling::ResourceID(resource_entry.first),
-                    FixedPoint(resource_entry.second));
-    }
-    const bool capacity_updated = ResourceCreateUpdated(node_id, resources);
-    const bool usage_update = UpdateResourceUsage(node_id, resource_view_sync_message);
-    if (capacity_updated || usage_update) {
-      cluster_lease_manager_.ScheduleAndGrantLeases();
-    }
-  } else if (message->message_type() == syncer::MessageType::COMMANDS) {
-    syncer::CommandsSyncMessage commands_sync_message;
-    commands_sync_message.ParseFromString(message->sync_message());
-    if (commands_sync_message.should_global_gc()) {
-      local_gc_triggered_by_global_gc_ = true;
-    }
+  syncer::ResourceViewSyncMessage resource_view_sync_message;
+  resource_view_sync_message.ParseFromString(message->sync_message());
+  NodeID node_id = NodeID::FromBinary(message->node_id());
+  // Set node labels when node added.
+  auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
+  cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(
+      scheduling::NodeID(node_id.Binary()), std::move(node_labels));
+  ResourceRequest resources;
+  for (auto &resource_entry : resource_view_sync_message.resources_total()) {
+    resources.Set(scheduling::ResourceID(resource_entry.first),
+                  FixedPoint(resource_entry.second));
   }
-}
-
-std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
-    int64_t after_version, syncer::MessageType message_type) const {
-  // This method is only called for the COMMANDS channel, as the RESOURCE_VIEW
-  // channel goes through the LocalResourceManager.
-  RAY_CHECK_EQ(message_type, syncer::MessageType::COMMANDS);
-
-  // Serialize the COMMANDS message to a byte string to be nested inside the sync message.
-  std::string serialized_commands_sync_msg;
-  syncer::CommandsSyncMessage commands_sync_message;
-  commands_sync_message.set_should_global_gc(true);
-  RAY_CHECK(commands_sync_message.SerializeToString(&serialized_commands_sync_msg));
-
-  // Populate the sync message.
-  syncer::RaySyncMessage msg;
-  msg.set_version(gc_command_sync_version_);
-  msg.set_node_id(self_node_id_.Binary());
-  msg.set_message_type(syncer::MessageType::COMMANDS);
-  msg.set_sync_message(std::move(serialized_commands_sync_msg));
-
-  return std::make_optional(std::move(msg));
+  const bool capacity_updated = ResourceCreateUpdated(node_id, resources);
+  const bool usage_update = UpdateResourceUsage(node_id, resource_view_sync_message);
+  if (capacity_updated || usage_update) {
+    cluster_lease_manager_.ScheduleAndGrantLeases();
+  }
 }
 
 // Picks the worker with the latest submitted task and kills the process

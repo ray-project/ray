@@ -50,7 +50,7 @@ class LocalResourceManagerTest : public ::testing::Test {
   }
 
   syncer::ResourceViewSyncMessage GetSyncMessageForResourceReport() {
-    auto msg = manager->CreateSyncMessage(0, syncer::MessageType::RESOURCE_VIEW);
+    auto msg = manager->CreateSyncMessage(0);
     syncer::ResourceViewSyncMessage resource_view_sync_messge;
     resource_view_sync_messge.ParseFromString(msg->sync_message());
     return resource_view_sync_messge;

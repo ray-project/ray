@@ -1725,8 +1725,10 @@ Status CoreWorker::GetLocationFromOwner(
 }
 
 void CoreWorker::TriggerGlobalGC() {
+  rpc::GlobalGCRequest request;
+  request.set_propagate_gc(true);
   local_raylet_rpc_client_->GlobalGC(
-      [](const Status &status, const rpc::GlobalGCReply &reply) {
+      request, [](const Status &status, const rpc::GlobalGCReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to send global GC request: " << status;
         }

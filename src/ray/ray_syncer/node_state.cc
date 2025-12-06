@@ -21,32 +21,26 @@
 
 namespace ray::syncer {
 
-NodeState::NodeState() { sync_message_versions_taken_.fill(-1); }
-
-bool NodeState::SetComponent(MessageType message_type,
-                             const ReporterInterface *reporter,
+bool NodeState::SetComponent(const ReporterInterface *reporter,
                              ReceiverInterface *receiver) {
-  if (message_type < static_cast<MessageType>(kComponentArraySize) &&
-      reporters_[message_type] == nullptr && receivers_[message_type] == nullptr) {
-    reporters_[message_type] = reporter;
-    receivers_[message_type] = receiver;
+  if (reporter_ == nullptr && receiver_ == nullptr) {
+    reporter_ = reporter;
+    receiver_ = receiver;
     return true;
   }
-  RAY_LOG(FATAL) << "Fail to set components, message_type:" << message_type
-                 << ", reporter:" << reporter << ", receiver:" << receiver;
+  RAY_LOG(FATAL) << "Fail to set components, reporter:" << reporter
+                 << ", receiver:" << receiver;
   return false;
 }
 
-std::optional<RaySyncMessage> NodeState::CreateSyncMessage(MessageType message_type) {
-  if (reporters_[message_type] == nullptr) {
+std::optional<RaySyncMessage> NodeState::CreateSyncMessage() {
+  if (reporter_ == nullptr) {
     return std::nullopt;
   }
-  auto message = reporters_[message_type]->CreateSyncMessage(
-      sync_message_versions_taken_[message_type], message_type);
+  auto message = reporter_->CreateSyncMessage(sync_message_version_taken_);
   if (message != std::nullopt) {
-    sync_message_versions_taken_[message_type] = message->version();
-    RAY_LOG(DEBUG) << "Sync message taken: message_type:" << message_type
-                   << ", version:" << message->version()
+    sync_message_version_taken_ = message->version();
+    RAY_LOG(DEBUG) << "Sync message taken: version:" << message->version()
                    << ", node:" << NodeID::FromBinary(message->node_id());
   }
   return message;
@@ -57,7 +51,7 @@ bool NodeState::RemoveNode(const std::string &node_id) {
 }
 
 bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message) {
-  auto &current = cluster_view_[message->node_id()][message->message_type()];
+  auto &current = cluster_view_[message->node_id()];
 
   RAY_LOG(DEBUG) << "ConsumeSyncMessage: local_version="
                  << (current ? current->version() : -1)
@@ -73,11 +67,10 @@ bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message
   }
 
   current = message;
-  auto receiver = receivers_[message->message_type()];
-  if (receiver != nullptr) {
+  if (receiver_ != nullptr) {
     RAY_LOG(DEBUG).WithField(NodeID::FromBinary(message->node_id()))
         << "Consume message from node";
-    receiver->ConsumeSyncMessage(message);
+    receiver_->ConsumeSyncMessage(message);
   }
   return true;
 }

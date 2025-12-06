@@ -131,7 +131,6 @@ enum RayletShutdownState : std::uint8_t {
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler,
-                    public syncer::ReporterInterface,
                     public syncer::ReceiverInterface {
  public:
   /// Create a node manager.
@@ -203,23 +202,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
   // Consume a RaySyncer sync message from another Raylet.
-  //
-  // The two types of messages that are received are:
-  //   - RESOURCE_VIEW: an update of the resources available on another Raylet.
-  //   - COMMANDS: a request to run the Python garbage collector globally across Raylets.
+  // Messages received are RESOURCE_VIEW: an update of the resources available on another
+  // Raylet.
   void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
-
-  // Generate a RaySyncer sync message to be sent to other Raylets.
-  //
-  // This is currently only used to generate messages for the COMMANDS channel to request
-  // other Raylets to call the Python garbage collector, and is only called on demand
-  // (not periodically polled by the RaySyncer code).
-  std::optional<syncer::RaySyncMessage> CreateSyncMessage(
-      int64_t after_version, syncer::MessageType message_type) const override;
 
   /// Setup global GC to be triggered at the next gc check, so that references to actors
   /// or object ids can be freed up across the cluster.
   void SetShouldGlobalGC();
+
+  /// Propagate GlobalGC request to all other raylets.
+  /// Called when this node initiates a global GC (e.g., due to memory pressure).
+  void PropagateGlobalGC();
 
   /// Mark the specified objects as failed with the given error type.
   ///
@@ -905,10 +898,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;
-
-  /// `version` for the RaySyncer COMMANDS channel. Monotonically incremented each time
-  /// we issue a GC command so that none of the messages are dropped.
-  int64_t gc_command_sync_version_ = 0;
 
   /// The Policy for selecting the worker to kill when the node runs out of memory.
   std::shared_ptr<WorkerKillingPolicy> worker_killing_policy_;

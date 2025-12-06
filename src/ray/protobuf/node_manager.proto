@@ -255,7 +255,12 @@ message GetNodeStatsReply {
   ObjectStoreStats store_stats = 6;
 }
 
-message GlobalGCRequest {}
+message GlobalGCRequest {
+  // If true, this raylet should propagate GlobalGC to all other nodes.
+  // Workers set this to true when requesting cluster-wide GC from their local raylet.
+  // GlobalGC sent from GCS/Raylet sets this to false to prevent re-propagation.
+  bool propagate_gc = 1;
+}
 
 message GlobalGCReply {}
 

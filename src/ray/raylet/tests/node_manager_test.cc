@@ -695,7 +695,6 @@ TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
   auto node_id = NodeID::FromRandom();
   syncer::RaySyncMessage msg;
   msg.set_node_id(node_id.Binary());
-  msg.set_message_type(syncer::MessageType::RESOURCE_VIEW);
   msg.set_sync_message(serialized);
 
   node_manager_->ConsumeSyncMessage(std::make_shared<syncer::RaySyncMessage>(msg));

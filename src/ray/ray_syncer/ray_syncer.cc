@@ -53,12 +53,12 @@ RaySyncer::~RaySyncer() {
 }
 
 std::shared_ptr<const RaySyncMessage> RaySyncer::GetSyncMessage(
-    const std::string &node_id, MessageType message_type) const {
+    const std::string &node_id) const {
   auto task = std::packaged_task<std::shared_ptr<const RaySyncMessage>()>(
-      [this, &node_id, message_type]() -> std::shared_ptr<const RaySyncMessage> {
+      [this, &node_id]() -> std::shared_ptr<const RaySyncMessage> {
         auto &view = node_state_->GetClusterView();
         if (auto iter = view.find(node_id); iter != view.end()) {
-          return iter->second[message_type];
+          return iter->second;
         }
         return nullptr;
       });
@@ -135,17 +135,15 @@ void RaySyncer::Connect(std::shared_ptr<RaySyncerBidiReactor> reactor) {
         RAY_CHECK(is_new) << NodeID::FromBinary(reactor->GetRemoteNodeID())
                           << " has already registered.";
         // Send the view for new connections.
-        for (const auto &[_, messages] : node_state_->GetClusterView()) {
-          for (const auto &message : messages) {
-            if (!message) {
-              continue;
-            }
-            RAY_LOG(DEBUG) << "Push init view from: "
-                           << NodeID::FromBinary(GetLocalNodeID()) << " to "
-                           << NodeID::FromBinary(reactor->GetRemoteNodeID()) << " about "
-                           << NodeID::FromBinary(message->node_id());
-            reactor->PushToSendingQueue(message);
+        for (const auto &[_, message] : node_state_->GetClusterView()) {
+          if (!message) {
+            continue;
           }
+          RAY_LOG(DEBUG) << "Push init view from: "
+                         << NodeID::FromBinary(GetLocalNodeID()) << " to "
+                         << NodeID::FromBinary(reactor->GetRemoteNodeID()) << " about "
+                         << NodeID::FromBinary(message->node_id());
+          reactor->PushToSendingQueue(message);
         }
       }))
       .get();
@@ -165,39 +163,38 @@ void RaySyncer::Disconnect(const std::string &node_id) {
   boost::asio::dispatch(io_context_.get_executor(), std::move(task)).get();
 }
 
-void RaySyncer::Register(MessageType message_type,
-                         const ReporterInterface *reporter,
+void RaySyncer::Register(const ReporterInterface *reporter,
                          ReceiverInterface *receiver,
-                         int64_t pull_from_reporter_interval_ms) {
+                         int64_t broadcast_local_resource_view_update_ms) {
   io_context_.dispatch(
-      [this, message_type, reporter, receiver, pull_from_reporter_interval_ms]() mutable {
-        if (!node_state_->SetComponent(message_type, reporter, receiver)) {
+      [this, reporter, receiver, broadcast_local_resource_view_update_ms]() mutable {
+        if (!node_state_->SetComponent(reporter, receiver)) {
           return;
         }
 
-        // Set job to pull from reporter periodically
-        if (reporter != nullptr && pull_from_reporter_interval_ms > 0) {
+        // Set job to broadcast local resource view periodically
+        if (reporter != nullptr && broadcast_local_resource_view_update_ms > 0) {
           timer_->RunFnPeriodically(
-              [this, stopped = stopped_, message_type]() {
+              [this, stopped = stopped_]() {
                 if (*stopped) {
                   return;
                 }
-                OnDemandBroadcasting(message_type);
+                BroadcastLocalResourceViewUpdate();
               },
-              pull_from_reporter_interval_ms,
-              "RaySyncer.OnDemandBroadcasting");
+              broadcast_local_resource_view_update_ms,
+              "RaySyncer.BroadcastLocalResourceViewUpdate");
         }
 
-        RAY_LOG(DEBUG) << "Registered components: "
-                       << "message_type:" << message_type << ", reporter:" << reporter
-                       << ", receiver:" << receiver << ", pull_from_reporter_interval_ms:"
-                       << pull_from_reporter_interval_ms;
+        RAY_LOG(DEBUG) << "Registered components: reporter:" << reporter
+                       << ", receiver:" << receiver
+                       << ", broadcast_local_resource_view_update_ms:"
+                       << broadcast_local_resource_view_update_ms;
       },
       "RaySyncerRegister");
 }
 
-bool RaySyncer::OnDemandBroadcasting(MessageType message_type) {
-  auto msg = node_state_->CreateSyncMessage(message_type);
+bool RaySyncer::BroadcastLocalResourceViewUpdate() {
+  auto msg = node_state_->CreateSyncMessage();
   if (msg) {
     RAY_CHECK(msg->node_id() == GetLocalNodeID());
     BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(*msg)));

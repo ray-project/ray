@@ -627,10 +627,7 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
       [this](const NodeID &node_id) {
         gcs_healthcheck_manager_->MarkNodeHealthy(node_id);
       });
-  ray_syncer_->Register(
-      syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
-  ray_syncer_->Register(
-      syncer::MessageType::COMMANDS, nullptr, gcs_resource_manager_.get());
+  ray_syncer_->Register(nullptr, gcs_resource_manager_.get());
   rpc_server_.RegisterService(std::make_unique<syncer::RaySyncerService>(
       *ray_syncer_, ray::rpc::AuthenticationTokenLoader::instance().GetToken()));
 }
@@ -980,18 +977,21 @@ void GcsServer::TryGlobalGC() {
   // `NodeManager::WarnResourceDeadlock()`).
   if (task_pending_schedule_detected_++ > 0 &&
       global_gc_throttler_->CheckAndUpdateIfPossible()) {
-    syncer::CommandsSyncMessage commands_sync_message;
-    commands_sync_message.set_should_global_gc(true);
+    rpc::GlobalGCRequest request;
+    request.set_propagate_gc(false);
 
-    auto msg = std::make_shared<syncer::RaySyncMessage>();
-    msg->set_version(absl::GetCurrentTimeNanos());
-    msg->set_node_id(kGCSNodeID.Binary());
-    msg->set_message_type(syncer::MessageType::COMMANDS);
-    std::string serialized_msg;
-    RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
-    msg->set_sync_message(std::move(serialized_msg));
-
-    ray_syncer_->BroadcastMessage(std::move(msg));
+    for (const auto &[node_id, node_info] : gcs_node_manager_->GetAllAliveNodes()) {
+      auto addr = rpc::RayletClientPool::GenerateRayletAddress(
+          node_id, node_info->node_manager_address(), node_info->node_manager_port());
+      auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(addr);
+      raylet_client->GlobalGC(request,
+                              [node_id](const Status &status, rpc::GlobalGCReply &&) {
+                                if (!status.ok()) {
+                                  RAY_LOG(INFO) << "Failed to send GlobalGC to node "
+                                                << node_id << ": " << status.message();
+                                }
+                              });
+    }
   }
 }
 
