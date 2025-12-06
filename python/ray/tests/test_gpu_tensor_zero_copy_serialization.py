@@ -8,7 +8,7 @@ import torch
 import ray
 from ray._common.test_utils import assert_tensors_equivalent
 
-USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
+USE_GPU = os.environ.get("RAY_PYTEST_USE_GPU") == "1"
 
 
 @pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
