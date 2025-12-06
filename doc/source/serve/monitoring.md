@@ -535,16 +535,16 @@ These metrics track request throughput and latency at the proxy level (request e
 
 | Metric | Tags | Description |
 |--------|------|-------------|
+| `ray_serve_num_ongoing_http_requests` **[H]** | `node_id`, `node_ip_address` | Current number of HTTP requests being processed by the proxy. |
+| `ray_serve_num_ongoing_grpc_requests` **[H]** | `node_id`, `node_ip_address` | Current number of gRPC requests being processed by the proxy. |
 | `ray_serve_num_http_requests_total` **[H]** | `route`, `method`, `application`, `status_code` | Total number of HTTP requests processed by the proxy. |
 | `ray_serve_num_grpc_requests_total` **[H]** | `route`, `method`, `application`, `status_code` | Total number of gRPC requests processed by the proxy. |
+| `ray_serve_http_request_latency_ms` **[H]** | `method`, `route`, `application`, `status_code` | Histogram of end-to-end HTTP request latency in milliseconds (measured from proxy receipt to response sent). |
+| `ray_serve_grpc_request_latency_ms` **[H]** | `method`, `route`, `application`, `status_code` | Histogram of end-to-end gRPC request latency in milliseconds (measured from proxy receipt to response sent). |
 | `ray_serve_num_http_error_requests_total` **[H]** | `route`, `error_code`, `method`, `application` | Total number of HTTP requests that returned non-2xx/3xx status codes. |
 | `ray_serve_num_grpc_error_requests_total` **[H]** | `route`, `error_code`, `method`, `application` | Total number of gRPC requests that returned non-OK status codes. |
 | `ray_serve_num_deployment_http_error_requests_total` **[H]** | `deployment`, `error_code`, `method`, `route`, `application` | Total number of HTTP errors per deployment. Useful for identifying which deployment caused errors. |
 | `ray_serve_num_deployment_grpc_error_requests_total` **[H]** | `deployment`, `error_code`, `method`, `route`, `application` | Total number of gRPC errors per deployment. Useful for identifying which deployment caused errors. |
-| `ray_serve_http_request_latency_ms` **[H]** | `method`, `route`, `application`, `status_code` | Histogram of end-to-end HTTP request latency in milliseconds (measured from proxy receipt to response sent). |
-| `ray_serve_grpc_request_latency_ms` **[H]** | `method`, `route`, `application`, `status_code` | Histogram of end-to-end gRPC request latency in milliseconds (measured from proxy receipt to response sent). |
-| `ray_serve_num_ongoing_http_requests` **[H]** | `node_id`, `node_ip_address` | Current number of HTTP requests being processed by the proxy. |
-| `ray_serve_num_ongoing_grpc_requests` **[H]** | `node_id`, `node_ip_address` | Current number of gRPC requests being processed by the proxy. |
 
 ### Request routing metrics
 
@@ -552,8 +552,8 @@ These metrics track request routing and queueing behavior.
 
 | Metric | Tags | Description |
 |--------|------|-------------|
-| `ray_serve_num_router_requests_total` **[H]** | `deployment`, `route`, `application`, `handle`, `actor_id` | Total number of requests routed to a deployment. |
 | `ray_serve_handle_request_counter_total` **[D]** | `handle`, `deployment`, `route`, `application` | Total number of requests processed by this `DeploymentHandle`. |
+| `ray_serve_num_router_requests_total` **[H]** | `deployment`, `route`, `application`, `handle`, `actor_id` | Total number of requests routed to a deployment. |
 | `ray_serve_deployment_queued_queries` **[H]** | `deployment`, `application`, `handle`, `actor_id` | Current number of requests waiting to be assigned to a replica. High values indicate backpressure. |
 | `ray_serve_num_ongoing_requests_at_replicas` **[H]** | `deployment`, `application`, `handle`, `actor_id` | Current number of requests assigned and sent to replicas but not yet completed. |
 | `ray_serve_num_scheduling_tasks` **[H][†]** | `deployment`, `actor_id` | Current number of request scheduling tasks in the router. |
@@ -565,10 +565,10 @@ These metrics track request throughput, errors, and latency at the replica level
 
 | Metric | Tags | Description |
 |--------|------|-------------|
-| `ray_serve_deployment_request_counter_total` **[D]** | `deployment`, `replica`, `route`, `application` | Total number of requests processed by the replica. |
-| `ray_serve_deployment_error_counter_total` **[D]** | `deployment`, `replica`, `route`, `application` | Total number of exceptions raised while processing requests. |
-| `ray_serve_deployment_processing_latency_ms` **[D]** | `deployment`, `replica`, `route`, `application` | Histogram of request processing time in milliseconds (excludes queue wait time). |
 | `ray_serve_replica_processing_queries` **[D]** | `deployment`, `replica`, `application` | Current number of requests being processed by the replica. |
+| `ray_serve_deployment_request_counter_total` **[D]** | `deployment`, `replica`, `route`, `application` | Total number of requests processed by the replica. |
+| `ray_serve_deployment_processing_latency_ms` **[D]** | `deployment`, `replica`, `route`, `application` | Histogram of request processing time in milliseconds (excludes queue wait time). |
+| `ray_serve_deployment_error_counter_total` **[D]** | `deployment`, `replica`, `route`, `application` | Total number of exceptions raised while processing requests. |
 
 ### Replica lifecycle metrics
 
