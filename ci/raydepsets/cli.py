@@ -229,12 +229,17 @@ class DependencySetManager:
             _get_depset(self.config.depsets, single_depset_name)
             self.subgraph_dependency_nodes(single_depset_name)
         for node in topological_sort(self.build_graph):
-            node_type = self.build_graph.nodes[node]["node_type"]
+            if node not in self.build_graph.nodes:
+                raise RuntimeError(f"Node {node} not found in build graph")
+            graph_node = self.build_graph.nodes[node]
+            if "node_type" not in graph_node:
+                raise RuntimeError(f"Node {node} has no node_type")
+            node_type = graph_node["node_type"]
             if node_type == "pre_hook":
-                pre_hook = self.build_graph.nodes[node]["pre_hook"]
+                pre_hook = graph_node["pre_hook"]
                 self.execute_pre_hook(pre_hook)
             elif node_type == "depset":
-                depset = self.build_graph.nodes[node]["depset"]
+                depset = graph_node["depset"]
                 self.execute_depset(depset)
 
     def exec_uv_cmd(
