@@ -62,6 +62,11 @@ RAY_DISABLE_FAILURE_SIGNAL_HANDLER = env_bool(
     "RAY_DISABLE_FAILURE_SIGNAL_HANDLER", False
 )
 
+# Whether to disable worker log files (worker-*.out/err and python-core-worker-*.log).
+# When enabled, prevents creation of worker log files to reduce disk usage and I/O overhead
+# in large-scale deployments. Driver and system component logs remain unaffected.
+RAY_DISABLE_WORKER_LOGS = env_bool("RAY_DISABLE_WORKER_LOGS", False)
+
 RAY_LOG_TO_DRIVER = env_bool("RAY_LOG_TO_DRIVER", True)
 
 # Filter level under which events will be filtered out, i.e. not printing to driver
