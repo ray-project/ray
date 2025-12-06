@@ -566,7 +566,6 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         # Handle object columns separately
         for column in self._table.columns:
-
             # For str, object and extension dtypes, we calculate the size
             # by sampling the data.
             dtype = self._table[column].dtype
