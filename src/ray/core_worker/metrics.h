@@ -41,23 +41,6 @@ inline ray::stats::Gauge GetTaskByStateGaugeMetric() {
   };
 }
 
-inline ray::stats::Gauge() {
-  return ray::stats::Gauge{
-      /*name=*/"owned_objects",
-      /*description=*/"Current number of objects owned by this worker grouped by state.",
-      /*unit=*/"count",
-      // Expected tags:
-      // - State: Spilled, InMemory, InPlasma, PendingCreation
-      /*tag_keys=*/{"State", "JobId"},
-  };
-}
-
-{
-  "tasks" : {
-    "defalt" : {}, "flavors" : { "tasks_max" : max, }
-  }
-}
-
 inline ray::stats::Gauge GetOwnedObjectsByStateGaugeMetric() {
   return ray::stats::Gauge{
       /*name=*/"owned_objects",
