@@ -19,6 +19,7 @@ from ray.train.v2._internal.migration_utils import (
 )
 from ray.train.v2._internal.util import date_str
 from ray.util.annotations import PublicAPI
+from ray.util.tpu import get_tpu_worker_resources
 
 if TYPE_CHECKING:
     from ray.train import UserCallback
@@ -37,10 +38,6 @@ class ScalingConfig(ScalingConfigV1):
             ``resources_per_worker`` argument. If the number of workers is 0,
             the training function will run in local mode, meaning the training
             function runs in the same process.
-        use_gpu: If True, training will be done on GPUs (1 per worker).
-            Defaults to False. The number of GPUs reserved by each
-            worker can be overridden with the ``resources_per_worker``
-            argument.
         resources_per_worker: If specified, the resources
             defined in this Dict is reserved for each worker.
             Define the ``"CPU"`` and ``"GPU"`` keys (case-sensitive) to
@@ -70,13 +67,48 @@ class ScalingConfig(ScalingConfigV1):
     """
 
     trainer_resources: Optional[dict] = None
+    num_workers: Optional[int] = None
+    bundle_label_selector: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None
+
+    # Accelerator specific fields.
     use_tpu: Union[bool] = False
     topology: Optional[str] = None
-    bundle_label_selector: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None
+    accelerator_type: Optional[str] = None
+    num_slices: int = 1
 
     def __post_init__(self):
         if self.trainer_resources is not None:
             raise DeprecationWarning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
+
+        # Auto-detect TPU resources when both topology and accelerator type are specified.
+        if self.use_tpu and self.topology and self.accelerator_type:
+            try:
+                tpu_num_workers, tpu_resources = get_tpu_worker_resources(
+                    topology=self.topology,
+                    accelerator_type=self.accelerator_type,
+                    resources_per_unit=self.resources_per_worker,
+                    num_slices=self.num_slices,
+                )
+            except Exception as e:
+                raise ValueError(
+                    f"Could not parse TPU topology details for "
+                    f"type={self.accelerator_type}, "
+                    f"topology={self.topology}. Error: {e}"
+                )
+
+            if self.num_workers is None:
+                self.num_workers = tpu_num_workers
+                logger.info(
+                    f"Auto-detected num_workers={self.num_workers} based on topology."
+                )
+            elif self.num_workers != tpu_num_workers:
+                logger.warning(
+                    f"User specified num_workers={self.num_workers}, but topology "
+                    f"implies {tpu_num_workers} workers."
+                )
+
+            if self.resources_per_worker is None:
+                self.resources_per_worker = tpu_resources
 
         if self.use_gpu and self.use_tpu:
             raise ValueError("Cannot specify both `use_gpu=True` and `use_tpu=True`.")
@@ -95,6 +127,10 @@ class ScalingConfig(ScalingConfigV1):
                 "request a positive number of `TPU` in "
                 "`resources_per_worker."
             )
+
+        # Default num_workers if not set by user or auto-detected for a topology.
+        if self.num_workers is None:
+            self.num_workers = 1
 
         if self.use_tpu and self.num_workers > 1:
             if not self.topology:

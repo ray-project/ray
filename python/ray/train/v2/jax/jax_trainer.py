@@ -34,7 +34,7 @@ class JaxTrainer(DataParallelTrainer):
         from typing import Sequence
 
         import ray
-        from ray.train.v2.api.config import ScalingConfig, RunConfig
+        from ray.train.v2.api.config import ScalingConfig, RunConfig, TPUAcceleratorConfig
         from ray.train.v2.jax import JaxTrainer
         from MaxText.train import main as maxtext_main
 
@@ -49,12 +49,9 @@ class JaxTrainer(DataParallelTrainer):
                 train_loop_per_worker=train_loop_per_worker,
                 train_loop_config={"argv": absolute_argv},
                 scaling_config=ScalingConfig(
-                    use_tpu=True,
-                    num_workers=4,
-                    topology="4x4",
                     accelerator_type="TPU-V6E",
-                    resources_per_worker={"TPU": 4},
-                    placement_strategy="SPREAD",
+                    topology="4x4",
+                    num_slices=1,
                 ),
                 run_config=RunConfig(
                     name="maxtext_jaxtrainer",
@@ -133,6 +130,7 @@ class JaxTrainer(DataParallelTrainer):
             jax_config = JaxConfig(
                 use_tpu=scaling_config.use_tpu,
                 use_gpu=scaling_config.use_gpu,
+                num_slices=scaling_config.num_slices,
             )
         super(JaxTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
