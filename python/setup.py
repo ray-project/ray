@@ -229,7 +229,7 @@ if setup_spec.type == SetupType.RAY:
     pyarrow_deps = [
         "pyarrow >= 9.0.0",
     ]
-    pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3"
+    pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,!=2.10.*,!=2.11.*,<3"
     setup_spec.extras = {
         "cgraph": [
             "cupy-cuda12x; sys_platform != 'darwin'",
@@ -375,7 +375,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]>=0.11.0",
+                "vllm[audio]>=0.12.0",
                 "nixl>=0.6.1",
                 # TODO(llm): remove after next vLLM version bump
                 "transformers>=4.57.3",
@@ -407,7 +407,7 @@ if setup_spec.type == SetupType.RAY:
         "filelock",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
-        "packaging",
+        "packaging>=24.2",
         "protobuf>=3.20.3",
         "pyyaml",
         "requests",
