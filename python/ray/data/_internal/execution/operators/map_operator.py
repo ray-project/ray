@@ -572,6 +572,14 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 _,
                 bundled_input,
             ) = self._block_ref_bundler.get_next_bundle()
+
+            # Invoke first-input callback before task submission (for deferred init).
+            # This handles small datasets where bundles never met the threshold during
+            # normal processing and were deferred to all_inputs_done().
+            if not self._first_input_processed and self._on_first_input_callback:
+                self._on_first_input_callback(bundled_input)
+                self._first_input_processed = True
+
             self._add_bundled_input(bundled_input)
         super().all_inputs_done()
 
