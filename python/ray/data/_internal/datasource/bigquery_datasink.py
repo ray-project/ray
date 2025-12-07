@@ -5,7 +5,6 @@ import time
 import uuid
 from typing import Iterable, Optional
 
-import pyarrow as pa
 import pyarrow.parquet as pq
 
 import ray
@@ -39,7 +38,7 @@ class BigQueryDatasink(Datasink[None]):
         self.max_retry_cnt = max_retry_cnt
         self.overwrite_table = overwrite_table
 
-    def on_write_start(self, schema: Optional[pa.Schema] = None) -> None:
+    def on_write_start(self) -> None:
         from google.api_core import exceptions
 
         if self.project_id is None or self.dataset is None:

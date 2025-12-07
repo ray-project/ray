@@ -300,7 +300,7 @@ class ClickHouseDatasink(Datasink):
     def supports_distributed_writes(self) -> bool:
         return True
 
-    def on_write_start(self, schema: Optional[pyarrow.Schema] = None) -> None:
+    def on_write_start(self) -> None:
         client = None
         try:
             client = self._init_client()
