@@ -1247,5 +1247,102 @@ def test_actor_summary(serve_instance):
     )
 
 
+def test_batching_metrics(metrics_start_shutdown):
+    @serve.deployment
+    class BatchedDeployment:
+        @serve.batch(max_batch_size=4, batch_wait_timeout_s=0.5)
+        async def batch_handler(self, requests: List[str]) -> List[str]:
+            # Simulate some processing time
+            import asyncio
+
+            await asyncio.sleep(0.05)
+            return [f"processed:{r}" for r in requests]
+
+        async def __call__(self, request: Request):
+            data = await request.body()
+            return await self.batch_handler(data.decode())
+
+    app_name = "batched_app"
+    serve.run(BatchedDeployment.bind(), name=app_name, route_prefix="/batch")
+
+    http_url = "http://localhost:8000/batch"
+
+    # Send multiple concurrent requests to trigger batching
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [
+            executor.submit(lambda i=i: httpx.post(http_url, content=f"req{i}"))
+            for i in range(8)
+        ]
+        results = [f.result() for f in futures]
+
+    # Verify all requests succeeded
+    assert all(r.status_code == 200 for r in results)
+
+    # Verify specific metric values and tags
+    timeseries = PrometheusTimeseries()
+    expected_tags = {
+        "deployment": "BatchedDeployment",
+        "application": app_name,
+        "function_name": "batch_handler",
+    }
+
+    # Check batches_processed_total counter exists and has correct tags
+    wait_for_condition(
+        lambda: check_metric_float_eq(
+            "ray_serve_batches_processed_total",
+            expected=2,
+            expected_tags=expected_tags,
+            timeseries=timeseries,
+        ),
+        timeout=10,
+    )
+
+    # Check batch_wait_time_ms histogram was recorded for 2 batches
+    wait_for_condition(
+        lambda: check_metric_float_eq(
+            "ray_serve_batch_wait_time_ms_count",
+            expected=2,
+            expected_tags=expected_tags,
+            timeseries=timeseries,
+        ),
+        timeout=10,
+    )
+
+    # Check batch_execution_time_ms histogram was recorded for 2 batches
+    wait_for_condition(
+        lambda: check_metric_float_eq(
+            "ray_serve_batch_execution_time_ms_count",
+            expected=2,
+            expected_tags=expected_tags,
+            timeseries=timeseries,
+        ),
+        timeout=10,
+    )
+
+    # Check batch_utilization_percent histogram: 2 batches at 100% each = 200 sum
+    wait_for_condition(
+        lambda: check_metric_float_eq(
+            "ray_serve_batch_utilization_percent_count",
+            expected=2,
+            expected_tags=expected_tags,
+            timeseries=timeseries,
+        ),
+        timeout=10,
+    )
+
+    # Check batch_queue_length gauge exists (should be 0 after processing)
+    wait_for_condition(
+        lambda: check_metric_float_eq(
+            "ray_serve_batch_queue_length",
+            expected=0,
+            expected_tags=expected_tags,
+            timeseries=timeseries,
+        ),
+        timeout=10,
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

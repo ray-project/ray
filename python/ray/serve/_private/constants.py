@@ -124,6 +124,60 @@ MODEL_LOAD_LATENCY_BUCKETS_MS = parse_latency_buckets(
     DEFAULT_LATENCY_BUCKET_MS,
 )
 
+#: Histogram buckets for batch execution time in milliseconds.
+BATCH_EXECUTION_TIME_BUCKETS_MS = [
+    1,
+    2,
+    5,
+    10,
+    20,
+    50,
+    100,
+    200,
+    500,
+    1000,
+    2000,
+    5000,
+    10000,
+    30000,
+    60000,
+]
+
+#: Histogram buckets for batch wait time in milliseconds.
+BATCH_WAIT_TIME_BUCKETS_MS = [
+    0.1,
+    0.5,
+    1,
+    2,
+    5,
+    10,
+    20,
+    50,
+    100,
+    200,
+    500,
+    1000,
+    2000,
+    5000,
+]
+
+#: Histogram buckets for batch utilization percentage.
+BATCH_UTILIZATION_BUCKETS_PERCENT = [
+    5,
+    10,
+    20,
+    30,
+    40,
+    50,
+    60,
+    70,
+    80,
+    90,
+    95,
+    99,
+    100,
+]
+
 #: Name of deployment health check method implemented by user.
 HEALTH_CHECK_METHOD = "check_health"
 

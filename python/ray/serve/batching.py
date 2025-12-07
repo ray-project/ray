@@ -27,9 +27,15 @@ from typing import (
 from ray import serve
 from ray._common.signature import extract_signature, flatten_args, recover_args
 from ray._common.utils import get_or_create_event_loop
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    BATCH_EXECUTION_TIME_BUCKETS_MS,
+    BATCH_UTILIZATION_BUCKETS_PERCENT,
+    BATCH_WAIT_TIME_BUCKETS_MS,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.utils import extract_self_if_method_call
 from ray.serve.exceptions import RayServeException
+from ray.serve.metrics import Counter, Gauge, Histogram
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -140,6 +146,40 @@ class _BatchQueue:
         # Used for observability.
         self.curr_iteration_start_times: Dict[asyncio.Task, float] = {}
 
+        # Initialize batching metrics.
+        self._batch_wait_time_histogram = Histogram(
+            "serve_batch_wait_time_ms",
+            description="Time requests waited for batch to fill (in milliseconds).",
+            boundaries=BATCH_WAIT_TIME_BUCKETS_MS,
+            tag_keys=("function_name",),
+        )
+        self._batch_execution_time_histogram = Histogram(
+            "serve_batch_execution_time_ms",
+            description="Time to execute the batch function (in milliseconds).",
+            boundaries=BATCH_EXECUTION_TIME_BUCKETS_MS,
+            tag_keys=("function_name",),
+        )
+        self._batch_queue_length_gauge = Gauge(
+            "serve_batch_queue_length",
+            description="Number of requests waiting in the batch queue.",
+            tag_keys=("function_name",),
+        )
+        self._batch_utilization_histogram = Histogram(
+            "serve_batch_utilization_percent",
+            description="Batch utilization as percentage (actual_batch_size / max_batch_size * 100).",
+            boundaries=BATCH_UTILIZATION_BUCKETS_PERCENT,
+            tag_keys=("function_name",),
+        )
+        self._batches_processed_counter = Counter(
+            "serve_batches_processed",
+            description="Counter of batches executed.",
+            tag_keys=("function_name",),
+        )
+
+        self._function_name = (
+            handle_batch_func.__name__ if handle_batch_func is not None else None
+        )
+
         self._handle_batch_task = None
         self._loop = get_or_create_event_loop()
         if handle_batch_func is not None:
@@ -195,6 +235,11 @@ class _BatchQueue:
         # Wait self.timeout_s seconds for new queue arrivals.
         batch_start_time = time.time()
         while True:
+            # Record queue length metric.
+            self._batch_queue_length_gauge.set(
+                self.queue.qsize(), tags={"function_name": self._function_name}
+            )
+
             remaining_batch_time_s = max(
                 batch_wait_timeout_s - (time.time() - batch_start_time), 0
             )
@@ -224,6 +269,12 @@ class _BatchQueue:
                 or len(batch) >= max_batch_size
             ):
                 break
+
+        # Record batch wait time metric (time spent waiting for batch to fill).
+        batch_wait_time_ms = (time.time() - batch_start_time) * 1000
+        self._batch_wait_time_histogram.observe(
+            batch_wait_time_ms, tags={"function_name": self._function_name}
+        )
 
         return batch
 
@@ -329,11 +380,26 @@ class _BatchQueue:
             if len(batch) == 0:
                 return
 
+            # Record batch utilization metric.
+            batch_size = len(batch)
+
+            # Calculate and record batch utilization percentage.
+            batch_utilization_percent = (batch_size / self.max_batch_size) * 100
+            self._batch_utilization_histogram.observe(
+                batch_utilization_percent, tags={"function_name": self._function_name}
+            )
+
+            # Increment batches processed counter.
+            self._batches_processed_counter.inc(
+                tags={"function_name": self._function_name}
+            )
+
             futures = [item.future for item in batch]
 
             # Most of the logic in the function should be wrapped in this try-
             # except block, so the futures' exceptions can be set if an exception
             # occurs. Otherwise, the futures' requests may hang indefinitely.
+            batch_execution_start_time = time.time()
             try:
                 self_arg = batch[0].self_arg
                 args, kwargs = _batch_args_kwargs(
@@ -368,6 +434,14 @@ class _BatchQueue:
 
                 for future in futures:
                     _set_exception_if_not_done(future, e)
+            finally:
+                # Record batch execution time.
+                batch_execution_time_ms = (
+                    time.time() - batch_execution_start_time
+                ) * 1000
+                self._batch_execution_time_histogram.observe(
+                    batch_execution_time_ms, tags={"function_name": self._function_name}
+                )
 
     def _handle_completed_task(self, task: asyncio.Task) -> None:
         self.tasks.remove(task)
