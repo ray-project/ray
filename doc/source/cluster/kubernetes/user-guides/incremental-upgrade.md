@@ -48,12 +48,34 @@ kind create cluster --image=kindest/node:v1.29.0
 ```
 We use `v1.29.0` which is known to be compatible with recent Istio versions.
 
-2. Install Gateway API CRDs
-```bash
-kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
+2. Install istio
+```
+istioctl install --set profile=demo -y
 ```
 
-3. Install and Configure MetalLB for LoadBalancer on kind
+3. Install Gateway API CRDs
+```bash
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.3.0/standard-install.yaml
+```
+
+4. Create a Gateway class with the following spec
+```yaml
+echo "apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: istio
+spec:
+  controllerName: istio.io/gateway-controller" | kubectl apply -f -
+```
+
+```yaml
+kubectl get gatewayclass
+NAME           CONTROLLER                    ACCEPTED   AGE
+istio          istio.io/gateway-controller   True       4s
+istio-remote   istio.io/unmanaged-gateway    True       3s
+```
+
+5. Install and Configure MetalLB for LoadBalancer on kind
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.7/config/manifests/metallb-native.yaml
 ```
@@ -77,21 +99,6 @@ metadata:
 spec:
   ipAddressPools:
   - kind-pool" | kubectl apply -f -
-```
-
-4. Create a Gateway class with the following spec
-```yaml
-echo "apiVersion: gateway.networking.k8s.io/v1
-kind: GatewayClass
-metadata:
-  name: istio
-spec:
-  controllerName: istio.io/gateway-controller" | kubectl apply -f -
-```
-
-5. Install istio
-```
-istioctl install --set profile=demo -y
 ```
 
 6. Install the KubeRay operator, following [these instructions](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/kuberay-operator-installation.html). The minimum version for this guide is v1.5.1. To use this feature, the `RayServiceIncrementalUpgrade` feature gate must be enabled. To enable the feature gate when installing the kuberay operator, run the following command:
