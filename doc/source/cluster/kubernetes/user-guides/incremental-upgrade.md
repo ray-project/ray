@@ -299,7 +299,6 @@ Set `intervalSeconds` to 60 seconds to give the Ray Serve autoscaler and Ray aut
   - Scale down replicas immediately if they exceed the new max_replicas
   - Scale up replicas immediately if they fall below the new min_replicas
 - Provision resources
-- Allow replicas to transition states gracefully to "UPDATING"
 
 A larger interval prevents the upgrade controller from making changes faster than the autoscaler can react, reducing the risk of service disruption.
 
