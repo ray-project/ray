@@ -584,7 +584,7 @@ def test_missing_token_file_raises_authentication_error():
             token_loader.has_token()
 
         # Verify error message is informative
-        assert "/nonexistent/path/to/token" in str(exc_info.value)
+        assert str(Path("/nonexistent/path/to/token")) in str(exc_info.value)
         assert "RAY_AUTH_TOKEN_PATH" in str(exc_info.value)
 
 
