@@ -210,7 +210,7 @@ steps:
         --python-version 3.10 --build-name corebuild-py3.10
       # ui tests
       - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
+        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild-py3.10 /bin/bash -iecuo pipefail
         "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: debug tests"
