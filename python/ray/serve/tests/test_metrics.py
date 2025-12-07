@@ -1172,81 +1172,6 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
     ), f"Latency metrics should use route patterns. Found: {latency_routes}"
 
 
-def test_long_poll_host_sends_counted(serve_instance):
-    """Check that the transmissions by the long_poll are counted."""
-
-    timeseries = PrometheusTimeseries()
-    host = ray.remote(LongPollHost).remote(
-        listen_for_change_request_timeout_s=(0.01, 0.01)
-    )
-
-    # Write a value.
-    ray.get(host.notify_changed.remote({"key_1": 999}))
-    object_ref = host.listen_for_change.remote({"key_1": -1})
-
-    # Check that the result's size is reported.
-    result_1: Dict[str, UpdatedObject] = ray.get(object_ref)
-    wait_for_condition(
-        check_metric_float_eq,
-        timeout=15,
-        metric="ray_serve_long_poll_host_transmission_counter_total",
-        expected=1,
-        expected_tags={"namespace_or_state": "key_1"},
-        timeseries=timeseries,
-    )
-
-    # Write two new values.
-    ray.get(host.notify_changed.remote({"key_1": 1000}))
-    ray.get(host.notify_changed.remote({"key_2": 1000}))
-    object_ref = host.listen_for_change.remote(
-        {"key_1": result_1["key_1"].snapshot_id, "key_2": -1}
-    )
-
-    # Check that the new objects are transmitted.
-    result_2: Dict[str, UpdatedObject] = ray.get(object_ref)
-    wait_for_condition(
-        check_metric_float_eq,
-        timeout=15,
-        metric="ray_serve_long_poll_host_transmission_counter_total",
-        expected=1,
-        expected_tags={"namespace_or_state": "key_2"},
-        timeseries=timeseries,
-    )
-    wait_for_condition(
-        check_metric_float_eq,
-        timeout=15,
-        metric="ray_serve_long_poll_host_transmission_counter_total",
-        expected=2,
-        expected_tags={"namespace_or_state": "key_1"},
-        timeseries=timeseries,
-    )
-
-    # Check that a timeout result is counted.
-    object_ref = host.listen_for_change.remote({"key_2": result_2["key_2"].snapshot_id})
-    _ = ray.get(object_ref)
-    wait_for_condition(
-        check_metric_float_eq,
-        timeout=15,
-        metric="ray_serve_long_poll_host_transmission_counter_total",
-        expected=1,
-        expected_tags={"namespace_or_state": "TIMEOUT"},
-        timeseries=timeseries,
-    )
-
-
-def test_actor_summary(serve_instance):
-    @serve.deployment
-    def f():
-        pass
-
-    serve.run(f.bind(), name="app")
-    actors = list_actors(filters=[("state", "=", "ALIVE")])
-    class_names = {actor.class_name for actor in actors}
-    assert class_names.issuperset(
-        {"ServeController", "ProxyActor", "ServeReplica:app:f"}
-    )
-
-
 def test_batching_metrics(metrics_start_shutdown):
     @serve.deployment
     class BatchedDeployment:
@@ -1341,6 +1266,81 @@ def test_batching_metrics(metrics_start_shutdown):
             timeseries=timeseries,
         ),
         timeout=10,
+    )
+
+
+def test_long_poll_host_sends_counted(serve_instance):
+    """Check that the transmissions by the long_poll are counted."""
+
+    timeseries = PrometheusTimeseries()
+    host = ray.remote(LongPollHost).remote(
+        listen_for_change_request_timeout_s=(0.01, 0.01)
+    )
+
+    # Write a value.
+    ray.get(host.notify_changed.remote({"key_1": 999}))
+    object_ref = host.listen_for_change.remote({"key_1": -1})
+
+    # Check that the result's size is reported.
+    result_1: Dict[str, UpdatedObject] = ray.get(object_ref)
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="ray_serve_long_poll_host_transmission_counter_total",
+        expected=1,
+        expected_tags={"namespace_or_state": "key_1"},
+        timeseries=timeseries,
+    )
+
+    # Write two new values.
+    ray.get(host.notify_changed.remote({"key_1": 1000}))
+    ray.get(host.notify_changed.remote({"key_2": 1000}))
+    object_ref = host.listen_for_change.remote(
+        {"key_1": result_1["key_1"].snapshot_id, "key_2": -1}
+    )
+
+    # Check that the new objects are transmitted.
+    result_2: Dict[str, UpdatedObject] = ray.get(object_ref)
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="ray_serve_long_poll_host_transmission_counter_total",
+        expected=1,
+        expected_tags={"namespace_or_state": "key_2"},
+        timeseries=timeseries,
+    )
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="ray_serve_long_poll_host_transmission_counter_total",
+        expected=2,
+        expected_tags={"namespace_or_state": "key_1"},
+        timeseries=timeseries,
+    )
+
+    # Check that a timeout result is counted.
+    object_ref = host.listen_for_change.remote({"key_2": result_2["key_2"].snapshot_id})
+    _ = ray.get(object_ref)
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="ray_serve_long_poll_host_transmission_counter_total",
+        expected=1,
+        expected_tags={"namespace_or_state": "TIMEOUT"},
+        timeseries=timeseries,
+    )
+
+
+def test_actor_summary(serve_instance):
+    @serve.deployment
+    def f():
+        pass
+
+    serve.run(f.bind(), name="app")
+    actors = list_actors(filters=[("state", "=", "ALIVE")])
+    class_names = {actor.class_name for actor in actors}
+    assert class_names.issuperset(
+        {"ServeController", "ProxyActor", "ServeReplica:app:f"}
     )
 
 
