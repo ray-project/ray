@@ -59,8 +59,8 @@ void GcsNodeManager::WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info,
       events.push_back(std::make_unique<observability::RayNodeDefinitionEvent>(
           node_info, session_name_, gcs_node_id_));
     }
-    events.push_back(
-        std::make_unique<observability::RayNodeLifecycleEvent>(node_info, session_name_, gcs_node_id_));
+    events.push_back(std::make_unique<observability::RayNodeLifecycleEvent>(
+        node_info, session_name_, gcs_node_id_));
     ray_event_recorder_.AddEvents(std::move(events));
     return;
   }
@@ -121,7 +121,18 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     PublishNodeInfoToPubsub(node_id, node_info_copy);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
+
   if (node_info.is_head_node()) {
+    if (gcs_node_id_.IsNil()) {
+      gcs_node_id_ = node_id;
+      RAY_LOG(WARNING).WithField(gcs_node_id_)
+          << "GCS node ID was not set at startup, setting it from head node "
+             "registration.";
+    } else if (gcs_node_id_ != node_id) {
+      RAY_LOG(FATAL).WithField(gcs_node_id_).WithField("head_node_id", node_id)
+          << "GCS was started with a different node ID than the registered head node";
+    }
+
     // mark all old head nodes as dead if exists:
     // 1. should never happen when HA is not used
     // 2. happens when a new head node is started

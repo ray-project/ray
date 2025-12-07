@@ -45,6 +45,7 @@ DEFINE_string(redis_username, "", "The username of Redis.");
 DEFINE_string(redis_password, "", "The password of Redis.");
 DEFINE_bool(retry_redis, false, "Whether to retry to connect to Redis.");
 DEFINE_string(node_ip_address, "", "The IP address of the node.");
+DEFINE_string(node_id, "", "The ID of the node where GCS runs (head node).");
 DEFINE_string(session_name, "", "session_name: The current Ray session name.");
 DEFINE_string(ray_commit, "", "The commit hash of Ray.");
 
@@ -103,6 +104,7 @@ int main(int argc, char *argv[]) {
   const std::string redis_username = FLAGS_redis_username;
   const bool retry_redis = FLAGS_retry_redis;
   const std::string node_ip_address = FLAGS_node_ip_address;
+  const std::string node_id = FLAGS_node_id;
   const std::string session_name = FLAGS_session_name;
   gflags::ShutDownCommandLineFlags();
 
@@ -161,6 +163,7 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_username = redis_username;
   gcs_server_config.retry_redis = retry_redis;
   gcs_server_config.node_ip_address = node_ip_address;
+  gcs_server_config.node_id = node_id;
   gcs_server_config.metrics_agent_port = metrics_agent_port;
   gcs_server_config.log_dir = log_dir;
   gcs_server_config.raylet_config_list = config_list;

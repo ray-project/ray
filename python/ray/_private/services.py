@@ -1444,6 +1444,7 @@ def start_gcs_server(
     gcs_server_port: Optional[int] = None,
     metrics_agent_port: Optional[int] = None,
     node_ip_address: Optional[str] = None,
+    node_id: Optional[str] = None,
 ):
     """Start a gcs server.
 
@@ -1462,6 +1463,7 @@ def start_gcs_server(
         gcs_server_port: Port number of the gcs server.
         metrics_agent_port: The port where metrics agent is bound to.
         node_ip_address: IP Address of a node where gcs server starts.
+        node_id: Hex string of the node ID where gcs server runs (head node).
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1478,6 +1480,9 @@ def start_gcs_server(
         f"--session-name={session_name}",
         f"--ray-commit={ray.__commit__}",
     ]
+
+    if node_id:
+        command += [f"--node-id={node_id}"]
 
     if stdout_filepath:
         command += [f"--stdout_filepath={stdout_filepath}"]
