@@ -568,6 +568,17 @@ def test_invalid_tensor_transport(ray_start_regular):
             def echo(self, data):
                 return data
 
+    actor = GPUTestActor.remote()
+    with pytest.raises(ValueError, match="Invalid tensor transport"):
+        actor.double.options(tensor_transport="invalid").remote(torch.randn((1,)))
+
+    with pytest.raises(ValueError, match="Invalid tensor transport"):
+        ray.put(torch.randn((1,)), _tensor_transport="invalid")
+
+    valid_ref = actor.double.remote(torch.randn((1,)))
+    with pytest.raises(ValueError, match="Invalid tensor transport"):
+        ray.get(valid_ref, _tensor_transport="invalid")
+
 
 @pytest.mark.skipif(
     not support_tensordict,

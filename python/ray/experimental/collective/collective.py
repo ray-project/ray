@@ -80,7 +80,8 @@ def get_collective_groups(
         A list of communicator handles that the actors are a subset of.
     """
     manager = RemoteCommunicatorManager.get()
-    return manager.get_collective_groups(actors, Backend(backend))
+    backend = Backend(backend) if backend is not None else None
+    return manager.get_collective_groups(actors, backend)
 
 
 @PublicAPI(stability="alpha")
@@ -162,9 +163,7 @@ def create_collective_group(
             internal_kv._internal_kv_del(metadata_key)
 
     # Group was successfully created.
-    # Register TORCH_GLOO groups under GLOO since GLOO and TORCH_GLOO are the same now, both using torch.distributed.
-    registration_backend = Backend.GLOO if backend == Backend.TORCH_GLOO else backend
-    comm = CommunicatorHandle(actors, name, registration_backend)
+    comm = CommunicatorHandle(actors, name, backend)
     manager.add_remote_communicator(comm)
     return comm
 

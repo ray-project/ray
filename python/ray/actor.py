@@ -474,6 +474,15 @@ def method(*args, **kwargs):
             method.__ray_enable_task_events__ = kwargs["enable_task_events"]
         if "tensor_transport" in kwargs:
             method.__ray_tensor_transport__ = kwargs["tensor_transport"].upper()
+            tensor_transport = method.__ray_tensor_transport__
+            if tensor_transport != "OBJECT_STORE":
+                from ray.experimental.gpu_object_manager.util import (
+                    transport_manager_classes,
+                )
+
+                if tensor_transport not in transport_manager_classes:
+                    raise ValueError(f"Invalid tensor transport: {tensor_transport}")
+
         return method
 
     # Check if decorator is called without parentheses (args[0] would be the function)
@@ -694,6 +703,13 @@ class ActorMethod:
         tensor_transport = options.get("tensor_transport", None)
         if tensor_transport is not None:
             options["tensor_transport"] = tensor_transport.upper()
+            if tensor_transport != "OBJECT_STORE":
+                from ray.experimental.gpu_object_manager.util import (
+                    transport_manager_classes,
+                )
+
+                if tensor_transport not in transport_manager_classes:
+                    raise ValueError(f"Invalid tensor transport: {tensor_transport}")
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):

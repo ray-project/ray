@@ -836,6 +836,14 @@ class Worker:
             )
         tensors = None
         tensor_transport = _tensor_transport.upper()
+        if tensor_transport != "OBJECT_STORE":
+            from ray.experimental.gpu_object_manager.util import (
+                transport_manager_classes,
+            )
+
+            if tensor_transport not in transport_manager_classes:
+                raise ValueError(f"Invalid tensor transport: {tensor_transport}")
+
         if tensor_transport not in [
             "OBJECT_STORE",
             "NIXL",
@@ -995,6 +1003,14 @@ class Worker:
         tensor_transport = (
             _tensor_transport.upper() if _tensor_transport is not None else None
         )
+        if tensor_transport is not None and tensor_transport != "OBJECT_STORE":
+            from ray.experimental.gpu_object_manager.util import (
+                transport_manager_classes,
+            )
+
+            if tensor_transport not in transport_manager_classes:
+                raise ValueError(f"Invalid tensor transport: {tensor_transport}")
+
         values = self.deserialize_objects(
             serialized_objects, object_refs, tensor_transport_hint=tensor_transport
         )
