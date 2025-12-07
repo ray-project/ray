@@ -3,6 +3,8 @@ import json
 import os
 import sys
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
 import grpc
@@ -979,6 +981,57 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         (health_metric["deployment"], health_metric["application"])
         for health_metric in health_metrics
     } == expected_output
+
+
+def test_queue_wait_time_metric(metrics_start_shutdown):
+    """Test that queue wait time metric is recorded correctly."""
+    signal = SignalActor.remote()
+
+    @serve.deployment(max_ongoing_requests=1)
+    class SlowDeployment:
+        async def __call__(self, request: Request):
+            await signal.wait.remote()
+            return "done"
+
+    serve.run(SlowDeployment.bind(), name="app1", route_prefix="/slow")
+
+    # Send concurrent requests - second one will queue behind the first
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(httpx.get, "http://localhost:8000/slow", timeout=30)
+            for _ in range(2)
+        ]
+        time.sleep(0.5)  # Give second request time to queue
+        # Wait for first request to start processing, second will queue
+        wait_for_condition(
+            lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10
+        )
+        ray.get(signal.send.remote())  # Release signal to complete requests
+        [f.result() for f in futures]  # Wait for completion
+
+    # Wait for the queue wait time metric to appear
+    wait_for_condition(
+        lambda: len(get_metric_dictionaries("ray_serve_queue_wait_time_ms_count")) == 1,
+        timeout=40,
+    )
+
+    queue_wait_metrics = get_metric_dictionaries("ray_serve_queue_wait_time_ms_count")
+    # Check that required tags are present
+    metric = queue_wait_metrics[0]
+    assert "deployment" in metric
+    assert metric["deployment"] == "SlowDeployment"
+    assert "application" in metric
+    assert metric["application"] == "app1"
+
+    # The sum should be positive (requests waited some time in queue)
+    timeseries = PrometheusTimeseries()
+    sum_value = get_metric_float(
+        "ray_serve_queue_wait_time_ms_sum",
+        expected_tags={"deployment": "SlowDeployment", "application": "app1"},
+        timeseries=timeseries,
+    )
+    # the second request should have waited at least 0.5 seconds in queue
+    assert sum_value > 0.5, "Queue wait time should be positive"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")

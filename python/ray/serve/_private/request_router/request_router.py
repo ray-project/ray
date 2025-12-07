@@ -29,6 +29,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
     RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
@@ -415,6 +416,12 @@ class FIFOMixin:
             request_metadata
         )
         if matched_pending_request is not None:
+            # Record queue wait time before fulfilling the request.
+            queue_wait_time_ms = (
+                time.time() - matched_pending_request.created_at
+            ) * 1000
+            self.queue_wait_time_ms_histogram.observe(queue_wait_time_ms)
+
             matched_pending_request.future.set_result(replica)
             self._pending_requests_to_fulfill.remove(matched_pending_request)
             return
@@ -424,6 +431,10 @@ class FIFOMixin:
         while len(self._pending_requests_to_fulfill) > 0:
             pr = self._pending_requests_to_fulfill.popleft()
             if not pr.future.done():
+                # Record queue wait time before fulfilling the request.
+                queue_wait_time_ms = (time.time() - pr.created_at) * 1000
+                self.queue_wait_time_ms_histogram.observe(queue_wait_time_ms)
+
                 pr.future.set_result(replica)
                 break
 
@@ -509,10 +520,12 @@ class RequestRouter(ABC):
         self.num_routing_tasks_gauge = metrics.Gauge(
             "serve_num_scheduling_tasks",
             description="The number of request routing tasks in the router.",
-            tag_keys=("app", "deployment", "actor_id"),
+            tag_keys=("app", "deployment", "actor_id", "application"),
         ).set_default_tags(
             {
+                # TODO(abrar): Remove "app" in future.
                 "app": self._deployment_id.app_name,
+                "application": self._deployment_id.app_name,
                 "deployment": self._deployment_id.name,
                 "actor_id": self_actor_id if self_actor_id else "",
             }
@@ -526,15 +539,35 @@ class RequestRouter(ABC):
                 "The number of request routing tasks in the router "
                 "that are undergoing backoff."
             ),
-            tag_keys=("app", "deployment", "actor_id"),
+            tag_keys=("app", "deployment", "actor_id", "application"),
         ).set_default_tags(
             {
+                # TODO(abrar): Remove "app" in future.
                 "app": self._deployment_id.app_name,
+                "application": self._deployment_id.app_name,
                 "deployment": self._deployment_id.name,
                 "actor_id": self_actor_id if self_actor_id else "",
             }
         )
         self.num_routing_tasks_in_backoff_gauge.set(self.num_routing_tasks_in_backoff)
+
+        # Queue wait time histogram: time request spent waiting in queue
+        # before being assigned to a replica.
+        self.queue_wait_time_ms_histogram = metrics.Histogram(
+            "serve_queue_wait_time_ms",
+            description=(
+                "Time in milliseconds that a request spent waiting in the "
+                "queue before being assigned to a replica."
+            ),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("deployment", "actor_id", "application"),
+        ).set_default_tags(
+            {
+                "application": self._deployment_id.app_name,
+                "deployment": self._deployment_id.name,
+                "actor_id": self_actor_id if self_actor_id else "",
+            }
+        )
 
     def initialize_state(self, **kwargs):
         """
@@ -877,6 +910,12 @@ class RequestRouter(ABC):
             self._get_pending_request_matching_internal_request_id(request_metadata)
         )
         if matched_pending_request is not None:
+            # Record queue wait time before fulfilling the request.
+            queue_wait_time_ms = (
+                time.time() - matched_pending_request.created_at
+            ) * 1000
+            self.queue_wait_time_ms_histogram.observe(queue_wait_time_ms)
+
             matched_pending_request.future.set_result(replica)
             self._pending_requests_to_fulfill.remove(matched_pending_request)
             return
