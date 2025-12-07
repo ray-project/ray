@@ -30,6 +30,10 @@ class DTensorTestActor:
     def __init__(self, rank: int, world_size: int):
         self.rank = rank
         self.world_size = world_size
+        # Set default CUDA device to avoid DeviceMesh initialization warning.
+        # DeviceMesh requires a default device to be set before initialization
+        # to properly initialize the underlying NCCL communicator.
+        # Ray doesn't automatically set this, so we need to do it explicitly.
         torch.cuda.set_device(0)
         self.mesh = None
 
@@ -95,29 +99,32 @@ def test_dtensor_transport(ray_start_regular):
     ]
     create_collective_group(actors, backend="nccl")
 
-    # Setup distributed training
-    master_addr = ray.get(actors[0].get_node_ip.remote())
-    ray.get(
-        [actor.setup_distributed.remote(master_addr, master_port) for actor in actors]
-    )
+    try:
+        # Setup distributed training
+        master_addr = ray.get(actors[0].get_node_ip.remote())
+        ray.get(
+            [
+                actor.setup_distributed.remote(master_addr, master_port)
+                for actor in actors
+            ]
+        )
 
-    # Create DTensor on actors
-    dtensor_ref = actors[0].create_dtensor.remote(4, 2)
-    dtensor_ref1 = actors[1].create_dtensor.remote(4, 2)
+        # Create DTensor on actors
+        dtensor_ref = actors[0].create_dtensor.remote(4, 2)
+        dtensor_ref1 = actors[1].create_dtensor.remote(4, 2)
 
-    # Transfer DTensor to second actor and sum it
-    remote_sum_ref = actors[1].sum_dtensor.remote(dtensor_ref)
-    remote_sum_ref1 = actors[0].sum_dtensor.remote(dtensor_ref1)
+        # Transfer DTensor to second actor and sum it
+        remote_sum_ref = actors[1].sum_dtensor.remote(dtensor_ref)
+        remote_sum_ref1 = actors[0].sum_dtensor.remote(dtensor_ref1)
 
-    remote_sum = ray.get(remote_sum_ref)
-    remote_sum1 = ray.get(remote_sum_ref1)
-    # Verify the result
-    assert remote_sum == remote_sum1
-    expected_sum = float(torch.arange(4 * 2, dtype=torch.float32).sum().item())
-    assert abs(expected_sum - remote_sum) < 1e-6
-
-    # Cleanup
-    ray.get([actor.cleanup.remote() for actor in actors])
+        remote_sum = ray.get(remote_sum_ref)
+        remote_sum1 = ray.get(remote_sum_ref1)
+        # Verify the result
+        assert remote_sum == remote_sum1
+        expected_sum = float(torch.arange(4 * 2, dtype=torch.float32).sum().item())
+        assert abs(expected_sum - remote_sum) < 1e-6
+    finally:
+        ray.get([actor.cleanup.remote() for actor in actors])
 
 
 if __name__ == "__main__":
