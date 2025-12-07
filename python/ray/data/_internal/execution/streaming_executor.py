@@ -523,7 +523,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Log metrics of newly completed operators.
         for op, state in topology.items():
-            if op.completed() and not self._has_op_completed[op]:
+            if op.has_completed() and not self._has_op_completed[op]:
                 log_str = (
                     f"Operator {op} completed. "
                     f"Operator Metrics:\n{op._metrics.as_dict(skip_internal_metrics=True)}"
@@ -533,7 +533,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._validate_operator_queues_empty(op, state)
 
         # Keep going until all operators run to completion.
-        return not all(op.completed() for op in topology)
+        return not all(op.has_completed() for op in topology)
 
     def _refresh_progress_bars(self, topology: Topology):
         # Update the progress bar to reflect scheduling decisions.

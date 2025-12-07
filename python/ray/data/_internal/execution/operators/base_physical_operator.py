@@ -148,7 +148,7 @@ class AllToAllOperator(
         )
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
-        assert not self.completed()
+        assert not self.has_completed()
         assert input_index == 0, input_index
         self._input_buffer.append(refs)
         self._metrics.on_input_queued(refs)

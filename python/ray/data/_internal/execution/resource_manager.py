@@ -401,7 +401,7 @@ class ResourceManager:
 
 def _get_first_pending_shuffle_op(topology: "Topology") -> int:
     for idx, op in enumerate(topology):
-        if _is_shuffle_op(op) and not op.completed():
+        if _is_shuffle_op(op) and not op.has_completed():
             return idx
 
     return -1

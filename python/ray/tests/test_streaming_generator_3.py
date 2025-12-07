@@ -256,18 +256,18 @@ def test_completed_next_ready_is_finished(shutdown_only):
     r, _ = ray.wait([gen])
     gen = r[0]
     assert gen.next_ready()
-    _, ur = ray.wait([gen.completed()], timeout=0)
+    _, ur = ray.wait([gen.has_completed()], timeout=0)
     assert len(ur) == 1
 
     # Consume object refs
     next(gen)
     assert not gen.is_finished()
-    _, ur = ray.wait([gen.completed()], timeout=0)
+    _, ur = ray.wait([gen.has_completed()], timeout=0)
     assert len(ur) == 1
 
     next(gen)
     assert not gen.is_finished()
-    _, ur = ray.wait([gen.completed()], timeout=0)
+    _, ur = ray.wait([gen.has_completed()], timeout=0)
     assert len(ur) == 1
 
     next(gen)
@@ -278,7 +278,7 @@ def test_completed_next_ready_is_finished(shutdown_only):
     # Since the next should raise StopIteration,
     # it should be False.
     assert not gen.next_ready()
-    r, _ = ray.wait([gen.completed()], timeout=0)
+    r, _ = ray.wait([gen.has_completed()], timeout=0)
     assert len(r) == 1
 
     # Test the failed case.
@@ -291,7 +291,7 @@ def test_completed_next_ready_is_finished(shutdown_only):
     assert gen.next_ready()
     assert not gen.is_finished()
     with pytest.raises(TaskCancelledError):
-        ray.get(gen.completed())
+        ray.get(gen.has_completed())
     with pytest.raises(TaskCancelledError):
         ray.get(next(gen))
     assert not gen.next_ready()
