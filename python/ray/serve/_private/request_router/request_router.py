@@ -907,9 +907,7 @@ class RequestRouter(ABC):
             self._get_pending_request_matching_internal_request_id(request_metadata)
         )
         if matched_pending_request is not None:
-            # Record queue wait time before fulfilling the request.
             self._record_queue_wait_time(matched_pending_request)
-
             matched_pending_request.future.set_result(replica)
             self._pending_requests_to_fulfill.remove(matched_pending_request)
             return
