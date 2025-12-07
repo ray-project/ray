@@ -41,10 +41,12 @@ namespace observability {
 // This API is thread-safe. Usage:
 //
 // 1. Register the OpenTelemetryMetricRecorder with the specified grpc endpoint,
-//    interval and timeout via RegisterGrpcExporter(). This should be called only once
-//    per process. It is recommended to call this in the main function. Note: this step
-//    does not need to be called before step 2 and 3. Registered metrics and
-//    recorded values from step 2 and 3 will be preserved in memory by open
+//    interval and timeout via Start(). This should be called only once
+//    per active instance (an instance that has not been Shutdown()). It is recommended to
+//    call this in the main function. Note: this step does not need to be called before
+//    step 2 and 3. Registered metrics and recorded values from step 2 and 3 will be
+//    preserved in memory by open telemetry until the GrpcExporter is created and
+//    registered. recorded values from step 2 and 3 will be preserved in memory by open
 //    telemetry until the GrpcExporter is created and registered
 // 2. Register the metrics to be recorded via RegisterGaugeMetric() etc.
 // 3. Record the metrics via SetMetricValue().
@@ -59,11 +61,12 @@ class OpenTelemetryMetricRecorder {
   // called after Register() to ensure the instance is initialized.
   static OpenTelemetryMetricRecorder &GetInstance();
 
-  // Registers the OpenTelemetryMetricRecorder with the specified grpc endpoint,
-  // interval and timeout. This should be called only once per process.
-  void RegisterGrpcExporter(const std::string &endpoint,
-                            std::chrono::milliseconds interval,
-                            std::chrono::milliseconds timeout);
+  // Start the OpenTelemetryMetricRecorder with the specified grpc endpoint,
+  // interval and timeout. This should be called only once per active instance (an
+  // instance that has not been Shutdown()).
+  void Start(const std::string &endpoint,
+             std::chrono::milliseconds interval,
+             std::chrono::milliseconds timeout);
 
   // Flush the remaining metrics. Note that this is a reset rather than a complete
   // shutdown, so it can be consistent with the shutdown behavior of stats.h.
