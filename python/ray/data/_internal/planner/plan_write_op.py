@@ -142,7 +142,7 @@ def _plan_write_op_internal(
                     )
                     datasink.on_write_start(schema)
 
-                map_op.set_on_first_input_callback(on_first_input)
+                map_op.set_first_input_callback(on_first_input)
             else:
                 # Other datasinks don't need schema, call on_write_start directly
                 datasink.on_write_start()

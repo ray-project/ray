@@ -180,9 +180,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         """
         self._map_task_kwargs_fns.append(map_task_kwargs_fn)
 
-    def set_on_first_input_callback(
-        self, callback: Callable[["RefBundle"], None]
-    ) -> None:
+    def set_first_input_callback(self, callback: Callable[["RefBundle"], None]) -> None:
         """Set a callback to be invoked when the first input bundle is ready.
 
         The callback receives the first RefBundle before any tasks are submitted.
@@ -190,6 +188,16 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         requires schema from actual data (e.g., schema evolution for Iceberg writes).
         """
         self._on_first_input_callback = callback
+
+    def _notify_first_input(self, bundled_input: RefBundle) -> None:
+        """Notify the first-input callback if registered and not yet invoked.
+
+        Used for deferred initialization that needs data from the first bundle
+        (e.g., schema evolution for Iceberg writes via on_write_start).
+        """
+        if not self._first_input_processed and self._on_first_input_callback:
+            self._on_first_input_callback(bundled_input)
+            self._first_input_processed = True
 
     def get_map_task_kwargs(self) -> Dict[str, Any]:
         """Get the kwargs for the map task.
@@ -432,9 +440,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
             # Invoke first-input callback before task submission (for deferred init).
             # This is used by write operators to call on_write_start with schema.
-            if not self._first_input_processed and self._on_first_input_callback:
-                self._on_first_input_callback(bundled_input)
-                self._first_input_processed = True
+            self._notify_first_input(bundled_input)
 
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue
@@ -576,9 +582,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             # Invoke first-input callback before task submission (for deferred init).
             # This handles small datasets where bundles never met the threshold during
             # normal processing and were deferred to all_inputs_done().
-            if not self._first_input_processed and self._on_first_input_callback:
-                self._on_first_input_callback(bundled_input)
-                self._first_input_processed = True
+            self._notify_first_input(bundled_input)
 
             self._add_bundled_input(bundled_input)
         super().all_inputs_done()
