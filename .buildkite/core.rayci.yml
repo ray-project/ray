@@ -274,7 +274,7 @@ steps:
         --test-env=RAY_MINIMAL=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
         --only-tags minimal
-        --python-version 3.10
+        --python-version {{matrix}}
         --except-tags basic_test,manual,cgroup
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
         --parallelism-per-worker 3
@@ -326,7 +326,7 @@ steps:
         --build-type clang --cache-test-results
         --python-version 3.10 --build-name corebuild-py3.10
       - docker run --privileged -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash
+        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild-py3.10 /bin/bash
         "./src/ray/common/cgroup2/integration_tests/sysfs_cgroup_driver_integration_test_entrypoint.sh"
 
   - label: ":ray: core: cpp tests"
