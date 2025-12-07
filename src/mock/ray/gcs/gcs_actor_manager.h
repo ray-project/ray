@@ -42,6 +42,7 @@ class MockGcsActorManager : public GcsActorManager {
             worker_client_pool,
             /*ray_event_recorder=*/fake_ray_event_recorder_,
             /*session_name=*/"",
+            /*gcs_node_id=*/NodeID::Nil(),
             /*actor_by_state_gauge=*/fake_actor_by_state_gauge_,
             /*gcs_actor_by_state_gauge=*/fake_gcs_actor_by_state_gauge_) {}
 

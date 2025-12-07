@@ -32,7 +32,8 @@ static GcsNodeManager __mock_gcs_node_manager_(nullptr,
                                                nullptr,
                                                ClusterID::Nil(),
                                                __mock_ray_event_recorder_,
-                                               "");
+                                               "",
+                                               NodeID::Nil());
 
 class MockGcsResourceManager : public GcsResourceManager {
  public:

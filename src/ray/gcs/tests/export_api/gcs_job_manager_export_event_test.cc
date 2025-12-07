@@ -98,6 +98,7 @@ TEST_F(GcsJobManagerTest, TestRayEventDriverJobEvents) {
   "enable_ray_event": true
 }
   )");
+  auto gcs_node_id = NodeID::FromRandom();
   gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
                                      *gcs_publisher_,
                                      runtime_env_manager_,
@@ -107,6 +108,7 @@ TEST_F(GcsJobManagerTest, TestRayEventDriverJobEvents) {
                                      *worker_client_pool_,
                                      *fake_ray_event_recorder_,
                                      "test_session_name",
+                                     gcs_node_id,
                                      fake_running_job_gauge_,
                                      fake_finished_job_counter_,
                                      fake_job_duration_in_seconds_gauge_);
@@ -148,6 +150,7 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
                 log_dir_,
                 "warning",
                 false);
+  auto gcs_node_id = NodeID::FromRandom();
   gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
                                      *gcs_publisher_,
                                      runtime_env_manager_,
@@ -157,6 +160,7 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
                                      *worker_client_pool_,
                                      *fake_ray_event_recorder_,
                                      "test_session_name",
+                                     gcs_node_id,
                                      fake_running_job_gauge_,
                                      fake_finished_job_counter_,
                                      fake_job_duration_in_seconds_gauge_);

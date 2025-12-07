@@ -59,6 +59,7 @@ class GcsJobManagerTest : public ::testing::Test {
               address.port());
         });
     fake_ray_event_recorder_ = std::make_unique<observability::FakeRayEventRecorder>();
+    gcs_node_id_ = NodeID::FromRandom();
     gcs_job_manager_ =
         std::make_unique<gcs::GcsJobManager>(*gcs_table_storage_,
                                              *gcs_publisher_,
@@ -69,6 +70,7 @@ class GcsJobManagerTest : public ::testing::Test {
                                              *worker_client_pool_,
                                              *fake_ray_event_recorder_,
                                              "test_session_name",
+                                             gcs_node_id_,
                                              fake_running_job_gauge_,
                                              fake_finished_job_counter_,
                                              fake_job_duration_in_seconds_gauge_);
@@ -93,6 +95,7 @@ class GcsJobManagerTest : public ::testing::Test {
   const std::chrono::milliseconds timeout_ms_{5000};
   std::unique_ptr<gcs::GcsJobManager> gcs_job_manager_;
   std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
+  NodeID gcs_node_id_;
 
   // Fake metrics for testing
   ray::observability::FakeGauge fake_running_job_gauge_;
@@ -636,6 +639,7 @@ TEST_F(GcsJobManagerTest, TestMarkJobFinishedIdempotency) {
                                      *worker_client_pool_,
                                      *fake_ray_event_recorder_,
                                      "test_session_name",
+                                     NodeID::Nil(),
                                      fake_running_job_gauge_,
                                      fake_finished_job_counter_,
                                      fake_job_duration_in_seconds_gauge_);

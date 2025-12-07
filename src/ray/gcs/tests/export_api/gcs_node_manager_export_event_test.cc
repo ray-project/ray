@@ -87,13 +87,15 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
 TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
   // Test export event is written when a node is added with HandleRegisterNode
   observability::FakeRayEventRecorder fake_ray_event_recorder;
+  auto gcs_node_id = NodeID::FromRandom();
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
                                    io_service_,
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    /*ray_event_recorder=*/fake_ray_event_recorder,
-                                   /*session_name=*/"");
+                                   /*session_name=*/"",
+                                   gcs_node_id);
   auto node = GenNodeInfo();
 
   rpc::RegisterNodeRequest register_request;
@@ -115,13 +117,15 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
 TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
   // Test export event is written when a node is removed with HandleUnregisterNode
   observability::FakeRayEventRecorder fake_ray_event_recorder;
+  auto gcs_node_id = NodeID::FromRandom();
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
                                    io_service_,
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    /*ray_event_recorder=*/fake_ray_event_recorder,
-                                   /*session_name=*/"");
+                                   /*session_name=*/"",
+                                   gcs_node_id);
   auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   node_manager.AddNode(node);
