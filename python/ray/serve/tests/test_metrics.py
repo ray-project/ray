@@ -1202,16 +1202,18 @@ def test_routing_stats_delay_metric(metrics_start_shutdown):
     wait_for_condition(check_routing_stats_delay_metric, timeout=60)
 
     # Verify the metric value is greater than 0
-    wait_for_condition(
-        check_metric_float_eq,
-        metric="ray_serve_routing_stats_delay_ms_count",
-        expected=1,
-        timeseries=timeseries,
-        expected_tags={
-            "deployment": "Model",
-            "application": "app",
-        },
-    )
+    def check_routing_stats_delay_metric_value():
+        value = get_metric_float(
+            "ray_serve_routing_stats_delay_ms_count",
+            timeseries=timeseries,
+            expected_tags={
+                "deployment": "Model",
+                "application": "app",
+            },
+        )
+        return value > 0
+
+    wait_for_condition(check_routing_stats_delay_metric_value, timeout=60)
 
 
 def test_long_poll_host_sends_counted(serve_instance):
