@@ -8,7 +8,6 @@ app-builder-guide
 advanced-autoscaling
 asyncio-best-practices
 performance
-incremental-upgrade
 dyn-req-batch
 inplace-updates
 dev-workflow
@@ -28,7 +27,6 @@ Use these advanced guides for more options and configurations:
 - [Advanced Ray Serve Autoscaling](serve-advanced-autoscaling)
 - [Asyncio and Concurrency best practices in Ray Serve](serve-asyncio-best-practices)
 - [Performance Tuning](serve-perf-tuning)
-- [RayService Zero-Downtime Incremental Upgrades](rayservice-incremental-upgrade)
 - [Dynamic Request Batching](serve-performance-batching-requests)
 - [In-Place Updates for Serve](serve-inplace-updates)
 - [Development Workflow](serve-dev-workflow)
