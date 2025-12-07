@@ -76,7 +76,7 @@ class RayEvent : public RayEventInterface {
   ray::rpc::events::RayEvent::Severity severity_;
   std::string message_;
   std::string session_name_;
-  std::string node_id_;
+  const std::string node_id_;
   virtual void MergeData(RayEvent<T> &&other) = 0;
   virtual ray::rpc::events::RayEvent SerializeData() && = 0;
 };

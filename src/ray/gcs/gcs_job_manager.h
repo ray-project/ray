@@ -159,7 +159,7 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
   rpc::CoreWorkerClientPool &worker_client_pool_;
   observability::RayEventRecorderInterface &ray_event_recorder_;
   std::string session_name_;
-  NodeID gcs_node_id_;
+  const NodeID gcs_node_id_;
 
   /// If true, driver job events are exported for Export API
   bool export_event_write_enabled_ = false;

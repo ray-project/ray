@@ -492,7 +492,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   /// Event recorder for emitting actor events
   observability::RayEventRecorderInterface &ray_event_recorder_;
   std::string session_name_;
-  NodeID gcs_node_id_;
+  const NodeID gcs_node_id_;
   /// A callback that is used to destroy placemenet group owned by the actor.
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.

@@ -384,7 +384,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
 
   observability::RayEventRecorderInterface &ray_event_recorder_;
   std::string session_name_;
-  NodeID gcs_node_id_;
+  const NodeID gcs_node_id_;
 
   // Debug info.
   enum CountType {
