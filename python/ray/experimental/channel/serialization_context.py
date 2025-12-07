@@ -95,6 +95,29 @@ class _SerializationContext:
     def serialize_mesh(
         self, dm: "DeviceMesh"
     ) -> Tuple[str, "np.ndarray", tuple[str, ...], Optional[list[str]], List[int]]:
+        """
+        Serialize a DeviceMesh for transmission between actors.
+
+        DeviceMesh contains ProcessGroup objects which cannot be pickled.
+        Instead, we extract the essential information needed to reconstruct
+        the mesh on the receiving side:
+        - device_type: The type of device (e.g., "cuda", "cpu")
+        - mesh: The mesh topology as a numpy array
+        - mesh_dim_names: The names of mesh dimensions
+        - dim_group_names: Optional names for dimension groups (private field)
+        - world_size: The size of each dimension group
+
+        Note: We access `_dim_group_names` (a private field) because:
+        1. DeviceMesh doesn't provide a public API to get dimension group names
+        2. These names are used internally by DeviceMesh to identify groups
+        3. Without them, we cannot fully reconstruct the mesh's group structure
+        4. The alternative (DeviceMesh.from_group) requires ProcessGroup which
+           cannot be serialized with pickle
+
+        The `_dim_group_names` field stores optional names for each dimension
+        of the mesh. If present, they help identify which ProcessGroup corresponds
+        to which mesh dimension during deserialization.
+        """
         import torch.distributed as dist
 
         mesh_np = dm.mesh.contiguous().numpy()
@@ -109,6 +132,21 @@ class _SerializationContext:
         self,
         val: Tuple[str, "np.ndarray", tuple[str, ...], Optional[list[str]], List[int]],
     ) -> "DeviceMesh":
+        """
+        Deserialize a DeviceMesh from the serialized representation.
+
+        Reconstructs the DeviceMesh by:
+        1. Creating a new DeviceMesh with the same topology
+        2. Restoring the private _dim_group_names field if it was present
+        3. Validating that the ProcessGroups match the expected world_size
+        4. Validating that the mesh ranks match the ProcessGroup ranks
+
+        Note: We set `_dim_group_names` (a private field) because:
+        - It was part of the original mesh's state
+        - DeviceMesh uses it internally to track dimension group names
+        - Without it, the deserialized mesh may not behave identically to
+        the original mesh, especially if the mesh was created with named dimensions
+        """
         import torch.distributed as dist
         from torch.distributed.device_mesh import DeviceMesh
         from torch.distributed.distributed_c10d import get_process_group_ranks
