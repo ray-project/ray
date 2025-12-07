@@ -416,12 +416,7 @@ class FIFOMixin:
             request_metadata
         )
         if matched_pending_request is not None:
-            # Record queue wait time before fulfilling the request.
-            queue_wait_time_ms = (
-                time.time() - matched_pending_request.created_at
-            ) * 1000
-            self.queue_wait_time_ms_histogram.observe(queue_wait_time_ms)
-
+            self._record_queue_wait_time(matched_pending_request)
             matched_pending_request.future.set_result(replica)
             self._pending_requests_to_fulfill.remove(matched_pending_request)
             return
@@ -431,10 +426,7 @@ class FIFOMixin:
         while len(self._pending_requests_to_fulfill) > 0:
             pr = self._pending_requests_to_fulfill.popleft()
             if not pr.future.done():
-                # Record queue wait time before fulfilling the request.
-                queue_wait_time_ms = (time.time() - pr.created_at) * 1000
-                self.queue_wait_time_ms_histogram.observe(queue_wait_time_ms)
-
+                self._record_queue_wait_time(pr)
                 pr.future.set_result(replica)
                 break
 
@@ -894,6 +886,11 @@ class RequestRouter(ABC):
 
         return None
 
+    def _record_queue_wait_time(self, pending_request: PendingRequest):
+        """Records the time a request spent in the queue."""
+        queue_wait_time_ms = (time.time() - pending_request.created_at) * 1000
+        self.queue_wait_time_ms_histogram.observe(queue_wait_time_ms)
+
     def _fulfill_next_pending_request(
         self,
         replica: RunningReplica,
@@ -911,10 +908,7 @@ class RequestRouter(ABC):
         )
         if matched_pending_request is not None:
             # Record queue wait time before fulfilling the request.
-            queue_wait_time_ms = (
-                time.time() - matched_pending_request.created_at
-            ) * 1000
-            self.queue_wait_time_ms_histogram.observe(queue_wait_time_ms)
+            self._record_queue_wait_time(matched_pending_request)
 
             matched_pending_request.future.set_result(replica)
             self._pending_requests_to_fulfill.remove(matched_pending_request)

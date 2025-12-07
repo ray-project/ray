@@ -1031,7 +1031,7 @@ def test_queue_wait_time_metric(metrics_start_shutdown):
         timeseries=timeseries,
     )
     # the second request should have waited at least 0.5 seconds in queue
-    assert sum_value > 0.5, "Queue wait time should be positive"
+    assert sum_value > 500, "Queue wait time should be positive"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
