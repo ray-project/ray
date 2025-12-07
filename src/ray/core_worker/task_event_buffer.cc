@@ -231,7 +231,6 @@ void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(
         std::move(state_transition);
   }
 
-  // Always set the base node_id and job_id
   lifecycle_event_data.set_node_id(node_id_.Binary());
   lifecycle_event_data.set_job_id(job_id_.Binary());
 
@@ -249,7 +248,6 @@ void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(
             .WithField("TaskStatus", task_status_)
         << "Node ID should be included when task status changes to "
            "SUBMITTED_TO_WORKER.";
-    // Override with the specific node_id from state update if present
     lifecycle_event_data.set_node_id(state_update_->node_id_->Binary());
   }
 
