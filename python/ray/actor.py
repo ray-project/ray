@@ -473,8 +473,7 @@ def method(*args, **kwargs):
         if "enable_task_events" in kwargs and kwargs["enable_task_events"] is not None:
             method.__ray_enable_task_events__ = kwargs["enable_task_events"]
         if "tensor_transport" in kwargs:
-            method.__ray_tensor_transport__ = kwargs["tensor_transport"].upper()
-            tensor_transport = method.__ray_tensor_transport__
+            tensor_transport = kwargs["tensor_transport"].upper()
             if tensor_transport != "OBJECT_STORE":
                 from ray.experimental.gpu_object_manager.util import (
                     transport_manager_classes,
@@ -482,6 +481,8 @@ def method(*args, **kwargs):
 
                 if tensor_transport not in transport_manager_classes:
                     raise ValueError(f"Invalid tensor transport: {tensor_transport}")
+
+            method.__ray_tensor_transport__ = tensor_transport
 
         return method
 
@@ -702,7 +703,7 @@ class ActorMethod:
 
         tensor_transport = options.get("tensor_transport", None)
         if tensor_transport is not None:
-            options["tensor_transport"] = tensor_transport.upper()
+            tensor_transport = tensor_transport.upper()
             if tensor_transport != "OBJECT_STORE":
                 from ray.experimental.gpu_object_manager.util import (
                     transport_manager_classes,
@@ -710,6 +711,8 @@ class ActorMethod:
 
                 if tensor_transport not in transport_manager_classes:
                     raise ValueError(f"Invalid tensor transport: {tensor_transport}")
+
+            options["tensor_transport"] = tensor_transport
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
