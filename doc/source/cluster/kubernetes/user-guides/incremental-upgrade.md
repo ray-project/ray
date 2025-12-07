@@ -246,7 +246,67 @@ You can monitor the progress of the upgrade by inspecting the `RayService` statu
 
 For example:
 ```yaml
-
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  creationTimestamp: "2025-12-07T07:42:24Z"
+  generation: 10
+  name: stress-test-serve-httproute
+  namespace: default
+  ownerReferences:
+  - apiVersion: ray.io/v1
+    blockOwnerDeletion: true
+    controller: true
+    kind: RayService
+    name: stress-test-serve
+    uid: 83a785cc-8745-4ccd-9973-2fc9f27000cc
+  resourceVersion: "3714"
+  uid: 660b14b5-78df-4507-b818-05989b1ef806
+spec:
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: stress-test-serve-gateway
+    namespace: default
+  rules:
+  - backendRefs:
+    - group: ""
+      kind: Service
+      name: stress-test-serve-f6z4w-serve-svc
+      namespace: default
+      port: 8000
+      weight: 90
+    - group: ""
+      kind: Service
+      name: stress-test-serve-xclvf-serve-svc
+      namespace: default
+      port: 8000
+      weight: 10
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+status:
+  parents:
+  - conditions:
+    - lastTransitionTime: "2025-12-07T07:42:24Z"
+      message: Route was valid
+      observedGeneration: 10
+      reason: Accepted
+      status: "True"
+      type: Accepted
+    - lastTransitionTime: "2025-12-07T07:42:24Z"
+      message: All references resolved
+      observedGeneration: 10
+      reason: ResolvedRefs
+      status: "True"
+      type: ResolvedRefs
+    controllerName: istio.io/gateway-controller
+    parentRef:
+      group: gateway.networking.k8s.io
+      kind: Gateway
+      name: stress-test-serve-gateway
+      namespace: default
 ```
 
 ## How to upgrade safely?
