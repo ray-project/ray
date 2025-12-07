@@ -1,4 +1,4 @@
-import { Box, TooltipProps, Typography } from "@mui/material";
+import { Box, TooltipProps, Typography, useTheme } from "@mui/material";
 import React from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { HelpInfo, StyledTooltip } from "../Tooltip";
@@ -81,6 +81,7 @@ export const ProgressBar = ({
   onClick,
   controls,
 }: ProgressBarProps) => {
+  const theme = useTheme();
   const segmentTotal = progress.reduce((acc, { value }) => acc + value, 0);
   const finalTotal = total ?? segmentTotal;
 
@@ -93,7 +94,10 @@ export const ProgressBar = ({
             value: finalTotal - segmentTotal,
             label: unaccountedLabel ?? "Unaccounted",
             hint: "Unaccounted tasks can happen when there are too many tasks. Ray drops older tasks to conserve memory.",
-            color: "#EEEEEE",
+            color:
+              theme.palette.mode === "dark"
+                ? theme.palette.grey[700]
+                : theme.palette.grey[300],
           },
         ]
       : progress;
@@ -180,20 +184,22 @@ export const ProgressBar = ({
           (expanded ? (
             <Box
               component={RiArrowDownSLine}
-              sx={{
+              sx={(theme) => ({
                 width: 16,
                 height: 16,
                 marginRight: 1,
-              }}
+                color: theme.palette.text.secondary,
+              })}
             />
           ) : (
             <Box
               component={RiArrowRightSLine}
-              sx={{
+              sx={(theme) => ({
                 width: 16,
                 height: 16,
                 marginRight: 1,
-              }}
+                color: theme.palette.text.secondary,
+              })}
             />
           ))}
         <LegendTooltip
@@ -210,7 +216,12 @@ export const ProgressBar = ({
               height: 8,
               borderRadius: "6px",
               overflow: "hidden",
-              backgroundColor: segmentTotal === 0 ? "lightGrey" : "white",
+              backgroundColor:
+                segmentTotal === 0
+                  ? theme.palette.grey[400]
+                  : theme.palette.mode === "dark"
+                  ? theme.palette.grey[800]
+                  : theme.palette.grey[100],
             }}
           >
             {filteredSegments.map(({ color, label, value }) => (
