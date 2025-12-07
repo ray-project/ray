@@ -94,7 +94,7 @@ TEST(PipeTest, SiblingProcessesCommunicate) {
 
 TEST(PipeTest, ReadTimeout) {
   Pipe pipe;
-  auto result = pipe.Read(/*timeout_s=*/0.1);
+  auto result = pipe.Read(/*timeout_s=*/1);
   EXPECT_FALSE(result.ok());
 }
 
