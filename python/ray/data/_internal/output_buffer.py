@@ -4,7 +4,7 @@ from typing import Any, Optional
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block, BlockAccessor, DataBatch
-from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, MAX_SAFE_ROWS_PER_BLOCK_FACTOR
+from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
 
 
 @dataclass
@@ -175,8 +175,7 @@ class BlockOutputBuffer:
         # the last block produced will be at least half the target row count.
         return (
             self._max_num_rows_per_block() is not None
-            and block.num_rows()
-            >= MAX_SAFE_ROWS_PER_BLOCK_FACTOR * self._max_num_rows_per_block()
+            and block.num_rows() > self._max_num_rows_per_block()
         )
 
     def next(self) -> Block:
