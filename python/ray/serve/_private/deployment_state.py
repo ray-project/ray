@@ -35,6 +35,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_PER_REPLICA_RETRY_COUNT,
     RAY_SERVE_ENABLE_TASK_EVENTS,
@@ -42,6 +43,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
+    REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
@@ -249,7 +251,10 @@ class ActorReplicaWrapper:
         self._health_check_ref: Optional[ObjectRef] = None
         self._last_health_check_time: float = 0.0
         self._consecutive_health_check_failures = 0
+        self._last_health_check_latency_ms: Optional[float] = None
+        self._last_health_check_failed: bool = False
         self._initialization_latency_s: Optional[float] = None
+        self._reconfigure_start_time: Optional[float] = None
         self._internal_grpc_port: Optional[int] = None
         self._docs_path: Optional[str] = None
         self._route_patterns: Optional[List[str]] = None
@@ -445,6 +450,30 @@ class ActorReplicaWrapper:
 
         return self._initialization_latency_s
 
+    @property
+    def reconfigure_start_time(self) -> Optional[float]:
+        """Returns the start time of the last reconfigure operation.
+
+        Returns None if no reconfigure operation has started.
+        """
+        return self._reconfigure_start_time
+
+    @property
+    def last_health_check_latency_ms(self) -> Optional[float]:
+        """Returns the latency of the last completed health check in milliseconds.
+
+        Returns None if no health check has completed in the current check cycle.
+        """
+        return self._last_health_check_latency_ms
+
+    @property
+    def last_health_check_failed(self) -> bool:
+        """Returns whether the last completed health check failed.
+
+        Returns False if no health check has completed in the current check cycle.
+        """
+        return self._last_health_check_failed
+
     def start(
         self,
         deployment_info: DeploymentInfo,
@@ -614,6 +643,7 @@ class ActorReplicaWrapper:
             # Setting updating=True because we want to transition to UPDATING state
             # when rank is updated or deployment config changes.
             updating = True
+            self._reconfigure_start_time = time.time()
             deployment_config = copy(version.deployment_config)
             deployment_config.user_config = self._format_user_config(
                 deployment_config.user_config
@@ -864,11 +894,19 @@ class ActorReplicaWrapper:
               before the timeout).
             - ACTOR_CRASHED if the underlying actor crashed.
         """
+        # Reset the last health check status for this check cycle.
+        self._last_health_check_latency_ms = None
+        self._last_health_check_failed = False
+
         if self._health_check_ref is None:
             # There is no outstanding health check.
             response = ReplicaHealthCheckResponse.NONE
         elif check_obj_ref_ready_nowait(self._health_check_ref):
             # Object ref is ready, ray.get it to check for exceptions.
+            # Calculate health check latency.
+            self._last_health_check_latency_ms = (
+                time.time() - self._last_health_check_time
+            ) * 1000
             try:
                 ray.get(self._health_check_ref)
                 # Health check succeeded without exception.
@@ -876,10 +914,12 @@ class ActorReplicaWrapper:
             except RayActorError:
                 # Health check failed due to actor crashing.
                 response = ReplicaHealthCheckResponse.ACTOR_CRASHED
+                self._last_health_check_failed = True
             except RayError as e:
                 # Health check failed due to application-level exception.
                 logger.warning(f"Health check for {self._replica_id} failed: {e}")
                 response = ReplicaHealthCheckResponse.APP_FAILURE
+                self._last_health_check_failed = True
         elif time.time() - self._last_health_check_time > self.health_check_timeout_s:
             # Health check hasn't returned and the timeout is up, consider it failed.
             logger.warning(
@@ -888,6 +928,11 @@ class ActorReplicaWrapper:
                 f"{self.health_check_timeout_s}s, marking it unhealthy."
             )
             response = ReplicaHealthCheckResponse.APP_FAILURE
+            # Calculate latency for timeout case.
+            self._last_health_check_latency_ms = (
+                time.time() - self._last_health_check_time
+            ) * 1000
+            self._last_health_check_failed = True
         else:
             # Health check hasn't returned and the timeout isn't up yet.
             response = ReplicaHealthCheckResponse.NONE
@@ -1072,6 +1117,7 @@ class DeploymentReplica:
         self._replica_id = replica_id
         self._actor = ActorReplicaWrapper(replica_id, version)
         self._start_time = None
+        self._shutdown_start_time: Optional[float] = None
         self._actor_details = ReplicaDetails(
             actor_name=replica_id.to_full_id_str(),
             replica_id=self._replica_id.unique_id,
@@ -1179,6 +1225,26 @@ class DeploymentReplica:
 
         return self._actor.initialization_latency_s
 
+    @property
+    def reconfigure_start_time(self) -> Optional[float]:
+        """Returns the start time of the last reconfigure operation."""
+        return self._actor.reconfigure_start_time
+
+    @property
+    def last_health_check_latency_ms(self) -> Optional[float]:
+        """Returns the latency of the last completed health check in milliseconds."""
+        return self._actor.last_health_check_latency_ms
+
+    @property
+    def last_health_check_failed(self) -> bool:
+        """Returns whether the last completed health check failed."""
+        return self._actor.last_health_check_failed
+
+    @property
+    def shutdown_start_time(self) -> Optional[float]:
+        """Returns the start time of the shutdown operation."""
+        return self._shutdown_start_time
+
     def start(
         self,
         deployment_info: DeploymentInfo,
@@ -1263,6 +1329,7 @@ class DeploymentReplica:
             f"Stopping {self.replica_id} (currently {state}).",
             extra={"log_to_stderr": False},
         )
+        self._shutdown_start_time = time.time()
         timeout_s = self._actor.graceful_stop()
         if not graceful:
             timeout_s = 0
@@ -2020,6 +2087,55 @@ class DeploymentState:
                 "Tracks whether this deployment replica is healthy. 1 means "
                 "healthy, 0 means unhealthy."
             ),
+            tag_keys=("deployment", "replica", "application"),
+        )
+
+        # Histogram for replica startup latency (time from creation to ready state).
+        self.replica_startup_latency_histogram = metrics.Histogram(
+            "serve_replica_startup_latency_ms",
+            description=("Time from replica creation to ready state in milliseconds."),
+            boundaries=REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
+            tag_keys=("deployment", "replica", "application"),
+        )
+
+        # Histogram for replica initialization latency.
+        self.replica_initialization_latency_histogram = metrics.Histogram(
+            "serve_replica_initialization_latency_ms",
+            description=("Time for replica to initialize in milliseconds."),
+            boundaries=REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
+            tag_keys=("deployment", "replica", "application"),
+        )
+
+        # Histogram for replica reconfigure latency.
+        self.replica_reconfigure_latency_histogram = metrics.Histogram(
+            "serve_replica_reconfigure_latency_ms",
+            description=("Time for replica to complete reconfigure in milliseconds."),
+            boundaries=REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
+            tag_keys=("deployment", "replica", "application"),
+        )
+
+        # Histogram for health check latency.
+        self.health_check_latency_histogram = metrics.Histogram(
+            "serve_health_check_latency_ms",
+            description=("Duration of health check calls in milliseconds."),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("deployment", "replica", "application"),
+        )
+
+        # Counter for health check failures.
+        self.health_check_failures_counter = metrics.Counter(
+            "serve_health_check_failures_total",
+            description=("Count of failed health checks."),
+            tag_keys=("deployment", "replica", "application"),
+        )
+
+        # Histogram for replica shutdown duration.
+        self.replica_shutdown_duration_histogram = metrics.Histogram(
+            "serve_replica_shutdown_duration_ms",
+            description=(
+                "Time from shutdown signal to replica fully stopped in milliseconds."
+            ),
+            boundaries=REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
             tag_keys=("deployment", "replica", "application"),
         )
 
@@ -2823,6 +2939,38 @@ class DeploymentState:
                     )
                 logger.info(replica_startup_message, extra={"log_to_stderr": False})
 
+                # Record startup or reconfigure latency metrics.
+                metric_tags = {
+                    "deployment": self.deployment_name,
+                    "replica": replica.replica_id.unique_id,
+                    "application": self.app_name,
+                }
+                if original_state == ReplicaState.STARTING:
+                    # Record replica startup latency (end-to-end from creation to ready).
+                    # This includes the time taken from starting a node, scheduling the replica,
+                    # and the replica constructor.
+                    e2e_replica_start_latency_ms = e2e_replica_start_latency * 1000
+                    self.replica_startup_latency_histogram.observe(
+                        e2e_replica_start_latency_ms, tags=metric_tags
+                    )
+                    # Record replica initialization latency.
+                    if replica.initialization_latency_s is not None:
+                        initialization_latency_ms = (
+                            replica.initialization_latency_s * 1000
+                        )
+                        self.replica_initialization_latency_histogram.observe(
+                            initialization_latency_ms, tags=metric_tags
+                        )
+                elif original_state == ReplicaState.UPDATING:
+                    # Record replica reconfigure latency.
+                    if replica.reconfigure_start_time is not None:
+                        reconfigure_latency_ms = (
+                            time.time() - replica.reconfigure_start_time
+                        ) * 1000
+                        self.replica_reconfigure_latency_histogram.observe(
+                            reconfigure_latency_ms, tags=metric_tags
+                        )
+
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed
                 self.record_replica_startup_failure(error_msg)
@@ -2909,7 +3057,22 @@ class DeploymentState:
         for replica in self._replicas.pop(
             states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
         ):
-            if replica.check_health():
+            is_healthy = replica.check_health()
+
+            # Record health check latency and failure metrics.
+            metric_tags = {
+                "deployment": self.deployment_name,
+                "replica": replica.replica_id.unique_id,
+                "application": self.app_name,
+            }
+            if replica.last_health_check_latency_ms is not None:
+                self.health_check_latency_histogram.observe(
+                    replica.last_health_check_latency_ms, tags=metric_tags
+                )
+            if replica.last_health_check_failed:
+                self.health_check_failures_counter.inc(tags=metric_tags)
+
+            if is_healthy:
                 self._replicas.add(replica.actor_details.state, replica)
                 self.health_check_gauge.set(
                     1,
@@ -3023,6 +3186,21 @@ class DeploymentState:
                 self._replicas.add(ReplicaState.STOPPING, replica)
             else:
                 logger.info(f"{replica.replica_id} is stopped.")
+
+                # Record shutdown duration metric.
+                if replica.shutdown_start_time is not None:
+                    shutdown_duration_ms = (
+                        time.time() - replica.shutdown_start_time
+                    ) * 1000
+                    self.replica_shutdown_duration_histogram.observe(
+                        shutdown_duration_ms,
+                        tags={
+                            "deployment": self.deployment_name,
+                            "replica": replica.replica_id.unique_id,
+                            "application": self.app_name,
+                        },
+                    )
+
                 # Release rank only after replica is successfully stopped
                 # This ensures rank is available during draining/graceful shutdown
                 replica_id = replica.replica_id.unique_id
