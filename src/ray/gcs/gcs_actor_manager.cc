@@ -1738,8 +1738,11 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       }
     } else {
       dead_actors.push_back(actor_id);
-      auto actor = std::make_shared<GcsActor>(
-          actor_table_data, actor_state_counter_, ray_event_recorder_, session_name_, gcs_node_id_);
+      auto actor = std::make_shared<GcsActor>(actor_table_data,
+                                              actor_state_counter_,
+                                              ray_event_recorder_,
+                                              session_name_,
+                                              gcs_node_id_);
       destroyed_actors_.emplace(actor_id, actor);
       sorted_destroyed_actor_list_.emplace_back(
           actor_id, static_cast<int64_t>(actor_table_data.timestamp()));

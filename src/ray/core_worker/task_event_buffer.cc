@@ -27,8 +27,14 @@ namespace core {
 
 namespace worker {
 
-TaskEvent::TaskEvent(TaskID task_id, JobID job_id, int32_t attempt_number, const NodeID &node_id)
-    : task_id_(task_id), job_id_(job_id), attempt_number_(attempt_number), node_id_(node_id) {}
+TaskEvent::TaskEvent(TaskID task_id,
+                     JobID job_id,
+                     int32_t attempt_number,
+                     const NodeID &node_id)
+    : task_id_(task_id),
+      job_id_(job_id),
+      attempt_number_(attempt_number),
+      node_id_(node_id) {}
 
 TaskStatusEvent::TaskStatusEvent(
     TaskID task_id,

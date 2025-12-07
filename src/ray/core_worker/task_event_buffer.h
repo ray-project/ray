@@ -73,7 +73,10 @@ struct RayEventsTuple {
 class TaskEvent {
  public:
   /// Constructor for Profile events
-  explicit TaskEvent(TaskID task_id, JobID job_id, int32_t attempt_number, const NodeID &node_id = NodeID::Nil());
+  explicit TaskEvent(TaskID task_id,
+                     JobID job_id,
+                     int32_t attempt_number,
+                     const NodeID &node_id = NodeID::Nil());
 
   virtual ~TaskEvent() = default;
 

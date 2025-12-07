@@ -139,7 +139,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           RayConfig::instance().ray_event_recorder_max_queued_events(),
           observability::kMetricSourceGCS,
           metrics_.event_recorder_dropped_events_counter)),
-      gcs_node_id_(config.node_id.empty() ? NodeID::Nil() : NodeID::FromHex(config.node_id)),
+      gcs_node_id_(config.node_id.empty() ? NodeID::Nil()
+                                          : NodeID::FromHex(config.node_id)),
       pubsub_periodical_runner_(PeriodicalRunner::Create(
           io_context_provider_.GetIOContext<pubsub::GcsPublisher>())),
       periodical_runner_(
