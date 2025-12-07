@@ -18,13 +18,15 @@ namespace ray {
 namespace observability {
 
 RayNodeLifecycleEvent::RayNodeLifecycleEvent(const rpc::GcsNodeInfo &data,
-                                             const std::string &session_name)
+                                             const std::string &session_name,
+                                             const NodeID &node_id)
     : RayEvent<rpc::events::NodeLifecycleEvent>(
           rpc::events::RayEvent::GCS,
           rpc::events::RayEvent::NODE_LIFECYCLE_EVENT,
           rpc::events::RayEvent::INFO,
           "",
-          session_name) {
+          session_name,
+          node_id) {
   ray::rpc::events::NodeLifecycleEvent::StateTransition state_transition;
   state_transition.mutable_timestamp()->CopyFrom(AbslTimeNanosToProtoTimestamp(
       absl::ToInt64Nanoseconds(absl::Now() - absl::UnixEpoch())));

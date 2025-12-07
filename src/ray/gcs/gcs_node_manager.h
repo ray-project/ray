@@ -56,7 +56,8 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
                  rpc::RayletClientPool *raylet_client_pool,
                  const ClusterID &cluster_id,
                  observability::RayEventRecorderInterface &ray_event_recorder,
-                 const std::string &session_name);
+                 const std::string &session_name,
+                 const NodeID &gcs_node_id);
 
   /// Handle register rpc request come from raylet.
   void HandleGetClusterId(rpc::GetClusterIdRequest request,
@@ -383,6 +384,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
 
   observability::RayEventRecorderInterface &ray_event_recorder_;
   std::string session_name_;
+  NodeID gcs_node_id_;
 
   // Debug info.
   enum CountType {

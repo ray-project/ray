@@ -20,13 +20,15 @@ namespace observability {
 RayActorLifecycleEvent::RayActorLifecycleEvent(
     const rpc::ActorTableData &data,
     rpc::events::ActorLifecycleEvent::State state,
-    const std::string &session_name)
+    const std::string &session_name,
+    const NodeID &node_id)
     : RayEvent<rpc::events::ActorLifecycleEvent>(
           rpc::events::RayEvent::GCS,
           rpc::events::RayEvent::ACTOR_LIFECYCLE_EVENT,
           rpc::events::RayEvent::INFO,
           "",
-          session_name) {
+          session_name,
+          node_id) {
   ray::rpc::events::ActorLifecycleEvent::StateTransition state_transition;
   state_transition.set_state(state);
   state_transition.mutable_timestamp()->CopyFrom(AbslTimeNanosToProtoTimestamp(

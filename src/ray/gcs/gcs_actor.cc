@@ -107,12 +107,13 @@ void GcsActor::WriteActorExportEvent(bool is_actor_registration) const {
     std::vector<std::unique_ptr<observability::RayEventInterface>> events;
     if (is_actor_registration) {
       events.push_back(std::make_unique<observability::RayActorDefinitionEvent>(
-          actor_table_data_, session_name_));
+          actor_table_data_, session_name_, gcs_node_id_));
     }
     events.push_back(std::make_unique<observability::RayActorLifecycleEvent>(
         actor_table_data_,
         ConvertActorStateToLifecycleEvent(actor_table_data_.state()),
-        session_name_));
+        session_name_,
+        gcs_node_id_));
 
     ray_event_recorder_.AddEvents(std::move(events));
     return;

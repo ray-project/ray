@@ -25,7 +25,7 @@ template class RayEvent<rpc::events::NodeLifecycleEvent>;
 
 class RayNodeLifecycleEvent : public RayEvent<rpc::events::NodeLifecycleEvent> {
  public:
-  RayNodeLifecycleEvent(const rpc::GcsNodeInfo &data, const std::string &session_name);
+  RayNodeLifecycleEvent(const rpc::GcsNodeInfo &data, const std::string &session_name, const NodeID &node_id);
 
   std::string GetEntityId() const override;
 

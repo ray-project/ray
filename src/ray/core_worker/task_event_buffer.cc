@@ -27,8 +27,8 @@ namespace core {
 
 namespace worker {
 
-TaskEvent::TaskEvent(TaskID task_id, JobID job_id, int32_t attempt_number)
-    : task_id_(task_id), job_id_(job_id), attempt_number_(attempt_number) {}
+TaskEvent::TaskEvent(TaskID task_id, JobID job_id, int32_t attempt_number, const NodeID &node_id)
+    : task_id_(task_id), job_id_(job_id), attempt_number_(attempt_number), node_id_(node_id) {}
 
 TaskStatusEvent::TaskStatusEvent(
     TaskID task_id,
@@ -38,9 +38,10 @@ TaskStatusEvent::TaskStatusEvent(
     int64_t timestamp,
     bool is_actor_task_event,
     std::string session_name,
+    const NodeID &node_id,
     const std::shared_ptr<const TaskSpecification> &task_spec,
     std::optional<const TaskStatusEvent::TaskStateUpdate> state_update)
-    : TaskEvent(task_id, job_id, attempt_number),
+    : TaskEvent(task_id, job_id, attempt_number, node_id),
       task_status_(task_status),
       timestamp_(timestamp),
       is_actor_task_event_(is_actor_task_event),
@@ -56,8 +57,9 @@ TaskProfileEvent::TaskProfileEvent(TaskID task_id,
                                    std::string node_ip_address,
                                    std::string event_name,
                                    int64_t start_time,
-                                   std::string session_name)
-    : TaskEvent(task_id, job_id, attempt_number),
+                                   std::string session_name,
+                                   const NodeID &node_id)
+    : TaskEvent(task_id, job_id, attempt_number, node_id),
       component_type_(std::move(component_type)),
       component_id_(std::move(component_id)),
       node_ip_address_(std::move(node_ip_address)),
@@ -229,6 +231,10 @@ void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(
         std::move(state_transition);
   }
 
+  // Always set the base node_id and job_id
+  lifecycle_event_data.set_node_id(node_id_.Binary());
+  lifecycle_event_data.set_job_id(job_id_.Binary());
+
   // Task property updates
   if (!state_update_.has_value()) {
     return;
@@ -243,6 +249,7 @@ void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(
             .WithField("TaskStatus", task_status_)
         << "Node ID should be included when task status changes to "
            "SUBMITTED_TO_WORKER.";
+    // Override with the specific node_id from state update if present
     lifecycle_event_data.set_node_id(state_update_->node_id_->Binary());
   }
 
@@ -257,8 +264,6 @@ void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(
   if (state_update_->pid_.has_value()) {
     lifecycle_event_data.set_worker_pid(state_update_->pid_.value());
   }
-
-  lifecycle_event_data.set_job_id(job_id_.Binary());
 }
 
 void TaskStatusEvent::PopulateRpcRayEventBaseFields(
@@ -270,6 +275,7 @@ void TaskStatusEvent::PopulateRpcRayEventBaseFields(
   ray_event.mutable_timestamp()->CopyFrom(timestamp);
   ray_event.set_severity(rpc::events::RayEvent::INFO);
   ray_event.set_session_name(session_name_);
+  ray_event.set_node_id(node_id_.Binary());
 
   if (is_definition_event) {
     if (is_actor_task_event_) {
@@ -356,6 +362,7 @@ void TaskProfileEvent::PopulateRpcRayEventBaseFields(
   ray_event.set_severity(rpc::events::RayEvent::INFO);
   ray_event.set_event_type(rpc::events::RayEvent::TASK_PROFILE_EVENT);
   ray_event.set_session_name(session_name_);
+  ray_event.set_node_id(node_id_.Binary());
 }
 
 void TaskProfileEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
@@ -405,6 +412,7 @@ bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
       /* timestamp */ absl::GetCurrentTimeNanos(),
       /*is_actor_task_event=*/spec.IsActorTask(),
       session_name_,
+      node_id_,
       include_task_info ? std::make_shared<const TaskSpecification>(spec) : nullptr,
       std::move(state_update));
 
@@ -415,12 +423,14 @@ bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
 TaskEventBufferImpl::TaskEventBufferImpl(
     std::unique_ptr<gcs::GcsClient> gcs_client,
     std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
-    std::string session_name)
+    std::string session_name,
+    const NodeID &node_id)
     : work_guard_(boost::asio::make_work_guard(io_service_)),
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       gcs_client_(std::move(gcs_client)),
       event_aggregator_client_(std::move(event_aggregator_client)),
-      session_name_(session_name) {}
+      session_name_(session_name),
+      node_id_(node_id) {}
 
 TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
 

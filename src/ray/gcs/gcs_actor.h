@@ -44,12 +44,14 @@ class GcsActor {
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
           counter,
       observability::RayEventRecorderInterface &recorder,
-      const std::string &session_name)
+      const std::string &session_name,
+      const NodeID &gcs_node_id)
       : actor_table_data_(std::move(actor_table_data)),
         counter_(std::move(counter)),
         export_event_write_enabled_(IsExportAPIEnabledActor()),
         ray_event_recorder_(recorder),
-        session_name_(session_name) {
+        session_name_(session_name),
+        gcs_node_id_(gcs_node_id) {
     RefreshMetrics();
   }
 
@@ -65,13 +67,15 @@ class GcsActor {
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
           counter,
       observability::RayEventRecorderInterface &recorder,
-      const std::string &session_name)
+      const std::string &session_name,
+      const NodeID &gcs_node_id)
       : actor_table_data_(std::move(actor_table_data)),
         task_spec_(std::make_unique<rpc::TaskSpec>(std::move(task_spec))),
         counter_(std::move(counter)),
         export_event_write_enabled_(IsExportAPIEnabledActor()),
         ray_event_recorder_(recorder),
-        session_name_(session_name) {
+        session_name_(session_name),
+        gcs_node_id_(gcs_node_id) {
     lease_spec_ = std::make_unique<LeaseSpecification>(*task_spec_);
     RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
     RefreshMetrics();
@@ -88,12 +92,14 @@ class GcsActor {
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
           counter,
       observability::RayEventRecorderInterface &recorder,
-      const std::string &session_name)
+      const std::string &session_name,
+      const NodeID &gcs_node_id)
       : task_spec_(std::make_unique<rpc::TaskSpec>(std::move(task_spec))),
         counter_(std::move(counter)),
         export_event_write_enabled_(IsExportAPIEnabledActor()),
         ray_event_recorder_(recorder),
-        session_name_(session_name) {
+        session_name_(session_name),
+        gcs_node_id_(gcs_node_id) {
     RAY_CHECK(task_spec_->type() == TaskType::ACTOR_CREATION_TASK);
     const auto &actor_creation_task_spec = task_spec_->actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
@@ -310,6 +316,7 @@ class GcsActor {
   /// Event recorder and session name for Ray events
   observability::RayEventRecorderInterface &ray_event_recorder_;
   std::string session_name_;
+  NodeID gcs_node_id_;
   /// Address of the local raylet of the worker where this actor is running
   std::optional<rpc::Address> local_raylet_address_;
 };

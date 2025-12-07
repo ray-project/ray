@@ -103,4 +103,7 @@ message RayEvent {
   NodeLifecycleEvent node_lifecycle_event = 15;
   ActorDefinitionEvent actor_definition_event = 16;
   ActorLifecycleEvent actor_lifecycle_event = 17;
+
+  // Unique identifier of the node
+  bytes node_id = 18;
 }
