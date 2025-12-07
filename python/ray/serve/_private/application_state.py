@@ -1148,8 +1148,8 @@ class ApplicationStateManager:
             "serve_application_status",
             description=(
                 "Numeric status of application. "
-                "0=UNKNOWN, 1=NOT_STARTED, 2=DEPLOYING, 3=DEPLOY_FAILED, "
-                "4=RUNNING, 5=UNHEALTHY, 6=DELETING."
+                "0=UNKNOWN, 1=DEPLOY_FAILED, 2=UNHEALTHY, 3=NOT_STARTED, "
+                "4=DELETING, 5=DEPLOYING, 6=RUNNING."
             ),
             tag_keys=("application",),
         )

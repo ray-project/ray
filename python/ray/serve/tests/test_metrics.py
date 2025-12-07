@@ -1232,7 +1232,7 @@ def test_deployment_and_application_status_metrics(metrics_start_shutdown):
     wait_for_condition(
         check_metric_float_eq,
         metric="ray_serve_application_status",
-        expected=2,  # DEPLOYING
+        expected=5,  # DEPLOYING
         expected_tags={"application": "app1"},
         timeseries=timeseries,
     )
@@ -1247,7 +1247,7 @@ def test_deployment_and_application_status_metrics(metrics_start_shutdown):
     wait_for_condition(
         check_metric_float_eq,
         metric="ray_serve_application_status",
-        expected=4,
+        expected=6,
         expected_tags={"application": "app2"},
         timeseries=timeseries,
     )
@@ -1258,14 +1258,14 @@ def test_deployment_and_application_status_metrics(metrics_start_shutdown):
         check_metric_float_eq,
         metric="ray_serve_deployment_status",
         expected=6,
-        expected_tags={"deployment": "deployment_b", "application": "app2"},
+        expected_tags={"deployment": "deployment_a", "application": "app1"},
         timeseries=timeseries,
     )
     wait_for_condition(
         check_metric_float_eq,
         metric="ray_serve_application_status",
-        expected=4,
-        expected_tags={"application": "app2"},
+        expected=6,
+        expected_tags={"application": "app1"},
         timeseries=timeseries,
     )
 

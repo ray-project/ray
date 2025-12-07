@@ -940,17 +940,17 @@ class ApplicationStatus(str, Enum):
         """Convert status to numeric value for metrics, it serves state
         progression order on the dashboard.
 
-        0 is reserved for UNKNOWN. Values are ordered by state progression:
-        0=UNKNOWN, 1=NOT_STARTED, 2=DEPLOYING, 3=DEPLOY_FAILED,
-        4=RUNNING, 5=UNHEALTHY, 6=DELETING
+        0 is reserved for UNKNOWN. Values are ordered by severity/state progression:
+        0=UNKNOWN, 1=DEPLOY_FAILED, 2=UNHEALTHY, 3=NOT_STARTED,
+        4=DELETING, 5=DEPLOYING, 6=RUNNING
         """
         mapping = {
-            ApplicationStatus.NOT_STARTED: 1,
-            ApplicationStatus.DEPLOYING: 2,
-            ApplicationStatus.DEPLOY_FAILED: 3,
-            ApplicationStatus.RUNNING: 4,
-            ApplicationStatus.UNHEALTHY: 5,
-            ApplicationStatus.DELETING: 6,
+            ApplicationStatus.DEPLOY_FAILED: 1,
+            ApplicationStatus.UNHEALTHY: 2,
+            ApplicationStatus.NOT_STARTED: 3,
+            ApplicationStatus.DELETING: 4,
+            ApplicationStatus.DEPLOYING: 5,
+            ApplicationStatus.RUNNING: 6,
         }
         return mapping.get(self, 0)
 
