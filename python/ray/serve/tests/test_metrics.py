@@ -1172,6 +1172,104 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
     ), f"Latency metrics should use route patterns. Found: {latency_routes}"
 
 
+def test_deployment_and_application_status_metrics(metrics_start_shutdown):
+    """Test that deployment and application status metrics are exported correctly.
+
+    These metrics track the numeric status of deployments and applications:
+    - serve_deployment_status: 0=UNKNOWN, 1=DEPLOY_FAILED, 2=UNHEALTHY,
+      3=UPDATING, 4=UPSCALING, 5=DOWNSCALING, 6=HEALTHY
+    - serve_application_status: 0=UNKNOWN, 1=NOT_STARTED, 2=DEPLOYING,
+      3=DEPLOY_FAILED, 4=RUNNING, 5=UNHEALTHY, 6=DELETING
+    """
+
+    signal = SignalActor.remote()
+
+    @serve.deployment(name="deployment_a")
+    class DeploymentA:
+        async def __init__(self):
+            await signal.wait.remote()
+
+        async def __call__(self):
+            return "hello"
+
+    @serve.deployment
+    def deployment_b():
+        return "world"
+
+    # Deploy two applications with different deployments
+    serve._run(DeploymentA.bind(), name="app1", route_prefix="/app1", _blocking=False)
+    serve._run(deployment_b.bind(), name="app2", route_prefix="/app2", _blocking=False)
+
+    timeseries = PrometheusTimeseries()
+
+    # Wait for deployments to become healthy
+    def check_status_metrics():
+        # Check deployment status metrics
+        deployment_metrics = get_metric_dictionaries(
+            "ray_serve_deployment_status", timeseries=timeseries
+        )
+        if len(deployment_metrics) < 2:
+            return False
+
+        # Check application status metrics
+        app_metrics = get_metric_dictionaries(
+            "ray_serve_application_status", timeseries=timeseries
+        )
+        if len(app_metrics) < 2:
+            return False
+
+        return True
+
+    wait_for_condition(check_status_metrics, timeout=30)
+
+    wait_for_condition(
+        check_metric_float_eq,
+        metric="ray_serve_deployment_status",
+        expected=3,  # UPDATING
+        expected_tags={"deployment": "deployment_a", "application": "app1"},
+        timeseries=timeseries,
+    )
+    wait_for_condition(
+        check_metric_float_eq,
+        metric="ray_serve_application_status",
+        expected=2,  # DEPLOYING
+        expected_tags={"application": "app1"},
+        timeseries=timeseries,
+    )
+
+    wait_for_condition(
+        check_metric_float_eq,
+        metric="ray_serve_deployment_status",
+        expected=6,
+        expected_tags={"deployment": "deployment_b", "application": "app2"},
+        timeseries=timeseries,
+    )
+    wait_for_condition(
+        check_metric_float_eq,
+        metric="ray_serve_application_status",
+        expected=4,
+        expected_tags={"application": "app2"},
+        timeseries=timeseries,
+    )
+
+    ray.get(signal.send.remote())
+
+    wait_for_condition(
+        check_metric_float_eq,
+        metric="ray_serve_deployment_status",
+        expected=6,
+        expected_tags={"deployment": "deployment_b", "application": "app2"},
+        timeseries=timeseries,
+    )
+    wait_for_condition(
+        check_metric_float_eq,
+        metric="ray_serve_application_status",
+        expected=4,
+        expected_tags={"application": "app2"},
+        timeseries=timeseries,
+    )
+
+
 def test_long_poll_host_sends_counted(serve_instance):
     """Check that the transmissions by the long_poll are counted."""
 

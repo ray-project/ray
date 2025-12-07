@@ -936,6 +936,24 @@ class ApplicationStatus(str, Enum):
     UNHEALTHY = "UNHEALTHY"
     DELETING = "DELETING"
 
+    def to_numeric(self) -> int:
+        """Convert status to numeric value for metrics, it serves state
+        progression order on the dashboard.
+
+        0 is reserved for UNKNOWN. Values are ordered by state progression:
+        0=UNKNOWN, 1=NOT_STARTED, 2=DEPLOYING, 3=DEPLOY_FAILED,
+        4=RUNNING, 5=UNHEALTHY, 6=DELETING
+        """
+        mapping = {
+            ApplicationStatus.NOT_STARTED: 1,
+            ApplicationStatus.DEPLOYING: 2,
+            ApplicationStatus.DEPLOY_FAILED: 3,
+            ApplicationStatus.RUNNING: 4,
+            ApplicationStatus.UNHEALTHY: 5,
+            ApplicationStatus.DELETING: 6,
+        }
+        return mapping.get(self, 0)
+
 
 @PublicAPI(stability="alpha")
 @dataclass
