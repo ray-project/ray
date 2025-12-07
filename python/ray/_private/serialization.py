@@ -1,7 +1,6 @@
 import logging
 import threading
 import traceback
-import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:
@@ -12,10 +11,7 @@ import google.protobuf.message
 import ray._private.utils
 import ray.cloudpickle as pickle
 import ray.exceptions
-from ray._private import (
-    ray_constants,
-    tensor_serialization_utils,
-)
+from ray._private import ray_constants
 from ray._raylet import (
     DynamicObjectRefGenerator,
     MessagePackSerializedObject,
@@ -162,28 +158,6 @@ class SerializationContext:
         # (e.g. gloo, nccl, etc.) for tensor communication between actors,
         # instead of the normal serialize -> object store -> deserialize codepath.
         self._torch_custom_serializer_registered = False
-
-        # Enable zero-copy serialization of tensors if the environment variable is set.
-        self._zero_copy_tensors_enabled = (
-            ray_constants.RAY_ENABLE_ZERO_COPY_TORCH_TENSORS
-        )
-        if self._zero_copy_tensors_enabled:
-            try:
-                import torch
-
-                self._register_cloudpickle_reducer(
-                    torch.Tensor, tensor_serialization_utils.zero_copy_tensors_reducer
-                )
-            except ImportError:
-                # Warn and disable zero-copy tensor serialization when PyTorch is missing,
-                # even if RAY_ENABLE_ZERO_COPY_TORCH_TENSORS is set.
-                warnings.warn(
-                    "PyTorch is not installed. Disabling zero-copy tensor serialization "
-                    "even though RAY_ENABLE_ZERO_COPY_TORCH_TENSORS is set.",
-                    tensor_serialization_utils.ZeroCopyTensorsWarning,
-                    stacklevel=3,
-                )
-                self._zero_copy_tensors_enabled = False
 
         def actor_handle_reducer(obj):
             ray._private.worker.global_worker.check_connected()
@@ -703,7 +677,7 @@ class SerializationContext:
             from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
             TorchTensorType().register_custom_serializer()
-            # TorchTensorType().register_custom_serializer_for_mesh()
+            TorchTensorType().register_custom_serializer_for_mesh()
             self._torch_custom_serializer_registered = True
 
         serialized_val, tensors = self._serialize_and_retrieve_tensors(value)
@@ -723,7 +697,7 @@ class SerializationContext:
             obj_id is not None
         ), "`obj_id` is required, and it is the key to retrieve corresponding tensors from the GPU object store."
         # Regardless of whether `tensors` is empty, we always store the GPU object
-        # in the GPU object store. This ensures that `__ray_get_tensor_transport_metadata__` is not
+        # in the GPU object store. This ensures that `get_tensor_transport_metadata` is not
         # blocked indefinitely.
         worker = ray._private.worker.global_worker
         gpu_object_manager = worker.gpu_object_manager

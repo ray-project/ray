@@ -1,11 +1,12 @@
 import warnings
-from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
 from ray.experimental.util.types import Device
 
 if TYPE_CHECKING:
     import numpy as np
     import torch
+    from torch.distributed.device_mesh import DeviceMesh
 
 
 _TORCH_WARNING_FILTER_ACTIVATE = True
@@ -90,6 +91,49 @@ class _SerializationContext:
         self._out_of_band_tensors = tensors
         self._deserialized_tensor_placeholders = set()
         return prev_tensors, deserialized_tensor_placeholders
+
+    def serialize_mesh(
+        self, dm: "DeviceMesh"
+    ) -> Tuple[str, "np.ndarray", tuple[str, ...], Optional[list[str]], List[int]]:
+        import torch.distributed as dist
+
+        mesh_np = dm.mesh.contiguous().numpy()
+        dim_group_names = (
+            dm._dim_group_names if hasattr(dm, "_dim_group_names") else None
+        )
+        dim_groups = dm.get_all_groups()
+        world_size = [dist.get_world_size(group=group) for group in dim_groups]
+        return dm.device_type, mesh_np, dm.mesh_dim_names, dim_group_names, world_size
+
+    def deserialize_mesh(
+        self,
+        val: Tuple[str, "np.ndarray", tuple[str, ...], Optional[list[str]], List[int]],
+    ) -> "DeviceMesh":
+        import torch.distributed as dist
+        from torch.distributed.device_mesh import DeviceMesh
+        from torch.distributed.distributed_c10d import get_process_group_ranks
+
+        device_type, mesh_np, mesh_dim_names, dim_group_names, world_size = val
+        dm = DeviceMesh(
+            device_type, mesh_np, mesh_dim_names=mesh_dim_names, _init_backend=False
+        )
+        dm._dim_group_names = dim_group_names
+        dim_groups = dm.get_all_groups()
+        for i, group in enumerate(dim_groups):
+            current_world_size = dist.get_world_size(group=group)
+            if current_world_size != world_size[i]:
+                raise ValueError(
+                    f"World size mismatch, expected {world_size[i]}, but got {current_world_size}!"
+                )
+
+        if len(dim_groups) == 1:
+            ranks = get_process_group_ranks(group)
+            mesh_list = mesh_np.tolist()
+            if mesh_list != ranks:
+                raise ValueError(
+                    f"Mesh mismatch, expected {mesh_list}, but got {ranks}!"
+                )
+        return dm
 
     def serialize_tensor(
         self, tensor: "torch.Tensor"
