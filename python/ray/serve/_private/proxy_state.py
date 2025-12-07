@@ -40,6 +40,7 @@ from ray.serve.schema import (
     ProxyStatus,
     Target,
 )
+from ray.util import metrics
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -330,6 +331,7 @@ class ProxyState:
         self._actor_proxy_wrapper = actor_proxy_wrapper
         self._actor_name = actor_name
         self._node_id = node_id
+        self._node_ip = node_ip
         self._status = ProxyStatus.STARTING
         self._timer = timer
         self._shutting_down = False
@@ -346,6 +348,18 @@ class ProxyState:
             actor_name=self._actor_name,
             status=self._status,
         )
+
+        # Metric to track proxy health status (1=healthy, 0=unhealthy)
+        self._healthy_gauge = metrics.Gauge(
+            "serve_proxy_healthy",
+            description=(
+                "Tracks whether this proxy is healthy. "
+                "1 means healthy, 0 means unhealthy."
+            ),
+            tag_keys=("node_id", "node_ip_address"),
+        ).set_default_tags({"node_id": node_id, "node_ip_address": node_ip})
+        # Initially set to 0 since proxy starts in STARTING state
+        self._healthy_gauge.set(0)
 
     @property
     def actor_handle(self) -> ActorHandle:
@@ -379,6 +393,9 @@ class ProxyState:
         """
         self._status = status
         self.update_actor_details(status=self._status)
+        # Update the healthy gauge: 1 if HEALTHY or DRAINING, 0 otherwise
+        is_healthy = status in {ProxyStatus.HEALTHY, ProxyStatus.DRAINING}
+        self._healthy_gauge.set(1 if is_healthy else 0)
 
     def try_update_status(self, status: ProxyStatus):
         """Try update with the new status and only update when the conditions are met.
