@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, List, Set, Type
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
 from ray.data._internal.logical.operators.map_operator import Filter, Project
 from ray.data._internal.logical.ruleset import Ruleset
+from ray.data.datatype import DataType
 from ray.data.expressions import (
     AliasExpr,
     BinaryExpr,
@@ -58,7 +59,10 @@ class ResolveAttributes(Rule):
                 if name not in schema.names:
                     raise ValueError(f"Column name {name} not in schema: {schema}")
                 index = schema.names.index(name)
-                return ResolvedColumnExpr(_name=name, _data_type=schema.types[index])
+                raw_type = schema.types[index]
+                # TODO(Justin): Could be pandas schema?
+                data_type = DataType.from_arrow(raw_type)
+                return ResolvedColumnExpr(_name=name, _data_type=data_type)
             case BinaryExpr(op=op, left=left, right=right):
                 new_left = self.resolve_attributes(left, schema)
                 new_right = self.resolve_attributes(right, schema)
@@ -121,10 +125,11 @@ class ResolveStar(Rule):
                 non_existing_exprs: List[Expr] = []
                 for i, col_name in enumerate(op_schema.names):
                     if col_name not in existing_cols:
+                        raw_type = op_schema.types[i]
+                        # TODO(Justin): Could be pandas schema?
+                        data_type = DataType.from_arrow(raw_type)
                         non_existing_exprs.append(
-                            ResolvedColumnExpr(
-                                _name=col_name, _data_type=op_schema.types[i]
-                            )
+                            ResolvedColumnExpr(_name=col_name, _data_type=data_type)
                         )
 
                 op = cp.copy(op)

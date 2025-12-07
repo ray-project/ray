@@ -19,7 +19,7 @@ import pyarrow
 import pyarrow.compute as pc
 from typing_extensions import override
 
-from ray.data.block import BatchColumn, Schema
+from ray.data.block import BatchColumn
 from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -810,7 +810,7 @@ class BinaryExpr(Expr):
     def data_type(self) -> DataType:
         if not self._is_resolved():
             raise ValueError("Can't infer data type for unresolved binary expression")
-        return self.op.infer_dtype(self.left, self.right)
+        return self.op.infer_dtype(self.left.data_type, self.right.data_type)
 
     @override
     def structurally_equals(self, other: Any) -> bool:
@@ -831,7 +831,7 @@ class UnaryExpr(Expr):
     Common unary operations include logical NOT, IS NULL, IS NOT NULL, etc.
 
     Args:
-        op: The operation to perform (from Operation enum)
+        op: The operation to perform (from UnaryOperation enum)
         operand: The operand expression
 
     Example:
@@ -842,7 +842,7 @@ class UnaryExpr(Expr):
         >>> expr = ~(col("active"))  # Creates UnaryExpr(NOT, col("active"))
     """
 
-    op: Operation
+    op: UnaryOperation
     operand: Expr
 
     # Default to bool return dtype for unary operations like is_null() and NOT.
@@ -1213,12 +1213,6 @@ class StarExpr(NamedExpr):
 
     def structurally_equals(self, other: Any) -> bool:
         return isinstance(other, StarExpr)
-
-    def expand(self, schema: Schema) -> List[ResolvedColumnExpr]:
-        cols = []
-        for name, dtype in zip(schema.names, schema.types):
-            cols.append(ResolvedColumnExpr(_name=name, _data_type=dtype))
-        return cols
 
 
 @PublicAPI(stability="beta")
