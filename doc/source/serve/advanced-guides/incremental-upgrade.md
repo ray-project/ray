@@ -58,7 +58,7 @@ kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/re
 kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.7/config/manifests/metallb-native.yaml
 ```
 
-Create an `IPAddressPool` with the following spec for MetalLB [optional]
+Create an `IPAddressPool` with the following spec for MetalLB
 ```yaml
 echo "apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
@@ -244,6 +244,11 @@ You can monitor the progress of the upgrade by inspecting the `RayService` statu
     ```
     Look at the `spec.rules.backendRefs`. You will see the `weight` for the old and new services change in real-time as the traffic shift (Phase 2) progresses.
 
+For example:
+```yaml
+
+```
+
 ## How to upgrade safely?
 
 Since this feature is alpha and rollback is not yet supported, we recommend conservative parameter settings to minimize risk during upgrades.
@@ -252,7 +257,7 @@ Since this feature is alpha and rollback is not yet supported, we recommend cons
 
 To upgrade safely, you should:
 1. Scale up 1 worker pod in the new cluster and scale down 1 worker pod in the old cluster at a time
-2. Make the upgrade process gradual to allow the Ray Serve autoscaler to adapt
+2. Make the upgrade process gradual to allow the Ray Serve autoscaler and Ray autoscaler to adapt
 
 Based on these principles, we recommend:
 - **maxSurgePercent**: Calculate based on the formula below
@@ -290,9 +295,11 @@ This configuration guarantees you have sufficient resources to run at least one 
 
 Set `intervalSeconds` to 60 seconds to give the Ray Serve autoscaler and Ray autoscaler sufficient time to:
 - Detect load changes
-- Make scaling decisions while respecting upscale/downscale delays
+- Immediately scale replicas up or down to enforce new min_replicas and max_replicas limits (via target_capacity)
+  - Scale down replicas immediately if they exceed the new max_replicas
+  - Scale up replicas immediately if they fall below the new min_replicas
 - Provision resources
-- Allow replicas to transition states gracefully to "deploying"
+- Allow replicas to transition states gracefully to "UPDATING"
 
 A larger interval prevents the upgrade controller from making changes faster than the autoscaler can react, reducing the risk of service disruption.
 
