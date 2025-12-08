@@ -633,6 +633,14 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             self._notify_first_input(bundled_input)
 
             self._add_bundled_input(bundled_input)
+        else:
+            # For empty datasets, still call on_start callback (with no schema
+            # since there's no data). This ensures datasinks can properly
+            # initialize even for empty writes.
+            if not self._start_called and self._on_start is not None:
+                self._on_start(None)
+                self._start_called = True
+
         super().all_inputs_done()
 
     def has_next(self) -> bool:
