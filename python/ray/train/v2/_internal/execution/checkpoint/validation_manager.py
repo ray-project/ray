@@ -79,7 +79,21 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         # Finished validations that have yet to be processed
         self._finished_validations = OrderedDict()
 
-        # TODO: checkpoint/restore validation manager state
+        self._requeue_incomplete_validations()
+
+    def _requeue_incomplete_validations(self):
+        """Add _TrainingReports for incomplete validations to the queue."""
+        for checkpoint, (
+            training_result,
+            validation_spec,
+        ) in self._checkpoint_manager.pending_training_results:
+            self._training_report_queue.append(
+                _TrainingReport(
+                    metrics=training_result.metrics,
+                    checkpoint=checkpoint,
+                    validation_spec=validation_spec,
+                )
+            )
 
     def after_report(
         self,

@@ -18,7 +18,10 @@ from ray.train.v2._internal.execution.callback import (
 )
 from ray.train.v2._internal.execution.context import StorageContext
 from ray.train.v2._internal.execution.storage import _exists_at_fs_path, delete_fs_path
-from ray.train.v2._internal.execution.training_report import _TrainingReport
+from ray.train.v2._internal.execution.training_report import (
+    _TrainingReport,
+    _ValidationSpec,
+)
 from ray.train.v2._internal.execution.worker_group import Worker
 from ray.train.v2.api.report_config import CheckpointConsistencyMode
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
@@ -35,9 +38,12 @@ class _TrainingResultState(BaseModel):
 
 class _CheckpointManagerState(BaseModel):
     # Increment version if the schema changes
-    version: int = 0
+    version: int = 1
     checkpoint_results: List[_TrainingResultState]
     latest_checkpoint_result: Optional[_TrainingResultState]
+    pending_training_results: List[_TrainingResultState]
+    # modoru: cloudpickling?
+    pending_validation_specs: List[_ValidationSpec]
 
 
 def _get_training_result_from_state(
@@ -82,7 +88,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         # for the current worker group.
         self._current_report_index = 0
 
-        # Map from checkpoint to training result
+        # Map from pending checkpoint to (training result, validation spec)
         self._pending_training_results = {}
 
         # Map from checkpoint to report index. Used to order checkpoints.
@@ -97,8 +103,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
 
     def register_checkpoint(
         self,
-        checkpoint_result: _TrainingResult,
-        is_result_pending: bool,
+        training_report: _TrainingReport,
     ):
         """Register new checkpoint and add to bookkeeping.
 
@@ -108,9 +113,12 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         checkpoints should be deleted.
 
         Args:
-            checkpoint_result: Tracked checkpoint and associated metrics to add to bookkeeping.
-            is_result_pending: Whether the result is pending or fully ready.
+            training_report: Training report to register.
         """
+        checkpoint_result = _TrainingResult(
+            checkpoint=training_report.checkpoint,
+            metrics=training_report.metrics,
+        )
         self._latest_checkpoint_result = checkpoint_result
         self._checkpoint_to_report_index[
             checkpoint_result.checkpoint
@@ -129,10 +137,11 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             # If no metric is provided, just append (ordering by time of registration).
             self._checkpoint_results.append(checkpoint_result)
 
-        if is_result_pending:
-            self._pending_training_results[
-                checkpoint_result.checkpoint
-            ] = checkpoint_result
+        if training_report.validation_spec:
+            self._pending_training_results[checkpoint_result.checkpoint] = (
+                checkpoint_result,
+                training_report.validation_spec,
+            )
 
         self._save_state_and_delete_old_checkpoints()
 
@@ -150,7 +159,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                     f"Checkpoint {checkpoint} not found in pending training results. "
                 )
                 continue
-            checkpoint_result = self._pending_training_results[checkpoint]
+            checkpoint_result, _ = self._pending_training_results[checkpoint]
             checkpoint_result.metrics.update(metrics)
             if checkpoint_result not in self._checkpoint_results:
                 raise ValueError(
@@ -188,9 +197,9 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             )
             # Except for the latest checkpoint and pending checkpoints
             results_to_delete = worst_results - {self._latest_checkpoint_result}
-            results_to_delete = results_to_delete - set(
-                self._pending_training_results.values()
-            )
+            results_to_delete = results_to_delete - {
+                v for v, _ in self._pending_training_results.values()
+            }
 
             # Update internal state before actually deleting them.
             self._checkpoint_results = [
@@ -232,9 +241,19 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             else None
         )
 
+        pending_training_results = [
+            _get_state_from_training_result(v, self._storage_context)
+            for v, _ in self._pending_training_results.values()
+        ]
+        pending_validation_specs = [
+            v for _, v in self._pending_training_results.values()
+        ]
+
         manager_snapshot = _CheckpointManagerState(
             checkpoint_results=checkpoint_results,
             latest_checkpoint_result=latest_checkpoint_result,
+            pending_training_results=pending_training_results,
+            pending_validation_specs=pending_validation_specs,
         )
         return manager_snapshot.json()
 
@@ -261,6 +280,18 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             if manager_snapshot.latest_checkpoint_result is not None
             else None
         )
+
+        for training_result_state, validation_spec in zip(
+            manager_snapshot.pending_training_results,
+            manager_snapshot.pending_validation_specs,
+        ):
+            training_result = _get_training_result_from_state(
+                training_result_state, self._storage_context
+            )
+            self._pending_training_results[training_result.checkpoint] = (
+                training_result,
+                validation_spec,
+            )
 
     def _maybe_load_state_from_storage(self):
         """Load the checkpoint manager state from storage.
@@ -345,12 +376,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             self._notify()
             return
 
-        self.register_checkpoint(
-            _TrainingResult(
-                checkpoint=training_report.checkpoint, metrics=training_report.metrics
-            ),
-            bool(training_report.validation),
-        )
+        self.register_checkpoint(training_report)
 
     # --------------------------
     # WorkerGroupCallback

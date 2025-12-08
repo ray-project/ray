@@ -477,7 +477,7 @@ def test_get_all_reported_checkpoints_all_consistency_modes():
                 {"training_score": 1},
             ]
 
-            # Assert that we get validated checkpoints
+            # Assert that we get validated chceckpoints
             signal_actor.send.remote()
             assert [
                 reported_checkpoint.metrics

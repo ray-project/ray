@@ -16,7 +16,7 @@ from ray.train.v2._internal.execution.training_report import (
 )
 from ray.train.v2._internal.execution.worker_group.worker import Worker
 from ray.train.v2.api.validation_config import ValidationConfig, ValidationTaskConfig
-from ray.train.v2.tests.util import create_dummy_training_results
+from ray.train.v2.tests.util import create_dummy_training_reports
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -87,7 +87,7 @@ def test_checkpoint_validation_management_reordering(tmp_path):
     (
         low_initial_high_final_training_result,
         high_initial_low_final_training_result,
-    ) = create_dummy_training_results(
+    ) = create_dummy_training_reports(
         num_results=2,
         storage_context=StorageContext(
             storage_path=tmp_path,
@@ -146,7 +146,7 @@ def test_checkpoint_validation_management_failure(tmp_path):
         checkpoint_manager=checkpoint_manager,
         validation_config=ValidationConfig(fn=failing_validation_fn),
     )
-    failing_training_result = create_dummy_training_results(
+    failing_training_result = create_dummy_training_reports(
         num_results=1,
         storage_context=StorageContext(
             storage_path=tmp_path,
@@ -186,7 +186,7 @@ def test_checkpoint_validation_management_slow_validation_fn(tmp_path):
         checkpoint_manager=checkpoint_manager,
         validation_config=ValidationConfig(fn=infinite_waiting_validation_fn),
     )
-    timing_out_training_result = create_dummy_training_results(
+    timing_out_training_result = create_dummy_training_reports(
         num_results=1,
         storage_context=StorageContext(
             storage_path=tmp_path,
