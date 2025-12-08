@@ -191,7 +191,8 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitTaskToPool(
   }
   
   // Create unique work item ID
-  TaskID work_item_id = TaskID::FromRandom();
+  // Note: Using empty JobID since this is just an internal tracking ID
+  TaskID work_item_id = TaskID::FromRandom(JobID());
   PoolWorkItem work_item;
   work_item.work_item_id = work_item_id;
   work_item.function = function;
