@@ -28,7 +28,7 @@ from ray._common.network_utils import (
     node_ip_address_from_perspective,
     parse_address,
 )
-from ray._private.ray_constants import RAY_NODE_IP_FILENAME
+from ray._private.ray_constants import RAY_NODE_ID_FILENAME, RAY_NODE_IP_FILENAME
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
@@ -737,6 +737,49 @@ def write_node_ip_address(session_dir: str, node_ip_address: Optional[str]) -> N
             cached_node_ip_address["node_ip_address"] = node_ip_address
             with file_path.open(mode="w") as f:
                 json.dump(cached_node_ip_address, f)
+
+
+def write_node_id(session_dir: str, node_id: str) -> None:
+    """Write the node id of the current session to RAY_NODE_ID_FILENAME.
+
+    This allows the history server's collector to easily retrieve the node id.
+
+    This API is process-safe, meaning the file access is protected by a file lock.
+
+    The file contains a JSON object with the node_id field.
+
+    Args:
+        session_dir: The path to Ray session directory.
+        node_id: The node ID of the current node in hex format.
+    """
+    file_path = Path(os.path.join(session_dir, RAY_NODE_ID_FILENAME))
+    cached_node_id = {}
+
+    with FileLock(str(file_path.absolute()) + ".lock"):
+        if not file_path.exists():
+            with file_path.open(mode="w") as f:
+                json.dump({}, f)
+
+        with file_path.open() as f:
+            cached_node_id.update(json.load(f))
+
+        cached_id = cached_node_id.get("node_id")
+
+        if cached_id:
+            if cached_id == node_id:
+                return
+            else:
+                logger.warning(
+                    "The node ID of the current host recorded "
+                    f"in {RAY_NODE_ID_FILENAME} ({cached_id}) "
+                    "is different from the current node ID: "
+                    f"{node_id}. Ray will use {node_id} "
+                    "as the current node's ID."
+                )
+
+        cached_node_id["node_id"] = node_id
+        with file_path.open(mode="w") as f:
+            json.dump(cached_node_id, f)
 
 
 def get_node_instance_id():

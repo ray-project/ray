@@ -1,9 +1,11 @@
+import json
 import logging
 import os
 import shutil
 import sys
 import tempfile
 import unittest.mock
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -12,7 +14,11 @@ import ray
 import ray._private.services
 from ray._common.network_utils import parse_address
 from ray._common.test_utils import wait_for_condition
-from ray._private.ray_constants import DEFAULT_RESOURCES, RAY_OVERRIDE_DASHBOARD_URL
+from ray._private.ray_constants import (
+    DEFAULT_RESOURCES,
+    RAY_NODE_ID_FILENAME,
+    RAY_OVERRIDE_DASHBOARD_URL,
+)
 from ray._private.services import get_node_ip_address
 from ray._private.test_utils import (
     get_current_unused_port,
@@ -291,6 +297,20 @@ def test_get_and_write_node_ip_address(shutdown_only):
         session_dir
     )
     assert cached_node_ip_address == node_ip
+
+
+def test_write_node_id(shutdown_only):
+    ray.init()
+    node_id = ray.get_runtime_context().get_node_id()
+    session_dir = ray._private.worker._global_node.get_session_dir_path()
+
+    node_id_file = Path(session_dir) / RAY_NODE_ID_FILENAME
+    assert node_id_file.exists(), f"Node ID file not found: {node_id_file}"
+    with open(node_id_file, "r") as f:
+        data = json.load(f)
+    assert (
+        data["node_id"] == node_id
+    ), f"Node ID mismatch: {data['node_id']} != {node_id}"
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="skip except linux")

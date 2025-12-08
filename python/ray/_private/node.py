@@ -297,6 +297,11 @@ class Node:
                 logger.debug(f"Setting node ID to {node_id}")
                 self._node_id = node_id
 
+        if not connect_only:
+            ray._private.services.write_node_id(
+                self.get_session_dir_path(), self._node_id
+            )
+
         # The dashboard agent port is assigned first to avoid
         # other processes accidentally taking its default port
         self._dashboard_agent_listen_port = self._get_cached_port(
