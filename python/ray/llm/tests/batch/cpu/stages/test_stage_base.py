@@ -51,10 +51,15 @@ def test_wrap_postprocess_bypasses_error_rows():
     error_row = {
         "__data": {
             "__inference_error__": "ValueError: prompt too long",
+            "prompt": "This is a long prompt",
         }
     }
     result = wrapped(error_row)
-    assert result == {"__inference_error__": "ValueError: prompt too long"}
+    # Error rows return entire data dict to preserve debugging info
+    assert result == {
+        "__inference_error__": "ValueError: prompt too long",
+        "prompt": "This is a long prompt",
+    }
 
 
 def test_wrap_postprocess_success_rows_run_postprocess():
@@ -93,14 +98,18 @@ def test_wrap_postprocess_include_error_column():
     result = wrapped(success_row)
     assert result == {"response": "Hello world", "__inference_error__": None}
 
-    # Error rows still work the same
+    # Error rows return entire data dict to preserve debugging info
     error_row = {
         "__data": {
             "__inference_error__": "ValueError: prompt too long",
+            "prompt": "a long prompt",
         }
     }
     result = wrapped(error_row)
-    assert result == {"__inference_error__": "ValueError: prompt too long"}
+    assert result == {
+        "__inference_error__": "ValueError: prompt too long",
+        "prompt": "a long prompt",
+    }
 
 
 class TestStatefulStageUDF:

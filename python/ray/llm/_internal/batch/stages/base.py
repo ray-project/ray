@@ -68,11 +68,10 @@ def wrap_postprocess(
         data = row[processor_data_column]
 
         # Error rows bypass user postprocess to avoid crashes when
-        # expected output fields are missing.
+        # expected output fields are missing. Return entire data dict
+        # to preserve debugging info (e.g., prompt).
         if data.get("__inference_error__") is not None:
-            return {
-                "__inference_error__": data["__inference_error__"],
-            }
+            return data
 
         result = fn(data)
         if include_error_column:
