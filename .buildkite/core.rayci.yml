@@ -6,23 +6,6 @@ depends_on:
   - ray-dashboard-build
 steps:
   # builds
-  - name: corebuild
-    wanda: ci/docker/core.build.py39.wanda.yaml
-    tags: cibase
-    env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_build
-      IMAGE_TO: corebuild
-      RAYCI_IS_GPU_BUILD: "false"
-
-  - name: coregpubuild
-    wanda: ci/docker/core.build.py39.wanda.yaml
-    tags: cibase
-    depends_on: oss-ci-base_gpu
-    env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
-      IMAGE_TO: coregpubuild
-      RAYCI_IS_GPU_BUILD: "true"
-
   - name: corebuild-multipy
     label: "wanda: corebuild-py{{matrix}}"
     wanda: ci/docker/core.build.wanda.yaml
@@ -33,6 +16,19 @@ steps:
     env:
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_build-multipy
+
+  - name: coregpubuild-multipy
+    label: "wanda: coregpubuild-py{{matrix}}"
+    wanda: ci/docker/core.build.wanda.yaml
+    tags: cibase
+    depends_on: oss-ci-base_gpu-multipy
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu-py{{matrix}}
+      IMAGE_TO: coregpubuild-py{{matrix}}
+      RAYCI_IS_GPU_BUILD: "true"
+      PYTHON: "{{matrix}}"
+    matrix:
+      - "3.10"
 
   - name: minbuild-core
     label: "wanda: minbuild-core-py{{matrix}}"
@@ -50,7 +46,6 @@ steps:
 
   - wait: ~
     depends_on:
-      - corebuild
       - corebuild-multipy
 
   # tests
@@ -132,6 +127,7 @@ steps:
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
+        --python-version 3.10 --build-name corebuild-py3.10
         --only-tags=tmpfs --tmp-filesystem=tmpfs
 
   - label: ":ray: core: out of disk redis tests"
@@ -333,7 +329,9 @@ steps:
     tags: core_cpp
     instance_type: medium
     commands:
-      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --except-tags=cgroup --build-type clang
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker --
+        //:all //src/... core --except-tags=cgroup --build-type clang
+        --python-version 3.10 --build-name corebuild-py3.10
         --cache-test-results --parallelism-per-worker 2
 
   # block on premerge and microcheck
@@ -407,9 +405,10 @@ steps:
         --install-mask all-ray-libraries
         --run-flaky-tests
         --gpus 4
-        --build-name coregpubuild
+        --build-name coregpubuild-py3.10
+        --python-version 3.10
         --only-tags multi_gpu
-    depends_on: coregpubuild
+    depends_on: coregpubuild-multipy
 
   - label: ":ray: core: cpp worker tests"
     tags:
@@ -510,9 +509,10 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //doc/... core
         --gpus 4
-        --build-name coregpubuild
+        --build-name coregpubuild-py3.10
+        --python-version 3.10
         --only-tags multi_gpu
         --install-mask all-ray-libraries
     depends_on:
       - block-core-gpu-tests
-      - coregpubuild
+      - coregpubuild-multipy
