@@ -49,6 +49,8 @@ opening a PR, run `pytest test_map.py` from `python/ray/data/tests`.
 Explain **why the change exists and what it achieves**. Clear descriptions reduce 
 back-and-forth and speed up reviews.
 
+Here's an example of a PR with a good description: [[Data] Refactor PhysicalOperator.completed to fix side effects ](https://github.com/ray-project/ray/pull/58915).
+
 ### Keep pull requests small
 
 Review difficulty scales nonlinearly with PR size.
@@ -57,6 +59,11 @@ For fast reviews, do the following:
 * **Keep PRs under ~200 lines** of change when possible.
 * **Split large PRs** into multiple incremental PRs.
 * Avoid mixing refactors and new features in the same PR.
+
+Here's an example of a PR that keeps its scope small: 
+[[Data] Support Non-String Items for ApproximateTopK Aggregator](https://github.com/ray-project/ray/pull/58659).
+While the broader effort focuses on optimizing preprocessors, this change was 
+deliberately split out as a small, incremental PR, which made it much easier to review.
 
 ### Make CI pass
 

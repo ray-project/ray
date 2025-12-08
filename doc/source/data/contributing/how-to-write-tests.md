@@ -149,13 +149,15 @@ config — and that’s usually fine.
 ```python
 ds = ray.data.read_parquet_bulk(paths + [txt_path], filesystem=fs)
 assert ds._plan.initial_num_blocks() == 2  # Where does 2 come from?
+assert rows_same(ds.to_pandas(), expected_data)
 ```
 
 **Better**
 
 ```python
 ds = ray.data.read_parquet_bulk(paths + [txt_path], filesystem=fs)
-# Assertion has been removed.
+# Assertion about number of blocks has been removed.
+assert rows_same(ds.to_pandas(), expected_data)
 ```
 
 **Original code**
