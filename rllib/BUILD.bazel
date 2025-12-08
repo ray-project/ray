@@ -72,74 +72,13 @@ doctest(
             "**/examples/**",
             "**/tests/**",
             "**/test_*.py",
-            # Deprecated modules
-            "utils/memory.py",
+            # Deprecated stub files that raise ValueError on import.
             "offline/off_policy_estimator.py",
             "offline/estimators/feature_importance.py",
-            # Missing imports
-            "algorithms/dreamerv3/**",
-            # FIXME: These modules contain broken examples that weren't previously
-            # tested.
-            "algorithms/algorithm_config.py",
-            "core/distribution/torch/torch_distribution.py",
-            "core/models/base.py",
-            "core/models/specs/specs_base.py",
-            "core/models/specs/specs_dict.py",
-            "env/wrappers/pettingzoo_env.py",
-            "evaluation/collectors/sample_collector.py",
-            "evaluation/metrics.py",
-            "evaluation/observation_function.py",
-            "evaluation/postprocessing.py",
-            "execution/buffers/mixin_replay_buffer.py",
-            "models/catalog.py",
-            "models/preprocessors.py",
-            "models/repeated_values.py",
-            "policy/rnn_sequencing.py",
-            "utils/actor_manager.py",
-            "utils/filter.py",
-            "utils/from_config.py",
-            "utils/metrics/window_stat.py",
-            "utils/pre_checks/env.py",
-            "utils/replay_buffers/multi_agent_mixin_replay_buffer.py",
-            "utils/spaces/space_utils.py",
+            "utils/memory.py",
         ],
     ),
     tags = ["team:rllib"],
-)
-
-# --------------------------------------------------------------------
-# Benchmarks
-#
-# Tag: benchmark
-#
-# This is smoke-testing the benchmark scripts.
-# --------------------------------------------------------------------
-py_test(
-    name = "torch_compile_inference_bm",
-    size = "medium",
-    srcs = ["benchmarks/torch_compile/run_inference_bm.py"],
-    args = ["--smoke-test"],
-    main = "benchmarks/torch_compile/run_inference_bm.py",
-    tags = [
-        "benchmark",
-        "exclusive",
-        "team:rllib",
-        "torch_2.x_only_benchmark",
-    ],
-)
-
-py_test(
-    name = "torch_compile_ppo_with_inference",
-    size = "medium",
-    srcs = ["benchmarks/torch_compile/run_ppo_with_inference_bm.py"],
-    args = ["--smoke-test"],
-    main = "benchmarks/torch_compile/run_ppo_with_inference_bm.py",
-    tags = [
-        "benchmark",
-        "exclusive",
-        "team:rllib",
-        "torch_2.x_only_benchmark",
-    ],
 )
 
 # --------------------------------------------------------------------
@@ -4188,6 +4127,16 @@ py_test(
     tags = [
         "examples",
         "no_main",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "footsies_suppress_unity_logs",
+    size = "large",
+    srcs = ["examples/envs/classes/multi_agent/footsies/test/footsies_suppress_unity_logs.py"],
+    tags = [
+        "examples",
         "team:rllib",
     ],
 )

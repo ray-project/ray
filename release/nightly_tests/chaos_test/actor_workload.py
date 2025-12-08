@@ -14,7 +14,7 @@ def run_actor_workload(total_num_cpus, smoke):
     shouldn't fail.
     """
 
-    @ray.remote(num_cpus=0)
+    @ray.remote(num_cpus=0, max_task_retries=-1)
     class DBActor:
         def __init__(self):
             self.letter_dict = set()
