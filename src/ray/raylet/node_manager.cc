@@ -2914,7 +2914,9 @@ void NodeManager::PropagateTriggerGC() {
   rpc::TriggerGCRequest request;
   request.set_global_gc(false);
 
-  for (const auto &[node_id, address] : remote_node_manager_addresses_) {
+  for (const auto &node : remote_node_manager_addresses_) {
+    const auto &node_id = node.first;
+    const auto &address = node.second;
     auto addr = rpc::RayletClientPool::GenerateRayletAddress(
         node_id, address.first, address.second);
     auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(addr);

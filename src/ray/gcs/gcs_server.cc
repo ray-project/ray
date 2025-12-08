@@ -980,7 +980,9 @@ void GcsServer::TryGlobalGC() {
     rpc::TriggerGCRequest request;
     request.set_global_gc(false);
 
-    for (const auto &[node_id, node_info] : gcs_node_manager_->GetAllAliveNodes()) {
+    for (const auto &node : gcs_node_manager_->GetAllAliveNodes()) {
+      const auto &node_id = node.first;
+      const auto &node_info = node.second;
       auto addr = rpc::RayletClientPool::GenerateRayletAddress(
           node_id, node_info->node_manager_address(), node_info->node_manager_port());
       auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(addr);
