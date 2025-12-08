@@ -70,7 +70,7 @@ class ValidationManager(ControllerCallback, ReportCallback):
             self._training_report_queue.append(training_report)
 
     def _poll_validations(self) -> int:
-        """Poll/process validations, update checkpoint manager, kick off validations, return num pending validations."""
+        """Poll/process validations, update checkpoint manager, return num pending validations."""
         # Move pending validations to finished validations
         validation_tasks = list(self._pending_validations.keys())
         done, _ = ray.wait(
@@ -83,9 +83,9 @@ class ValidationManager(ControllerCallback, ReportCallback):
             self._pending_validations.pop(task)
         if done_checkpoints:
             logger.info(
-                f"Finished async validation task(s) for checkpoint(s) {done_checkpoints}. "
-                f"In flight validations for checkpoint(s): {list(self._pending_validations.values())}. "
-                f"We will run validations for checkpoint(s): {[tr.checkpoint for tr in self._training_report_queue]}"
+                f"Finished async validation task(s) for checkpoint(s): {done_checkpoints}.\n"
+                f"Running validations for checkpoint(s): {list(self._pending_validations.values())}.\n"
+                f"Staged validations for checkpoint(s): {[tr.checkpoint for tr in self._training_report_queue]}."
             )
 
         # Process next finished validation
@@ -97,26 +97,26 @@ class ValidationManager(ControllerCallback, ReportCallback):
             self._checkpoint_manager.update_checkpoints_with_metrics(
                 checkpoint_to_metrics
             )
+        return len(self._pending_validations)
 
-        # Kick off validation
+    def _kick_off_validations(self) -> int:
+        """Kick off validations and return the number of pending validations."""
         # TODO: figure out where to place run_validate_fn task:
         # head node is faster but want to avoid putting too much there
         # TODO: provide option to run this on gpu?
-        num_validations_to_start = MAX_IN_FLIGHT_VALIDATIONS - len(
-            self._pending_validations
-        )
-        for _ in range(num_validations_to_start):
-            if not self._training_report_queue:
-                break
-            training_report = self._training_report_queue.popleft()
-            validate_task = run_validate_fn.remote(
-                training_report.validation_spec, training_report.checkpoint
+        if self._training_report_queue:
+            num_validations_to_start = max(
+                MAX_IN_FLIGHT_VALIDATIONS - len(self._pending_validations), 0
             )
-            self._pending_validations[validate_task] = training_report.checkpoint
-            logger.info(
-                f"Launched async validation task for checkpoint {training_report.checkpoint}"
-            )
-
+            for _ in range(num_validations_to_start):
+                training_report = self._training_report_queue.popleft()
+                validate_task = run_validate_fn.remote(
+                    training_report.validation_spec, training_report.checkpoint
+                )
+                self._pending_validations[validate_task] = training_report.checkpoint
+                logger.info(
+                    f"Launched async validation task for checkpoint {training_report.checkpoint}"
+                )
         return len(self._pending_validations)
 
     def _process_finished_validation(
@@ -134,7 +134,7 @@ class ValidationManager(ControllerCallback, ReportCallback):
         return checkpoint_to_metrics
 
     def before_controller_shutdown(self):
-        while self._poll_validations() != 0:
+        while self._poll_validations() != 0 and self._kick_off_validations() != 0:
             time.sleep(VALIDATION_TASK_POLL_INTERVAL_S)
         checkpoint_to_metrics = {}
         tasks = list(self._finished_validations.keys())
@@ -154,3 +154,4 @@ class ValidationManager(ControllerCallback, ReportCallback):
         # TODO: figure out if there's a better place to poll validations
         # TODO: consider cleaning up validation tasks in before_controller_abort
         self._poll_validations()
+        self._kick_off_validations()
