@@ -416,6 +416,22 @@ CoreWorker::CoreWorker(
             actor_id, function, std::move(args), task_options, std::move(on_complete));
       });
 
+  // Wire pool task completion callback from ActorTaskSubmitter to ActorPoolManager.
+  // This enables cross-actor retry by notifying the pool when tasks complete.
+  actor_task_submitter_->SetPoolTaskCompletionCallback(
+      [this](const ActorPoolID &pool_id,
+             const TaskID &work_item_id,
+             const TaskID &task_id,
+             const ActorID &actor_id,
+             const Status &status,
+             const rpc::RayErrorInfo *error_info) {
+        // Route completion to ActorPoolManager if the pool exists
+        if (actor_pool_manager_->HasPool(pool_id)) {
+          actor_pool_manager_->OnPoolTaskComplete(
+              pool_id, work_item_id, task_id, actor_id, status, error_info);
+        }
+      });
+
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
   SubscribeToNodeChanges();
@@ -2825,27 +2841,17 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
   auto returned_refs = task_manager_->AddPendingTask(
       rpc_address_, task_spec, CurrentCallSite(), /*max_retries=*/0);
   
-  // KNOWN LIMITATION (Phase 1): Completion callbacks are NOT wired.
+  // Note: The on_complete callback passed here is NOT directly invoked by TaskManager
+  // because TaskManager doesn't support completion callbacks. Instead, task completion
+  // is wired through ActorTaskSubmitter::HandlePushTaskReply(), which detects pool
+  // tasks via task_spec.has_actor_pool_id() and notifies via the callback set in
+  // SetPoolTaskCompletionCallback(). That callback routes to OnPoolTaskComplete()
+  // which handles success/failure and triggers cross-actor retry if needed.
   //
-  // The on_complete callback is designed to notify ActorPoolManager when tasks
-  // complete (success or failure), enabling cross-actor retry. However, wiring
-  // this requires one of:
-  //   1. Extending TaskManagerInterface to support completion callbacks
-  //   2. Adding a hook in ActorTaskSubmitter::HandlePushTaskReply()
-  //   3. Using object readiness notifications
-  //
-  // Impact: Cross-actor retry does NOT work in Phase 1. When an actor fails,
-  // the task will fail permanently rather than being retried on another actor.
-  // The pool still provides load balancing and stats tracking.
-  //
-  // TODO(Phase 2): Wire completion callbacks. Options:
-  //   - Add RegisterTaskCompletionCallback() to TaskManagerInterface
-  //   - Check task_spec.has_actor_pool_id() in ActorTaskSubmitter and notify
-  //   - Subscribe to return ObjectRef readiness
-  if (on_complete) {
-    RAY_LOG(WARNING) << "Pool task completion callback not wired - cross-actor retry disabled";
-  }
-  
+  // The on_complete parameter here is intentionally unused - ActorPoolManager now
+  // passes nullptr since completion is handled via the ActorTaskSubmitter path.
+  (void)on_complete;
+
   // Submit the task
   actor_task_submitter_->SubmitTask(task_spec);
   

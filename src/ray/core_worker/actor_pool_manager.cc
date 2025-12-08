@@ -264,6 +264,43 @@ bool ActorPoolManager::HasPool(const ActorPoolID &pool_id) const {
   return pools_.find(pool_id) != pools_.end();
 }
 
+void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
+                                          const TaskID &work_item_id,
+                                          const TaskID &task_id,
+                                          const ActorID &actor_id,
+                                          const Status &status,
+                                          const rpc::RayErrorInfo *error_info) {
+  RAY_LOG(DEBUG) << "Pool task complete: pool=" << pool_id << ", work_item=" << work_item_id
+                 << ", task=" << task_id << ", actor=" << actor_id
+                 << ", status=" << status.ToString();
+
+  absl::MutexLock lock(&mu_);
+
+  // Check if pool still exists
+  auto pool_it = pools_.find(pool_id);
+  if (pool_it == pools_.end()) {
+    RAY_LOG(DEBUG) << "Pool " << pool_id << " no longer exists, ignoring task completion";
+    return;
+  }
+
+  if (status.ok()) {
+    OnTaskSucceeded(pool_id, actor_id);
+    // Remove the work item from tracking
+    work_items_.erase(work_item_id);
+  } else {
+    if (error_info != nullptr) {
+      OnTaskFailed(pool_id, work_item_id, actor_id, *error_info);
+    } else {
+      // Create a generic error info if none provided
+      rpc::RayErrorInfo generic_error;
+      generic_error.set_error_type(rpc::ErrorType::ACTOR_DIED);
+      generic_error.set_error_message("Task failed with unknown error: " +
+                                      status.ToString());
+      OnTaskFailed(pool_id, work_item_id, actor_id, generic_error);
+    }
+  }
+}
+
 ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
                                                const std::vector<ObjectID> &arg_ids) {
   auto pool_it = pools_.find(pool_id);
@@ -363,39 +400,23 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(
     work_items_[work_item_id] = std::move(work_item);
     return {};
   }
-  
+
   // Clone args before moving work_item into work_items_ (we need args for submission)
   auto args_for_submit = CloneArgs(work_item.args);
   RayFunction function = work_item.function;
   TaskOptions options = work_item.options;
-  
+
   // Store work item for retry tracking
   work_items_[work_item_id] = std::move(work_item);
-  
-  // Create completion callback that handles success/failure
-  // Capture pool_id, work_item_id, actor_id by value for the callback
-  TaskCompletionCallback on_complete = 
-      [this, pool_id, work_item_id, actor_id](
-          const Status &status, const rpc::RayErrorInfo *error_info) {
-        absl::MutexLock lock(&mu_);
-        if (status.ok()) {
-          OnTaskSucceeded(pool_id, actor_id);
-          // Remove work item on success
-          work_items_.erase(work_item_id);
-        } else if (error_info) {
-          OnTaskFailed(pool_id, work_item_id, actor_id, *error_info);
-        } else {
-          // Create a generic error info if none provided
-          rpc::RayErrorInfo generic_error;
-          generic_error.set_error_type(rpc::ErrorType::ACTOR_DIED);
-          generic_error.set_error_message("Task failed with unknown error");
-          OnTaskFailed(pool_id, work_item_id, actor_id, generic_error);
-        }
-      };
-  
+
+  // Note: We don't pass a completion callback here because task completion is now
+  // handled via ActorTaskSubmitter::HandlePushTaskReply() → MaybeNotifyPoolTaskComplete()
+  // → CoreWorker callback → ActorPoolManager::OnPoolTaskComplete().
+  // This avoids duplicate completion handling.
+
   // Submit via CoreWorker callback (which builds TaskSpec properly)
   return submit_actor_task_fn_(
-      actor_id, function, std::move(args_for_submit), options, std::move(on_complete));
+      actor_id, function, std::move(args_for_submit), options, nullptr);
 }
 
 void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,

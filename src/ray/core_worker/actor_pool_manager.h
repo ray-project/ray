@@ -162,20 +162,14 @@ struct PoolStats {
 /// selects which actor to execute the task. When a task fails, the pool can retry
 /// it on a different actor, avoiding the thundering herd problem of actor-bound retries.
 ///
-/// KNOWN LIMITATION (Phase 1):
-/// Cross-actor retry does NOT work in Phase 1. The TaskCompletionCallback passed
-/// to SubmitActorTaskCallback is not invoked because there's no hook in
-/// TaskManager/ActorTaskSubmitter to notify when tasks complete. This means:
-///   - OnTaskFailed() / OnTaskSucceeded() are never called
-///   - num_tasks_in_flight counters are not decremented
-///   - Retry logic is never triggered
-///
-/// What DOES work in Phase 1:
-///   - Pool registration and lifecycle
-///   - Actor membership management
-///   - Load-balanced actor selection
-///   - Task submission (happy path)
-///   - Basic stats (submitted count, actor count)
+/// Task completion is notified via OnPoolTaskComplete(), which is called by the
+/// callback wired through ActorTaskSubmitter::SetPoolTaskCompletionCallback().
+/// This enables the cross-actor retry mechanism:
+///   1. Task submitted to actor via SubmitToActor()
+///   2. Task completes (success or failure)
+///   3. ActorTaskSubmitter::HandlePushTaskReply() detects pool task and notifies
+///   4. OnPoolTaskComplete() called, which invokes OnTaskSucceeded/OnTaskFailed
+///   5. On failure, task can be re-enqueued and retried on a different actor
 ///
 /// This class is thread-safe.
 class ActorPoolManager {
@@ -265,7 +259,24 @@ class ActorPoolManager {
   /// \param pool_id The ID of the pool to check.
   /// \return True if the pool exists.
   bool HasPool(const ActorPoolID &pool_id) const;
-  
+
+  /// Called when a pool task completes (success or failure).
+  /// This is the main entry point for the cross-actor retry mechanism.
+  /// Called by ActorTaskSubmitter when it detects a completed pool task.
+  ///
+  /// \param pool_id The ID of the pool the task belongs to.
+  /// \param work_item_id The ID of the work item within the pool.
+  /// \param task_id The ID of the completed task.
+  /// \param actor_id The ID of the actor that executed the task.
+  /// \param status The completion status (OK for success, error for failure).
+  /// \param error_info Error information if the task failed (nullptr on success).
+  void OnPoolTaskComplete(const ActorPoolID &pool_id,
+                          const TaskID &work_item_id,
+                          const TaskID &task_id,
+                          const ActorID &actor_id,
+                          const Status &status,
+                          const rpc::RayErrorInfo *error_info);
+
  private:
   FRIEND_TEST(ActorPoolManagerTest, RegisterUnregisterPool);
   FRIEND_TEST(ActorPoolManagerTest, AddRemoveActors);

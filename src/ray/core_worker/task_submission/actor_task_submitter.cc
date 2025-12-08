@@ -27,6 +27,40 @@
 namespace ray {
 namespace core {
 
+namespace {
+
+// Helper to notify ActorPoolManager when a pool task completes.
+void MaybeNotifyPoolTaskComplete(
+    const PoolTaskCompletionCallback &callback,
+    const TaskSpecification &task_spec,
+    const Status &status,
+    const rpc::RayErrorInfo *error_info) {
+  if (!callback) {
+    return;
+  }
+
+  // Check if this task belongs to an actor pool
+  if (!task_spec.Message().has_actor_pool_id() ||
+      task_spec.Message().actor_pool_id().empty()) {
+    return;
+  }
+
+  auto pool_id = ActorPoolID::FromBinary(task_spec.Message().actor_pool_id());
+  TaskID work_item_id = TaskID::Nil();
+  if (task_spec.Message().has_actor_pool_work_item_id() &&
+      !task_spec.Message().actor_pool_work_item_id().empty()) {
+    work_item_id = TaskID::FromBinary(task_spec.Message().actor_pool_work_item_id());
+  }
+
+  RAY_LOG(DEBUG) << "Notifying pool " << pool_id << " of task completion for work item "
+                 << work_item_id << ", status: " << status.ToString();
+
+  callback(pool_id, work_item_id, task_spec.TaskId(), task_spec.ActorId(), status,
+           error_info);
+}
+
+}  // namespace
+
 void ActorTaskSubmitter::NotifyGCSWhenActorOutOfScope(
     const ActorID &actor_id, uint64_t num_restarts_due_to_lineage_reconstruction) {
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
@@ -470,6 +504,9 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
       for (auto &task : wait_for_death_info_tasks) {
         task_manager_.FailPendingTask(
             task->task_spec_.TaskId(), error_type, &task->status_, &error_info);
+        // Notify pool of failure for tasks that were waiting for death info
+        MaybeNotifyPoolTaskComplete(pool_task_completion_callback_, task->task_spec_,
+                                    task->status_, &error_info);
       }
     }
   }
@@ -498,6 +535,9 @@ void ActorTaskSubmitter::FailTaskWithError(const PendingTaskWaitingForDeathInfo 
   }
   task_manager_.FailPendingTask(
       task.task_spec_.TaskId(), error_info.error_type(), &task.status_, &error_info);
+  // Notify pool of failure for timed-out tasks
+  MaybeNotifyPoolTaskComplete(pool_task_completion_callback_, task.task_spec_,
+                              task.status_, &error_info);
 }
 
 void ActorTaskSubmitter::CheckTimeoutTasks() {
@@ -667,10 +707,16 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
   if ((status.ok() && reply.was_cancelled_before_running()) ||
       status.IsSchedulingCancelled()) {
     HandleTaskCancelledBeforeExecution(status, reply, task_spec);
+    // Notify pool of cancellation
+    MaybeNotifyPoolTaskComplete(pool_task_completion_callback_, task_spec,
+                                Status::SchedulingCancelled(), nullptr);
   } else if (status.ok() && !is_retryable_exception) {
     // status.ok() means the worker completed the reply, either succeeded or with a
     // retryable failure (e.g. user exceptions). We complete only on non-retryable case.
     task_manager_.CompletePendingTask(task_id, reply, addr, reply.is_application_error());
+    // Notify pool of success
+    MaybeNotifyPoolTaskComplete(pool_task_completion_callback_, task_spec, Status::OK(),
+                                nullptr);
   } else {
     bool is_actor_dead = false;
     bool fail_immediately = false;
@@ -723,6 +769,14 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
                                              &error_info,
                                              /*mark_task_object_failed*/ is_actor_dead,
                                              fail_immediately);
+
+    // For pool tasks with max_retries=0, will_retry will be false.
+    // Notify pool of failure so it can handle cross-actor retry.
+    if (is_actor_dead && !will_retry) {
+      MaybeNotifyPoolTaskComplete(pool_task_completion_callback_, task_spec, status,
+                                  &error_info);
+    }
+
     if (!is_actor_dead && !will_retry) {
       // Ran out of retries, last failure = either user exception or actor death.
       if (status.ok()) {
@@ -731,6 +785,9 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
 
         task_manager_.CompletePendingTask(
             task_id, reply, addr, reply.is_application_error());
+        // Notify pool of user exception failure
+        MaybeNotifyPoolTaskComplete(pool_task_completion_callback_, task_spec, status,
+                                    &error_info);
 
       } else if (RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
         // last failure = Actor death, but we still see the actor "alive" so we
@@ -760,6 +817,9 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
         }
         task_manager_.FailPendingTask(
             task_spec.TaskId(), error_info.error_type(), &status, &error_info);
+        // Notify pool of failure
+        MaybeNotifyPoolTaskComplete(pool_task_completion_callback_, task_spec, status,
+                                    &error_info);
       }
     }
   }
