@@ -1,0 +1,7 @@
+group: cicd-cron
+steps:
+  - name: Build manylinux images
+    commands:
+      - ./ci/base_images/nightly/build-manylinux.sh
+    mount_buildkite_agent: true
+    priority: 10
