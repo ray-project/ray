@@ -196,6 +196,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             schema = self._get_schema_from_bundle(bundled_input)
             self._on_start(schema)
             self._start_called = True
+            # Re-serialize map_transformer after on_start callback has modified it.
+            # This ensures workers get the updated state (e.g., _table_metadata for Iceberg).
+            self._map_transformer_ref = ray.put(self._map_transformer)
+            self._warn_large_udf()
 
     def _get_schema_from_bundle(self, bundle: RefBundle) -> Optional["pa.Schema"]:
         """Extract PyArrow schema from a RefBundle without fetching block data."""
@@ -442,10 +446,16 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 ]
             )
             map_transformer = map_transformer.fuse(split_transformer)
-        # Put the function def in the object store to avoid repeated serialization
-        # in case it's large (i.e., closure captures large objects).
-        self._map_transformer_ref = ray.put(map_transformer)
-        self._warn_large_udf()
+
+        # Store the potentially modified map_transformer for later use
+        self._map_transformer = map_transformer
+
+        # Only serialize now if there's no on_start callback.
+        # If on_start is set, serialization happens in _notify_first_input
+        # after the callback modifies the datasink state (e.g., _table_metadata).
+        if self._on_start is None:
+            self._map_transformer_ref = ray.put(map_transformer)
+            self._warn_large_udf()
 
     def _warn_large_udf(self):
         """Print a warning if the UDF is too large."""

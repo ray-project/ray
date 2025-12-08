@@ -1067,8 +1067,6 @@ def convert_pandas_dtype_to_pyarrow(
     Returns:
         The equivalent PyArrow DataType.
     """
-    import pandas as pd
-    from pandas.core.dtypes.dtypes import BaseMaskedDtype
 
     from ray.data.extensions import TensorDtype
 
