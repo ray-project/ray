@@ -5,8 +5,9 @@ FROM "$BASE_IMAGE"
 
 COPY python/deplocks/llm/rayllm_*.lock ./
 
-# vLLM commit to use for EP kernel and DeepGEMM install scripts
-ARG VLLM_SCRIPTS_REF="c4c0354eec86f3486285f121fa184dd6d9cacb9d"
+# vLLM version tag to use for EP kernel and DeepGEMM install scripts
+# Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
+ARG VLLM_SCRIPTS_REF="v0.12.0"
 
 RUN <<EOF
 #!/bin/bash
