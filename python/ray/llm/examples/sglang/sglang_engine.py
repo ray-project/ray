@@ -77,43 +77,54 @@ class SGLangServer:
         finally:
             signal.signal = original_signal_func
 
-    async def chat(
-        self, request: ChatCompletionRequest
-    ) -> AsyncGenerator[ChatCompletionResponse, None]:
-
-        # Format prompts (handles dicts or objects in request.messages)
-        prompt_string = format_messages_to_prompt(request.messages)
-
-        temp = request.temperature
+    async def _generate_and_extract_metadata(
+        self, request: Any, prompt_string: str
+    ) -> dict[str, Any]:
+        """
+        Handles parameter extraction, calls the SGLang engine, and processes the
+        raw response to extract common metadata and generated text.
+        """
+        # Extract and default sampling parameters (common logic)
+        # Use getattr to retrieve the value, and then explicitly check for None
+        # to ensure defaults are applied even if the field is set to None in the request object.
+        
+        temp = getattr(request, "temperature", None)
         if temp is None:
             temp = 0.7
-        top_p = request.top_p
+            
+        top_p = getattr(request, "top_p", None)
         if top_p is None:
             top_p = 1.0
-        max_tokens = request.max_tokens
+            
+        max_tokens = getattr(request, "max_tokens", None)
         if max_tokens is None:
             max_tokens = 128
+            
+        stop_sequences = getattr(request, "stop", None)
 
         sampling_params = {
             "temperature": temp,
             "max_new_tokens": max_tokens,
-            "stop": request.stop,
+            "stop": stop_sequences,
             "top_p": top_p,
         }
 
+        # Call the SGLang engine (common logic)
         raw = await self.engine.async_generate(
             prompt=prompt_string,
             sampling_params=sampling_params,
             stream=False,
         )
 
+        # Handle response list and empty check (common logic)
         if isinstance(raw, list):
             if not raw:
                 raise RuntimeError(
-                    "SGLang engine returned an empty response list during chat generation."
+                    "SGLang engine returned an empty response list during generation."
                 )
             raw = raw[0]
 
+        # Extract and process metadata (common logic)
         text: str = raw.get("text", "")
         meta: dict[str, Any] = raw.get("meta_info", {}) or {}
         finish_reason_info = meta.get("finish_reason", {}) or {}
@@ -127,22 +138,43 @@ class SGLangServer:
         completion_tokens = int(meta.get("completion_tokens", 0))
         total_tokens = prompt_tokens + completion_tokens
 
-        usage_data = {
+        return {
+            "text": text.strip(),
+            "id": meta.get("id", f"sglang-gen-{int(time.time())}"),
+            "created": int(time.time()),
+            "finish_reason": finish_reason,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
         }
 
-        choice_data = {
-            "index": 0,
-            "message": {"role": ChatRole.assistant.value, "content": text.strip()},
-            "finish_reason": finish_reason,
+    async def chat(
+        self, request: ChatCompletionRequest
+    ) -> AsyncGenerator[ChatCompletionResponse, None]:
+
+        # 1. Unique Logic: Prompt formatting
+        prompt_string = format_messages_to_prompt(request.messages)
+
+        # 2. Shared Logic: Generate and extract metadata
+        metadata = await self._generate_and_extract_metadata(request, prompt_string)
+
+        usage_data = {
+            "prompt_tokens": metadata["prompt_tokens"],
+            "completion_tokens": metadata["completion_tokens"],
+            "total_tokens": metadata["total_tokens"],
         }
 
+        choice_data = {
+            "index": 0,
+            "message": {"role": ChatRole.assistant.value, "content": metadata["text"]},
+            "finish_reason": metadata["finish_reason"],
+        }
+
+        # 3. Unique Logic: Construct ChatCompletionResponse
         resp = ChatCompletionResponse(
-            id=meta.get("id", f"sglang-chat-{int(time.time())}"),
+            id=metadata["id"],
             object="chat.completion",
-            created=int(time.time()),
+            created=metadata["created"],
             model=request.model,
             choices=[choice_data],
             usage=usage_data,
@@ -153,78 +185,36 @@ class SGLangServer:
     async def completions(
         self, request: CompletionRequest
     ) -> AsyncGenerator[CompletionResponse, None]:
+        
+        # 1. Unique Logic: Prompt extraction
         prompt_input = request.prompt
-
         if isinstance(prompt_input, list):
             prompt_string = prompt_input[0]
         else:
             prompt_string = prompt_input
 
-        temp = getattr(request, "temperature", None)
-        if temp is None:
-            temp = 0.7
-
-        top_p = getattr(request, "top_p", None)
-        if top_p is None:
-            top_p = 1.0
-
-        max_tokens = getattr(request, "max_tokens", None)
-        if max_tokens is None:
-            max_tokens = 128
-
-        stop_sequences = getattr(request, "stop", None)
-
-        sampling_params = {
-            "temperature": temp,
-            "max_new_tokens": max_tokens,
-            "stop": stop_sequences,
-            "top_p": top_p,
-        }
-
-        raw = await self.engine.async_generate(
-            prompt=prompt_string,
-            sampling_params=sampling_params,
-            stream=False,
-        )
-
-        if isinstance(raw, list):
-            if not raw:
-                raise RuntimeError(
-                    "SGLang engine returned an empty response list during text completion."
-                )
-            raw = raw[0]
-
-        text: str = raw.get("text", "")
-        meta: dict[str, Any] = raw.get("meta_info", {}) or {}
-        finish_reason_info = meta.get("finish_reason", {}) or {}
-
-        if isinstance(finish_reason_info, dict):
-            finish_reason = finish_reason_info.get("type", "length")
-        else:
-            finish_reason = str(finish_reason_info)
-
-        prompt_tokens = int(meta.get("prompt_tokens", 0))
-        completion_tokens = int(meta.get("completion_tokens", 0))
-        total_tokens = prompt_tokens + completion_tokens
+        # 2. Shared Logic: Generate and extract metadata
+        metadata = await self._generate_and_extract_metadata(request, prompt_string)
 
         usage_data = {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
+            "prompt_tokens": metadata["prompt_tokens"],
+            "completion_tokens": metadata["completion_tokens"],
+            "total_tokens": metadata["total_tokens"],
         }
 
         choice_data = {
             "index": 0,
-            "text": text,
+            "text": metadata["text"],
             "logprobs": None,
-            "finish_reason": finish_reason,
+            "finish_reason": metadata["finish_reason"],
         }
 
+        # 3. Unique Logic: Construct CompletionResponse
         resp = CompletionResponse(
-            id=meta.get("id", f"sglang-comp-{int(time.time())}"),
+            id=metadata["id"],
             object="text_completion",
-            created=int(time.time()),
-            model=getattr(request, "model", "default_model"),
+            created=metadata["created"],
+            model=getattr(request, "model", "default_model"), # Use getattr for model since CompletionRequest might not have it defined depending on the implementation
             choices=[choice_data],
             usage=usage_data,
         )
