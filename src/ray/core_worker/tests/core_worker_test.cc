@@ -216,6 +216,7 @@ class CoreWorkerTest : public ::testing::Test {
         fake_local_raylet_rpc_client,
         core_worker_client_pool,
         raylet_client_pool,
+        mock_gcs_client_,
         std::move(lease_policy),
         memory_store_,
         *task_manager_,
@@ -226,11 +227,13 @@ class CoreWorkerTest : public ::testing::Test {
         JobID::Nil(),
         lease_request_rate_limiter,
         [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
-        boost::asio::steady_timer(io_service_),
+        io_service_,
         fake_scheduler_placement_time_ms_histogram_);
 
     auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *core_worker_client_pool,
+        *raylet_client_pool,
+        mock_gcs_client_,
         *memory_store_,
         *task_manager_,
         *actor_creator_,
@@ -1075,11 +1078,6 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
   actor_creation_spec->set_max_task_retries(0);
   TaskSpecification task_spec(task_spec_msg);
 
-  gcs::StatusCallback register_callback;
-  EXPECT_CALL(*mock_gcs_client_->mock_actor_accessor,
-              AsyncRegisterActor(::testing::_, ::testing::_, ::testing::_))
-      .WillOnce(::testing::SaveArg<1>(&register_callback));
-
   actor_creator_->AsyncRegisterActor(task_spec, nullptr);
 
   ASSERT_TRUE(actor_creator_->IsActorInRegistering(actor_id));
@@ -1113,7 +1111,7 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
       });
 
   ASSERT_EQ(callback_count, 0);
-  register_callback(Status::OK());
+  mock_gcs_client_->mock_actor_accessor->async_register_actor_callback_(Status::OK());
   // Triggers the callbacks passed to AsyncWaitForActorRegisterFinish
   ASSERT_FALSE(actor_creator_->IsActorInRegistering(actor_id));
 

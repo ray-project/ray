@@ -26,6 +26,9 @@ const Wrapper = ({ children }: PropsWithChildren<{}>) => {
         dashboardDatasource: "Prometheus",
         serverTimeZone: undefined,
         currentTimeZone: undefined,
+        themeMode: "light",
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
+        toggleTheme: () => {},
       }}
     >
       <STYLE_WRAPPER>{children}</STYLE_WRAPPER>
@@ -55,6 +58,9 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
         dashboardDatasource: "Prometheus",
         serverTimeZone: undefined,
         currentTimeZone: undefined,
+        themeMode: "light",
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
+        toggleTheme: () => {},
       }}
     >
       <STYLE_WRAPPER>{children}</STYLE_WRAPPER>

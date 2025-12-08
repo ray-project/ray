@@ -68,6 +68,38 @@ class vLLMEngineRequest(BaseModel):
         arbitrary_types_allowed = True
 
 
+def _convert_logprob_dict(logprob_dict: Dict[int, Any]) -> Dict[int, Dict[str, Any]]:
+    """Convert a dict of token_id -> Logprob to token_id -> dict.
+
+    Handles conversion of vLLM's Logprob objects (currently dataclass) to
+    serializable dicts. This supports both dataclass (current vLLM format)
+    and Pydantic models (for future compatibility).
+
+    Args:
+        logprob_dict: Dict mapping token_id to Logprob instance.
+
+    Returns:
+        Dict mapping token_id to serializable dict with logprob fields.
+    """
+    result = {}
+    for token_id, logprob in logprob_dict.items():
+        # Handle Pydantic models (model_dump method)
+        if hasattr(logprob, "model_dump"):
+            result[token_id] = logprob.model_dump()
+        # Handle dataclasses (current vLLM format)
+        elif dataclasses.is_dataclass(logprob):
+            result[token_id] = dataclasses.asdict(logprob)
+        # Already a dict
+        elif isinstance(logprob, dict):
+            result[token_id] = logprob
+        else:
+            raise TypeError(
+                f"Unsupported logprob type: {type(logprob)}. "
+                "Expected dataclass, Pydantic model, or dict."
+            )
+    return result
+
+
 class vLLMOutputData(BaseModel):
     """The output of the vLLM engine."""
 
@@ -86,6 +118,14 @@ class vLLMOutputData(BaseModel):
 
     # Metrics fields.
     metrics: Optional[Dict[str, Any]] = None
+
+    # Logprobs fields.
+    # logprobs: List[Dict[int, Dict[str, Any]]] where each dict maps token_id to
+    # logprob info (logprob, rank, decoded_token) for each generated token.
+    logprobs: Optional[List[Dict[int, Dict[str, Any]]]] = None
+    # prompt_logprobs: List[Optional[Dict[int, Dict[str, Any]]]] where each dict
+    # (or None) maps token_id to logprob info for each prompt token.
+    prompt_logprobs: Optional[List[Optional[Dict[int, Dict[str, Any]]]]] = None
 
     @classmethod
     def from_vllm_engine_output(cls, output: Any) -> "vLLMOutputData":
@@ -111,6 +151,22 @@ class vLLMOutputData(BaseModel):
             data.generated_tokens = output.outputs[0].token_ids
             data.generated_text = output.outputs[0].text
             data.num_generated_tokens = len(output.outputs[0].token_ids)
+
+            # Extract logprobs
+            if output.outputs[0].logprobs is not None:
+                data.logprobs = [
+                    _convert_logprob_dict(logprob_dict)
+                    for logprob_dict in output.outputs[0].logprobs
+                ]
+
+            # Extract prompt_logprobs
+            if output.prompt_logprobs is not None:
+                data.prompt_logprobs = [
+                    _convert_logprob_dict(logprob_dict)
+                    if logprob_dict is not None
+                    else None
+                    for logprob_dict in output.prompt_logprobs
+                ]
         elif isinstance(output, vllm.outputs.PoolingRequestOutput):
             data.embeddings = output.outputs.data.cpu()
             if (
@@ -276,16 +332,16 @@ class vLLMEngineWrapper:
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
             if "guided_decoding" in sampling_params:
-                guided_decoding = vllm.sampling_params.GuidedDecodingParams(
+                structured_outputs = vllm.sampling_params.StructuredOutputsParams(
                     **maybe_convert_ndarray_to_list(
                         sampling_params.pop("guided_decoding")
                     )
                 )
             else:
-                guided_decoding = None
+                structured_outputs = None
             params = vllm.SamplingParams(
                 **maybe_convert_ndarray_to_list(sampling_params),
-                guided_decoding=guided_decoding,
+                structured_outputs=structured_outputs,
             )
         elif self.task_type == vLLMTaskType.EMBED:
             params = vllm.PoolingParams(task=self.task_type.value)
@@ -350,11 +406,19 @@ class vLLMEngineWrapper:
         )
 
         # Send the request to the LLM engine.
-        stream = self.engine.generate(
-            request_id=str(request.request_id),
-            prompt=llm_prompt,
-            sampling_params=request.params,
-        )
+        # vLLM 0.12.0 uses encode() for pooling/embedding tasks, generate() for text generation
+        if self.task_type == vLLMTaskType.EMBED:
+            stream = self.engine.encode(
+                request_id=str(request.request_id),
+                prompt=llm_prompt,
+                pooling_params=request.params,
+            )
+        else:
+            stream = self.engine.generate(
+                request_id=str(request.request_id),
+                prompt=llm_prompt,
+                sampling_params=request.params,
+            )
 
         # Consume the stream until the request is finished.
         async for request_output in stream:

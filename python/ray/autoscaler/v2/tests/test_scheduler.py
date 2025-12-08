@@ -52,6 +52,7 @@ def sched_request(
     instances: Optional[List[AutoscalerInstance]] = None,
     idle_timeout_s: Optional[float] = None,
     disable_launch_config_check: Optional[bool] = False,
+    cloud_resource_availabilities: Optional[Dict[NodeType, float]] = None,
 ) -> SchedulingRequest:
 
     if resource_requests is None:
@@ -62,6 +63,8 @@ def sched_request(
         cluster_resource_constraints = []
     if instances is None:
         instances = []
+    if cloud_resource_availabilities is None:
+        cloud_resource_availabilities = {}
 
     return SchedulingRequest(
         resource_requests=ResourceRequestUtil.group_by_count(resource_requests),
@@ -84,6 +87,7 @@ def sched_request(
         max_num_nodes=max_num_nodes,
         idle_timeout_s=idle_timeout_s,
         disable_launch_config_check=disable_launch_config_check,
+        cloud_resource_availabilities=cloud_resource_availabilities,
     )
 
 
@@ -104,6 +108,7 @@ def schedule(
     resource_requests: List[Dict],
     anti_affinity: bool = False,
     max_nodes: Optional[int] = None,
+    cloud_resource_availabilities: Optional[Dict[NodeType, float]] = None,
 ) -> SchedulingReply:
 
     ANTI_AFFINITY = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
@@ -142,6 +147,7 @@ def schedule(
             gang_resource_requests=gang_requests,
             max_num_nodes=max_nodes,
             instances=instances,
+            cloud_resource_availabilities=cloud_resource_availabilities,
         )
     else:
         request = sched_request(
@@ -149,6 +155,7 @@ def schedule(
             resource_requests=[ResourceRequestUtil.make(r) for r in resource_requests],
             instances=instances,
             max_num_nodes=max_nodes,
+            cloud_resource_availabilities=cloud_resource_availabilities,
         )
     return ResourceDemandScheduler(event_logger).schedule(request)
 
@@ -177,6 +184,7 @@ class TestSchedulingNode:
             Instance.ALLOCATION_FAILED,
             Instance.RAY_INSTALL_FAILED,
             Instance.TERMINATION_FAILED,
+            Instance.ALLOCATION_TIMEOUT,
         }
         for status in all_im_status:
             instance = make_autoscaler_instance(
@@ -2636,6 +2644,98 @@ def test_pg_with_bundle_infeasible_label_selectors():
 
     assert to_launch == {}
     assert len(reply.infeasible_gang_resource_requests) == 1
+
+
+def test_get_nodes_with_resource_availabilities():
+    node_type_configs = {
+        "type_gpu1": NodeTypeConfig(
+            name="type_gpu1",
+            resources={"CPU": 8, "GPU": 1, "gpu1": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+        "type_gpu2": NodeTypeConfig(
+            name="type_gpu2",
+            resources={"CPU": 8, "GPU": 1, "gpu2": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+        "type_gpu3": NodeTypeConfig(
+            name="type_gpu3",
+            resources={"CPU": 8, "GPU": 1, "gpu3": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+        "type_gpu4": NodeTypeConfig(
+            name="type_gpu4",
+            resources={"CPU": 1, "GPU": 1, "gpu4": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    def get_nodes_for(
+        resource_requests,
+        anti_affinity=False,
+        max_nodes: Optional[int] = None,
+        current_nodes: Optional[Dict] = None,
+        cloud_resource_availabilities=None,
+    ):
+        reply = schedule(
+            node_type_configs,
+            current_nodes or {},
+            resource_requests,
+            anti_affinity=anti_affinity,
+            max_nodes=max_nodes,
+            cloud_resource_availabilities=cloud_resource_availabilities,
+        )
+        to_launch, _ = _launch_and_terminate(reply)
+        infeasible = ResourceRequestUtil.to_resource_maps(
+            reply.infeasible_resource_requests
+        )
+        return to_launch, infeasible
+
+    # Pick the node type with the highest availability score when utilization scores are equal.
+    assert get_nodes_for(
+        [{"CPU": 8, "GPU": 1}],
+        cloud_resource_availabilities={
+            "type_gpu1": 0.1,
+            "type_gpu2": 1,
+            "type_gpu3": 0.2,
+        },
+    ) == ({"type_gpu2": 1}, [])
+
+    # The availability score is set to 1 by default.
+    assert get_nodes_for(
+        [{"CPU": 8, "GPU": 1}],
+        cloud_resource_availabilities={"type_gpu2": 0.1, "type_gpu3": 0.2},
+    ) == ({"type_gpu1": 1}, [])
+
+    assert get_nodes_for(
+        [{"CPU": 8, "GPU": 1}] * 2,
+        cloud_resource_availabilities={
+            "type_gpu1": 0.1,
+            "type_gpu2": 0.1,
+            "type_gpu3": 1,
+        },
+    ) == ({"type_gpu3": 2}, [])
+
+    # The utilization score is the first factor to be considered.
+    assert get_nodes_for([{"CPU": 1, "GPU": 1}], cloud_resource_availabilities={}) == (
+        {"type_gpu4": 1},
+        [],
+    )
+
+    # The utilization score is the first factor to be considered.
+    assert get_nodes_for(
+        [{"CPU": 1, "GPU": 1}],
+        cloud_resource_availabilities={
+            "type_gpu1": 0.1,
+            "type_gpu2": 0.1,
+            "type_gpu3": 1,
+            "type_gpu4": 0.1,
+        },
+    ) == ({"type_gpu4": 1}, [])
 
 
 if __name__ == "__main__":
