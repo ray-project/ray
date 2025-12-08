@@ -20,7 +20,9 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class IcebergDatasink(Datasink[Tuple[List["DataFile"], "pa.Schema"]]):
+class IcebergDatasink(
+    Datasink[Tuple[List["DataFile"], List["pa.Schema"]]]
+):  # Changed return type
     """
     Iceberg datasink to write a Ray Dataset into an existing Iceberg table.
     This datasink handles concurrent writes by:
@@ -159,9 +161,9 @@ class IcebergDatasink(Datasink[Tuple[List["DataFile"], "pa.Schema"]]):
 
     def write(
         self, blocks: Iterable[Block], ctx: TaskContext
-    ) -> Tuple[List["DataFile"], "pa.Schema"]:
+    ) -> Tuple[List["DataFile"], List["pa.Schema"]]:
         """
-        Write blocks to Parquet files in storage and return DataFile metadata with schema.
+        Write blocks to Parquet files in storage and return DataFile metadata with schemas.
 
         This runs on each worker in parallel. Files are written directly to storage
         (S3, HDFS, etc.) and only metadata is returned to the driver.
@@ -172,9 +174,8 @@ class IcebergDatasink(Datasink[Tuple[List["DataFile"], "pa.Schema"]]):
             ctx: TaskContext object containing task-specific information
 
         Returns:
-            Tuple of (List of DataFile objects, PyArrow schema from first non-empty block).
+            Tuple of (List of DataFile objects, List of PyArrow schemas from all non-empty blocks).
         """
-        import pyarrow as pa
         from pyiceberg.io.pyarrow import _dataframe_to_data_files
 
         # Workers receive a pickled datasink with _table=None (excluded during
@@ -183,16 +184,12 @@ class IcebergDatasink(Datasink[Tuple[List["DataFile"], "pa.Schema"]]):
             self._reload_table()
 
         all_data_files = []
-        first_schema = None
+        block_schemas = []
 
         for block in blocks:
             pa_table = BlockAccessor.for_block(block).to_arrow()
             if pa_table.num_rows > 0:
-                # Track schema for reconciliation on driver
-                # We allow different schemas between blocks (nullability, missing columns, type promotion)
-                # Schema reconciliation happens on driver using unify_schemas
-                if first_schema is None:
-                    first_schema = pa_table.schema
+                block_schemas.append(pa_table.schema)
 
                 # Write data files to storage
                 data_files = list(
@@ -204,12 +201,7 @@ class IcebergDatasink(Datasink[Tuple[List["DataFile"], "pa.Schema"]]):
                 )
                 all_data_files.extend(data_files)
 
-        # Return schema along with data files
-        # Use first_schema (may be None if no blocks had rows)
-        if first_schema is None:
-            first_schema = pa.schema([])
-
-        return (all_data_files, first_schema)
+        return (all_data_files, block_schemas)
 
     def on_write_complete(self, write_result: WriteResult) -> None:
         """
@@ -231,16 +223,15 @@ class IcebergDatasink(Datasink[Tuple[List["DataFile"], "pa.Schema"]]):
             if not write_return:
                 continue
 
-            data_files, schema = write_return
+            data_files, schemas = write_return
             if data_files:  # Only add schema if we have data files
                 all_data_files.extend(data_files)
-                all_schemas.append(schema)
+                all_schemas.extend(schemas)  # extend instead of append
 
         if not all_data_files:
             return
 
-        # Reconcile all schemas from workers using unify_schemas with type promotion enabled
-        # This handles nullability differences, missing columns, and type promotion
+        # Reconcile all schemas from all blocks across all workers
         from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 
         reconciled_schema = unify_schemas(all_schemas, promote_types=True)
@@ -261,6 +252,4 @@ class IcebergDatasink(Datasink[Tuple[List["DataFile"], "pa.Schema"]]):
             with txn.update_schema() as update:
                 update.union_by_name(final_reconciled_schema)
 
-        # Reload table to get latest metadata after schema update
-        self._reload_table()
         self._append_and_commit(txn, all_data_files)
