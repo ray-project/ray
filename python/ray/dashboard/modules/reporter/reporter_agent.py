@@ -928,7 +928,7 @@ class ReporterAgent(
         pids = await self._async_get_worker_pids_from_raylet()
         logger.debug(f"Worker PIDs from raylet: {pids}")
         if not pids:
-            return []
+            return {}
         workers = {}
         for pid in pids:
             try:
@@ -941,9 +941,9 @@ class ReporterAgent(
 
     async def _async_get_agent_processes(self):
         pids = await self._async_get_agent_pids_from_raylet()
-        logger.info(f"Agent PIDs from raylet: {pids}")
+        logger.debug(f"Agent PIDs from raylet: {pids}")
         if not pids:
-            return []
+            return {}
         agents = {}
         for pid in pids:
             try:
@@ -957,7 +957,7 @@ class ReporterAgent(
     async def _async_get_workers(self, gpus: Optional[List[GpuUtilizationInfo]] = None):
         workers = await self._async_get_worker_processes()
         agents = await self._async_get_agent_processes()
-        workers += agents
+        workers.update(agents)
         if not workers:
             return []
         else:
