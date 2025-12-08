@@ -92,7 +92,8 @@ def _plan_write_op_internal(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
-    write_fn = generate_write_fn(op._datasink_or_legacy_datasource, **op._write_args)
+    datasink = op._datasink_or_legacy_datasource
+    write_fn = generate_write_fn(datasink, **op._write_args)
 
     # Create a MapTransformer for a write operator
     transform_fns = [
@@ -106,7 +107,19 @@ def _plan_write_op_internal(
 
     map_transformer = MapTransformer(transform_fns)
 
-    return MapOperator.create(
+    # Set up on_start callback for datasinks.
+    # This allows on_write_start to receive the schema from the first input bundle,
+    # enabling schema-dependent initialization (e.g., Iceberg schema evolution).
+    # NOTE: _FileDatasink is excluded because dataset.py already calls on_write_start()
+    # explicitly before execution to handle SaveMode checks and directory creation.
+    on_start = None
+    if isinstance(datasink, Datasink):
+        from ray.data.datasource.file_datasink import _FileDatasink
+
+        if not isinstance(datasink, _FileDatasink):
+            on_start = datasink.on_write_start
+
+    map_op = MapOperator.create(
         map_transformer,
         input_physical_dag,
         data_context,
@@ -117,4 +130,7 @@ def _plan_write_op_internal(
         ray_remote_args=op._ray_remote_args,
         min_rows_per_bundle=op._min_rows_per_bundled_input,
         compute_strategy=TaskPoolStrategy(op._concurrency),
+        on_start=on_start,
     )
+
+    return map_op

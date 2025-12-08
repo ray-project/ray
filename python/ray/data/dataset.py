@@ -5253,8 +5253,12 @@ class Dataset:
         logical_plan = LogicalPlan(write_op, self.context)
 
         try:
-            datasink.on_write_start()
+            # NOTE: on_write_start is now called automatically by the Write operator
+            # when the first input bundle arrives, with the schema extracted from
+            # the data. This enables schema-dependent initialization (e.g., Iceberg
+            # schema evolution) without requiring upfront schema computation.
             if isinstance(datasink, _FileDatasink):
+                datasink.on_write_start()
                 if not datasink.has_created_dir and datasink.mode == SaveMode.IGNORE:
                     logger.info(
                         f"Ignoring write because {datasink.path} already exists"
@@ -6768,26 +6772,12 @@ class Schema:
 
         For non-Arrow compatible types, we return "object".
         """
-        import pandas as pd
         import pyarrow as pa
-        from pandas.core.dtypes.dtypes import BaseMaskedDtype
 
+        from ray.data._internal.arrow_ops.transform_pyarrow import (
+            convert_pandas_dtype_to_pyarrow,
+        )
         from ray.data.extensions import ArrowTensorType, TensorDtype
-
-        def _convert_to_pa_type(
-            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype]
-        ) -> pa.DataType:
-            if isinstance(dtype, pd.ArrowDtype):
-                return dtype.pyarrow_dtype
-            elif isinstance(dtype, pd.StringDtype):
-                # StringDtype is not a BaseMaskedDtype, handle separately
-                return pa.string()
-            elif isinstance(dtype, BaseMaskedDtype):
-                dtype = dtype.numpy_dtype
-            return pa.from_numpy_dtype(dtype)
-
-        if isinstance(self.base_schema, pa.lib.Schema):
-            return list(self.base_schema.types)
 
         arrow_types = []
         for dtype in self.base_schema.types:
@@ -6800,13 +6790,14 @@ class Schema:
                 # Manually convert our Pandas tensor extension type to Arrow.
                 arrow_types.append(
                     pa_tensor_type_class(
-                        shape=dtype._shape, dtype=_convert_to_pa_type(dtype._dtype)
+                        shape=dtype._shape,
+                        dtype=convert_pandas_dtype_to_pyarrow(dtype._dtype),
                     )
                 )
 
             else:
                 try:
-                    arrow_types.append(_convert_to_pa_type(dtype))
+                    arrow_types.append(convert_pandas_dtype_to_pyarrow(dtype))
                 except pa.ArrowNotImplementedError:
                     arrow_types.append(object)
                 except Exception:

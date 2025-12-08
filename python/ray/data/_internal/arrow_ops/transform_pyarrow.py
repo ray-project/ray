@@ -4,7 +4,9 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import numpy as np
+import pandas as pd
 from packaging.version import parse as parse_version
+from pandas.core.dtypes.dtypes import BaseMaskedDtype
 
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.ray_constants import env_integer
@@ -1049,3 +1051,61 @@ def _try_combine_chunks_safe(
         new_chunks.append(pa.concat_arrays(cur_chunk_group))
 
     return pa.chunked_array(new_chunks)
+
+
+def convert_pandas_dtype_to_pyarrow(
+    dtype: Union[np.dtype, "pd.ArrowDtype", "pd.StringDtype", "BaseMaskedDtype"]
+) -> "pyarrow.DataType":
+    """Convert a pandas dtype to a PyArrow DataType.
+
+    Handles pandas extension dtypes (Int32, Int64, StringDtype, etc.),
+    ArrowDtype, and regular numpy dtypes.
+
+    Args:
+        dtype: A pandas dtype (numpy dtype, ArrowDtype, or extension dtype).
+
+    Returns:
+        The equivalent PyArrow DataType.
+    """
+    import pandas as pd
+    from pandas.core.dtypes.dtypes import BaseMaskedDtype
+
+    from ray.data.extensions import TensorDtype
+
+    if isinstance(dtype, pd.ArrowDtype):
+        return dtype.pyarrow_dtype
+    elif isinstance(dtype, pd.StringDtype):
+        # StringDtype is not a BaseMaskedDtype, handle separately
+        return pyarrow.string()
+    elif isinstance(dtype, BaseMaskedDtype):
+        # Nullable integer types like Int32, Int64
+        dtype = dtype.numpy_dtype
+    elif isinstance(dtype, TensorDtype):
+        # Convert TensorDtype to Arrow tensor type.
+        # For variable-shaped tensors, use Ray's extension type.
+        # For fixed-shape tensors, use Arrow's native fixed_shape_tensor.
+        element_dtype = convert_pandas_dtype_to_pyarrow(dtype._dtype)
+
+        if dtype.is_variable_shaped:
+            # Use Ray's extension type for variable-shaped tensors
+            from ray.data.extensions import ArrowVariableShapedTensorType
+
+            # Extract ndim from shape tuple length
+            ndim = len(dtype._shape)
+            return ArrowVariableShapedTensorType(
+                dtype=element_dtype,
+                ndim=ndim,
+            )
+        else:
+            # Use Arrow's native fixed_shape_tensor for fixed-shape tensors
+            return pyarrow.fixed_shape_tensor(
+                element_type=element_dtype,
+                shape=dtype._shape,
+            )
+    elif hasattr(dtype, "kind") and dtype.kind == "O":
+        # Numpy object dtype - assume string
+        return pyarrow.string()
+    elif dtype is object:
+        # Python object type - assume string
+        return pyarrow.string()
+    return pyarrow.from_numpy_dtype(dtype)

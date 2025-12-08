@@ -5,6 +5,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Deque,
@@ -17,6 +18,9 @@ from typing import (
     Tuple,
     Union,
 )
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 import ray
 from ray import ObjectRef
@@ -130,6 +134,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         map_task_kwargs: Optional[Dict[str, Any]],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         ray_remote_args: Optional[Dict[str, Any]],
+        on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
     ):
         # NOTE: This constructor should not be called directly; use MapOperator.create()
         # instead.
@@ -169,12 +174,61 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # Callback functions that generate additional task kwargs
         # for the map task.
         self._map_task_kwargs_fns: List[Callable[[], Dict[str, Any]]] = []
+        # Callback for when first input bundle is ready (before task submission).
+        # Receives schema from the first bundle for deferred initialization
+        # (e.g., schema evolution for Iceberg writes via on_write_start).
+        self._on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = on_start
+        self._start_called = False
 
     def add_map_task_kwargs_fn(self, map_task_kwargs_fn: Callable[[], Dict[str, Any]]):
         """Add a callback function that generates additional kwargs for the map tasks.
         In the map tasks, the kwargs can be accessible via `TaskContext.kwargs`.
         """
         self._map_task_kwargs_fns.append(map_task_kwargs_fn)
+
+    def _notify_first_input(self, bundled_input: RefBundle) -> None:
+        """Invoke on_start callback with schema if registered and not yet invoked.
+
+        Used for deferred initialization that needs schema from the first bundle
+        (e.g., schema evolution for Iceberg writes via on_write_start).
+        """
+        if not self._start_called and self._on_start is not None:
+            schema = self._get_schema_from_bundle(bundled_input)
+            self._on_start(schema)
+            self._start_called = True
+
+    def _get_schema_from_bundle(self, bundle: RefBundle) -> Optional["pa.Schema"]:
+        """Extract PyArrow schema from a RefBundle without fetching block data."""
+        import pyarrow as pa
+
+        from ray.data._internal.arrow_ops.transform_pyarrow import (
+            convert_pandas_dtype_to_pyarrow,
+        )
+        from ray.data._internal.pandas_block import PandasBlockSchema
+        from ray.data.dataset import Schema
+
+        if bundle.schema is None:
+            return None
+
+        schema = bundle.schema
+
+        # Unwrap Schema wrapper if present
+        if isinstance(schema, Schema):
+            schema = schema.base_schema
+
+        # Already a PyArrow schema - use directly
+        if isinstance(schema, pa.Schema):
+            return schema
+
+        # PandasBlockSchema - convert to PyArrow
+        if isinstance(schema, PandasBlockSchema):
+            fields = []
+            for name, dtype in zip(schema.names, schema.types):
+                pa_type = convert_pandas_dtype_to_pyarrow(dtype)
+                fields.append(pa.field(name, pa_type))
+            return pa.schema(fields)
+
+        return None
 
     def get_map_task_kwargs(self) -> Dict[str, Any]:
         """Get the kwargs for the map task.
@@ -245,6 +299,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         per_block_limit: Optional[int] = None,
+        on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -276,6 +331,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 advanced, experimental feature.
             ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
             per_block_limit: Maximum number of rows to process per block, for early termination.
+            on_start: Optional callback invoked with the schema from the first input
+                bundle before any tasks are submitted. Used for deferred initialization
+                that requires schema from actual data (e.g., schema evolution for
+                Iceberg writes).
         """
         if (ref_bundler is not None and min_rows_per_bundle is not None) or (
             min_rows_per_bundle is not None and ref_bundler is not None
@@ -311,6 +370,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 map_task_kwargs=map_task_kwargs,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
+                on_start=on_start,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators.actor_pool_map_operator import (
@@ -330,6 +390,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 map_task_kwargs=map_task_kwargs,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
+                on_start=on_start,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
@@ -414,6 +475,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             (input_refs, bundled_input) = self._block_ref_bundler.get_next_bundle()
             for bundle in input_refs:
                 self._metrics.on_input_dequeued(bundle)
+
+            # Invoke first-input callback before task submission (for deferred init).
+            # This is used by write operators to call on_write_start with schema.
+            self._notify_first_input(bundled_input)
 
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue
@@ -551,6 +616,12 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 _,
                 bundled_input,
             ) = self._block_ref_bundler.get_next_bundle()
+
+            # Invoke first-input callback before task submission (for deferred init).
+            # This handles small datasets where bundles never met the threshold during
+            # normal processing and were deferred to all_inputs_done().
+            self._notify_first_input(bundled_input)
+
             self._add_bundled_input(bundled_input)
         super().all_inputs_done()
 
