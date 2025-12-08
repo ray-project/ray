@@ -70,111 +70,9 @@ DEFINE_stats(
     (),
     ray::stats::GAUGE);
 
-DEFINE_stats(object_store_dist,
-             "The distribution of object size in bytes",
-             ("Source"),
-             ({32_MiB,
-               64_MiB,
-               128_MiB,
-               256_MiB,
-               512_MiB,
-               1024_MiB,
-               2048_MiB,
-               4096_MiB,
-               8192_MiB,
-               16384_MiB}),
-             ray::stats::HISTOGRAM);
-
 /// ===============================================================================
 /// ===================== INTERNAL SYSTEM METRICS =================================
 /// ===============================================================================
-
-DEFINE_stats(io_context_event_loop_lag_ms,
-             "Latency of a task from post to execution",
-             ("Name"),  // Name of the instrumented_io_context.
-             (),
-             ray::stats::GAUGE);
-
-/// Event stats
-DEFINE_stats(operation_count, "operation count", ("Name"), (), ray::stats::COUNT);
-DEFINE_stats(operation_run_time_ms,
-             "operation execution time",
-             ("Name"),
-             ({1, 10, 100, 1000, 10000}),
-             ray::stats::HISTOGRAM);
-DEFINE_stats(operation_queue_time_ms,
-             "operation queuing time",
-             ("Name"),
-             ({1, 10, 100, 1000, 10000}),
-             ray::stats::HISTOGRAM);
-DEFINE_stats(
-    operation_active_count, "active operation number", ("Name"), (), ray::stats::GAUGE);
-
-/// Object Manager.
-DEFINE_stats(object_manager_bytes,
-             "Number of bytes pushed or received by type {PushedFromLocalPlasma, "
-             "PushedFromLocalDisk, Received}.",
-             ("Type"),
-             (),
-             ray::stats::GAUGE);
-
-DEFINE_stats(object_manager_received_chunks,
-             "Number object chunks received broken per type {Total, FailedTotal, "
-             "FailedCancelled, FailedPlasmaFull}.",
-             ("Type"),
-             (),
-             ray::stats::GAUGE);
-
-/// Pull Manager
-DEFINE_stats(
-    pull_manager_usage_bytes,
-    "The total number of bytes usage broken per type {Available, BeingPulled, Pinned}",
-    ("Type"),
-    (),
-    ray::stats::GAUGE);
-DEFINE_stats(pull_manager_requested_bundles,
-             "Number of requested bundles broken per type {Get, Wait, TaskArgs}.",
-             ("Type"),
-             (),
-             ray::stats::GAUGE);
-DEFINE_stats(pull_manager_requests,
-             "Number of pull requests broken per type {Queued, Active, Pinned}.",
-             ("Type"),
-             (),
-             ray::stats::GAUGE);
-DEFINE_stats(pull_manager_active_bundles,
-             "Number of active bundle requests",
-             (),
-             (),
-             ray::stats::GAUGE);
-DEFINE_stats(pull_manager_retries_total,
-             "Number of cumulative pull retries.",
-             (),
-             (),
-             ray::stats::GAUGE);
-DEFINE_stats(
-    pull_manager_num_object_pins,
-    "Number of object pin attempts by the pull manager, can be {Success, Failure}.",
-    ("Type"),
-    (),
-    ray::stats::GAUGE);
-DEFINE_stats(pull_manager_object_request_time_ms,
-             "Time between initial object pull request and local pinning of the object. ",
-             ("Type"),
-             ({1, 10, 100, 1000, 10000}),
-             ray::stats::HISTOGRAM);
-
-/// Push Manager
-DEFINE_stats(push_manager_num_pushes_remaining,
-             "Number of pushes not completed.",
-             (),
-             (),
-             ray::stats::GAUGE);
-DEFINE_stats(push_manager_chunks,
-             "Number of object chunks transfer broken per type {InFlight, Remaining}.",
-             ("Type"),
-             (),
-             ray::stats::GAUGE);
 
 /// Scheduler
 DEFINE_stats(
@@ -198,13 +96,11 @@ DEFINE_stats(scheduler_failed_worker_startup_total,
              ("Reason"),
              (),
              ray::stats::GAUGE);
-DEFINE_stats(scheduler_placement_time_s,
-             "The time it takes for a worklod (task, actor, placement group) to "
-             "be placed. This is the time from when the tasks dependencies are "
-             "resolved to when it actually reserves resources on a node to run.",
-             ("WorkloadType"),
-             ({0.1, 1, 10, 100, 1000, 10000}, ),
-             ray::stats::HISTOGRAM);
+DEFINE_stats(local_resource_view_node_count,
+             "Number of nodes tracked locally by the reporting raylet.",
+             (),
+             (),
+             ray::stats::GAUGE);
 
 /// Local Object Manager
 DEFINE_stats(

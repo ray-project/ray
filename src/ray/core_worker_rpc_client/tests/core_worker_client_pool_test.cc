@@ -100,9 +100,7 @@ class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
 
   bool IsSubscribedToNodeChange() const override { return is_subscribed_to_node_change_; }
 
-  MOCK_METHOD(const rpc::GcsNodeInfo *, Get, (const NodeID &, bool), (const, override));
-
-  MOCK_METHOD(const rpc::GcsNodeAddressAndLiveness *,
+  MOCK_METHOD(std::optional<rpc::GcsNodeAddressAndLiveness>,
               GetNodeAddressAndLiveness,
               (const NodeID &, bool),
               (const, override));
@@ -127,7 +125,9 @@ class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
 
 class MockGcsClient : public gcs::GcsClient {
  public:
-  explicit MockGcsClient(bool is_subscribed_to_node_change) {
+  explicit MockGcsClient(bool is_subscribed_to_node_change,
+                         gcs::GcsClientOptions &options)
+      : GcsClient(options) {
     this->node_accessor_ =
         std::make_unique<MockGcsClientNodeAccessor>(is_subscribed_to_node_change);
   }
@@ -141,7 +141,12 @@ class DefaultUnavailableTimeoutCallbackTest : public ::testing::TestWithParam<bo
  public:
   DefaultUnavailableTimeoutCallbackTest()
       : is_subscribed_to_node_change_(GetParam()),
-        gcs_client_(is_subscribed_to_node_change_),
+        options("127.0.0.1",
+                6379,
+                ClusterID::Nil(),
+                /*allow_cluster_id_nil=*/true,
+                /*fetch_cluster_id_if_nil=*/false),
+        gcs_client_(is_subscribed_to_node_change_, options),
         raylet_client_pool_(std::make_unique<RayletClientPool>([](const rpc::Address &) {
           return std::make_shared<MockRayletClientInterface>();
         })),
@@ -156,6 +161,7 @@ class DefaultUnavailableTimeoutCallbackTest : public ::testing::TestWithParam<bo
             })) {}
 
   bool is_subscribed_to_node_change_;
+  gcs::GcsClientOptions options;
   MockGcsClient gcs_client_;
   std::unique_ptr<RayletClientPool> raylet_client_pool_;
   std::unique_ptr<CoreWorkerClientPool> client_pool_;
@@ -204,16 +210,16 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
   if (is_subscribed_to_node_change_) {
     EXPECT_CALL(mock_node_accessor,
                 GetNodeAddressAndLiveness(worker_1_node_id, /*filter_dead_nodes=*/false))
-        .WillOnce(Return(nullptr))
-        .WillOnce(Return(&node_info_alive))
-        .WillOnce(Return(&node_info_dead));
+        .WillOnce(Return(std::nullopt))
+        .WillOnce(Return(node_info_alive))
+        .WillOnce(Return(node_info_dead));
     EXPECT_CALL(
         mock_node_accessor,
         AsyncGetAllNodeAddressAndLiveness(_, _, std::vector<NodeID>{worker_1_node_id}))
         .WillOnce(invoke_with_node_info_vector({node_info_alive}));
     EXPECT_CALL(mock_node_accessor,
                 GetNodeAddressAndLiveness(worker_2_node_id, /*filter_dead_nodes=*/false))
-        .WillOnce(Return(nullptr));
+        .WillOnce(Return(std::nullopt));
     EXPECT_CALL(
         mock_node_accessor,
         AsyncGetAllNodeAddressAndLiveness(_, _, std::vector<NodeID>{worker_2_node_id}))
@@ -271,7 +277,7 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeath) {
     EXPECT_CALL(gcs_client_.MockNodeAccessor(),
                 GetNodeAddressAndLiveness(_, /*filter_dead_nodes=*/false))
         .Times(2)
-        .WillRepeatedly(Return(&node_info_alive));
+        .WillRepeatedly(Return(node_info_alive));
   } else {
     EXPECT_CALL(gcs_client_.MockNodeAccessor(),
                 AsyncGetAllNodeAddressAndLiveness(_, _, _))

@@ -2,11 +2,12 @@ import sys
 from unittest import mock
 
 import pytest
-from ray_release.test import Test
 
 from ci.ray_ci.bisect.bisector import Bisector
 from ci.ray_ci.bisect.macos_validator import MacOSValidator
 from ci.ray_ci.bisect.validator import Validator
+
+from ray_release.test import Test
 
 
 class MockValidator(Validator):

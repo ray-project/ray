@@ -40,6 +40,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
+from ray.data._internal.execution.ranker import DefaultRanker
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
     StreamingExecutor,
@@ -49,7 +50,6 @@ from ray.data._internal.execution.streaming_executor import (
 from ray.data._internal.execution.streaming_executor_state import (
     OpBufferQueue,
     OpState,
-    _rank_operators,
     build_streaming_topology,
     get_eligible_operators,
     process_completed_tasks,
@@ -258,7 +258,7 @@ def test_update_operator_states_drains_upstream(ray_start_regular_shared):
 
     # Manually mark o2 as execution finished (simulating limit operator behavior)
     o2.mark_execution_finished()
-    assert o2.execution_finished(), "o2 should be execution finished"
+    assert o2.has_execution_finished(), "o2 should be execution finished"
 
     # Call update_operator_states - this should drain o1's output queue
     update_operator_states(topo)
@@ -295,9 +295,6 @@ def test_get_eligible_operators_to_run(ray_start_regular_shared):
     memory_usage = {o1: 0, o2: 0, o3: 0}
     resource_manager.get_op_usage = MagicMock(
         side_effect=lambda op: ExecutionResources(0, 0, memory_usage[op])
-    )
-    resource_manager.op_resource_allocator.can_submit_new_task = MagicMock(
-        return_value=True
     )
 
     def _get_eligible_ops_to_run(ensure_liveness: bool):
@@ -383,9 +380,10 @@ def test_rank_operators(ray_start_regular_shared):
 
     resource_manager.get_op_usage.side_effect = _get_op_usage_mocked
 
-    ranks = _rank_operators([o1, o2, o3, o4], resource_manager)
+    ranker = DefaultRanker()
+    ranks = ranker.rank_operators([o1, o2, o3, o4], {}, resource_manager)
 
-    assert [(True, 1024), (True, 2048), (True, 4096), (False, 8092)] == ranks
+    assert [(1, 1024), (1, 2048), (1, 4096), (0, 8092)] == ranks
 
 
 def test_select_ops_to_run(ray_start_regular_shared):
@@ -431,7 +429,11 @@ def test_select_ops_to_run(ray_start_regular_shared):
         topo = build_streaming_topology(o4, opts)
 
         selected = select_operator_to_run(
-            topo, resource_manager, [], ensure_liveness=ensure_liveness
+            topo,
+            resource_manager,
+            [],
+            ensure_liveness=ensure_liveness,
+            ranker=DefaultRanker(),
         )
 
         assert selected is o4
@@ -442,7 +444,11 @@ def test_select_ops_to_run(ray_start_regular_shared):
         topo = build_streaming_topology(o3, opts)
 
         selected = select_operator_to_run(
-            topo, resource_manager, [], ensure_liveness=ensure_liveness
+            topo,
+            resource_manager,
+            [],
+            ensure_liveness=ensure_liveness,
+            ranker=DefaultRanker(),
         )
 
         assert selected is o1

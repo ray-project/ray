@@ -25,7 +25,6 @@ import ray
 import ray._private.prometheus_exporter as prometheus_exporter
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
-from ray._common.network_utils import parse_address
 from ray._common.utils import (
     get_or_create_event_loop,
     get_user_temp_dir,
@@ -424,7 +423,7 @@ class ReporterAgent(
         self._gcs_client = dashboard_agent.gcs_client
         self._ip = dashboard_agent.ip
         self._log_dir = dashboard_agent.log_dir
-        self._is_head_node = self._ip == parse_address(dashboard_agent.gcs_address)[0]
+        self._is_head_node = dashboard_agent.is_head
         self._hostname = socket.gethostname()
         # (pid, created_time) -> psutil.Process
         self._workers = {}
@@ -1312,8 +1311,8 @@ class ReporterAgent(
 
         for stat in worker_stats:
             cmdline = stat.get("cmdline")
-            # All ray processes start with ray::
-            if cmdline and len(cmdline) > 0 and cmdline[0].startswith("ray::"):
+            # collect both worker and driver stats
+            if cmdline:
                 proc_name = cmdline[0]
                 proc_name_to_stats[proc_name].append(stat)
 
@@ -1323,9 +1322,6 @@ class ReporterAgent(
                     or stat.get("gpu_utilization", 0) > 0
                 ):
                     gpu_worker_proc_names.add(proc_name)
-            # We will lose worker stats that don't follow the ray worker proc
-            # naming convention. Theoretically, there should be no data loss here
-            # because all worker processes are renamed to ray::.
 
         records = []
 

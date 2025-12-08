@@ -10,9 +10,11 @@ import ray
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.map_operator import Project
+from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.logical.rules.projection_pushdown import (
     ProjectionPushdown,
 )
+from ray.data._internal.util import rows_same
 from ray.data.context import DataContext
 from ray.data.expressions import DataType, StarExpr, col, star, udf
 
@@ -267,7 +269,7 @@ class TestProjectionFusion:
                 f"Expected {expected_content} to be subset of {actual_levels[i]}"
             )
 
-    def test_pairwise_fusion_behavior(self):
+    def test_pairwise_fusion_behavior(self, ray_start_regular_shared):
         """Test to understand how pairwise fusion works in practice."""
         input_data = [{"id": i} for i in range(10)]
 
@@ -312,7 +314,7 @@ class TestProjectionFusion:
         assert result3 == {"id": 0, "col1": 1, "col2": 0, "col3": -1}
         assert result4 == {"id": 0, "col1": 1, "col2": 0, "col3": -1, "col4": 5}
 
-    def test_optimal_fusion_with_single_chain(self):
+    def test_optimal_fusion_with_single_chain(self, ray_start_regular_shared):
         """Test fusion when all operations are added in a single chain (ideal case)."""
         input_data = [{"id": i} for i in range(10)]
 
@@ -348,22 +350,20 @@ class TestProjectionFusion:
         for col_name, expr in expressions.items():
             ds_with_column = ds_with_column.with_column(col_name, expr)
 
-        # Convert both to pandas for reliable comparison (avoids take() ordering issues)
-        result_optimal_df = (
-            ds_optimal.to_pandas().sort_values("id").reset_index(drop=True)
-        )
-        result_with_column_df = (
-            ds_with_column.to_pandas().sort_values("id").reset_index(drop=True)
-        )
+        # Convert both to pandas for reliable comparison
+        result_optimal_df = ds_optimal.to_pandas()
+        result_with_column_df = ds_with_column.to_pandas()
 
-        # Compare using pandas testing
-        pd.testing.assert_frame_equal(
-            result_optimal_df.sort_index(axis=1),
-            result_with_column_df.sort_index(axis=1),
-            check_dtype=False,
-        )
+        # Sort columns before comparison
+        result_optimal_df = result_optimal_df[sorted(result_optimal_df.columns)]
+        result_with_column_df = result_with_column_df[
+            sorted(result_with_column_df.columns)
+        ]
 
-    def test_basic_fusion_works(self):
+        # Compare using rows_same (deterministic, ignores order)
+        assert rows_same(result_optimal_df, result_with_column_df)
+
+    def test_basic_fusion_works(self, ray_start_regular_shared):
         """Test that basic fusion of two independent operations works."""
         input_data = [{"id": i} for i in range(5)]
 
@@ -389,57 +389,26 @@ class TestProjectionFusion:
             optimized_count == 1
         ), f"Two independent operations should fuse to 1 operator, got {optimized_count}"
 
-        # Verify correctness using pandas comparison
+        # Verify correctness using rows_same
         from ray.data.dataset import Dataset
 
         optimized_ds = Dataset(ds._plan, optimized_plan)
+        result_df = optimized_ds.to_pandas()
 
-        try:
-            result_df = optimized_ds.to_pandas()
-            print(f"Result: {result_df}")
+        expected_df = pd.DataFrame(
+            {
+                "id": [0, 1, 2, 3, 4],
+                "doubled": [0, 2, 4, 6, 8],
+                "plus_one": [1, 2, 3, 4, 5],
+            }
+        )
 
-            expected_df = pd.DataFrame(
-                {
-                    "id": [0, 1, 2, 3, 4],
-                    "doubled": [0, 2, 4, 6, 8],
-                    "plus_one": [1, 2, 3, 4, 5],
-                }
-            )
-            print(f"Expected: {expected_df}")
+        # Sort columns before comparison
+        result_df = result_df[sorted(result_df.columns)]
+        expected_df = expected_df[sorted(expected_df.columns)]
+        assert rows_same(result_df, expected_df)
 
-            # Sort columns for comparison
-            result_sorted = result_df.reindex(sorted(result_df.columns), axis=1)
-            expected_sorted = expected_df.reindex(sorted(expected_df.columns), axis=1)
-
-            pd.testing.assert_frame_equal(
-                result_sorted,
-                expected_sorted,
-                check_dtype=False,
-                check_index_type=False,
-            )
-
-        except Exception as e:
-            print(f"Error in basic fusion test: {e}")
-            # Fallback verification
-            result_list = optimized_ds.take_all()
-            print(f"Result as list: {result_list}")
-
-            expected_list = [
-                {"id": 0, "doubled": 0, "plus_one": 1},
-                {"id": 1, "doubled": 2, "plus_one": 2},
-                {"id": 2, "doubled": 4, "plus_one": 3},
-                {"id": 3, "doubled": 6, "plus_one": 4},
-                {"id": 4, "doubled": 8, "plus_one": 5},
-            ]
-
-            assert len(result_list) == len(expected_list)
-            for actual, expected in zip(result_list, expected_list):
-                for key, expected_val in expected.items():
-                    assert (
-                        actual[key] == expected_val
-                    ), f"Mismatch for key {key}: expected {expected_val}, got {actual[key]}"
-
-    def test_dependency_prevents_fusion(self):
+    def test_dependency_prevents_fusion(self, ray_start_regular_shared):
         """Test that dependencies are handled in single operator with OrderedDict."""
         input_data = [{"id": i} for i in range(5)]
 
@@ -467,7 +436,7 @@ class TestProjectionFusion:
             optimized_count == 1
         ), f"All operations should fuse into 1 operator, got {optimized_count}"
 
-        # Verify correctness using pandas comparison
+        # Verify correctness using rows_same
         from ray.data.dataset import Dataset
 
         optimized_ds = Dataset(ds._plan, optimized_plan)
@@ -481,13 +450,12 @@ class TestProjectionFusion:
             }
         )
 
-        pd.testing.assert_frame_equal(
-            result_df.sort_index(axis=1),
-            expected_df.sort_index(axis=1),
-            check_dtype=False,
-        )
+        # Sort columns before comparison
+        result_df = result_df[sorted(result_df.columns)]
+        expected_df = expected_df[sorted(expected_df.columns)]
+        assert rows_same(result_df, expected_df)
 
-    def test_mixed_udf_regular_end_to_end(self):
+    def test_mixed_udf_regular_end_to_end(self, ray_start_regular_shared):
         """Test the exact failing scenario from the original issue."""
         input_data = [{"id": i} for i in range(5)]
 
@@ -531,11 +499,10 @@ class TestProjectionFusion:
             }
         )
 
-        pd.testing.assert_frame_equal(
-            result_df.sort_index(axis=1),
-            expected_df.sort_index(axis=1),
-            check_dtype=False,
-        )
+        # Sort columns before comparison
+        result_df = result_df[sorted(result_df.columns)]
+        expected_df = expected_df[sorted(expected_df.columns)]
+        assert rows_same(result_df, expected_df)
 
         # Verify that we have 1 operator (changed from multiple)
         optimized_count = self._count_project_operators(optimized_plan)
@@ -543,7 +510,7 @@ class TestProjectionFusion:
             optimized_count == 1
         ), f"Expected 1 operator with all expressions fused, got {optimized_count}"
 
-    def test_optimal_fusion_comparison(self):
+    def test_optimal_fusion_comparison(self, ray_start_regular_shared):
         """Compare optimized with_column approach against manual map_batches."""
         input_data = [{"id": i} for i in range(10)]
 
@@ -580,17 +547,16 @@ class TestProjectionFusion:
             apply_all_expressions, batch_format="pyarrow"
         )
 
-        # Compare results using pandas
+        # Compare results using rows_same
         result_optimized = optimized_ds.to_pandas()
         result_optimal = ds_optimal.to_pandas()
 
-        pd.testing.assert_frame_equal(
-            result_optimized.sort_index(axis=1),
-            result_optimal.sort_index(axis=1),
-            check_dtype=False,
-        )
+        # Sort columns before comparison
+        result_optimized = result_optimized[sorted(result_optimized.columns)]
+        result_optimal = result_optimal[sorted(result_optimal.columns)]
+        assert rows_same(result_optimized, result_optimal)
 
-    def test_chained_udf_dependencies(self):
+    def test_chained_udf_dependencies(self, ray_start_regular_shared):
         """Test multiple non-vectorized UDFs in a dependency chain."""
         input_data = [{"id": i} for i in range(5)]
 
@@ -626,13 +592,12 @@ class TestProjectionFusion:
             }
         )
 
-        pd.testing.assert_frame_equal(
-            result_df.sort_index(axis=1),
-            expected_df.sort_index(axis=1),
-            check_dtype=False,
-        )
+        # Sort columns before comparison
+        result_df = result_df[sorted(result_df.columns)]
+        expected_df = expected_df[sorted(expected_df.columns)]
+        assert rows_same(result_df, expected_df)
 
-    def test_performance_impact_of_udf_chains(self):
+    def test_performance_impact_of_udf_chains(self, ray_start_regular_shared):
         """Test performance characteristics of UDF dependency chains vs independent UDFs."""
         input_data = [{"id": i} for i in range(100)]
 
@@ -730,7 +695,7 @@ class TestProjectionFusion:
                 ],
                 {"x": 1, "b": 2, "d": 4},
             ),
-            # Column swap
+            # Column swap (no actual changes)
             ([("rename", {"a": "b", "b": "a"}), ("select", ["a"])], {"a": 2}),
             ([("rename", {"a": "b", "b": "a"}), ("select", ["b"])], {"b": 1}),
             # Multiple same operations
@@ -758,7 +723,9 @@ class TestProjectionFusion:
             ),
         ],
     )
-    def test_projection_operations_comprehensive(self, operations, expected):
+    def test_projection_operations_comprehensive(
+        self, ray_start_regular_shared, operations, expected
+    ):
         """Comprehensive test for projection operations combinations."""
         from ray.data.expressions import col, lit
 
@@ -777,10 +744,13 @@ class TestProjectionFusion:
                 # Special case for expressions referencing columns
                 ds = ds.with_column(op[1], col(op[2]) * op[3])
 
-        # Verify result
-        result = ds.take_all()
-        assert len(result) == 1
-        assert result[0] == expected
+        # Verify result using rows_same
+        result_df = ds.to_pandas()
+        expected_df = pd.DataFrame([expected])
+        # Ensure columns are in the same order for comparison
+        result_df = result_df[sorted(result_df.columns)]
+        expected_df = expected_df[sorted(expected_df.columns)]
+        assert rows_same(result_df, expected_df)
 
     @pytest.mark.parametrize(
         "operations,expected",
@@ -862,7 +832,9 @@ class TestProjectionFusion:
             ),
         ],
     )
-    def test_projection_fusion_with_count_and_filter(self, operations, expected):
+    def test_projection_fusion_with_count_and_filter(
+        self, ray_start_regular_shared, operations, expected
+    ):
         """Test projection fusion with count operations including filters."""
         from ray.data.expressions import lit
 
@@ -994,7 +966,11 @@ class TestProjectionFusion:
         ],
     )
     def test_projection_operations_invalid_order(
-        self, invalid_operations, error_type, error_message_contains
+        self,
+        ray_start_regular_shared,
+        invalid_operations,
+        error_type,
+        error_message_contains,
     ):
         """Test that operations fail gracefully when referencing non-existent columns."""
         import ray
@@ -1306,7 +1282,7 @@ class TestProjectionFusion:
         ],
     )
     def test_projection_pushdown_into_parquet_read(
-        self, tmp_path, operations, expected_output
+        self, ray_start_regular_shared, tmp_path, operations, expected_output
     ):
         """Test that projection operations fuse and push down into parquet reads.
 
@@ -1338,8 +1314,51 @@ class TestProjectionFusion:
                 elif operator == "multiply":
                     ds = ds.with_column(col_name, col(col1) * col(col2))
 
-        result_df = ds.take_all()
-        assert result_df == expected_output
+        result_df = ds.to_pandas()
+        expected_df = pd.DataFrame(expected_output)
+        # Ensure columns are in the same order for comparison
+        result_df = result_df[sorted(result_df.columns)]
+        expected_df = expected_df[sorted(expected_df.columns)]
+        assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.parametrize("flavor", ["project_before", "project_after"])
+def test_projection_pushdown_merge_rename_x(ray_start_regular_shared, flavor):
+    """
+    Test that valid select and renaming merges correctly.
+    """
+    path = "example://iris.parquet"
+    ds = ray.data.read_parquet(path)
+    ds = ds.map_batches(lambda d: d)
+
+    if flavor == "project_before":
+        ds = ds.select_columns(["sepal.length", "petal.width"])
+
+    # First projection renames 'sepal.length' to 'length'
+    ds = ds.rename_columns({"sepal.length": "length"})
+
+    # Second projection renames 'petal.width' to 'width'
+    ds = ds.rename_columns({"petal.width": "width"})
+
+    if flavor == "project_after":
+        ds = ds.select_columns(["length", "width"])
+
+    logical_plan = ds._plan._logical_plan
+    op = logical_plan.dag
+    assert isinstance(op, Project), op.name
+
+    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
+    assert isinstance(optimized_logical_plan.dag, Project)
+
+    select_op = optimized_logical_plan.dag
+
+    # Check that both "sepal.length" and "petal.width" are present in the columns,
+    # regardless of their order.
+    assert select_op.exprs == [
+        # TODO fix (renaming doesn't remove prev columns)
+        col("sepal.length").alias("length"),
+        col("petal.width").alias("width"),
+    ]
 
 
 if __name__ == "__main__":
