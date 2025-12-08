@@ -26,7 +26,7 @@ ray.init(
 @ray.remote(num_gpus=1, enable_tensor_transport=True)
 class GPUActor:
     def send(self, size_in_bytes, device):
-        return torch.ones((size_in_bytes // 4), dtype=torch.float32, device=device)
+        return torch.ones(size_in_bytes, dtype=torch.int8, device=device)
 
     def recv(self, rdt_tensor: torch.Tensor):
         return rdt_tensor[0].item()
@@ -40,23 +40,23 @@ class GPUActor:
         )
 
     def send_with_torch(self, size_in_bytes, device, other_rank):
-        buf = torch.ones((size_in_bytes // 4), dtype=torch.float32, device=device)
+        buf = torch.ones(size_in_bytes, dtype=torch.int8, device=device)
         torch.distributed.send(buf, other_rank)
 
     def recv_with_torch(self, size_in_bytes, device, other_rank):
-        buf = torch.empty((size_in_bytes // 4), dtype=torch.float32, device=device)
+        buf = torch.empty(size_in_bytes, dtype=torch.int8, device=device)
         torch.distributed.recv(buf, other_rank)
         return buf[0].item()
 
     def send_many_with_torch(self, size_in_bytes, device, other_rank, num_transfers):
         for _ in range(num_transfers):
-            buf = torch.ones((size_in_bytes // 4), dtype=torch.float32, device=device)
+            buf = torch.ones(size_in_bytes, dtype=torch.int8, device=device)
             torch.distributed.send(buf, other_rank)
 
     def recv_many_with_torch(self, size_in_bytes, device, other_rank, num_transfers):
         results = []
         for _ in range(num_transfers):
-            buf = torch.empty((size_in_bytes // 4), dtype=torch.float32, device=device)
+            buf = torch.empty(size_in_bytes, dtype=torch.int8, device=device)
             torch.distributed.recv(buf, other_rank)
             results.append(buf[0].item())
         return results
