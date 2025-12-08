@@ -1,5 +1,7 @@
 # 00. Runtime setup 
-import os, sys, subprocess
+import os
+import sys
+import subprocess
 
 # Non-secret env var 
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
@@ -14,8 +16,14 @@ subprocess.check_call([
 ])
 
 # 01. Imports
-import os, io, math, uuid, shutil, random
-import requests, sys
+import os
+import io
+import math
+import uuid
+import shutil
+import random
+import requests
+import sys
 from pathlib import Path
 from datetime import datetime, timedelta
 from datasets import load_dataset   

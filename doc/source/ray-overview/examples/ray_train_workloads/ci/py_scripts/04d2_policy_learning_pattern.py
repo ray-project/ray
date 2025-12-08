@@ -1,5 +1,7 @@
 # 00. Runtime setup 
-import os, sys, subprocess
+import os
+import sys
+import subprocess
 
 # Non-secret env var 
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
@@ -16,7 +18,9 @@ subprocess.check_call([
 # 01. Imports
 
 # Standard Python packages for math, plotting, and data handling
-import os, shutil, glob
+import os
+import shutil
+import glob
 import json
 import uuid
 import numpy as np

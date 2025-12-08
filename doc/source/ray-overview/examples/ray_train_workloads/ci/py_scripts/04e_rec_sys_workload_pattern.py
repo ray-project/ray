@@ -1,5 +1,7 @@
 # 00. Runtime setup
-import os, sys, subprocess
+import os
+import sys
+import subprocess
 
 # Non-secret env var 
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"

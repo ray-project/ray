@@ -1,5 +1,7 @@
 # 00. Runtime setup
-import os, sys, subprocess
+import os
+import sys
+import subprocess
 
 # Non-secret env var (safe to set here)
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
@@ -18,7 +20,11 @@ subprocess.check_call([
 # 01. Imports
 
 # Standard libraries
-import os, io, json, shutil, tempfile
+import os
+import io
+import json
+import shutil
+import tempfile
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
