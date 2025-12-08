@@ -39,6 +39,19 @@ def _pa_is_in(left: Any, right: Any) -> Any:
     return pc.is_in(left, right)
 
 
+def _pandas_coalesce(exprs: List[Union[pd.Series, Any]]) -> pd.Series:
+    """Coalesce operation for pandas Series.
+
+    Returns the first non-null value from multiple Series.
+    """
+    if len(exprs) < 2:
+        return exprs[0] if exprs else pd.Series([])
+    result = exprs[0]
+    for expr in exprs[1:]:
+        result = result.combine_first(expr)
+    return result
+
+
 _PANDAS_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.ADD: operator.add,
     Operation.SUB: operator.sub,
@@ -58,6 +71,8 @@ _PANDAS_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.IS_NOT_NULL: pd.notna,
     Operation.IN: lambda left, right: left.isin(right),
     Operation.NOT_IN: lambda left, right: ~left.isin(right),
+    Operation.FILL_NULL: lambda left, right: left.fillna(right),
+    Operation.COALESCE: _pandas_coalesce,
 }
 
 
@@ -142,6 +157,8 @@ _ARROW_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.IS_NOT_NULL: pc.is_valid,
     Operation.IN: _pa_is_in,
     Operation.NOT_IN: lambda left, right: pc.invert(_pa_is_in(left, right)),
+    Operation.FILL_NULL: pc.fill_null,
+    Operation.COALESCE: lambda exprs: pc.coalesce(exprs),
 }
 
 
@@ -603,10 +620,28 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         Returns:
             The result of the binary operation as a BlockColumn.
         """
+        if expr.op == Operation.COALESCE:
+            # Handle coalesce by collecting all nested COALESCE expressions
+            coalesce_exprs = self._collect_coalesce_exprs(expr)
+            return self.ops[Operation.COALESCE](coalesce_exprs)
+
         left_result = self.visit(expr.left)
         right_result = self.visit(expr.right)
 
         return self.ops[expr.op](left_result, right_result)
+
+    def _collect_coalesce_exprs(self, expr: BinaryExpr) -> List[Union[BlockColumn, ScalarType]]:
+        """Collect all expressions in a nested COALESCE operation."""
+        exprs = []
+        current = expr
+        while isinstance(current, BinaryExpr) and current.op == Operation.COALESCE:
+            exprs.append(self.visit(current.left))
+            if isinstance(current.right, BinaryExpr) and current.right.op == Operation.COALESCE:
+                current = current.right
+            else:
+                exprs.append(self.visit(current.right))
+                break
+        return exprs
 
     def visit_unary(self, expr: UnaryExpr) -> Union[BlockColumn, ScalarType]:
         """Visit a unary expression and return the result of the operation.
