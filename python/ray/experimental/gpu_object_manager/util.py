@@ -70,3 +70,22 @@ def device_match_transport(device: "torch.device", tensor_transport: str) -> boo
         raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
 
     return device.type in transport_devices[tensor_transport]
+
+
+def validate_tensor_transport(tensor_transport: str):
+    if (
+        tensor_transport != "OBJECT_STORE"
+        and tensor_transport not in transport_manager_classes
+    ):
+        raise ValueError(f"Invalid tensor transport: {tensor_transport}")
+
+
+def validate_one_sided(tensor_transport: str, ray_usage_func: str):
+    if (
+        tensor_transport != "OBJECT_STORE"
+        and not transport_manager_classes[tensor_transport].is_one_sided()
+    ):
+        raise ValueError(
+            f"Trying to use two-sided tensor transport: {tensor_transport} for {ray_usage_func}. "
+            "This is only supported for one-sided transports such as NIXL or the OBJECT_STORE."
+        )

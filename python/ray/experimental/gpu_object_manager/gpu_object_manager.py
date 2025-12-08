@@ -362,11 +362,9 @@ class GPUObjectManager:
         if tensor_transport is None:
             tensor_transport = tensor_transport_backend
 
-        if tensor_transport not in ["OBJECT_STORE", "NIXL"]:
-            raise ValueError(
-                "Currently ray.get() only supports OBJECT_STORE and NIXL tensor transport, "
-                f"got {tensor_transport}, please specify the correct tensor transport in ray.get()."
-            )
+        from ray.experimental.gpu_object_manager.util import validate_one_sided
+
+        validate_one_sided(tensor_transport, "ray.get")
 
         if (
             tensor_transport != "OBJECT_STORE"
