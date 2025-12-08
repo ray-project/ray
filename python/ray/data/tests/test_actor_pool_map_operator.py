@@ -981,20 +981,13 @@ def test_actor_init_failure_retry(
 # These tests verify that CoreActorPoolAdapter behaves identically to _ActorPool
 
 
-class TestCoreActorPoolAdapter(unittest.TestCase):
-    """Tests for CoreActorPoolAdapter - parity tests with _ActorPool."""
-
-    def setup_class(self):
-        self._last_created_actor_and_ready_ref: Optional[
-            Tuple[ActorHandle, ObjectRef[Any]]
-        ] = None
+# Helper class for adapter tests - shared state
+class _AdapterTestHelper:
+    def __init__(self):
+        self._last_created_actor_and_ready_ref = None
         self._actor_node_id = "node1"
-        ray.init(num_cpus=4)
 
-    def teardown_class(self):
-        ray.shutdown()
-
-    def _create_actor_fn(
+    def create_actor_fn(
         self,
         labels: Dict[str, Any],
         logical_actor_id: str = "Actor1",
@@ -1004,7 +997,7 @@ class TestCoreActorPoolAdapter(unittest.TestCase):
         self._last_created_actor_and_ready_ref = actor, ready_ref
         return actor, ready_ref
 
-    def _create_adapter_pool(
+    def create_adapter_pool(
         self,
         min_size=1,
         max_size=4,
@@ -1021,12 +1014,12 @@ class TestCoreActorPoolAdapter(unittest.TestCase):
             initial_size=initial_size,
             max_actor_concurrency=1,
             max_tasks_in_flight_per_actor=max_tasks_in_flight,
-            create_actor_fn=self._create_actor_fn,
+            create_actor_fn=self.create_actor_fn,
             per_actor_resource_usage=ExecutionResources(cpu=1),
         )
         return pool
 
-    def _add_pending_actor(
+    def add_pending_actor(
         self, pool, node_id="node1"
     ) -> Tuple[ActorHandle, ObjectRef[Any]]:
         self._actor_node_id = node_id
@@ -1042,165 +1035,185 @@ class TestCoreActorPoolAdapter(unittest.TestCase):
 
         return actor, ready_ref
 
-    def _wait_for_actor_ready(self, pool, ready_ref):
+    def wait_for_actor_ready(self, pool, ready_ref):
         ray.get(ready_ref)
         pool.pending_to_running(ready_ref)
 
-    def _add_ready_actor(self, pool, node_id="node1") -> ActorHandle:
-        actor, ready_ref = self._add_pending_actor(pool, node_id)
-        self._wait_for_actor_ready(pool, ready_ref)
+    def add_ready_actor(self, pool, node_id="node1") -> ActorHandle:
+        actor, ready_ref = self.add_pending_actor(pool, node_id)
+        self.wait_for_actor_ready(pool, ready_ref)
         return actor
 
-    def test_adapter_basic_config(self):
-        """Test basic pool configuration."""
-        pool = self._create_adapter_pool(
-            min_size=1,
-            max_size=4,
-            max_tasks_in_flight=4,
-        )
-        assert pool.min_size() == 1
-        assert pool.max_size() == 4
-        assert pool.current_size() == 0
-        assert pool.max_tasks_in_flight_per_actor() == 4
 
-    def test_adapter_add_pending(self):
-        """Test pending actor tracking."""
-        pool = self._create_adapter_pool()
-        _, ready_ref = self._add_pending_actor(pool)
+def test_adapter_basic_config(ray_start_regular_shared):
+    """Test basic pool configuration."""
+    helper = _AdapterTestHelper()
+    pool = helper.create_adapter_pool(
+        min_size=1,
+        max_size=4,
+        max_tasks_in_flight=4,
+    )
+    assert pool.min_size() == 1
+    assert pool.max_size() == 4
+    assert pool.current_size() == 0
+    assert pool.max_tasks_in_flight_per_actor() == 4
 
-        assert pool.current_size() == 1
-        assert pool.num_pending_actors() == 1
-        assert pool.num_running_actors() == 0
-        assert pool.num_active_actors() == 0
-        assert pool.num_idle_actors() == 0
-        assert pool.num_free_task_slots() == 0
-        assert pool.get_pending_actor_refs() == [ready_ref]
 
-    def test_adapter_pending_to_running(self):
-        """Test actor transition from pending to running."""
-        pool = self._create_adapter_pool()
-        actor = self._add_ready_actor(pool)
+def test_adapter_add_pending(ray_start_regular_shared):
+    """Test pending actor tracking."""
+    helper = _AdapterTestHelper()
+    pool = helper.create_adapter_pool()
+    _, ready_ref = helper.add_pending_actor(pool)
 
-        assert pool.current_size() == 1
-        assert pool.num_pending_actors() == 0
-        assert pool.num_running_actors() == 1
-        assert pool.num_active_actors() == 0
-        assert pool.num_idle_actors() == 1
-        assert pool.num_free_task_slots() == 4
+    assert pool.current_size() == 1
+    assert pool.num_pending_actors() == 1
+    assert pool.num_running_actors() == 0
+    assert pool.num_active_actors() == 0
+    assert pool.num_idle_actors() == 0
+    assert pool.num_free_task_slots() == 0
+    assert pool.get_pending_actor_refs() == [ready_ref]
 
-    def test_adapter_task_tracking(self):
-        """Test task submission and completion tracking."""
-        pool = self._create_adapter_pool(max_tasks_in_flight=4)
-        actor = self._add_ready_actor(pool)
 
-        # Submit task
-        pool.on_task_submitted(actor)
-        assert pool.num_tasks_in_flight() == 1
-        assert pool.num_active_actors() == 1
-        assert pool.num_idle_actors() == 0
-        assert pool.num_free_task_slots() == 3
+def test_adapter_pending_to_running(ray_start_regular_shared):
+    """Test actor transition from pending to running."""
+    helper = _AdapterTestHelper()
+    pool = helper.create_adapter_pool()
+    actor = helper.add_ready_actor(pool)
 
-        # Submit another task
-        pool.on_task_submitted(actor)
-        assert pool.num_tasks_in_flight() == 2
-        assert pool.num_free_task_slots() == 2
+    assert pool.current_size() == 1
+    assert pool.num_pending_actors() == 0
+    assert pool.num_running_actors() == 1
+    assert pool.num_active_actors() == 0
+    assert pool.num_idle_actors() == 1
+    assert pool.num_free_task_slots() == 4
 
-        # Complete task
-        pool.on_task_completed(actor)
-        assert pool.num_tasks_in_flight() == 1
-        assert pool.num_free_task_slots() == 3
 
-        # Complete last task
-        pool.on_task_completed(actor)
-        assert pool.num_tasks_in_flight() == 0
-        assert pool.num_active_actors() == 0
-        assert pool.num_idle_actors() == 1
-        assert pool.num_free_task_slots() == 4
+def test_adapter_task_tracking(ray_start_regular_shared):
+    """Test task submission and completion tracking."""
+    helper = _AdapterTestHelper()
+    pool = helper.create_adapter_pool(max_tasks_in_flight=4)
+    actor = helper.add_ready_actor(pool)
 
-    def test_adapter_restarting_state(self):
-        """Test actor restarting state tracking."""
-        pool = self._create_adapter_pool()
-        actor = self._add_ready_actor(pool)
+    # Submit task
+    pool.on_task_submitted(actor)
+    assert pool.num_tasks_in_flight() == 1
+    assert pool.num_active_actors() == 1
+    assert pool.num_idle_actors() == 0
+    assert pool.num_free_task_slots() == 3
 
-        # Mark as restarting
-        pool.update_running_actor_state(actor, True)
-        assert pool.num_restarting_actors() == 1
-        assert pool.num_alive_actors() == 0
-        assert pool.get_actor_info() == _ActorPoolInfo(
-            running=0, pending=0, restarting=1
-        )
+    # Submit another task
+    pool.on_task_submitted(actor)
+    assert pool.num_tasks_in_flight() == 2
+    assert pool.num_free_task_slots() == 2
 
-        # Mark as alive
-        pool.update_running_actor_state(actor, False)
-        assert pool.num_restarting_actors() == 0
-        assert pool.num_alive_actors() == 1
-        assert pool.get_actor_info() == _ActorPoolInfo(
-            running=1, pending=0, restarting=0
-        )
+    # Complete task
+    pool.on_task_completed(actor)
+    assert pool.num_tasks_in_flight() == 1
+    assert pool.num_free_task_slots() == 3
 
-    def test_adapter_scale_up(self):
-        """Test scaling up."""
-        pool = self._create_adapter_pool()
+    # Complete last task
+    pool.on_task_completed(actor)
+    assert pool.num_tasks_in_flight() == 0
+    assert pool.num_active_actors() == 0
+    assert pool.num_idle_actors() == 1
+    assert pool.num_free_task_slots() == 4
 
-        num_scaled = pool.scale(ActorPoolScalingRequest(delta=2, reason="test"))
-        assert num_scaled == 2
-        assert pool.num_pending_actors() == 2
 
-    def test_adapter_scale_down(self):
-        """Test scaling down removes idle actors."""
-        pool = self._create_adapter_pool()
-        self._add_ready_actor(pool)
-        self._add_ready_actor(pool)
+def test_adapter_restarting_state(ray_start_regular_shared):
+    """Test actor restarting state tracking."""
+    helper = _AdapterTestHelper()
+    pool = helper.create_adapter_pool()
+    actor = helper.add_ready_actor(pool)
 
-        assert pool.num_running_actors() == 2
+    # Mark as restarting
+    pool.update_running_actor_state(actor, True)
+    assert pool.num_restarting_actors() == 1
+    assert pool.num_alive_actors() == 0
+    assert pool.get_actor_info() == _ActorPoolInfo(
+        running=0, pending=0, restarting=1
+    )
 
-        # Wait for debounce period
-        pool._last_upscaled_at = None  # Skip debounce for test
+    # Mark as alive
+    pool.update_running_actor_state(actor, False)
+    assert pool.num_restarting_actors() == 0
+    assert pool.num_alive_actors() == 1
+    assert pool.get_actor_info() == _ActorPoolInfo(
+        running=1, pending=0, restarting=0
+    )
 
-        num_scaled = pool.scale(
-            ActorPoolScalingRequest(delta=-1, reason="test", force=True)
-        )
-        assert num_scaled == -1
-        assert pool.num_running_actors() == 1
 
-    def test_adapter_shutdown(self):
-        """Test pool shutdown."""
-        pool = self._create_adapter_pool()
-        self._add_ready_actor(pool)
-        self._add_ready_actor(pool)
+def test_adapter_scale_up(ray_start_regular_shared):
+    """Test scaling up."""
+    helper = _AdapterTestHelper()
+    pool = helper.create_adapter_pool()
 
-        assert pool.num_running_actors() == 2
+    num_scaled = pool.scale(ActorPoolScalingRequest(delta=2, reason="test"))
+    assert num_scaled == 2
+    assert pool.num_pending_actors() == 2
 
-        pool.shutdown()
 
-        assert pool.num_running_actors() == 0
-        assert pool.num_pending_actors() == 0
-        assert pool.current_size() == 0
+def test_adapter_scale_down(ray_start_regular_shared):
+    """Test scaling down removes idle actors."""
+    helper = _AdapterTestHelper()
+    pool = helper.create_adapter_pool()
+    helper.add_ready_actor(pool)
+    helper.add_ready_actor(pool)
 
-    def test_adapter_running_actors_dict(self):
-        """Test running_actors() returns proper dict with state."""
-        pool = self._create_adapter_pool()
-        actor = self._add_ready_actor(pool)
+    assert pool.num_running_actors() == 2
 
-        running = pool.running_actors()
-        assert actor in running
-        assert running[actor].num_tasks_in_flight == 0
-        assert running[actor].actor_location == "node1"
-        assert running[actor].is_restarting is False
+    # Skip debounce for test
+    pool._last_upscaled_at = None
 
-    def test_adapter_pool_util(self):
-        """Test pool utilization calculation."""
-        pool = self._create_adapter_pool(max_tasks_in_flight=2)
-        actor = self._add_ready_actor(pool)
+    num_scaled = pool.scale(
+        ActorPoolScalingRequest(delta=-1, reason="test", force=True)
+    )
+    assert num_scaled == -1
+    assert pool.num_running_actors() == 1
 
-        # No tasks, 0% utilization
-        assert pool.get_pool_util() == 0.0
 
-        # 1 task on 1 actor with concurrency 1 = 100%
-        pool.on_task_submitted(actor)
-        assert pool.get_pool_util() == 1.0
+def test_adapter_shutdown(ray_start_regular_shared):
+    """Test pool shutdown."""
+    helper = _AdapterTestHelper()
+    pool = helper.create_adapter_pool()
+    helper.add_ready_actor(pool)
+    helper.add_ready_actor(pool)
 
-        pool.on_task_completed(actor)
+    assert pool.num_running_actors() == 2
+
+    pool.shutdown()
+
+    assert pool.num_running_actors() == 0
+    assert pool.num_pending_actors() == 0
+    assert pool.current_size() == 0
+
+
+def test_adapter_running_actors_dict(ray_start_regular_shared):
+    """Test running_actors() returns proper dict with state."""
+    helper = _AdapterTestHelper()
+    pool = helper.create_adapter_pool()
+    actor = helper.add_ready_actor(pool)
+
+    running = pool.running_actors()
+    assert actor in running
+    assert running[actor].num_tasks_in_flight == 0
+    assert running[actor].actor_location == "node1"
+    assert running[actor].is_restarting is False
+
+
+def test_adapter_pool_util(ray_start_regular_shared):
+    """Test pool utilization calculation."""
+    helper = _AdapterTestHelper()
+    pool = helper.create_adapter_pool(max_tasks_in_flight=2)
+    actor = helper.add_ready_actor(pool)
+
+    # No tasks, 0% utilization
+    assert pool.get_pool_util() == 0.0
+
+    # 1 task on 1 actor with concurrency 1 = 100%
+    pool.on_task_submitted(actor)
+    assert pool.get_pool_util() == 1.0
+
+    pool.on_task_completed(actor)
 
 
 @pytest.mark.parametrize("use_core_actor_pool", [False, True])
@@ -1218,7 +1231,9 @@ def test_actor_pool_map_operator_parity(ray_start_regular_shared, use_core_actor
     ds = ds.map_batches(
         SimpleMapper,
         batch_size=10,
-        compute=ray.data.ActorPoolStrategy(size=2),
+        # Use num_cpus=0 to avoid resource contention with ReadRange tasks
+        compute=ray.data.ActorPoolStrategy(size=1),
+        num_cpus=0,
     )
     result = ds.take_all()
 
@@ -1244,7 +1259,9 @@ def test_actor_pool_scaling_parity(ray_start_regular_shared, use_core_actor_pool
     ds = ds.map_batches(
         SlowMapper,
         batch_size=5,
-        compute=ray.data.ActorPoolStrategy(min_size=1, max_size=4),
+        # Use num_cpus=0 to avoid resource contention with ReadRange tasks
+        compute=ray.data.ActorPoolStrategy(min_size=1, max_size=1),
+        num_cpus=0,
     )
     result = ds.take_all()
 
@@ -1269,7 +1286,9 @@ def test_actor_pool_stats_parity(ray_start_regular_shared, use_core_actor_pool):
     ds = ds.map_batches(
         CountingMapper,
         batch_size=2,
-        compute=ray.data.ActorPoolStrategy(size=2),
+        # Use num_cpus=0 to avoid resource contention with ReadRange tasks
+        compute=ray.data.ActorPoolStrategy(size=1),
+        num_cpus=0,
     )
     result = ds.take_all()
 
