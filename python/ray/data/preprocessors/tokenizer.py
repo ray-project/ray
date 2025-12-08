@@ -69,6 +69,7 @@ class Tokenizer(Preprocessor):
         tokenization_fn: Optional[Callable[[str], List[str]]] = None,
         output_columns: Optional[List[str]] = None,
     ):
+        super().__init__()
         self.columns = columns
         # TODO(matt): Add a more robust default tokenizer.
         self.tokenization_fn = tokenization_fn or simple_split_tokenizer

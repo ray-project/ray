@@ -816,9 +816,13 @@ void TaskEventBufferImpl::SendRayEventsToAggregator(
         event_aggregator_grpc_in_progress_ = false;
       };
 
-  rpc::events::AddEventsRequest request;
-  *request.mutable_events_data() = std::move(*data);
-  event_aggregator_client_->AddEvents(request, on_complete);
+  if (num_task_events_to_send == 0 && num_dropped_task_attempts_to_send == 0) {
+    event_aggregator_grpc_in_progress_ = false;
+  } else {
+    rpc::events::AddEventsRequest request;
+    *request.mutable_events_data() = std::move(*data);
+    event_aggregator_client_->AddEvents(request, on_complete);
+  }
 }
 
 void TaskEventBufferImpl::FlushEvents(bool forced) {
@@ -1008,7 +1012,7 @@ std::string TaskEventBufferImpl::DebugString() {
 
   auto stats = stats_counter_.GetAll();
   ss << "\nIO Service Stats:\n";
-  ss << io_service_.stats().StatsString();
+  ss << io_service_.stats()->StatsString();
   ss << "\nOther Stats:"
      << "\n\tgcs_grpc_in_progress:" << gcs_grpc_in_progress_
      << "\n\tevent_aggregator_grpc_in_progress:" << event_aggregator_grpc_in_progress_

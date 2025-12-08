@@ -62,7 +62,7 @@ class MockWorkerPool : public WorkerPoolInterface {
               (override));
   MOCK_METHOD((std::vector<std::shared_ptr<WorkerInterface>>),
               GetAllRegisteredDrivers,
-              (bool filter_dead_drivers),
+              (bool filter_dead_drivers, bool filter_system_drivers),
               (const, override));
   MOCK_METHOD(Status,
               RegisterDriver,

@@ -1,13 +1,14 @@
+import logging
+import math
+import time
 from collections import defaultdict
 from functools import partial
-import math
-import logging
-import time
 from typing import Collection, DefaultDict, Dict, List, Optional, Union
 
 import gymnasium as gym
 
 import ray
+from ray._common.deprecation import Deprecated
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.callbacks.utils import make_callback
 from ray.rllib.core import (
@@ -17,18 +18,17 @@ from ray.rllib.core import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleSpec
-from ray.rllib.env import INPUT_ENV_SPACES, INPUT_ENV_SINGLE_SPACES
+from ray.rllib.env import INPUT_ENV_SINGLE_SPACES, INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
+from ray.rllib.env.env_runner import ENV_STEP_FAILURE, EnvRunner
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-from ray.rllib.env.vector.vector_multi_agent_env import VectorMultiAgentEnv
-from ray.rllib.env.vector.registration import make_vec
 from ray.rllib.env.utils import _gym_env_creator
+from ray.rllib.env.vector.registration import make_vec
+from ray.rllib.env.vector.vector_multi_agent_env import VectorMultiAgentEnv
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray._common.deprecation import Deprecated
 from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
     ENV_TO_MODULE_CONNECTOR,
@@ -101,7 +101,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         )
 
         # Create the vectorized gymnasium env.
-        self.env: Optional[gym.Wrapper] = None
+        self.env: Optional[VectorMultiAgentEnv] = None
         self.num_envs: int = 0
         if (
             self.worker_index is None
@@ -363,9 +363,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # Try stepping the environment.
             results = self._try_env_step(actions_for_env)
             if results == ENV_STEP_FAILURE:
-                logging.warning(
-                    f"RLlib {self.__class__.__name__}: Environment step failed. Will force reset env(s) in this EnvRunner."
-                )
                 return self._sample(
                     num_timesteps=num_timesteps,
                     num_episodes=num_episodes,
@@ -413,6 +410,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         truncateds=truncateds[env_index],
                         extra_model_outputs=extra_model_outputs,
                     )
+
+                    # Ray metrics
+                    self._log_env_steps(
+                        metric=self._metrics_num_env_steps_sampled, num_steps=1
+                    )
+
                     # Only increase ts when we actually stepped (not reset'd as a reset
                     # does not count as a timestep).
                     env_ts += self._increase_sampled_metrics(
@@ -452,19 +455,26 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     # Run a last time the `env_to_module` pipeline for these episodes
                     # to postprocess artifacts (e.g. observations to one-hot).
                     done_episodes_to_run_env_to_module.append(episodes[env_index])
-                    # Also early-out if we reach the number of episodes within this
-                    # for-loop.
-                    if eps == num_episodes:
-                        break
 
                     old_episode_id = episodes[env_index].id_
-                    # Create a new episode object with no data in it and execute
-                    # `on_episode_created` callback (before the `env.reset()` call).
-                    self._new_episode(env_index, episodes)
+                    # Create a new episode object with no data in it.
+                    # Note: If we're about to break (reached target num_episodes), skip
+                    # the `on_episode_created` callback since this episode will never be
+                    # used (it gets discarded on the next sample() call).
+                    self._new_episode(
+                        env_index,
+                        episodes,
+                        call_on_episode_created=(eps != num_episodes),
+                    )
                     # Register the mapping of new episode ID to old episode ID.
                     shared_data["vector_env_episodes_map"].update(
                         {old_episode_id: episodes[env_index].id_}
                     )
+
+                    # Also early-out if we reach the number of episodes within this
+                    # for-loop.
+                    if eps == num_episodes:
+                        break
 
             # Env-to-module connector pass (cache results as we will do the RLModule
             # forward pass only in the next `while`-iteration).
@@ -483,6 +493,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     # can differ from `num_envs_per_env_runner` and would bias time
                     # measurements.
                     self._env_to_module(
+                        batch={},
                         episodes=done_episodes_to_run_env_to_module,
                         explore=explore,
                         rl_module=self.module,
@@ -490,6 +501,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         metrics=None,
                     )
                 self._cached_to_module = self._env_to_module(
+                    batch={},
                     episodes=episodes,
                     explore=explore,
                     rl_module=self.module,
@@ -921,7 +933,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             EpisodeID, List[MultiAgentEpisode]
         ] = defaultdict(list)
 
-    def _new_episode(self, env_index, episodes=None):
+    def _new_episode(self, env_index, episodes=None, call_on_episode_created=True):
         episodes = episodes if episodes is not None else self._episodes
         episodes[env_index] = MultiAgentEpisode(
             observation_space={
@@ -934,7 +946,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             },
             agent_to_module_mapping_fn=self.config.policy_mapping_fn,
         )
-        self._make_on_episode_callback("on_episode_created", env_index, episodes)
+        if call_on_episode_created:
+            self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
     def _make_on_episode_callback(
         self, which: str, idx: int, episodes: List[MultiAgentEpisode]

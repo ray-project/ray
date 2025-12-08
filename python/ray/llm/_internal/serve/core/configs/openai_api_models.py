@@ -18,11 +18,18 @@ from vllm.entrypoints.openai.protocol import (
     CompletionRequest as vLLMCompletionRequest,
     CompletionResponse as vLLMCompletionResponse,
     CompletionStreamResponse as vLLMCompletionStreamResponse,
+    ErrorInfo as vLLMErrorInfo,
+    ErrorResponse as vLLMErrorResponse,
+    TranscriptionRequest as vLLMTranscriptionRequest,
+    TranscriptionResponse as vLLMTranscriptionResponse,
+    TranscriptionStreamResponse as vLLMTranscriptionStreamResponse,
+)
+from vllm.entrypoints.pooling.embed.protocol import (
     EmbeddingChatRequest as vLLMEmbeddingChatRequest,
     EmbeddingCompletionRequest as vLLMEmbeddingCompletionRequest,
     EmbeddingResponse as vLLMEmbeddingResponse,
-    ErrorInfo as vLLMErrorInfo,
-    ErrorResponse as vLLMErrorResponse,
+)
+from vllm.entrypoints.pooling.score.protocol import (
     ScoreRequest as vLLMScoreRequest,
     ScoreResponse as vLLMScoreResponse,
 )
@@ -96,6 +103,27 @@ class EmbeddingResponse(vLLMEmbeddingResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
+class TranscriptionRequest(vLLMTranscriptionRequest):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    request_id: str = Field(
+        default_factory=lambda: f"{random_uuid()}",
+        description=(
+            "The request_id related to this request. If the caller does "
+            "not set it, a random_uuid will be generated. This id is used "
+            "through out the inference process and return in response."
+        ),
+    )
+
+
+class TranscriptionResponse(vLLMTranscriptionResponse):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class TranscriptionStreamResponse(vLLMTranscriptionStreamResponse):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
 class ScoreRequest(vLLMScoreRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -115,14 +143,25 @@ LLMScoreResponse = Union[
 ]
 
 LLMChatResponse = Union[
-    AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None],
+    AsyncGenerator[
+        Union[str, ChatCompletionStreamResponse, ChatCompletionResponse, ErrorResponse],
+        None,
+    ],
 ]
 
 LLMCompletionsResponse = Union[
     AsyncGenerator[
-        Union[CompletionStreamResponse, CompletionResponse, ErrorResponse], None
+        Union[str, CompletionStreamResponse, CompletionResponse, ErrorResponse], None
     ],
 ]
+
+LLMTranscriptionResponse = Union[
+    AsyncGenerator[
+        Union[str, TranscriptionStreamResponse, TranscriptionResponse, ErrorResponse],
+        None,
+    ],
+]
+
 
 # TODO: remove this class
 class OpenAIHTTPException(Exception):

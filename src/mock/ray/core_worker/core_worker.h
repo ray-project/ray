@@ -89,9 +89,9 @@ class MockCoreWorker : public CoreWorker {
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
-              HandleRemoteCancelTask,
-              (rpc::RemoteCancelTaskRequest request,
-               rpc::RemoteCancelTaskReply *reply,
+              HandleRequestOwnerToCancelTask,
+              (rpc::RequestOwnerToCancelTaskRequest request,
+               rpc::RequestOwnerToCancelTaskReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
