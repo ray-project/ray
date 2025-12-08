@@ -191,7 +191,7 @@ def download_bytes_threaded(
             for uri in uri_iterator:
                 read_bytes = None
                 try:
-                    # Lazy resolution: use cached FS if available, fallback to full resolution
+                    # Use cached FS if available, otherwise resolve the filesystem for the uri.
                     resolved_paths, resolved_fs = _resolve_paths_and_filesystem(
                         uri, filesystem=cached_fs
                     )
@@ -201,8 +201,11 @@ def download_bytes_threaded(
                     fs = RetryingPyFileSystem.wrap(
                         resolved_fs, retryable_errors=data_context.retried_io_errors
                     )
-                    # We only pass one uri to resolve and unwrap it from the list of resolved paths
+                    # We only pass one uri to resolve and unwrap it from the list of resolved paths,
+                    # if fails, we will catch the index error and log it.
                     resolved_path = resolved_paths[0]
+                    if resolved_path is None:
+                        continue
 
                     # Download bytes
                     # Use open_input_stream to handle the rare scenario where the data source is not seekable.

@@ -146,6 +146,8 @@ _SCHEME_TO_FS_TYPE_NAMES = {
     "gcs": ("gcs",),  # gcs:// = GCS filesystem
     "hdfs": ("hdfs",),  # hdfs:// = Hadoop filesystem
     "viewfs": ("hdfs",),  # viewfs:// = Hadoop filesystem
+    "abfs": ("abfs",),  # abfs:// = Azure Blob FileSystem
+    "abfss": ("abfs",),  # abfss:// = Azure Blob FileSystem (TLS)
     "http": ("py",),  # http:// = fsspec HTTP (wrapped in PyFileSystem)
     "https": ("py",),  # https:// = fsspec HTTP (wrapped in PyFileSystem)
 }
@@ -171,8 +173,9 @@ def _is_filesystem_compatible_with_scheme(
     # Get expected type names for this scheme
     expected_types = _SCHEME_TO_FS_TYPE_NAMES.get(scheme.lower())
     if expected_types is None:
-        # Unknown scheme - don't use cache, let PyArrow figure it out
-        return False
+        # Unknown scheme (e.g., abfs://, az://, custom protocols) - trust user's filesystem
+        # This preserves backward compatibility for custom filesystems
+        return True
 
     # Get the actual filesystem type
     fs_type = filesystem.type_name
@@ -257,7 +260,7 @@ def _resolve_single_path_with_fallback(
         # Try URL encoding for paths with special characters that may cause parsing issues
         try:
             resolved_filesystem, resolved_path = _try_resolve_with_encoding(path, None)
-        except (ValueError, TypeError) as encoding_error:
+        except (pa.lib.ArrowInvalid, ValueError, TypeError) as encoding_error:
             # If encoding doesn't help, raise with both errors for full context
             raise ValueError(
                 f"Failed to resolve path '{path}'. Initial error: {original_error}. "
@@ -323,12 +326,6 @@ def _resolve_paths_and_filesystem(
 
         resolved_path = resolved_filesystem.normalize_path(resolved_path)
         resolved_paths.append(resolved_path)
-
-    # If no paths were successfully resolved, filesystem will be None
-    if filesystem is None:
-        raise ValueError(
-            f"Failed to resolve any paths. All {len(paths)} path(s) failed to resolve."
-        )
 
     return resolved_paths, filesystem
 
