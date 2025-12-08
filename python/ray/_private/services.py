@@ -493,7 +493,7 @@ def get_node_to_connect_for_driver(
     if node_ip_address is None:
         possible_node_ip_addresses = find_node_ip_addresses()
         if len(possible_node_ip_addresses) == 0:
-            raise Exception(
+            raise RuntimeError(
                 "No node ip address found for raylet on this host. Is there an instance of raylet running on this host?"
             )
     else:
@@ -509,12 +509,12 @@ def get_node_to_connect_for_driver(
             state_filter=GcsNodeInfo.GcsNodeState.ALIVE,
         ).values()
     except Exception as e:
-        raise Exception(
+        raise RuntimeError(
             f"Failed to get node info for possible node ip addresses: {possible_node_ip_addresses}"
             f" when trying to resolve node to connect to. Error: {repr(e)}"
         )
     if not node_to_connect_infos:
-        raise Exception(
+        raise RuntimeError(
             f"No node info found matching node ip addresses: {possible_node_ip_addresses}"
             f"when trying to resolve node to connect to."
         )
