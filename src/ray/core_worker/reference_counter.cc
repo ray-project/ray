@@ -581,8 +581,7 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
     // The object is still in scope by the application and it was
     // reconstructable with lineage. Mark that its lineage has been evicted so
     // we can return the right error during reconstruction.
-    if (!ref->second.OutOfScope() &&
-        ref->second.is_reconstructable_) {
+    if (!ref->second.OutOfScope() && ref->second.is_reconstructable_) {
       ref->second.lineage_evicted = true;
       ref->second.is_reconstructable_ = false;
     }
@@ -881,8 +880,7 @@ bool ReferenceCounter::AddObjectOutOfScopeOrFreedCallback(
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
-  } else if (it->second.OutOfScope() &&
-             !it->second.ShouldDelete()) {
+  } else if (it->second.OutOfScope() && !it->second.ShouldDelete()) {
     // The object has already gone out of scope but cannot be deleted yet. Do
     // not set the deletion callback because it may never get called.
     return false;

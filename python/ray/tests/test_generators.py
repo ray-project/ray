@@ -398,9 +398,7 @@ def test_dynamic_generator_reconstruction(ray_start_cluster, num_returns_type):
     }
     cluster = ray_start_cluster
     # Head node with no resources.
-    cluster.add_node(
-        num_cpus=0, _system_config=config
-    )
+    cluster.add_node(num_cpus=0, _system_config=config)
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)

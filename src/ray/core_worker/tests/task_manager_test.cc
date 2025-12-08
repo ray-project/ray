@@ -151,7 +151,8 @@ class TaskManagerTest : public ::testing::Test {
             addr_,
             publisher_.get(),
             subscriber_.get(),
-            /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
+            /*is_node_dead=*/[this](const NodeID &) {
+    return node_died_; },
             *std::make_shared<ray::observability::FakeGauge>(),
             *std::make_shared<ray::observability::FakeGauge>()),
         io_context_("TaskManagerTest"),
@@ -160,32 +161,34 @@ class TaskManagerTest : public ::testing::Test {
             *store_,
             *reference_counter_,
             [this](const RayObject &object, const ObjectID &object_id) {
-              stored_in_plasma.insert(object_id);
-              return Status::OK();
+    stored_in_plasma.insert(object_id);
+    return Status::OK();
             },
             [this](TaskSpecification &spec, uint32_t delay_ms) {
-              num_retries_++;
-              last_delay_ms_ = delay_ms;
+    num_retries_++;
+    last_delay_ms_ = delay_ms;
             },
             [this](const TaskSpecification &spec) {
-              return this->did_queue_generator_resubmit_;
+    return this->did_queue_generator_resubmit_;
             },
             [](const JobID &job_id,
                const std::string &type,
                const std::string &error_message,
-               double timestamp) { return Status::OK(); },
+               double timestamp) {
+    return Status::OK(); },
             max_lineage_bytes,
             *task_event_buffer_mock_.get(),
             [](const ActorID &actor_id)
                 -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
-              return nullptr;
+    return nullptr;
             },
             mock_gcs_client_,
             fake_task_by_state_counter_,
             fake_total_lineage_bytes_gauge_,
             /*free_actor_object_callback=*/[](const ObjectID &object_id) {}) {}
 
-  virtual void TearDown() { AssertNoLeaks(); }
+  virtual void TearDown() {
+    AssertNoLeaks(); }
 
   void AssertNoLeaks() {
     absl::MutexLock lock(&manager_.mu_);

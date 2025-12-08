@@ -26,9 +26,7 @@ def test_reconstruction_stress_spill(config, ray_start_cluster):
     config["max_direct_call_object_size"] = 100
     cluster = ray_start_cluster
     # Head node with no resources.
-    cluster.add_node(
-        num_cpus=0, _system_config=config
-    )
+    cluster.add_node(num_cpus=0, _system_config=config)
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(

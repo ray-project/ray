@@ -369,9 +369,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// 1. The ObjectID's ref count is 0 on all workers.
     /// 2. If lineage pinning is enabled, there are no tasks that depend on
     /// the object that may be retried in the future.
-    bool ShouldDelete() const {
-      return OutOfScope() && (lineage_ref_count == 0);
-    }
+    bool ShouldDelete() const { return OutOfScope() && (lineage_ref_count == 0); }
 
     /// Access BorrowInfo without modifications.
     /// Returns the default value of the struct if it is not set.
