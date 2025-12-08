@@ -1060,7 +1060,7 @@ df = pd.DataFrame({
 })
 
 # Persist the dataset in Parquet format (columnar, efficient for Ray Data)
-df.to_parquet("/mnt/cluster_storage/cifar10.parquet")
+df.to_parquet("/mnt/cluster_storage/MNIST.parquet")
 ```
 
 ## 04 · Load Dataset into Ray Data  
@@ -1079,7 +1079,7 @@ This Ray Dataset can be passed to the `TorchTrainer` for distributed training.
 # 04. Load the Parquet dataset into a Ray Dataset
 
 # Read the Parquet file → creates a distributed Ray Dataset
-train_ds = ray.data.read_parquet("/mnt/cluster_storage/cifar10.parquet")
+train_ds = ray.data.read_parquet("/mnt/cluster_storage/MNIST.parquet")
 
 ```
 
@@ -1172,7 +1172,7 @@ trainer = TorchTrainer(
     scaling_config=scaling_config,  # number of workers + GPU/CPU resources
     run_config=RunConfig(
         storage_path=storage_path, 
-        name="dist-cifar-res18-ray-data"
+        name="dist-MNIST-res18-ray-data"
     ),                              # where to store checkpoints/logs
     datasets=datasets,              # provide Ray Dataset shards to workers
 )
@@ -1359,7 +1359,7 @@ This setup makes training jobs resilient to transient hardware or cluster issues
 # Allow up to 3 automatic retries if workers fail
 failure_config = ray.train.FailureConfig(max_failures=3)
 
-experiment_name = "fault-tolerant-cifar-vit"
+experiment_name = "fault-tolerant-MNIST-vit"
 
 trainer = TorchTrainer(
     train_loop_per_worker=train_loop_ray_train_with_checkpoint_loading,  # fault-tolerant loop
@@ -1369,7 +1369,7 @@ trainer = TorchTrainer(
     },
     scaling_config=scaling_config,  # resource scaling as before
     run_config=ray.train.RunConfig(
-        name="fault-tolerant-cifar-vit",
+        name="fault-tolerant-MNIST-vit",
         storage_path=storage_path,      # persistent checkpoint storage
         failure_config=failure_config,  # enable automatic retries
     ),
@@ -1419,7 +1419,7 @@ restored_trainer = TorchTrainer(
     },
     scaling_config=scaling_config,  # same resource setup as before
     run_config=ray.train.RunConfig(
-        name="fault-tolerant-cifar-vit",  # must match previous run name
+        name="fault-tolerant-MNIST-vit",  # must match previous run name
         storage_path=storage_path,       # path where checkpoints are saved
         failure_config=failure_config,   # still allow retries
     ),
@@ -1453,7 +1453,7 @@ Finally, remove any tutorial artifacts from **persistent cluster storage**:
 
 - Deletes the **downloaded MNIST dataset** (`/mnt/cluster_storage/MNIST`).  
 - Deletes the **training outputs** (`/mnt/cluster_storage/training`).  
-- Deletes the **Parquet dataset** used for Ray Data (`/mnt/cluster_storage/cifar10.parquet`).  
+- Deletes the **Parquet dataset** used for Ray Data (`/mnt/cluster_storage/MNIST.parquet`).  
 
 This keeps your shared storage clean and avoids leftover data or files from occupying space.  
 Run this only when you’re sure you no longer need the data, checkpoints, or Parquet files.  
@@ -1462,11 +1462,11 @@ Run this only when you’re sure you no longer need the data, checkpoints, or Pa
 ```python
 # 07. Cleanup Cluster Storage
 
-# Paths to remove → include MNIST data, training outputs, and cifar10.parquet
+# Paths to remove → include MNIST data, training outputs, and MNIST.parquet
 paths_to_delete = [
     "/mnt/cluster_storage/MNIST",
     "/mnt/cluster_storage/training",
-    "/mnt/cluster_storage/cifar10.parquet",
+    "/mnt/cluster_storage/MNIST.parquet",
 ]
 
 for path in paths_to_delete:
