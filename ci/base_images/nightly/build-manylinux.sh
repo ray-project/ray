@@ -88,17 +88,15 @@ for with_jdk in true false; do
     printInfo "Building: $local_tag"
     "$WANDA_BIN_PATH" -build_id="${build_id}" -work_dir="${REPO_ROOT_DIR}" "$WANDA_YAML_PATH"
     
-    # Verify image was built
+    # Verify image was built with expected tag
     if ! docker image inspect "$local_tag" &>/dev/null; then
         printError "Build failed - image not found: $local_tag"
         exit 1
     fi
     
-    # Tag and push (if uploading)
     if [[ "$UPLOAD" == "true" ]]; then
         printInfo "Tagging and pushing: $remote_tag"
 
-        # if the remote tag already exists on dockerhub, skip the push
         if docker manifest inspect "$remote_tag" &>/dev/null; then
             printInfo "Remote tag already exists on Docker Hub, skipping push"
             continue
