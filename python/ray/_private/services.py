@@ -471,12 +471,63 @@ def wait_for_node(
     )
 
 
-def get_node_to_connect_for_driver(gcs_address, node_ip_address):
-    # Get node table from global state accessor.
-    global_state = ray._private.state.GlobalState()
-    gcs_options = _get_gcs_client_options(gcs_address)
-    global_state._initialize_global_state(gcs_options)
-    return global_state.get_node_to_connect_for_driver(node_ip_address)
+def get_node_to_connect_for_driver(
+    gcs_client: GcsClient, node_ip_address: str = None
+) -> GcsNodeInfo:
+    """
+    Get the node to connect to for the driver.
+    If node_ip_address is provided, it will be used to filter the nodes to connect to.
+    If node_ip_address is not provided, it will resolve the node based on the steps below:
+    1. If there are multiple nodes on the same host, this function will prioritize the head node if available.
+    2. If there is no head node, it will return an arbitrary node it finds.
+
+    Args:
+        gcs_client: The GCS client.
+        node_ip_address: The IP address of the node to connect to. If not provided,
+                         it will be resolved to a ray node on the same host.
+
+    Returns:
+        The node info of the node to connect to.
+    """
+    node_to_connect_info = None
+    if node_ip_address is None:
+        possible_node_ip_addresses = find_node_ip_addresses()
+        if len(possible_node_ip_addresses) == 0:
+            raise Exception(
+                "No node ip address found for raylet on this host. Is there an instance of raylet running on this host?"
+            )
+    else:
+        possible_node_ip_addresses = [node_ip_address]
+    node_selectors = []
+    for ip in possible_node_ip_addresses:
+        ip_node_selector = GetAllNodeInfoRequest.NodeSelector(node_ip_address=ip)
+        node_selectors.append(ip_node_selector)
+    try:
+        node_to_connect_infos = gcs_client.get_all_node_info(
+            timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
+            node_selectors=node_selectors,
+            state_filter=GcsNodeInfo.GcsNodeState.ALIVE,
+        ).values()
+    except Exception as e:
+        raise Exception(
+            f"Failed to get node info for possible node ip addresses: {possible_node_ip_addresses}"
+            f" when trying to resolve node to connect to. Error: {repr(e)}"
+        )
+    if not node_to_connect_infos:
+        raise Exception(
+            f"No node info found matching node ip addresses: {possible_node_ip_addresses}"
+            f"when trying to resolve node to connect to."
+        )
+
+    # Prioritize head node if available
+    for node_info in node_to_connect_infos:
+        if node_info.is_head_node:
+            node_to_connect_info = node_info
+            break
+    if node_to_connect_info is None:
+        node_to_connect_info = next(iter(node_to_connect_infos))
+
+    return node_to_connect_info
 
 
 def get_node(gcs_address, node_id):
@@ -644,60 +695,6 @@ def get_node_ip_address(address=None):
         return get_localhost_ip()
 
     return node_ip_address_from_perspective(address)
-
-
-def get_node_to_connect_ip_address(gcs_client: GcsClient) -> (str, GcsNodeInfo):
-    """
-    Get the node to connect to for the driver. If there are multiple nodes on the same host,
-    this function will prioritize the head node if available.
-    If there is no head node, it will return an arbitrary node it finds.
-
-    Args:
-        gcs_client: The GCS client.
-
-    Returns:
-        The node IP address.
-        The node to connect info.
-    """
-    node_to_connect_info = None
-    # node specific temp_dir resolution requires knowledge of the node we are connecting to
-    possible_node_ip_addresses = find_node_ip_addresses()
-    if len(possible_node_ip_addresses) == 0:
-        raise Exception(
-            "No node ip address found for raylet on this host. Is there an instance of raylet running on this host?"
-        )
-    node_selectors = []
-    for ip in possible_node_ip_addresses:
-        ip_node_selector = GetAllNodeInfoRequest.NodeSelector(node_ip_address=ip)
-        node_selectors.append(ip_node_selector)
-    try:
-        node_to_connect_infos = gcs_client.get_all_node_info(
-            timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
-            node_selectors=node_selectors,
-            state_filter=GcsNodeInfo.GcsNodeState.ALIVE,
-        ).values()
-    except Exception as e:
-        raise Exception(
-            f"Failed to get node info for possible node ip addresses: {possible_node_ip_addresses}"
-            f"when trying to resolve node to connect to. Error: {repr(e)}"
-        )
-    if not node_to_connect_infos:
-        raise Exception(
-            f"No node info found matching node ip addresses: {possible_node_ip_addresses}"
-            f"when trying to resolve node to connect to."
-        )
-
-    # Prioritize head node if available
-    for node_info in node_to_connect_infos:
-        if node_info.is_head_node:
-            node_to_connect_info = node_info
-            break
-    if node_to_connect_info is None:
-        node_to_connect_info = next(iter(node_to_connect_infos))
-
-    node_ip_address = getattr(node_to_connect_info, "node_manager_address", None)
-
-    return node_ip_address, node_to_connect_info
 
 
 def get_node_instance_id():

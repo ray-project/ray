@@ -295,10 +295,10 @@ def test_get_node_to_connect_ip_address(shutdown_only, call_ray_start):
     """
     ray.init()
     node_ip = ray.util.get_node_ip_address()
-    resolved_node_ip_address, _ = ray._private.services.get_node_to_connect_ip_address(
+    node_info = ray._private.services.get_node_to_connect_for_driver(
         ray._private.worker.global_worker.gcs_client
     )
-    assert resolved_node_ip_address == node_ip
+    assert getattr(node_info, "node_manager_address", None) == node_ip
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="skip except linux")
@@ -316,7 +316,7 @@ def test_ray_init_from_workers(ray_start_cluster):
     assert info["node_ip_address"] == "127.0.0.3"
 
     node_info = ray._private.services.get_node_to_connect_for_driver(
-        cluster.gcs_address, "127.0.0.3"
+        ray._raylet.GcsClient(address=cluster.gcs_address), "127.0.0.3"
     )
     assert node_info["node_manager_port"] == node2.node_manager_port
 

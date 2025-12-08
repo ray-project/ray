@@ -208,22 +208,27 @@ class Node:
                 )
 
         node_ip_address = ray_params.node_ip_address
-        resolved_node_ip_address = None
         node_to_connect_info = None
         if connect_only:
-            # If connecting, resolve the node to connect to based on running raylet's IP address.
-            (
-                resolved_node_ip_address,
-                node_to_connect_info,
-            ) = ray._private.services.get_node_to_connect_ip_address(
-                self.get_gcs_client()
-            )
-        if node_ip_address is None:
-            if connect_only:
-                assert resolved_node_ip_address is not None
-                node_ip_address = resolved_node_ip_address
+            # If connecting without a node ip address,
+            # fetch the node to connect to based on running raylet's IP address.
+            if node_ip_address is None:
+                node_to_connect_info = (
+                    ray._private.services.get_node_to_connect_for_driver(
+                        self.get_gcs_client()
+                    )
+                )
+                node_ip_address = getattr(
+                    node_to_connect_info, "node_manager_address", None
+                )
             else:
-                node_ip_address = ray.util.get_node_ip_address()
+                node_to_connect_info = (
+                    ray._private.services.get_node_to_connect_for_driver(
+                        self.get_gcs_client(), node_ip_address
+                    )
+                )
+        elif node_ip_address is None:
+            node_ip_address = ray.util.get_node_ip_address()
 
         assert node_ip_address is not None
         ray_params.update_if_absent(node_ip_address=node_ip_address)
