@@ -176,6 +176,10 @@ class ActorPool:
         # Track actor handles for direct access
         self._actor_handles: List[ray.actor.ActorHandle] = []
 
+        # Track tasks submitted (Python-side counter for Phase 1)
+        # Full C++ tracking will be used when SubmitTaskToPool is integrated
+        self._tasks_submitted = 0
+
         # Create initial actors
         for _ in range(initial_size):
             self._create_and_add_actor()
@@ -241,11 +245,12 @@ class ActorPool:
         if not self._actor_handles:
             raise RuntimeError("No actors in pool")
 
-        # Get stats to find least loaded actor
-        stats = self.stats()
-        # For now, use simple round-robin based on task count
-        actor_idx = stats["total_tasks_submitted"] % len(self._actor_handles)
+        # Simple round-robin based on task count
+        actor_idx = self._tasks_submitted % len(self._actor_handles)
         actor = self._actor_handles[actor_idx]
+
+        # Increment counter before calling (for consistent stats)
+        self._tasks_submitted += 1
 
         # Call the method on the selected actor
         method = getattr(actor, method_name)
@@ -287,7 +292,11 @@ class ActorPool:
             - backlog_size: Number of queued tasks
             - total_in_flight: Total in-flight tasks
         """
-        return self._core_worker.get_pool_stats(self._pool_id)
+        # Get C++ stats and override with Python-side counter for Phase 1
+        # Full C++ tracking will be used when SubmitTaskToPool is integrated
+        stats = self._core_worker.get_pool_stats(self._pool_id)
+        stats["total_tasks_submitted"] = self._tasks_submitted
+        return stats
 
     def scale(self, delta: int) -> None:
         """Scale the pool by delta actors.
