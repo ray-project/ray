@@ -71,7 +71,9 @@ This notebook assumes Ray is already running (for example, inside an Anyscale cl
 
 ```python
 # 00. Runtime setup — install same deps as build.sh and set env vars
-import os, sys, subprocess
+import os
+import sys
+import subprocess
 
 # Non-secret env var
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
