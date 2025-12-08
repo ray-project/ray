@@ -27,6 +27,12 @@ Most changes to Ray Data require tests.
 
 For tips on how to write good tests, see {ref}`How to write tests <how-to-write-tests>`.
 
+## Write simple, clear code
+
+Ray Data values **readable, maintainable, and extendable** code over clever tricks.
+For guidance on how to write code that aligns with Ray Data's design taste, see
+[A Philosophy of Software Design](https://web.stanford.edu/~ouster/cgi-bin/aposd2ndEdExtract.pdf).
+
 ## Test your changes locally
 
 To test your changes locally, build 
@@ -59,31 +65,3 @@ Start by making that pass.
 
 Once it’s green, tag your reviewer. They can add the go label to trigger the full test 
 suite.
-
-## Write simple, clear code
-
-Ray Data values **readable, maintainable, and extendable** code over clever tricks.
-
-### Minimize complexity
-
-Add new code only when it clearly reduces overall complexity or improves clarity.
-
-* Avoid adding layers, abstractions, or feature-specific flags unless they simplify the 
-  system as a whole. 
-* Use mixins or small extension classes for specialized behavior instead of bloating 
-  core interfaces like `PhysicalOperator`.
-
-### Design deep modules
-
-Good modules are **deep, not shallow**.
-
-* Prefer small, powerful interfaces.
-* Avoid "pass-through" layers.
-* Aim for clear separation of concerns.
-
-### Keep abstractions clean
-
-* Avoid overlapping concepts or abstractions. 
-* Don't break abstraction barriers or rely on hidden behavior.
-* Refactor first if it simplifies design before adding new features.
-

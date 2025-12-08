@@ -13,6 +13,45 @@ change.
 This guide is a collection of practices to help us write tests that support the Ray Data
 project, not slow it down.
 
+## General good practices
+
+### Prefer unit tests over integration tests
+
+Unit tests give faster feedback and make it easier to pinpoint failures. They run in 
+milliseconds, not seconds, and don’t depend on Ray clusters, external systems, or 
+timing. This keeps the test suite fast, reliable, and easy to maintain.
+
+:::{note}
+Put unit tests in `python/ray/data/tests/unit`.
+:::
+
+### Use fixtures, skip try-finally
+
+Fixtures make tests cleaner, more reusable, and better isolated. They’re the right tool 
+for setup and teardown, especially for things like `monkeypatch`.
+
+`try-finally` works, but fixtures make intent clearer and avoid boilerplate.
+
+**Original code**
+```python
+def test_dynamic_block_split(ray_start_regular_shared):
+    ctx = ray.data.context.DataContext.get_current()
+    original_target_max_block_size = ctx.target_max_block_size
+
+    ctx.target_max_block_size = 1
+    try: 
+        ...
+    finally:
+        ctx.target_max_block_size = original_target_max_block_size
+```
+
+**Better**
+```python
+def test_dynamic_block_split(ray_start_regular_shared, restore_data_context):
+    ctx = ray.data.context.DataContext.get_current()
+    target_max_block_size = ctx.target_max_block_size
+    ... # No need for try-finally
+```
 
 ## Ray-specific practices
 
@@ -48,13 +87,16 @@ Use the `ray.data._internal.util.rows_same` utility function to compare pandas
 DataFrames for equality while ignoring indices and order.
 :::
 
-### Avoid `shutdown_only` unless you really need it
+### Prefer shared cluster fixtures
 
-Using the `shutdown_only` fixture forces pytest to restart the Ray cluster after the 
-test finishes. Starting and stopping Ray can take over a second — which sounds small, 
-but across thousands of tests (plus parameterizations) it adds up fast.
+Prefer shared cluster fixtures like `ray_start_regular_shared` over isolated cluster
+fixtures like `shutdown_only` and `ray_start_regular`.
 
-Only use it when your test truly needs a fresh cluster.
+`shutdown_only` and `ray_start_regular` restart the Ray cluster after each test
+finishes. Starting and stopping Ray can take over a second — which sounds small, but 
+across thousands of tests (plus parameterizations) it adds up fast.
+
+Only use isolated clusters when your test truly needs a fresh cluster.
 
 :::{note}
 There's an inherent tradeoff between isolation and speed here. We're choosing to 
@@ -148,48 +190,3 @@ assert ds._plan._logical_plan.dag.name == "FromArrow"
 ```python
 # (Assertions removed). 
 ```
-## General good practices
-
-### Prefer unit tests over integration tests
-
-Unit tests give faster feedback and make it easier to pinpoint failures. They run in 
-milliseconds, not seconds, and don’t depend on Ray clusters, external systems, or 
-timing. This keeps the test suite fast, reliable, and easy to maintain.
-
-:::{note}
-Put unit tests in `python/ray/data/tests/unit`.
-:::
-
-### Use fixtures, skip try-finally
-
-Fixtures make tests cleaner, more reusable, and better isolated. They’re the right tool 
-for setup and teardown, especially for things like `restore_data_context` and 
-`monkeypatch`.
-
-`try-finally` works, but fixtures make intent clearer and avoid boilerplate.
-
-**Original code**
-```python
-def test_dynamic_block_split(ray_start_regular_shared):
-    ctx = ray.data.context.DataContext.get_current()
-    original_target_max_block_size = ctx.target_max_block_size
-
-    ctx.target_max_block_size = 1
-    try: 
-        ...
-    finally:
-        ctx.target_max_block_size = original_target_max_block_size
-```
-
-**Better**
-```python
-def test_dynamic_block_split(ray_start_regular_shared, restore_data_context):
-    ctx = ray.data.context.DataContext.get_current()
-    target_max_block_size = ctx.target_max_block_size
-    ... # No need for try-finally
-```
-
-:::{tip}
-Use the `restore_data_context` fixture to ensure changes to the `DataContext` remain
-isolated
-:::
