@@ -24,6 +24,7 @@ ndarray(s)?
 NLP
 [Oo]utqueue(s)?
 PDFs
+PIL
 [Pp]ipelined
 Predibase('s)?
 [Pp]refetch
@@ -35,7 +36,7 @@ process_file
 [Pp]ushdown
 queryable
 RGB
-runai
+[Rr]un[Aa][Ii]
 [Ss]calers
 SGLang
 Spotify('s)?
