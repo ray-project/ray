@@ -140,7 +140,7 @@ with pytest.raises(ValueError) as e:
     ray.get(tensor)
 
 assert (
-    "Currently ray.get() only supports OBJECT_STORE and NIXL tensor transport, got GLOO, please specify the correct tensor transport in ray.get()."
+    "Trying to use two-sided tensor transport: GLOO for ray.get. This is only supported for one-sided transports such as NIXL or the OBJECT_STORE."
     in str(e.value)
 )
 
