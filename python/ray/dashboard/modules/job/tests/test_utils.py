@@ -223,14 +223,14 @@ class TestFastTailLastNLines:
 
         missing = tmp + ".missing"
         assert not os.path.exists(missing)
-        assert fast_tail_last_n_lines(missing, num_lines=10) == ""
+        assert fast_tail_last_n_lines(missing, num_lines=10, max_chars=1000) == ""
 
     def test_basic_last_n(self, tmp):
         # Write 100 lines, check that we get the last 10 lines.
         with open(tmp, "w") as f:
             for i in range(100):
                 f.write(f"line-{i}\n")
-        out = fast_tail_last_n_lines(tmp, num_lines=10)
+        out = fast_tail_last_n_lines(tmp, num_lines=10, max_chars=1000)
         expected = "".join([f"line-{i}\n" for i in range(90, 100)])
         assert out == expected
 
@@ -251,7 +251,7 @@ class TestFastTailLastNLines:
             f.write("a\n")
             f.write("b\n")
             f.write("partial_last_line")  # No newline at end
-        out = fast_tail_last_n_lines(tmp, num_lines=3)
+        out = fast_tail_last_n_lines(tmp, num_lines=3, max_chars=1000)
         assert out == "a\nb\npartial_last_line"
 
     def test_small_block_size(self, tmp):
@@ -259,7 +259,7 @@ class TestFastTailLastNLines:
         with open(tmp, "w") as f:
             for i in range(30):
                 f.write(f"{i}\n")
-        out = fast_tail_last_n_lines(tmp, num_lines=5, block_size=16)
+        out = fast_tail_last_n_lines(tmp, num_lines=5, max_chars=1000, block_size=16)
         expected = "".join([f"{i}\n" for i in range(25, 30)])
         assert out == expected
 
@@ -271,7 +271,7 @@ class TestFastTailLastNLines:
             f.write("long-" + ("Z" * 10000) + "\n")
             f.write("short-3\n")
             f.write("short-4\n")
-        out = fast_tail_last_n_lines(tmp, num_lines=3)
+        out = fast_tail_last_n_lines(tmp, num_lines=3, max_chars=20000)
         # Check that we get the last 3 lines, including the long line.
         assert out.splitlines()[-1] == "short-4"
         assert out.splitlines()[-2] == "short-3"
