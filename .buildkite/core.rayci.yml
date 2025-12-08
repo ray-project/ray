@@ -127,6 +127,7 @@ steps:
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
+        --python-version 3.10 --build-name corebuild-py3.10
         --only-tags=tmpfs --tmp-filesystem=tmpfs
 
   - label: ":ray: core: out of disk redis tests"
@@ -328,7 +329,9 @@ steps:
     tags: core_cpp
     instance_type: medium
     commands:
-      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --except-tags=cgroup --build-type clang
+      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker --
+        //:all //src/... core --except-tags=cgroup --build-type clang
+        --python-version 3.10 --build-name corebuild-py3.10
         --cache-test-results --parallelism-per-worker 2
 
   # block on premerge and microcheck
