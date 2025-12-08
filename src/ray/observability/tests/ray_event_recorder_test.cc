@@ -91,9 +91,15 @@ TEST_F(RayEventRecorderTest, TestMergeEvents) {
 
   std::vector<std::unique_ptr<RayEventInterface>> events;
   events.push_back(std::make_unique<RayDriverJobLifecycleEvent>(
-      data, rpc::events::DriverJobLifecycleEvent::CREATED, "test_session_name", NodeID::Nil()));
+      data,
+      rpc::events::DriverJobLifecycleEvent::CREATED,
+      "test_session_name",
+      NodeID::Nil()));
   events.push_back(std::make_unique<RayDriverJobLifecycleEvent>(
-      data, rpc::events::DriverJobLifecycleEvent::FINISHED, "test_session_name", NodeID::Nil()));
+      data,
+      rpc::events::DriverJobLifecycleEvent::FINISHED,
+      "test_session_name",
+      NodeID::Nil()));
   recorder_->AddEvents(std::move(events));
   io_service_.run_one();
 
@@ -151,14 +157,20 @@ TEST_F(RayEventRecorderTest, TestRecordEvents) {
   actor_life_data.set_node_id("node-xyz");
 
   std::vector<std::unique_ptr<RayEventInterface>> events;
-  events.push_back(
-      std::make_unique<RayDriverJobDefinitionEvent>(data1, "test_session_name_1", NodeID::Nil()));
+  events.push_back(std::make_unique<RayDriverJobDefinitionEvent>(
+      data1, "test_session_name_1", NodeID::Nil()));
   events.push_back(std::make_unique<RayDriverJobLifecycleEvent>(
-      data2, rpc::events::DriverJobLifecycleEvent::FINISHED, "test_session_name_2", NodeID::Nil()));
+      data2,
+      rpc::events::DriverJobLifecycleEvent::FINISHED,
+      "test_session_name_2",
+      NodeID::Nil()));
+  events.push_back(std::make_unique<RayActorDefinitionEvent>(
+      actor_def_data, "test_session_name_3", NodeID::Nil()));
   events.push_back(
-      std::make_unique<RayActorDefinitionEvent>(actor_def_data, "test_session_name_3", NodeID::Nil()));
-  events.push_back(std::make_unique<RayActorLifecycleEvent>(
-      actor_life_data, rpc::events::ActorLifecycleEvent::ALIVE, "test_session_name_4", NodeID::Nil()));
+      std::make_unique<RayActorLifecycleEvent>(actor_life_data,
+                                               rpc::events::ActorLifecycleEvent::ALIVE,
+                                               "test_session_name_4",
+                                               NodeID::Nil()));
   recorder_->AddEvents(std::move(events));
   io_service_.run_one();
 
@@ -224,8 +236,8 @@ TEST_F(RayEventRecorderTest, TestDropEvents) {
   for (size_t i = 0; i < max_buffer_size_ + 1; i++) {
     rpc::JobTableData data;
     data.set_job_id("test_job_id");
-    events_01.push_back(
-        std::make_unique<RayDriverJobDefinitionEvent>(data, "test_session", NodeID::Nil()));
+    events_01.push_back(std::make_unique<RayDriverJobDefinitionEvent>(
+        data, "test_session", NodeID::Nil()));
   }
   recorder_->AddEvents(std::move(events_01));
 
@@ -234,8 +246,8 @@ TEST_F(RayEventRecorderTest, TestDropEvents) {
   for (size_t i = 0; i < expected_num_dropped_events - 1; i++) {
     rpc::JobTableData data;
     data.set_job_id("test_job_id_" + std::to_string(i));
-    events_02.push_back(
-        std::make_unique<RayDriverJobDefinitionEvent>(data, "test_session", NodeID::Nil()));
+    events_02.push_back(std::make_unique<RayDriverJobDefinitionEvent>(
+        data, "test_session", NodeID::Nil()));
   }
   recorder_->AddEvents(std::move(events_02));
   io_service_.run_one();
@@ -266,8 +278,8 @@ TEST_F(RayEventRecorderTest, TestDisabled) {
   data.mutable_driver_address()->set_ip_address("127.0.0.1");
 
   std::vector<std::unique_ptr<RayEventInterface>> events;
-  events.push_back(
-      std::make_unique<RayDriverJobDefinitionEvent>(data, "test_session_name", NodeID::Nil()));
+  events.push_back(std::make_unique<RayDriverJobDefinitionEvent>(
+      data, "test_session_name", NodeID::Nil()));
   recorder_->AddEvents(std::move(events));
   io_service_.run_one();
   std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();

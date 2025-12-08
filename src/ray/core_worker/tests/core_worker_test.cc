@@ -171,7 +171,8 @@ class CoreWorkerTest : public ::testing::Test {
     auto task_event_buffer = std::make_unique<worker::TaskEventBufferImpl>(
         std::make_unique<gcs::MockGcsClient>(),
         std::make_unique<rpc::EventAggregatorClientImpl>(0, *client_call_manager_),
-        "test_session");
+        "test_session",
+        NodeID::Nil());
 
     task_manager_ = std::make_shared<TaskManager>(
         *memory_store_,

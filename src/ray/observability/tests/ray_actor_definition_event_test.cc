@@ -36,7 +36,8 @@ TEST_F(RayActorDefinitionEventTest, TestSerialize) {
   (*data.mutable_label_selector())["team"] = "core";
   (*data.mutable_label_selector())["tier"] = "prod";
 
-  auto event = std::make_unique<RayActorDefinitionEvent>(data, "test_session_name", NodeID::Nil());
+  auto event =
+      std::make_unique<RayActorDefinitionEvent>(data, "test_session_name", NodeID::Nil());
   auto serialized_event = std::move(*event).Serialize();
 
   ASSERT_EQ(serialized_event.source_type(), rpc::events::RayEvent::GCS);
