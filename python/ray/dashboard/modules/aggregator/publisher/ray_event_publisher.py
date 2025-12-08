@@ -30,9 +30,6 @@ from ray.dashboard.modules.aggregator.publisher.metrics import (
     published_counter_name,
     time_since_last_success_gauge_name,
 )
-from ray.dashboard.modules.aggregator.task_events_metadata_buffer import (
-    TaskEventsMetadataBuffer,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +60,6 @@ class RayEventPublisher(RayEventPublisherInterface):
         publish_client: PublisherClientInterface,
         event_buffer: MultiConsumerEventBuffer,
         common_metric_tags: Optional[Dict[str, str]] = None,
-        task_metadata_buffer: Optional[TaskEventsMetadataBuffer] = None,
         max_retries: int = PUBLISHER_MAX_RETRIES,
         initial_backoff: float = PUBLISHER_INITIAL_BACKOFF_SECONDS,
         max_backoff: float = PUBLISHER_MAX_BACKOFF_SECONDS,
@@ -76,7 +72,6 @@ class RayEventPublisher(RayEventPublisherInterface):
             publish_client: Client for publishing events to the destination
             event_buffer: Buffer for reading batches of events
             common_metric_tags: Common labels for all prometheus metrics
-            task_metadata_buffer: Buffer for reading a batch of droppedtask metadata
             max_retries: Maximum number of retries for failed publishes
             initial_backoff: Initial backoff time between retries in seconds
             max_backoff: Maximum backoff time between retries in seconds
@@ -91,7 +86,6 @@ class RayEventPublisher(RayEventPublisherInterface):
         self._jitter_ratio = float(jitter_ratio)
         self._publish_client = publish_client
         self._event_buffer = event_buffer
-        self._task_metadata_buffer = task_metadata_buffer
 
         # Event set once the publisher has registered as a consumer and is ready to publish events
         self._started_event: asyncio.Event = asyncio.Event()
@@ -109,16 +103,11 @@ class RayEventPublisher(RayEventPublisherInterface):
         try:
             logger.info(f"Starting publisher {self._name}")
             while True:
-                events_batch = await self._event_buffer.wait_for_batch(
+                batch = await self._event_buffer.wait_for_batch(
                     self._name,
                     PUBLISHER_MAX_BUFFER_SEND_INTERVAL_SECONDS,
                 )
-                publish_batch = PublishBatch(events=events_batch)
-
-                if self._task_metadata_buffer is not None:
-                    task_metadata_batch = self._task_metadata_buffer.get()
-                    publish_batch.task_events_metadata = task_metadata_batch
-
+                publish_batch = PublishBatch(events=batch)
                 await self._async_publish_with_retries(publish_batch)
         except asyncio.CancelledError:
             logger.info(f"Publisher {self._name} cancelled, shutting down gracefully")
@@ -231,7 +220,6 @@ class RayEventPublisher(RayEventPublisherInterface):
             {**self._common_metric_tags, "Outcome": "success"},
             float(duration),
         )
-        metric_recorder.flush_histograms()
 
     async def _record_retry_failure(
         self, duration: float, failed_attempts: int
