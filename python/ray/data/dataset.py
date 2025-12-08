@@ -6779,6 +6779,9 @@ class Schema:
         )
         from ray.data.extensions import ArrowTensorType, TensorDtype
 
+        if isinstance(self.base_schema, pa.lib.Schema):
+            return list(self.base_schema.types)
+
         arrow_types = []
         for dtype in self.base_schema.types:
             if isinstance(dtype, TensorDtype):
