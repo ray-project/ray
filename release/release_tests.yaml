@@ -2265,7 +2265,7 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: experimental/compute_b200_gpu.yaml
+    cluster_compute: experimental/compute_a100_gpu.yaml
 
   run:
     timeout: 1800
