@@ -753,33 +753,10 @@ def write_node_id(session_dir: str, node_id: str) -> None:
         node_id: The node ID of the current node in hex format.
     """
     file_path = Path(os.path.join(session_dir, RAY_NODE_ID_FILENAME))
-    cached_node_id = {}
 
     with FileLock(str(file_path.absolute()) + ".lock"):
-        if not file_path.exists():
-            with file_path.open(mode="w") as f:
-                json.dump({}, f)
-
-        with file_path.open() as f:
-            cached_node_id.update(json.load(f))
-
-        cached_id = cached_node_id.get("node_id")
-
-        if cached_id:
-            if cached_id == node_id:
-                return
-            else:
-                logger.warning(
-                    "The node ID of the current host recorded "
-                    f"in {RAY_NODE_ID_FILENAME} ({cached_id}) "
-                    "is different from the current node ID: "
-                    f"{node_id}. Ray will use {node_id} "
-                    "as the current node's ID."
-                )
-
-        cached_node_id["node_id"] = node_id
         with file_path.open(mode="w") as f:
-            json.dump(cached_node_id, f)
+            json.dump({"node_id": node_id}, f)
 
 
 def get_node_instance_id():
