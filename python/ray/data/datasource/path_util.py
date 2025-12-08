@@ -133,6 +133,57 @@ def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
     return any(path.lower().endswith(ext) for ext in extensions)
 
 
+# Mapping from URI schemes to compatible filesystem type_name values.
+# Used to validate that a cached filesystem is compatible with a given URI scheme
+# before attempting to use it, avoiding silent failures from PyArrow when the
+# wrong filesystem type is passed to _resolve_filesystem_and_path.
+_SCHEME_TO_FS_TYPE_NAMES = {
+    "": ("local",),  # No scheme = local filesystem
+    "file": ("local",),  # file:// = local filesystem
+    "s3": ("s3",),  # s3:// = S3 filesystem
+    "s3a": ("s3",),  # s3a:// = S3 filesystem (Hadoop compat)
+    "gs": ("gcs",),  # gs:// = GCS filesystem
+    "gcs": ("gcs",),  # gcs:// = GCS filesystem
+    "hdfs": ("hdfs",),  # hdfs:// = Hadoop filesystem
+    "viewfs": ("hdfs",),  # viewfs:// = Hadoop filesystem
+    "http": ("py",),  # http:// = fsspec HTTP (wrapped in PyFileSystem)
+    "https": ("py",),  # https:// = fsspec HTTP (wrapped in PyFileSystem)
+}
+
+
+def _is_filesystem_compatible_with_scheme(
+    filesystem: "pyarrow.fs.FileSystem",
+    scheme: str,
+) -> bool:
+    """Check if a filesystem is compatible with a URI scheme.
+
+    Uses PyArrow's `type_name` property for reliable filesystem type detection.
+    This prevents silently using the wrong filesystem for a URI, which can result
+    in malformed paths or incorrect behavior.
+
+    Args:
+        filesystem: The PyArrow filesystem to check.
+        scheme: The URI scheme (e.g., 's3', 'gs', 'http', 'file', '').
+
+    Returns:
+        True if the filesystem can handle the scheme, False otherwise.
+    """
+    # Get expected type names for this scheme
+    expected_types = _SCHEME_TO_FS_TYPE_NAMES.get(scheme.lower())
+    if expected_types is None:
+        # Unknown scheme - don't use cache, let PyArrow figure it out
+        return False
+
+    # Get the actual filesystem type
+    fs_type = filesystem.type_name
+
+    # For PyFileSystem (fsspec wrappers), also check if it's HTTP
+    if fs_type == "py" and scheme in ("http", "https"):
+        return _is_http_filesystem(filesystem)
+
+    return fs_type in expected_types
+
+
 def _resolve_single_path_with_fallback(
     path: str,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
@@ -140,9 +191,9 @@ def _resolve_single_path_with_fallback(
     """Resolve a single path with filesystem, with fallback to re-resolution on error.
 
     This is a helper for lazy filesystem resolution. If a filesystem is provided,
-    it first attempts to validate the path against that filesystem. If that fails
-    (e.g., the path uses a different filesystem type), it re-resolves without
-    the cached filesystem.
+    it first validates that the filesystem type is compatible with the URI scheme,
+    then attempts to resolve the path. If the filesystem is incompatible or
+    resolution fails, it re-resolves without the cached filesystem.
 
     Args:
         path: A single file/directory path.
@@ -166,9 +217,18 @@ def _resolve_single_path_with_fallback(
     except TypeError as e:
         raise ValueError(f"Invalid filesystem provided: {e}") from e
 
-    # Check HTTP scheme FIRST - PyArrow doesn't support HTTP/HTTPS natively
+    # Parse scheme to validate filesystem compatibility
     parsed = urlparse(path, allow_fragments=False)
-    if parsed.scheme in ["http", "https"]:
+    scheme = parsed.scheme.lower() if parsed.scheme else ""
+
+    # Check HTTP scheme FIRST - PyArrow doesn't support HTTP/HTTPS natively
+    if scheme in ("http", "https"):
+        # If we have a compatible cached HTTP filesystem, use it
+        if filesystem is not None and _is_filesystem_compatible_with_scheme(
+            filesystem, scheme
+        ):
+            return filesystem, path
+        # Otherwise create a new HTTP filesystem
         try:
             resolved_filesystem = _get_fsspec_http_filesystem()
             resolved_path = path
@@ -178,8 +238,10 @@ def _resolve_single_path_with_fallback(
                 f"Cannot resolve HTTP path '{path}': {import_error}"
             ) from import_error
 
-    # Try with provided filesystem (fast path for cached FS)
-    if filesystem is not None:
+    # Try with provided filesystem only if scheme is compatible (fast path for cached FS)
+    if filesystem is not None and _is_filesystem_compatible_with_scheme(
+        filesystem, scheme
+    ):
         try:
             _, resolved_path = _resolve_filesystem_and_path(path, filesystem)
             # Return the wrapped filesystem we passed in.
