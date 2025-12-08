@@ -1,6 +1,6 @@
 from ray import serve
-from ray.llm.examples.sglang.modules.builder import build_sglang_openai_app
 from ray.serve.llm import LLMConfig
+from ray.llm.examples.sglang.modules.builder import build_sglang_openai_app
 
 llm_config = LLMConfig(
     model_loading_config={

@@ -10,11 +10,12 @@ from ray.llm._internal.serve.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
 )
-from ray.llm.examples.sglang.sglang_engine import SGLangServer
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve.deployment import Application
 from ray.llm._internal.serve.core.ingress.builder import LLMServingArgs
+
+from ..sglang_engine import SGLangServer
 
 logger = get_logger(__name__)
 
