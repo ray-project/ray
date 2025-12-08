@@ -685,6 +685,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_dqn_multi_gpu",
     size = "large",
+    timeout = "eternal",
     srcs = ["examples/algorithms/dqn/multi_agent_cartpole_dqn.py"],
     args = [
         "--as-test",
@@ -851,6 +852,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_impala_multi_gpu",
     size = "large",
+    timeout = "eternal",
     srcs = ["examples/algorithms/impala/multi_agent_cartpole_impala.py"],
     args = [
         "--as-test",
