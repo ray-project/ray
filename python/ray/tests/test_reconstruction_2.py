@@ -30,8 +30,7 @@ def config(request):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_nondeterministic_output(config, ray_start_cluster, reconstruction_enabled):
+def test_nondeterministic_output(config, ray_start_cluster):
     config["max_direct_call_object_size"] = 100
     config["task_retry_delay_ms"] = 100
     config["object_timeout_milliseconds"] = 200
@@ -39,7 +38,7 @@ def test_nondeterministic_output(config, ray_start_cluster, reconstruction_enabl
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(
-        num_cpus=0, _system_config=config, enable_object_reconstruction=True
+        num_cpus=0, _system_config=config,
     )
     ray.init(address=cluster.address)
     # Node to place the initial object.
@@ -82,7 +81,7 @@ def test_reconstruction_hangs(config, ray_start_cluster):
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(
-        num_cpus=0, _system_config=config, enable_object_reconstruction=True
+        num_cpus=0, _system_config=config
     )
     ray.init(address=cluster.address)
     # Node to place the initial object.
@@ -122,7 +121,6 @@ def test_lineage_evicted(config, ray_start_cluster):
         num_cpus=0,
         _system_config=config,
         object_store_memory=10**8,
-        enable_object_reconstruction=True,
     )
     ray.init(address=cluster.address)
     node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
@@ -163,18 +161,12 @@ def test_lineage_evicted(config, ray_start_cluster):
         assert "ObjectReconstructionFailedLineageEvictedError" in str(e)
 
 
-@pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_multiple_returns(config, ray_start_cluster, reconstruction_enabled):
-    # Workaround to reset the config to the default value.
-    if not reconstruction_enabled:
-        config["lineage_pinning_enabled"] = False
-
+def test_multiple_returns(config, ray_start_cluster):
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0,
         _system_config=config,
-        enable_object_reconstruction=reconstruction_enabled,
     )
     ray.init(address=cluster.address)
     # Node to place the initial object.
@@ -199,30 +191,17 @@ def test_multiple_returns(config, ray_start_cluster, reconstruction_enabled):
         lambda: not all(node["Alive"] for node in ray.nodes()), timeout=10
     )
 
-    if reconstruction_enabled:
-        ray.get(dependent_task.remote(obj1))
-        ray.get(dependent_task.remote(obj2))
-    else:
-        with pytest.raises(ray.exceptions.RayTaskError):
-            ray.get(dependent_task.remote(obj1))
-            ray.get(dependent_task.remote(obj2))
-        with pytest.raises(ray.exceptions.ObjectLostError):
-            ray.get(obj2)
+    ray.get(dependent_task.remote(obj1))
+    ray.get(dependent_task.remote(obj2))
 
 
-@pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_nested(config, ray_start_cluster, reconstruction_enabled):
+def test_nested(config, ray_start_cluster):
     config["fetch_fail_timeout_milliseconds"] = 10_000
-    # Workaround to reset the config to the default value.
-    if not reconstruction_enabled:
-        config["lineage_pinning_enabled"] = False
-
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0,
         _system_config=config,
-        enable_object_reconstruction=reconstruction_enabled,
     )
     ray.init(address=cluster.address)
     done_signal = SignalActor.remote()
@@ -265,26 +244,15 @@ def test_nested(config, ray_start_cluster, reconstruction_enabled):
     wait_for_condition(
         lambda: not all(node["Alive"] for node in ray.nodes()), timeout=10
     )
-
-    if reconstruction_enabled:
-        ray.get(ref, timeout=60)
-    else:
-        with pytest.raises(ray.exceptions.ObjectLostError):
-            ray.get(ref, timeout=60)
+    ray.get(ref, timeout=60)
 
 
-@pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_spilled(config, ray_start_cluster, reconstruction_enabled):
-    # Workaround to reset the config to the default value.
-    if not reconstruction_enabled:
-        config["lineage_pinning_enabled"] = False
-
+def test_spilled(config, ray_start_cluster):
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0,
         _system_config=config,
-        enable_object_reconstruction=reconstruction_enabled,
     )
     ray.init(address=cluster.address)
     # Node to place the initial object.
@@ -293,7 +261,7 @@ def test_spilled(config, ray_start_cluster, reconstruction_enabled):
     )
     cluster.wait_for_nodes()
 
-    @ray.remote(max_retries=1 if reconstruction_enabled else 0)
+    @ray.remote(max_retries=1)
     def large_object():
         return np.zeros(10**7, dtype=np.uint8)
 
@@ -313,13 +281,7 @@ def test_spilled(config, ray_start_cluster, reconstruction_enabled):
         num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
     )
 
-    if reconstruction_enabled:
-        ray.get(dependent_task.remote(obj), timeout=60)
-    else:
-        with pytest.raises(ray.exceptions.RayTaskError):
-            ray.get(dependent_task.remote(obj), timeout=60)
-        with pytest.raises(ray.exceptions.ObjectLostError):
-            ray.get(obj, timeout=60)
+    ray.get(dependent_task.remote(obj), timeout=60)
 
 
 def test_memory_util(config, ray_start_cluster):
@@ -329,7 +291,6 @@ def test_memory_util(config, ray_start_cluster):
         num_cpus=0,
         resources={"head": 1},
         _system_config=config,
-        enable_object_reconstruction=True,
     )
     ray.init(address=cluster.address)
     # Node to place the initial object.
@@ -462,18 +423,12 @@ def test_override_max_retries(ray_start_cluster, override_max_retries):
             del os.environ["RAY_TASK_MAX_RETRIES"]
 
 
-@pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_reconstruct_freed_object(config, ray_start_cluster, reconstruction_enabled):
-    # Workaround to reset the config to the default value.
-    if not reconstruction_enabled:
-        config["lineage_pinning_enabled"] = False
-
+def test_reconstruct_freed_object(config, ray_start_cluster):
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0,
         _system_config=config,
-        enable_object_reconstruction=reconstruction_enabled,
     )
     ray.init(address=cluster.address)
 
@@ -496,13 +451,7 @@ def test_reconstruct_freed_object(config, ray_start_cluster, reconstruction_enab
     cluster.remove_node(node_to_kill, allow_graceful=False)
     cluster.add_node(num_cpus=1, object_store_memory=10**8)
 
-    if reconstruction_enabled:
-        ray.get(x)
-    else:
-        with pytest.raises(ray.exceptions.ObjectLostError):
-            ray.get(x)
-        with pytest.raises(ray.exceptions.ObjectFreedError):
-            ray.get(obj)
+    ray.get(x)
 
 
 def test_object_reconstruction_dead_actor(config, ray_start_cluster):

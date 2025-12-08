@@ -121,7 +121,7 @@ class MockObjectDirectory {
 
 class ObjectRecoveryManagerTestBase : public ::testing::Test {
  public:
-  explicit ObjectRecoveryManagerTestBase(bool lineage_enabled)
+  explicit ObjectRecoveryManagerTestBase()
       : local_node_id_(NodeID::FromRandom()),
         io_context_("TestOnly.ObjectRecoveryManagerTestBase"),
         publisher_(std::make_shared<pubsub::MockPublisher>()),
@@ -139,8 +139,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
             subscriber_.get(),
             /*is_node_dead=*/[](const NodeID &) { return false; },
             *std::make_shared<ray::observability::FakeGauge>(),
-            *std::make_shared<ray::observability::FakeGauge>(),
-            /*lineage_pinning_enabled=*/lineage_enabled)),
+            *std::make_shared<ray::observability::FakeGauge>())),
         manager_(
             rpc::Address(),
             raylet_client_pool_,

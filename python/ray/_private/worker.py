@@ -1578,12 +1578,6 @@ def init(
             The process starting ray must have read/write permissions to this path.
             Cgroup memory and cpu controllers be enabled for this cgroup.
             This option only works if enable_resource_isolation is True.
-        _enable_object_reconstruction: If True, when an object stored in
-            the distributed plasma store is lost due to node failure, Ray will
-            attempt to reconstruct the object by re-executing the task that
-            created the object. Arguments to the task will be recursively
-            reconstructed. If False, then ray.ObjectLostError will be
-            thrown.
         _plasma_directory: Override the plasma mmap file directory.
         _node_ip_address: The IP address of the node that we are on.
         _driver_object_store_memory: Deprecated.
@@ -1641,9 +1635,6 @@ def init(
     # Parse the hidden options
     _cgroup_path: str = kwargs.pop("_cgroup_path", None)
 
-    _enable_object_reconstruction: bool = kwargs.pop(
-        "_enable_object_reconstruction", False
-    )
     _plasma_directory: Optional[str] = kwargs.pop("_plasma_directory", None)
     _object_spilling_directory: Optional[str] = kwargs.pop(
         "object_spilling_directory", None
@@ -1905,7 +1896,6 @@ def init(
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
             _system_config=_system_config,
-            enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
             tracing_startup_hook=_tracing_startup_hook,
             node_name=_node_name,
@@ -1949,11 +1939,6 @@ def init(
                 "When connecting to an existing cluster, "
                 "_system_config must not be provided."
             )
-        if _enable_object_reconstruction:
-            raise ValueError(
-                "When connecting to an existing cluster, "
-                "_enable_object_reconstruction must not be provided."
-            )
         if _node_name is not None:
             raise ValueError(
                 "_node_name cannot be configured when connecting to "
@@ -1972,7 +1957,6 @@ def init(
             redis_password=_redis_password,
             temp_dir=_temp_dir,
             _system_config=_system_config,
-            enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
         )
         try:

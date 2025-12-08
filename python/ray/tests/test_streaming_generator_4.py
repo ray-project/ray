@@ -197,7 +197,6 @@ def test_many_tasks_lineage_reconstruction_mini_stress_test(
             num_cpus=1,
             resources={"head": 1},
             _system_config=RECONSTRUCTION_CONFIG,
-            enable_object_reconstruction=True,
         )
         ray.init(address=cluster.address)
 

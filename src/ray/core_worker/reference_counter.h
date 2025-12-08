@@ -50,10 +50,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
       pubsub::SubscriberInterface *object_info_subscriber,
       std::function<bool(const NodeID &node_id)> is_node_dead,
       ray::observability::MetricInterface &owned_object_by_state_counter,
-      ray::observability::MetricInterface &owned_object_sizes_by_state_counter,
-      bool lineage_pinning_enabled = false)
+      ray::observability::MetricInterface &owned_object_sizes_by_state_counter)
       : rpc_address_(std::move(rpc_address)),
-        lineage_pinning_enabled_(lineage_pinning_enabled),
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
         is_node_dead_(std::move(is_node_dead)),
@@ -351,14 +349,14 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// - The reference was contained in another ID that we were borrowing, and
     ///   we haven't told the process that gave us that ID yet.
     /// - We gave the reference to at least one other process.
-    bool OutOfScope(bool lineage_pinning_enabled) const {
+    bool OutOfScope() const {
       bool in_scope = RefCount() > 0;
       bool is_nested = !nested().contained_in_borrowed_ids.empty();
       bool has_borrowers = !borrow().borrowers.empty();
       bool was_stored_in_objects = !borrow().stored_in_objects.empty();
 
       bool has_lineage_references = false;
-      if (lineage_pinning_enabled && owned_by_us_ && !is_reconstructable_) {
+      if (owned_by_us_ && !is_reconstructable_) {
         has_lineage_references = lineage_ref_count > 0;
       }
 
@@ -371,12 +369,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// 1. The ObjectID's ref count is 0 on all workers.
     /// 2. If lineage pinning is enabled, there are no tasks that depend on
     /// the object that may be retried in the future.
-    bool ShouldDelete(bool lineage_pinning_enabled) const {
-      if (lineage_pinning_enabled) {
-        return OutOfScope(lineage_pinning_enabled) && (lineage_ref_count == 0);
-      } else {
-        return OutOfScope(lineage_pinning_enabled);
-      }
+    bool ShouldDelete() const {
+      return OutOfScope() && (lineage_ref_count == 0);
     }
 
     /// Access BorrowInfo without modifications.
@@ -729,12 +723,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// given object or not, by comparing our WorkerID with the WorkerID of the
   /// object's owner.
   rpc::Address rpc_address_;
-
-  /// Feature flag for lineage pinning. If this is false, then we will keep the
-  /// lineage ref count, but this will not be used to decide when the object's
-  /// Reference can be deleted. The object's lineage ref count is the number of
-  /// tasks that depend on that object that may be retried in the future.
-  const bool lineage_pinning_enabled_;
 
   /// Protects access to the reference counting state.
   mutable absl::Mutex mutex_;

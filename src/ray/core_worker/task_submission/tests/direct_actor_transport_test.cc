@@ -56,8 +56,7 @@ class DirectTaskTransportTest : public ::testing::Test {
         subscriber.get(),
         /*is_node_dead=*/[](const NodeID &) { return false; },
         fake_owned_object_count_gauge,
-        fake_owned_object_size_gauge,
-        /*lineage_pinning_enabled=*/false);
+        fake_owned_object_size_gauge);
     actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *client_pool,
         *raylet_client_pool,

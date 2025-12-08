@@ -93,8 +93,7 @@ class ActorManagerTest : public ::testing::Test {
             subscriber_.get(),
             [](const NodeID &node_id) { return true; },
             fake_owned_object_count_gauge_,
-            fake_owned_object_size_gauge_,
-            /*lineage_pinning_enabled=*/true)) {
+            fake_owned_object_size_gauge_)) {
     gcs_client_mock_->Init(actor_info_accessor_);
   }
 
