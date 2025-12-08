@@ -1894,6 +1894,69 @@ TEST(LeaseRequestRateLimiterTest, ClusterSizeBasedLeaseRequestRateLimiter) {
   }
 }
 
+TEST(LeaseRequestRateLimiterTest,
+     ClusterSizeBasedLeaseRequestRateLimiterSubscriptionBug) {
+  // This test examines the behavior of AsyncSubscribeToNodeAddressAndLivenessChange
+  // relative to the ClusterSizeBasedLeaseRequestRateLimiter.
+  // AsyncSubscribeToNodeAddressAndLivenessChange on initial subscription will query the
+  // gcs twice.  Once to set up the subscription, the other to bootstrap the initial
+  // state. when bootstrapping the initial state, a callback is triggered for every node
+  // in the response, which will contain all nodes currently alive in the cluster and a
+  // limited number of nodes which had died. Consumers of the api need to be defensive to
+  // this, as it implies that for a given subscription it is not guaranteed that for every
+  // dead node notification you receive a previous 'alive' node notification. An example
+  // scenario where not being defensive to this can cause bugs looks as follows
+  //
+  // Scenario:
+  // 1. Cluster has 3 nodes: node1 (alive), node2 (dead), node3 (alive)
+  // 2. Client subscribes to node changes
+  // 3. GetAllNodeAddressAndLiveness returns all 3 nodes (including node2 which is dead)
+  // 4. Subscription triggers OnNodeChanges for all 3 nodes
+  // 5. Bug: OnNodeChanges(node2=DEAD) decrements counter even though we never saw
+  //    node2 as ALIVE
+  // 6. The counter will now say there is only 1 node in the cluster as opposed to the
+  //    correct number which is 2.
+
+  rpc::GcsNodeAddressAndLiveness alive_node1;
+  alive_node1.set_state(rpc::GcsNodeInfo::ALIVE);
+
+  rpc::GcsNodeAddressAndLiveness alive_node3;
+  alive_node3.set_state(rpc::GcsNodeInfo::ALIVE);
+
+  rpc::GcsNodeAddressAndLiveness dead_node2;
+  dead_node2.set_state(rpc::GcsNodeInfo::DEAD);
+
+  ClusterSizeBasedLeaseRequestRateLimiter limiter(0);
+
+  // Initially the limiter has min_concurrent_lease_limit = 0, no nodes
+  ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 0);
+
+  // First, we get node1 (alive) - counter should increment to 1
+  limiter.OnNodeChanges(alive_node1, true);
+  ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
+
+  // Then we get node2 (dead) - this is the bug!
+  // We're getting a DEAD notification for a node we never saw as ALIVE
+  // The counter will try to decrement from 1 to 0
+  limiter.OnNodeChanges(dead_node2, true);
+
+  // BUG: The counter should still be 1 (we have 1 alive node: node1)
+  // But the implementation will decrement it to 0 because it received a DEAD notification
+  // This assertion will FAIL, demonstrating the bug:
+  ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(),
+            1);  // Expected: 1 alive node (node1)
+                 // Actual: 0 (because dead_node2 caused incorrect decrement)
+
+  // Continue with node3 (alive)
+  limiter.OnNodeChanges(alive_node3, true);
+
+  // Now we should have 2 alive nodes (node1, node3), but due to the bug we have 1
+  // This assertion will also FAIL:
+  ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(),
+            2);  // Expected: 2 alive nodes (node1, node3)
+                 // Actual: 1 (counter was incorrectly decremented, then incremented once)
+}
+
 }  // namespace core
 }  // namespace ray
 
