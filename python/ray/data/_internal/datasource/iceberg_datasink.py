@@ -105,30 +105,6 @@ class IcebergDatasink(
         # Succeeded, reload to get latest table version and exit.
         self._reload_table()
 
-    def _try_update_schema(self, incoming_schema: "pa.Schema") -> None:
-        """
-        Evolve table schema if incoming data has new columns.
-
-        This must be called before files are written to avoid PyIceberg
-        name mapping errors when the incoming data has columns not in
-        the table schema.
-
-        Args:
-            incoming_schema: The PyArrow schema of the incoming data
-        """
-        from pyiceberg.io import pyarrow as pyi_pa_io
-
-        table_schema: "pa.Schema" = pyi_pa_io.schema_to_pyarrow(self._table.schema())
-        table_field_names = set(table_schema.names)
-        incoming_field_names = set(incoming_schema.names)
-
-        # Only evolve schema if there are new columns.
-        # Don't trigger evolution for type mismatches on existing columns
-        # (e.g., empty datasets with inferred types like double instead of string).
-        new_columns = incoming_field_names - table_field_names
-        if new_columns:
-            self._update_schema(incoming_schema)
-
     def _append_and_commit(
         self, txn: "Table.transaction", data_files: List["DataFile"]
     ) -> None:
@@ -157,7 +133,7 @@ class IcebergDatasink(
         # Evolve schema BEFORE any files are written
         # This prevents PyIceberg name mapping errors when incoming data has new columns
         if schema is not None:
-            self._try_update_schema(schema)
+            self._update_schema(schema)
 
     def write(
         self, blocks: Iterable[Block], ctx: TaskContext
