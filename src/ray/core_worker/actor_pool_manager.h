@@ -162,6 +162,21 @@ struct PoolStats {
 /// selects which actor to execute the task. When a task fails, the pool can retry
 /// it on a different actor, avoiding the thundering herd problem of actor-bound retries.
 ///
+/// KNOWN LIMITATION (Phase 1):
+/// Cross-actor retry does NOT work in Phase 1. The TaskCompletionCallback passed
+/// to SubmitActorTaskCallback is not invoked because there's no hook in
+/// TaskManager/ActorTaskSubmitter to notify when tasks complete. This means:
+///   - OnTaskFailed() / OnTaskSucceeded() are never called
+///   - num_tasks_in_flight counters are not decremented
+///   - Retry logic is never triggered
+///
+/// What DOES work in Phase 1:
+///   - Pool registration and lifecycle
+///   - Actor membership management
+///   - Load-balanced actor selection
+///   - Task submission (happy path)
+///   - Basic stats (submitted count, actor count)
+///
 /// This class is thread-safe.
 class ActorPoolManager {
  public:

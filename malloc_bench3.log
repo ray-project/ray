@@ -1,0 +1,196 @@
+Loading: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: target //src/ray/object_manager/plasma/tests:fragmentation_benchmark (0 packages loaded, 0 targets configured)
+INFO: Analyzed target //src/ray/object_manager/plasma/tests:fragmentation_benchmark (0 packages loaded, 0 targets configured).
+INFO: Found 1 target...
+[0 / 1] [Prepa] BazelWorkspaceStatusAction stable-status.txt
+Target //src/ray/object_manager/plasma/tests:fragmentation_benchmark up-to-date:
+  bazel-bin/src/ray/object_manager/plasma/tests/fragmentation_benchmark
+INFO: Elapsed time: 1.050s, Critical Path: 0.01s
+INFO: 1 process: 1 internal.
+INFO: Build completed successfully, 1 total action
+INFO: Running command line: external/bazel_tools/tools/test/test-setup.sh src/ray/object_manager/plasma/tests/fragmentation_benchmark
+exec ${PAGER:-/usr/bin/less} "$0" || exit 1
+Executing tests from //src/ray/object_manager/plasma/tests:fragmentation_benchmark
+-----------------------------------------------------------------------------
+
+======================================
+Plasma Allocator Fragmentation Benchmark
+======================================
+
+[==========] Running 4 tests from 3 test suites.
+[----------] Global test environment set-up.
+[----------] 1 test from SequentialAllocationBenchmark
+[ RUN      ] SequentialAllocationBenchmark.CompareAllocators_LargeObjects
+
+=== Sequential Allocation Benchmark - Large Objects ===
+
+[2025-10-13 10:01:14,463 I 2421566 2421566] dlmalloc.cc:324: Setting dlmalloc config: plasma_directory=/tmp/plasma_bench_4140976390, fallback_directory=/tmp/plasma_bench_4109587905, hugepage_enabled=0, fallback_enabled=1
+[2025-10-13 10:01:14,463 I 2421566 2421566] dlmalloc.cc:153: create_and_mmap_buffer(268435464, /tmp/plasma_bench_4140976390/plasmaXXXXXX)
+=== Sequential_Allocation [dlmalloc] ===
+Object Size: 10240 KB
+Memory Limit: 256 MB
+Allocation Rate: 10091.6 ops/sec
+Free Rate: 3.94945e+06 ops/sec
+Avg Alloc Latency: 99.092 μs
+P95 Alloc Latency: 161.103 μs
+Fragmentation Ratio: 50%
+Memory Utilization: 97.6562%
+Successful/Failed Allocs: 25/1
+Fallback Allocations: 0
+Test Duration: 0.002681 sec
+
+[2025-10-13 10:01:14,467 I 2421566 2421566] jemalloc_allocator.cc:598: jemalloc arena 17 configured with retain limit 268435456 and no memory release
+[2025-10-13 10:01:14,467 I 2421566 2421566] jemalloc_allocator.cc:617: Installed custom extent hooks for arena 17
+[2025-10-13 10:01:14,467 I 2421566 2421566] jemalloc_allocator.cc:513: JemallocAllocator initialized with 268435456 bytes limit, plasma_dir=/tmp/plasma_bench_4140976390, fallback_dir=/tmp/plasma_bench_4109587905
+[2025-10-13 10:01:14,467 I 2421566 2421566] jemalloc_allocator.cc:89: create_and_mmap_buffer(268435464, /tmp/plasma_bench_4140976390/plasmaXXXXXX)
+[2025-10-13 10:01:14,468 I 2421566 2421566] jemalloc_allocator.cc:224: PlasmaExtentAlloc: allocated entire pool of 268435464 bytes at 0x7f826d7ff008 (actual: 0x7f826d7ff000)
+=== Sequential_Allocation [jemalloc] ===
+Object Size: 10240 KB
+Memory Limit: 256 MB
+Allocation Rate: 11060.6 ops/sec
+Free Rate: 709220 ops/sec
+Avg Alloc Latency: 90.411 μs
+P95 Alloc Latency: 178.402 μs
+Fragmentation Ratio: 99.6094%
+Memory Utilization: 0.218236%
+Successful/Failed Allocs: 1/1
+Fallback Allocations: 0
+Test Duration: 0.000193 sec
+
+=== COMPARISON ===
+Fragmentation Reduction: -49.6094% (negative = jemalloc better)
+Allocation Speed Improvement: 9.60167%
+[       OK ] SequentialAllocationBenchmark.CompareAllocators_LargeObjects (7 ms)
+[----------] 1 test from SequentialAllocationBenchmark (7 ms total)
+
+[----------] 1 test from MixedAllocationBenchmark
+[ RUN      ] MixedAllocationBenchmark.CompareAllocators_MixedWorkload
+
+=== Mixed Allocation Benchmark ===
+
+[2025-10-13 10:01:14,469 I 2421566 2421566] dlmalloc.cc:324: Setting dlmalloc config: plasma_directory=/tmp/plasma_bench_3988844183, fallback_directory=/tmp/plasma_bench_3328977932, hugepage_enabled=0, fallback_enabled=1
+=== Mixed_Allocation [dlmalloc] ===
+Object Size: 1024 KB
+Memory Limit: 256 MB
+Allocation Rate: 97282.9 ops/sec
+Free Rate: 5.57485e+06 ops/sec
+Avg Alloc Latency: 10.2793 μs
+P95 Alloc Latency: 83.101 μs
+Fragmentation Ratio: 50%
+Memory Utilization: 21.1914%
+Successful/Failed Allocs: 1024/0
+Fallback Allocations: 0
+Test Duration: 0.01113 sec
+
+[2025-10-13 10:01:14,481 I 2421566 2421566] jemalloc_allocator.cc:598: jemalloc arena 18 configured with retain limit 268435456 and no memory release
+[2025-10-13 10:01:14,481 I 2421566 2421566] jemalloc_allocator.cc:617: Installed custom extent hooks for arena 18
+[2025-10-13 10:01:14,481 I 2421566 2421566] jemalloc_allocator.cc:513: JemallocAllocator initialized with 268435456 bytes limit, plasma_dir=/tmp/plasma_bench_3988844183, fallback_dir=/tmp/plasma_bench_3328977932
+[2025-10-13 10:01:14,481 I 2421566 2421566] jemalloc_allocator.cc:89: create_and_mmap_buffer(268435464, /tmp/plasma_bench_3988844183/plasmaXXXXXX)
+[2025-10-13 10:01:14,481 I 2421566 2421566] jemalloc_allocator.cc:224: PlasmaExtentAlloc: allocated entire pool of 268435464 bytes at 0x7f825cfff008 (actual: 0x7f825cfff000)
+=== Mixed_Allocation [jemalloc] ===
+Object Size: 1024 KB
+Memory Limit: 256 MB
+Allocation Rate: 280273 ops/sec
+Free Rate: 56031.2 ops/sec
+Avg Alloc Latency: 3.56794 μs
+P95 Alloc Latency: 10.1 μs
+Fragmentation Ratio: 99.9512%
+Memory Utilization: 0.218236%
+Successful/Failed Allocs: 107/1790
+Fallback Allocations: 0
+Test Duration: 0.009318 sec
+
+=== COMPARISON ===
+Fragmentation Reduction: -49.9512% (negative = jemalloc better)
+Mixed Allocation Speed Improvement: 188.101%
+[       OK ] MixedAllocationBenchmark.CompareAllocators_MixedWorkload (27 ms)
+[----------] 1 test from MixedAllocationBenchmark (27 ms total)
+
+[----------] 2 tests from PathologicalFragmentationBenchmark
+[ RUN      ] PathologicalFragmentationBenchmark.CompareAllocators_CheckerboardPattern
+
+=== Checkerboard Pattern Benchmark ===
+
+[2025-10-13 10:01:14,496 I 2421566 2421566] dlmalloc.cc:324: Setting dlmalloc config: plasma_directory=/tmp/plasma_bench_1569890103, fallback_directory=/tmp/plasma_bench_2055994887, hugepage_enabled=0, fallback_enabled=1
+=== Checkerboard_Pattern [dlmalloc] ===
+Object Size: 1024 KB
+Memory Limit: 256 MB
+Allocation Rate: 78528.1 ops/sec
+Free Rate: 0 ops/sec
+Avg Alloc Latency: 12.7343 μs
+P95 Alloc Latency: 12.921 μs
+Fragmentation Ratio: 50%
+Memory Utilization: 27.3438%
+Successful/Failed Allocs: 110/0
+Fallback Allocations: 0
+Test Duration: 0.001461 sec
+
+[2025-10-13 10:01:14,499 I 2421566 2421566] jemalloc_allocator.cc:598: jemalloc arena 19 configured with retain limit 268435456 and no memory release
+[2025-10-13 10:01:14,499 I 2421566 2421566] jemalloc_allocator.cc:617: Installed custom extent hooks for arena 19
+[2025-10-13 10:01:14,499 I 2421566 2421566] jemalloc_allocator.cc:513: JemallocAllocator initialized with 268435456 bytes limit, plasma_dir=/tmp/plasma_bench_1569890103, fallback_dir=/tmp/plasma_bench_2055994887
+[2025-10-13 10:01:14,499 I 2421566 2421566] jemalloc_allocator.cc:89: create_and_mmap_buffer(268435464, /tmp/plasma_bench_1569890103/plasmaXXXXXX)
+[2025-10-13 10:01:14,499 I 2421566 2421566] jemalloc_allocator.cc:224: PlasmaExtentAlloc: allocated entire pool of 268435464 bytes at 0x7f825cfff008 (actual: 0x7f825cfff000)
+=== Checkerboard_Pattern [jemalloc] ===
+Object Size: 1024 KB
+Memory Limit: 256 MB
+Allocation Rate: 12751.6 ops/sec
+Free Rate: 0 ops/sec
+Avg Alloc Latency: 78.4215 μs
+P95 Alloc Latency: 154.443 μs
+Fragmentation Ratio: 99.8047%
+Memory Utilization: 0.218236%
+Successful/Failed Allocs: 1/11
+Fallback Allocations: 0
+Test Duration: 0.000447 sec
+
+=== COMPARISON ===
+Fragmentation Reduction: -49.8047% (negative = jemalloc better)
+Successful Large Alloc Difference: -109 (positive = jemalloc better)
+[       OK ] PathologicalFragmentationBenchmark.CompareAllocators_CheckerboardPattern (6 ms)
+[ RUN      ] PathologicalFragmentationBenchmark.CompareAllocators_BurstPattern
+
+=== Burst Allocation Benchmark ===
+
+[2025-10-13 10:01:14,503 I 2421566 2421566] dlmalloc.cc:324: Setting dlmalloc config: plasma_directory=/tmp/plasma_bench_2772649512, fallback_directory=/tmp/plasma_bench_1743925041, hugepage_enabled=0, fallback_enabled=1
+=== Burst_Allocation [dlmalloc] ===
+Object Size: 1024 KB
+Memory Limit: 256 MB
+Allocation Rate: 57879.9 ops/sec
+Free Rate: 0 ops/sec
+Avg Alloc Latency: 17.2772 μs
+P95 Alloc Latency: 16.28 μs
+Fragmentation Ratio: 50%
+Memory Utilization: 99.6094%
+Successful/Failed Allocs: 255/1
+Fallback Allocations: 0
+Test Duration: 0.004533 sec
+
+[2025-10-13 10:01:14,510 I 2421566 2421566] jemalloc_allocator.cc:598: jemalloc arena 20 configured with retain limit 268435456 and no memory release
+[2025-10-13 10:01:14,510 I 2421566 2421566] jemalloc_allocator.cc:617: Installed custom extent hooks for arena 20
+[2025-10-13 10:01:14,510 I 2421566 2421566] jemalloc_allocator.cc:513: JemallocAllocator initialized with 268435456 bytes limit, plasma_dir=/tmp/plasma_bench_2772649512, fallback_dir=/tmp/plasma_bench_1743925041
+[2025-10-13 10:01:14,510 I 2421566 2421566] jemalloc_allocator.cc:89: create_and_mmap_buffer(268435464, /tmp/plasma_bench_2772649512/plasmaXXXXXX)
+[2025-10-13 10:01:14,510 I 2421566 2421566] jemalloc_allocator.cc:224: PlasmaExtentAlloc: allocated entire pool of 268435464 bytes at 0x7f825cfff008 (actual: 0x7f825cfff000)
+=== Burst_Allocation [jemalloc] ===
+Object Size: 1024 KB
+Memory Limit: 256 MB
+Allocation Rate: 4778.66 ops/sec
+Free Rate: 0 ops/sec
+Avg Alloc Latency: 209.263 μs
+P95 Alloc Latency: 415.187 μs
+Fragmentation Ratio: 99.8047%
+Memory Utilization: 0.218236%
+Successful/Failed Allocs: 1/1
+Fallback Allocations: 0
+Test Duration: 0.000437 sec
+
+=== COMPARISON ===
+Burst Allocation Speed Improvement: -91.7438%
+Memory Utilization Improvement: -99.3911% (positive = jemalloc better)
+[       OK ] PathologicalFragmentationBenchmark.CompareAllocators_BurstPattern (8 ms)
+[----------] 2 tests from PathologicalFragmentationBenchmark (15 ms total)
+
+[----------] Global test environment tear-down
+[==========] 4 tests from 3 test suites ran. (51 ms total)
+[  PASSED  ] 4 tests.

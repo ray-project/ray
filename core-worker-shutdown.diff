@@ -1,0 +1,637 @@
+diff --git a/src/ray/core_worker/core_worker.cc b/src/ray/core_worker/core_worker.cc
+index 1421a32ffe..7c131b6ae8 100644
+--- a/src/ray/core_worker/core_worker.cc
++++ b/src/ray/core_worker/core_worker.cc
+@@ -371,6 +371,9 @@ CoreWorker::CoreWorker(
+                               object_id]() { free_actor_object_callback(object_id); },
+                              "CoreWorker.FreeActorObjectCallback");
+           }) {
++  // Initialize shutdown synchronization
++  shutdown_complete_future_ = shutdown_complete_promise_.get_future().share();
++
+   // Initialize task receivers.
+   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
+     RAY_CHECK(options_.task_execution_callback != nullptr);
+@@ -525,24 +528,97 @@ CoreWorker::CoreWorker(
+   // in case there is a problem during construction.
+   ConnectToRayletInternal();
+ 
+-  // Initialize shutdown coordinator last - after all services are ready
+-  // Create concrete shutdown executor that implements real shutdown operations
+-  auto shutdown_executor = std::make_unique<CoreWorkerShutdownExecutor>(this);
++}
++
++CoreWorker::~CoreWorker() {
++  // Wait for shutdown to complete before destruction
++  WaitForShutdownComplete();
++  RAY_LOG(INFO) << "Core worker is destructed";
++}
++
++void CoreWorker::InitializeShutdownExecutor(std::shared_ptr<CoreWorker> self) {
++  RAY_CHECK(self.get() == this) << "Passed shared_ptr does not match this CoreWorker";
++
++  // Create concrete shutdown executor with the shared_ptr
++  auto shutdown_executor = std::make_unique<CoreWorkerShutdownExecutor>(self);
+   shutdown_coordinator_ = std::make_unique<ShutdownCoordinator>(
+       std::move(shutdown_executor), options_.worker_type);
+ 
+   RAY_LOG(DEBUG) << "Initialized unified shutdown coordinator with concrete executor for "
+-                    "worker type: "
+-                 << WorkerTypeString(options_.worker_type);
+-}  // NOLINT(readability/fn_size)
+-
+-CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
++                    "worker type: " << WorkerTypeString(options_.worker_type);
++}
+ 
+ void CoreWorker::Shutdown() {
+   shutdown_coordinator_->RequestShutdown(
+       /*force_shutdown=*/false, ShutdownReason::kGracefulExit, "ray.shutdown() called");
+ }
+ 
++void CoreWorker::WaitForShutdownComplete(std::chrono::milliseconds timeout_ms) {
++  if (shutdown_coordinator_ && shutdown_coordinator_->IsShuttingDown()) {
++    RAY_LOG(INFO) << "Waiting for shutdown to complete (timeout: " << timeout_ms.count() << "ms)...";
++    auto status = shutdown_complete_future_.wait_for(timeout_ms);
++    if (status == std::future_status::timeout) {
++      RAY_LOG(ERROR) << "Shutdown did not complete within " << timeout_ms.count()
++                     << "ms, proceeding with destruction anyway";
++    } else {
++      RAY_LOG(INFO) << "Shutdown completed successfully";
++    }
++  }
++}
++
++void CoreWorker::NotifyShutdownComplete() {
++  try {
++    shutdown_complete_promise_.set_value();
++    RAY_LOG(DEBUG) << "Shutdown completion notified";
++  } catch (const std::future_error& e) {
++    // Promise may have already been set if multiple paths call this
++    RAY_LOG(DEBUG) << "Shutdown completion already notified: " << e.what();
++  }
++}
++
++bool CoreWorker::IsConnected() const {
++  absl::MutexLock lock(&connected_mutex_);
++  return connected_internal_;
++}
++
++bool CoreWorker::SetDisconnectedIfConnected() {
++  absl::MutexLock lock(&connected_mutex_);
++  if (!connected_internal_) {
++    return false;  // Already disconnected
++  }
++  connected_internal_ = false;
++  // Also update the old connected_ flag for backward compatibility
++  connected_ = false;
++  return true;  // Successfully disconnected
++}
++
++CoreWorker::ShutdownState CoreWorker::GetShutdownState() const {
++  absl::MutexLock lock(&shutdown_state_mutex_);
++  return shutdown_state_;
++}
++
++void CoreWorker::SetShutdownState(ShutdownState state) {
++  absl::MutexLock lock(&shutdown_state_mutex_);
++
++  // Only allow forward transitions
++  if (state <= shutdown_state_) {
++    RAY_LOG(WARNING) << "Ignoring backward/same shutdown state transition from "
++                     << static_cast<int>(shutdown_state_) << " to "
++                     << static_cast<int>(state);
++    return;
++  }
++
++  RAY_LOG(INFO) << "Shutdown state transition: "
++                << static_cast<int>(shutdown_state_) << " -> "
++                << static_cast<int>(state);
++  shutdown_state_ = state;
++}
++
++std::function<void()> CoreWorker::GetActorShutdownCallback() const {
++  absl::MutexLock lock(&actor_callback_mutex_);
++  return actor_shutdown_callback_;
++}
++
+ void CoreWorker::ConnectToRayletInternal() {
+   // Tell the raylet the port that we are listening on.
+   // NOTE: This also marks the worker as available in Raylet. We do this at the
+@@ -580,9 +656,9 @@ void CoreWorker::Disconnect(
+   }
+ 
+   opencensus::stats::StatsExporter::ExportNow();
+-  if (connected_) {
++
++  if (SetDisconnectedIfConnected()) {
+     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
+-    connected_ = false;
+     Status status = raylet_ipc_client_->Disconnect(
+         exit_type, exit_detail, creation_task_exception_pb_bytes);
+     if (status.ok()) {
+@@ -590,6 +666,8 @@ void CoreWorker::Disconnect(
+     } else {
+       RAY_LOG(WARNING) << "Failed to disconnect from the local raylet: " << status;
+     }
++  } else {
++    RAY_LOG(DEBUG) << "Already disconnected, skipping disconnect message";
+   }
+ }
+ 
+@@ -824,12 +902,28 @@ void CoreWorker::InternalHeartbeat() {
+ }
+ 
+ void CoreWorker::RecordMetrics() {
+-  // Record metrics for owned tasks.
+-  task_manager_->RecordMetrics();
+-  // Record metrics for executed tasks.
+-  task_counter_.RecordMetrics();
+-  // Record worker heap memory metrics.
+-  memory_store_->RecordMetrics();
++  // Skip metrics recording if we're shutting down to avoid accessing
++  // components that may be in inconsistent state
++  if (GetShutdownState() != RUNNING) {
++    RAY_LOG(DEBUG) << "Skipping metrics recording during shutdown";
++    return;
++  }
++
++  // Wrap in try-catch to handle any exceptions during shutdown
++  try {
++    // Record metrics for owned tasks.
++    if (task_manager_) {
++      task_manager_->RecordMetrics();
++    }
++    // Record metrics for executed tasks.
++    task_counter_.RecordMetrics();
++    // Record worker heap memory metrics.
++    if (memory_store_) {
++      memory_store_->RecordMetrics();
++    }
++  } catch (const std::exception& e) {
++    RAY_LOG(WARNING) << "Failed to record metrics: " << e.what();
++  }
+ }
+ 
+ std::unordered_map<ObjectID, std::pair<size_t, size_t>>
+diff --git a/src/ray/core_worker/core_worker.h b/src/ray/core_worker/core_worker.h
+index e2463a3e70..9499fda466 100644
+--- a/src/ray/core_worker/core_worker.h
++++ b/src/ray/core_worker/core_worker.h
+@@ -17,6 +17,7 @@
+ #include <gtest/gtest_prod.h>
+ 
+ #include <deque>
++#include <future>
+ #include <memory>
+ #include <queue>
+ #include <string>
+@@ -167,7 +168,7 @@ class TaskToRetryDescComparator {
+ /// The root class that contains all the core and language-independent functionalities
+ /// of the worker. This class is supposed to be used to implement app-language (Java,
+ /// Python, etc) workers.
+-class CoreWorker {
++class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
+  public:
+   /// Construct a CoreWorker instance.
+   ///
+@@ -243,6 +244,10 @@ class CoreWorker {
+                   const std::shared_ptr<LocalMemoryBuffer>
+                       &creation_task_exception_pb_bytes = nullptr);
+ 
++  /// Initialize the shutdown executor after construction is complete
++  /// This must be called after the CoreWorker is created as a shared_ptr
++  void InitializeShutdownExecutor(std::shared_ptr<CoreWorker> self);
++
+   /// Shut down the worker completely.
+   ///
+   /// This must be called before deallocating a worker / driver's core worker for memory
+@@ -250,6 +255,32 @@ class CoreWorker {
+   ///
+   void Shutdown();
+ 
++  /// Wait for shutdown to complete before destruction
++  /// This method blocks until shutdown is complete or times out
++  /// \param timeout_ms Maximum time to wait in milliseconds (default: 30 seconds)
++  void WaitForShutdownComplete(std::chrono::milliseconds timeout_ms =
++                               std::chrono::milliseconds(30000));
++
++  /// Notify that shutdown is complete
++  /// This method should be called by the shutdown executor when all shutdown
++  /// operations have finished
++  void NotifyShutdownComplete();
++
++  /// Thread-safe connection status methods
++  bool IsConnected() const;
++  bool SetDisconnectedIfConnected();
++
++  /// Thread-safe shutdown state methods
++  ShutdownState GetShutdownState() const;
++  void SetShutdownState(ShutdownState state);
++
++  /// Thread-safe event loop status
++  bool AreEventLoopsRunning() const { return event_loops_running_.load(); }
++  void SetEventLoopsStopped() { event_loops_running_.store(false); }
++
++  /// Thread-safe actor callback access
++  std::function<void()> GetActorShutdownCallback() const;
++
+   /// Start receiving and executing tasks.
+   void RunTaskExecutionLoop();
+ 
+@@ -1952,5 +1983,23 @@ class CoreWorker {
+ 
+   /// Callback to free an RDT object when it is out of scope.
+   std::function<void(const ObjectID &)> free_actor_object_callback_;
++
++  /// Thread-safety primitives for shutdown synchronization
++  mutable absl::Mutex connected_mutex_;
++  bool connected_internal_ ABSL_GUARDED_BY(connected_mutex_) = true;
++
++  mutable absl::Mutex shutdown_state_mutex_;
++  enum ShutdownState { RUNNING, SHUTTING_DOWN, DISCONNECTING, SHUTDOWN };
++  ShutdownState shutdown_state_ ABSL_GUARDED_BY(shutdown_state_mutex_) = RUNNING;
++
++  std::atomic<bool> event_loops_running_{true};
++  mutable absl::Mutex actor_callback_mutex_;
++
++  mutable absl::Mutex idle_check_mutex_;
++  mutable std::atomic<uint64_t> idle_sequence_num_{0};
++
++  /// Shutdown synchronization - ensure shutdown completes before destruction
++  std::promise<void> shutdown_complete_promise_;
++  std::shared_future<void> shutdown_complete_future_;
+ };
+ }  // namespace ray::core
+diff --git a/src/ray/core_worker/core_worker_process.cc b/src/ray/core_worker/core_worker_process.cc
+index 9202751de6..b68f61d740 100644
+--- a/src/ray/core_worker/core_worker_process.cc
++++ b/src/ray/core_worker/core_worker_process.cc
+@@ -119,7 +119,6 @@ CoreWorker &CoreWorkerProcess::GetCoreWorker() {
+ void CoreWorkerProcess::RunTaskExecutionLoop() {
+   EnsureInitialized(/*quick_exit*/ false);
+   core_worker_process->RunWorkerTaskExecutionLoop();
+-  core_worker_process.reset();
+ }
+ 
+ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker() {
+@@ -684,6 +683,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
+                                    pid,
+                                    *task_by_state_gauge_,
+                                    *actor_by_state_gauge_);
++
++  // Initialize shutdown executor after CoreWorker is created as shared_ptr
++  core_worker->InitializeShutdownExecutor(core_worker);
++
+   return core_worker;
+ }
+ 
+@@ -941,7 +944,12 @@ void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
+   auto core_worker = GetCoreWorker();
+   RAY_CHECK(core_worker != nullptr);
+   core_worker->RunTaskExecutionLoop();
+-  RAY_LOG(INFO) << "Task execution loop terminated. Removing the global worker.";
++  RAY_LOG(INFO) << "Task execution loop terminated. Waiting for shutdown to complete...";
++
++  // Wait for shutdown to complete before removing the worker
++  core_worker->WaitForShutdownComplete();
++
++  RAY_LOG(INFO) << "Shutdown complete. Removing the global worker.";
+   {
+     auto write_locked = core_worker_.LockForWrite();
+     write_locked.Get().reset();
+diff --git a/src/ray/core_worker/core_worker_shutdown_executor.cc b/src/ray/core_worker/core_worker_shutdown_executor.cc
+index a47f5facc5..0a673df210 100644
+--- a/src/ray/core_worker/core_worker_shutdown_executor.cc
++++ b/src/ray/core_worker/core_worker_shutdown_executor.cc
+@@ -25,7 +25,8 @@ namespace ray {
+ 
+ namespace core {
+ 
+-CoreWorkerShutdownExecutor::CoreWorkerShutdownExecutor(CoreWorker *core_worker)
++CoreWorkerShutdownExecutor::CoreWorkerShutdownExecutor(
++    std::shared_ptr<CoreWorker> core_worker)
+     : core_worker_(core_worker) {}
+ 
+ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
+@@ -35,48 +36,75 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
+   RAY_LOG(DEBUG) << "Executing graceful shutdown: " << exit_type << " - " << detail
+                  << " (timeout: " << timeout_ms.count() << "ms)";
+ 
+-  if (core_worker_->options_.worker_type == WorkerType::WORKER) {
+-    if (!core_worker_->worker_context_->GetCurrentActorID().IsNil()) {
+-      RAY_CHECK(core_worker_->actor_shutdown_callback_)
+-          << "actor_shutdown_callback_ must be set for actor workers";
++  // Lock the weak_ptr to get a shared_ptr. If CoreWorker is already destroyed, return.
++  auto core_worker = core_worker_.lock();
++  if (!core_worker) {
++    RAY_LOG(WARNING) << "CoreWorker already destroyed, skipping graceful shutdown operations";
++    return;
++  }
++
++  // Transition to SHUTTING_DOWN state
++  core_worker->SetShutdownState(CoreWorker::SHUTTING_DOWN);
++
++  if (core_worker->options_.worker_type == WorkerType::WORKER) {
++    if (!core_worker->worker_context_->GetCurrentActorID().IsNil()) {
++      // Get a copy of the callback to avoid race conditions
++      auto callback = core_worker->GetActorShutdownCallback();
++      RAY_CHECK(callback) << "actor_shutdown_callback_ must be set for actor workers";
+       RAY_LOG(DEBUG) << "Calling actor shutdown callback";
+-      core_worker_->actor_shutdown_callback_();
++      // Safe to call - we have our own copy
++      callback();
+     }
+ 
+     // Actor shutdown callback has run; stop task execution service next.
+-    core_worker_->task_execution_service_.stop();
++    // Mark event loops as stopped before actually stopping them
++    core_worker->SetEventLoopsStopped();
++    core_worker->task_execution_service_.stop();
+   }
+ 
+-  core_worker_->task_event_buffer_->FlushEvents(/*forced=*/true);
+-  core_worker_->task_event_buffer_->Stop();
++  core_worker->task_event_buffer_->FlushEvents(/*forced=*/true);
++  core_worker->task_event_buffer_->Stop();
+ 
+-  core_worker_->io_service_.stop();
++  // Mark event loops as stopped if not already done
++  if (!core_worker->options_.worker_type == WorkerType::WORKER) {
++    core_worker->SetEventLoopsStopped();
++  }
++  core_worker->io_service_.stop();
+   RAY_LOG(INFO) << "Waiting for joining a core worker io thread. If it hangs here, there "
+                    "might be deadlock or a high load in the core worker io service.";
+-  if (core_worker_->io_thread_.joinable()) {
++  if (core_worker->io_thread_.joinable()) {
+     // Check if we're already running in the IO thread to avoid self-join deadlock
+-    if (core_worker_->io_thread_.get_id() != boost::this_thread::get_id()) {
+-      core_worker_->io_thread_.join();
++    if (core_worker->io_thread_.get_id() != boost::this_thread::get_id()) {
++      core_worker->io_thread_.join();
+     } else {
+       RAY_LOG(INFO)
+           << "Skipping IO thread join since we're already running in the IO thread";
+     }
+   }
+ 
++  // Transition to DISCONNECTING state
++  core_worker->SetShutdownState(CoreWorker::DISCONNECTING);
++
+   // Shutdown gRPC server
+-  core_worker_->core_worker_server_->Shutdown();
++  core_worker->core_worker_server_->Shutdown();
+ 
+   // Now that gcs_client is not used within io service, we can reset the pointer and clean
+   // it up.
+-  if (core_worker_->gcs_client_) {
++  if (core_worker->gcs_client_) {
+     RAY_LOG(INFO) << "Disconnecting a GCS client.";
+     // TODO(55607): Move the Disconnect() logic to GcsClient destructor.
+     // https://github.com/ray-project/ray/issues/55607
+-    core_worker_->gcs_client_->Disconnect();
+-    core_worker_->gcs_client_.reset();
++    core_worker->gcs_client_->Disconnect();
++    core_worker->gcs_client_.reset();
+   }
+ 
++  // Transition to SHUTDOWN state
++  core_worker->SetShutdownState(CoreWorker::SHUTDOWN);
++
+   RAY_LOG(INFO) << "Core worker ready to be deallocated.";
++
++  // Notify that shutdown is complete
++  core_worker->NotifyShutdownComplete();
+ }
+ 
+ void CoreWorkerShutdownExecutor::ExecuteForceShutdown(std::string_view exit_type,
+@@ -94,19 +122,46 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
+   RAY_LOG(INFO) << "Executing worker exit: " << exit_type << " - " << detail
+                 << " (timeout: " << timeout_ms.count() << "ms)";
+ 
++  // Lock the weak_ptr to get a shared_ptr. If CoreWorker is already destroyed, return.
++  auto core_worker = core_worker_.lock();
++  if (!core_worker) {
++    RAY_LOG(WARNING) << "CoreWorker already destroyed, skipping worker exit operations";
++    return;
++  }
++
+   {
+-    absl::MutexLock lock(&core_worker_->mutex_);
++    absl::MutexLock lock(&core_worker->mutex_);
+     RAY_CHECK_NE(detail, "");
+-    core_worker_->exiting_detail_ = std::optional<std::string>{detail};
++    core_worker->exiting_detail_ = std::optional<std::string>{detail};
+   }
+ 
+-  auto shutdown_callback = [this,
++  // Capture weak_ptr to avoid use-after-free in the callback
++  std::weak_ptr<CoreWorker> weak_core_worker = core_worker_;
++
++  auto shutdown_callback = [this, weak_core_worker,
+                             exit_type = std::string(exit_type),
+                             detail = std::string(detail),
+                             creation_task_exception_pb_bytes]() {
+     // To avoid problems, make sure shutdown is always called from the same
+     // event loop each time.
+-    core_worker_->task_execution_service_.post(
++    auto core_worker = weak_core_worker.lock();
++    if (!core_worker) {
++      RAY_LOG(WARNING) << "CoreWorker destroyed during shutdown callback";
++      return;
++    }
++
++    // Check if event loops are still running before posting
++    if (!core_worker->AreEventLoopsRunning()) {
++      RAY_LOG(WARNING) << "Event loops already stopped, executing shutdown directly";
++      rpc::DrainServerCallExecutor();
++      KillChildProcessesImmediately();
++      DisconnectServices(exit_type, detail, creation_task_exception_pb_bytes);
++      ExecuteGracefulShutdown(
++          exit_type, "Post-exit graceful shutdown", std::chrono::milliseconds{30000});
++      return;
++    }
++
++    core_worker->task_execution_service_.post(
+         [this, exit_type, detail, creation_task_exception_pb_bytes]() {
+           rpc::DrainServerCallExecutor();
+           KillChildProcessesImmediately();
+@@ -117,23 +172,43 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
+         "CoreWorker.Shutdown");
+   };
+ 
+-  auto drain_references_callback = [this, shutdown_callback]() {
++  auto drain_references_callback = [this, weak_core_worker, shutdown_callback]() {
+     // Post to the event loop to avoid a deadlock between the TaskManager and
+     // the ReferenceCounter. The deadlock can occur because this callback may
+     // get called by the TaskManager while the ReferenceCounter's lock is held,
+     // but the callback itself must acquire the ReferenceCounter's lock to
+     // drain the object references.
+-    core_worker_->task_execution_service_.post(
+-        [this, shutdown_callback]() {
++    auto core_worker = weak_core_worker.lock();
++    if (!core_worker) {
++      RAY_LOG(WARNING) << "CoreWorker destroyed during drain references callback";
++      return;
++    }
++
++    // Check if event loops are still running
++    if (!core_worker->AreEventLoopsRunning()) {
++      RAY_LOG(WARNING) << "Event loops already stopped, cannot drain references";
++      // Try to execute shutdown callback directly
++      shutdown_callback();
++      return;
++    }
++
++    core_worker->task_execution_service_.post(
++        [this, weak_core_worker, shutdown_callback]() {
++          auto core_worker = weak_core_worker.lock();
++          if (!core_worker) {
++            RAY_LOG(WARNING) << "CoreWorker destroyed during drain references execution";
++            return;
++          }
++
+           RAY_LOG(INFO) << "Wait for currently executing tasks in the underlying thread "
+                            "pools to finish.";
+           // Wait for currently executing tasks in the underlying thread pools to
+           // finish. Note that if tasks have been posted to the thread pools but not
+           // started yet, they will not be executed.
+-          core_worker_->task_receiver_->Stop();
++          core_worker->task_receiver_->Stop();
+ 
+           // Release resources only after tasks have stopped executing.
+-          auto status = core_worker_->raylet_ipc_client_->NotifyWorkerBlocked();
++          auto status = core_worker->raylet_ipc_client_->NotifyWorkerBlocked();
+           if (!status.ok()) {
+             RAY_LOG(WARNING)
+                 << "Failed to notify Raylet. The raylet may have already shut down or "
+@@ -142,8 +217,8 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
+ 
+           bool not_actor_task = false;
+           {
+-            absl::MutexLock lock(&core_worker_->mutex_);
+-            not_actor_task = core_worker_->actor_id_.IsNil();
++            absl::MutexLock lock(&core_worker->mutex_);
++            not_actor_task = core_worker->actor_id_.IsNil();
+           }
+           if (not_actor_task) {
+             // Normal tasks should not hold any object references in the heap after
+@@ -161,8 +236,8 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
+             // See: https://github.com/ray-project/ray/pull/53002.
+             RAY_LOG(INFO)
+                 << "Releasing local references, then draining reference counter.";
+-            core_worker_->reference_counter_->ReleaseAllLocalReferences();
+-            core_worker_->reference_counter_->DrainAndShutdown(shutdown_callback);
++            core_worker->reference_counter_->ReleaseAllLocalReferences();
++            core_worker->reference_counter_->DrainAndShutdown(shutdown_callback);
+           } else {
+             // If we are an actor, then we may be holding object references in the
+             // heap. Then, we should not wait to drain the object references before
+@@ -175,7 +250,7 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
+         "CoreWorker.DrainAndShutdown");
+   };
+ 
+-  core_worker_->task_manager_->DrainAndShutdown(drain_references_callback);
++  core_worker->task_manager_->DrainAndShutdown(drain_references_callback);
+ }
+ 
+ void CoreWorkerShutdownExecutor::ExecuteExitIfIdle(std::string_view exit_type,
+@@ -233,35 +308,47 @@ void CoreWorkerShutdownExecutor::KillChildProcessesImmediately() {
+ }
+ 
+ bool CoreWorkerShutdownExecutor::ShouldWorkerIdleExit() const {
+-  return core_worker_->IsIdle();
++  auto core_worker = core_worker_.lock();
++  if (!core_worker) {
++    RAY_LOG(WARNING) << "CoreWorker already destroyed, returning false for idle check";
++    return false;
++  }
++  return core_worker->IsIdle();
+ }
+ 
+ void CoreWorkerShutdownExecutor::DisconnectServices(
+     std::string_view exit_type,
+     std::string_view detail,
+     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
+-  core_worker_->RecordMetrics();
++  auto core_worker = core_worker_.lock();
++  if (!core_worker) {
++    RAY_LOG(WARNING) << "CoreWorker already destroyed, skipping disconnect services";
++    return;
++  }
++
++  core_worker->RecordMetrics();
+ 
+-  if (core_worker_->options_.worker_type == WorkerType::DRIVER &&
+-      core_worker_->task_event_buffer_->Enabled() &&
++  if (core_worker->options_.worker_type == WorkerType::DRIVER &&
++      core_worker->task_event_buffer_->Enabled() &&
+       !RayConfig::instance().task_events_skip_driver_for_test()) {
+     auto task_event = std::make_unique<worker::TaskStatusEvent>(
+-        core_worker_->worker_context_->GetCurrentTaskID(),
+-        core_worker_->worker_context_->GetCurrentJobID(),
++        core_worker->worker_context_->GetCurrentTaskID(),
++        core_worker->worker_context_->GetCurrentJobID(),
+         /* attempt_number */ 0,
+         rpc::TaskStatus::FINISHED,
+         /* timestamp */ absl::GetCurrentTimeNanos(),
+         /*is_actor_task_event=*/
+-        core_worker_->worker_context_->GetCurrentActorID().IsNil(),
+-        core_worker_->options_.session_name);
+-    core_worker_->task_event_buffer_->AddTaskEvent(std::move(task_event));
++        core_worker->worker_context_->GetCurrentActorID().IsNil(),
++        core_worker->options_.session_name);
++    core_worker->task_event_buffer_->AddTaskEvent(std::move(task_event));
+   }
+ 
+   opencensus::stats::StatsExporter::ExportNow();
+-  if (core_worker_->connected_) {
++
++  // Use thread-safe method to ensure only one thread disconnects
++  if (core_worker->SetDisconnectedIfConnected()) {
+     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
+-    core_worker_->connected_ = false;
+-    if (core_worker_->raylet_ipc_client_) {
++    if (core_worker->raylet_ipc_client_) {
+       rpc::WorkerExitType worker_exit_type = rpc::WorkerExitType::INTENDED_USER_EXIT;
+       if (exit_type == "INTENDED_SYSTEM_EXIT") {
+         worker_exit_type = rpc::WorkerExitType::INTENDED_SYSTEM_EXIT;
+@@ -273,7 +360,7 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
+         worker_exit_type = rpc::WorkerExitType::NODE_OUT_OF_MEMORY;
+       }
+ 
+-      Status status = core_worker_->raylet_ipc_client_->Disconnect(
++      Status status = core_worker->raylet_ipc_client_->Disconnect(
+           worker_exit_type, std::string(detail), creation_task_exception_pb_bytes);
+       if (status.ok()) {
+         RAY_LOG(INFO) << "Disconnected from the local raylet.";
+diff --git a/src/ray/core_worker/core_worker_shutdown_executor.h b/src/ray/core_worker/core_worker_shutdown_executor.h
+index fe1abd3a92..66d4e09c38 100644
+--- a/src/ray/core_worker/core_worker_shutdown_executor.h
++++ b/src/ray/core_worker/core_worker_shutdown_executor.h
+@@ -47,9 +47,9 @@ class CoreWorker;
+ ///   idleness and only proceeds when idle; otherwise it is ignored.
+ class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
+  public:
+-  /// Constructor with CoreWorker reference for accessing internals
+-  /// \param core_worker Reference to the CoreWorker instance
+-  explicit CoreWorkerShutdownExecutor(CoreWorker *core_worker);
++  /// Constructor with CoreWorker shared_ptr for safe access to internals
++  /// \param core_worker Shared pointer to the CoreWorker instance
++  explicit CoreWorkerShutdownExecutor(std::shared_ptr<CoreWorker> core_worker);
+ 
+   ~CoreWorkerShutdownExecutor() override = default;
+ 
+@@ -85,8 +85,9 @@ class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
+   bool ShouldWorkerIdleExit() const override;
+ 
+  private:
+-  /// Reference to CoreWorker for accessing shutdown operations
+-  CoreWorker *core_worker_;
++  /// Weak reference to CoreWorker for safe access during shutdown operations
++  /// Using weak_ptr prevents use-after-free if CoreWorker is destroyed
++  std::weak_ptr<CoreWorker> core_worker_;
+ 
+   void DisconnectServices(
+       std::string_view exit_type,

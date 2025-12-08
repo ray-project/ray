@@ -2825,17 +2825,25 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
   auto returned_refs = task_manager_->AddPendingTask(
       rpc_address_, task_spec, CurrentCallSite(), /*max_retries=*/0);
   
-  // Store the completion callback for when the task completes
-  // Note: For Phase 1, we rely on the existing task completion mechanism.
-  // The on_complete callback would need to be wired through TaskManager
-  // for full async completion handling. For now, we store it but the
-  // actual completion notification happens through the existing path.
-  // TODO(Phase 2): Wire completion callbacks through TaskManager
+  // KNOWN LIMITATION (Phase 1): Completion callbacks are NOT wired.
+  //
+  // The on_complete callback is designed to notify ActorPoolManager when tasks
+  // complete (success or failure), enabling cross-actor retry. However, wiring
+  // this requires one of:
+  //   1. Extending TaskManagerInterface to support completion callbacks
+  //   2. Adding a hook in ActorTaskSubmitter::HandlePushTaskReply()
+  //   3. Using object readiness notifications
+  //
+  // Impact: Cross-actor retry does NOT work in Phase 1. When an actor fails,
+  // the task will fail permanently rather than being retried on another actor.
+  // The pool still provides load balancing and stats tracking.
+  //
+  // TODO(Phase 2): Wire completion callbacks. Options:
+  //   - Add RegisterTaskCompletionCallback() to TaskManagerInterface
+  //   - Check task_spec.has_actor_pool_id() in ActorTaskSubmitter and notify
+  //   - Subscribe to return ObjectRef readiness
   if (on_complete) {
-    // For now, we don't have a direct way to get completion callbacks
-    // from TaskManager. The pool will need to poll task status or
-    // we need to extend TaskManager to support completion callbacks.
-    RAY_LOG(DEBUG) << "Pool task submitted, completion callback registered but not yet wired";
+    RAY_LOG(WARNING) << "Pool task completion callback not wired - cross-actor retry disabled";
   }
   
   // Submit the task

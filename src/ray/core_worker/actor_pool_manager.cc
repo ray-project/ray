@@ -190,9 +190,8 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitTaskToPool(
     }
   }
   
-  // Create work item
-  // Note: This will need proper JobID from WorkerContext when integrated with CoreWorker
-  TaskID work_item_id = TaskID::ForNormalTask(JobID(), TaskID(), 0);
+  // Create unique work item ID
+  TaskID work_item_id = TaskID::FromRandom();
   PoolWorkItem work_item;
   work_item.work_item_id = work_item_id;
   work_item.function = function;
