@@ -29,6 +29,8 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
+from ray.actor import ActorClass
+
 import ray
 from ray._raylet import ActorPoolID
 
@@ -143,8 +145,17 @@ class ActorPool:
         self._max_size = max_size
         self._initial_size = initial_size
 
-        # Create the remote actor class
-        self._remote_cls = ray.remote(**actor_options)(actor_cls)
+        # Handle both already-decorated and non-decorated classes
+        if isinstance(actor_cls, ActorClass):
+            # Class is already decorated with @ray.remote
+            if actor_options:
+                # Apply additional options via .options()
+                self._remote_cls = actor_cls.options(**actor_options)
+            else:
+                self._remote_cls = actor_cls
+        else:
+            # Class is not decorated, apply @ray.remote with options
+            self._remote_cls = ray.remote(**actor_options)(actor_cls)
 
         # Get the core worker
         self._core_worker = ray._private.worker.global_worker.core_worker
