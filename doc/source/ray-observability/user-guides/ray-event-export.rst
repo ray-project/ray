@@ -81,6 +81,7 @@ An example of a Task Definition Event and a Task Execution Event:
                 
             }
         },
+        "nodeId":"ZvxTI6x9dlMFqMlIHErJpg5UEGK1INsKhW2zyg==",
         "message":""
     }
 
@@ -114,6 +115,7 @@ An example of a Task Definition Event and a Task Execution Event:
             "taskAttempt":0,
             "workerPid":0
         },
+        "nodeId":"ZvxTI6x9dlMFqMlIHErJpg5UEGK1INsKhW2zyg==",
         "message":""
     }
 
@@ -147,6 +149,7 @@ For each actor, Ray exports two types of events: Actor Definition Events and Act
             "placementGroupId": "",
             "labelSelector": {}
         },
+        "nodeId": "zpLG7coqThVMl8df9RYHnhK6thhJqrgPodtfjg==",
         "message": ""
     }
 
@@ -169,6 +172,7 @@ For each actor, Ray exports two types of events: Actor Definition Events and Act
                 }
             ]
         },
+        "nodeId": "zpLG7coqThVMl8df9RYHnhK6thhJqrgPodtfjg==",
         "message": ""
     }
 
@@ -200,6 +204,7 @@ For each driver job, Ray exports two types of events: Driver Job Definition Even
                 "metadata": {}
             }
         },
+        "nodeId": "zpLG7coqThVMl8df9RYHnhK6thhJqrgPodtfjg==",
         "message": ""
     }
 
@@ -220,6 +225,7 @@ For each driver job, Ray exports two types of events: Driver Job Definition Even
                 }
             ]
         },
+        "nodeId": "zpLG7coqThVMl8df9RYHnhK6thhJqrgPodtfjg==",
         "message": ""
     }
 
@@ -249,6 +255,7 @@ For each node, Ray exports two types of events: Node Definition Events and Node 
             }, 
             "startTimestamp": "2025-10-24T21:19:14.063Z"
         }, 
+        "nodeId": "zpLG7coqThVMl8df9RYHnhK6thhJqrgPodtfjg==",
         "message": ""
     }
 
@@ -271,6 +278,7 @@ For each node, Ray exports two types of events: Node Definition Events and Node 
                 }
             ]
         },
+        "nodeId": "zpLG7coqThVMl8df9RYHnhK6thhJqrgPodtfjg==",
         "message": ""
     }
 
