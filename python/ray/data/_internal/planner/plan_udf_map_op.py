@@ -24,7 +24,7 @@ import pyarrow as pa
 import ray
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_integer
-from ray.data._internal.compute import get_compute
+from ray.data._internal.compute import ActorPoolStrategy, ComputeStrategy, get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -36,7 +36,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     Row,
     RowMapTransformFn,
 )
-from ray.data._internal.execution.util import make_callable_class_concurrent
+from ray.data._internal.execution.util import make_callable_class_single_threaded
 from ray.data._internal.logical.operators.map_operator import (
     AbstractUDFMap,
     Filter,
@@ -217,6 +217,7 @@ def plan_filter_op(
             op._fn_kwargs,
             op._fn_constructor_args if udf_is_callable_class else None,
             op._fn_constructor_kwargs if udf_is_callable_class else None,
+            compute=compute,
         )
 
         transform_fn = RowMapTransformFn(
@@ -263,6 +264,7 @@ def plan_udf_map_op(
         op._fn_kwargs,
         op._fn_constructor_args if udf_is_callable_class else None,
         op._fn_constructor_kwargs if udf_is_callable_class else None,
+        compute=compute,
     )
 
     if isinstance(op, MapBatches):
@@ -310,6 +312,7 @@ def _get_udf(
     op_fn_kwargs: Dict[str, Any],
     op_fn_constructor_args: Optional[Tuple[Any, ...]],
     op_fn_constructor_kwargs: Optional[Dict[str, Any]],
+    compute: Optional[ComputeStrategy],
 ):
     # Note, it's important to define these standalone variables.
     # So the parsed functions won't need to capture the entire operator, which may not
@@ -324,10 +327,19 @@ def _get_udf(
 
         is_async_udf = _is_async_udf(udf.__call__)
 
-        if not is_async_udf:
-            # TODO(ak) this constrains concurrency for user UDFs to run in a single
-            #          thread irrespective of max_concurrency. Remove
-            udf = make_callable_class_concurrent(udf)
+        if (
+            not is_async_udf
+            and isinstance(compute, ActorPoolStrategy)
+            and not compute.enable_true_multi_threading
+        ):
+            # NOTE: By default Actor-based UDFs are restricted to run within a
+            # single-thread (when enable_true_multi_threading=False).
+            #
+            # Historically, this has been done to allow block-fetching, batching, etc to
+            # be overlapped with the actual UDF invocation, while avoiding the
+            # pitfalls of concurrent GPU access (like OOMs, etc) when specifying
+            # max_concurrency > 1.
+            udf = make_callable_class_single_threaded(udf)
 
         def init_fn():
             if ray.data._map_actor_context is None:
