@@ -1,6 +1,6 @@
 group: cicd-cron
 steps:
-  - name: Build manylinux images
+  - name: Build and upload manylinux images
     commands:
       # NOTE(andrew-anyscale): Not running w/ --upload while we verify builds
       # are scheduling and completing correctly.
