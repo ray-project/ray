@@ -42,8 +42,8 @@ UPLOAD=${UPLOAD:-"false"}
 WANDA_YAML_PATH="${REPO_ROOT_DIR}/ci/docker/manylinux.wanda.yaml"
 COMMIT_HASH=$(git rev-parse HEAD)
 LOCAL_REGISTRY="localhost:5000/rayci-work"
-REMOTE_REGISTRY="cr.ray.io/rayproject"
 ARCH=$(normalize_arch)
+REMOTE_REGISTRY_PREFIX="rayproject/manylinux2024_${ARCH}"
 
 # NOTE(andrew-anyscale): We can remove this if we can safely source the wanda binary from elsewhere.
 printHeader "Installing wanda binary"
@@ -76,7 +76,7 @@ for with_jdk in true false; do
     
     build_id=$(openssl rand -hex 4)
     local_tag="${LOCAL_REGISTRY}:${build_id}-manylinux"
-    remote_tag="${REMOTE_REGISTRY}/manylinux_${ARCH}${jdk_suffix}:${COMMIT_HASH}"
+    remote_tag="${REMOTE_REGISTRY_PREFIX}${jdk_suffix}:${COMMIT_HASH}"
     
     # Clean up any existing local image
     if docker image inspect "$local_tag" &>/dev/null; then
@@ -97,6 +97,13 @@ for with_jdk in true false; do
     # Tag and push (if uploading)
     if [[ "$UPLOAD" == "true" ]]; then
         printInfo "Tagging and pushing: $remote_tag"
+
+        # if the remote tag already exists on dockerhub, skip the push
+        if docker manifest inspect "$remote_tag" &>/dev/null; then
+            printInfo "Remote tag already exists on Docker Hub, skipping push"
+            continue
+        fi
+
         docker tag "$local_tag" "$remote_tag"
         docker push "$remote_tag"
         printInfo "Successfully uploaded: $remote_tag"
@@ -106,4 +113,9 @@ for with_jdk in true false; do
 done
 
 printHeader "Success"
-printInfo "Successfully built and uploaded manylinux images"
+
+if [[ "$UPLOAD" == "true" ]]; then
+    printInfo "Successfully built and uploaded manylinux images"
+else
+    printInfo "Successfully built manylinux images, but upload is disabled"
+fi
