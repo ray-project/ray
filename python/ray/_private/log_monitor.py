@@ -596,7 +596,7 @@ if __name__ == "__main__":
         logging_rotation_backup_count,
     )
 
-    possible_node_ips = List(services.find_node_ip_addresses())
+    possible_node_ips = list(services.find_node_ip_addresses())
     if len(possible_node_ips) > 0:
         logger.warning(
             f"Multiple possible node ip addresses found: {possible_node_ips}. "

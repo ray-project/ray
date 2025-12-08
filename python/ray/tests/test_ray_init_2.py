@@ -283,7 +283,6 @@ def test_non_default_ports_visible_on_init(shutdown_only):
         subprocess.check_output("ray stop --force", shell=True)
 
 
-# TODO(Kunchd): Create replacement test for this
 @pytest.mark.parametrize(
     "call_ray_start",
     ["ray start --head"],

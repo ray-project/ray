@@ -217,7 +217,6 @@ class Node:
             ) = ray._private.services.get_node_to_connect_ip_address(
                 self.get_gcs_client()
             )
-            print(f"[Kunchd] resolved node ip address: {resolved_node_ip_address}")
         if node_ip_address is None:
             if connect_only:
                 assert resolved_node_ip_address is not None

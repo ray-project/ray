@@ -16,8 +16,6 @@ import time
 from pathlib import Path
 from typing import IO, AnyStr, List, Optional
 
-from filelock import FileLock
-
 # Ray modules
 import ray
 import ray._private.ray_constants as ray_constants
@@ -28,7 +26,6 @@ from ray._common.network_utils import (
     node_ip_address_from_perspective,
     parse_address,
 )
-from ray._private.ray_constants import RAY_NODE_IP_FILENAME
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
@@ -635,7 +632,7 @@ def resolve_ip_for_localhost(host: str):
 # IP address when ray.init is not called because
 # it cannot find the IP address if it is specified by
 # ray start --node-ip-address. You should instead use
-# get_cached_node_ip_address.
+# get_node_to_connect_ip_address.
 def get_node_ip_address(address=None):
     if ray._private.worker._global_node is not None:
         return ray._private.worker._global_node.node_ip_address
@@ -650,6 +647,16 @@ def get_node_ip_address(address=None):
 
 
 def get_node_to_connect_ip_address(gcs_client: GcsClient) -> (str, GcsNodeInfo):
+    """
+    Get the node to connect to for the driver.
+
+    Args:
+        gcs_client: The GCS client.
+
+    Returns:
+        The node IP address.
+        The node to connect info.
+    """
     node_to_connect_info = None
     # node specific temp_dir resolution requires knowledge of the node we are connecting to
     possible_node_ip_addresses = find_node_ip_addresses()
@@ -684,43 +691,6 @@ def get_node_to_connect_ip_address(gcs_client: GcsClient) -> (str, GcsNodeInfo):
     node_ip_address = getattr(node_to_connect_info, "node_manager_address", None)
 
     return node_ip_address, node_to_connect_info
-
-
-# TODO(Kunchd): Deprecate this API
-def get_cached_node_ip_address(session_dir: str) -> str:
-    """Get a node address cached on this session.
-
-    If a ray instance is started by `ray start --node-ip-address`,
-    the node ip address is cached to a file RAY_NODE_IP_FILENAME.
-    Otherwise, the file exists, but it is emptyl.
-
-    This API is process-safe, meaning the file access is protected by
-    a file lock.
-
-    Args:
-        session_dir: Path to the Ray session directory.
-
-    Returns:
-        node_ip_address cached on the current node. None if the node
-        the file doesn't exist, meaning ray instance hasn't been
-        started on a current node. If node_ip_address is not written
-        to a file, it means --node-ip-address is not given, and in this
-        case, we find the IP address ourselves.
-    """
-    file_path = Path(os.path.join(session_dir, RAY_NODE_IP_FILENAME))
-    cached_node_ip_address = {}
-
-    with FileLock(str(file_path.absolute()) + ".lock"):
-        if not file_path.exists():
-            return None
-
-        with file_path.open() as f:
-            cached_node_ip_address.update(json.load(f))
-
-        if "node_ip_address" in cached_node_ip_address:
-            return cached_node_ip_address["node_ip_address"]
-        else:
-            return ray.util.get_node_ip_address()
 
 
 def get_node_instance_id():
