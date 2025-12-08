@@ -312,9 +312,13 @@ class Processor:
             self.DATA_COLUMN,
         )
 
+        # When continue_on_error is enabled, include __inference_error__ column
+        # in all output rows for consistent schema (None for success, message for error).
+        include_error_column = getattr(config, "continue_on_error", False)
         self.postprocess = wrap_postprocess(
             postprocess,
             self.DATA_COLUMN,
+            include_error_column=include_error_column,
         )
 
         for stage in stages:

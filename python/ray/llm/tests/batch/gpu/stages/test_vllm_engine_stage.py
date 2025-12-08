@@ -583,7 +583,9 @@ async def test_vllm_udf_continue_on_error_yields_error_row(mock_vllm_wrapper):
         continue_on_error=True,
     )
 
-    batch = {"__data": [{"prompt": "test", "sampling_params": {"temperature": 0.7}}]}
+    batch = {
+        "__data": [{"prompt": "test prompt", "sampling_params": {"temperature": 0.7}}]
+    }
 
     results = []
     async for result in udf(batch):
@@ -593,6 +595,8 @@ async def test_vllm_udf_continue_on_error_yields_error_row(mock_vllm_wrapper):
     assert "__inference_error__" in results[0]
     assert "ValueError" in results[0]["__inference_error__"]
     assert "prompt too long" in results[0]["__inference_error__"]
+    # Error rows include the original prompt for debuggability
+    assert results[0]["prompt"] == "test prompt"
 
 
 @pytest.mark.asyncio
@@ -653,6 +657,31 @@ async def test_vllm_udf_mixed_success_and_error(mock_vllm_wrapper):
     assert len(errors) == 1
     assert len(successes) == 2
     assert "ValueError" in errors[0]["__inference_error__"]
+
+
+@pytest.mark.asyncio
+async def test_vllm_udf_fatal_error_always_raises(mock_vllm_wrapper):
+    """Fatal errors (EngineDeadError) always propagate, even with continue_on_error=True."""
+    from vllm.v1.engine.exceptions import EngineDeadError
+
+    mock_vllm_wrapper.return_value.generate_async.side_effect = EngineDeadError()
+
+    udf = vLLMEngineStageUDF(
+        data_column="__data",
+        expected_input_keys=["prompt", "sampling_params"],
+        model="/tmp/fake-model",
+        task_type=vLLMTaskType.GENERATE,
+        batch_size=32,
+        max_concurrent_batches=4,
+        engine_kwargs={},
+        continue_on_error=True,  # Even with this True, fatal errors should raise
+    )
+
+    batch = {"__data": [{"prompt": "test", "sampling_params": {"temperature": 0.7}}]}
+
+    with pytest.raises(EngineDeadError):
+        async for _ in udf(batch):
+            pass
 
 
 if __name__ == "__main__":

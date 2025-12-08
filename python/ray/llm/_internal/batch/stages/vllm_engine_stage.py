@@ -33,6 +33,18 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
+# vLLM fatal errors that should always be re-raised, never swallowed.
+# EngineDeadError indicates the vLLM engine process has crashed and is
+# unrecoverable - all subsequent requests would fail anyway.
+_VLLM_FATAL_ERRORS: Tuple[Type[Exception], ...] = ()
+try:
+    from vllm.v1.engine.exceptions import EngineDeadError
+
+    _VLLM_FATAL_ERRORS = (EngineDeadError,)
+except ImportError:
+    # vLLM not installed or older version without this exception
+    pass
+
 
 class vLLMTaskType(str, Enum):
     """The type of task to run on the vLLM engine."""
@@ -588,6 +600,10 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 "params": str(request.params),
                 "__inference_error__": None,
             }
+        except _VLLM_FATAL_ERRORS:
+            # Fatal engine errors (e.g., EngineDeadError) must always propagate.
+            # The engine is dead and all subsequent requests would fail.
+            raise
         except Exception as e:
             if not self.continue_on_error:
                 raise
@@ -598,10 +614,16 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 batch_uuid.hex,
                 error_msg,
             )
+            # Include original prompt for debuggability. Truncate if very long
+            # to avoid bloating the output.
+            prompt = row.get("prompt", "")
+            if len(prompt) > 500:
+                prompt = prompt[:500] + "...[truncated]"
             return {
                 self.IDX_IN_BATCH_COLUMN: idx_in_batch,
                 "batch_uuid": batch_uuid.hex,
                 "__inference_error__": error_msg,
+                "prompt": prompt,
             }
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
