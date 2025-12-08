@@ -500,72 +500,132 @@ bazel test //src/ray/core_worker/tests:actor_pool_work_queue_test
 
 ---
 
-## Remaining Work
+## Phase 1 Status
 
-### Phase 1 Completion (Next Steps)
+### Completed ✅
 
-1. ~~**CoreWorker Integration** (complex)~~ ✅ **COMPLETED**
-   - ✅ Add `ActorPoolManager` as member of `CoreWorker`
-   - ✅ Wire task submission through `CoreWorker::SubmitTaskToActorPool()`
-   - ✅ Add public API: `RegisterActorPool()`, `UnregisterActorPool()`, `AddActorToPool()`, etc.
-   - ⏳ Failure callbacks and delayed retry via `io_service_` (deferred to full integration)
+1. **C++ Core Implementation**
+   - ✅ `ActorPoolID` type in `src/ray/common/id.h`
+   - ✅ TaskSpec protobuf extension (`actor_pool_id`, `actor_pool_work_item_id`)
+   - ✅ `PoolWorkQueue` interface + `UnorderedPoolWorkQueue`
+   - ✅ `ActorPoolManager` class with pool lifecycle, actor management, load balancing
+   - ✅ Cross-actor retry logic (code exists but not wired - see limitations)
 
-2. **C++ Unit Tests for ActorPoolManager**
-   - Test pool registration/unregistration
-   - Test actor add/remove
-   - Test actor selection (load balancing)
-   - Test cross-actor retry flow
+2. **CoreWorker Integration**
+   - ✅ `ActorPoolManager` as member of `CoreWorker`
+   - ✅ Public API: `RegisterActorPool()`, `UnregisterActorPool()`, `AddActorToPool()`, etc.
+   - ✅ Task submission via `SubmitTaskToActorPool()` → `SubmitActorTaskForPool()`
 
 3. **Python Bindings (Cython)**
-   - Expose `ActorPoolManager` to Python
-   - Create `ActorPoolHandle` class
+   - ✅ `ActorPoolID` type exposed
+   - ✅ `CActorPoolConfig`, `CPoolStats`, `CPoolOrderingMode` declarations
+   - ✅ CoreWorker methods for pool operations
 
 4. **Python ActorPool Class**
-   - User-facing API in `ray.experimental.actor_pool`
-   - Thin wrapper over C++ implementation
+   - ✅ `ray.experimental.actor_pool.ActorPool`
+   - ✅ `RetryPolicy`, `OrderingMode` configuration classes
+   - ✅ `submit()`, `map()`, `stats()`, `scale()`, `shutdown()` methods
 
-5. **Ray Data Integration**
+5. **C++ Unit Tests**
+   - ✅ `actor_pool_work_queue_test.cc` (7 tests)
+   - ✅ `actor_pool_manager_test.cc` (20 tests)
+
+6. **Python Integration Tests**
+   - ✅ `python/ray/tests/test_actor_pool.py` (happy path tests)
+
+### Known Limitations (Phase 1) ⚠️
+
+**Cross-actor retry does NOT work** because `TaskCompletionCallback` is not wired:
+
+```
+Problem:
+  ActorPoolManager passes on_complete callback to CoreWorker::SubmitActorTaskForPool()
+  BUT CoreWorker has no way to invoke it when the task completes/fails
+  because TaskManager/ActorTaskSubmitter don't support completion callbacks
+
+Impact:
+  - OnTaskFailed() / OnTaskSucceeded() are never called
+  - num_tasks_in_flight counters not decremented after submission
+  - Retry logic never triggered
+  - total_tasks_retried always 0
+
+What DOES work:
+  - Pool registration and lifecycle
+  - Actor membership management
+  - Load-balanced actor selection (at submission time)
+  - Task submission (happy path)
+  - Basic stats (submitted count, actor count)
+```
+
+### Remaining Work (Phase 2)
+
+1. **Wire Completion Callbacks** (CRITICAL for retry)
+   - Option A: Add `RegisterTaskCompletionCallback()` to `TaskManagerInterface`
+   - Option B: Check `task_spec.has_actor_pool_id()` in `ActorTaskSubmitter` and notify
+   - Option C: Subscribe to return `ObjectRef` readiness
+
+2. **Ray Data Integration**
    - Replace `ActorPoolMapOperator` internals
    - Feature flag: `RAY_DATA_USE_CORE_ACTOR_POOL`
 
+3. **Per-Key Ordering**
+   - `PerKeyOrderedPoolWorkQueue` implementation
+
+4. **Topology Support**
+   - `shape`, `shape_names` for GPU SPMD workloads
+
 ---
 
-## Usage Example (Target API)
+## Usage Example
 
-Once Phase 1 is complete, the API will look like:
+### What Works (Phase 1)
 
 ```python
 from ray.experimental.actor_pool import ActorPool, RetryPolicy, OrderingMode
+import ray
 
 @ray.remote
 class Worker:
     def process(self, data):
         return data * 2
 
-# Create pool with cross-actor retry
+# Create pool with load balancing
 pool = ActorPool(
     actor_cls=Worker,
     size=4,
-    retry=RetryPolicy(
-        max_attempts=3,
-        backoff_ms=1000,
-        retry_on="system_errors"
-    ),
+    retry=RetryPolicy(max_attempts=3),  # Config stored but retry not functional
     ordering=OrderingMode.UNORDERED,
 )
 
-# Submit tasks - pool selects actor
+# Submit tasks - pool selects actor based on load
 refs = [pool.submit("process", i) for i in range(100)]
-
-# If an actor fails, C++ automatically retries on different actor!
-results = ray.get(refs)
+results = ray.get(refs)  # Works!
 
 # Get statistics
 stats = pool.stats()
-print(f"Submitted: {stats['total_tasks_submitted']}")
-print(f"Retried: {stats['total_tasks_retried']}")
+print(f"Actors: {stats['num_actors']}")        # Works!
+print(f"Submitted: {stats['total_tasks_submitted']}")  # Works!
+print(f"Retried: {stats['total_tasks_retried']}")  # Always 0 (callbacks not wired)
+
+# Scale the pool
+pool.scale(2)  # Add 2 more actors - Works!
 
 pool.shutdown()
+```
+
+### Target API (Phase 2 - with retry working)
+
+```python
+# Once callbacks are wired in Phase 2:
+
+# If an actor dies, C++ will automatically:
+# 1. Detect task failure via completion callback
+# 2. Re-enqueue work item to pool (not same actor!)
+# 3. Select different actor with load balancing
+# 4. Retry with exponential backoff
+
+# This avoids the "thundering herd" problem where all
+# retries go to the same failing actor
 ```
 
 ---
