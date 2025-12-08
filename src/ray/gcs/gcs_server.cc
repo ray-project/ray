@@ -203,8 +203,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   metrics_agent_client_ = std::make_unique<rpc::MetricsAgentClientImpl>(
       "127.0.0.1",
       config_.metrics_agent_port,
-      io_context_provider_.GetIOContext<observability::RayEventRecorder>(),
-      event_aggregator_client_call_manager_);
+      io_context_provider_.GetDefaultIOContext(),
+      client_call_manager_);
 }
 
 GcsServer::~GcsServer() { Stop(); }
