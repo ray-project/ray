@@ -104,19 +104,21 @@ class ValidationManager(ControllerCallback, ReportCallback):
         # TODO: figure out where to place run_validate_fn task:
         # head node is faster but want to avoid putting too much there
         # TODO: provide option to run this on gpu?
-        if self._training_report_queue:
-            num_validations_to_start = max(
-                MAX_IN_FLIGHT_VALIDATIONS - len(self._pending_validations), 0
+        num_validations_to_start = max(
+            MAX_IN_FLIGHT_VALIDATIONS - len(self._pending_validations), 0
+        )
+        num_validations_to_start = min(
+            num_validations_to_start, len(self._training_report_queue)
+        )
+        for _ in range(num_validations_to_start):
+            training_report = self._training_report_queue.popleft()
+            validate_task = run_validate_fn.remote(
+                training_report.validation_spec, training_report.checkpoint
             )
-            for _ in range(num_validations_to_start):
-                training_report = self._training_report_queue.popleft()
-                validate_task = run_validate_fn.remote(
-                    training_report.validation_spec, training_report.checkpoint
-                )
-                self._pending_validations[validate_task] = training_report.checkpoint
-                logger.info(
-                    f"Launched async validation task for checkpoint {training_report.checkpoint}"
-                )
+            self._pending_validations[validate_task] = training_report.checkpoint
+            logger.info(
+                f"Launched async validation task for checkpoint {training_report.checkpoint}"
+            )
         return len(self._pending_validations)
 
     def _process_finished_validation(
@@ -134,7 +136,7 @@ class ValidationManager(ControllerCallback, ReportCallback):
         return checkpoint_to_metrics
 
     def before_controller_shutdown(self):
-        while self._poll_validations() != 0 and self._kick_off_validations() != 0:
+        while self._poll_validations() != 0 or self._kick_off_validations() != 0:
             time.sleep(VALIDATION_TASK_POLL_INTERVAL_S)
         checkpoint_to_metrics = {}
         tasks = list(self._finished_validations.keys())
