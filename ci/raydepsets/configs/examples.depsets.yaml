@@ -1,0 +1,25 @@
+build_arg_sets:
+  cu128:
+    PYTHON_VERSION: py311
+    PYTHON_SHORT: "311"
+    CUDA_CODE: cu128
+
+
+.common_settings: &common_settings
+  append_flags:
+    - --python-version=3.11
+    - --unsafe-package ray
+    - --python-platform=linux
+    - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+  build_arg_sets:
+    - cu128
+
+depsets:
+  - name: subset_rayllm_depset_${PYTHON_VERSION}_${CUDA_CODE}
+    operation: expand
+    depsets:
+      - ray_base_extra_testdeps_cuda_${PYTHON_SHORT}
+    <<: *common_settings
+    requirements:
+      - doc/source/ray-overview/examples/e2e-timeseries/requirements.txt
+    output: release/ray_release/byod/deplocks/examples/e2e_timeseries_${PYTHON_VERSION}_${CUDA_CODE}.lock
