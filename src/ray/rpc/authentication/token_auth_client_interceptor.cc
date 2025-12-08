@@ -31,14 +31,10 @@ void RayTokenAuthClientInterceptor::Intercept(
     grpc::experimental::InterceptorBatchMethods *methods) {
   if (methods->QueryInterceptionHookPoint(
           grpc::experimental::InterceptionHookPoints::PRE_SEND_INITIAL_METADATA)) {
-    auto token = AuthenticationTokenLoader::instance().GetToken();
-
-    // If token is present and non-empty, add it to the metadata
-    if (token.has_value() && !token->empty()) {
-      // Get the metadata map and add the authorization header
+    // Use the cached header from the factory to avoid per-RPC overhead
+    if (cached_header_ != nullptr && !cached_header_->empty()) {
       auto *metadata = methods->GetSendInitialMetadata();
-      metadata->insert(
-          std::make_pair(kAuthTokenKey, token->ToAuthorizationHeaderValue()));
+      metadata->insert(std::make_pair(kAuthTokenKey, *cached_header_));
     }
   }
   methods->Proceed();
@@ -47,7 +43,14 @@ void RayTokenAuthClientInterceptor::Intercept(
 grpc::experimental::Interceptor *
 RayTokenAuthClientInterceptorFactory::CreateClientInterceptor(
     grpc::experimental::ClientRpcInfo *info) {
-  return new RayTokenAuthClientInterceptor();
+  // Cache the authorization header on first call (thread-safe via std::call_once)
+  std::call_once(init_flag_, [this]() {
+    auto token = AuthenticationTokenLoader::instance().GetToken();
+    if (token.has_value() && !token->empty()) {
+      cached_header_ = token->ToAuthorizationHeaderValue();
+    }
+  });
+  return new RayTokenAuthClientInterceptor(&cached_header_);
 }
 
 std::vector<std::unique_ptr<grpc::experimental::ClientInterceptorFactoryInterface>>
