@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
+import pyarrow
 from packaging.version import parse as parse_version
 from pandas.core.dtypes.dtypes import BaseMaskedDtype
 
@@ -1070,6 +1071,8 @@ def convert_pandas_dtype_to_pyarrow(
     import pandas as pd
     from pandas.core.dtypes.dtypes import BaseMaskedDtype
 
+    from ray.data.extensions import TensorDtype
+
     if isinstance(dtype, pd.ArrowDtype):
         return dtype.pyarrow_dtype
     elif isinstance(dtype, pd.StringDtype):
@@ -1078,6 +1081,28 @@ def convert_pandas_dtype_to_pyarrow(
     elif isinstance(dtype, BaseMaskedDtype):
         # Nullable integer types like Int32, Int64
         dtype = dtype.numpy_dtype
+    elif isinstance(dtype, TensorDtype):
+        # Convert TensorDtype to Arrow tensor type.
+        # For variable-shaped tensors, use Ray's extension type.
+        # For fixed-shape tensors, use Arrow's native fixed_shape_tensor.
+        element_dtype = convert_pandas_dtype_to_pyarrow(dtype._dtype)
+
+        if dtype.is_variable_shaped:
+            # Use Ray's extension type for variable-shaped tensors
+            from ray.data.extensions import ArrowVariableShapedTensorType
+
+            # Extract ndim from shape tuple length
+            ndim = len(dtype._shape)
+            return ArrowVariableShapedTensorType(
+                dtype=element_dtype,
+                ndim=ndim,
+            )
+        else:
+            # Use Arrow's native fixed_shape_tensor for fixed-shape tensors
+            return pyarrow.fixed_shape_tensor(
+                element_type=element_dtype,
+                shape=dtype._shape,
+            )
     elif hasattr(dtype, "kind") and dtype.kind == "O":
         # Numpy object dtype - assume string
         return pyarrow.string()
