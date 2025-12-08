@@ -81,6 +81,10 @@ When Ray Serve scales down a deployment, it intelligently selects which replicas
 2. **Minimize node count**: Running replicas are stopped from nodes with the fewest total replicas across all deployments, helping to free up nodes faster. Among replicas on the same node, newer replicas are stopped before older ones.
 3. **Head node protection**: Replicas on the head node have the lowest priority for removal since the head node can't be released. Among replicas on the head node, newer replicas are stopped before older ones.
 
+:::{note}
+Running replicas on the head node isn't recommended for production deployments. The head node runs critical cluster processes such as the GCS and Serve controller, and replica workloads can compete for resources.
+:::
+
 ## APIs for controlling replica placement
 
 Ray Serve provides several options to control where replicas are scheduled. These parameters are configured through the [`@serve.deployment`](serve-configure-deployment) decorator. For the full API reference, see the [deployment decorator documentation](../api/doc/ray.serve.deployment_decorator.rst).
@@ -168,7 +172,6 @@ This is different from simply requesting resources in `ray_actor_options`. With 
 |----------|---------------------------|
 | **Model parallelism** | Tensor parallelism or pipeline parallelism requires multiple GPUs that must communicate efficiently. Use `STRICT_PACK` to guarantee all GPUs are on the same node. For example, vLLM with `tensor_parallel_size=4` and the Ray distributed executor backend spawns 4 Ray worker actors (one per GPU shard), all of which must be on the same node for efficient inter-GPU communication via NVLink/NVSwitch. |
 | **Replica spawns workers** | Your deployment creates Ray actors or tasks for parallel processing. Placement groups reserve resources for these workers. For example, a video processing service that spawns Ray tasks to decode frames in parallel, or a batch inference service using Ray Data to preprocess inputs before model inference. |
-| **Heterogeneous resources** | Your replica needs different resource types, such as one GPU bundle and one CPU-only bundle for preprocessing. For example, an LLM service where tokenization and detokenization run on CPU workers while inference runs on the GPU, or an image classification pipeline with CPU-based image decoding/resizing before GPU inference. |
 | **Cross-node distribution** | You need bundles spread across different nodes. Use `SPREAD` or `STRICT_SPREAD`. For example, serving a model with a massive embedding table (such as a recommendation model with billions of item embeddings) that must be sharded across multiple nodes because it exceeds single-node memory. Each bundle holds one shard, and `STRICT_SPREAD` ensures each shard is on a separate node. |
 
 Don't use placement groups when:
