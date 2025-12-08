@@ -62,7 +62,22 @@ from ray.data.context import (
 from ray.types import ObjectRef
 from ray.util.common import INT32_MAX
 
+# Lazy import to avoid circular dependencies
+_CoreActorPoolAdapter = None
+
 logger = logging.getLogger(__name__)
+
+
+def _get_core_actor_pool_adapter():
+    """Lazy import of CoreActorPoolAdapter to avoid circular imports."""
+    global _CoreActorPoolAdapter
+    if _CoreActorPoolAdapter is None:
+        from ray.data._internal.execution.operators.core_actor_pool_adapter import (
+            CoreActorPoolAdapter,
+        )
+
+        _CoreActorPoolAdapter = CoreActorPoolAdapter
+    return _CoreActorPoolAdapter
 
 
 class ActorPoolMapOperator(MapOperator):
@@ -161,25 +176,45 @@ class ActorPoolMapOperator(MapOperator):
 
         max_actor_concurrency = self._ray_remote_args.get("max_concurrency", 1)
 
-        self._actor_pool = _ActorPool(
-            self._start_actor,
-            per_actor_resource_usage,
-            min_size=compute_strategy.min_size,
-            max_size=compute_strategy.max_size,
-            initial_size=compute_strategy.initial_size,
-            max_actor_concurrency=max_actor_concurrency,
-            max_tasks_in_flight_per_actor=(
-                # Unless explicitly overridden by the user, max tasks-in-flight config
-                # will fall back to be:
-                #
-                #   DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR * max_concurrency,
-                compute_strategy.max_tasks_in_flight_per_actor
-                or data_context.max_tasks_in_flight_per_actor
-                or max_actor_concurrency
-                * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
-            ),
-            _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
+        max_tasks_in_flight_per_actor = (
+            # Unless explicitly overridden by the user, max tasks-in-flight config
+            # will fall back to be:
+            #
+            #   DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR * max_concurrency,
+            compute_strategy.max_tasks_in_flight_per_actor
+            or data_context.max_tasks_in_flight_per_actor
+            or max_actor_concurrency
+            * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
         )
+
+        # Use new C++-backed Core Actor Pool if feature flag is enabled
+        if data_context.use_core_actor_pool:
+            CoreActorPoolAdapter = _get_core_actor_pool_adapter()
+            self._actor_pool = CoreActorPoolAdapter(
+                self._start_actor,
+                per_actor_resource_usage,
+                min_size=compute_strategy.min_size,
+                max_size=compute_strategy.max_size,
+                initial_size=compute_strategy.initial_size,
+                max_actor_concurrency=max_actor_concurrency,
+                max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
+                _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
+            )
+            logger.debug(
+                f"Using CoreActorPoolAdapter for operator {name} "
+                f"(min={compute_strategy.min_size}, max={compute_strategy.max_size})"
+            )
+        else:
+            self._actor_pool = _ActorPool(
+                self._start_actor,
+                per_actor_resource_usage,
+                min_size=compute_strategy.min_size,
+                max_size=compute_strategy.max_size,
+                initial_size=compute_strategy.initial_size,
+                max_actor_concurrency=max_actor_concurrency,
+                max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
+                _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
+            )
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
