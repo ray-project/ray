@@ -3,11 +3,15 @@ import re
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import (
+    TYPE_CHECKING,
     Any,
     Dict,
     Iterable,
     Optional,
 )
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 import pyarrow
 import pyarrow.types as pat
@@ -300,7 +304,7 @@ class ClickHouseDatasink(Datasink):
     def supports_distributed_writes(self) -> bool:
         return True
 
-    def on_write_start(self) -> None:
+    def on_write_start(self, schema: Optional["pa.Schema"] = None) -> None:
         client = None
         try:
             client = self._init_client()

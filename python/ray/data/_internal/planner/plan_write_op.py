@@ -1,9 +1,9 @@
 import itertools
 import uuid
-from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
+from typing import Callable, Iterator, List, Union
 
 from ray.data._internal.compute import TaskPoolStrategy
-from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
@@ -15,9 +15,6 @@ from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.datasource import Datasource
-
-if TYPE_CHECKING:
-    import pyarrow as pa
 
 WRITE_UUID_KWARG_NAME = "write_uuid"
 
@@ -110,6 +107,18 @@ def _plan_write_op_internal(
 
     map_transformer = MapTransformer(transform_fns)
 
+    # Set up on_start callback for datasinks.
+    # This allows on_write_start to receive the schema from the first input bundle,
+    # enabling schema-dependent initialization (e.g., Iceberg schema evolution).
+    # NOTE: _FileDatasink is excluded because dataset.py already calls on_write_start()
+    # explicitly before execution to handle SaveMode checks and directory creation.
+    on_start = None
+    if isinstance(datasink, Datasink):
+        from ray.data.datasource.file_datasink import _FileDatasink
+
+        if not isinstance(datasink, _FileDatasink):
+            on_start = datasink.on_write_start
+
     map_op = MapOperator.create(
         map_transformer,
         input_physical_dag,
@@ -121,71 +130,7 @@ def _plan_write_op_internal(
         ray_remote_args=op._ray_remote_args,
         min_rows_per_bundle=op._min_rows_per_bundled_input,
         compute_strategy=TaskPoolStrategy(op._concurrency),
+        on_start=on_start,
     )
-
-    # Set up deferred on_write_start callback for datasinks.
-    # This allows on_write_start to receive the schema from the first input bundle,
-    # enabling schema-dependent initialization (e.g., Iceberg schema evolution).
-    # NOTE: _FileDatasink is excluded because dataset.py already calls on_write_start()
-    # explicitly before execution to handle SaveMode checks and directory creation.
-    if isinstance(datasink, Datasink):
-        # Lazy import to avoid circular dependency
-        from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
-        from ray.data.datasource.file_datasink import _FileDatasink
-
-        if not isinstance(datasink, _FileDatasink):
-            if isinstance(datasink, IcebergDatasink):
-                # Iceberg needs the schema for schema evolution, use deferred callback
-                def on_first_input(bundle: RefBundle):
-                    schema: Optional["pa.Schema"] = _get_pyarrow_schema_from_bundle(
-                        bundle
-                    )
-                    datasink.on_write_start(schema)
-
-                map_op.set_first_input_callback(on_first_input)
-            else:
-                # Other datasinks don't need schema, call on_write_start directly
-                datasink.on_write_start()
 
     return map_op
-
-
-def _get_pyarrow_schema_from_bundle(bundle: RefBundle) -> Optional["pa.Schema"]:
-    """Extract a PyArrow schema from a RefBundle without fetching block data.
-
-    Args:
-        bundle: The RefBundle to extract schema from.
-
-    Returns:
-        A PyArrow schema, or None if the bundle has no schema.
-    """
-    import pyarrow as pa
-
-    from ray.data._internal.arrow_ops.transform_pyarrow import (
-        convert_pandas_dtype_to_pyarrow,
-    )
-    from ray.data._internal.pandas_block import PandasBlockSchema
-    from ray.data.dataset import Schema
-
-    if bundle.schema is None:
-        return None
-
-    schema = bundle.schema
-
-    # Unwrap Schema wrapper if present
-    if isinstance(schema, Schema):
-        schema = schema.base_schema
-
-    # Already a PyArrow schema - use directly
-    if isinstance(schema, pa.Schema):
-        return schema
-
-    # PandasBlockSchema - convert to PyArrow
-    if isinstance(schema, PandasBlockSchema):
-        fields = []
-        for name, dtype in zip(schema.names, schema.types):
-            pa_type = convert_pandas_dtype_to_pyarrow(dtype)
-            fields.append(pa.field(name, pa_type))
-        return pa.schema(fields)
-
-    return None
