@@ -132,7 +132,10 @@ const LogLineDetailDialog = ({
               <Box
                 sx={(theme) => ({
                   padding: 1,
-                  bgcolor: "#EEEEEE",
+                  bgcolor:
+                    theme.palette.mode === "dark"
+                      ? theme.palette.grey[900]
+                      : theme.palette.grey[200],
                   borderRadius: 1,
                   border: `1px solid ${theme.palette.divider}`,
                   marginBottom: 2,
@@ -164,7 +167,10 @@ const LogLineDetailDialog = ({
           <Box
             sx={(theme) => ({
               padding: 1,
-              bgcolor: "#EEEEEE",
+              bgcolor:
+                theme.palette.mode === "dark"
+                  ? theme.palette.grey[900]
+                  : theme.palette.grey[200],
               borderRadius: 1,
               border: `1px solid ${theme.palette.divider}`,
             })}
@@ -251,17 +257,17 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
       <Box
         key={`${index}list`}
         style={style}
-        sx={{
+        sx={(theme) => ({
           overflowX: "visible",
           whiteSpace: "nowrap",
           "&::before": {
             content: `"${i + 1}"`,
             marginRight: 0.5,
             width: `${logs.length}`.length * 6 + 4,
-            color: "#999",
+            color: theme.palette.text.disabled,
             display: "inline-block",
           },
-        }}
+        })}
         onClick={() => {
           if ((window.getSelection()?.toString().length ?? 0) === 0) {
             // Only open if user is not selecting text
