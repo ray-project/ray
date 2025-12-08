@@ -2,6 +2,8 @@ group: cicd-cron
 steps:
   - name: Build manylinux images
     commands:
+      # NOTE(andrew-anyscale): Not running w/ --upload while we verify builds
+      # are scheduling and completing correctly.
       - ./ci/base_images/nightly/build-manylinux.sh
     mount_buildkite_agent: true
     priority: 10
