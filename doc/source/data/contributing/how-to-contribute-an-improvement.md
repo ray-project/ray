@@ -9,8 +9,8 @@ reviewers understand your intent and ensure your improvements land smoothly.
 Start by solving a problem you encounter, like fixing a bug or adding a missing feature. 
 If you're unsure where to start:
 * Browse the issue tracker for problems you understand.
-* Look for labels like "good first issue" for approachable tasks.
-* Join the Ray Slack and message @richardliaw.
+* Look for labels like ["good first issue"](https://github.com/ray-project/ray/issues?q=is%3Aissue%20state%3Aopen%20label%3Agood-first-issue%20label%3Adata) for approachable tasks.
+* [Join the Ray Slack](https://www.ray.io/join-slack) and post in #data-contributors.
 
 ## Get early feedback
 
@@ -21,12 +21,29 @@ time and align your work with the project’s direction.
 You can open a draft PR, discuss on an Issue, or post in Slack for early feedback. It 
 won’t affect acceptance and often improves the final design.
 
-## Write a clear pull request description
+## Write good tests
+
+Most changes to Ray Data require tests.
+
+For tips on how to write good tests, see {ref}`How to write tests <how-to-write-tests>`.
+
+## Test your changes locally
+
+To test your changes locally, build 
+[Ray from source](https://docs.ray.io/en/latest/ray-contribute/development.html). Run 
+`pre-commit` to lint your changes and `pytest` to run your new tests.
+
+It's hard to run all of the Ray Data tests locally. To smoke test your changes before 
+opening a PR, run `pytest test_map.py` from `python/ray/data/tests`.
+
+## Open a pull request
+
+### Write a clear pull request description
 
 Explain **why the change exists and what it achieves**. Clear descriptions reduce 
 back-and-forth and speed up reviews.
 
-## Keep pull requests small
+### Keep pull requests small
 
 Review difficulty scales nonlinearly with PR size.
 
@@ -34,6 +51,14 @@ For fast reviews, do the following:
 * **Keep PRs under ~200 lines** of change when possible.
 * **Split large PRs** into multiple incremental PRs.
 * Avoid mixing refactors and new features in the same PR.
+
+### Make CI pass
+
+Ray's CI runs lint and a small set of tests first in the `buildkite/microcheck` check. 
+Start by making that pass.
+
+Once it’s green, tag your reviewer. They can add the go label to trigger the full test 
+suite.
 
 ## Write simple, clear code
 
@@ -62,6 +87,3 @@ Good modules are **deep, not shallow**.
 * Don't break abstraction barriers or rely on hidden behavior.
 * Refactor first if it simplifies design before adding new features.
 
-### Write good tests
-
-For tips on how to write good tests, see {ref}`How to write tests <how-to-write-tests>`.
