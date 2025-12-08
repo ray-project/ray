@@ -40,16 +40,15 @@ void MaybeNotifyPoolTaskComplete(
   }
 
   // Check if this task belongs to an actor pool
-  if (!task_spec.Message().has_actor_pool_id() ||
-      task_spec.Message().actor_pool_id().empty()) {
+  const auto &msg = task_spec.GetMessage();
+  if (!msg.has_actor_pool_id() || msg.actor_pool_id().empty()) {
     return;
   }
 
-  auto pool_id = ActorPoolID::FromBinary(task_spec.Message().actor_pool_id());
+  auto pool_id = ActorPoolID::FromBinary(msg.actor_pool_id());
   TaskID work_item_id = TaskID::Nil();
-  if (task_spec.Message().has_actor_pool_work_item_id() &&
-      !task_spec.Message().actor_pool_work_item_id().empty()) {
-    work_item_id = TaskID::FromBinary(task_spec.Message().actor_pool_work_item_id());
+  if (msg.has_actor_pool_work_item_id() && !msg.actor_pool_work_item_id().empty()) {
+    work_item_id = TaskID::FromBinary(msg.actor_pool_work_item_id());
   }
 
   RAY_LOG(DEBUG) << "Notifying pool " << pool_id << " of task completion for work item "
@@ -709,7 +708,7 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
     HandleTaskCancelledBeforeExecution(status, reply, task_spec);
     // Notify pool of cancellation
     MaybeNotifyPoolTaskComplete(pool_task_completion_callback_, task_spec,
-                                Status::SchedulingCancelled(), nullptr);
+                                Status::SchedulingCancelled("Task cancelled"), nullptr);
   } else if (status.ok() && !is_retryable_exception) {
     // status.ok() means the worker completed the reply, either succeeded or with a
     // retryable failure (e.g. user exceptions). We complete only on non-retryable case.
