@@ -1,11 +1,11 @@
-load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_binary(
     name = "bisect_test",
     srcs = ["bisect_test.py"],
     data = [":macos_validator"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     deps = [":bisect"],
 )
 
@@ -36,7 +36,7 @@ py_test(
     name = "test_bisector",
     size = "small",
     srcs = ["test_bisector.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -51,7 +51,7 @@ py_test(
     name = "test_generic_validator",
     size = "small",
     srcs = ["test_generic_validator.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",

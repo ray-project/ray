@@ -1,4 +1,4 @@
-load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_library(
@@ -27,7 +27,7 @@ py_library(
 py_binary(
     name = "raydepsets",
     srcs = ["raydepsets.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     deps = [":raydepsets_lib"],
 )
 
@@ -45,7 +45,7 @@ py_test(
         "tests/test_data/test.depsets.yaml",
         "tests/test_data/test2.depsets.yaml",
     ],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",

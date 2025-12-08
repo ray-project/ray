@@ -295,7 +295,7 @@ class ActorPoolMapOperator(MapOperator):
             if not has_actor:
                 # Actor has already been killed.
                 return
-            # A new actor has started, we try to dispatch queued tasks.
+            # Try to dispatch queued tasks.
             self._dispatch_tasks()
 
         self._submit_metadata_task(
@@ -400,6 +400,18 @@ class ActorPoolMapOperator(MapOperator):
                 "You might be able to increase the number of concurrent tasks by "
                 "configuring `override_num_blocks` earlier in the pipeline."
             )
+
+    def clear_internal_input_queue(self) -> None:
+        """Clear internal input queues for the actor-pool map operator.
+
+        In addition to clearing the base class' internal queues, this method clears
+        the local bundle queue used to stage input bundles for actors.
+        """
+        super().clear_internal_input_queue()
+
+        while self._bundle_queue.has_next():
+            bundle = self._bundle_queue.get_next()
+            self._metrics.on_input_dequeued(bundle)
 
     def _do_shutdown(self, force: bool = False):
         self._actor_pool.shutdown(force=force)
@@ -565,12 +577,35 @@ class _MapWorker:
         # Initialize the data context for this actor after setting the src_fn_name in order to not
         # break __repr__. It's possible that logging setup fails.
         DataContext._set_current(ctx)
-        # Initialize state for this actor.
-        self._map_transformer.init()
+        # Initialize state for this actor with retry logic for UDF init failures.
+        self._init_udf_with_retries(ctx)
         self._logical_actor_id = logical_actor_id
         actor_location_tracker.update_actor_location.remote(
             self._logical_actor_id, ray.get_runtime_context().get_node_id()
         )
+
+    def _init_udf_with_retries(self, ctx: DataContext) -> None:
+        """Initialize the UDF with retry logic for transient failures."""
+        max_retries = (
+            ctx.actor_init_max_retries if ctx.actor_init_retry_on_errors else 0
+        )
+        # -1 means infinite retries
+        last_exception = None
+        attempt = 0
+        while max_retries < 0 or attempt <= max_retries:
+            try:
+                self._map_transformer.init()
+                return  # Success
+            except Exception as e:
+                last_exception = e
+                logger.debug(
+                    f"Failed to initialize UDF on attempt {attempt + 1} "
+                    f"(max_retries={'infinite' if max_retries < 0 else max_retries}): {e}",
+                    exc_info=True,
+                )
+                attempt += 1
+        # All retries exhausted
+        raise last_exception
 
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()
@@ -593,7 +628,9 @@ class _MapWorker:
         )
 
     def __repr__(self):
-        return f"MapWorker({self.src_fn_name})"
+        # Use getattr to handle case where __init__ failed before src_fn_name was set.
+        # This can happen during actor restarts or initialization failures.
+        return f"MapWorker({getattr(self, 'src_fn_name', '<initializing>')})"
 
     def on_exit(self):
         """Called when the actor is about to exist.
@@ -997,14 +1034,26 @@ class _ActorPool(AutoscalingActorPool):
         Returns:
             Whether the actor was still pending. This can return False if the actor had
             already been killed.
+
+        Raises:
+            RayError: If the actor initialization failed. The actor is cleaned up
+                from internal tracking before re-raising.
         """
         if ready_ref not in self._pending_actors:
             # The actor has been removed from the pool before becoming running.
             return False
         actor = self._pending_actors.pop(ready_ref)
+        try:
+            actor_location = ray.get(ready_ref)
+        except Exception:
+            # Actor init failed - clean up the actor from _actor_to_logical_id
+            # This must happen for all exceptions, not just RayError, to prevent
+            # memory leaks where dead actor handles remain in _actor_to_logical_id.
+            self._actor_to_logical_id.pop(actor, None)
+            raise
         self._running_actors[actor] = _ActorState(
             num_tasks_in_flight=0,
-            actor_location=ray.get(ready_ref),
+            actor_location=actor_location,
             is_restarting=False,
         )
         return True

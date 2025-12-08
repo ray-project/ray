@@ -24,6 +24,7 @@ from ray._private.authentication_test_utils import (
     clear_auth_token_sources,
     reset_auth_token_state,
     set_auth_mode,
+    set_auth_token_path,
     set_env_auth_token,
 )
 
@@ -146,7 +147,7 @@ def test_local_cluster_generates_token():
             f"Files in {default_token_path.parent}: {list(default_token_path.parent.iterdir()) if default_token_path.parent.exists() else 'directory does not exist'}"
         )
         token = default_token_path.read_text().strip()
-        assert len(token) == 32
+        assert len(token) == 64
         assert all(c in "0123456789abcdef" for c in token)
 
         # Verify cluster is working
@@ -176,6 +177,34 @@ def test_connect_without_token_raises_error(setup_cluster_with_token_auth):
         ray.init(address=cluster.address)
 
 
+@pytest.mark.parametrize(
+    "token,expected_status",
+    [
+        (None, 401),  # No token -> Unauthorized
+        ("wrong_token", 403),  # Wrong token -> Forbidden
+    ],
+    ids=["no_token", "wrong_token"],
+)
+def test_state_api_auth_failure(token, expected_status, setup_cluster_with_token_auth):
+    """Test that state API calls fail with missing or incorrect token."""
+    import requests
+
+    cluster_info = setup_cluster_with_token_auth
+    dashboard_url = cluster_info["dashboard_url"]
+
+    # Make direct HTTP request to state API endpoint
+    headers = {}
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
+
+    response = requests.get(f"{dashboard_url}/api/v0/actors", headers=headers)
+
+    assert response.status_code == expected_status, (
+        f"State API should return {expected_status}, got {response.status_code}: "
+        f"{response.text}"
+    )
+
+
 @pytest.mark.parametrize("tokens_match", [True, False])
 def test_cluster_token_authentication(tokens_match, setup_cluster_with_token_auth):
     """Test cluster authentication with matching and non-matching tokens."""
@@ -190,7 +219,7 @@ def test_cluster_token_authentication(tokens_match, setup_cluster_with_token_aut
     if tokens_match:
         client_token = cluster_token  # Same token - should succeed
     else:
-        client_token = "b" * 32  # Different token - should fail
+        client_token = "b" * 64  # Different token - should fail
 
     set_env_auth_token(client_token)
     reset_auth_token_state()
@@ -263,7 +292,7 @@ def test_ray_start_without_token_raises_error(is_head, request):
 def test_ray_start_head_with_token_succeeds():
     """Test that ray start --head succeeds when token auth is enabled with a valid token."""
     # Set up environment with token auth and a valid token
-    test_token = "a" * 32
+    test_token = "a" * 64
     env = os.environ.copy()
     env["RAY_AUTH_TOKEN"] = test_token
     env["RAY_AUTH_MODE"] = "token"
@@ -326,7 +355,7 @@ def test_ray_start_address_with_token(token_match, setup_cluster_with_token_auth
         env["RAY_AUTH_TOKEN"] = cluster_token
         expect_success = True
     else:
-        env["RAY_AUTH_TOKEN"] = "b" * 32
+        env["RAY_AUTH_TOKEN"] = "b" * 64
         expect_success = False
 
     # Start worker node
@@ -363,9 +392,10 @@ def test_e2e_operations_with_token_auth(setup_cluster_with_token_auth):
     """Test that e2e operations work with token authentication enabled.
 
     This verifies that with token auth enabled:
-    1. Job submission works
-    2. Tasks execute successfully
-    3. Actors can be created and called
+    1. Tasks execute successfully
+    2. Actors can be created and called
+    3. State API works (list_nodes, list_actors, list_tasks)
+    4. Job submission works
     """
     cluster_info = setup_cluster_with_token_auth
 
@@ -391,7 +421,25 @@ def test_e2e_operations_with_token_auth(setup_cluster_with_token_auth):
     result = ray.get(actor.increment.remote())
     assert result == 1, f"Actor method should return 1, got {result}"
 
-    # Test 3: Submit a job and wait for completion
+    # Test 3: State API operations (uses HTTP with auth headers)
+    from ray.util.state import list_actors, list_nodes, list_tasks
+
+    # List nodes - should include at least the head node
+    wait_for_condition(lambda: len(list_nodes()) >= 1)
+
+    # List actors - should include our SimpleActor
+    def check_actors():
+        actors = list_actors()
+        if len(actors) < 1:
+            return False
+        return "SimpleActor" in actors[0].class_name
+
+    wait_for_condition(check_actors)
+
+    # List tasks - should include completed tasks
+    wait_for_condition(lambda: len(list_tasks()) >= 1)
+
+    # Test 4: Submit a job and wait for completion
     from ray.job_submission import JobSubmissionClient
 
     # Create job submission client (uses HTTP with auth headers)
@@ -422,10 +470,9 @@ def test_e2e_operations_with_token_auth(setup_cluster_with_token_auth):
 @pytest.mark.parametrize("use_generate", [True, False])
 def test_get_auth_token_cli(use_generate):
     """Test ray get-auth-token CLI command."""
-    test_token = "a" * 32
+    test_token = "a" * 64
 
     with authentication_env_guard():
-        set_auth_mode("token")
         if use_generate:
             # Test --generate flag (no token set)
             clear_auth_token_sources(remove_default=True)
@@ -452,7 +499,7 @@ def test_get_auth_token_cli(use_generate):
 
         # Verify token is printed to stdout
         token = result.stdout.strip()
-        assert len(token) == 32, f"Token should be 32 chars, got {len(token)}"
+        assert len(token) == 64, token
         assert all(c in "0123456789abcdef" for c in token), "Token should be hex"
 
         if not use_generate:
@@ -473,7 +520,6 @@ def test_get_auth_token_cli(use_generate):
 def test_get_auth_token_cli_no_token_no_generate():
     """Test ray get-auth-token fails without token and without --generate."""
     with authentication_env_guard():
-        set_auth_mode("token")
         reset_auth_token_state()
         clear_auth_token_sources(remove_default=True)
         env = os.environ.copy()
@@ -497,10 +543,9 @@ def test_get_auth_token_cli_no_token_no_generate():
 )
 def test_get_auth_token_cli_piping():
     """Test that ray get-auth-token output can be piped."""
-    test_token = "b" * 32
+    test_token = "b" * 64
 
     with authentication_env_guard():
-        set_auth_mode("token")
         set_env_auth_token(test_token)
         reset_auth_token_state()
         env = os.environ.copy()
@@ -516,9 +561,76 @@ def test_get_auth_token_cli_piping():
         )
 
         assert result.returncode == 0
-        # Should be 32 chars (no newline with nl=False)
         char_count = int(result.stdout.strip())
-        assert char_count == 32, f"Expected 32 chars (no newline), got {char_count}"
+        assert char_count == 64, f"Expected 64 chars (no newline), got {char_count}"
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Tests AuthenticationTokenLoader directly, no benefit testing this in client mode",
+)
+def test_missing_token_file_raises_authentication_error():
+    """Test that RAY_AUTH_TOKEN_PATH pointing to missing file raises AuthenticationError."""
+    with authentication_env_guard():
+        # Clear first, then set up the specific test scenario
+        clear_auth_token_sources(remove_default=True)
+        set_auth_mode("token")
+        set_auth_token_path(None, "/nonexistent/path/to/token")
+        reset_auth_token_state()
+
+        token_loader = AuthenticationTokenLoader.instance()
+
+        with pytest.raises(ray.exceptions.AuthenticationError) as exc_info:
+            token_loader.has_token()
+
+        # Verify error message is informative
+        assert str(Path("/nonexistent/path/to/token")) in str(exc_info.value)
+        assert "RAY_AUTH_TOKEN_PATH" in str(exc_info.value)
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Tests AuthenticationTokenLoader directly, no benefit testing this in client mode",
+)
+def test_empty_token_file_raises_authentication_error(tmp_path):
+    """Test that RAY_AUTH_TOKEN_PATH pointing to empty file raises AuthenticationError."""
+    token_file = tmp_path / "empty_token_file.txt"
+    with authentication_env_guard():
+        # Clear first, then set up the specific test scenario
+        clear_auth_token_sources(remove_default=True)
+        set_auth_mode("token")
+        set_auth_token_path("", token_file)
+        reset_auth_token_state()
+
+        token_loader = AuthenticationTokenLoader.instance()
+
+        with pytest.raises(ray.exceptions.AuthenticationError) as exc_info:
+            token_loader.has_token()
+
+        assert "cannot be opened or is empty" in str(exc_info.value)
+        assert str(token_file) in str(exc_info.value)
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Tests AuthenticationTokenLoader directly, no benefit testing this in client mode",
+)
+def test_no_token_with_auth_enabled_returns_false():
+    """Test that has_token(ignore_auth_mode=True) returns False when no token exists.
+
+    This allows the caller (ensure_token_if_auth_enabled) to decide whether
+    to generate a new token or raise an error.
+    """
+    with authentication_env_guard():
+        set_auth_mode("token")
+        clear_auth_token_sources(remove_default=True)
+        reset_auth_token_state()
+
+        token_loader = AuthenticationTokenLoader.instance()
+
+        # has_token(ignore_auth_mode=True) should return False, not raise an exception
+        result = token_loader.has_token(ignore_auth_mode=True)
+        assert result is False
 
 
 if __name__ == "__main__":
