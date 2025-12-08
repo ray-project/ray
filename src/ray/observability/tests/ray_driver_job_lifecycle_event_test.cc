@@ -25,9 +25,9 @@ TEST_F(RayDriverJobLifecycleEventTest, TestMerge) {
   rpc::JobTableData data;
   data.set_job_id("test_job_id_1");
   auto event1 = std::make_unique<RayDriverJobLifecycleEvent>(
-      data, rpc::events::DriverJobLifecycleEvent::CREATED, "test_session_name_1");
+      data, rpc::events::DriverJobLifecycleEvent::CREATED, "test_session_name_1", NodeID::Nil());
   auto event2 = std::make_unique<RayDriverJobLifecycleEvent>(
-      data, rpc::events::DriverJobLifecycleEvent::FINISHED, "test_session_name_1");
+      data, rpc::events::DriverJobLifecycleEvent::FINISHED, "test_session_name_1", NodeID::Nil());
   event1->Merge(std::move(*event2));
   auto serialized_event = std::move(*event1).Serialize();
   ASSERT_EQ(serialized_event.driver_job_lifecycle_event().state_transitions_size(), 2);
