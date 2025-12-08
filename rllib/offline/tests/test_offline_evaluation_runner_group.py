@@ -141,6 +141,16 @@ class TestOfflineData(unittest.TestCase):
             # Ensure all entries are `Stats` instances.
             for metric in metric_dict[DEFAULT_MODULE_ID].values():
                 self.assertIsInstance(metric, Stats)
+            self.assertEqual(
+                metric_dict[DEFAULT_MODULE_ID][NUM_MODULE_STEPS_SAMPLED].peek(),
+                metric_dict[ALL_MODULES][NUM_ENV_STEPS_SAMPLED].peek(),
+            )
+            self.assertEqual(
+                metric_dict[DEFAULT_MODULE_ID][
+                    NUM_MODULE_STEPS_SAMPLED_LIFETIME
+                ].peek(),
+                metric_dict[ALL_MODULES][NUM_ENV_STEPS_SAMPLED_LIFETIME].peek(),
+            )
 
         # Clean up.
         algo.cleanup()
