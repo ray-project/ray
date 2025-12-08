@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 
+import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.utils import (
     get_or_create_event_loop,
@@ -161,6 +162,8 @@ if __name__ == "__main__":
         address=args.node_ip_address,
         runtime_env_agent_port=args.runtime_env_agent_port,
     )
+
+    ray._raylet.setproctitle(ray_constants.AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT)
 
     # POST /get_or_create_runtime_env
     # body is serialzied protobuf GetOrCreateRuntimeEnvRequest
