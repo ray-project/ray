@@ -31,7 +31,9 @@ def format_messages_to_prompt(messages: List[Any]) -> str:
         # Handle dicts (standard OpenAI format) or objects (if Ray passes wrappers)
         if isinstance(message, dict):
             role = message.get("role")
-            content = message.get("content", "")
+            content = message.get("content")
+            if content is None:
+                content = ""
         else:
             # Fallback for object access if it's a Pydantic model
             role = getattr(message, "role", "user")
@@ -84,9 +86,6 @@ class SGLangServer:
         Handles parameter extraction, calls the SGLang engine, and processes the
         raw response to extract common metadata and generated text.
         """
-        # Extract and default sampling parameters (common logic)
-        # Use getattr to retrieve the value, and then explicitly check for None
-        # to ensure defaults are applied even if the field is set to None in the request object.
         
         temp = getattr(request, "temperature", None)
         if temp is None:
@@ -109,14 +108,12 @@ class SGLangServer:
             "top_p": top_p,
         }
 
-        # Call the SGLang engine (common logic)
         raw = await self.engine.async_generate(
             prompt=prompt_string,
             sampling_params=sampling_params,
             stream=False,
         )
 
-        # Handle response list and empty check (common logic)
         if isinstance(raw, list):
             if not raw:
                 raise RuntimeError(
@@ -124,7 +121,6 @@ class SGLangServer:
                 )
             raw = raw[0]
 
-        # Extract and process metadata (common logic)
         text: str = raw.get("text", "")
         meta: dict[str, Any] = raw.get("meta_info", {}) or {}
         finish_reason_info = meta.get("finish_reason", {}) or {}
@@ -152,10 +148,8 @@ class SGLangServer:
         self, request: ChatCompletionRequest
     ) -> AsyncGenerator[ChatCompletionResponse, None]:
 
-        # 1. Unique Logic: Prompt formatting
         prompt_string = format_messages_to_prompt(request.messages)
 
-        # 2. Shared Logic: Generate and extract metadata
         metadata = await self._generate_and_extract_metadata(request, prompt_string)
 
         usage_data = {
@@ -170,7 +164,6 @@ class SGLangServer:
             "finish_reason": metadata["finish_reason"],
         }
 
-        # 3. Unique Logic: Construct ChatCompletionResponse
         resp = ChatCompletionResponse(
             id=metadata["id"],
             object="chat.completion",
@@ -186,14 +179,15 @@ class SGLangServer:
         self, request: CompletionRequest
     ) -> AsyncGenerator[CompletionResponse, None]:
         
-        # 1. Unique Logic: Prompt extraction
         prompt_input = request.prompt
+        
         if isinstance(prompt_input, list):
+            if not prompt_input:
+                raise ValueError("The 'prompt' list cannot be empty for completion requests.")
             prompt_string = prompt_input[0]
         else:
             prompt_string = prompt_input
 
-        # 2. Shared Logic: Generate and extract metadata
         metadata = await self._generate_and_extract_metadata(request, prompt_string)
 
         usage_data = {
@@ -209,12 +203,11 @@ class SGLangServer:
             "finish_reason": metadata["finish_reason"],
         }
 
-        # 3. Unique Logic: Construct CompletionResponse
         resp = CompletionResponse(
             id=metadata["id"],
             object="text_completion",
             created=metadata["created"],
-            model=getattr(request, "model", "default_model"), # Use getattr for model since CompletionRequest might not have it defined depending on the implementation
+            model=getattr(request, "model", "default_model"),
             choices=[choice_data],
             usage=usage_data,
         )
