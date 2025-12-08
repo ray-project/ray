@@ -1,4 +1,4 @@
-(rayservice-incremental-upgrade)=
+(kuberay-rayservice-incremental-upgrade)=
 # RayService Zero-Downtime Incremental Upgrades
 
 This guide details how to configure and use the `NewClusterWithIncrementalUpgrade` strategy for a `RayService` with KubeRay. This feature was proposed in a [Ray Enhancement Proposal (REP)](https://github.com/ray-project/enhancements/blob/main/reps/2024-12-4-ray-service-incr-upgrade.md) and implemented with alpha support in KubeRay v1.5.1. If unfamiliar with RayServices and KubeRay, see the [RayService Quickstart](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/rayservice-quick-start.html).
