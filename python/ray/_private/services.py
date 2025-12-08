@@ -650,7 +650,7 @@ def get_node_to_connect_ip_address(gcs_client: GcsClient) -> (str, GcsNodeInfo):
     """
     Get the node to connect to for the driver. If there are multiple nodes on the same host,
     this function will prioritize the head node if available.
-    If there is no head node, it will return the first node it finds.
+    If there is no head node, it will return an arbitrary node it finds.
 
     Args:
         gcs_client: The GCS client.
@@ -674,6 +674,7 @@ def get_node_to_connect_ip_address(gcs_client: GcsClient) -> (str, GcsNodeInfo):
         node_to_connect_infos = gcs_client.get_all_node_info(
             timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
             node_selectors=node_selectors,
+            state_filter=GcsNodeInfo.GcsNodeState.ALIVE,
         ).values()
     except Exception as e:
         raise Exception(

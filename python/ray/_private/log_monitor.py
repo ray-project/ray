@@ -601,13 +601,13 @@ if __name__ == "__main__":
         raise Exception(
             "No node ip address found for raylet on this host. Is there an instance of raylet running on this host?"
         )
+    node_ip = possible_node_ips[0]
     if len(possible_node_ips) > 1:
         logger.warning(
             f"Multiple possible node ip addresses found: {possible_node_ips}. "
             "If you are running multiple nodes on the same host, log monitor may connect to the wrong node."
-            "Choosing the first one."
+            f"Choosing node ip address: {node_ip}."
         )
-    node_ip = possible_node_ips.pop()
     gcs_client = GcsClient(address=args.gcs_address)
     log_monitor = LogMonitor(
         node_ip,

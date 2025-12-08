@@ -211,6 +211,7 @@ class Node:
         resolved_node_ip_address = None
         node_to_connect_info = None
         if connect_only:
+            # If connecting, resolve the node to connect to based on running raylet's IP address.
             (
                 resolved_node_ip_address,
                 node_to_connect_info,
