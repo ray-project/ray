@@ -366,8 +366,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
                was_stored_in_objects || has_lineage_references);
     }
 
-    /// Whether the Reference can be deleted. A Reference can only be deleted
-    /// if:
+    /// Whether the reference can be deleted. A reference can be deleted if:
     /// 1. The ObjectID's ref count is 0 on all workers.
     /// 2. If lineage pinning is enabled, there are no tasks that depend on
     /// the object that may be retried in the future.
