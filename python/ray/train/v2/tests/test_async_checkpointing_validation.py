@@ -21,6 +21,10 @@ from ray.train.v2.api.report_config import (
     CheckpointConsistencyMode,
     CheckpointUploadMode,
 )
+from ray.train.v2.api.train_fn_utils import (
+    _VALIDATE_CONFIG_WITHOUT_VALIDATE_FN_ERROR,
+    _VALIDATE_TASK_CONFIG_WITHOUT_VALIDATE_FN_ERROR,
+)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -245,7 +249,7 @@ def test_report_validate_config_without_validate_fn():
     )
     with pytest.raises(
         WorkerGroupError,
-        match="validate_fn must be provided together with validate_config",
+        match=_VALIDATE_CONFIG_WITHOUT_VALIDATE_FN_ERROR,
     ) as exc_info:
         trainer.fit()
     assert isinstance(exc_info.value.worker_failures[0]._base_exc, ValueError)
@@ -265,7 +269,7 @@ def test_report_validate_task_config_without_validate_fn():
     )
     with pytest.raises(
         WorkerGroupError,
-        match="validate_fn must be provided together with validate_task_config",
+        match=_VALIDATE_TASK_CONFIG_WITHOUT_VALIDATE_FN_ERROR,
     ) as exc_info:
         trainer.fit()
     assert isinstance(exc_info.value.worker_failures[0]._base_exc, ValueError)

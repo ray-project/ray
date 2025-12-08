@@ -17,6 +17,14 @@ if TYPE_CHECKING:
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 
+_VALIDATE_CONFIG_WITHOUT_VALIDATE_FN_ERROR = (
+    "validate_fn must be provided together with validate_config"
+)
+_VALIDATE_TASK_CONFIG_WITHOUT_VALIDATE_FN_ERROR = (
+    "validate_fn must be provided together with validate_task_config"
+)
+
+
 @PublicAPI(stability="stable")
 @requires_train_worker(raise_in_tune_session=True)
 def report(
@@ -117,12 +125,10 @@ def report(
 
     # TODO: figure out how to validate validate_fn itself
     if validate_config and not validate_fn:
-        raise ValueError("validate_fn must be provided together with validate_config")
+        raise ValueError(_VALIDATE_CONFIG_WITHOUT_VALIDATE_FN_ERROR)
 
     if validate_task_config and not validate_fn:
-        raise ValueError(
-            "validate_fn must be provided together with validate_task_config"
-        )
+        raise ValueError(_VALIDATE_TASK_CONFIG_WITHOUT_VALIDATE_FN_ERROR)
 
     get_train_fn_utils().report(
         metrics=metrics,
