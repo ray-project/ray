@@ -1,13 +1,18 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
+from ray.rllib.core.learner.utils import make_target_network
+from ray.rllib.core.rl_module.apis import (
+    TARGET_NETWORK_ACTION_DIST_INPUTS,
+    TargetNetworkAPI,
+    ValueFunctionAPI,
+)
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import NetworkType, TensorType
 
 torch, nn = try_import_torch()
 
@@ -150,3 +155,94 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
         embeddings = self._fc_net(embeddings)
         # Squeeze the layer dim (we only have 1 LSTM layer).
         return embeddings, {"h": h.squeeze(0), "c": c.squeeze(0)}
+
+
+class LSTMContainingRLModuleWithTargetNetworks(
+    LSTMContainingRLModule, TargetNetworkAPI
+):
+    """An LSTM-based RLModule that implements TargetNetworkAPI for use with APPO.
+
+    This class extends LSTMContainingRLModule to add target network support required
+    by the APPO algorithm. It creates target networks for the LSTM, FC layers, and
+    policy head, which are used during training for computing KL divergence.
+
+    .. testcode::
+
+        import numpy as np
+        import gymnasium as gym
+
+        B = 10  # batch size
+        T = 5  # seq len
+        e = 25  # embedding dim
+        CELL = 32  # LSTM cell size
+
+        # Construct the RLModule.
+        my_net = LSTMContainingRLModuleWithTargetNetworks(
+            observation_space=gym.spaces.Box(-1.0, 1.0, (e,), np.float32),
+            action_space=gym.spaces.Discrete(4),
+            model_config={"lstm_cell_size": CELL}
+        )
+
+        # Create target networks (required for APPO)
+        my_net.make_target_networks()
+
+        # Create some dummy input.
+        obs = torch.from_numpy(
+            np.random.random_sample(size=(B, T, e)
+        ).astype(np.float32))
+        state_in = my_net.get_initial_state()
+        # Repeat state_in across batch.
+        state_in = tree.map_structure(
+            lambda s: torch.from_numpy(s).unsqueeze(0).repeat(B, 1), state_in
+        )
+        input_dict = {
+            Columns.OBS: obs,
+            Columns.STATE_IN: state_in,
+        }
+
+        # Run through all 3 forward passes.
+        print(my_net.forward_inference(input_dict))
+        print(my_net.forward_exploration(input_dict))
+        print(my_net.forward_train(input_dict))
+
+        # Test target network forward pass
+        print(my_net.forward_target(input_dict))
+    """
+
+    @override(TargetNetworkAPI)
+    def make_target_networks(self) -> None:
+        """Creates target networks for LSTM, FC net, and policy head."""
+        self._target_lstm = make_target_network(self._lstm)
+        self._target_fc_net = make_target_network(self._fc_net)
+        self._target_pi_head = make_target_network(self._pi_head)
+
+    @override(TargetNetworkAPI)
+    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
+        """Returns pairs of (main_net, target_net) for syncing."""
+        return [
+            (self._lstm, self._target_lstm),
+            (self._fc_net, self._target_fc_net),
+            (self._pi_head, self._target_pi_head),
+        ]
+
+    @override(TargetNetworkAPI)
+    def forward_target(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+        """Performs forward pass through target networks.
+
+        Args:
+            batch: The batch containing observations and state inputs.
+
+        Returns:
+            A dict containing TARGET_NETWORK_ACTION_DIST_INPUTS (action logits from
+            target networks).
+        """
+        obs = batch[Columns.OBS]
+        state_in = batch[Columns.STATE_IN]
+        h, c = state_in["h"], state_in["c"]
+        # Forward through target LSTM
+        embeddings, (h, c) = self._target_lstm(obs, (h.unsqueeze(0), c.unsqueeze(0)))
+        # Forward through target FC net
+        embeddings = self._target_fc_net(embeddings)
+        # Forward through target policy head
+        logits = self._target_pi_head(embeddings)
+        return {TARGET_NETWORK_ACTION_DIST_INPUTS: logits}

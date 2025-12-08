@@ -44,7 +44,7 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.utils import (
     MixManagerCallback,
 )
 from ray.rllib.examples.rl_modules.classes.lstm_containing_rlm import (
-    LSTMContainingRLModule,
+    LSTMContainingRLModuleWithTargetNetworks,
 )
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.rllib.utils.test_utils import (
@@ -181,7 +181,7 @@ config = (
         rl_module_spec=MultiRLModuleSpec(
             rl_module_specs={
                 main_policy: RLModuleSpec(
-                    module_class=LSTMContainingRLModule,
+                    module_class=LSTMContainingRLModuleWithTargetNetworks,
                     model_config={
                         "lstm_cell_size": 128,
                         "dense_layers": [128, 128],
