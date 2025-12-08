@@ -597,7 +597,11 @@ if __name__ == "__main__":
     )
 
     possible_node_ips = list(services.find_node_ip_addresses())
-    if len(possible_node_ips) > 0:
+    if len(possible_node_ips) == 0:
+        raise Exception(
+            "No node ip address found for raylet on this host. Is there an instance of raylet running on this host?"
+        )
+    if len(possible_node_ips) > 1:
         logger.warning(
             f"Multiple possible node ip addresses found: {possible_node_ips}. "
             "If you are running multiple nodes on the same host, log monitor may connect to the wrong node."

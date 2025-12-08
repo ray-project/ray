@@ -648,7 +648,9 @@ def get_node_ip_address(address=None):
 
 def get_node_to_connect_ip_address(gcs_client: GcsClient) -> (str, GcsNodeInfo):
     """
-    Get the node to connect to for the driver.
+    Get the node to connect to for the driver. If there are multiple nodes on the same host,
+    this function will prioritize the head node if available.
+    If there is no head node, it will return the first node it finds.
 
     Args:
         gcs_client: The GCS client.
@@ -660,6 +662,10 @@ def get_node_to_connect_ip_address(gcs_client: GcsClient) -> (str, GcsNodeInfo):
     node_to_connect_info = None
     # node specific temp_dir resolution requires knowledge of the node we are connecting to
     possible_node_ip_addresses = find_node_ip_addresses()
+    if len(possible_node_ip_addresses) == 0:
+        raise Exception(
+            "No node ip address found for raylet on this host. Is there an instance of raylet running on this host?"
+        )
     node_selectors = []
     for ip in possible_node_ip_addresses:
         ip_node_selector = GetAllNodeInfoRequest.NodeSelector(node_ip_address=ip)
@@ -686,7 +692,7 @@ def get_node_to_connect_ip_address(gcs_client: GcsClient) -> (str, GcsNodeInfo):
             node_to_connect_info = node_info
             break
     if node_to_connect_info is None:
-        node_to_connect_info = node_to_connect_infos[0]
+        node_to_connect_info = next(iter(node_to_connect_infos))
 
     node_ip_address = getattr(node_to_connect_info, "node_manager_address", None)
 
