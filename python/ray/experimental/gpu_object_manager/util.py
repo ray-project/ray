@@ -1,5 +1,5 @@
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List
 
 from ray._private.custom_types import TensorTransportEnum
 from ray.experimental.gpu_object_manager.collective_tensor_transport import (
@@ -11,29 +11,56 @@ from ray.experimental.gpu_object_manager.nixl_tensor_transport import (
 from ray.experimental.gpu_object_manager.tensor_transport_manager import (
     TensorTransportManager,
 )
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import torch
 
 
 # Class definitions for transport managers
-transport_manager_classes: dict[str, TensorTransportManager] = {
-    "NIXL": NixlTensorTransport,
-    "GLOO": CollectiveTensorTransport,
-    "NCCL": CollectiveTensorTransport,
-}
+transport_manager_classes: Dict[str, type[TensorTransportManager]] = {}
 
-transport_devices = {
-    "NIXL": ["cuda", "cpu"],
-    "GLOO": ["cpu"],
-    "NCCL": ["cuda"],
-}
-
+transport_devices: Dict[str, List[str]] = {}
 
 # Singleton instances of transport managers
-transport_managers = {}
+transport_managers: Dict[str, TensorTransportManager] = {}
 
 transport_managers_lock = threading.Lock()
+
+
+@PublicAPI(stability="alpha")
+def register_tensor_transport(
+    transport_name: str,
+    devices: List[str],
+    transport_manager_class: type[TensorTransportManager],
+):
+    """
+    Register a new tensor transport for use in Ray.
+
+    Args:
+        transport_name: The name of the transport protocol.
+        devices: List of device types supported by this transport (e.g., ["cuda", "cpu"]).
+        transport_manager_class: A class that implements TensorTransportManager.
+
+    Raises:
+        ValueError: If transport_manager_class is not a class or does not subclass TensorTransportManager.
+    """
+    global transport_manager_classes
+    global transport_devices
+
+    if not issubclass(transport_manager_class, TensorTransportManager):
+        raise ValueError(
+            f"transport_manager_class {transport_manager_class.__name__} must be a subclass of TensorTransportManager."
+        )
+
+    transport_name = transport_name.upper()
+    transport_manager_classes[transport_name] = transport_manager_class
+    transport_devices[transport_name] = devices
+
+
+register_tensor_transport("NIXL", ["cuda", "cpu"], NixlTensorTransport)
+register_tensor_transport("GLOO", ["cpu"], CollectiveTensorTransport)
+register_tensor_transport("NCCL", ["cuda"], CollectiveTensorTransport)
 
 
 def get_tensor_transport_manager(

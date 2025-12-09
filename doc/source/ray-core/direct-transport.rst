@@ -251,6 +251,22 @@ You can also use NIXL to retrieve the result from references created by :func:`r
    :start-after: __nixl_put__and_get_start__
    :end-before: __nixl_put__and_get_end__
 
+
+Registering a new tensor transport
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Ray allows users to register new tensor transports for use in RDT at runtime. To register a new tensor transport, use the :func:`ray.experimental.register_tensor_transport <ray.experimental.register_tensor_transport>` function.
+To implement a new tensor transport, you need to implement the abstract interface defined in :class:`ray.experimental.gpu_object_manager.tensor_transport_manager.TensorTransportManager`.
+Then you can simply give `register_tensor_transport` the transport name, devices, and the class that implements `TensorTransportManager`.
+NIXL, NCCL, and GLOO are registered through this API as well, see ``nixl_tensor_transport.py`` for a reference example.
+
+.. code-block:: python
+
+   from ray.experimental.gpu_object_manager import register_tensor_transport
+
+   register_tensor_transport("NIXL", ["cuda", "cpu"], NixlTensorTransport)
+
+
 Summary
 -------
 
