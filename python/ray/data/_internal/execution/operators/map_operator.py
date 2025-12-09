@@ -608,7 +608,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # metadata tasks, which are used by the actor-pool map operator to
         # check if a newly created actor is ready.
         # The reasons are because:
-        # 1. `PhysicalOperator.completed` checks `num_active_tasks`. The operator
+        # 1. `PhysicalOperator.has_completed` checks `num_active_tasks`. The operator
         #   should be considered completed if there are still pending actors.
         # 2. The number of active tasks in the progress bar will be more accurate
         #   to reflect the actual data processing tasks.

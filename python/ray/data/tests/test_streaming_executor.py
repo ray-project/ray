@@ -197,7 +197,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
     o2.get_active_tasks = MagicMock(return_value=[done_task])
     o2.all_inputs_done = MagicMock()
     o1.mark_execution_finished = MagicMock()
-    o1.completed = MagicMock(return_value=True)
+    o1.has_completed = MagicMock(return_value=True)
     topo[o1].output_queue.clear()
     process_completed_tasks(topo, [], 0)
     update_operator_states(topo)
