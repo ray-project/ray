@@ -152,6 +152,11 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         return data_files_list
 
     def on_write_complete(self, write_result: WriteResult[List["DataFile"]]):
+        # For empty datasets, on_write_start is never called (no input bundles),
+        # so _txn is not initialized. Nothing to commit in this case.
+        if self._txn is None:
+            return
+
         update_snapshot = self._txn.update_snapshot(
             snapshot_properties=self._snapshot_properties
         )
