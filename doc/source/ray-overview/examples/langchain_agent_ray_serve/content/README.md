@@ -428,7 +428,7 @@ After testing the agent locally, deploy it to Anyscale for production use. This 
 
 **Production benefits:**
 - **Auto-scaling**: Automatically scales replicas based on request volume (0 to N replicas)
-# - **High availability**: Zero-downtime deployments with automated handling of outages
+- **High availability**: Zero-downtime deployments with automated handling of outages
 - **Observability**: Built-in metrics, logs, and distributed tracing
 - **Cost optimization**: Scale to zero when idle (with appropriate configuration)
 - **Load balancing**: Distributes requests across multiple agent replicas
