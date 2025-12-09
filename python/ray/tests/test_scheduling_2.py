@@ -795,7 +795,7 @@ def test_workload_placement_metrics(ray_start_regular):
             ),
             MetricSamplePattern(
                 name="ray_scheduler_placement_time_ms_bucket",
-                value=1.0,
+                value=4.0,
                 partial_label_match={"WorkloadType": "Task"},
             ),
             MetricSamplePattern(
@@ -806,7 +806,7 @@ def test_workload_placement_metrics(ray_start_regular):
         ],
         timeseries,
     )
-    wait_for_condition(placement_metric_condition, timeout=60)
+    wait_for_condition(placement_metric_condition, timeout=30)
 
 
 def test_negative_resource_availability(shutdown_only):

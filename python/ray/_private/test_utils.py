@@ -706,7 +706,7 @@ def get_metric_check_condition(
                 if metric_pattern.matches(metric_sample):
                     break
             else:
-                print(
+                logger.debug(
                     f"Didn't find {metric_pattern}",
                     "all samples",
                     metric_samples,
