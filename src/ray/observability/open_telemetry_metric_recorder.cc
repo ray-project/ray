@@ -84,17 +84,6 @@ OpenTelemetryMetricRecorder &OpenTelemetryMetricRecorder::GetInstance() {
 void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
                                         std::chrono::milliseconds interval,
                                         std::chrono::milliseconds timeout) {
-<<<<<<< Updated upstream
-  RAY_LOG(INFO) << "Starting the OpenTelemetryMetricRecorder...";
-  bool expected = true;
-  if (!is_shutdown_.compare_exchange_strong(expected, false)) {
-    // Already started, skip
-    RAY_LOG(WARNING) << "The OpenTelemetryMetricRecorder is already started, skip the "
-                     << "start operation";
-    return;
-  }
-=======
->>>>>>> Stashed changes
   // Create an OTLP exporter
   opentelemetry::exporter::otlp::OtlpGrpcMetricExporterOptions exporter_options;
   exporter_options.endpoint = endpoint;
