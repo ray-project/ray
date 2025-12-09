@@ -179,6 +179,23 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # (e.g., schema evolution for Iceberg writes via on_write_start).
         self._on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = on_start
         self._start_called = False
+        # _map_transformer_ref is lazily initialized on first access.
+        # This ensures on_start callback (if registered) can modify the transformer
+        # before serialization (e.g., for Iceberg schema evolution).
+        self.__map_transformer_ref = None
+
+    @property
+    def _map_transformer_ref(self):
+        """Lazily serialize _map_transformer to object store on first access.
+
+        Deferred until first task submission so that on_start callbacks
+        (e.g., on_write_start for Iceberg) can modify the transformer state
+        before serialization.
+        """
+        if self.__map_transformer_ref is None:
+            self.__map_transformer_ref = ray.put(self._map_transformer)
+            self._warn_large_udf()
+        return self.__map_transformer_ref
 
     def add_map_task_kwargs_fn(self, map_task_kwargs_fn: Callable[[], Dict[str, Any]]):
         """Add a callback function that generates additional kwargs for the map tasks.
@@ -196,10 +213,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             schema = self._get_schema_from_bundle(bundled_input)
             self._on_start(schema)
             self._start_called = True
-            # Re-serialize map_transformer after on_start callback has modified it.
-            # This ensures workers get the updated state (e.g., _table_metadata for Iceberg).
-            self._map_transformer_ref = ray.put(self._map_transformer)
-            self._warn_large_udf()
+            # Note: _map_transformer_ref is lazily initialized, so no need to
+            # re-serialize here - it will be created with the updated state
+            # when first accessed in _add_bundled_input.
 
     def _get_schema_from_bundle(self, bundle: RefBundle) -> Optional["pa.Schema"]:
         """Extract PyArrow schema from a RefBundle without fetching block data."""
@@ -450,18 +466,11 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # Store the potentially modified map_transformer for later use
         self._map_transformer = map_transformer
 
-        # Only serialize now if there's no on_start callback.
-        # If on_start is set, serialization happens in _notify_first_input
-        # after the callback modifies the datasink state (e.g., _table_metadata).
-        if self._on_start is None:
-            self._map_transformer_ref = ray.put(map_transformer)
-            self._warn_large_udf()
-
     def _warn_large_udf(self):
         """Print a warning if the UDF is too large."""
         udf_size = ray.experimental.get_local_object_locations(
-            [self._map_transformer_ref]
-        )[self._map_transformer_ref]["object_size"]
+            [self.__map_transformer_ref]
+        )[self.__map_transformer_ref]["object_size"]
         if udf_size > self.MAP_UDF_WARN_SIZE_THRESHOLD:
             logger.warning(
                 f"The UDF of operator {self.name} is too large "
@@ -485,10 +494,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             (input_refs, bundled_input) = self._block_ref_bundler.get_next_bundle()
             for bundle in input_refs:
                 self._metrics.on_input_dequeued(bundle)
-
-            # Invoke first-input callback before task submission (for deferred init).
-            # This is used by write operators to call on_write_start with schema.
-            self._notify_first_input(bundled_input)
 
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue
@@ -626,11 +631,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 _,
                 bundled_input,
             ) = self._block_ref_bundler.get_next_bundle()
-
-            # Invoke first-input callback before task submission (for deferred init).
-            # This handles small datasets where bundles never met the threshold during
-            # normal processing and were deferred to all_inputs_done().
-            self._notify_first_input(bundled_input)
 
             self._add_bundled_input(bundled_input)
         else:
