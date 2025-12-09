@@ -3995,7 +3995,7 @@
       type: llm-cu128
       runtime_env:
         - RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1 # For test_llm_serve_prefill_decode_with_data_parallelism
-    cluster_compute: llm_2x_4xl4_custom_resource.yaml
+    cluster_compute: llm_2x_4xl4.yaml
 
   run:
     timeout: 3600
