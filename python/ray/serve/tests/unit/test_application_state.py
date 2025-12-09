@@ -3275,6 +3275,7 @@ class TestApplicationLevelAutoscaling:
         # Not a dict should fail
         with pytest.raises(AssertionError, match="must return policy_state as Dict"):
             app_autoscaling_state._validate_policy_state("deployment")
+        with pytest.raises(AssertionError, match="must return policy_state as Dict"):
             app_autoscaling_state._validate_policy_state(1)
 
         # Invalid deployment ID should fail
