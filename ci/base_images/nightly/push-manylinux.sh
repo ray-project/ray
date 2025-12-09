@@ -15,49 +15,56 @@ REPO_ROOT_DIR=$(git rev-parse --show-toplevel)
 # shellcheck source=ci/base_images/utils/common.sh
 source "${REPO_ROOT_DIR}/ci/base_images/utils/common.sh"
 
+: "${RAYCI_WORK_REPO:?Error: RAYCI_WORK_REPO is not set}"
+: "${RAYCI_BUILD_ID:?Error: RAYCI_BUILD_ID is not set}"
+: "${JDK_SUFFIX:?Error: JDK_SUFFIX is not set}"
 UPLOAD=${UPLOAD:-"false"}
+
 COMMIT_HASH=$(git rev-parse HEAD)
 ARCH=$(normalize_arch)
+WANDA_IMAGE_NAME="manylinux-nightly${JDK_SUFFIX}"
+WANDA_TAG="${RAYCI_WORK_REPO}:${RAYCI_BUILD_ID}-${WANDA_IMAGE_NAME}"
+REMOTE_TAG="rayproject/manylinux2024_${ARCH}${JDK_SUFFIX}:${COMMIT_HASH}"
 
-printHeader "Pulling manylinux image from Wanda cache"
-wanda_image_name="manylinux-nightly${JDK_SUFFIX}"
-# E.g. Tag output as 029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:779d7467-manylinux
-wanda_tag="${RAYCI_WORK_REPO}:${RAYCI_BUILD_ID}-${wanda_image_name}"
-printInfo "Pulling manylinux image (${wanda_image_name}) from Wanda cache: ${wanda_tag}"
-docker pull "$wanda_tag"
+printInfo "Source tag (Wanda): ${WANDA_TAG}"
+printInfo "Target tag (Docker Hub): ${REMOTE_TAG}"
 
-printHeader "Handling Docker login"
 if [[ "$UPLOAD" == "true" ]]; then
-    printInfo "Logging into Docker registry"
-    bazel run //.buildkite:copy_files -- --destination docker_login
-else
-    printInfo "Skipping docker login (upload is disabled)"
-fi
-
-printHeader "Tagging image"
-REMOTE_REGISTRY_PREFIX="rayproject/manylinux2024_${ARCH}"
-remote_tag="${REMOTE_REGISTRY_PREFIX}${jdk_suffix}:${COMMIT_HASH}"
-printInfo "Local tag: $local_tag"
-printInfo "Remote tag: $remote_tag"
-
-printHeader "Pushing image to Docker Hub"
-if [[ "$UPLOAD" == "true" ]]; then
-    printInfo "Checking if remote tag already exists on Docker Hub"
-    
-    if docker manifest inspect "$remote_tag" &>/dev/null; then
-        printInfo "Remote tag already exists on Docker Hub, skipping push"
+    printHeader "Checking if image already exists on Docker Hub"
+    if docker manifest inspect "$REMOTE_TAG" &>/dev/null; then
+        printInfo "Image already exists: $REMOTE_TAG"
+        printInfo "Nothing to do, exiting successfully"
         exit 0
     fi
-
-    printInfo "Tagging image for Docker Hub"
-    docker tag "$local_tag" "$remote_tag"
-    
-    printInfo "Pushing image to Docker Hub: $remote_tag"
-    docker push "$remote_tag"
-    printInfo "Successfully uploaded: $remote_tag"
-else
-    printInfo "Skipping upload (use --upload flag to enable)"
-    printInfo "Would tag: $local_tag -> $remote_tag"
+    printInfo "Image does not exist, proceeding with push"
 fi
 
-printHeader "Success"
+printHeader "Pulling image from Wanda cache"
+printInfo "Pulling: ${WANDA_TAG}"
+docker pull "$WANDA_TAG"
+
+if [[ "$UPLOAD" == "true" ]]; then
+    printHeader "Authenticating with Docker Hub"
+    bazel run //.buildkite:copy_files -- --destination docker_login
+fi
+
+printHeader "Publishing image to Docker Hub"
+
+if [[ "$UPLOAD" == "true" ]]; then
+    printInfo "Tagging: ${WANDA_TAG} -> ${REMOTE_TAG}"
+    docker tag "$WANDA_TAG" "$REMOTE_TAG"
+    
+    printInfo "Pushing to Docker Hub..."
+    docker push "$REMOTE_TAG"
+    
+    printInfo "Successfully published: $REMOTE_TAG"
+else
+    printInfo "DRY RUN MODE - No changes will be made"
+    printInfo "  Would tag: ${WANDA_TAG}"
+    printInfo "           → ${REMOTE_TAG}"
+    printInfo "  Would push to Docker Hub"
+    printInfo ""
+    printInfo "To actually push, run with: --upload"
+fi
+
+printHeader "Done"
