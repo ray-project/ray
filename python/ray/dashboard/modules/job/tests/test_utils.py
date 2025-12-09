@@ -1,3 +1,4 @@
+import os
 import sys
 from tempfile import NamedTemporaryFile
 
@@ -219,11 +220,10 @@ class TestIterLine:
 
 class TestFastTailLastNLines:
     def test_nonexistent_path(self, tmp):
-        import os
-
         missing = tmp + ".missing"
         assert not os.path.exists(missing)
-        assert fast_tail_last_n_lines(missing, num_lines=10, max_chars=1000) == ""
+        with pytest.raises(FileNotFoundError):
+            fast_tail_last_n_lines(missing, num_lines=10, max_chars=1000)
 
     def test_basic_last_n(self, tmp):
         # Write 100 lines, check that we get the last 10 lines.

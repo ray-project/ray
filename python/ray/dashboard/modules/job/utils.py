@@ -339,44 +339,36 @@ def fast_tail_last_n_lines(
     if block_size <= 0:
         raise ValueError(f"block_size must be positive, got {block_size}")
 
-    if not os.path.exists(path):
-        logger.debug(f"Log file {path} does not exist.")
-        return ""
-
     logger.debug(
         f"Start reading log file {path} with num_lines={num_lines} max_chars={max_chars} block_size={block_size}"
     )
-    try:
-        with open(path, "rb") as f:
-            f.seek(0, os.SEEK_END)
-            file_size = f.tell()
-            if file_size == 0:
-                return ""
+    with open(path, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        file_size = f.tell()
+        if file_size == 0:
+            return ""
 
-            chunks = []
-            position = file_size
-            newlines_found = 0
+        chunks = []
+        position = file_size
+        newlines_found = 0
 
-            # We read backwards in chunks until we have enough newlines for num_lines.
-            # We may need one more newline to capture the content before the first newline.
-            while position > 0 and newlines_found < num_lines + 1:
-                read_size = min(block_size, position)
-                position -= read_size
-                f.seek(position)
+        # We read backwards in chunks until we have enough newlines for num_lines.
+        # We may need one more newline to capture the content before the first newline.
+        while position > 0 and newlines_found < num_lines + 1:
+            read_size = min(block_size, position)
+            position -= read_size
+            f.seek(position)
 
-                chunk = f.read(read_size)
-                newlines_found += chunk.count(b"\n")
-                chunks.insert(0, chunk)
+            chunk = f.read(read_size)
+            newlines_found += chunk.count(b"\n")
+            chunks.insert(0, chunk)
 
-        buffer = b"".join(chunks)
-        lines = buffer.decode("utf-8", errors="replace").splitlines(keepends=True)
+    buffer = b"".join(chunks)
+    lines = buffer.decode("utf-8", errors="replace").splitlines(keepends=True)
 
-        if len(lines) <= num_lines:
-            result = "".join(lines)
-        else:
-            result = "".join(lines[-num_lines:])
+    if len(lines) <= num_lines:
+        result = "".join(lines)
+    else:
+        result = "".join(lines[-num_lines:])
 
-        return result[-max_chars:]
-    except Exception as e:
-        logger.exception(f"Failed to read log file {path}: {e}")
-        raise
+    return result[-max_chars:]
