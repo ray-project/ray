@@ -12,7 +12,7 @@ worker_node_types:
   - name: worker
     instance_type: m5.2xlarge
     min_workers: 250
-    max_workers: 350
+    max_workers: 375
 
 flags:
   enable_multi_az_serve: true
