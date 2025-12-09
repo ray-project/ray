@@ -17,6 +17,7 @@
 #include <opentelemetry/exporters/otlp/otlp_grpc_metric_exporter.h>
 #include <opentelemetry/metrics/provider.h>
 #include <opentelemetry/nostd/variant.h>
+#include <opentelemetry/sdk/common/global_log_handler.h>
 #include <opentelemetry/sdk/metrics/aggregation/histogram_aggregation.h>
 #include <opentelemetry/sdk/metrics/export/periodic_exporting_metric_reader.h>
 #include <opentelemetry/sdk/metrics/instruments.h>
@@ -47,6 +48,25 @@ static void _DoubleGaugeCallback(opentelemetry::metrics::ObserverResult observer
   recorder.CollectGaugeMetricValues(name, obs);
 }
 
+class OpenTelemetryMetricExporter
+    : public opentelemetry::exporter::otlp::OtlpGrpcMetricExporter {
+ public:
+  explicit OpenTelemetryMetricExporter(
+      const opentelemetry::exporter::otlp::OtlpGrpcMetricExporterOptions &options)
+      : opentelemetry::exporter::otlp::OtlpGrpcMetricExporter(options) {}
+
+  opentelemetry::sdk::common::ExportResult Export(
+      const opentelemetry::sdk::metrics::ResourceMetrics &data) noexcept override {
+    const opentelemetry::sdk::common::ExportResult result =
+        opentelemetry::exporter::otlp::OtlpGrpcMetricExporter::Export(data);
+    if (result != opentelemetry::sdk::common::ExportResult::kSuccess) {
+      RAY_LOG(WARNING) << "Failed to export metrics to the metrics agent. Result: "
+                       << static_cast<int>(result);
+    }
+    return result;
+  }
+};
+
 }  // anonymous namespace
 
 namespace ray {
@@ -61,10 +81,9 @@ OpenTelemetryMetricRecorder &OpenTelemetryMetricRecorder::GetInstance() {
   return *instance;
 }
 
-void OpenTelemetryMetricRecorder::RegisterGrpcExporter(
-    const std::string &endpoint,
-    std::chrono::milliseconds interval,
-    std::chrono::milliseconds timeout) {
+void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
+                                        std::chrono::milliseconds interval,
+                                        std::chrono::milliseconds timeout) {
   // Create an OTLP exporter
   opentelemetry::exporter::otlp::OtlpGrpcMetricExporterOptions exporter_options;
   exporter_options.endpoint = endpoint;
@@ -74,8 +93,7 @@ void OpenTelemetryMetricRecorder::RegisterGrpcExporter(
   // counting.
   exporter_options.aggregation_temporality =
       opentelemetry::exporter::otlp::PreferredAggregationTemporality::kDelta;
-  auto exporter = std::make_unique<opentelemetry::exporter::otlp::OtlpGrpcMetricExporter>(
-      exporter_options);
+  auto exporter = std::make_unique<OpenTelemetryMetricExporter>(exporter_options);
 
   // Initialize the OpenTelemetry SDK and create a Meter
   opentelemetry::sdk::metrics::PeriodicExportingMetricReaderOptions reader_options;
@@ -84,11 +102,24 @@ void OpenTelemetryMetricRecorder::RegisterGrpcExporter(
   auto reader =
       std::make_unique<opentelemetry::sdk::metrics::PeriodicExportingMetricReader>(
           std::move(exporter), reader_options);
+  // Reset the is_shutdown_ flag to false to ensure the newly added metric reader will
+  // be shut down correctly.
+  //
+  // In most cases, OpenTelemetryMetricRecorder is initialized and shut down only once
+  // per process, so setting this to false is effectively a no-op. However, in the driver
+  // process, the recorder may be initialized and shut down multiple times (e.g., repeated
+  // calls to ray.init() and ray.shutdown()). In such cases, is_shutdown_ may already be
+  // true when we reach this point (leaking from the previous ray cluster). Resetting it
+  // to false ensures that the newly added metric reader will be shut down correctly.
+  is_shutdown_ = false;
   meter_provider_->AddMetricReader(std::move(reader));
 }
 
 OpenTelemetryMetricRecorder::OpenTelemetryMetricRecorder() {
-  // Default constructor
+  if (RayConfig::instance().disable_open_telemetry_sdk_log()) {
+    opentelemetry::sdk::common::internal_log::GlobalLogHandler::SetLogLevel(
+        opentelemetry::sdk::common::internal_log::LogLevel::None);
+  }
   meter_provider_ = std::make_shared<opentelemetry::sdk::metrics::MeterProvider>();
   opentelemetry::metrics::Provider::SetMeterProvider(
       opentelemetry::nostd::shared_ptr<opentelemetry::metrics::MeterProvider>(

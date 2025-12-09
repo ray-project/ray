@@ -1,3 +1,5 @@
+from collections import Counter
+
 import numpy as np
 import pytest
 
@@ -6,6 +8,7 @@ from ray.data.aggregate import (
     ApproximateQuantile,
     ApproximateTopK,
     MissingValuePercentage,
+    Unique,
     ZeroPercentage,
 )
 from ray.data.tests.conftest import *  # noqa
@@ -458,6 +461,104 @@ class TestApproximateTopK:
         for result in [result_small, result_large]:
             assert result["approx_topk(id)"][0] == {"id": "frequent", "count": 100}
             assert result["approx_topk(id)"][1] == {"id": "common", "count": 50}
+
+    @pytest.mark.parametrize(
+        ("data", "expected1", "expected2"),
+        [
+            (
+                [{"id": 1}, {"id": 1}, {"id": 2}],
+                {"id": 1, "count": 2},
+                {"id": 2, "count": 1},
+            ),
+            (
+                [{"id": [1, 2, 3]}, {"id": [1, 2, 3]}, {"id": [1, 2]}],
+                {"id": [1, 2, 3], "count": 2},
+                {"id": [1, 2], "count": 1},
+            ),
+        ],
+    )
+    def test_approximate_topk_non_string_datatype(
+        self, data, expected1, expected2, ray_start_regular_shared_2_cpus
+    ):
+        """Test that ApproximateTopK works with non-string type elements."""
+        ds = ray.data.from_items(data)
+
+        result = ds.aggregate(ApproximateTopK(on="id", k=2, log_capacity=3))
+        assert result["approx_topk(id)"][0] == expected1
+        assert result["approx_topk(id)"][1] == expected2
+
+    def test_approximate_topk_encode_lists(self, ray_start_regular_shared_2_cpus):
+        """Test ApproximateTopK list encode feature."""
+        data = [{"id": [1, 1, 1]}, {"id": [2, 2]}, {"id": [3]}]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(
+            ApproximateTopK(on="id", k=4, log_capacity=10, encode_lists=True)
+        )
+        assert result["approx_topk(id)"][0] == {"id": 1, "count": 3}
+        assert result["approx_topk(id)"][1] == {"id": 2, "count": 2}
+        assert result["approx_topk(id)"][2] == {"id": 3, "count": 1}
+
+
+class TestUnique:
+    """Test cases for Unique aggregation."""
+
+    def test_unique_basic(self, ray_start_regular_shared_2_cpus):
+        """Test basic Unique aggregation."""
+        data = [{"id": "a"}, {"id": "b"}, {"id": "b"}, {"id": None}]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(Unique(on="id", ignore_nulls=False))
+
+        answer = ["a", "b", None]
+
+        assert Counter(result["unique(id)"]) == Counter(answer)
+
+    def test_unique_ignores_nulls(self, ray_start_regular_shared_2_cpus):
+        """Test Unique properly ignores nulls."""
+        data = [{"id": "a"}, {"id": None}, {"id": "b"}, {"id": "b"}, {"id": None}]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(Unique(on="id"))
+
+        assert sorted(result["unique(id)"]) == ["a", "b"]
+
+    def test_unique_custom_alias(self, ray_start_regular_shared_2_cpus):
+        """Test Unique with custom alias."""
+        data = [{"id": "a"}, {"id": "b"}, {"id": "b"}]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(Unique(on="id", alias_name="custom"))
+
+        assert sorted(result["custom"]) == ["a", "b"]
+
+    def test_unique_list_datatype(self, ray_start_regular_shared_2_cpus):
+        """Test Unique works with non-hashable types like list."""
+        data = [
+            {"id": ["a", "b", "c"]},
+            {"id": ["a", "b", "c"]},
+            {"id": ["a", "b", "c"]},
+        ]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(Unique(on="id"))
+
+        assert result["unique(id)"][0] == ["a", "b", "c"]
+
+    def test_unique_encode_lists(self, ray_start_regular_shared_2_cpus):
+        """Test Unique works when encode_lists is True."""
+        data = [{"id": ["a", "b", "c"]}, {"id": ["a", "a", "a", "b", None]}]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(Unique(on="id", encode_lists=True, ignore_nulls=False))
+
+        answer = ["a", "b", "c", None]
+
+        assert Counter(result["unique(id)"]) == Counter(answer)
+
+    def test_unique_encode_lists_ignores_nulls(self, ray_start_regular_shared_2_cpus):
+        """Test Unique will drop null values when encode_lists is True."""
+        data = [{"id": ["a", "b", "c"]}, {"id": ["a", "a", "a", "b", None]}]
+        ds = ray.data.from_items(data)
+        result = ds.aggregate(Unique(on="id", encode_lists=True))
+
+        answer = ["a", "b", "c"]
+
+        assert Counter(result["unique(id)"]) == Counter(answer)
 
 
 if __name__ == "__main__":

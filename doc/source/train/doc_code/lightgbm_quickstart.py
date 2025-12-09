@@ -84,8 +84,10 @@ def train_func():
         "feature_fraction": 0.9,
         "bagging_fraction": 0.8,
         "bagging_freq": 5,
-        # Adding the line below is the only change needed
+        # Adding the lines below are the only changes needed
         # for your `lgb.train` call!
+        "tree_learner": "data_parallel",
+        "pre_partition": True,
         **ray.train.lightgbm.get_network_params(),
     }
 

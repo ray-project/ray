@@ -63,11 +63,16 @@ def plan_download_op(
     if not upstream_op_is_download:
         # PartitionActor is a callable class, so we need ActorPoolStrategy
         partition_compute = ActorPoolStrategy(
-            size=1
+            size=1, enable_true_multi_threading=True
         )  # Use single actor for partitioning
 
         fn, init_fn = _get_udf(
-            PartitionActor, (), {}, (uri_column_names, data_context), {}
+            PartitionActor,
+            (),
+            {},
+            (uri_column_names, data_context),
+            {},
+            compute=partition_compute,
         )
         block_fn = _generate_transform_fn_for_map_batches(fn)
 
@@ -105,6 +110,7 @@ def plan_download_op(
         download_bytes_threaded,
         (uri_column_names, output_bytes_column_names, data_context),
         {},
+        None,
         None,
         None,
     )
@@ -326,20 +332,25 @@ class PartitionActor:
         )
 
         # Use ThreadPoolExecutor for concurrent size fetching
-        file_sizes = []
+        file_sizes = [None] * len(paths)
         with ThreadPoolExecutor(max_workers=URI_DOWNLOAD_MAX_WORKERS) as executor:
             # Submit all size fetch tasks
-            futures = [
-                executor.submit(get_file_size, uri_path, fs) for uri_path in paths
-            ]
+            future_to_file_index = {
+                executor.submit(get_file_size, uri_path, fs): file_index
+                for file_index, uri_path in enumerate(paths)
+            }
 
             # Collect results as they complete (order doesn't matter)
-            for future in as_completed(futures):
+            for future in as_completed(future_to_file_index):
+                file_index = future_to_file_index[future]
                 try:
                     size = future.result()
-                    file_sizes.append(size if size is not None else 0)
+                    file_sizes[file_index] = size if size is not None else 0
                 except Exception as e:
                     logger.warning(f"Error fetching file size for download: {e}")
-                    file_sizes.append(0)
+                    file_sizes[file_index] = 0
 
+        assert all(
+            fs is not None for fs in file_sizes
+        ), "File size sampling did not complete for all paths"
         return file_sizes

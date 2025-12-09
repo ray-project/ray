@@ -5,15 +5,10 @@ import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import {
+  authenticateWithToken,
   getAuthenticationMode,
-  testTokenValidity,
 } from "./authentication/authentication";
 import { AUTHENTICATION_ERROR_EVENT } from "./authentication/constants";
-import {
-  clearAuthenticationToken,
-  getAuthenticationToken,
-  setAuthenticationToken,
-} from "./authentication/cookies";
 import TokenAuthenticationDialog from "./authentication/TokenAuthenticationDialog";
 import ActorDetailPage, { ActorDetailLayout } from "./pages/actor/ActorDetail";
 import { ActorLayout } from "./pages/actor/ActorLayout";
@@ -67,7 +62,7 @@ import {
 } from "./pages/serve/ServeSystemDetailPage";
 import { TaskPage } from "./pages/task/TaskPage";
 import { getNodeList } from "./service/node";
-import { lightTheme } from "./theme";
+import { darkTheme, lightTheme } from "./theme";
 
 dayjs.extend(duration);
 
@@ -123,6 +118,14 @@ export type GlobalContextType = {
    * The globally selected current time zone.
    */
   currentTimeZone: string | undefined;
+  /**
+   * The current theme mode (light or dark)
+   */
+  themeMode: "light" | "dark";
+  /**
+   * Function to toggle between light and dark mode
+   */
+  toggleTheme: () => void;
 };
 export const GlobalContext = React.createContext<GlobalContextType>({
   nodeMap: {},
@@ -138,12 +141,36 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   dashboardDatasource: undefined,
   serverTimeZone: undefined,
   currentTimeZone: undefined,
+  themeMode: "light",
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  toggleTheme: () => {},
 });
 
 const App = () => {
   const [currentTimeZone, setCurrentTimeZone] = useState<string>();
+  const [themeMode, setThemeMode] = useState<"light" | "dark">(() => {
+    // Check URL query param first (for embedded views)
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlTheme = urlParams.get("theme");
+    if (urlTheme === "dark" || urlTheme === "light") {
+      return urlTheme;
+    }
+    // Then check localStorage
+    const stored = localStorage.getItem("themeMode");
+    if (stored === "dark" || stored === "light") {
+      return stored;
+    }
+    // Fall back to system preference
+    if (
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches
+    ) {
+      return "dark";
+    }
+    return "light";
+  });
   const [context, setContext] = useState<
-    Omit<GlobalContextType, "currentTimeZone">
+    Omit<GlobalContextType, "currentTimeZone" | "themeMode" | "toggleTheme">
   >({
     nodeMap: {},
     nodeMapByIp: {},
@@ -158,6 +185,31 @@ const App = () => {
     dashboardDatasource: undefined,
     serverTimeZone: undefined,
   });
+
+  const toggleTheme = () => {
+    setThemeMode((prevMode) => {
+      const newMode = prevMode === "light" ? "dark" : "light";
+      localStorage.setItem("themeMode", newMode);
+      return newMode;
+    });
+  };
+
+  // Listen for system theme changes
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = (e: MediaQueryListEvent) => {
+      // Only update if user hasn't explicitly set a preference via localStorage or URL
+      const stored = localStorage.getItem("themeMode");
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlTheme = urlParams.get("theme");
+      if (!stored && !urlTheme) {
+        setThemeMode(e.matches ? "dark" : "light");
+      }
+    };
+
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
 
   // Authentication state
   const [authenticationDialogOpen, setAuthenticationDialogOpen] =
@@ -237,29 +289,12 @@ const App = () => {
     updateTimezone();
   }, []);
 
-  // Check authentication mode on mount
+  // Check authentication mode on mount and cache in sessionStorage
   useEffect(() => {
     const checkAuthentication = async () => {
       try {
         const { authentication_mode } = await getAuthenticationMode();
-
-        if (authentication_mode === "token") {
-          // Token authentication is enabled
-          const existingToken = getAuthenticationToken();
-
-          if (!existingToken) {
-            // No token found - show dialog immediately
-            setAuthenticationDialogOpen(true);
-          }
-          // If token exists, let it be used by interceptor
-          // If invalid, interceptor will trigger dialog via 401/403
-        } else {
-          // Auth mode is disabled - clear any existing token from cookie
-          const existingToken = getAuthenticationToken();
-          if (existingToken) {
-            clearAuthenticationToken();
-          }
-        }
+        sessionStorage.setItem("ray-authentication-mode", authentication_mode);
       } catch (error) {
         console.error("Failed to check authentication mode:", error);
       }
@@ -270,12 +305,30 @@ const App = () => {
 
   // Listen for authentication errors from axios interceptor
   useEffect(() => {
-    const handleAuthenticationError = (event: Event) => {
+    const handleAuthenticationError = async (event: Event) => {
       const customEvent = event as CustomEvent<{ hadToken: boolean }>;
       const hadToken = customEvent.detail?.hadToken ?? false;
 
-      setHasAttemptedAuthentication(hadToken);
-      setAuthenticationDialogOpen(true);
+      // Check cached auth mode first, fall back to API if not cached
+      let authMode = sessionStorage.getItem("ray-authentication-mode");
+      if (!authMode) {
+        try {
+          const { authentication_mode } = await getAuthenticationMode();
+          authMode = authentication_mode;
+          sessionStorage.setItem(
+            "ray-authentication-mode",
+            authentication_mode,
+          );
+        } catch (error) {
+          console.error("Failed to check authentication mode:", error);
+          return;
+        }
+      }
+
+      if (authMode === "token" || authMode === "k8s") {
+        setHasAttemptedAuthentication(hadToken);
+        setAuthenticationDialogOpen(true);
+      }
     };
 
     window.addEventListener(
@@ -294,12 +347,12 @@ const App = () => {
   // Handle token submission from dialog
   const handleTokenSubmit = async (token: string) => {
     try {
-      // Test if token is valid
-      const isValid = await testTokenValidity(token);
+      // Authenticate with the server - this will validate the token
+      // and set an HttpOnly cookie if valid
+      const isValid = await authenticateWithToken(token);
 
       if (isValid) {
-        // Save token to cookie
-        setAuthenticationToken(token);
+        // Token is valid and server has set HttpOnly cookie
         setHasAttemptedAuthentication(true);
         setAuthenticationDialogOpen(false);
         setAuthenticationError(undefined);
@@ -314,18 +367,22 @@ const App = () => {
         );
       }
     } catch (error) {
-      console.error("Failed to validate token:", error);
+      console.error("Failed to authenticate:", error);
       setAuthenticationError(
-        "Failed to validate token. Please check your connection and try again.",
+        "Failed to authenticate. Please check your connection and try again.",
       );
     }
   };
 
+  const currentTheme = themeMode === "dark" ? darkTheme : lightTheme;
+
   return (
     <StyledEngineProvider injectFirst>
-      <ThemeProvider theme={lightTheme}>
+      <ThemeProvider theme={currentTheme}>
         <Suspense fallback={Loading}>
-          <GlobalContext.Provider value={{ ...context, currentTimeZone }}>
+          <GlobalContext.Provider
+            value={{ ...context, currentTimeZone, themeMode, toggleTheme }}
+          >
             <CssBaseline />
             <TokenAuthenticationDialog
               open={authenticationDialogOpen}
