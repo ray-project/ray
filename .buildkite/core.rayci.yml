@@ -14,6 +14,8 @@ steps:
       - "3.10"
       - "3.12"
     env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_build-py{{matrix}}
+      IMAGE_TO: corebuild-py{{matrix}}
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_build-multipy
 
@@ -35,7 +37,6 @@ steps:
     wanda: ci/docker/min.build.wanda.yaml
     tags: cibase
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -305,7 +306,6 @@ steps:
     depends_on:
       - minbuild-core
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
