@@ -247,7 +247,17 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
           }
 
           // Successful rpc completion callback.
-          RAY_CHECK(!msg_batch->messages().empty());
+          // Note: gRPC may call OnReadDone with ok=true even when the message batch
+          // is empty in certain edge cases (e.g., connection established but no data
+          // sent yet, or race conditions).
+          if (msg_batch->messages().empty()) {
+            RAY_LOG(DEBUG) << "Received empty message batch from node: "
+                           << NodeID::FromBinary(GetRemoteNodeID())
+                           << ", starting next read";
+            StartPull();
+            return;
+          }
+
           if (on_rpc_completion_) {
             on_rpc_completion_(NodeID::FromBinary(remote_node_id_));
           }
