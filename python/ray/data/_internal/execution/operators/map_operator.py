@@ -73,6 +73,23 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 logger = logging.getLogger(__name__)
 
 
+@ray.remote(num_cpus=0)
+def _get_arrow_schema_from_block(block: Block) -> "pa.Schema":
+    """Extract PyArrow schema from a block by converting a 1-row sample.
+
+    This runs on a worker to avoid fetching block data to the driver.
+    Uses num_cpus=0 since it's a lightweight metadata operation.
+
+    Slices to 1 row before converting to Arrow to minimize conversion overhead
+    for large Pandas blocks. This ensures schema is consistent with actual
+    block conversion logic (e.g., pa.Table.from_pandas).
+    """
+    accessor = BlockAccessor.for_block(block)
+    sample_block = accessor.slice(0, 1)
+    sample_accessor = BlockAccessor.for_block(sample_block)
+    return sample_accessor.to_arrow().schema
+
+
 class BaseRefBundler(ABC):
     """Interface for the rebundling behavior of the MapOperator."""
 
@@ -218,12 +235,15 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             # when first accessed in _add_bundled_input.
 
     def _get_schema_from_bundle(self, bundle: RefBundle) -> Optional["pa.Schema"]:
-        """Extract PyArrow schema from a RefBundle without fetching block data."""
+        """Extract PyArrow schema from a RefBundle.
+
+        For Arrow schemas, returns directly. For Pandas blocks, runs a lightweight
+        remote task to convert a 1-row sample to Arrow and extract the schema.
+        This ensures schema consistency with actual block conversion logic without
+        fetching block data to the driver.
+        """
         import pyarrow as pa
 
-        from ray.data._internal.arrow_ops.transform_pyarrow import (
-            convert_pandas_dtype_to_pyarrow,
-        )
         from ray.data._internal.pandas_block import PandasBlockSchema
         from ray.data.dataset import Schema
 
@@ -240,13 +260,14 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         if isinstance(schema, pa.Schema):
             return schema
 
-        # PandasBlockSchema - convert to PyArrow
+        # PandasBlockSchema - use remote task to convert via actual block conversion
+        # This runs on a worker to avoid fetching block data to the driver
         if isinstance(schema, PandasBlockSchema):
-            fields = []
-            for name, dtype in zip(schema.names, schema.types):
-                pa_type = convert_pandas_dtype_to_pyarrow(dtype)
-                fields.append(pa.field(name, pa_type))
-            return pa.schema(fields)
+            if not bundle.blocks:
+                return None
+            block_ref, _ = bundle.blocks[0]
+            schema_ref = _get_arrow_schema_from_block.remote(block_ref)
+            return ray.get(schema_ref)
 
         return None
 
