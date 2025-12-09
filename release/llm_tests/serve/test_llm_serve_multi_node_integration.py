@@ -155,9 +155,6 @@ def test_llm_serve_prefill_decode_with_data_parallelism():
             "dp_size_per_node": 4,
         },
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
-        deployment_config={
-            "ray_actor_options": {"resources": {"prefill": 1}},
-        },
     )
 
     decode_config = LLMConfig(
@@ -174,9 +171,6 @@ def test_llm_serve_prefill_decode_with_data_parallelism():
             "dp_size_per_node": 4,
         },
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
-        deployment_config={
-            "ray_actor_options": {"resources": {"decode": 1}},
-        },
     )
 
     # build_pd_openai_app auto-detects DP and uses build_dp_deployment
