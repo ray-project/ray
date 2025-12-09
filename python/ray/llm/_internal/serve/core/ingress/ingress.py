@@ -119,7 +119,7 @@ def _sanitize_chat_completion_request(
 
     TODO(seiji): Remove when we update to Pydantic v2.11+ with the fix.
     """
-    from vllm.transformers_utils.tokenizers.mistral import maybe_serialize_tool_calls
+    from vllm.tokenizers.mistral import maybe_serialize_tool_calls
 
     maybe_serialize_tool_calls(request)
 

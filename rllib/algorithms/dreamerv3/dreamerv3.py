@@ -626,7 +626,9 @@ class DreamerV3(Algorithm):
                 self.metrics.aggregate(learner_results, key=LEARNER_RESULTS)
 
                 sub_iter += 1
-                self.metrics.log_value(NUM_GRAD_UPDATES_LIFETIME, 1, reduce="sum")
+                self.metrics.log_value(
+                    NUM_GRAD_UPDATES_LIFETIME, 1, reduce="lifetime_sum"
+                )
 
         # Log videos showing how the decoder produces observation predictions
         # from the posterior states.
