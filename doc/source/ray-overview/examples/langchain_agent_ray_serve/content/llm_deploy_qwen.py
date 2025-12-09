@@ -11,7 +11,7 @@ lllm_config = LLMConfig(
     accelerator_type="L4",
     deployment_config=dict(
         autoscaling_config=dict(
-            num_replicas=1, # use 1 replica for now
+            num_replicas=1,  # use 1 replica for now
         )
     ),
     # vLLM engine flags.
@@ -22,7 +22,7 @@ lllm_config = LLMConfig(
         trust_remote_code=True,
         gpu_memory_utilization=0.9,
         enable_auto_tool_choice=True,
-        tool_call_parser="hermes"
+        tool_call_parser="hermes",
     ),
 )
 

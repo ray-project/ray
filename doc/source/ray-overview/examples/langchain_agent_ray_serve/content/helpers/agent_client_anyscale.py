@@ -1,13 +1,12 @@
 import json
 import requests
 
-base_url = "https://agent-service-langchain-jgz99.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata.com" ## replace with your service url
-token = "nZp2BEjdloNlwGyxoWSpdalYGtkhfiHtfXhmV4BQuyk" ## replace with your service bearer token
+base_url = "https://agent-service-langchain-jgz99.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata.com"  ## replace with your service url
+token = "nZp2BEjdloNlwGyxoWSpdalYGtkhfiHtfXhmV4BQuyk"  ## replace with your service bearer token
 
 SERVER_URL = f"{base_url}/chat"  # For Anyscale deployment.
-HEADERS = {"Content-Type": "application/json",
-"Authorization": f"Bearer {token}"
-}
+HEADERS = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
+
 
 def chat(user_request: str, thread_id: str | None = None) -> None:
     """Send a chat request to the agent and stream the response."""
@@ -27,10 +26,9 @@ def chat(user_request: str, thread_id: str | None = None) -> None:
                 continue
             txt = line.decode("utf-8")
             if txt.startswith("data: "):
-                txt = txt[len("data: "):]
+                txt = txt[len("data: ") :]
             print(txt, flush=True)
+
 
 # Test the agent.
 chat("What's the weather in Palo Alto?")
-
-

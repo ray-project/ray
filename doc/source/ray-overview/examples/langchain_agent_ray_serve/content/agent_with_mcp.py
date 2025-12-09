@@ -11,10 +11,14 @@ from langgraph.checkpoint.memory import MemorySaver
 # ========== CONFIG ==========
 # Easy-to-edit default configurations.
 API_KEY = "VrBDo0s-qNOaP9kugBQtJQhGAIA6EUszb6iJHbB1xDQ"
-OPENAI_COMPAT_BASE_URL = "https://llm-deploy-qwen-service-jgz99.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata.com"  
+OPENAI_COMPAT_BASE_URL = (
+    "https://llm-deploy-qwen-service-jgz99.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata.com"
+)
 MODEL = "Qwen/Qwen3-4B-Instruct-2507-FP8"
 TEMPERATURE = 0.01
-WEATHER_MCP_BASE_URL = "https://weather-mcp-service-jgz99.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata.com"  
+WEATHER_MCP_BASE_URL = (
+    "https://weather-mcp-service-jgz99.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata.com"
+)
 WEATHER_MCP_TOKEN = "uyOArxwCNeTpxn0odOW7hGY57tXQNNrF16Yy8ziskrY"
 
 # Environment variable overrides.
@@ -28,7 +32,9 @@ WEATHER_MCP_TOKEN = os.getenv("WEATHER_MCP_TOKEN", WEATHER_MCP_TOKEN)
 # ========== LLM ==========
 llm = ChatOpenAI(
     model=MODEL,
-    base_url=urljoin(OPENAI_COMPAT_BASE_URL, "v1"), ## urljoin automatically appends "/v1" to the base URL.
+    base_url=urljoin(
+        OPENAI_COMPAT_BASE_URL, "v1"
+    ),  ## urljoin automatically appends "/v1" to the base URL.
     api_key=API_KEY,
     temperature=TEMPERATURE,
     streaming=False,
@@ -60,7 +66,9 @@ async def get_mcp_tools() -> List[Any]:
         mcp_client = MultiServerMCPClient(
             {
                 "weather": {
-                    "url": urljoin(WEATHER_MCP_BASE_URL, "mcp"), ## urljoin automatically appends "/mcp" to the base URL.
+                    "url": urljoin(
+                        WEATHER_MCP_BASE_URL, "mcp"
+                    ),  ## urljoin automatically appends "/mcp" to the base URL.
                     "transport": "streamable_http",
                     "headers": headers,
                 }
@@ -78,6 +86,7 @@ async def get_mcp_tools() -> List[Any]:
     except Exception as exc:
         print(f"[MCP] Skipping MCP tools (error): {exc}")
         return []
+
 
 # ========== BUILD AGENT ==========
 async def build_agent():
@@ -100,25 +109,25 @@ async def build_agent():
 # ========== MAIN ==========
 if __name__ == "__main__":
     from helpers.agent_runner import run_agent_with_trace
-    
+
     async def main():
         # Example request.
         start_time = time.time()
         user_request = "what is the weather like in palo alto?"
-        
+
         # Build the agent
         agent = await build_agent()
-        
+
         # Set show_model_messages to False to hide the messages sent to model
         await run_agent_with_trace(
             agent=agent,
             user_request=user_request,
             system_prompt=PROMPT,
             max_iterations=5,
-            show_model_messages=True
+            show_model_messages=True,
         )
-        
+
         end_time = time.time()
         print(f"Time taken: {end_time - start_time} seconds")
-    
+
     asyncio.run(main())

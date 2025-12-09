@@ -88,4 +88,3 @@ def extract_final_text(output: Any) -> Optional[str]:
     if isinstance(output, str):
         return output
     return None
-

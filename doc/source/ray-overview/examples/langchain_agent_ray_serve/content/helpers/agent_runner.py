@@ -19,23 +19,23 @@ async def run_agent_with_trace(
     show_model_messages: bool = False,
 ) -> int:
     """Run the agent for a single user request while streaming events for logging.
-    
+
     Streams model and tool events for structured logging, captures the final
     response text, and returns the number of tool calls used.
-    
+
     Args:
         agent: The agent instance to run.
         user_request: The user's input request.
         system_prompt: The system prompt used by the agent.
         max_iterations: Maximum number of iterations the agent can run.
         show_model_messages: If True, logs messages sent to the model. If False, hides them.
-        
+
     Returns:
         The number of tool calls made during execution.
     """
-    print("\n" + "#"*60)
+    print("\n" + "#" * 60)
     print(f"USER REQUEST: {user_request}")
-    print("#"*60)
+    print("#" * 60)
     print(f"Max iterations: {max_iterations}")
     print(f"Show model messages: {show_model_messages}")
 
@@ -51,17 +51,21 @@ async def run_agent_with_trace(
     # Use low-level event stream so we can log everything deterministically.
     async for ev in agent.astream_events(inputs, version="v2", config=config):
         kind = ev["event"]
-        
+
         if kind == "on_chat_model_start":
             # Only log model request if show_model_messages is True
             if show_model_messages:
                 input_data = ev["data"].get("input", {})
                 messages_raw = input_data.get("messages", [])
-                
+
                 # messages_raw is a list containing one list of message objects
                 # Unwrap it to get the actual messages
-                messages = messages_raw[0] if messages_raw and isinstance(messages_raw[0], list) else messages_raw
-                
+                messages = (
+                    messages_raw[0]
+                    if messages_raw and isinstance(messages_raw[0], list)
+                    else messages_raw
+                )
+
                 log_model_request(
                     name=ev["name"],
                     payload={
@@ -92,4 +96,3 @@ async def run_agent_with_trace(
 
     log_final(final_text, tool_calls)
     return tool_calls
-

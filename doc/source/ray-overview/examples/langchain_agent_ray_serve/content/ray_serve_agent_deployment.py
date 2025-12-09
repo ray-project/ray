@@ -9,20 +9,21 @@ from fastapi.encoders import jsonable_encoder
 from starlette.responses import StreamingResponse
 from ray import serve
 
-from agent_with_mcp import build_agent  
+from agent_with_mcp import build_agent
 
 # ----------------------------------------------------------------------
 # FastAPI app with an async lifespan hook.
 # ----------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    agent = await build_agent()  
+    agent = await build_agent()
     app.state.agent = agent
     try:
         yield
     finally:
         if hasattr(agent, "aclose"):
             await agent.aclose()
+
 
 fastapi_app = FastAPI(lifespan=lifespan)
 
@@ -36,7 +37,7 @@ async def chat(request: Request):
     Streams LangGraph 'update' dicts as Server-Sent Events (one JSON object per event).
     SSE frames look like:
         data: {"some": "update"}
-        
+
     Errors are emitted as:
         event: error
         data: {"error": "ErrorType", "detail": "..."}
@@ -63,7 +64,9 @@ async def chat(request: Request):
 
         try:
             # Stream updates from the agent.
-            async for update in agent.astream(inputs, config=config, stream_mode="updates"):
+            async for update in agent.astream(
+                inputs, config=config, stream_mode="updates"
+            ):
                 safe_update = jsonable_encoder(update)
                 chunk = json.dumps(safe_update, ensure_ascii=False)
                 # Proper SSE framing: "data: <json>\n\n".
@@ -101,6 +104,7 @@ async def chat(request: Request):
 @serve.ingress(fastapi_app)
 class LangGraphServeDeployment:
     """Ray Serve deployment that exposes the FastAPI app as ingress."""
+
     pass
 
 
