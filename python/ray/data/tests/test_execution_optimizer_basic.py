@@ -60,7 +60,10 @@ def test_read_operator_emits_warning_for_large_read_tasks():
             return None
 
         def get_read_tasks(
-            self, parallelism: int, per_task_row_limit: Optional[int] = None
+            self,
+            parallelism: int,
+            per_task_row_limit: Optional[int] = None,
+            epoch_idx: int = 0,
         ) -> List[ReadTask]:
             large_object = np.zeros((128, 1024, 1024), dtype=np.uint8)  # 128 MiB
 
@@ -214,7 +217,7 @@ def test_map_batches_operator(ray_start_regular_shared_2_cpus):
 def test_map_batches_e2e(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(5)
     ds = ds.map_batches(column_udf("id", lambda x: x))
-    assert extract_values("id", ds.take_all()) == list(range(5)), ds
+    assert sorted(extract_values("id", ds.take_all())) == list(range(5)), ds
     _check_usage_record(["ReadRange", "MapBatches"])
 
 
