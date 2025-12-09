@@ -2583,10 +2583,12 @@ def stateful_app_level_policy(contexts):
     # Increment the internal state everytime the policy is called
     new_state = {}
     for deployment_id, ctx in contexts.items():
+
         prev_counter = 0
         if ctx.policy_state:
             prev_counter = ctx.policy_state.get("counter", 0)
-            new_state[deployment_id] = prev_counter + 1
+
+        new_state[deployment_id] = {"counter": prev_counter + 1}
     # Scale all deployments to 3 replicas
     decisions = {deployment_id: 3 for deployment_id in contexts.keys()}
 
@@ -3237,7 +3239,10 @@ class TestApplicationLevelAutoscaling:
             assert deployment_state_manager._scaling_decisions[d1_id] == 3
 
         # The stateful policy should have incremented its counter across calls.
+        # Since update() was called 3 times, the counter should be 3.
         app_autoscaling_state = asm._app_autoscaling_states["test_app"]
+        assert app_autoscaling_state._policy_state is not None
+        assert len(app_autoscaling_state._policy_state) != 0
         for _, state in app_autoscaling_state._policy_state.items():
             assert state.get("counter") == 3
 

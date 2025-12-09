@@ -247,9 +247,9 @@ class DeploymentAutoscalingState:
         # Adding this to overwrite policy state during application level autoscaling
         current_policy_state = (
             override_policy_state
-            if override_policy_state
+            if override_policy_state is not None
             else self._policy_state.copy()
-            if self._policy_state
+            if self._policy_state is not None
             else {}
         )
 
