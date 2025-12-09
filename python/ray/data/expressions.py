@@ -295,6 +295,19 @@ class Expr(ABC):
             other = LiteralExpr(other)
         return BinaryExpr(op, self, other)
 
+    def _apply_pyarrow_unary(
+        self,
+        func: Callable[[pyarrow.Array], pyarrow.Array],
+        return_dtype: DataType | None = None,
+    ) -> "UDFExpr":
+        """Apply a PyArrow compute unary function to this expression."""
+
+        @pyarrow_udf(return_dtype=return_dtype or self.data_type)
+        def _unary(arr: pyarrow.Array) -> pyarrow.Array:
+            return func(arr)
+
+        return _unary(self)
+
     # arithmetic
     def __add__(self, other: Any) -> "Expr":
         """Addition operator (+)."""
@@ -417,6 +430,23 @@ class Expr(ABC):
         return AliasExpr(
             data_type=self.data_type, expr=self, _name=name, _is_rename=False
         )
+
+    # rounding helpers
+    def ceil(self) -> "UDFExpr":
+        """Round values up to the nearest integer."""
+        return self._apply_pyarrow_unary(pc.ceil)
+
+    def floor(self) -> "UDFExpr":
+        """Round values down to the nearest integer."""
+        return self._apply_pyarrow_unary(pc.floor)
+
+    def round(self) -> "UDFExpr":
+        """Round values to the nearest integer using PyArrow semantics."""
+        return self._apply_pyarrow_unary(pc.round)
+
+    def trunc(self) -> "UDFExpr":
+        """Truncate fractional values toward zero."""
+        return self._apply_pyarrow_unary(pc.trunc)
 
     @property
     def list(self) -> "_ListNamespace":
