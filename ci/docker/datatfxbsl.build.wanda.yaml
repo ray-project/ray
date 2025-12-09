@@ -9,6 +9,7 @@ srcs:
   - python/requirements/ml/dl-cpu-requirements.txt
   - python/requirements/ml/data-requirements.txt
 build_args:
+  - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON
   - ARROW_VERSION=14.*
 tags:
   - cr.ray.io/rayproject/datatfxbslbuild-py$PYTHON
