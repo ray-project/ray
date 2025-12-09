@@ -1482,6 +1482,9 @@ class ShimCreationTest(unittest.TestCase):
         real_scheduler = AsyncHyperBandScheduler(**kwargs)
         assert type(shim_scheduler) is type(real_scheduler)
 
+    @pytest.mark.skip(
+        reason="Skipping PB2 tests for now since gpy is no longer supported"
+    )
     def testCreateLazyImportScheduler(self):
         kwargs = {
             "metric": "metric_foo",
