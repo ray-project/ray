@@ -246,6 +246,10 @@ class ActorPoolMapOperator(MapOperator):
         super().start(options)
 
         self._actor_cls = ray.remote(**self._ray_remote_args)(self._map_worker_cls)
+        # Trigger the large UDF warning check by accessing the property.
+        # This is needed because ActorPoolMapOperator passes _map_transformer
+        # directly to actors, never accessing the lazy _map_transformer_ref property.
+        _ = self._map_transformer_ref
         self._actor_pool.scale(
             ActorPoolScalingRequest(
                 delta=self._actor_pool.initial_size(), reason="scaling to initial size"

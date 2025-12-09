@@ -1263,7 +1263,7 @@ def read_json(
         Column     Type
         ------     ----
         timestamp  timestamp[...]
-        size       int64
+        size       <class 'object'>
 
         Read a JSONL file in remote storage.
 
