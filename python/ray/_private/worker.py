@@ -1836,6 +1836,9 @@ def init(
         gcs_address = bootstrap_address
         logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
 
+    if _node_ip_address is not None:
+        _node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
+
     if local_mode:
         driver_mode = LOCAL_MODE
         warnings.warn(
