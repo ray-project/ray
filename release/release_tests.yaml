@@ -854,6 +854,8 @@
     byod:
       type: gpu
       post_build_script: byod_rllib.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1_large.yaml
 
   run:
