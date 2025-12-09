@@ -40,6 +40,7 @@ from ray._private.utils import (
     validate_socket_filepath,
 )
 from ray._raylet import GcsClient, get_session_key_from_storage
+from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 
 import psutil
 
@@ -208,7 +209,7 @@ class Node:
                 )
 
         # It creates a session_dir.
-        self._init_temp()
+        self._init_temp(connect_only)
 
         node_ip_address = ray_params.node_ip_address
         if node_ip_address is None:
@@ -462,65 +463,129 @@ class Node:
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
 
-    def _init_temp(self):
+    def _init_temp(self, connect_only):
         # Create a dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
-        if self.head:
-            self._ray_params.update_if_absent(
-                temp_dir=ray._common.utils.get_ray_temp_dir()
-            )
-            self._temp_dir = self._ray_params.temp_dir
-        else:
-            if self._ray_params.temp_dir is None:
-                assert not self._default_worker
-                temp_dir = ray._private.utils.internal_kv_get_with_retry(
-                    self.get_gcs_client(),
-                    "temp_dir",
-                    ray_constants.KV_NAMESPACE_SESSION,
-                    num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
+        if not self.head and not self._default_worker:
+            # Unconditionally fetch head node info to get the session dir when creating
+            # worker nodes as we will need it to resolve whether head node received a
+            # custom object spilling directory.
+            try:
+                head_node_selector = GetAllNodeInfoRequest.NodeSelector()
+                head_node_selector.is_head_node = True
+
+                node_infos = (
+                    self.get_gcs_client()
+                    .get_all_node_info(
+                        timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
+                        node_selectors=[head_node_selector],
+                    )
+                    .values()
                 )
-                self._temp_dir = ray._common.utils.decode(temp_dir)
-            else:
-                self._temp_dir = self._ray_params.temp_dir
+            except Exception as e:
+                logger.error(f"Failed to get head node info: {repr(e)}")
+                raise e
 
-        try_to_create_directory(self._temp_dir)
-
-        if self.head:
-            self._session_dir = os.path.join(self._temp_dir, self._session_name)
-        else:
-            if self._temp_dir is None or self._session_name is None:
-                assert not self._default_worker
-                session_dir = ray._private.utils.internal_kv_get_with_retry(
-                    self.get_gcs_client(),
-                    "session_dir",
-                    ray_constants.KV_NAMESPACE_SESSION,
-                    num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
+            if not node_infos:
+                raise Exception(
+                    "Head node not found in GCS when trying to get temp dir, did GCS start successfully?"
                 )
-                self._session_dir = ray._common.utils.decode(session_dir)
-            else:
-                self._session_dir = os.path.join(self._temp_dir, self._session_name)
-        session_symlink = os.path.join(self._temp_dir, ray_constants.SESSION_LATEST)
+            node_info = next(iter(node_infos))
+            self._head_temp_dir = getattr(node_info, "temp_dir", None)
+            if self._head_temp_dir is None:
+                raise Exception(
+                    "Head node temp_dir not found in NodeInfo, "
+                    "either GCS or head node's raylet may not have started successfully."
+                )
+            self._head_session_dir = getattr(node_info, "session_dir", None)
+            if self._head_session_dir is None:
+                raise Exception(
+                    "Head node session dir not found in NodeInfo, "
+                    "either GCS or head node's raylet may not have started successfully."
+                )
 
-        # Send a warning message if the session exists.
-        try_to_create_directory(self._session_dir)
-        try_to_symlink(session_symlink, self._session_dir)
-        # Create a directory to be used for socket files.
+        self.temp_dir = self._ray_params.temp_dir
+        if self.temp_dir is None:
+            node_infos = []
+            if connect_only:
+                # Connecting to an existing Ray cluster without a temp-dir specified using ray.init().
+                # In this case, we will resolve the temp-dir by querying the temp-dir on the host.
+                # Note: If the user specified an ip_address that's different from the
+                # discoverable ip_address on a worker node with custom temp dir, they must
+                # explicitly specify either the temp dir or node ip address if they
+                # want to connect a driver to the worker node. Otherwise, we will
+                # not be able to retrieve the temp dir for the current node.
+                # For more information, please check the API doc of ray.init().
+                if self._ray_params.node_ip_address is not None:
+                    node_ip_address = self._ray_params.node_ip_address
+                else:
+                    node_ip_address = ray._private.services.get_node_ip_address()
+                try:
+                    ip_node_selector = GetAllNodeInfoRequest.NodeSelector()
+                    ip_node_selector.node_ip_address = node_ip_address
+
+                    node_infos = (
+                        self.get_gcs_client()
+                        .get_all_node_info(
+                            timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
+                            node_selectors=[ip_node_selector],
+                        )
+                        .values()
+                    )
+                except Exception as e:
+                    raise Exception(
+                        f"Failed to get node info from gcs with node ip address {node_ip_address} "
+                        f"when connecting to the current node: {repr(e)}. "
+                    )
+
+            if node_infos:
+                node_info = next(iter(node_infos))
+                self.temp_dir = getattr(node_info, "temp_dir", None)
+                if self.temp_dir is None:
+                    raise Exception(
+                        "Node temp_dir not found in NodeInfo when connecting to the current node, "
+                        "either the GCS, the head node, or the node's raylet may not have started successfully."
+                    )
+            else:
+                if self.head:
+                    # fallback to head node's default
+                    self.temp_dir = ray._common.utils.get_default_ray_temp_dir()
+                else:
+                    # fallback to head node's temp dir if no node info is found for the given node ip address
+                    assert not self._default_worker
+                    self.temp_dir = self._head_temp_dir
+
+        # Assumes session_name is resolved before _init_temp is called
+        self._session_dir = os.path.join(self.temp_dir, self._session_name)
+        session_symlink = os.path.join(self.temp_dir, ray_constants.SESSION_LATEST)
         self._sockets_dir = os.path.join(self._session_dir, "sockets")
-        try_to_create_directory(self._sockets_dir)
-        # Create a directory to be used for process log files.
         self._logs_dir = os.path.join(self._session_dir, "logs")
-        try_to_create_directory(self._logs_dir)
         old_logs_dir = os.path.join(self._logs_dir, "old")
-        try_to_create_directory(old_logs_dir)
         # Create a directory to be used for runtime environment.
         self._runtime_env_dir = os.path.join(
             self._session_dir, self._ray_params.runtime_env_dir_name
         )
-        try_to_create_directory(self._runtime_env_dir)
+
+        if not connect_only:
+            # Only create the temp dir on node creation
+            try_to_create_directory(self.temp_dir)
+            # Send a warning message if the session exists.
+            try_to_create_directory(self._session_dir)
+            try_to_symlink(session_symlink, self._session_dir)
+            # Create a directory to be used for socket files.
+            try_to_create_directory(self._sockets_dir)
+            # Create a directory to be used for process log files.
+            try_to_create_directory(self._logs_dir)
+            try_to_create_directory(old_logs_dir)
+            try_to_create_directory(self._runtime_env_dir)
+
         # Create a symlink to the libtpu tpu_logs directory if it exists.
-        user_temp_dir = ray._common.utils.get_user_temp_dir()
-        tpu_log_dir = f"{user_temp_dir}/tpu_logs"
+        if "TPU_LOG_DIR" in os.environ and os.path.isdir(os.environ["TPU_LOG_DIR"]):
+            tpu_log_dir = os.environ["TPU_LOG_DIR"]
+        else:
+            tpu_log_dir = "/tmp/tpu_logs"
+
         if os.path.isdir(tpu_log_dir):
             tpu_logs_symlink = os.path.join(self._logs_dir, "tpu_logs")
             try_to_symlink(tpu_logs_symlink, tpu_log_dir)
@@ -725,7 +790,7 @@ class Node:
 
     def get_temp_dir_path(self):
         """Get the path of the temporary directory."""
-        return self._temp_dir
+        return self.temp_dir
 
     def get_runtime_env_dir_path(self):
         """Get the path of the runtime env."""
@@ -759,7 +824,7 @@ class Node:
                 "{directory_name}/{prefix}.{unique_index}{suffix}"
         """
         if directory_name is None:
-            directory_name = ray._common.utils.get_ray_temp_dir()
+            directory_name = self.temp_dir
         directory_name = os.path.expanduser(directory_name)
         index = self._incremental_dict[suffix, prefix, directory_name]
         # `tempfile.TMP_MAX` could be extremely large,
@@ -1101,7 +1166,7 @@ class Node:
             self.gcs_address,
             self.cluster_id.hex(),
             self._node_ip_address,
-            self._temp_dir,
+            self.temp_dir,
             self._logs_dir,
             self._session_dir,
             port=self._ray_params.dashboard_port,
@@ -1213,7 +1278,7 @@ class Node:
             self.cluster_id.hex(),
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
-            self._temp_dir,
+            self.temp_dir,
             self._session_dir,
             self._runtime_env_dir,
             self._logs_dir,
@@ -1332,18 +1397,6 @@ class Node:
                 f"error connecting to Redis."
             )
 
-        self.get_gcs_client().internal_kv_put(
-            b"session_dir",
-            self._session_dir.encode(),
-            True,
-            ray_constants.KV_NAMESPACE_SESSION,
-        )
-        self.get_gcs_client().internal_kv_put(
-            b"temp_dir",
-            self._temp_dir.encode(),
-            True,
-            ray_constants.KV_NAMESPACE_SESSION,
-        )
         # Add tracing_startup_hook to redis / internal kv manually
         # since internal kv is not yet initialized.
         if self._ray_params.tracing_startup_hook:
@@ -1407,7 +1460,38 @@ class Node:
                 f" Local system config: {self._config},"
                 f" GCS system config: {new_config}"
             )
-            self._config = new_config
+
+            # Note: We decide which object spilling directory to use based on the following policy:
+            # 1. If this node specifies an object spilling directory, use it.
+            # 2. If the head node specifies an object spilling directory, and the worker node doesn't specify one,
+            #    use the head node's object spilling directory.
+            # 3. If the head node doesn't specify an object spilling directory, and the worker node doesn't specify one,
+            #    use the temp_dir of the worker node as the object spilling directory.
+            try:
+                if new_config["automatic_object_spilling_enabled"]:
+                    config = json.loads(new_config["object_spilling_config"])
+                    if config.get("type") == "filesystem":
+                        if (
+                            self._fallback_directory != self._session_dir
+                            or config["params"]["directory_path"]
+                            == self._head_session_dir
+                        ):
+                            config["params"][
+                                "directory_path"
+                            ] = self._fallback_directory
+                            new_config["object_spilling_config"] = json.dumps(config)
+                        else:
+                            self._fallback_directory = config["params"][
+                                "directory_path"
+                            ]
+
+                        try_to_create_directory(self._fallback_directory)
+                self._config = new_config
+            except Exception as e:
+                raise Exception(
+                    "Expected valid object_spilling_config to be received from head node "
+                    f"but got: {repr(e)}"
+                )
 
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.
@@ -1429,7 +1513,7 @@ class Node:
             object_store_memory,
         ) = ray._private.services.determine_plasma_store_config(
             resource_and_label_spec.object_store_memory,
-            self._temp_dir,
+            self.temp_dir,
             plasma_directory=self._ray_params.plasma_directory,
             fallback_directory=self._fallback_directory,
             huge_pages=self._ray_params.huge_pages,
@@ -1772,6 +1856,7 @@ class Node:
         )
         if not automatic_spilling_enabled:
             return
+        self._config["automatic_object_spilling_enabled"] = True
 
         object_spilling_config = self._object_spilling_config
         # Try setting up the storage.
