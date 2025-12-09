@@ -1083,7 +1083,7 @@ class Dataset:
             ctx = TaskContext.get_current()
             assert ctx is not None, "TaskContext not found"
 
-            # stateful row count that will accumulate for each batch
+            # per-task row count that will accumulate over batches
             if "_row_counter" not in ctx.kwargs:
                 ctx.kwargs["_row_counter"] = 0
 
@@ -1114,11 +1114,9 @@ class Dataset:
                 return batch
             elif isinstance(batch, pa.Table):
                 column_idx = batch.schema.get_field_index(col)
-                if column_idx != -1:
-                    batch = batch.remove_column(column_idx)
-                return batch.append_column(col, [ids])
-            else:
-                return batch
+                if column_idx == -1:
+                    return batch.append_column(col, [ids])
+                return batch.set_column(column_idx, col, [ids])
 
         return self.map_batches(
             add_unique_id_fn,
