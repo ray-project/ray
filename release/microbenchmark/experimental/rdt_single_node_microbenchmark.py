@@ -151,7 +151,7 @@ TEST_FUNCS = [
 # (transport, device)
 TRANSPORTS_AND_DEVICE = [
     ("nccl", "cuda"),
-    # ("nixl", "cuda"),
+    ("nixl", "cuda"),
     # ("nixl", "cpu"),
     ("gloo", "cpu"),
     # ("object_store", "cpu"),
