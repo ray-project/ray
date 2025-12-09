@@ -34,12 +34,13 @@ For guidance on how to write code that aligns with Ray Data's design taste, see
 
 ## Test your changes locally
 
-To test your changes locally, build 
-[Ray from source](https://docs.ray.io/en/latest/ray-contribute/development.html). Run 
-`pre-commit` to lint your changes and `pytest` to run your new tests.
+To test your changes locally, build [Ray from source](https://docs.ray.io/en/latest/ray-contribute/development.html). 
+For Ray Data development, you typically only need the Python environment—you can skip the C++ build unless you’re also contributing to Ray Core.
 
-It's hard to run all of the Ray Data tests locally. To smoke test your changes before 
-opening a PR, run `pytest test_map.py` from `python/ray/data/tests`.
+Before submitting a PR, run `pre-commit` to lint your changes and `pytest` to execute your tests.
+
+Note that the full Ray Data test suite can be heavy to run locally, start with tests directly related to your changes. For example, if you modified `map`, from `python/ray/data/tests` run: `pytest test_map.py`.
+
 
 ## Open a pull request
 
