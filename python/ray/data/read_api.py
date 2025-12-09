@@ -1263,7 +1263,7 @@ def read_json(
         Column     Type
         ------     ----
         timestamp  timestamp[...]
-        size       <class 'object'>
+        size       int64
 
         Read a JSONL file in remote storage.
 
@@ -1271,7 +1271,7 @@ def read_json(
         >>> ds.schema()
         Column  Type
         ------  ----
-        input   string
+        input   <class 'object'>
 
         Read multiple local files.
 
