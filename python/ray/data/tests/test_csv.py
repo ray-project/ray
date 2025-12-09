@@ -17,6 +17,9 @@ from ray.data.datasource import (
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
 )
+from ray.data.datasource.file_meta_provider import (
+    DefaultFileMetadataProvider,
+)
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
@@ -149,6 +152,18 @@ def test_csv_read_meta_provider(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(tmp_path, "test1.csv")
     df1.to_csv(path1, index=False)
+    ds = ray.data.read_csv(
+        path1,
+        meta_provider=DefaultFileMetadataProvider(),
+    )
+
+    dsdf = ds.to_pandas()
+    assert df1.equals(dsdf)
+
+    # Expect to lazily compute all metadata correctly.
+    assert ds.count() == 3
+    assert ds.input_files() == [_unwrap_protocol(path1)]
+    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
     with pytest.raises(NotImplementedError):
         ray.data.read_csv(
