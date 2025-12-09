@@ -409,7 +409,7 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
         enforce_eager=True,
         task=vLLMTaskType.GENERATE,
         max_model_len=2048,
-        guided_decoding_backend="xgrammar",
+        structured_outputs_config={"backend": "xgrammar"},
         seed=42,
     )
 

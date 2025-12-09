@@ -347,16 +347,16 @@ class vLLMEngineWrapper:
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
             if "guided_decoding" in sampling_params:
-                guided_decoding = vllm.sampling_params.GuidedDecodingParams(
+                structured_outputs = vllm.sampling_params.StructuredOutputsParams(
                     **maybe_convert_ndarray_to_list(
                         sampling_params.pop("guided_decoding")
                     )
                 )
             else:
-                guided_decoding = None
+                structured_outputs = None
             params = vllm.SamplingParams(
                 **maybe_convert_ndarray_to_list(sampling_params),
-                guided_decoding=guided_decoding,
+                structured_outputs=structured_outputs,
             )
         elif self.task_type == vLLMTaskType.EMBED:
             params = vllm.PoolingParams(task=self.task_type.value)
@@ -421,11 +421,19 @@ class vLLMEngineWrapper:
         )
 
         # Send the request to the LLM engine.
-        stream = self.engine.generate(
-            request_id=str(request.request_id),
-            prompt=llm_prompt,
-            sampling_params=request.params,
-        )
+        # vLLM 0.12.0 uses encode() for pooling/embedding tasks, generate() for text generation
+        if self.task_type == vLLMTaskType.EMBED:
+            stream = self.engine.encode(
+                request_id=str(request.request_id),
+                prompt=llm_prompt,
+                pooling_params=request.params,
+            )
+        else:
+            stream = self.engine.generate(
+                request_id=str(request.request_id),
+                prompt=llm_prompt,
+                sampling_params=request.params,
+            )
 
         # Consume the stream until the request is finished.
         async for request_output in stream:
