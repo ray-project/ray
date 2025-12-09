@@ -2291,7 +2291,7 @@ py_test(
 )
 
 py_test(
-    name = "env/tests/test_env_runner.py",
+    name = "env/tests/test_env_runner",
     size = "medium",
     srcs = ["env/tests/test_env_runner.py"],
     tags = [
