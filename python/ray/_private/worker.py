@@ -3393,7 +3393,10 @@ def _make_remote(function_or_class, options):
         # Validate num_returns for generator functions
         num_returns = options.get("num_returns")
         if num_returns in ("streaming", "dynamic"):
-            if not inspect.isgeneratorfunction(function_or_class):
+            if not (
+                inspect.isgeneratorfunction(function_or_class)
+                or inspect.isasyncgenfunction(function_or_class)
+            ):
                 raise ValueError(
                     f"@ray.remote with num_returns='{num_returns}' can only be used "
                     f"with generator functions (functions that use 'yield'). "
