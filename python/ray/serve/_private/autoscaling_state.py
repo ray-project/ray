@@ -245,13 +245,12 @@ class DeploymentAutoscalingState:
         # accurate, consider this is a approximation.
         total_running_requests = total_num_requests - total_queued_requests
         # Adding this to overwrite policy state during application level autoscaling
-        current_policy_state = (
-            override_policy_state
-            if override_policy_state is not None
-            else self._policy_state.copy()
-            if self._policy_state is not None
-            else {}
-        )
+        if override_policy_state is not None:
+            current_policy_state = override_policy_state
+        elif self._policy_state is not None:
+            current_policy_state = self._policy_state.copy()
+        else:
+            current_policy_state = {}
 
         autoscaling_context: AutoscalingContext = AutoscalingContext(
             deployment_id=self._deployment_id,
@@ -748,6 +747,26 @@ class ApplicationAutoscalingState:
     def should_autoscale_deployment(self, deployment_id: DeploymentID):
         return deployment_id in self._deployment_autoscaling_states
 
+    def _validate_policy_state(
+        self, policy_state: Optional[Dict[DeploymentID, Dict[str, Any]]]
+    ):
+        """Validate that the returned policy_state from an application-level policy is correctly formatted."""
+        if policy_state is None:
+            return
+
+        assert (
+            type(policy_state) is dict
+        ), "Application-level autoscaling policy must return policy_state as Dict[DeploymentID, Dict[str, Any]]"
+
+        # Check that all keys are valid deployment IDs
+        for deployment_id in policy_state.keys():
+            assert (
+                deployment_id in self._deployment_autoscaling_states
+            ), f"Policy state contains invalid deployment ID: {deployment_id}"
+            assert (
+                type(policy_state[deployment_id]) is dict
+            ), f"Policy state for deployment {deployment_id} must be a dictionary, got {type(policy_state[deployment_id])}"
+
     def get_decision_num_replicas(
         self,
         deployment_to_target_num_replicas: Dict[DeploymentID, int],
@@ -773,18 +792,7 @@ class ApplicationAutoscalingState:
             decisions, returned_policy_state = self._policy(autoscaling_contexts)
 
             # Validate returned policy_state
-            if returned_policy_state is not None:
-                assert (
-                    type(returned_policy_state) is dict
-                ), "Application-level autoscaling policy must return policy_state as Dict[DeploymentID, Dict[str, Any]]"
-                # Check that all keys are valid deployment IDs
-                for deployment_id in returned_policy_state.keys():
-                    assert (
-                        deployment_id in self._deployment_autoscaling_states
-                    ), f"Policy state contains invalid deployment ID: {deployment_id}"
-                    assert (
-                        type(returned_policy_state[deployment_id]) is dict
-                    ), f"Policy state for deployment {deployment_id} must be a dictionary, got {type(returned_policy_state[deployment_id])}"
+            self._validate_policy_state(returned_policy_state)
             self._policy_state = returned_policy_state
 
             # Validate returned decisions
