@@ -34,9 +34,9 @@ class ExecutionCallback:
 
 def _initialize_env_callbacks(context: DataContext) -> None:
     """Initialize callbacks from environment variable and add them to the context."""
-    default_callbacks = _get_default_execution_callbacks()
-    for callback in default_callbacks:
-        add_execution_callback(callback, context)
+    callbacks = context.get_config(EXECUTION_CALLBACKS_CONFIG_KEY, [])
+    callbacks.extend(_get_default_execution_callbacks())
+    context.set_config(EXECUTION_CALLBACKS_CONFIG_KEY, callbacks)
 
     callbacks_str = os.environ.get(EXECUTION_CALLBACKS_ENV_VAR, "")
     if not callbacks_str:
