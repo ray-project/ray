@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import IO, AnyStr, Dict, List, Optional
+from typing import IO, AnyStr, List, Optional
 
 from filelock import FileLock
 
@@ -746,33 +746,33 @@ def write_node_id(session_dir: str, node_id: str) -> None:
 
     This API is process-safe, meaning the file access is protected by a file lock.
 
-    The file contains a JSON object mapping node IDs to themselves, allowing
+    The file contains a JSON array of unique node IDs, allowing
     multiple nodes sharing the same session directory to coexist. The format is:
-    {"node_id_1": "node_id_1", "node_id_2": "node_id_2", ...}
+    ["node_id_1", "node_id_2", ...]
 
     Args:
         session_dir: The path to Ray session directory.
         node_id: The node ID of the current node in hex format.
     """
     file_path = Path(os.path.join(session_dir, RAY_NODE_ID_FILENAME))
-    nodes_by_id: Dict[str, str] = {}
+    node_ids: List[str] = []
 
     with FileLock(str(file_path.absolute()) + ".lock"):
         if file_path.exists():
             try:
                 with file_path.open() as f:
-                    data = json.load(f)
-                    nodes_by_id.update(data)
-            except (json.JSONDecodeError, KeyError):
-                # If file is corrupted or in unexpected format, start fresh
-                nodes_by_id = {}
+                    node_ids = json.load(f)
+            except (json.JSONDecodeError, TypeError):
+                # If file is corrupted, start fresh
+                node_ids = []
 
-        # Add or update the current node's ID
-        nodes_by_id[node_id] = node_id
+        # Add the current node's ID if not already present
+        if node_id not in node_ids:
+            node_ids.append(node_id)
 
-        # Write back the updated dictionary
+        # Write back as a sorted list for consistent output
         with file_path.open(mode="w") as f:
-            json.dump(nodes_by_id, f)
+            json.dump(sorted(node_ids), f)
 
 
 def get_node_instance_id():
