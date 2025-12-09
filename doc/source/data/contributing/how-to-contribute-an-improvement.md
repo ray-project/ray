@@ -35,7 +35,7 @@ For guidance on how to write code that aligns with Ray Data's design taste, see
 
 ## Test your changes locally
 
-To test your changes locally, build [Ray from source](https://docs.ray.io/en/latest/ray-contribute/development.html)(https://docs.ray.io/en/latest/ray-contribute/development.html). 
+To test your changes locally, build [Ray from source](https://docs.ray.io/en/latest/ray-contribute/development.html). 
 For Ray Data development, you typically only need the Python environment—you can skip the C++ build unless you’re also contributing to Ray Core.
 
 Before submitting a PR, run `pre-commit` to lint your changes and `pytest` to execute your tests.
