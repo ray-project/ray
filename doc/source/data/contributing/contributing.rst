@@ -1,9 +1,9 @@
-============
-Contributing
-============
+=======================
+Contributing to Ray Data
+=======================
 
 .. toctree::
     :maxdepth: 2
 
-    how-to-contribute-an-improvement
+    contributing-guide
     how-to-write-tests

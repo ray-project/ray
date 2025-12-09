@@ -1,4 +1,4 @@
-# How to contribute an improvement
+# Contributing Guide
 
 If you want your changes to be reviewed and merged quickly, following a few key 
 practices makes a big difference. Clear, focused, and well-structured contributions help 
