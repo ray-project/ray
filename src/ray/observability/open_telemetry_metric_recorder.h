@@ -136,7 +136,7 @@ class OpenTelemetryMetricRecorder {
   std::mutex mutex_;
   // Flag to indicate if the recorder is shutting down. This is used to make sure that
   // the recorder will only shutdown once.
-  std::atomic<bool> is_shutdown_{true};
+  std::atomic<bool> is_shutdown_{false};
   // The name of the meter used for this recorder.
   const std::string meter_name_ = "ray";
 

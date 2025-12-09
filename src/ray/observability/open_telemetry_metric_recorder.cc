@@ -84,6 +84,7 @@ OpenTelemetryMetricRecorder &OpenTelemetryMetricRecorder::GetInstance() {
 void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
                                         std::chrono::milliseconds interval,
                                         std::chrono::milliseconds timeout) {
+<<<<<<< Updated upstream
   RAY_LOG(INFO) << "Starting the OpenTelemetryMetricRecorder...";
   bool expected = true;
   if (!is_shutdown_.compare_exchange_strong(expected, false)) {
@@ -92,6 +93,8 @@ void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
                      << "start operation";
     return;
   }
+=======
+>>>>>>> Stashed changes
   // Create an OTLP exporter
   opentelemetry::exporter::otlp::OtlpGrpcMetricExporterOptions exporter_options;
   exporter_options.endpoint = endpoint;
@@ -135,12 +138,9 @@ OpenTelemetryMetricRecorder::OpenTelemetryMetricRecorder() {
 }
 
 void OpenTelemetryMetricRecorder::Shutdown() {
-  RAY_LOG(INFO) << "Shutting down the OpenTelemetryMetricRecorder...";
   bool expected = false;
   if (!is_shutdown_.compare_exchange_strong(expected, true)) {
     // Already shut down, skip
-    RAY_LOG(WARNING) << "The OpenTelemetryMetricRecorder is already shut down, skip the "
-                     << "shutdown operation";
     return;
   }
   meter_provider_->ForceFlush();
