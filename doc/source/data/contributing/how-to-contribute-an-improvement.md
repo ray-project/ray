@@ -23,9 +23,8 @@ won’t affect acceptance and often improves the final design.
 
 ## Write good tests
 
-Most changes to Ray Data require tests.
-
-For tips on how to write good tests, see {ref}`How to write tests <how-to-write-tests>`.
+Most changes to Ray Data require tests. For tips on how to write good tests, see 
+{ref}`How to write tests <how-to-write-tests>`.
 
 ## Write simple, clear code
 
