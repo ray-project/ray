@@ -106,6 +106,13 @@ class MapTransformFn(ABC):
         return self._output_block_size_option
 
     def override_target_max_block_size(self, target_max_block_size: Optional[int]):
+        if self._output_block_size_option is not None and (
+            self._output_block_size_option.disable_block_shaping
+            or self._output_block_size_option.target_num_rows_per_block is not None
+        ):
+            raise ValueError(
+                "Cannot override target_max_block_size if block shaping is disabled or target_num_rows_per_block is set"
+            )
         self._output_block_size_option = OutputBlockSizeOption.of(
             target_max_block_size=target_max_block_size
         )

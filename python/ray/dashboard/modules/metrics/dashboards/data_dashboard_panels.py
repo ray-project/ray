@@ -30,8 +30,8 @@ from ray.dashboard.modules.metrics.dashboards.common import (
 # Ray Data Metrics (Overview)
 BYTES_SPILLED_PANEL = Panel(
     id=1,
-    title="Bytes Spilled",
-    description="Amount spilled by dataset operators. DataContext.enable_get_object_locations_for_metrics must be set to True to report this metric",
+    title="Bytes Spilled from Object Store",
+    description="Total memory (in bytes) of data blocks moved from the Ray object store to local disk due to memory pressure. This metric is only reported if `DataContext.enable_get_object_locations_for_metrics` is set to True.",
     unit="bytes",
     targets=[
         Target(
@@ -45,8 +45,8 @@ BYTES_SPILLED_PANEL = Panel(
 
 BYTES_FREED_PANEL = Panel(
     id=3,
-    title="Bytes Freed",
-    description="Amount freed by dataset operators.",
+    title="Bytes Freed from Object Store",
+    description="Total memory (in bytes) that's been released by dataset operators. This indicates memory that was previously used by blocks and is now available for reuse.",
     unit="bytes",
     targets=[
         Target(
@@ -61,7 +61,7 @@ BYTES_FREED_PANEL = Panel(
 OBJECT_STORE_MEMORY_PANEL = Panel(
     id=4,
     title="Object Store Memory",
-    description="Amount of memory store used by dataset operators.",
+    description="Current amount of memory (in bytes) actively consumed within the Ray object store by dataset operators. Use this metric to monitor in-memory data footprint and identify potential memory bottlenecks.",
     unit="bytes",
     targets=[
         Target(
@@ -76,7 +76,7 @@ OBJECT_STORE_MEMORY_PANEL = Panel(
 CPU_USAGE_PANEL = Panel(
     id=5,
     title="Logical Slots Being Used (CPU)",
-    description="Logical CPUs currently being used by dataset operators.",
+    description="Current number of logical CPU cores assigned to running tasks per dataset operator. This tracks logical resource allocation, not actual physical CPU usage.",
     unit="cores",
     targets=[
         Target(
@@ -91,7 +91,7 @@ CPU_USAGE_PANEL = Panel(
 GPU_USAGE_PANEL = Panel(
     id=6,
     title="Logical Slots Being Used (GPU)",
-    description="Logical GPUs currently being used by dataset operators.",
+    description="Current number of logical GPU cores allocated and actively consumed by running tasks within operators. This graph is active when specifying num_gpus>0 in Ray remote args. This tracks logical resource allocation, not actual physical GPU usage.",
     unit="cores",
     targets=[
         Target(
@@ -106,7 +106,7 @@ GPU_USAGE_PANEL = Panel(
 BYTES_OUTPUT_PER_SECOND_PANEL = Panel(
     id=7,
     title="Bytes Output / Second",
-    description="Bytes output per second by dataset operators.",
+    description="Measures the average rate (in bytes per second) at which operators emit output data (processed results sent to downstream operators). This measures throughput and shows how quickly processed data is produced by operators.",
     unit="Bps",
     targets=[
         Target(
@@ -121,7 +121,7 @@ BYTES_OUTPUT_PER_SECOND_PANEL = Panel(
 ROWS_OUTPUT_PER_SECOND_PANEL = Panel(
     id=11,
     title="Rows Output / Second",
-    description="Total rows output per second by dataset operators.",
+    description="Measures the average rate (in rows per second) at which operators emit output rows (processed results sent to downstream operators). This provides a logical view of throughput, independent of byte size.",
     unit="rows/sec",
     targets=[
         Target(
@@ -137,7 +137,7 @@ ROWS_OUTPUT_PER_SECOND_PANEL = Panel(
 INPUT_BLOCKS_RECEIVED_PANEL = Panel(
     id=17,
     title="Input Blocks Received by Operator / Second",
-    description="Number of input blocks received by operator per second.",
+    description="Measures the average rate (in blocks per second) at which operators receive input blocks from upstream operators or external data sources. This measures the ingress rate of data into an operator.",
     unit="blocks/sec",
     targets=[
         Target(
@@ -152,7 +152,7 @@ INPUT_BLOCKS_RECEIVED_PANEL = Panel(
 INPUT_BYTES_RECEIVED_PANEL = Panel(
     id=18,
     title="Input Bytes Received by Operator / Second",
-    description="Byte size of input blocks received by operator per second.",
+    description="Measures the average rate (in bytes per second) at which operators receive input data. This quantifies data transfer throughput from upstream operators or external data sources.",
     unit="Bps",
     targets=[
         Target(
@@ -168,7 +168,7 @@ INPUT_BLOCKS_PROCESSED_PANEL = Panel(
     id=19,
     title="Input Blocks Processed by Tasks / Second",
     description=(
-        "Number of input blocks that operator's tasks have finished processing per second."
+        "Measures the average rate (in blocks per second) at which tasks consume input blocks within an operator. This block-level throughput metric measures how quickly tasks read through their assigned input."
     ),
     unit="blocks/sec",
     targets=[
@@ -185,7 +185,7 @@ INPUT_BYTES_PROCESSED_PANEL = Panel(
     id=20,
     title="Input Bytes Processed by Tasks / Second",
     description=(
-        "Byte size of input blocks that operator's tasks have finished processing per second."
+        "Measures the average rate (in bytes per second) at which tasks consume input data within an operator. This byte-level throughput metric measures how quickly tasks read through their assigned input."
     ),
     unit="Bps",
     targets=[
@@ -201,7 +201,7 @@ INPUT_BYTES_PROCESSED_PANEL = Panel(
 INPUT_BYTES_SUBMITTED_PANEL = Panel(
     id=21,
     title="Input Bytes Submitted to Tasks / Second",
-    description="Byte size of input blocks passed to submitted tasks per second.",
+    description="Measures the average rate (in bytes per second) at which input blocks are passed to newly submitted tasks for execution. This measures how quickly data's being dispatched from an operator's internal queues to worker tasks.",
     unit="Bps",
     targets=[
         Target(
@@ -217,7 +217,7 @@ INPUT_BYTES_SUBMITTED_PANEL = Panel(
 BLOCKS_GENERATED_PANEL = Panel(
     id=22,
     title="Blocks Generated by Tasks / Second",
-    description="Number of output blocks generated by tasks per second.",
+    description="Measures the raw throughput of block generation across all concurrent tasks submitted by an operator. Tracks the average rate (in blocks per second) at which tasks emit new output blocks.",
     unit="blocks/sec",
     targets=[
         Target(
@@ -232,7 +232,7 @@ BLOCKS_GENERATED_PANEL = Panel(
 BYTES_GENERATED_PANEL = Panel(
     id=23,
     title="Bytes Generated by Tasks / Second",
-    description="Byte size of output blocks generated by tasks per second.",
+    description="Measures the raw data throughput of output block generation across all concurrent tasks submitted by an operator. Tracks the average rate (in bytes per second) at which tasks emit new output blocks.",
     unit="Bps",
     targets=[
         Target(
@@ -247,7 +247,7 @@ BYTES_GENERATED_PANEL = Panel(
 ROWS_GENERATED_PANEL = Panel(
     id=24,
     title="Rows Generated by Tasks / Second",
-    description="Number of rows in generated output blocks from finished tasks per second.",
+    description="Measures the logical throughput of output row generation across all concurrent tasks submitted by an operator. Tracks the average rate (in rows per second) at which tasks emit output rows.",
     unit="rows/sec",
     targets=[
         Target(
@@ -262,7 +262,7 @@ ROWS_GENERATED_PANEL = Panel(
 OUTPUT_BLOCKS_TAKEN_PANEL = Panel(
     id=25,
     title="Output Blocks Taken by Downstream Operators / Second",
-    description="Number of output blocks taken by downstream operators per second.",
+    description="Measures the average rate (in blocks per second) at which downstream operators consume output blocks from this operator. This metric helps identify bottlenecks in data flow between operators.",
     unit="blocks/sec",
     targets=[
         Target(
@@ -278,7 +278,7 @@ OUTPUT_BYTES_TAKEN_PANEL = Panel(
     id=26,
     title="Output Bytes Taken by Downstream Operators / Second",
     description=(
-        "Byte size of output blocks taken by downstream operators per second."
+        "Measures the average rate (in bytes per second) at which downstream operators consume output data from this operator. This provides a byte-level view of inter-operator data transfer throughput."
     ),
     unit="Bps",
     targets=[
@@ -294,7 +294,7 @@ OUTPUT_BYTES_TAKEN_PANEL = Panel(
 AVERAGE_BYTES_PER_BLOCK_PANEL = Panel(
     id=49,
     title="Average Bytes Generated / Output Block",
-    description="Average byte size of output blocks generated by tasks.",
+    description="Measures the average byte size of output blocks generated by tasks over a recent 5-minute window. This metric helps understand the granularity of data blocks being produced, which can impact performance and memory usage.",
     unit="bytes",
     targets=[
         Target(
@@ -309,7 +309,7 @@ AVERAGE_BYTES_PER_BLOCK_PANEL = Panel(
 AVERAGE_BLOCKS_PER_TASK_PANEL = Panel(
     id=50,
     title="Average Number of Output Blocks / Task",
-    description="Average number of output blocks generated by tasks.",
+    description="Measures the average number of output blocks generated per task over a recent 5-minute window. This indicates how many distinct output blocks each task typically produces upon completion.",
     unit="blocks",
     targets=[
         Target(
@@ -325,7 +325,7 @@ OUTPUT_BYTES_BY_NODE_PANEL = Panel(
     id=43,
     title="Output Bytes from Finished Tasks / Second (by Node)",
     description=(
-        "Byte size of output blocks from finished tasks per second, grouped by node."
+        "Measures the average rate (in bytes per second) of output produced by finished tasks, grouped by the node where tasks completed. This provides a per-node perspective on output throughput."
     ),
     unit="Bps",
     targets=[
@@ -342,7 +342,7 @@ BLOCKS_BY_NODE_PANEL = Panel(
     id=48,
     title="Blocks from Finished Tasks / Second (by Node)",
     description=(
-        "Number of output blocks from finished tasks per second, grouped by node."
+        "Measures the average rate (in blocks per second) of output blocks produced by finished tasks, grouped by the node where tasks completed. This offers a per-node view of logical block throughput."
     ),
     unit="blocks/s",
     targets=[
@@ -359,7 +359,7 @@ BLOCKS_BY_NODE_PANEL = Panel(
 SUBMITTED_TASKS_PANEL = Panel(
     id=29,
     title="Submitted Tasks",
-    description="Number of submitted tasks.",
+    description="Cumulative count of tasks submitted to the Ray cluster for execution by dataset operators. This metric indicates the total workload generated by the pipeline.",
     unit="tasks",
     targets=[
         Target(
@@ -374,7 +374,7 @@ SUBMITTED_TASKS_PANEL = Panel(
 RUNNING_TASKS_PANEL = Panel(
     id=30,
     title="Running Tasks",
-    description="Number of running tasks.",
+    description="Tracks the current number of tasks actively running across operators. Provides insight into the degree of parallelism currently utilized for data processing.",
     unit="tasks",
     targets=[
         Target(
@@ -389,7 +389,7 @@ RUNNING_TASKS_PANEL = Panel(
 TASKS_WITH_OUTPUT_PANEL = Panel(
     id=31,
     title="Tasks with output blocks",
-    description="Number of tasks that already have output.",
+    description="Current cumulative count of tasks that successfully generated at least one output block, even if the task hasn't yet fully completed. This metric signals early progress in output generation.",
     unit="tasks",
     targets=[
         Target(
@@ -404,7 +404,7 @@ TASKS_WITH_OUTPUT_PANEL = Panel(
 FINISHED_TASKS_PANEL = Panel(
     id=32,
     title="Finished Tasks",
-    description="Number of finished tasks.",
+    description="Cumulative count of tasks that completed their execution, either successfully or with failure. This offers a high-level overview of task completion progress.",
     unit="tasks",
     targets=[
         Target(
@@ -419,7 +419,7 @@ FINISHED_TASKS_PANEL = Panel(
 FAILED_TASKS_PANEL = Panel(
     id=33,
     title="Failed Tasks",
-    description="Number of failed tasks.",
+    description="Cumulative count of tasks that terminated with an error or encountered a failure during execution. This metric is useful for identifying and debugging stability issues within the data pipeline.",
     unit="tasks",
     targets=[
         Target(
@@ -434,7 +434,7 @@ FAILED_TASKS_PANEL = Panel(
 TASK_THROUGHPUT_BY_NODE_PANEL = Panel(
     id=46,
     title="Task Throughput (by Node)",
-    description="Number of finished tasks per second, grouped by node.",
+    description="Average rate (in finished tasks per second) grouped by the node where tasks completed. This metric shows how efficiently different nodes are contributing to overall task processing.",
     unit="tasks/s",
     targets=[
         Target(
@@ -449,7 +449,7 @@ TASK_THROUGHPUT_BY_NODE_PANEL = Panel(
 BLOCK_GENERATION_TIME_PANEL = Panel(
     id=8,
     title="Block Generation Time",
-    description="Time spent generating blocks in tasks.",
+    description="Average time (in seconds) spent by tasks generating their output blocks over a recent 5-minute window. This metric helps pinpoint performance bottlenecks related to data serialization, transformation, or computation of output blocks within tasks.",
     unit="s",
     targets=[
         Target(
@@ -464,7 +464,7 @@ BLOCK_GENERATION_TIME_PANEL = Panel(
 TASK_SUBMISSION_BACKPRESSURE_PANEL = Panel(
     id=37,
     title="Task Submission Backpressure Time",
-    description="Time spent in task submission backpressure.",
+    description="Average time (in seconds) that tasks spend waiting due to backpressure during submission over a recent 5-minute window. High values can indicate saturation of task scheduling resources or insufficient downstream processing capacity to accept new work.",
     unit="s",
     targets=[
         Target(
@@ -480,7 +480,7 @@ TASK_SUBMISSION_BACKPRESSURE_PANEL = Panel(
 TASK_COMPLETION_TIME_P50_PANEL = Panel(
     id=38,
     title="P50 Task Completion Time",
-    description="P50 time (in seconds) spent (including backpressure) running tasks to completion.",
+    description="P50 time (in seconds) tasks spend running to completion, including backpressure.",
     targets=[
         Target(
             expr='histogram_quantile(0.5, sum by (operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
@@ -495,7 +495,7 @@ TASK_COMPLETION_TIME_P50_PANEL = Panel(
 TASK_COMPLETION_TIME_P90_PANEL = Panel(
     id=82,
     title="P90 Task Completion Time",
-    description="P90 time (in seconds) spent (including backpressure) running tasks to completion.",
+    description="P90 time (in seconds) tasks spend running to completion, including backpressure.",
     targets=[
         Target(
             expr='histogram_quantile(0.9, sum by (operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
@@ -510,7 +510,7 @@ TASK_COMPLETION_TIME_P90_PANEL = Panel(
 TASK_COMPLETION_TIME_P99_PANEL = Panel(
     id=83,
     title="P99 Task Completion Time",
-    description="P99 time (in seconds) spent (including backpressure) running tasks to completion.",
+    description="P99 time (in seconds) tasks spend running to completion, including backpressure.",
     targets=[
         Target(
             expr='histogram_quantile(0.99, sum by (operator, le) (rate(ray_data_task_completion_time_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
@@ -525,7 +525,7 @@ TASK_COMPLETION_TIME_P99_PANEL = Panel(
 BLOCK_COMPLETION_TIME_P50_PANEL = Panel(
     id=84,
     title="P50 Block Completion Time",
-    description="P50 time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by assuming each block took an equal amount of time to process.",
+    description="P50 time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by dividing task time equally among blocks.",
     targets=[
         Target(
             expr='histogram_quantile(0.5, sum by (operator, le) (rate(ray_data_block_completion_time_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
@@ -540,7 +540,7 @@ BLOCK_COMPLETION_TIME_P50_PANEL = Panel(
 BLOCK_COMPLETION_TIME_P90_PANEL = Panel(
     id=61,
     title="P90 Block Completion Time",
-    description="P90 time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by assuming each block took an equal amount of time to process.",
+    description="P90 time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by dividing task time equally among blocks.",
     targets=[
         Target(
             expr='histogram_quantile(0.9, sum by (operator, le) (rate(ray_data_block_completion_time_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
@@ -555,7 +555,7 @@ BLOCK_COMPLETION_TIME_P90_PANEL = Panel(
 BLOCK_COMPLETION_TIME_P99_PANEL = Panel(
     id=85,
     title="P99 Block Completion Time",
-    description="P99 time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by assuming each block took an equal amount of time to process.",
+    description="P99 time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by dividing task time equally among blocks.",
     targets=[
         Target(
             expr='histogram_quantile(0.99, sum by (operator, le) (rate(ray_data_block_completion_time_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
@@ -570,7 +570,7 @@ BLOCK_COMPLETION_TIME_P99_PANEL = Panel(
 BLOCK_SIZE_BYTES_P50_PANEL = Panel(
     id=86,
     title="P50 Block Size (Bytes)",
-    description="P50 size (in bytes) per block.",
+    description="P50 block size in bytes.",
     targets=[
         Target(
             expr='histogram_quantile(0.5, sum by (operator, le) (rate(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
@@ -584,8 +584,8 @@ BLOCK_SIZE_BYTES_P50_PANEL = Panel(
 
 BLOCK_SIZE_BYTES_P90_PANEL = Panel(
     id=62,
-    title="P90 Block Size (Bytes)",
-    description="P90 size (in bytes) per block.",
+    title="P90 Block Size (Bytes) Histogram",
+    description="P90 block size in bytes. This provides insights into block granularity, which can significantly influence memory usage, I/O efficiency, and task scheduling.",
     targets=[
         Target(
             expr='histogram_quantile(0.9, sum by (operator, le) (rate(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
@@ -600,7 +600,7 @@ BLOCK_SIZE_BYTES_P90_PANEL = Panel(
 BLOCK_SIZE_BYTES_P99_PANEL = Panel(
     id=87,
     title="P99 Block Size (Bytes)",
-    description="P99 size (in bytes) per block.",
+    description="P99 block size in bytes.",
     targets=[
         Target(
             expr='histogram_quantile(0.99, sum by (operator, le) (rate(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
@@ -615,7 +615,7 @@ BLOCK_SIZE_BYTES_P99_PANEL = Panel(
 BLOCK_SIZE_ROWS_P50_PANEL = Panel(
     id=88,
     title="P50 Block Size (Rows)",
-    description="P50 number of rows per block.",
+    description="P50 block size in rows.",
     targets=[
         Target(
             expr='histogram_quantile(0.5, sum by (operator, le) (rate(ray_data_block_size_rows_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
@@ -629,8 +629,8 @@ BLOCK_SIZE_ROWS_P50_PANEL = Panel(
 
 BLOCK_SIZE_ROWS_P90_PANEL = Panel(
     id=63,
-    title="P90 Block Size (Rows)",
-    description="P90 number of rows per block.",
+    title="P90 Block Size (Rows) Histogram",
+    description="P90 block size in rows. This is useful for understanding the logical size and composition of data units, impacting processing logic and batching strategies.",
     targets=[
         Target(
             expr='histogram_quantile(0.9, sum by (operator, le) (rate(ray_data_block_size_rows_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
@@ -645,7 +645,7 @@ BLOCK_SIZE_ROWS_P90_PANEL = Panel(
 BLOCK_SIZE_ROWS_P99_PANEL = Panel(
     id=89,
     title="P99 Block Size (Rows)",
-    description="P99 number of rows per block.",
+    description="P99 block size in rows. This is useful for understanding the logical size and composition of data units, impacting processing logic and batching strategies.",
     targets=[
         Target(
             expr='histogram_quantile(0.99, sum by (operator, le) (rate(ray_data_block_size_rows_bucket{{{global_filters}, operator=~"$Operator"}}[$__rate_interval])))',
@@ -660,7 +660,12 @@ BLOCK_SIZE_ROWS_P99_PANEL = Panel(
 TASK_OUTPUT_BACKPRESSURE_TIME_PANEL = Panel(
     id=39,
     title="Task Output Backpressure Time",
-    description="Time spent in output backpressure.",
+    description=(
+        "Average time (in seconds) tasks spend waiting due to backpressure when attempting to "
+        "output results over a recent 5-minute window. High values indicate operators produce "
+        "large outputs or many blocks that consume object store capacity. This may starve "
+        "downstream operators waiting for output."
+    ),
     unit="s",
     targets=[
         Target(
@@ -675,7 +680,7 @@ TASK_OUTPUT_BACKPRESSURE_TIME_PANEL = Panel(
 TASK_COMPLETION_TIME_WITHOUT_BACKPRESSURE_PANEL = Panel(
     id=40,
     title="Task Completion Time Without Backpressure",
-    description="Time spent running tasks to completion w/o backpressure.",
+    description="Average time (in seconds) tasks spend executing their core logic, excluding backpressure, over a recent 5-minute window. This metric helps isolate actual computation time from delays caused by data flow bottlenecks, aiding in differentiating between computation-bound and data-flow-bound performance issues.",
     unit="s",
     targets=[
         Target(
@@ -691,7 +696,7 @@ TASK_COMPLETION_TIME_WITHOUT_BACKPRESSURE_PANEL = Panel(
 INTERNAL_INQUEUE_BLOCKS_PANEL = Panel(
     id=13,
     title="Operator Internal Input Queue Size (Blocks)",
-    description="Number of blocks in operator's internal input queue",
+    description="Current number of blocks held within an operator's internal input queue. A continuously growing queue can indicate the operator's processing inputs slower than they're being received, potentially leading to increased memory consumption.",
     unit="blocks",
     targets=[
         Target(
@@ -706,7 +711,7 @@ INTERNAL_INQUEUE_BLOCKS_PANEL = Panel(
 INTERNAL_INQUEUE_BYTES_PANEL = Panel(
     id=14,
     title="Operator Internal Input Queue Size (Bytes)",
-    description="Byte size of input blocks in the operator's internal input queue.",
+    description="Current total byte size of input blocks stored in an operator's internal input queue. This quantifies the memory footprint of pending input data awaiting processing by the operator's tasks.",
     unit="bytes",
     targets=[
         Target(
@@ -721,7 +726,7 @@ INTERNAL_INQUEUE_BYTES_PANEL = Panel(
 INTERNAL_OUTQUEUE_BLOCKS_PANEL = Panel(
     id=15,
     title="Operator Internal Output Queue Size (Blocks)",
-    description="Number of blocks in operator's internal output queue",
+    description="Current number of blocks waiting in an operator's internal output queue to be consumed by downstream operators.",
     unit="blocks",
     targets=[
         Target(
@@ -736,7 +741,7 @@ INTERNAL_OUTQUEUE_BLOCKS_PANEL = Panel(
 INTERNAL_OUTQUEUE_BYTES_PANEL = Panel(
     id=16,
     title="Operator Internal Output Queue Size (Bytes)",
-    description=("Byte size of output blocks in the operator's internal output queue."),
+    description="Current total byte size of output blocks in an operator's internal output queue. This helps understand memory consumption attributed to buffered output data awaiting transfer to subsequent pipeline operators.",
     unit="bytes",
     targets=[
         Target(
@@ -751,7 +756,7 @@ INTERNAL_OUTQUEUE_BYTES_PANEL = Panel(
 EXTERNAL_INQUEUE_BLOCKS_PANEL = Panel(
     id=2,
     title="Operator External Input Queue Size (Blocks)",
-    description="Number of blocks in operator's external input queue",
+    description="Current number of blocks in an operator's external input queue. This queue holds bundles of blocks dispatched to the operator but not yet fully processed by its tasks, providing an external view of pending work.",
     unit="blocks",
     targets=[
         Target(
@@ -766,7 +771,7 @@ EXTERNAL_INQUEUE_BLOCKS_PANEL = Panel(
 EXTERNAL_INQUEUE_BYTES_PANEL = Panel(
     id=27,
     title="Operator External Input Queue Size (bytes)",
-    description="Byte size of blocks in operator's external input queue",
+    description="Current total byte size of blocks in an operator's external input queue. This quantifies the memory footprint of externally buffered input data, representing data that's assigned to the operator but not yet internally queued.",
     unit="bytes",
     targets=[
         Target(
@@ -781,7 +786,7 @@ EXTERNAL_INQUEUE_BYTES_PANEL = Panel(
 EXTERNAL_OUTQUEUE_BLOCKS_PANEL = Panel(
     id=58,
     title="Operator External Output Queue Size (Blocks)",
-    description="Number of blocks in operator's external output queue",
+    description="Current number of blocks in an operator's external output queue. This queue typically stores references to results produced by the operator's tasks and awaiting collection by downstream operators. A large output queue suggests downstream operators aren't consuming data as quickly as it's being produced.",
     unit="blocks",
     targets=[
         Target(
@@ -796,7 +801,7 @@ EXTERNAL_OUTQUEUE_BLOCKS_PANEL = Panel(
 EXTERNAL_OUTQUEUE_BYTES_PANEL = Panel(
     id=59,
     title="Operator External Output Queue Size (bytes)",
-    description="Byte size of blocks in operator's external output queue",
+    description="Current total byte size of blocks in an operator's external output queue. This helps understand the memory footprint of results produced but still awaiting consumption or transfer. A large output queue suggests downstream operators aren't consuming data as quickly as it's being produced.",
     unit="bytes",
     targets=[
         Target(
@@ -812,7 +817,7 @@ EXTERNAL_OUTQUEUE_BYTES_PANEL = Panel(
 COMBINED_INQUEUE_BLOCKS_PANEL = Panel(
     id=56,
     title="Operator Combined Internal + External Input Queue Size (Blocks)",
-    description="Total number of blocks in operator's internal + external input queue.",
+    description="Total number of blocks across both the operator's internal and external input queues. This provides a comprehensive view of all pending input blocks that are either being held internally or awaiting processing by the operator.",
     unit="blocks",
     targets=[
         Target(
@@ -827,7 +832,7 @@ COMBINED_INQUEUE_BLOCKS_PANEL = Panel(
 COMBINED_OUTQUEUE_BLOCKS_PANEL = Panel(
     id=60,
     title="Operator Combined Internal + External Output Queue Size (Blocks)",
-    description="Total number of blocks in operator's internal + external output queue.",
+    description="Total number of blocks across both the operator's internal and external output queues. This gives a complete picture of all produced buffered output blocks and awaiting consumption by downstream operators.",
     unit="blocks",
     targets=[
         Target(
@@ -842,7 +847,7 @@ COMBINED_OUTQUEUE_BLOCKS_PANEL = Panel(
 PENDING_TASK_INPUTS_PANEL = Panel(
     id=34,
     title="Size of Blocks used in Pending Tasks (Bytes)",
-    description="Byte size of input blocks used by pending tasks.",
+    description="Current total byte size of input blocks referenced by submitted tasks not yet running or in a pending state. This represents memory that's conceptually 'reserved' for upcoming task execution.",
     unit="bytes",
     targets=[
         Target(
@@ -857,7 +862,7 @@ PENDING_TASK_INPUTS_PANEL = Panel(
 FREED_MEMORY_PANEL = Panel(
     id=35,
     title="Freed Memory in Object Store (Bytes)",
-    description="Byte size of freed memory in object store.",
+    description="Total byte size of memory that's been deallocated from the Ray object store by operators. This reflects the efficiency of memory recycling within the pipeline and indicates memory no longer in use.",
     unit="bytes",
     targets=[
         Target(
@@ -872,7 +877,7 @@ FREED_MEMORY_PANEL = Panel(
 SPILLED_MEMORY_PANEL = Panel(
     id=36,
     title="Spilled Memory in Object Store (Bytes)",
-    description="Byte size of spilled memory in object store.",
+    description="Total byte size of memory from the Ray object store that's been written to external storage (spilled to disk). This directly indicates instances of memory pressure where data couldn't be held entirely in-memory.",
     unit="bytes",
     targets=[
         Target(
@@ -888,7 +893,7 @@ SPILLED_MEMORY_PANEL = Panel(
 ITERATION_INITIALIZATION_PANEL = Panel(
     id=12,
     title="Iteration Initialization Time",
-    description="Seconds spent in iterator initialization code",
+    description="Total time (in seconds) spent setting up and initializing the data iterator before it begins yielding batches. This includes overhead such as establishing connections, resolving data sources, and preparing internal structures.",
     unit="s",
     targets=[
         Target(
@@ -903,7 +908,7 @@ ITERATION_INITIALIZATION_PANEL = Panel(
 ITERATION_BLOCKED_PANEL = Panel(
     id=9,
     title="Iteration Blocked Time",
-    description="Seconds user thread is blocked by iter_batches()",
+    description="Total time (in seconds) that the user's application thread is blocked while waiting for `iter_batches()` to produce data. High values indicate the data pipeline isn't generating batches fast enough to keep up with consumption rate, pointing to upstream bottlenecks.",
     unit="s",
     targets=[
         Target(
@@ -918,7 +923,7 @@ ITERATION_BLOCKED_PANEL = Panel(
 ITERATION_USER_PANEL = Panel(
     id=10,
     title="Iteration User Time",
-    description="Seconds spent in user code",
+    description="Total time (in seconds) spent executing user-defined code during data iteration. This includes time spent in UDFs (User-Defined Functions) and custom batch processing logic, useful for profiling user code performance.",
     unit="s",
     targets=[
         Target(
@@ -933,7 +938,7 @@ ITERATION_USER_PANEL = Panel(
 ITERATION_GET_PANEL = Panel(
     id=70,
     title="Iteration Get Time",
-    description="Seconds spent in ray.get() while resolving block references",
+    description="Total time (in seconds) spent performing `ray.get()` calls to resolve Ray object references into actual data blocks during iteration. This indicates latency associated with fetching data from the Ray object store, potentially across the network.",
     unit="seconds",
     targets=[
         Target(
@@ -948,7 +953,7 @@ ITERATION_GET_PANEL = Panel(
 ITERATION_NEXT_BATCH_PANEL = Panel(
     id=71,
     title="Iteration Next Batch Time",
-    description="Seconds spent getting the next batch from the block buffer",
+    description="Total time (in seconds) spent retrieving the next batch of data from the internal block buffer of the iterator. This is a fine-grained measure of the efficiency of the batching mechanism before formatting or collation.",
     unit="seconds",
     targets=[
         Target(
@@ -963,7 +968,7 @@ ITERATION_NEXT_BATCH_PANEL = Panel(
 ITERATION_FORMAT_BATCH_PANEL = Panel(
     id=72,
     title="Iteration Format Batch Time",
-    description="Seconds spent formatting the batch",
+    description="Total time (in seconds) spent converting raw data blocks into the desired output format (e.g., Pandas DataFrame, PyArrow Table, NumPy array) for consumption by the user or a machine learning framework. This reflects the cost of data marshalling.",
     unit="seconds",
     targets=[
         Target(
@@ -978,7 +983,7 @@ ITERATION_FORMAT_BATCH_PANEL = Panel(
 ITERATION_COLLATE_BATCH_PANEL = Panel(
     id=73,
     title="Iteration Collate Batch Time",
-    description="Seconds spent collating the batch",
+    description="Total time (in seconds) spent applying a `CollateFn` to batches, typically for deep learning frameworks like PyTorch. This includes operations such as stacking tensors, padding, or moving data to a specific device like a GPU.",
     unit="seconds",
     targets=[
         Target(
@@ -993,7 +998,7 @@ ITERATION_COLLATE_BATCH_PANEL = Panel(
 ITERATION_FINALIZE_BATCH_PANEL = Panel(
     id=74,
     title="Iteration Finalize Batch Time",
-    description="Seconds spent finalizing the batch",
+    description="Total time (in seconds) spent in any final processing steps applied to a batch before it's yielded to the user, as defined by a `finalize_fn`. This can include last-minute transformations or device transfers.",
     unit="seconds",
     targets=[
         Target(
@@ -1008,7 +1013,7 @@ ITERATION_FINALIZE_BATCH_PANEL = Panel(
 ITERATION_BLOCKS_LOCAL_PANEL = Panel(
     id=75,
     title="Iteration Blocks Local",
-    description="Number of blocks already on the local node",
+    description="Cumulative count of blocks found on the local node (same node as the consuming application) during iteration. Accessing local blocks is generally faster and more efficient as it avoids network transfer.",
     unit="blocks",
     targets=[
         Target(
@@ -1023,7 +1028,7 @@ ITERATION_BLOCKS_LOCAL_PANEL = Panel(
 ITERATION_BLOCKS_REMOTE_PANEL = Panel(
     id=76,
     title="Iteration Blocks Remote",
-    description="Number of blocks that require fetching from another node",
+    description="Cumulative count of blocks that needed to be fetched from a remote node (different node in the Ray cluster) during iteration. A high number of remote blocks can indicate significant network transfer overhead, potentially bottlenecking iteration performance.",
     unit="blocks",
     targets=[
         Target(
@@ -1038,7 +1043,7 @@ ITERATION_BLOCKS_REMOTE_PANEL = Panel(
 ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL = Panel(
     id=77,
     title="Iteration Blocks Unknown Location",
-    description="Number of blocks that have unknown locations",
+    description="Cumulative count of blocks for which the location (local or remote) couldn't be determined during iteration. This might suggest issues with the Ray object store's metadata tracking or liveness of relevant Ray nodes.",
     unit="blocks",
     targets=[
         Target(
@@ -1050,11 +1055,56 @@ ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL = Panel(
     stack=False,
 )
 
+ITERATION_PREFETCHED_BYTES_PANEL = Panel(
+    id=90,
+    title="Iteration Prefetched Bytes",
+    description="Current bytes of prefetched blocks in the iterator",
+    unit="bytes",
+    targets=[
+        Target(
+            expr="sum(ray_data_iter_prefetched_bytes{{{global_filters}}}) by (dataset)",
+            legend="Prefetched Bytes: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ITERATION_TIME_TO_FIRST_BATCH_PANEL = Panel(
+    id=120,
+    title="Iteration Time to First Batch",
+    description="Seconds spent waiting for the first batch after starting iteration",
+    unit="seconds",
+    targets=[
+        Target(
+            expr="sum(ray_data_iter_time_to_first_batch_seconds{{{global_filters}}}) by (dataset)",
+            legend="Seconds: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ITERATION_GET_REF_BUNDLES_PANEL = Panel(
+    id=121,
+    title="Iteration Get Ref Bundles Time",
+    description="Seconds spent getting RefBundles from the dataset iterator",
+    unit="seconds",
+    targets=[
+        Target(
+            expr="sum(ray_data_iter_get_ref_bundles_seconds{{{global_filters}}}) by (dataset)",
+            legend="Seconds: {{dataset}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
 # Ray Data Metrics (Miscellaneous)
 SCHEDULING_LOOP_DURATION_PANEL = Panel(
     id=47,
     title="Scheduling Loop Duration",
-    description=("Duration of the scheduling loop in seconds."),
+    description="Average duration (in seconds) of the Ray Data scheduling loop over a recent 5-minute window. This loop is responsible for managing task submission, resource allocation, and overall execution flow. Longer durations may indicate scheduling overhead or contention within the system.",
     unit="s",
     targets=[
         Target(
@@ -1069,7 +1119,7 @@ SCHEDULING_LOOP_DURATION_PANEL = Panel(
 MAX_BYTES_TO_READ_PANEL = Panel(
     id=55,
     title="Max Bytes to Read",
-    description="Maximum bytes to read from streaming generator buffer.",
+    description="Maximum number of bytes that the streaming generator buffer's configured to read. This helps manage memory usage and apply backpressure for streaming data sources.",
     unit="bytes",
     targets=[
         Target(
@@ -1085,7 +1135,7 @@ MAX_BYTES_TO_READ_PANEL = Panel(
 CPU_BUDGET_PANEL = Panel(
     id=51,
     title="Budget (CPU)",
-    description=("Budget (CPU) for the operator."),
+    description="Displays the allocated CPU budget (maximum CPU cores) for an operator. Ray Data uses this internal mechanism to manage resource allocation, control concurrency across operators, and prevent overload.",
     unit="cpu",
     targets=[
         Target(
@@ -1100,7 +1150,7 @@ CPU_BUDGET_PANEL = Panel(
 GPU_BUDGET_PANEL = Panel(
     id=52,
     title="Budget (GPU)",
-    description=("Budget (GPU) for the operator."),
+    description="Displays the allocated GPU budget (maximum GPU resources) for an operator. Ray Data uses this to control GPU resource consumption across operators.",
     unit="gpu",
     targets=[
         Target(
@@ -1115,7 +1165,7 @@ GPU_BUDGET_PANEL = Panel(
 MEMORY_BUDGET_PANEL = Panel(
     id=53,
     title="Budget (Memory)",
-    description=("Budget (Memory) for the operator."),
+    description="Displays the allocated total memory budget (object store and heap memory combined) for an operator. Ray Data uses this to manage overall memory consumption and apply backpressure to prevent out-of-memory errors.",
     unit="bytes",
     targets=[
         Target(
@@ -1130,7 +1180,12 @@ MEMORY_BUDGET_PANEL = Panel(
 OBJECT_STORE_MEMORY_BUDGET_PANEL = Panel(
     id=54,
     title="Budget (Object Store Memory)",
-    description=("Budget (Object Store Memory) for the operator."),
+    description=(
+        "Displays the allocated object store memory budget for an operator. This represents "
+        "the portion of the total memory budget dedicated to storing data blocks in the Ray "
+        "object store. The budget breaks down into pending task inputs, pending task outputs, "
+        "and input and output queues."
+    ),
     unit="bytes",
     targets=[
         Target(
@@ -1145,9 +1200,7 @@ OBJECT_STORE_MEMORY_BUDGET_PANEL = Panel(
 ALL_RESOURCES_UTILIZATION_PANEL = Panel(
     id=57,
     title="All logical resources utilization",
-    description=(
-        "Shows all logical resources utilization on a single graph. Filtering by operator is recommended."
-    ),
+    description="Displays combined CPU and GPU resource utilization across operators. Filter to a specific operator to understand its overall resource consumption pattern.",
     unit="cores",
     targets=[
         Target(
@@ -1166,7 +1219,7 @@ ALL_RESOURCES_UTILIZATION_PANEL = Panel(
 OPERATOR_TASK_COMPLETION_TIME_PANEL = Panel(
     id=78,
     title="Task Completion Time Histogram (s)",
-    description="Time (in seconds) spent (including backpressure) running tasks to completion. Larger bars means more tasks finished within that duration range.",
+    description="Time (in seconds) spent running tasks to completion, including backpressure. Larger bars mean more tasks finished within that duration range.",
     targets=[
         Target(
             expr='sum by (le) (max_over_time(ray_data_task_completion_time_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
@@ -1183,7 +1236,7 @@ OPERATOR_TASK_COMPLETION_TIME_PANEL = Panel(
 OPERATOR_BLOCK_COMPLETION_TIME_PANEL = Panel(
     id=79,
     title="Block Completion Time Histogram (s)",
-    description="Time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by assuming each block took an equal amount of time to process. Larger bars means more blocks finished within that duration range.",
+    description="Time (in seconds) spent processing blocks to completion. If multiple blocks are generated per task, this is approximated by dividing task time equally among blocks. Larger bars mean more blocks finished within that duration range.",
     targets=[
         Target(
             expr='sum by (le) (max_over_time(ray_data_block_completion_time_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
@@ -1200,7 +1253,7 @@ OPERATOR_BLOCK_COMPLETION_TIME_PANEL = Panel(
 OPERATOR_BLOCK_SIZE_BYTES_PANEL = Panel(
     id=80,
     title="Block Size (Bytes) Histogram",
-    description="Size (in bytes) per block. Larger bars means more blocks are within that size range.",
+    description="Block size in bytes. Larger bars mean more blocks are within that size range.",
     targets=[
         Target(
             expr='sum by (le) (max_over_time(ray_data_block_size_bytes_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
@@ -1220,7 +1273,7 @@ OPERATOR_BLOCK_SIZE_BYTES_PANEL = Panel(
 OPERATOR_BLOCK_SIZE_ROWS_PANEL = Panel(
     id=81,
     title="Block Size (Rows) Histogram",
-    description="Number of rows per block. Larger bars means more blocks are within that number of rows range.",
+    description="Block size in rows. Larger bars mean more blocks are within that row count range.",
     targets=[
         Target(
             expr='sum by (le) (max_over_time(ray_data_block_size_rows_bucket{{{global_filters}, operator=~"$Operator", le!="+Inf"}}[$__range]))',
@@ -1390,6 +1443,9 @@ DATA_GRAFANA_ROWS = [
             ITERATION_BLOCKS_LOCAL_PANEL,
             ITERATION_BLOCKS_REMOTE_PANEL,
             ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL,
+            ITERATION_PREFETCHED_BYTES_PANEL,
+            ITERATION_TIME_TO_FIRST_BATCH_PANEL,
+            ITERATION_GET_REF_BUNDLES_PANEL,
         ],
         collapsed=True,
     ),
