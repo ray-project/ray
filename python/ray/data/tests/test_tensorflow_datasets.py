@@ -54,4 +54,4 @@ def test_from_tf_e2e(ray_start_regular_shared_2_cpus):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-vv", __file__]))

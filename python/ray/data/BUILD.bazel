@@ -1075,7 +1075,7 @@ py_test(
 
 py_test(
     name = "test_tensorflow_datasets",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_tensorflow_datasets.py"],
     tags = [
         "exclusive",
