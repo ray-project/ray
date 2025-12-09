@@ -1060,8 +1060,9 @@ smart-open==6.2.0 \
     # via
     #   -c release/ray_release/byod/ray_base_extra_testdeps_py3.10.lock
     #   -r docker/base-deps/requirements.in
-typing-extensions==4.12.2 \
-    --hash=sha256:04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d
+typing-extensions==4.15.0 \
+    --hash=sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466 \
+    --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
     # via
     #   -c release/ray_release/byod/ray_base_extra_testdeps_py3.10.lock
     #   azure-core
