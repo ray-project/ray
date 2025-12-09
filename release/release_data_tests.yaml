@@ -697,6 +697,7 @@
  #       cluster_compute: cross_az_250_350_compute_aws.yaml
 
 - name: "cross_az_map_batches_autoscaling_iptable_failure_injection"
+  python: "3.9"
   frequency: nightly
   env: gce
   working_dir: nightly_tests
