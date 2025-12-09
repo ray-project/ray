@@ -49,6 +49,8 @@ def register_tensor_transport(
     global transport_manager_classes
     global transport_devices
 
+    transport_name = transport_name.upper()
+
     if transport_name in transport_manager_classes:
         raise ValueError(f"Transport {transport_name} already registered.")
 
@@ -57,7 +59,6 @@ def register_tensor_transport(
             f"transport_manager_class {transport_manager_class.__name__} must be a subclass of TensorTransportManager."
         )
 
-    transport_name = transport_name.upper()
     transport_manager_classes[transport_name] = transport_manager_class
     transport_devices[transport_name] = devices
 
