@@ -34,7 +34,7 @@ def test_from_tf_e2e(ray_start_regular_shared_2_cpus):
     _check_usage_record(["FromItems"])
 
 
-def test_from_tf(ray_start_regular_shared):
+def test_from_tf(ray_start_regular):
     import tensorflow as tf
     import tensorflow_datasets as tfds
 
