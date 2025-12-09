@@ -300,10 +300,7 @@ The following utility serializes PyTorch tensors into PyArrow format. It flatten
 
 The serialization and deserialization operations are typically lightweight compared to the actual collate function work (such as tokenization or image processing), so the overhead is minimal relative to the performance gains from scaling the collate function.
 
-You can use this reference implementation or adapt it to your needs:
-
-.. literalinclude:: ../doc_code/collate_utils.py
-   :language: python
+You can use this reference implementation or adapt it to your needs: :download:`collate_utils.py <../doc_code/collate_utils.py>`
 
 Example with tensor serialization
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
