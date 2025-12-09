@@ -1018,9 +1018,10 @@ lxml==6.0.2
     #   dm-control
     #   nbconvert
     #   vsphere-automation-sdk
-lz4==4.3.3
+lz4==4.4.5
     # via
     #   -r python/requirements.txt
+    #   -r python/requirements/test-requirements.txt
     #   clickhouse-connect
     #   dask
 mako==1.3.0
