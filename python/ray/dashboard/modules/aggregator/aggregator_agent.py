@@ -182,21 +182,29 @@ class AggregatorAgent(
         if PUBLISH_EVENTS_TO_GCS:
             self._task_metadata_buffer.merge(events_data.task_events_metadata)
 
+        received_count = 0
+        failed_count = 0
         for event in events_data.events:
-            self._open_telemetry_metric_recorder.set_metric_value(
-                self._events_received_metric_name, self._common_tags, 1
-            )
+            received_count += 1
             try:
                 await self._event_buffer.add_event(event)
             except Exception as e:
+                failed_count += 1
                 logger.error(
                     f"Failed to add event with id={event.event_id.decode()} to buffer. "
                     "Error: %s",
                     e,
                 )
-                self._open_telemetry_metric_recorder.set_metric_value(
-                    self._events_failed_to_add_metric_name, self._common_tags, 1
-                )
+
+        # Batch metric recording - single call per batch instead of per event
+        if received_count > 0:
+            self._open_telemetry_metric_recorder.set_metric_value(
+                self._events_received_metric_name, self._common_tags, received_count
+            )
+        if failed_count > 0:
+            self._open_telemetry_metric_recorder.set_metric_value(
+                self._events_failed_to_add_metric_name, self._common_tags, failed_count
+            )
 
         return events_event_aggregator_service_pb2.AddEventsReply()
 

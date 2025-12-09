@@ -2,7 +2,7 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-from opentelemetry.metrics import NoOpCounter, NoOpHistogram, NoOpUpDownCounter
+from opentelemetry.metrics import NoOpHistogram
 
 from ray._private.metrics_agent import Gauge, Record
 from ray._private.telemetry.open_telemetry_metric_recorder import (
@@ -28,7 +28,7 @@ def test_register_gauge_metric(mock_get_meter, mock_set_meter_provider):
         tags={"label_key": "label_value"},
         value=42.0,
     )
-    assert recorder._observations_by_name == {
+    assert recorder._gauge_observations_by_name == {
         "test_gauge": {
             frozenset({("label_key", "label_value")}): 42.0,
         }
@@ -43,28 +43,45 @@ def test_register_counter_metric(
 ):
     """
     Test the register_counter_metric method of OpenTelemetryMetricRecorder.
-    - Test that it registers a counter metric with the correct name and description.
-    - Test that a value can be set for the counter metric successfully without warnings.
+    - Test that it registers an observable counter metric.
+    - Test that values are accumulated in _counter_observations.
     """
     mock_meter = MagicMock()
-    mock_meter.create_counter.return_value = NoOpCounter(name="test_counter")
     mock_get_meter.return_value = mock_meter
     recorder = OpenTelemetryMetricRecorder()
     recorder.register_counter_metric(name="test_counter", description="Test Counter")
     assert "test_counter" in recorder._registered_instruments
+    assert "test_counter" in recorder._counter_observations_by_name
+
+    # Test value accumulation
     recorder.set_metric_value(
         name="test_counter",
         tags={"label_key": "label_value"},
         value=10.0,
     )
+    assert recorder._counter_observations_by_name["test_counter"] == {
+        frozenset({("label_key", "label_value")}): 10.0
+    }
+
+    # Test accumulation (not replacement)
+    recorder.set_metric_value(
+        name="test_counter",
+        tags={"label_key": "label_value"},
+        value=5.0,
+    )
+    assert recorder._counter_observations_by_name["test_counter"] == {
+        frozenset({("label_key", "label_value")}): 15.0
+    }
     mock_logger_warning.assert_not_called()
+
+    # Test unregistered metric warning
     recorder.set_metric_value(
         name="test_counter_unregistered",
         tags={"label_key": "label_value"},
         value=10.0,
     )
     mock_logger_warning.assert_called_once_with(
-        "Unsupported synchronous instrument type for metric: test_counter_unregistered."
+        "Metric test_counter_unregistered is not registered or unsupported type."
     )
 
 
@@ -76,20 +93,35 @@ def test_register_sum_metric(
 ):
     """
     Test the register_sum_metric method of OpenTelemetryMetricRecorder.
-    - Test that it registers a sum metric with the correct name and description.
-    - Test that a value can be set for the sum metric successfully without warnings.
+    - Test that it registers an observable up_down_counter metric.
+    - Test that values are accumulated in _sum_observations.
     """
     mock_meter = MagicMock()
-    mock_meter.create_up_down_counter.return_value = NoOpUpDownCounter(name="test_sum")
     mock_get_meter.return_value = mock_meter
     recorder = OpenTelemetryMetricRecorder()
     recorder.register_sum_metric(name="test_sum", description="Test Sum")
     assert "test_sum" in recorder._registered_instruments
+    assert "test_sum" in recorder._sum_observations_by_name
+
+    # Test value accumulation
     recorder.set_metric_value(
         name="test_sum",
         tags={"label_key": "label_value"},
         value=10.0,
     )
+    assert recorder._sum_observations_by_name["test_sum"] == {
+        frozenset({("label_key", "label_value")}): 10.0
+    }
+
+    # Test accumulation with negative value (up_down_counter can go down)
+    recorder.set_metric_value(
+        name="test_sum",
+        tags={"label_key": "label_value"},
+        value=-3.0,
+    )
+    assert recorder._sum_observations_by_name["test_sum"] == {
+        frozenset({("label_key", "label_value")}): 7.0
+    }
     mock_logger_warning.assert_not_called()
 
 
@@ -248,7 +280,7 @@ def test_record_and_export(mock_get_meter, mock_set_meter_provider):
         ],
         global_tags={"global_label_key": "global_label_value"},
     )
-    assert recorder._observations_by_name == {
+    assert recorder._gauge_observations_by_name == {
         "hi": {
             frozenset(
                 {
