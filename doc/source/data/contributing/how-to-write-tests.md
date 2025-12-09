@@ -123,14 +123,11 @@ def test_invalid_concurrency_raises(ray_start_regular_shared, concurrency):
 
 ## Avoid testing against repr outputs to validate specific data
 
-<!--vale: off-->
-<!-- Vale complains about using the word "will" -->
-
-`repr` output isn’t part of any interface contract — it can (and probably will) change. 
+`repr` output isn’t part of any interface contract — it can change at any time.
 Besides, tests that assert against repr often hide the real intent: are you trying to
 check the data, or just how it happens to print? Be explicit about what you care about.
 
-<!--vale: off-->
+
 
 **Original code**
 ```python
@@ -152,7 +149,7 @@ config — and that’s usually fine.
 **Original code**
 
 ```python
-ds = ray.data.read_parquet_bulk(paths + [txt_path], filesystem=fs)
+ds = ray.data.read_parquet(paths + [txt_path], filesystem=fs)
 assert ds._plan.initial_num_blocks() == 2  # Where does 2 come from?
 assert rows_same(ds.to_pandas(), expected_data)
 ```
@@ -160,7 +157,7 @@ assert rows_same(ds.to_pandas(), expected_data)
 **Better**
 
 ```python
-ds = ray.data.read_parquet_bulk(paths + [txt_path], filesystem=fs)
+ds = ray.data.read_parquet(paths + [txt_path], filesystem=fs)
 # Assertion about number of blocks has been removed.
 assert rows_same(ds.to_pandas(), expected_data)
 ```
