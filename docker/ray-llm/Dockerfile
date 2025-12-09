@@ -40,8 +40,8 @@ VLLM_RAW="https://raw.githubusercontent.com/vllm-project/vllm/${VLLM_SCRIPTS_REF
 export UV_SYSTEM_PYTHON=1
 
 # Set CUDA architectures for building EP kernels
-# 8.0=A100, 8.9=L4/RTX4090, 9.0=H100/H200
-export TORCH_CUDA_ARCH_LIST="8.0;8.9;9.0"
+# EP kernels + DeepGEMM require Hopper+ features (matches vLLM Dockerfile)
+export TORCH_CUDA_ARCH_LIST="9.0a 10.0a"
 
 # Install EP kernels (PPLX, DeepEP, and NVSHMEM)
 curl -fsSL "${VLLM_RAW}/tools/ep_kernels/install_python_libraries.sh" | bash -s -- --workspace /home/ray/llm_ep_support
