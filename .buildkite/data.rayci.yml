@@ -47,11 +47,9 @@ steps:
   - name: datatfxbslbuild-multipy
     label: "wanda: datatfxbslbuild-py{{matrix}}"
     wanda: ci/docker/datatfxbsl.build.wanda.yaml
+    matrix: ["3.10", "3.12"]
     env:
       PYTHON: "{{matrix}}"
-    matrix:
-      - "3.10"
-      - "3.12"
     tags: cibase
 
   # tests

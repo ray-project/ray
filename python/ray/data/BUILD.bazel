@@ -1079,6 +1079,7 @@ py_test(
     srcs = ["tests/test_tensorflow_datasets.py"],
     tags = [
         "exclusive",
+        "team:data",
         "tensorflow-datasets",
     ],
     deps = [

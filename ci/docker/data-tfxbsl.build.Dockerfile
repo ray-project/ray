@@ -18,6 +18,10 @@ ARROW_VERSION=$ARROW_VERSION ./ci/env/install-dependencies.sh
 # We manually install tfx-bsl here. Adding the library via data- or
 # test-requirements.txt files causes unresolvable dependency conflicts with pandas.
 
-pip install -U tfx-bsl==1.16.1 crc32c==2.3 tensorflow-datasets==4.9.9
+pip install -U tfx-bsl==1.16.1 crc32c==2.3
+
+if [[ "$PYTHON" == "3.12" ]]; then
+  pip install -U tensorflow-datasets==4.9.9
+fi
 
 EOF
