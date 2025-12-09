@@ -1080,7 +1080,7 @@ py_test(
     tags = [
         "exclusive",
         "team:data",
-        "tensorflow-datasets",
+        "tensorflow_datasets",
     ],
     deps = [
         ":conftest",
