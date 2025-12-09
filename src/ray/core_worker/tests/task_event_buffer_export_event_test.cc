@@ -69,7 +69,7 @@ class TaskEventTestWriteExport : public ::testing::Test {
         std::make_unique<ray::gcs::MockGcsClient>(),
         std::make_unique<MockEventAggregatorClient>(),
         "test_session_name",
-        NodeID::FromRandom());
+        NodeID::Nil());
   }
 
   virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }
@@ -100,7 +100,7 @@ class TaskEventTestWriteExport : public ::testing::Test {
                                              running_ts,
                                              /*is_actor_task_event=*/false,
                                              "test_session_name",
-                                             NodeID::FromRandom(),
+                                             NodeID::Nil(),
                                              nullptr,
                                              state_update);
   }

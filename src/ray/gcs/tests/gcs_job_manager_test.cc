@@ -59,7 +59,7 @@ class GcsJobManagerTest : public ::testing::Test {
               address.port());
         });
     fake_ray_event_recorder_ = std::make_unique<observability::FakeRayEventRecorder>();
-    gcs_node_id_ = NodeID::FromRandom();
+    gcs_node_id_ = NodeID::Nil();
     gcs_job_manager_ =
         std::make_unique<gcs::GcsJobManager>(*gcs_table_storage_,
                                              *gcs_publisher_,

@@ -170,7 +170,6 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
 }
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
-  auto gcs_node_id = NodeID::FromRandom();
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
                                    *io_context_,
@@ -178,7 +177,7 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   gcs_node_id);
+                                   NodeID::Nil());
   // Test Add/Get/Remove functionality.
   auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
@@ -192,7 +191,6 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
 }
 
 TEST_F(GcsNodeManagerTest, TestListener) {
-  auto gcs_node_id = NodeID::FromRandom();
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
                                    *io_context_,
@@ -200,7 +198,7 @@ TEST_F(GcsNodeManagerTest, TestListener) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   gcs_node_id);
+                                   NodeID::Nil());
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::atomic_int callbacks_remaining = node_count;
@@ -268,7 +266,6 @@ TEST_F(GcsNodeManagerTest, TestListener) {
 // state remains consistent. This validates the "post-notify" approach.
 
 TEST_F(GcsNodeManagerTest, TestAddNodeListenerCallbackDeadlock) {
-  auto gcs_node_id = NodeID::FromRandom();
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
                                    *io_context_,
@@ -276,7 +273,7 @@ TEST_F(GcsNodeManagerTest, TestAddNodeListenerCallbackDeadlock) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   gcs_node_id);
+                                   NodeID::Nil());
   int node_count = 10;
   std::atomic_int callbacks_remaining = node_count;
   node_manager.AddNodeAddedListener(
@@ -301,7 +298,6 @@ TEST_F(GcsNodeManagerTest, TestAddNodeListenerCallbackDeadlock) {
 }
 
 TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
-  auto gcs_node_id = NodeID::FromRandom();
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
                                    *io_context_,
@@ -309,7 +305,7 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   gcs_node_id);
+                                   NodeID::Nil());
 
   // Create a test node
   auto node = GenNodeInfo();
@@ -382,7 +378,6 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
 }
 
 TEST_F(GcsNodeManagerTest, TestGetNodeAddressAndLiveness) {
-  auto gcs_node_id = NodeID::FromRandom();
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
                                    *io_context_,
@@ -390,7 +385,7 @@ TEST_F(GcsNodeManagerTest, TestGetNodeAddressAndLiveness) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   gcs_node_id);
+                                   NodeID::Nil());
 
   // Create and add a test node
   auto node = GenNodeInfo();
@@ -423,7 +418,6 @@ TEST_F(GcsNodeManagerTest, TestGetNodeAddressAndLiveness) {
 }
 
 TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
-  auto gcs_node_id = NodeID::FromRandom();
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
                                    *io_context_,
@@ -431,7 +425,7 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
                                    "test_session_name",
-                                   gcs_node_id);
+                                   NodeID::Nil());
 
   // Add multiple alive nodes
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes;

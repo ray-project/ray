@@ -93,7 +93,7 @@ class TaskEventBufferTest : public ::testing::Test {
         std::make_unique<ray::gcs::MockGcsClient>(),
         std::make_unique<MockEventAggregatorClient>(),
         "test_session_name",
-        NodeID::FromRandom());
+        NodeID::Nil());
   }
 
   virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }
@@ -159,7 +159,7 @@ class TaskEventBufferTest : public ::testing::Test {
         1,
         /*is_actor_task_event=*/false,
         "test_session_name",
-        NodeID::FromRandom(),
+        NodeID::Nil(),
         std::make_shared<TaskSpecification>(task_spec),
         status_update);
   }
@@ -177,7 +177,7 @@ class TaskEventBufferTest : public ::testing::Test {
                                              running_ts,
                                              /*is_actor_task_event=*/false,
                                              "test_session_name",
-                                             NodeID::FromRandom(),
+                                             NodeID::Nil(),
                                              nullptr,
                                              state_update);
   }
@@ -192,7 +192,7 @@ class TaskEventBufferTest : public ::testing::Test {
                                               "test_event",
                                               1,
                                               "test_session_name",
-                                              NodeID::FromRandom());
+                                              NodeID::Nil());
   }
 
   static void CompareTaskEventData(const rpc::TaskEventData &actual_data,
@@ -953,7 +953,7 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
                                                           event_name,
                                                           start_time,
                                                           "test_session_name",
-                                                          NodeID::FromRandom());
+                                                          NodeID::Nil());
 
   // Set end time and extra data to test full population
   profile_event->SetEndTime(2000);
@@ -1025,7 +1025,7 @@ TEST_F(TaskEventBufferTest, TestCreateRayEventsDataWithProfileEvents) {
                                                           "profile_test",
                                                           5000,
                                                           "test_session_name",
-                                                          NodeID::FromRandom());
+                                                          NodeID::Nil());
   profile_event->SetEndTime(6000);
 
   absl::flat_hash_map<TaskAttempt, RayEventsTuple> agg_ray_events;
@@ -1078,7 +1078,7 @@ TEST_P(TaskEventBufferTestDifferentDestination,
                                                           "mixed_test",
                                                           7000,
                                                           "test_session_name",
-                                                          NodeID::FromRandom());
+                                                          NodeID::Nil());
   // Expect data flushed match. Generate the expected data
   rpc::TaskEventData expected_task_event_data;
   rpc::events::RayEventsData expected_ray_events_data;

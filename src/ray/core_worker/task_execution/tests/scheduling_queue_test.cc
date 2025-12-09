@@ -92,7 +92,7 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
   std::vector<std::unique_ptr<worker::TaskEvent>> task_events;
 
-  NodeID GetNodeID() const override { return NodeID::FromRandom(); }
+  NodeID GetNodeID() const override { return NodeID::Nil(); }
 };
 
 TEST(ActorSchedulingQueueTest, TestTaskEvents) {

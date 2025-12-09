@@ -98,7 +98,7 @@ TEST_F(GcsJobManagerTest, TestRayEventDriverJobEvents) {
   "enable_ray_event": true
 }
   )");
-  auto gcs_node_id = NodeID::FromRandom();
+  auto gcs_node_id = NodeID::Nil();
   gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
                                      *gcs_publisher_,
                                      runtime_env_manager_,
@@ -150,7 +150,7 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
                 log_dir_,
                 "warning",
                 false);
-  auto gcs_node_id = NodeID::FromRandom();
+  auto gcs_node_id = NodeID::Nil();
   gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
                                      *gcs_publisher_,
                                      runtime_env_manager_,
