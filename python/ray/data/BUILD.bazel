@@ -1074,6 +1074,20 @@ py_test(
 )
 
 py_test(
+    name = "test_tensorflow_datasets_tests",
+    size = "medium",
+    srcs = ["tests/tensorflow_datasets_tests.py"],
+    tags = [
+        "exclusive",
+        "tensorflow-datasets",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_execution_optimizer_limit_pushdown",
     size = "medium",
     srcs = ["tests/test_execution_optimizer_limit_pushdown.py"],
