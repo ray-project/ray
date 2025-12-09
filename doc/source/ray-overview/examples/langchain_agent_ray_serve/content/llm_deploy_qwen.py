@@ -1,6 +1,6 @@
 from ray.serve.llm import LLMConfig, build_openai_app
 
-lllm_config = LLMConfig(
+llm_config = LLMConfig(
     model_loading_config=dict(
         # The name your clients will use in the OpenAI-compatible API.
         model_id="Qwen/Qwen3-4B-Instruct-2507-FP8",
