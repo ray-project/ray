@@ -123,8 +123,10 @@ class RaySyncer {
   /// it'll have a global view of the cluster.
   ///
   /// \param reporter The producer that generates the resource view message to be
-  /// broadcasted. \param receiver The consumer that consumes the resource view message
-  /// sent by other nodes in the cluster. \param broadcast_local_resource_view_update_ms
+  /// broadcasted.
+  /// \param receiver The consumer that consumes the resource view message
+  /// sent by other nodes in the cluster.
+  /// \param broadcast_local_resource_view_update_ms
   /// How often to broadcast the local resource view (ms). 0 means never broadcast.
   void Register(const ReporterInterface *reporter,
                 ReceiverInterface *receiver,
