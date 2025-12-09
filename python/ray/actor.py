@@ -473,12 +473,12 @@ def method(*args, **kwargs):
         if "enable_task_events" in kwargs and kwargs["enable_task_events"] is not None:
             method.__ray_enable_task_events__ = kwargs["enable_task_events"]
         if "tensor_transport" in kwargs:
-            tensor_transport = kwargs["tensor_transport"].upper()
+            tensor_transport = kwargs["tensor_transport"]
             from ray.experimental.gpu_object_manager.util import (
-                validate_tensor_transport,
+                normalize_and_validate_tensor_transport,
             )
 
-            validate_tensor_transport(tensor_transport)
+            tensor_transport = normalize_and_validate_tensor_transport(tensor_transport)
             method.__ray_tensor_transport__ = tensor_transport
 
         return method
@@ -657,7 +657,7 @@ class ActorMethod:
         # If the task call doesn't specify a tensor transport option, use `OBJECT_STORE`
         # as the default transport for this actor method.
         if tensor_transport is None:
-            tensor_transport = "OBJECT_STORE"
+            tensor_transport = TensorTransportEnum.OBJECT_STORE.name
         self._tensor_transport = tensor_transport
 
     def __call__(self, *args, **kwargs):
@@ -700,12 +700,11 @@ class ActorMethod:
 
         tensor_transport = options.get("tensor_transport", None)
         if tensor_transport is not None:
-            tensor_transport = tensor_transport.upper()
             from ray.experimental.gpu_object_manager.util import (
-                validate_tensor_transport,
+                normalize_and_validate_tensor_transport,
             )
 
-            validate_tensor_transport(tensor_transport)
+            tensor_transport = normalize_and_validate_tensor_transport(tensor_transport)
             options["tensor_transport"] = tensor_transport
 
         class FuncWrapper:
@@ -831,7 +830,7 @@ class ActorMethod:
         if tensor_transport is None:
             tensor_transport = self._tensor_transport
 
-        if tensor_transport != "OBJECT_STORE":
+        if tensor_transport != TensorTransportEnum.OBJECT_STORE.name:
             if num_returns != 1:
                 raise ValueError(
                     f"Currently, methods with tensor_transport={tensor_transport} only support 1 return value. "
@@ -887,7 +886,7 @@ class ActorMethod:
             invocation = self._decorator(invocation)
 
         object_refs = invocation(args, kwargs)
-        if tensor_transport != "OBJECT_STORE":
+        if tensor_transport != TensorTransportEnum.OBJECT_STORE.name:
             # Currently, we only support transfer tensor out-of-band when
             # num_returns is 1.
             assert isinstance(object_refs, ObjectRef)
@@ -994,8 +993,12 @@ class _ActorClassMethodMetadata(object):
 
         # Check whether any actor methods specify a non-default tensor transport.
         self.has_tensor_transport_methods = any(
-            getattr(method, "__ray_tensor_transport__", "OBJECT_STORE")
-            != "OBJECT_STORE"
+            getattr(
+                method,
+                "__ray_tensor_transport__",
+                TensorTransportEnum.OBJECT_STORE.name,
+            )
+            != TensorTransportEnum.OBJECT_STORE.name
             for _, method in actor_methods
         )
 
@@ -2167,7 +2170,10 @@ class ActorHandle(Generic[T]):
             generator_backpressure_num_objects = -1
 
         tensor_transport_enum = TensorTransportEnum.OBJECT_STORE
-        if tensor_transport is not None and tensor_transport != "OBJECT_STORE":
+        if (
+            tensor_transport is not None
+            and tensor_transport != TensorTransportEnum.OBJECT_STORE.name
+        ):
             tensor_transport_enum = TensorTransportEnum.DIRECT_TRANSPORT
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,

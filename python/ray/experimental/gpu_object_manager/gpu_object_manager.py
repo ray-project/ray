@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Set, Tu
 
 import ray
 from ray._private import ray_constants
+from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
 from ray.util.annotations import PublicAPI
 
@@ -340,9 +341,9 @@ class GPUObjectManager:
         Args:
             obj_id: The object ID of the GPU object.
             tensor_transport: The tensor transport to use to fetch the GPU object.
-                This should either be object store or the actual tensor transport for the RDT object.
+                This should either be object store or the tensor transport for the RDT object.
                 If this is None, the tensor transport backend of the RDT object will be used.
-                Note that NIXL is the only tensor transport that is supported for this right now.
+                Note that NIXL is the only supported RDT tensor transport right now.
 
         Returns:
             None
@@ -367,7 +368,7 @@ class GPUObjectManager:
         validate_one_sided(tensor_transport, "ray.get")
 
         if (
-            tensor_transport != "OBJECT_STORE"
+            tensor_transport != TensorTransportEnum.OBJECT_STORE.name
             and tensor_transport != tensor_transport_backend
         ):
             raise ValueError(
@@ -380,7 +381,7 @@ class GPUObjectManager:
             tensor_transport_backend
         )
 
-        if tensor_transport == "OBJECT_STORE":
+        if tensor_transport == TensorTransportEnum.OBJECT_STORE.name:
             tensors = ray.get(
                 src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
                     __ray_fetch_gpu_object__, obj_id

@@ -801,7 +801,7 @@ class Worker:
         value: Any,
         owner_address: Optional[str] = None,
         _is_experimental_channel: bool = False,
-        _tensor_transport: str = "OBJECT_STORE",
+        _tensor_transport: str = TensorTransportEnum.OBJECT_STORE.name,
     ):
         """Put value in the local object store.
 
@@ -835,16 +835,15 @@ class Worker:
                 "ray.ObjectRef in a list and call 'put' on it."
             )
         tensors = None
-        tensor_transport = _tensor_transport.upper()
         from ray.experimental.gpu_object_manager.util import (
+            normalize_and_validate_tensor_transport,
             validate_one_sided,
-            validate_tensor_transport,
         )
 
-        validate_tensor_transport(tensor_transport)
+        tensor_transport = normalize_and_validate_tensor_transport(_tensor_transport)
         validate_one_sided(tensor_transport, "ray.put")
         try:
-            if tensor_transport != "OBJECT_STORE":
+            if tensor_transport != TensorTransportEnum.OBJECT_STORE.name:
                 (
                     serialized_value,
                     tensors,
@@ -866,7 +865,7 @@ class Worker:
         pin_object = not _is_experimental_channel
 
         tensor_transport_enum = TensorTransportEnum.OBJECT_STORE
-        if tensor_transport != "OBJECT_STORE":
+        if tensor_transport != TensorTransportEnum.OBJECT_STORE.name:
             tensor_transport_enum = TensorTransportEnum.DIRECT_TRANSPORT
 
         # This *must* be the first place that we construct this python
@@ -992,18 +991,17 @@ class Worker:
         if skip_deserialization:
             return None, debugger_breakpoint
 
-        tensor_transport = (
-            _tensor_transport.upper() if _tensor_transport is not None else None
-        )
-        if tensor_transport is not None:
+        if _tensor_transport is not None:
             from ray.experimental.gpu_object_manager.util import (
-                validate_tensor_transport,
+                normalize_and_validate_tensor_transport,
             )
 
-            validate_tensor_transport(tensor_transport)
+            _tensor_transport = normalize_and_validate_tensor_transport(
+                _tensor_transport
+            )
 
         values = self.deserialize_objects(
-            serialized_objects, object_refs, tensor_transport_hint=tensor_transport
+            serialized_objects, object_refs, tensor_transport_hint=_tensor_transport
         )
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.
