@@ -8,6 +8,10 @@ build_arg_sets:
   py312:
     PYTHON_VERSION: "3.12"
     PYTHON_SHORT: "312"
+  py313:
+    PYTHON_VERSION: "3.13"
+    PYTHON_SHORT: "313"
+
 
 depsets:
   - name: ray_img_depset_${PYTHON_SHORT}
@@ -25,6 +29,7 @@ depsets:
       - py310
       - py311
       - py312
+      - py313
     pre_hooks:
       - ci/raydepsets/pre_hooks/build-placeholder-wheel.sh
       - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
@@ -48,6 +53,7 @@ depsets:
       - py310
       - py311
       - py312
+      - py313
 
   - name: ray_base_extra_testdeps_cuda_${PYTHON_SHORT}
     operation: expand
@@ -142,6 +148,7 @@ depsets:
       - py310
       - py311
       - py312
+      - py313
     include_setuptools: true
 
     # Second layer of the ray release images. Contains anyscale cli deps (and others)
@@ -161,3 +168,4 @@ depsets:
       - py310
       - py311
       - py312
+      - py313
