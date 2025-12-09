@@ -97,7 +97,7 @@ class _CheckpointManager:
         checkpoints should be deleted.
 
         Args:
-            checkpoint: Tracked checkpoint object to add to bookkeeping.
+            checkpoint_result: Tracked checkpoint object to add to bookkeeping.
         """
         self._latest_checkpoint_result = checkpoint_result
 
@@ -170,6 +170,10 @@ class _CheckpointManager:
 
         If `mode="min"`, the metric is negated so that the lowest score is
         treated as the best.
+
+        Args:
+            checkpoint: The checkpoint to get the score for.
+            flattened_metrics: Optionally, the flattened metrics dict for the checkpoint.
 
         Returns:
             Tuple: A tuple of (not_is_nan: bool, score: numbers.Number).
