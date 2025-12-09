@@ -88,9 +88,7 @@ class GroupManager(object):
         metadata as well.
         """
         backend = types.Backend(backend)
-        if backend == types.Backend.MPI:
-            raise RuntimeError("Ray does not support MPI.")
-        elif backend == types.Backend.GLOO or backend == types.Backend.TORCH_GLOO:
+        if backend == types.Backend.GLOO:
             # Rendezvous: ensure a MASTER_ADDR:MASTER_PORT is published in internal_kv.
             metadata_key = _get_master_addr_key(group_name)
             if rank == 0:
@@ -816,9 +814,6 @@ def _check_backend_availability(backend: types.Backend):
     elif backend == types.Backend.NCCL:
         if not nccl_available():
             raise RuntimeError("NCCL is not available.")
-    elif backend == types.Backend.TORCH_GLOO:
-        if not torch_distributed_available():
-            raise RuntimeError("torch.distributed is not available.")
 
 
 def _check_inside_actor():
