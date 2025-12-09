@@ -250,10 +250,7 @@ class FuseOperators(Rule):
 
         # only allow fusion of MapBatches -> StreamingRepartition
         if isinstance(down_logical_op, StreamingRepartition):
-            return (
-                isinstance(up_logical_op, MapBatches)
-                and up_logical_op._batch_size % down_logical_op.target_num_rows_per_block == 0
-            )
+            return isinstance(up_logical_op, MapBatches)
         # Other operators cannot fuse with StreamingRepartition.
         if isinstance(up_logical_op, StreamingRepartition):
             return False
@@ -276,7 +273,6 @@ class FuseOperators(Rule):
 
         assert isinstance(up_logical_op, MapBatches)
         assert isinstance(down_logical_op, StreamingRepartition)
-        assert up_logical_op._batch_size % down_logical_op.target_num_rows_per_block == 0
 
         batch_size = up_logical_op._batch_size
 
@@ -302,7 +298,9 @@ class FuseOperators(Rule):
             up_op.data_context,
             name=name,
             compute_strategy=compute,
-            ref_bundler=StreamingRepartitionRefBundler(batch_size),
+            ref_bundler=StreamingRepartitionRefBundler(
+                down_logical_op.target_num_rows_per_block
+            ),
             map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,

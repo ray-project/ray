@@ -9,9 +9,6 @@ from ray.data._internal.logical.interfaces import (
     Rule,
 )
 from ray.data._internal.logical.rules.combine_repartitions import CombineRepartitions
-from ray.data._internal.logical.rules.add_streaming_repartition_when_zip import (
-    AddStreamingRepartitionWhenZip,
-)
 from ray.data._internal.logical.rules.configure_map_task_memory import (
     ConfigureMapTaskMemoryUsingOutputSize,
 )
@@ -33,7 +30,6 @@ _LOGICAL_RULESET = Ruleset(
         ProjectionPushdown,
         PredicatePushdown,
         CombineRepartitions,
-        AddStreamingRepartitionWhenZip,
     ]
 )
 
