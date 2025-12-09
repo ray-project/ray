@@ -34,25 +34,6 @@ def test_from_tf_e2e(ray_start_regular_shared_2_cpus):
     _check_usage_record(["FromItems"])
 
 
-def test_from_torch_e2e(ray_start_regular_shared_2_cpus, tmp_path):
-    import torchvision
-
-    torch_dataset = torchvision.datasets.FashionMNIST(tmp_path, download=True)
-
-    ray_dataset = ray.data.from_torch(torch_dataset)
-
-    expected_data = list(torch_dataset)
-    actual_data = list(ray_dataset.take_all())
-    assert extract_values("item", actual_data) == expected_data
-
-    # Check that metadata fetch is included in stats.
-    assert "ReadTorch" in ray_dataset.stats()
-
-    # Underlying implementation uses `FromItems` operator
-    assert ray_dataset._plan._logical_plan.dag.name == "ReadTorch"
-    _check_usage_record(["ReadTorch"])
-
-
 def test_from_tf(ray_start_regular_shared):
     import tensorflow as tf
     import tensorflow_datasets as tfds
