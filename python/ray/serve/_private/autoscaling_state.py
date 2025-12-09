@@ -246,7 +246,7 @@ class DeploymentAutoscalingState:
         total_running_requests = total_num_requests - total_queued_requests
         # Adding this to overwrite policy state during application level autoscaling
         if override_policy_state is not None:
-            current_policy_state = override_policy_state
+            current_policy_state = override_policy_state.copy()
         elif self._policy_state is not None:
             current_policy_state = self._policy_state.copy()
         else:
