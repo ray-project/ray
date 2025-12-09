@@ -909,7 +909,7 @@ class Policy(metaclass=ABCMeta):
         """Whether this Policy holds a recurrent Model.
 
         Returns:
-            True if this Policy has-a RNN-based Model.
+            True if this Policy has an RNN-based Model.
         """
         return False
 
