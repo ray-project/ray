@@ -463,10 +463,12 @@
   working_dir: ml_user_tests
 
   frequency: nightly-3x
-  team: ml
+  team: rllib
 
   cluster:
     byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tune_rllib/compute_tpl_aws.yaml
@@ -849,7 +851,9 @@
   team: rllib
 
   cluster:
-    byod: {}
+    byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
     cluster_compute: tpl_cpu_1_large.yaml
 
   run:
@@ -965,10 +969,12 @@
   stable: false
 
   frequency: weekly
-  team: ml
+  team: rllib
 
   cluster:
     byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: many_ppo.yaml
