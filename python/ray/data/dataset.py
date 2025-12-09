@@ -1037,10 +1037,10 @@ class Dataset:
     ) -> "Dataset":
         """Add a column with monotonically increasing IDs. The generated IDs are
         guaranteed to be monotonically increasing and unique, but not consecutive.
-        The current implementation puts the partition ID in the upper 31 bits, and
-        the lower 33 bits represent the record number within each partition. The
-        assumption is that the dataset has less than 1 billion partitions, and each
-        partition has less than 8 billion records. The function is non-deterministic
+        The current implementation puts the block ID in the upper 31 bits, and
+        the lower 33 bits represent the record number within each block. The
+        assumption is that the dataset has less than 1 billion blocks, and each
+        block has less than 8 billion records. The function is non-deterministic
         because its result depends on task IDs.
 
         Examples:
@@ -1084,8 +1084,8 @@ class Dataset:
             assert ctx is not None, "TaskContext not found"
 
             # stateful row count that will accumulate for each batch
-            if not hasattr(ctx, "_row_counter"):
-                ctx._row_counter = 0
+            if "_row_counter" not in ctx.kwargs:
+                ctx.kwargs["_row_counter"] = 0
 
             if isinstance(batch, pa.Table):
                 num_rows = batch.num_rows
@@ -1096,8 +1096,8 @@ class Dataset:
             else:
                 raise ValueError(f"Unsupported batch format: {type(batch)}")
 
-            start_idx = ctx._row_counter
-            ctx._row_counter += num_rows
+            start_idx = ctx.kwargs["_row_counter"]
+            ctx.kwargs["_row_counter"] += num_rows
 
             # using task ID as effective partition ID
             partition_mask = ctx.task_idx << 33
