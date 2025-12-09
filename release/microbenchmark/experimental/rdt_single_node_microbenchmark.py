@@ -251,7 +251,7 @@ for test_func in TEST_FUNCS:
         ) and transport != "torch":
             continue
         if transport == "torch" and (
-            test_func != torch_latency or test_func != torch_throughput
+            test_func != torch_latency and test_func != torch_throughput
         ):
             continue
         bench_results.extend(do_benchmark(transport, device, test_func))
