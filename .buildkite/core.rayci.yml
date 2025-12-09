@@ -37,7 +37,6 @@ steps:
     wanda: ci/docker/min.build.wanda.yaml
     tags: cibase
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -307,7 +306,6 @@ steps:
     depends_on:
       - minbuild-core
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
