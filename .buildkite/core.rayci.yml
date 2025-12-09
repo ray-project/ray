@@ -14,6 +14,8 @@ steps:
       - "3.10"
       - "3.12"
     env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_build-py{{matrix}}
+      IMAGE_TO: corebuild-py{{matrix}}
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_build-multipy
 
@@ -239,10 +241,8 @@ steps:
         --except-tags kubernetes,manual
 
   - label: ":ray: core: wheel tests"
-    tags:
-      - linux_wheels
-      # TODO(aslonnie): fix this test
-      - skip-on-premerge
+    key: core-wheel-tests
+    tags: linux_wheels
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core
