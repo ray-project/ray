@@ -57,6 +57,7 @@ vision_processor_config = vLLMEngineProcessorConfig(
 # __vlm_config_example_end__
 
 
+# __vlm_preprocess_example_start__
 def vision_preprocess(row: dict) -> dict:
     """
     Preprocessing function for vision-language model inputs.
@@ -124,6 +125,8 @@ def vision_postprocess(row: dict) -> dict:
     }
 
 
+# __vlm_preprocess_example_end__
+
 vision_processor = build_llm_processor(
     vision_processor_config,
     preprocess=vision_preprocess,
@@ -186,14 +189,17 @@ def run_vlm_example():
     vision_dataset = load_vision_dataset()
 
     if vision_dataset:
-        # Build processor with preprocessing
-        processor = build_llm_processor(config, preprocess=vision_preprocess)
+        # Build processor with preprocessing and postprocessing
+        processor = build_llm_processor(
+            config, preprocess=vision_preprocess, postprocess=vision_postprocess
+        )
 
         print("VLM processor configured successfully")
         print(f"Model: {config.model_source}")
         print(f"Has image support: {config.has_image}")
         result = processor(vision_dataset).take_all()
         return config, processor, result
+    # __vlm_run_example_end__
     return None, None, None
 
 

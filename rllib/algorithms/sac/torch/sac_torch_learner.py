@@ -1,24 +1,25 @@
-import gymnasium as gym
 from typing import Any, Dict
+
+import gymnasium as gym
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.torch.dqn_torch_learner import DQNTorchLearner
 from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.algorithms.sac.sac_learner import (
-    LOGPS_KEY,
-    QF_LOSS_KEY,
-    QF_MEAN_KEY,
-    QF_MAX_KEY,
-    QF_MIN_KEY,
-    QF_PREDS,
-    QF_TWIN_LOSS_KEY,
-    QF_TWIN_PREDS,
-    TD_ERROR_MEAN_KEY,
     ACTION_LOG_PROBS,
     ACTION_LOG_PROBS_NEXT,
     ACTION_PROBS,
     ACTION_PROBS_NEXT,
+    LOGPS_KEY,
+    QF_LOSS_KEY,
+    QF_MAX_KEY,
+    QF_MEAN_KEY,
+    QF_MIN_KEY,
+    QF_PREDS,
     QF_TARGET_NEXT,
+    QF_TWIN_LOSS_KEY,
+    QF_TWIN_PREDS,
+    TD_ERROR_MEAN_KEY,
     SACLearner,
 )
 from ray.rllib.core.columns import Columns
@@ -222,14 +223,13 @@ class SACTorchLearner(DQNTorchLearner, SACLearner):
         if config.twin_q:
             total_loss += critic_twin_loss
 
-        # Log the TD-error with reduce=None, such that - in case we have n parallel
+        # Log the TD-error with reduce="item_series", such that - in case we have n parallel
         # Learners - we will re-concatenate the produced TD-error tensors to yield
         # a 1:1 representation of the original batch.
         self.metrics.log_value(
             key=(module_id, TD_ERROR_KEY),
             value=td_error,
-            reduce=None,
-            clear_on_reduce=True,
+            reduce="item_series",
         )
         # Log other important loss stats (reduce=mean (default), but with window=1
         # in order to keep them history free).
@@ -355,14 +355,13 @@ class SACTorchLearner(DQNTorchLearner, SACLearner):
             # TODO (simon): Check, if we need to multiply the critic_loss then with 0.5.
             total_loss += critic_twin_loss
 
-        # Log the TD-error with reduce=None, such that - in case we have n parallel
+        # Log the TD-error with reduce="item_series", such that - in case we have n parallel
         # Learners - we will re-concatenate the produced TD-error tensors to yield
         # a 1:1 representation of the original batch.
         self.metrics.log_value(
             key=(module_id, TD_ERROR_KEY),
             value=td_error,
-            reduce=None,
-            clear_on_reduce=True,
+            reduce="item_series",
         )
         # Log other important loss stats (reduce=mean (default), but with window=1
         # in order to keep them history free).

@@ -28,7 +28,7 @@ def test_min_max_resource_requirements(ray_start_regular_shared, restore_data_co
     assert (
         # At a minimum, you need enough processors to run one task and enough object
         # store memory for a pending task.
-        min_resource_usage_bound == ExecutionResources(cpu=1, object_store_memory=3)
+        min_resource_usage_bound == ExecutionResources.zero()
         and max_resource_usage_bound == ExecutionResources.for_limits()
     )
 

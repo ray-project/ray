@@ -1,6 +1,7 @@
 import { Box, Button, Grid, MenuItem, Select } from "@mui/material";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useContext, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { GlobalContext } from "../../App";
 import LogVirtualView from "../../components/LogView/LogVirtualView";
 import TitleCard from "../../components/TitleCard";
 import { getJmap, getJstack, getJstat } from "../../service/util";
@@ -13,6 +14,7 @@ const CMDResult = () => {
   };
   const [result, setResult] = useState<string>();
   const [option, setOption] = useState("gcutil");
+  const { themeMode } = useContext(GlobalContext);
   const executeJstat = useCallback(
     () =>
       getJstat(ip, pid, option)
@@ -70,6 +72,7 @@ const CMDResult = () => {
                 <Select
                   value={option}
                   onChange={(e) => setOption(e.target.value as string)}
+                  sx={{ "& .MuiSvgIcon-root": { color: "text.secondary" } }}
                 >
                   {[
                     "class",
@@ -101,6 +104,7 @@ const CMDResult = () => {
           content={result || "loading"}
           language="prolog"
           height={800}
+          theme={themeMode}
         />
       </TitleCard>
     </Box>

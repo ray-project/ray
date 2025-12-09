@@ -1,6 +1,6 @@
 import unittest
-import ray
 
+import ray
 from ray.rllib.algorithms.marwil import MARWILConfig
 from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.offline.feature_importance import FeatureImportance
@@ -41,7 +41,8 @@ class TestFeatureImportance(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -31,6 +31,7 @@ class DefaultActorAutoscaler(ActorAutoscaler):
         self._actor_pool_scaling_down_threshold = (
             config.actor_pool_util_downscaling_threshold
         )
+        self._actor_pool_max_upscaling_delta = config.actor_pool_max_upscaling_delta
 
         self._validate_autoscaling_config()
 
@@ -51,7 +52,7 @@ class DefaultActorAutoscaler(ActorAutoscaler):
     ) -> ActorPoolScalingRequest:
         # If all inputs have been consumed, short-circuit
         if op.completed() or (
-            op._inputs_complete and op_state.total_enqueued_input_bundles() == 0
+            op._inputs_complete and op_state.total_enqueued_input_blocks() == 0
         ):
             return ActorPoolScalingRequest.downscale(
                 delta=-1, force=True, reason="consumed all inputs"
@@ -89,11 +90,25 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                     reason="operator exceeding resource quota"
                 )
             budget = self._resource_manager.get_budget(op)
-            if _get_max_scale_up(actor_pool, budget) == 0:
+            max_scale_up = _get_max_scale_up(actor_pool, budget)
+            if max_scale_up == 0:
                 return ActorPoolScalingRequest.no_op(reason="exceeded resource limits")
 
+            # Calculate desired delta based on utilization
+            plan_delta = math.ceil(
+                actor_pool.current_size()
+                * (util / self._actor_pool_scaling_up_threshold - 1)
+            )
+
+            upscale_capacities = self._get_upscale_capacities(actor_pool, max_scale_up)
+            delta = min(
+                plan_delta,
+                *upscale_capacities,
+            )
+            delta = max(1, delta)  # At least scale up by 1
+
             return ActorPoolScalingRequest.upscale(
-                delta=1,
+                delta=delta,
                 reason=(
                     f"utilization of {util} >= "
                     f"{self._actor_pool_scaling_up_threshold}"
@@ -120,24 +135,60 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             )
 
     def _validate_autoscaling_config(self):
+        # Validate that max upscaling delta is positive to prevent override by safeguard
+        if self._actor_pool_max_upscaling_delta <= 0:
+            raise ValueError(
+                f"actor_pool_max_upscaling_delta must be positive, "
+                f"got {self._actor_pool_max_upscaling_delta}"
+            )
+        # Validate that upscaling threshold is positive to prevent division by zero
+        # and incorrect scaling calculations
+        if self._actor_pool_scaling_up_threshold <= 0:
+            raise ValueError(
+                f"actor_pool_util_upscaling_threshold must be positive, "
+                f"got {self._actor_pool_scaling_up_threshold}"
+            )
+
         for op, state in self._topology.items():
             for actor_pool in op.get_autoscaling_actor_pools():
                 self._validate_actor_pool_autoscaling_config(actor_pool, op)
 
-    def _validate_actor_pool_autoscaling_config(
-        self, actor_pool: AutoscalingActorPool, op: "PhysicalOperator"
+    def _get_upscale_capacities(
+        self,
+        actor_pool: "AutoscalingActorPool",
+        max_scale_up: Optional[int],
     ):
+        limits = []
+        if max_scale_up is not None:
+            limits.append(max_scale_up)
+        limits.append(self._actor_pool_max_upscaling_delta)
+        limits.append(actor_pool.max_size() - actor_pool.current_size())
+        return limits
+
+    def _validate_actor_pool_autoscaling_config(
+        self,
+        actor_pool: "AutoscalingActorPool",
+        op: "PhysicalOperator",
+    ) -> None:
+        """Validate autoscaling configuration.
+
+        Args:
+            actor_pool: Actor pool to validate configuration thereof.
+            op: ``PhysicalOperator`` using target actor pool.
+        """
+        max_tasks_in_flight_per_actor = actor_pool.max_tasks_in_flight_per_actor()
+        max_concurrency = actor_pool.max_actor_concurrency()
+
         if (
-            actor_pool.max_actor_concurrency()
-            == actor_pool.max_tasks_in_flight_per_actor()
-            and self._actor_pool_scaling_up_threshold > 1.0
+            max_tasks_in_flight_per_actor / max_concurrency
+            < self._actor_pool_scaling_up_threshold
         ):
             logger.warning(
                 f"{WARN_PREFIX} Actor Pool configuration of the {op} will not allow it to scale up: "
-                f"upscaling threshold ({self._actor_pool_scaling_up_threshold}) is above "
-                f"100%, but actor pool utilization won't be able to exceed it because "
-                f"actor pool is configured to avoid buffering (its "
-                f"`max_tasks_in_flight_per_actor` == `max_concurrency`)"
+                f"configured utilization threshold ({self._actor_pool_scaling_up_threshold * 100}%) "
+                f"couldn't be reached with configured max_concurrency={max_concurrency} "
+                f"and max_tasks_in_flight_per_actor={max_tasks_in_flight_per_actor} "
+                f"(max utilization will be max_tasks_in_flight_per_actor / max_concurrency = {(max_tasks_in_flight_per_actor / max_concurrency) * 100:g}%)"
             )
 
 

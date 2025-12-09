@@ -89,7 +89,9 @@ A batch contains data from multiple rows. To inspect batches, call
 `Dataset.take_batch() <ray.data.Dataset.take_batch>`.
 
 By default, Ray Data represents batches as dicts of NumPy ndarrays. To change the type
-of the returned batch, set ``batch_format``.
+of the returned batch, set ``batch_format``. The batch format is independent from how
+Ray Data stores the underlying blocks, so you can use any batch format regardless of
+the internal block representation.
 
 .. tab-set::
 
@@ -128,6 +130,31 @@ of the returned batch, set ``batch_format``.
                sepal length (cm)  sepal width (cm)  ...  petal width (cm)  target
             0                5.1               3.5  ...               0.2       0
             1                4.9               3.0  ...               0.2       0
+    .. tab-item:: pyarrow
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+
+            batch = ds.take_batch(batch_size=2, batch_format="pyarrow")
+            print(batch)
+
+        .. testoutput::
+
+            pyarrow.Table
+            sepal length (cm): double
+            sepal width (cm): double
+            petal length (cm): double
+            petal width (cm): double
+            target: int64
+            ----
+            sepal length (cm): [[5.1,4.9]]
+            sepal width (cm): [[3.5,3]]
+            petal length (cm): [[1.4,1.4]]
+            petal width (cm): [[0.2,0.2]]
+            target: [[0,0]]
 
 For more information on working with batches, see
 :ref:`Transforming batches <transforming_batches>` and

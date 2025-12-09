@@ -144,6 +144,15 @@ def test_get_configs_dir():
         assert f"{tmpdir}/test2.depsets.yaml" in configs_dir
 
 
+def test_load_configs_with_wildcard_config_path():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        copy_data_to_tmpdir(tmpdir)
+        workspace = Workspace(dir=tmpdir)
+        config = workspace.load_configs(config_path=f"{tmpdir}/*.depsets.yaml")
+        assert config.depsets is not None
+        assert len(config.depsets) == 10
+
+
 def test_invalid_build_arg_set_in_config():
     with tempfile.TemporaryDirectory() as tmpdir:
         copy_data_to_tmpdir(tmpdir)
@@ -156,14 +165,13 @@ def test_invalid_build_arg_set_in_config():
         )
         write_to_config_file(
             tmpdir,
-            depset,
+            [depset],
             "test.depsets.yaml",
             build_arg_sets=["invalid_build_arg_set"],
         )
         workspace = Workspace(dir=tmpdir)
         with unittest.TestCase().assertRaises(KeyError) as e:
             workspace.load_config(config_path=Path(tmpdir) / "test.depsets.yaml")
-        print(str(e.exception))
         assert (
             "Build arg set invalid_build_arg_set not found in config test.depsets.yaml"
             in str(e.exception)

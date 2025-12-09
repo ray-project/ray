@@ -222,6 +222,7 @@ Set up a training function
 
 Ray Train sets up the distributed process group on each worker before entering the training function.
 Put all your logic into this function, including:
+
 - Dataset construction and preprocessing
 - Model initialization
 - Transformers trainer definition
