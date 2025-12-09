@@ -58,7 +58,9 @@ logger = logging.getLogger(__name__)
     error=False,
 )
 def add_rllib_example_script_args(*args, **kwargs):
-    ...
+    from ray.rllib.utils.test_utils import add_rllib_example_script_args
+
+    return add_rllib_example_script_args(*args, **kwargs)
 
 
 @Deprecated(
@@ -67,7 +69,9 @@ def add_rllib_example_script_args(*args, **kwargs):
     error=False,
 )
 def should_stop(*args, **kwargs):
-    ...
+    from ray.rllib.utils.test_utils import should_stop
+
+    return should_stop(*args, **kwargs)
 
 
 @Deprecated(
@@ -76,7 +80,9 @@ def should_stop(*args, **kwargs):
     error=False,
 )
 def run_rllib_example_script_experiment(*args, **kwargs):
-    ...
+    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
+
+    return run_rllib_example_script_experiment(*args, **kwargs)
 
 
 def check(x, y, decimals=5, atol=None, rtol=None, false=False):
