@@ -468,7 +468,7 @@ def method(*args, **kwargs):
                 )
             # Validate num_returns='streaming' or 'dynamic' for generator functions
             if num_returns in ("streaming", "dynamic"):
-                if not inspect.isgeneratorfunction(method):
+                if not (inspect.isgeneratorfunction(method) or inspect.isasyncgenfunction(method)):
                     raise ValueError(
                         f"@ray.method with num_returns='{num_returns}' can only be used "
                         f"with generator methods (methods that use 'yield'). "
