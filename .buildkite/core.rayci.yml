@@ -60,7 +60,7 @@ steps:
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --python-version 3.10 --build-name corebuild-py3.10
-        --except-tags custom_setup,cgroup
+        --except-tags custom_setup
         --install-mask all-ray-libraries
 
   - label: ":ray: core: python {{matrix.python}} tests ({{matrix.worker_id}})"
@@ -74,7 +74,8 @@ steps:
         --install-mask all-ray-libraries
         --workers 4 --worker-id "{{matrix.worker_id}}" --parallelism-per-worker 3
         --python-version {{matrix.python}} --build-name corebuild-py{{matrix.python}}
-        --except-tags custom_setup,cgroup
+        --except-tags custom_setup
+    depends_on: corebuild-multipy
     matrix:
       setup:
         python: ["3.12"]
@@ -103,7 +104,7 @@ steps:
         --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
-        --except-tags custom_setup,cgroup
+        --except-tags custom_setup
         --python-version 3.10 --build-name corebuild-py3.10
 
   - label: ":ray: core: memory pressure tests"
