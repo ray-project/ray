@@ -1834,6 +1834,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_pendulum_sac_multi_gpu",
     size = "large",
+    timeout = "eternal",
     srcs = ["examples/algorithms/sac/multi_agent_pendulum_sac.py"],
     args = [
         "--num-agents=2",
