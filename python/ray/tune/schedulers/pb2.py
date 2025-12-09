@@ -135,10 +135,6 @@ def _select_config(
         )
         m.fit(X, y)
 
-    # Clip lengthscale to valid range after optimization
-    if hasattr(m.kernel_, "lengthscale"):
-        m.kernel_.lengthscale = np.clip(m.kernel_.lengthscale, 1e-5, 1)
-
     if current is None:
         m1 = deepcopy(m)
     else:
