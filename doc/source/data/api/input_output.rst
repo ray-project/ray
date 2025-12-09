@@ -329,6 +329,15 @@ Torch
 
    from_torch
 
+Hugging Face
+------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   from_huggingface
+
 TensorFlow
 ----------
 
