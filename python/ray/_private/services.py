@@ -762,6 +762,9 @@ def write_node_id(session_dir: str, node_id: str) -> None:
             try:
                 with file_path.open() as f:
                     node_ids = json.load(f)
+                # Ensure node_ids is a list, even if JSON is valid but not a list
+                if not isinstance(node_ids, list):
+                    node_ids = []
             except (json.JSONDecodeError, TypeError):
                 # If file is corrupted, start fresh
                 node_ids = []
