@@ -224,15 +224,12 @@ Choosing the right batch format
 When choosing appropriate batch format for your ``map_batches`` primary consideration is a trade-off of convenience vs performance:
 
 1. Batches are a sliding window into the underlying block: the UDF is invoked with a subset of rows of the underlying block that make up the current batch of specified ``batch_size``. Specifying ``batch_size=None`` makes batch include all rows of the block in a single batch.
-
 2. Depending on the batch format, such view can either be a *zero-copy* (when batch format matches
 block type of either ``pandas`` or ``pyarrow``) or copying one (when the batch format differs from the block type).
 
 For example, if the underlying block type is Arrow, specifying ``batch_format="numpy"`` or ``batch_format="pandas"``  might invoke a copy on the underlying data when converting it from the underlying block type.
 
-Ray Data also strives to minimize the amount of data conversions: for example, if your ``map_batches`` operation returns Pandas batches, then these batches are combined into blocks *without* conversion and propagated further as Pandas blocks.
-
-Most Ray Data datasources produce Arrow blocks, so using batch format ``pyarrow`` can avoid unnecessary data conversions.
+Ray Data also strives to minimize the amount of data conversions: for example, if your ``map_batches`` operation returns Pandas batches, then these batches are combined into blocks *without* conversion and propagated further as Pandas blocks. Most Ray Data datasources produce Arrow blocks, so using batch format ``pyarrow`` can avoid unnecessary data conversions.
 
 If you'd like to use a more ergonomic API for transformations but avoid performance overheads, you can consider using ``polars`` inside your ``map_batches`` operation with ``batch_format="pyarrow"`` as follows:
 
