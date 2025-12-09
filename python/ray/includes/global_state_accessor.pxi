@@ -279,6 +279,7 @@ cdef class GlobalStateAccessor:
             "raylet_socket_name": c_node_info.raylet_socket_name().decode(),
             "node_manager_port": c_node_info.node_manager_port(),
             "node_id": c_node_info.node_id().hex(),
+            "runtime_env_agent_port": c_node_info.runtime_env_agent_port(),
         }
 
     def get_node(self, node_id):

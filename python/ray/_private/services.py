@@ -2352,7 +2352,6 @@ def start_ray_client_server(
     serialized_runtime_env_context: Optional[str] = None,
     runtime_env_agent_ip: Optional[str] = None,
     runtime_env_agent_port: int = 0,
-    runtime_env_agent_port_read_handle: Optional[int] = None,
 ):
     """Run the server process of the Ray client.
 
@@ -2374,10 +2373,7 @@ def start_ray_client_server(
         runtime_env_agent_ip: The IP address of the runtime env agent.
             Required for proxy mode.
         runtime_env_agent_port: The port of the runtime_env_agent.
-            Only used in proxy mode. Defaults to 0 (self-binding).
-        runtime_env_agent_port_read_handle: Pipe read handle for receiving the
-            runtime env agent port. Only used in proxy mode. If provided,
-            reads port from pipe instead of using runtime_env_agent_port.
+            Only used in proxy mode. If 0, the port will be fetched from GCS.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -2410,18 +2406,10 @@ def start_ray_client_server(
 
     if server_type == "proxy":
         assert len(runtime_env_agent_ip) > 0
-        assert runtime_env_agent_port > 0 or (
-            runtime_env_agent_port == 0
-            and runtime_env_agent_port_read_handle is not None
-        )
-
+        assert runtime_env_agent_port >= 0
     if runtime_env_agent_ip:
         command.append(f"--runtime-env-agent-ip={runtime_env_agent_ip}")
         command.append(f"--runtime-env-agent-port={runtime_env_agent_port}")
-        if runtime_env_agent_port_read_handle is not None:
-            command.append(
-                f"--runtime-env-agent-port-read-handle={runtime_env_agent_port_read_handle}"
-            )
 
     process_info = start_ray_process(
         command,
@@ -2429,9 +2417,6 @@ def start_ray_client_server(
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         fate_share=fate_share,
-        pass_handles=[runtime_env_agent_port_read_handle]
-        if runtime_env_agent_port_read_handle is not None
-        else None,
     )
     return process_info
 

@@ -26,9 +26,12 @@ from ray._private.authentication.http_token_authentication import (
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.grpc_utils import init_grpc_channel
 from ray._private.parameter import RayParams
-from ray._private.pipe import Pipe
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.services import ProcessInfo, start_ray_client_server
+from ray._private.services import (
+    ProcessInfo,
+    get_node_to_connect_for_driver,
+    start_ray_client_server,
+)
 from ray._private.tls_utils import add_port_to_grpc_server
 from ray._private.utils import detect_fate_sharing_support
 from ray._raylet import GcsClient
@@ -124,7 +127,6 @@ class ProxyManager:
         redis_username: Optional[str] = None,
         redis_password: Optional[str] = None,
         runtime_env_agent_port: int = 0,
-        runtime_env_agent_port_read_handle: Optional[int] = None,
     ):
         self.servers: Dict[str, SpecificServer] = dict()
         self.server_lock = RLock()
@@ -141,20 +143,10 @@ class ProxyManager:
         self.fate_share = bool(detect_fate_sharing_support())
         self._node: Optional[ray._private.node.Node] = None
 
-        assert runtime_env_agent_port > 0 or (
-            runtime_env_agent_port == 0
-            and runtime_env_agent_port_read_handle is not None
-        )
-
-        if runtime_env_agent_port_read_handle is not None:
-            with Pipe.from_reader_handle(runtime_env_agent_port_read_handle) as pipe:
-                try:
-                    runtime_env_agent_port = int(pipe.read().strip())
-                except RuntimeError as e:
-                    raise RuntimeError(
-                        "Failed to receive runtime env agent port. "
-                        "Please check if the runtime env agent started successfully."
-                    ) from e
+        # If runtime_env_agent_port is 0, fetch it from GCS
+        if runtime_env_agent_port == 0:
+            node_info = get_node_to_connect_for_driver(address, runtime_env_agent_ip)
+            runtime_env_agent_port = node_info["runtime_env_agent_port"]
 
         self._runtime_env_agent_address = (
             f"http://{build_address(runtime_env_agent_ip, runtime_env_agent_port)}"
@@ -888,7 +880,6 @@ def serve_proxier(
     redis_password: Optional[str] = None,
     session_dir: Optional[str] = None,
     runtime_env_agent_port: int = 0,
-    runtime_env_agent_port_read_handle: Optional[int] = None,
 ):
     # Initialize internal KV to be used to upload and download working_dir
     # before calling ray.init within the RayletServicers.
@@ -913,7 +904,6 @@ def serve_proxier(
         redis_username=redis_username,
         redis_password=redis_password,
         runtime_env_agent_port=runtime_env_agent_port,
-        runtime_env_agent_port_read_handle=runtime_env_agent_port_read_handle,
     )
     task_servicer = RayletServicerProxy(None, proxy_manager)
     data_servicer = DataServicerProxy(proxy_manager)

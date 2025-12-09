@@ -319,10 +319,6 @@ class Node:
             runtime_env_agent_port=ray_params.runtime_env_agent_port or 0,
         )
 
-        # Pipe for runtime_env_agent to send port to ray_client_server.
-        # Created lazily when runtime_env_agent_port == 0 (auto-assign).
-        self._runtime_env_agent_port_pipe_for_ray_client = None
-
         # Pick a GCS server port.
         if head:
             gcs_server_port = int(
@@ -1243,14 +1239,6 @@ class Node:
             )
             runtime_env_agent_port_write_handles.append(handle_for_raylet)
 
-            if self.should_start_ray_client_server():
-                if self._runtime_env_agent_port_pipe_for_ray_client is None:
-                    self._runtime_env_agent_port_pipe_for_ray_client = Pipe()
-                handle_for_ray_client = (
-                    self._runtime_env_agent_port_pipe_for_ray_client.make_writer_handle()
-                )
-                runtime_env_agent_port_write_handles.append(handle_for_ray_client)
-
         process_info = ray._private.services.start_raylet(
             self.redis_address,
             self.gcs_address,
@@ -1303,9 +1291,6 @@ class Node:
             resource_isolation_config=self.resource_isolation_config,
         )
 
-        if self._runtime_env_agent_port_pipe_for_ray_client:
-            self._runtime_env_agent_port_pipe_for_ray_client.close_writer_handle()
-
         if runtime_env_agent_port_pipe_for_raylet:
             runtime_env_agent_port_pipe_for_raylet.close_writer_handle()
             try:
@@ -1356,14 +1341,6 @@ class Node:
             "ray_client_server", unique=True
         )
 
-        read_handle = None
-        if self._ray_params.runtime_env_agent_port == 0:
-            if self._runtime_env_agent_port_pipe_for_ray_client is None:
-                self._runtime_env_agent_port_pipe_for_ray_client = Pipe()
-            read_handle = (
-                self._runtime_env_agent_port_pipe_for_ray_client.make_reader_handle()
-            )
-
         process_info = ray._private.services.start_ray_client_server(
             self.address,
             self._node_ip_address,
@@ -1375,11 +1352,7 @@ class Node:
             fate_share=self.kernel_fate_share,
             runtime_env_agent_ip=self._node_ip_address,
             runtime_env_agent_port=self._ray_params.runtime_env_agent_port,
-            runtime_env_agent_port_read_handle=read_handle,
         )
-
-        if self._runtime_env_agent_port_pipe_for_ray_client:
-            self._runtime_env_agent_port_pipe_for_ray_client.close_reader_handle()
 
         assert ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [

@@ -884,16 +884,7 @@ def main():
         type=int,
         default=0,
         help="The port of the runtime_env_agent. Only used in proxy mode. "
-        "Either this or --runtime-env-agent-port-read-handle must be provided.",
-    )
-    parser.add_argument(
-        "--runtime-env-agent-port-read-handle",
-        required=False,
-        type=int,
-        default=None,
-        help="Pipe read handle for receiving runtime env agent port. "
-        "Only used in proxy mode. Either this or --runtime-env-agent-port must be "
-        "provided.",
+        "If 0, the port will be fetched from GCS.",
     )
     parser.add_argument(
         "--runtime-env-agent-ip",
@@ -925,7 +916,6 @@ def main():
             redis_username=args.redis_username,
             redis_password=args.redis_password,
             runtime_env_agent_port=args.runtime_env_agent_port,
-            runtime_env_agent_port_read_handle=args.runtime_env_agent_port_read_handle,
         )
     else:
         server = serve(args.host, args.port, ray_connect_handler)
