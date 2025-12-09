@@ -45,6 +45,9 @@ except ImportError:
     # vLLM not installed or older version without this exception
     pass
 
+# Length of prompt snippet to surface in case of recoverable error
+_MAX_PROMPT_LENGTH_IN_ERROR = 500
+
 
 class vLLMTaskType(str, Enum):
     """The type of task to run on the vLLM engine."""
@@ -614,11 +617,10 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 batch_uuid.hex,
                 error_msg,
             )
-            # Include original prompt for debuggability. Truncate if very long
-            # to avoid bloating the output.
+            # Include snippet of failed prompt
             prompt = row.get("prompt", "")
-            if len(prompt) > 500:
-                prompt = prompt[:500] + "...[truncated]"
+            if len(prompt) > _MAX_PROMPT_LENGTH_IN_ERROR:
+                prompt = prompt[:_MAX_PROMPT_LENGTH_IN_ERROR] + "...[truncated]"
             return {
                 self.IDX_IN_BATCH_COLUMN: idx_in_batch,
                 "batch_uuid": batch_uuid.hex,
