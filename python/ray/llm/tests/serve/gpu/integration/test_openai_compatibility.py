@@ -143,6 +143,28 @@ class TestOpenAICompatibility:
         assert data["model"] == expected_model
         assert data["choices"][0]["message"]["content"]
 
+    def test_chat_without_model_parameter_multiple_models(
+        self, testing_multiple_models
+    ):  # noqa: F811
+        """Test that chat completions return 400 when model not specified with multiple models.
+
+        When multiple models are configured and the model parameter is not specified,
+        an HTTP 400 Bad Request should be returned.
+        """
+        client, model_ids = testing_multiple_models
+        assert len(model_ids) > 1, "This test requires multiple models"
+        # Use requests directly since OpenAI client requires model parameter
+        response = requests.post(
+            f"{client.base_url}chat/completions",
+            json={
+                "messages": [{"role": "user", "content": "Hello world"}],
+            },
+            headers={"Authorization": f"Bearer {client.api_key}"},
+        )
+        assert (
+            response.status_code == 400
+        ), f"Expected 400, got {response.status_code}: {response.text}"
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
