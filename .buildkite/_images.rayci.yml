@@ -8,7 +8,6 @@ steps:
       - docker
     wanda: docker/base-deps/cpu.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -22,7 +21,6 @@ steps:
     label: "wanda: ray-py{{matrix}}-cpu-base-extra"
     wanda: docker/base-extra/cpu.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -43,7 +41,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
@@ -70,7 +67,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
@@ -135,7 +131,6 @@ steps:
     wanda: docker/ray-ml/cpu.wanda.yaml
     depends_on: raycpubase
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
     env:
@@ -145,7 +140,6 @@ steps:
     label: "wanda: ray-ml-py{{matrix}}-cpu-base-extra"
     wanda: docker/base-extra/cpu.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
     env:
@@ -165,7 +159,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
         cuda:
@@ -180,7 +173,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
         cuda:
