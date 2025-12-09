@@ -2580,18 +2580,18 @@ def stateful_app_level_policy(contexts):
     is persisted and passed back into subsequent policy invocations.
     """
 
-    # Use any one deployment's context as representative for the shared app level state.
-    _, example_ctx = next(iter(contexts.items()))
-
-    prev_counter = 0
-    if example_ctx.policy_state:
-        prev_counter = example_ctx.policy_state.get("counter", 0)
-
+    # Increment the internal state everytime the policy is called
+    new_state = {}
+    for deployment_id, ctx in contexts.items():
+        prev_counter = 0
+        if ctx.policy_state:
+            prev_counter = ctx.policy_state.get("counter", 0)
+            new_state[deployment_id] = prev_counter + 1
     # Scale all deployments to 3 replicas
     decisions = {deployment_id: 3 for deployment_id in contexts.keys()}
 
     # Persist updated counter for next iteration.
-    return decisions, {"counter": prev_counter + 1}
+    return decisions, new_state
 
 
 class TestApplicationLevelAutoscaling:
@@ -3238,7 +3238,8 @@ class TestApplicationLevelAutoscaling:
 
         # The stateful policy should have incremented its counter across calls.
         app_autoscaling_state = asm._app_autoscaling_states["test_app"]
-        assert app_autoscaling_state._policy_state.get("counter") == 3
+        for _, state in app_autoscaling_state._policy_state.items():
+            assert state.get("counter") == 3
 
 
 def test_get_external_scaler_enabled(mocked_application_state_manager):
