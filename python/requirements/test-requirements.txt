@@ -141,6 +141,7 @@ opentelemetry-proto>=1.39.0
 google-cloud-bigquery>=3.38.0
 google-cloud-bigquery-storage>=2.35.0
 tensorboard>=2.20.0
+scipy==1.14.1
 # tensorflow-metadata>=1.17.2
 # packaging>=25.0
 
