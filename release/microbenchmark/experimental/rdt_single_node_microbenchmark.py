@@ -109,7 +109,7 @@ def throughput_same_send_per_recv(
 
 def latency_test(_num_transfers, transport, size, device, sender, receiver):
     times = []
-    for i in range(10):
+    for _ in range(10):
         start = time.perf_counter()
         ray.get(
             receiver.recv.remote(
@@ -144,8 +144,8 @@ TEST_FUNCS = [
     throughput_new_send_per_recv,
     throughput_same_send_per_recv,
     latency_test,
-    # torch_latency,
-    # torch_throughput,
+    # torch_latency, added based on cli arg
+    # torch_throughput, added based on cli arg
 ]
 
 # (transport, device)
@@ -156,7 +156,7 @@ TRANSPORTS_AND_DEVICE = [
     ("gloo", "cpu"),
     # ("object_store", "cpu"),
     # ("object_store", "cuda"),
-    # ("torch", "cuda") # only works with torch TEST_FUNCS
+    # ("torch", "cuda") # only works with torch TEST_FUNCS, added based on cli arg
 ]
 
 # (size_str, size, num_transfers)
@@ -172,6 +172,7 @@ SIZES_AND_NUM_TRANSFERS = [
     ("100MB", (100 * 1024 * 1024), 50),
     # ("512MB", (512 * 1024 * 1024),  20),
     ("1GB", (1024 * 1024 * 1024), 10),
+    # ("10GB", (10 * 1024 * 1024 * 1024), 1) - added based on cli arg
 ]
 
 
@@ -228,9 +229,18 @@ parser.add_argument(
     "--enable_10gb",
     action="store_true",
 )
+parser.add_argument(
+    "--enable_torch_bench",
+    action="store_true",
+)
 args = parser.parse_args()
 if args.enable_10gb:
     SIZES_AND_NUM_TRANSFERS.append(("10GB", (10 * 1024 * 1024 * 1024), 1))
+
+if args.enable_torch_bench:
+    TEST_FUNCS.append(torch_latency)
+    TEST_FUNCS.append(torch_throughput)
+    TRANSPORTS_AND_DEVICE.append(("torch", "cuda"))
 
 
 bench_results = []
