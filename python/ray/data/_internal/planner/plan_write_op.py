@@ -110,14 +110,9 @@ def _plan_write_op_internal(
     # Set up on_start callback for datasinks.
     # This allows on_write_start to receive the schema from the first input bundle,
     # enabling schema-dependent initialization (e.g., Iceberg schema evolution).
-    # NOTE: _FileDatasink is excluded because dataset.py already calls on_write_start()
-    # explicitly before execution to handle SaveMode checks and directory creation.
     on_start = None
     if isinstance(datasink, Datasink):
-        from ray.data.datasource.file_datasink import _FileDatasink
-
-        if not isinstance(datasink, _FileDatasink):
-            on_start = datasink.on_write_start
+        on_start = datasink.on_write_start
 
     map_op = MapOperator.create(
         map_transformer,

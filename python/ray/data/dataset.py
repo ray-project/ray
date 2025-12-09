@@ -5253,13 +5253,12 @@ class Dataset:
         logical_plan = LogicalPlan(write_op, self.context)
 
         try:
-            # NOTE: on_write_start is now called automatically by the Write operator
-            # when the first input bundle arrives, with the schema extracted from
-            # the data. This enables schema-dependent initialization (e.g., Iceberg
-            # schema evolution) without requiring upfront schema computation.
+            # Handle pre-flight checks for _FileDatasink before execution starts.
+            # This handles SaveMode checks (ERROR raises, OVERWRITE deletes contents,
+            # IGNORE skips). on_write_start is called automatically by the Write
+            # operator when the first input bundle arrives.
             if isinstance(datasink, _FileDatasink):
-                datasink.on_write_start()
-                if not datasink.has_created_dir and datasink.mode == SaveMode.IGNORE:
+                if datasink._pre_flight_check():
                     logger.info(
                         f"Ignoring write because {datasink.path} already exists"
                     )

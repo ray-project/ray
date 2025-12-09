@@ -195,7 +195,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # Receives schema from the first bundle for deferred initialization
         # (e.g., schema evolution for Iceberg writes via on_write_start).
         self._on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = on_start
-        self._start_called = False
+        self._on_start_called = False
         # _map_transformer_ref is lazily initialized on first access.
         # This ensures on_start callback (if registered) can modify the transformer
         # before serialization (e.g., for Iceberg schema evolution).
@@ -226,10 +226,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         Used for deferred initialization that needs schema from the first bundle
         (e.g., schema evolution for Iceberg writes via on_write_start).
         """
-        if not self._start_called and self._on_start is not None:
+        if not self._on_start_called and self._on_start is not None:
             schema = self._get_schema_from_bundle(bundled_input)
             self._on_start(schema)
-            self._start_called = True
+            self._on_start_called = True
             # Note: _map_transformer_ref is lazily initialized, so no need to
             # re-serialize here - it will be created with the updated state
             # when first accessed in _add_bundled_input.
@@ -654,13 +654,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             ) = self._block_ref_bundler.get_next_bundle()
 
             self._add_bundled_input(bundled_input)
-        else:
-            # For empty datasets, still call on_start callback (with no schema
-            # since there's no data). This ensures datasinks can properly
-            # initialize even for empty writes.
-            if not self._start_called and self._on_start is not None:
-                self._on_start(None)
-                self._start_called = True
 
         super().all_inputs_done()
 
