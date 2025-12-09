@@ -32,8 +32,12 @@ def get_cached_tokenizer(tokenizer: AnyTokenizer) -> AnyTokenizer:
             chat_template = getattr(tokenizer, "chat_template", None)
 
     tokenizer_all_special_ids = set(tokenizer.all_special_ids)
-    tokenizer_all_special_tokens_extended = tokenizer.all_special_tokens_extended
     tokenizer_all_special_tokens = set(tokenizer.all_special_tokens)
+    # all_special_tokens_extended is removed in transformers v5.
+    # TODO(seiji) remove the attribute once vLLM moves to transformers v5.
+    tokenizer_all_special_tokens_extended = getattr(
+        tokenizer, "all_special_tokens_extended", None
+    )
     tokenizer_len = len(tokenizer)
 
     class CachedTokenizer(tokenizer.__class__):  # type: ignore
