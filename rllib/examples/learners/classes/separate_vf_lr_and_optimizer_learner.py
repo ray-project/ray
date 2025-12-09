@@ -36,7 +36,7 @@ class PPOTorchLearnerWithSeparateVfOptimizer(PPOTorchLearner):
         # Make sure the RLModule has the correct properties.
         module = self.module[module_id]
         # TODO (sven): We should move this into a new `ValueFunction` API, which
-        #  should has-a `get_value_function_params` method. This way, any custom
+        #  should have a `get_value_function_params` method. This way, any custom
         #  RLModule that implements this API can be used here, not just the standard
         #  PPO one.
         assert (
