@@ -2259,7 +2259,7 @@
     timeout: 1800
     script: python experimental/rdt_single_node_microbenchmark.py
 
-- name: rdt_single_node_B200_microbenchmark
+- name: rdt_single_node_A100_microbenchmark
   python: "3.10"
   group: core-daily-test
   team: core
