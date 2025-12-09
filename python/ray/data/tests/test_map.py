@@ -475,6 +475,60 @@ def test_add_column(ray_start_regular_shared):
         ray.data.range(5).add_column("foo", lambda x: x["id"] + 1, batch_format="foo")
 
 
+def test_add_unique_id(ray_start_regular_shared):
+    """Tests the add_unique_id API."""
+
+    def check_ids(ds, expected_ids, batch_format="default"):
+        all_ids = []
+        for block in ds.iter_batches(batch_size=None, batch_format=batch_format):
+            if batch_format == "pandas":
+                assert isinstance(block, pd.DataFrame)
+                block_ids = block["uid"].tolist()
+            elif batch_format == "pyarrow":
+                assert isinstance(block, pa.Table)
+                block_ids = block["uid"].to_pylist()
+            elif batch_format == "numpy":
+                assert isinstance(block, dict)
+                assert isinstance(block["uid"], np.ndarray)
+                block_ids = block["uid"].tolist()
+            else:
+                block_ids = list(block["uid"])
+
+            all_ids.extend(block_ids)
+            assert block_ids == sorted(block_ids), "block IDs are not monotonic"
+            if len(block_ids) > 1:
+                diffs = [
+                    block_ids[i + 1] - block_ids[i] for i in range(len(block_ids) - 1)
+                ]
+                assert all(d == 1 for d in diffs), "block IDs are not consecutive"
+
+        assert set(all_ids) == expected_ids
+
+    # create dataset with 2 blocks of 2 rows each
+    expected = {0, 1, (1 << 33) + 0, (1 << 33) + 1}
+
+    ds = ray.data.from_items(
+        [{"a": 1}, {"a": 2}, {"a": 1}, {"a": 2}], override_num_blocks=2
+    )
+    ds = ds.add_unique_id("uid")
+    check_ids(ds, expected)
+
+    # pandas
+    ds_pandas = ray.data.from_pandas([pd.DataFrame({"a": [1, 2]}) for _ in range(2)])
+    ds_pandas = ds_pandas.add_unique_id("uid")
+    check_ids(ds_pandas, expected, batch_format="pandas")
+
+    # pyarrow
+    ds_arrow = ray.data.range(4, override_num_blocks=2)
+    ds_arrow = ds_arrow.add_unique_id("uid")
+    check_ids(ds_arrow, expected, batch_format="pyarrow")
+
+    # numpy batch
+    ds_numpy = ray.data.from_numpy([np.ones((2, 1)) for _ in range(2)])
+    ds_numpy = ds_numpy.add_unique_id("uid")
+    check_ids(ds_numpy, expected, batch_format="numpy")
+
+
 def test_add_column_to_pandas(ray_start_regular_shared):
     # Refer to issue https://github.com/ray-project/ray/issues/51758
     ds = ray.data.from_pandas(
