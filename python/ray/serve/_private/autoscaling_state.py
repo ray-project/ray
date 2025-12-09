@@ -787,6 +787,11 @@ class ApplicationAutoscalingState:
                     ), f"Policy state for deployment {deployment_id} must be a dictionary, got {type(returned_policy_state[deployment_id])}"
             self._policy_state = returned_policy_state
 
+            # Validate returned decisions
+            assert (
+                type(decisions) is dict
+            ), "Autoscaling policy must return a dictionary of deployment_name -> decision_num_replicas"
+
             # assert that deployment_id is in decisions is valid
             for deployment_id in decisions.keys():
                 assert (

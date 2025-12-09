@@ -125,7 +125,6 @@ def stateful_application_level_policy(
         policy_state[deployment_id] = {
             "scale_count": scale_count + 1,
             "last_replicas": desired_replicas,
-            "last_decision_time": ctx.timestamp,
         }
 
     return decisions, policy_state
