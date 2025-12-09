@@ -200,7 +200,7 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_gflags_gflags",
         url = "https://github.com/gflags/gflags/archive/e171aa2d15ed9eb17054558e0b3a6a413bb01067.tar.gz",
-        strip_prefix = "gflags-e171aa2d15ed9eb17054558e0b3a6a413bb01067", 
+        strip_prefix = "gflags-e171aa2d15ed9eb17054558e0b3a6a413bb01067",
         sha256 = "b20f58e7f210ceb0e768eb1476073d0748af9b19dfbbf53f4fd16e3fb49c5ac8",
     )
 
