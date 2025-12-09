@@ -68,6 +68,8 @@ class ActorTaskSubmitterInterface {
 class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
  public:
   ActorTaskSubmitter(rpc::CoreWorkerClientPool &core_worker_client_pool,
+                     rpc::RayletClientPool &raylet_client_pool,
+                     std::shared_ptr<gcs::GcsClient> gcs_client,
                      CoreWorkerMemoryStore &store,
                      TaskManagerInterface &task_manager,
                      ActorCreatorInterface &actor_creator,
@@ -77,6 +79,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                      instrumented_io_context &io_service,
                      std::shared_ptr<ReferenceCounterInterface> reference_counter)
       : core_worker_client_pool_(core_worker_client_pool),
+        raylet_client_pool_(raylet_client_pool),
+        gcs_client_(std::move(gcs_client)),
         actor_creator_(actor_creator),
         resolver_(store, task_manager, actor_creator, tensor_transport_getter),
         task_manager_(task_manager),
@@ -232,8 +236,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// \param recursive If true, it will cancel all child tasks.
   void CancelTask(TaskSpecification task_spec, bool recursive);
 
-  /// Retry the CancelTask in milliseconds.
-  void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
+  /// Retry the CancelTask after a configured delay.
+  void RetryCancelTask(TaskSpecification task_spec, bool recursive);
 
   /// Queue the streaming generator up for resubmission.
   /// \return true if the task is still executing and the submitter agrees to resubmit
@@ -301,7 +305,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     int64_t num_restarts_due_to_lineage_reconstructions_ = 0;
     /// Whether this actor exits by spot preemption.
     bool preempted_ = false;
-    /// The RPC client address.
+    /// The RPC client address of the actor.
     std::optional<rpc::Address> client_address_;
     /// The intended worker ID of the actor.
     std::string worker_id_;
@@ -411,6 +415,11 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
   /// Pool for producing new core worker clients.
   rpc::CoreWorkerClientPool &core_worker_client_pool_;
+
+  /// Pool for producing new raylet clients.
+  rpc::RayletClientPool &raylet_client_pool_;
+
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   ActorCreatorInterface &actor_creator_;
 
