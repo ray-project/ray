@@ -121,6 +121,7 @@ def ray_deps_setup():
         build_file = "@io_ray//bazel:hiredis.BUILD",
         url = "https://github.com/redis/hiredis/archive/60e5075d4ac77424809f855ba3e398df7aacefe8.tar.gz",
         sha256 = "b6d6f799b7714d85316f9ebfb76a35a78744f42ea3b6774289d882d13a2f0383",
+        strip_prefix = "hiredis-60e5075d4ac77424809f855ba3e398df7aacefe8",
         patches = [
             "@io_ray//thirdparty/patches:hiredis-windows-msvc.patch",
         ],
@@ -131,6 +132,7 @@ def ray_deps_setup():
         build_file = "@io_ray//bazel:spdlog.BUILD",
         url = "https://github.com/gabime/spdlog/archive/refs/tags/v1.15.3.zip",
         sha256 = "b74274c32c8be5dba70b7006c1d41b7d3e5ff0dff8390c8b6390c1189424e094",
+        strip_prefix = "spdlog-1.15.3",
         # spdlog rotation filename format conflict with ray, update the format.
         patches = [
             "@io_ray//thirdparty/patches:spdlog-rotation-file-format.patch",
@@ -149,12 +151,14 @@ def ray_deps_setup():
     auto_http_archive(
         name = "rules_jvm_external",
         url = "https://github.com/bazelbuild/rules_jvm_external/archive/2.10.tar.gz",
+        strip_prefix = "rules_jvm_external-2.10",
         sha256 = "5c1b22eab26807d5286ada7392d796cbc8425d3ef9a57d114b79c5f8ef8aca7c",
     )
 
     auto_http_archive(
         name = "bazel_common",
         url = "https://github.com/google/bazel-common/archive/084aadd3b854cad5d5e754a7e7d958ac531e6801.tar.gz",
+        strip_prefix = "bazel-common-084aadd3b854cad5d5e754a7e7d958ac531e6801",
         sha256 = "a6e372118bc961b182a3a86344c0385b6b509882929c6b12dc03bb5084c775d5",
     )
 
@@ -172,6 +176,7 @@ def ray_deps_setup():
         # If you update the Boost version, remember to update the 'boost' rule.
         url = "https://github.com/nelhage/rules_boost/archive/57c99395e15720e287471d79178d36a85b64d6f6.tar.gz",
         sha256 = "490d11425393eed068966a4990ead1ff07c658f823fd982fddac67006ccc44ab",
+        strip_prefix = "rules_boost-57c99395e15720e287471d79178d36a85b64d6f6",
         patches = [
             "//thirdparty/patches:boost-headers.patch",
         ],
@@ -188,12 +193,14 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_google_googletest",
         url = "https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz",
+        strip_prefix = "googletest-1.14.0",
         sha256 = "8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7",
     )
 
     auto_http_archive(
         name = "com_github_gflags_gflags",
         url = "https://github.com/gflags/gflags/archive/e171aa2d15ed9eb17054558e0b3a6a413bb01067.tar.gz",
+        strip_prefix = "gflags-e171aa2d15ed9eb17054558e0b3a6a413bb01067", 
         sha256 = "b20f58e7f210ceb0e768eb1476073d0748af9b19dfbbf53f4fd16e3fb49c5ac8",
     )
 
@@ -202,6 +209,7 @@ def ray_deps_setup():
         build_file = True,
         url = "https://github.com/cython/cython/archive/refs/tags/3.0.12.tar.gz",
         sha256 = "a156fff948c2013f2c8c398612c018e2b52314fdf0228af8fbdb5585e13699c2",
+        strip_prefix = "cython-3.0.12",
         patches = [
             # Use python3 rather than python. macos does not have python installed
             # by default, and hermetic strict action does not work as python cannot
@@ -216,6 +224,7 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_johnynek_bazel_jar_jar",
         url = "https://github.com/johnynek/bazel_jar_jar/archive/171f268569384c57c19474b04aebe574d85fde0d.tar.gz",
+        strip_prefix = "bazel_jar_jar-171f268569384c57c19474b04aebe574d85fde0d",
         sha256 = "97c5f862482a05f385bd8f9d28a9bbf684b0cf3fae93112ee96f3fb04d34b193",
     )
 
@@ -223,6 +232,7 @@ def ray_deps_setup():
         name = "io_opencensus_cpp",
         url = "https://github.com/census-instrumentation/opencensus-cpp/archive/5e5f2632c84e2230fb7ccb8e336f603d2ec6aa1b.zip",
         sha256 = "1b88d6663f05c6a56c1604eb2afad22831d5f28a76f6fab8f37187f1e4ace425",
+        strip_prefix = "opencensus-cpp-5e5f2632c84e2230fb7ccb8e336f603d2ec6aa1b",
         patches = [
             "@io_ray//thirdparty/patches:opencensus-cpp-harvest-interval.patch",
             "@io_ray//thirdparty/patches:opencensus-cpp-shutdown-api.patch",
@@ -233,6 +243,7 @@ def ray_deps_setup():
     auto_http_archive(
         name = "io_opentelemetry_cpp",
         url = "https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.19.0.zip",
+        strip_prefix = "opentelemetry-cpp-1.19.0",
         sha256 = "8ef0a63f4959d5dfc3d8190d62229ef018ce41eef36e1f3198312d47ab2de05a",
     )
 
@@ -266,6 +277,7 @@ def ray_deps_setup():
         name = "com_github_jupp0r_prometheus_cpp",
         url = "https://github.com/jupp0r/prometheus-cpp/archive/60eaa4ea47b16751a8e8740b05fe70914c68a480.tar.gz",
         sha256 = "ec825b802487ac18b0d98e2e8b7961487b12562f8f82e424521d0a891d9e1373",
+        strip_prefix = "prometheus-cpp-60eaa4ea47b16751a8e8740b05fe70914c68a480",
         patches = [
             "@io_ray//thirdparty/patches:prometheus-windows-headers.patch",
             # https://github.com/jupp0r/prometheus-cpp/pull/225
@@ -280,6 +292,7 @@ def ray_deps_setup():
         # NOTE: If you update this, also update @boringssl's hash.
         url = "https://github.com/grpc/grpc/archive/refs/tags/v1.57.1.tar.gz",
         sha256 = "0762f809b9de845e6a7c809cabccad6aa4143479fd43b396611fe5a086c0aeeb",
+        strip_prefix = "grpc-1.57.1",
         patches = [
             "@io_ray//thirdparty/patches:grpc-cython-copts.patch",
             "@io_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
@@ -349,6 +362,7 @@ def ray_deps_setup():
         name = "rules_proto_grpc",
         url = "https://github.com/rules-proto-grpc/rules_proto_grpc/archive/a74fef39c5fe636580083545f76d1eab74f6450d.tar.gz",
         sha256 = "2f6606151ec042e23396f07de9e7dcf6ca9a5db1d2b09f0cc93a7fc7f4008d1b",
+        strip_prefix = "rules_proto_grpc-a74fef39c5fe636580083545f76d1eab74f6450d",
         repo_mapping = {
             "@com_google_protobuf": "@com_google_protobuf_rules_proto_grpc",
         },
@@ -359,6 +373,7 @@ def ray_deps_setup():
         build_file = True,
         url = "https://github.com/msgpack/msgpack-c/archive/8085ab8721090a447cf98bb802d1406ad7afe420.tar.gz",
         sha256 = "83c37c9ad926bbee68d564d9f53c6cbb057c1f755c264043ddd87d89e36d15bb",
+        strip_prefix = "msgpack-c-8085ab8721090a447cf98bb802d1406ad7afe420",
         patches = [
             "@io_ray//thirdparty/patches:msgpack-windows-iovec.patch",
             # TODO (israbbani): #55430 Separate the compiler flags and remove this patch
