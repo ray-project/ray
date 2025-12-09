@@ -84,6 +84,8 @@ altair==5.1.2
     # via gradio
 amqp==5.3.1
     # via kombu
+annotated-doc==0.0.4
+    # via fastapi
 annotated-types==0.6.0
     # via pydantic
 antlr4-python3-runtime==4.11.1
@@ -522,7 +524,7 @@ fairscale==0.4.6
     # via -r python/requirements/ml/tune-test-requirements.txt
 farama-notifications==0.0.4
     # via gymnasium
-fastapi==0.115.12
+fastapi==0.121.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1417,7 +1419,7 @@ orjson==3.9.15
     #   tensordict
 ormsgpack==1.7.0
     # via -r python/requirements/ml/rllib-requirements.txt
-packaging==23.0
+packaging==24.2
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -1672,7 +1674,7 @@ pycparser==2.21
     # via cffi
 pycurl==7.45.3
     # via -r python/requirements/cloud-requirements.txt
-pydantic==2.11.7
+pydantic==2.12.4
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1682,7 +1684,7 @@ pydantic==2.11.7
     #   gradio
     #   mlflow-skinny
     #   pyiceberg
-pydantic-core==2.33.2
+pydantic-core==2.41.5
     # via pydantic
 pydot==1.4.2
     # via -r python/requirements/test-requirements.txt
@@ -1999,7 +2001,7 @@ rfc3986-validator==0.1.1
     # via
     #   jsonschema
     #   jupyter-events
-rich==13.3.3
+rich==13.7.1
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -2214,7 +2216,7 @@ stack-data==0.6.3
     # via ipython
 stanio==0.3.0
     # via cmdstanpy
-starlette==0.46.2
+starlette==0.49.1
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -2438,7 +2440,7 @@ trustme==0.9.0
     # via -r python/requirements/test-requirements.txt
 typeguard==2.13.3
     # via ax-platform
-typer==0.12.3
+typer==0.15.1
     # via -r python/requirements.txt
 types-pycurl==7.45.3.20240421
     # via -r python/requirements/lint-requirements.txt
@@ -2452,7 +2454,7 @@ types-setuptools==80.9.0.20250822
     # via -r python/requirements/lint-requirements.txt
 types-urllib3==1.26.25.14
     # via types-requests
-typing-extensions==4.12.2
+typing-extensions==4.15.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   alembic
@@ -2485,13 +2487,14 @@ typing-extensions==4.12.2
     #   semgrep
     #   snowflake-connector-python
     #   sqlalchemy
+    #   starlette
     #   tensorflow
     #   testcontainers
     #   textual
     #   torch
     #   typer
     #   typing-inspection
-typing-inspection==0.4.1
+typing-inspection==0.4.2
     # via pydantic
 tzdata==2025.2
     # via kombu
