@@ -208,7 +208,7 @@ judge_config = vLLMEngineProcessorConfig(
         "enable_chunked_prefill": True,
         "max_num_batched_tokens": 1028,
         "max_model_len": 4096,
-        "guided_decoding_backend": "xgrammar",
+        "structured_outputs_config": {"backend": "xgrammar"},
         "dtype": torch.float16,
     },
     concurrency=3,
