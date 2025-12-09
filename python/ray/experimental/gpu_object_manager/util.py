@@ -25,6 +25,7 @@ transport_devices: Dict[str, List[str]] = {}
 # Singleton instances of transport managers
 transport_managers: Dict[str, TensorTransportManager] = {}
 
+# To protect the singleton instances of transport managers
 transport_managers_lock = threading.Lock()
 
 
@@ -47,6 +48,9 @@ def register_tensor_transport(
     """
     global transport_manager_classes
     global transport_devices
+
+    if transport_name in transport_manager_classes:
+        raise ValueError(f"Transport {transport_name} already registered.")
 
     if not issubclass(transport_manager_class, TensorTransportManager):
         raise ValueError(
