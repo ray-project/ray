@@ -38,3 +38,5 @@ XGBoost
 YOLO
 [Ss]harding
 [Ss]harded
+[Pp]arameterization(s)?
+repr

@@ -10,8 +10,8 @@ Flaky or brittle tests (the kind that break when assumptions shift) slow develop
 Nobody likes getting stuck on a PR because a test failed for reasons unrelated to their
 change.
 
-This guide is a collection of practices to help us write tests that support the Ray Data
-project, not slow it down.
+This guide is a collection of practices to help you write tests that support the Ray 
+Data project, not slow it down.
 
 ## General good practices
 
@@ -99,8 +99,8 @@ across thousands of tests (plus parameterizations) it adds up fast.
 Only use isolated clusters when your test truly needs a fresh cluster.
 
 :::{note}
-There's an inherent tradeoff between isolation and speed here. We're choosing to 
-prioritize speed.
+There's an inherent tradeoff between isolation and speed here. For this specific case, 
+choose to prioritize speed.
 :::
 
 **Original code**
@@ -123,9 +123,14 @@ def test_invalid_concurrency_raises(ray_start_regular_shared, concurrency):
 
 ## Avoid testing against repr outputs to validate specific data
 
+<!--vale: off-->
+<!-- Vale complains about using the word "will" -->
+
 `repr` output isn’t part of any interface contract — it can (and probably will) change. 
 Besides, tests that assert against repr often hide the real intent: are you trying to
 check the data, or just how it happens to print? Be explicit about what you care about.
+
+<!--vale: off-->
 
 **Original code**
 ```python

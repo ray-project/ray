@@ -53,7 +53,7 @@ Here's an example of a PR with a good description: [[Data] Refactor PhysicalOper
 
 ### Keep pull requests small
 
-Review difficulty scales nonlinearly with PR size.
+Review difficulty scales non-linearly with PR size.
 
 For fast reviews, do the following:
 * **Keep PRs under ~200 lines** of change when possible.
