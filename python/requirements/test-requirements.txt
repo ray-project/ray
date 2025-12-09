@@ -125,9 +125,7 @@ attrs>=22.2.0
 openapi-schema-validator>=0.6.3
 wheel>=0.45.1
 aiohttp>=3.11.16
-cryptography>=44.0.3 ; sys_platform != "darwin"
-cryptography>=43.0.3 ; sys_platform == "darwin" and platform_machine != "arm64"
-cryptography>=44.0.3 ; sys_platform == "darwin" and platform_machine == "arm64"
+cryptography>=44.0.3
 pyopenssl>=25.0.0
 starlette>=0.40.0
 requests>=2.32.3
@@ -141,7 +139,8 @@ opentelemetry-proto>=1.39.0
 google-cloud-bigquery>=3.38.0
 google-cloud-bigquery-storage>=2.35.0
 tensorboard>=2.20.0
-scipy==1.14.1
+scipy>=1.14.1
+cffi>=1.17.1,<2
 # tensorflow-metadata>=1.17.2
 # packaging>=25.0
 

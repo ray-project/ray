@@ -279,8 +279,9 @@ certifi==2025.1.31
     #   requests
     #   sentry-sdk
     #   snowflake-connector-python
-cffi==1.16.0
+cffi==1.17.1
     # via
+    #   -r python/requirements/test-requirements.txt
     #   argon2-cffi-bindings
     #   azure-datalake-store
     #   cryptography

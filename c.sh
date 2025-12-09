@@ -4,7 +4,7 @@ set -euo pipefail
 
 echo "compile requirements_compiled"
 
-bash ci/ci.sh compile_pip_dependencie
+bash ci/ci.sh compile_pip_dependencies
 
 echo "compile all depsets"
 
