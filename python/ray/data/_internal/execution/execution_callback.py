@@ -34,6 +34,10 @@ class ExecutionCallback:
 
 def _initialize_env_callbacks(context: DataContext) -> None:
     """Initialize callbacks from environment variable and add them to the context."""
+    default_callbacks = _get_default_execution_callbacks()
+    for callback in default_callbacks:
+        add_execution_callback(callback, context)
+
     callbacks_str = os.environ.get(EXECUTION_CALLBACKS_ENV_VAR, "")
     if not callbacks_str:
         return
@@ -53,13 +57,8 @@ def _initialize_env_callbacks(context: DataContext) -> None:
             raise ValueError(f"Failed to import callback from '{callback_path}': {e}")
 
 
-def get_execution_callbacks(context: DataContext) -> List[ExecutionCallback]:
-    """Get all ExecutionCallbacks from the DataContext."""
-    # Initialize environment callbacks if not already done for this context
-    if not context.get_config(ENV_CALLBACKS_INITIALIZED_KEY, False):
-        _initialize_env_callbacks(context)
-        context.set_config(ENV_CALLBACKS_INITIALIZED_KEY, True)
-
+def _get_default_execution_callbacks() -> List[ExecutionCallback]:
+    """Execution callbacks that are always added to the DataContext."""
     from ray.data._internal.execution.callbacks.epoch_idx_update_callback import (
         EpochIdxUpdateCallback,
     )
@@ -67,10 +66,17 @@ def get_execution_callbacks(context: DataContext) -> List[ExecutionCallback]:
         IssueDetectionExecutionCallback,
     )
 
-    return context.get_config(
-        EXECUTION_CALLBACKS_CONFIG_KEY,
-        [IssueDetectionExecutionCallback(), EpochIdxUpdateCallback()],
-    )
+    return [IssueDetectionExecutionCallback(), EpochIdxUpdateCallback()]
+
+
+def get_execution_callbacks(context: DataContext) -> List[ExecutionCallback]:
+    """Get all ExecutionCallbacks from the DataContext."""
+    # Initialize environment callbacks if not already done for this context
+    if not context.get_config(ENV_CALLBACKS_INITIALIZED_KEY, False):
+        _initialize_env_callbacks(context)
+        context.set_config(ENV_CALLBACKS_INITIALIZED_KEY, True)
+
+    return context.get_config(EXECUTION_CALLBACKS_CONFIG_KEY, [])
 
 
 def add_execution_callback(callback: ExecutionCallback, context: DataContext):
