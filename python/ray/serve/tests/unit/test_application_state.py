@@ -3246,6 +3246,48 @@ class TestApplicationLevelAutoscaling:
         for _, state in app_autoscaling_state._policy_state.items():
             assert state.get("counter") == 3
 
+    def test_validate_policy_state(self, mocked_application_state_manager):
+        """Test that _validate_policy_state correctly validates application-level policy state."""
+
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Deploy app and register deployments with autoscaling manager.
+        app_config = self._create_app_config()
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        app_autoscaling_state = asm._app_autoscaling_states["test_app"]
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+
+        # Valid cases
+        # None should pass (no validation)
+        app_autoscaling_state._validate_policy_state(None)
+
+        # Valid dict with valid deployment ID and dict value should pass
+        valid_state = {d1_id: {"key": "value"}}
+        app_autoscaling_state._validate_policy_state(valid_state)
+
+        # Invalid cases
+        # Not a dict should fail
+        with pytest.raises(AssertionError, match="must return policy_state as Dict"):
+            app_autoscaling_state._validate_policy_state("deployment")
+            app_autoscaling_state._validate_policy_state(1)
+
+        # Invalid deployment ID should fail
+        invalid_deployment_id = DeploymentID(name="invalid", app_name="test_app")
+        invalid_state = {invalid_deployment_id: {"key": "value"}}
+        with pytest.raises(AssertionError, match="contains invalid deployment ID"):
+            app_autoscaling_state._validate_policy_state(invalid_state)
+
+        # Non dict value should fail
+        invalid_value_state = {d1_id: "not a dict"}
+        with pytest.raises(AssertionError, match="must be a dictionary"):
+            app_autoscaling_state._validate_policy_state(invalid_value_state)
+
 
 def test_get_external_scaler_enabled(mocked_application_state_manager):
     """Test get_external_scaler_enabled returns correct value based on app config.
