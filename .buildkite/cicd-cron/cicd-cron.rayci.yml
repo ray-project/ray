@@ -1,9 +1,35 @@
 group: cicd-cron
 steps:
-  - name: Build and upload manylinux images
+  - name: manylinux-nightly-no-jdk
+    label: ":crescent_moon: wanda: manylinux-nightly (no JDK)"
+    wanda: ci/docker/manylinux-nightly.wanda.yaml
+    env:
+      RAYCI_DISABLE_JAVA: "true"
+      JDK_SUFFIX: ""
+  
+  - name: manylinux-nightly-jdk
+    label: ":crescent_moon: wanda: manylinux-nightly (with JDK)"
+    wanda: ci/docker/manylinux-nightly.wanda.yaml
+    env:
+      RAYCI_DISABLE_JAVA: "false"
+      JDK_SUFFIX: "-jdk"
+  
+  - label: ":crescent_moon: push: Push manylinux (no JDK) to Dockerhub"
+    depends_on: manylinux-nightly-no-jdk
     commands:
       # NOTE(andrew-anyscale): Not running w/ --upload while we verify builds
       # are scheduling and completing correctly.
-      - ./ci/base_images/nightly/build-manylinux.sh
-    mount_buildkite_agent: true
-    priority: 10
+      - ./ci/base_images/nightly/push-manylinux.sh
+    env:
+      RAYCI_DISABLE_JAVA: "true"
+      JDK_SUFFIX: ""
+  
+  - label: ":crescent_moon: push: Push manylinux (with JDK) to Dockerhub"
+    depends_on: manylinux-nightly-jdk
+    commands:
+      # NOTE(andrew-anyscale): Not running w/ --upload while we verify builds
+      # are scheduling and completing correctly.
+      - ./ci/base_images/nightly/push-manylinux.sh
+    env:
+      RAYCI_DISABLE_JAVA: "false"
+      JDK_SUFFIX: "-jdk"
