@@ -63,7 +63,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name data9build-py3.10 --python-version 3.10
-        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials
+        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow-datasets
     depends_on: data9build-multipy
 
   - label: ":database: data: arrow v9 tests (data_non_parallel)"
@@ -91,7 +91,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name datalbuild-py3.10 --python-version 3.10
-        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials
+        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow-datasets
     depends_on: datalbuild-multipy
 
   - label: ":database: data: arrow v21 tests (data_non_parallel)"

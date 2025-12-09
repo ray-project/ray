@@ -21,7 +21,7 @@ ARROW_VERSION=$ARROW_VERSION ./ci/env/install-dependencies.sh
 pip install -U tfx-bsl==1.16.1 crc32c==2.3
 
 if [[ "$PYTHON" == "3.12" ]]; then
-  pip install -U tensorflow-datasets==4.9.9
+  pip install -U tensorflow-datasets==4.9.9 tensorflow==2.20.0
 fi
 
 EOF
