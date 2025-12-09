@@ -58,7 +58,7 @@ def _initialize_env_callbacks(context: DataContext) -> None:
 
 
 def _get_default_execution_callbacks() -> List[ExecutionCallback]:
-    """Execution callbacks that are always added to the DataContext."""
+    """Execution callbacks that are always added to the context."""
     from ray.data._internal.execution.callbacks.epoch_idx_update_callback import (
         EpochIdxUpdateCallback,
     )
