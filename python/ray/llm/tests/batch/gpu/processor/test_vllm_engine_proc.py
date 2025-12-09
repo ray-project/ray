@@ -55,7 +55,7 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
         "dynamic_lora_loading_path": None,
         "max_concurrent_batches": 8,
         "batch_size": 64,
-        "continue_on_error": False,
+        "should_continue_on_error": False,
     }
 
     runtime_env = stage.map_batches_kwargs.pop("runtime_env")

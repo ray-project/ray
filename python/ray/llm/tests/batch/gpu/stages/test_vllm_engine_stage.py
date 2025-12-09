@@ -542,7 +542,7 @@ def test_vllm_output_data_no_logprobs():
 
 @pytest.mark.asyncio
 async def test_vllm_udf_default_raises_on_error(mock_vllm_wrapper):
-    """Default behavior (continue_on_error=False) raises on inference error."""
+    """Default behavior (should_continue_on_error=False) raises on inference error."""
     mock_vllm_wrapper.return_value.generate_async.side_effect = ValueError(
         "prompt too long"
     )
@@ -555,7 +555,7 @@ async def test_vllm_udf_default_raises_on_error(mock_vllm_wrapper):
         batch_size=32,
         max_concurrent_batches=4,
         engine_kwargs={},
-        continue_on_error=False,
+        should_continue_on_error=False,
     )
 
     batch = {"__data": [{"prompt": "test", "sampling_params": {"temperature": 0.7}}]}
@@ -566,8 +566,8 @@ async def test_vllm_udf_default_raises_on_error(mock_vllm_wrapper):
 
 
 @pytest.mark.asyncio
-async def test_vllm_udf_continue_on_error_yields_error_row(mock_vllm_wrapper):
-    """With continue_on_error=True, errors yield rows with __inference_error__."""
+async def test_vllm_udf_should_continue_on_error_yields_error_row(mock_vllm_wrapper):
+    """With should_continue_on_error=True, errors yield rows with __inference_error__."""
     mock_vllm_wrapper.return_value.generate_async.side_effect = ValueError(
         "prompt too long"
     )
@@ -580,7 +580,7 @@ async def test_vllm_udf_continue_on_error_yields_error_row(mock_vllm_wrapper):
         batch_size=32,
         max_concurrent_batches=4,
         engine_kwargs={},
-        continue_on_error=True,
+        should_continue_on_error=True,
     )
 
     batch = {
@@ -634,7 +634,7 @@ async def test_vllm_udf_mixed_success_and_error(mock_vllm_wrapper):
         batch_size=32,
         max_concurrent_batches=4,
         engine_kwargs={},
-        continue_on_error=True,
+        should_continue_on_error=True,
     )
 
     batch = {
@@ -661,7 +661,7 @@ async def test_vllm_udf_mixed_success_and_error(mock_vllm_wrapper):
 
 @pytest.mark.asyncio
 async def test_vllm_udf_fatal_error_always_raises(mock_vllm_wrapper):
-    """Fatal errors (EngineDeadError) always propagate, even with continue_on_error=True."""
+    """Fatal errors (EngineDeadError) always propagate, even with should_continue_on_error=True."""
     from vllm.v1.engine.exceptions import EngineDeadError
 
     mock_vllm_wrapper.return_value.generate_async.side_effect = EngineDeadError()
@@ -674,7 +674,7 @@ async def test_vllm_udf_fatal_error_always_raises(mock_vllm_wrapper):
         batch_size=32,
         max_concurrent_batches=4,
         engine_kwargs={},
-        continue_on_error=True,  # Even with this True, fatal errors should raise
+        should_continue_on_error=True,  # Even with this True, fatal errors should raise
     )
 
     batch = {"__data": [{"prompt": "test", "sampling_params": {"temperature": 0.7}}]}

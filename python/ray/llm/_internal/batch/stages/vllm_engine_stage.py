@@ -472,7 +472,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         task_type: vLLMTaskType = vLLMTaskType.GENERATE,
         max_pending_requests: Optional[int] = None,
         dynamic_lora_loading_path: Optional[str] = None,
-        continue_on_error: bool = False,
+        should_continue_on_error: bool = False,
     ):
         """
         Initialize the vLLMEngineStageUDF.
@@ -487,13 +487,13 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 it will be set to 1.1 * max_num_seqs * pipeline_parallel_size.
             dynamic_lora_loading_path: The path to the dynamic LoRA adapter. It is expected
                 to hold subfolders each for a different lora checkpoint.
-            continue_on_error: If True, continue processing when inference fails for
+            should_continue_on_error: If True, continue processing when inference fails for
                 a row instead of raising. Failed rows will have '__inference_error__'
                 set to the error message.
         """
         super().__init__(data_column, expected_input_keys)
         self.model = model
-        self.continue_on_error = continue_on_error
+        self.should_continue_on_error = should_continue_on_error
 
         # Setup vLLM engine kwargs.
         self.task_type = task_type
@@ -590,7 +590,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         row: Dict[str, Any],
         batch_uuid: uuid.UUID,
     ) -> Dict[str, Any]:
-        """Generate output for a single row, catching errors if continue_on_error is set.
+        """Generate output for a single row, catching errors if should_continue_on_error is set.
 
         Args:
             row: The input row.
@@ -616,7 +616,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             # The engine is dead and all subsequent requests would fail.
             raise
         except Exception as e:
-            if not self.continue_on_error:
+            if not self.should_continue_on_error:
                 raise
             error_msg = f"{type(e).__name__}: {str(e)}"
             logger.warning(
@@ -654,8 +654,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         ]
 
         for resp in asyncio.as_completed(tasks):
-            output = await resp
-            yield output
+            yield await resp
 
         batch_time_taken = time.perf_counter() - batch_start_time
         # TODO: Add metrics to the UDf wrapper so that we don't need

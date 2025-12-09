@@ -113,7 +113,7 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             each batch. The default value may not be optimal when the batch size
             or the batch processing latency is too small, but it should be good
             enough for batch size >= 64.
-        continue_on_error: If True, continue processing when inference fails for a row
+        should_continue_on_error: If True, continue processing when inference fails for a row
             instead of raising an exception. Failed rows will have a non-null
             ``__inference_error__`` column containing the error message, and other
             output columns will be None. Error rows bypass postprocess. If False
