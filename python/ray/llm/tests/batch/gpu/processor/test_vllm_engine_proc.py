@@ -276,13 +276,12 @@ def test_legacy_vision_model(gpu_type, model_smolvlm_256m, use_nested_config):
         },
     )
 
-    ds = ray.data.range(1)
+    ds = ray.data.range(60)
     ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
     ds = processor(ds)
     ds = ds.materialize()
     outs = ds.take_all()
-    print("LLM output: ", outs)
-    assert len(outs) == 1
+    assert len(outs) == 60
     assert all("resp" in out for out in outs)
 
 
@@ -292,16 +291,29 @@ def test_vision_model(
     gpu_type, model_smolvlm_256m, image_asset, input_raw_image_data, decouple_tokenizer
 ):
     image_url, image_pil = image_asset
-    multimodal_processor_config = MultimodalProcessorConfig(
+    llm_processor_config = vLLMEngineProcessorConfig(
         model_source=model_smolvlm_256m,
+        task_type="generate",
+        engine_kwargs=dict(
+            # Skip CUDA graph capturing to reduce startup time.
+            enforce_eager=True,
+            # CI uses T4 GPU which does not support bfloat16.
+            dtype="half",
+            limit_mm_per_prompt={"image": 1},
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
         prepare_multimodal_stage=PrepareMultimodalStageConfig(
             enabled=True,
             chat_template_content_format="openai",
         ),
-        concurrency=1,
+        chat_template_stage=ChatTemplateStageConfig(enabled=True),
+        tokenize_stage=TokenizerStageConfig(enabled=decouple_tokenizer),
+        detokenize_stage=DetokenizeStageConfig(enabled=decouple_tokenizer),
     )
-    multimodal_processor = build_llm_processor(
-        multimodal_processor_config,
+    llm_processor = build_llm_processor(
+        llm_processor_config,
         preprocess=lambda row: dict(
             messages=[
                 {"role": "system", "content": "You are an assistant"},
@@ -326,30 +338,6 @@ def test_vision_model(
                     ],
                 },
             ],
-        ),
-    )
-
-    llm_processor_config = vLLMEngineProcessorConfig(
-        model_source=model_smolvlm_256m,
-        task_type="generate",
-        engine_kwargs=dict(
-            # Skip CUDA graph capturing to reduce startup time.
-            enforce_eager=True,
-            # CI uses T4 GPU which does not support bfloat16.
-            dtype="half",
-            limit_mm_per_prompt={"image": 1},
-        ),
-        batch_size=16,
-        accelerator_type=gpu_type,
-        concurrency=1,
-        chat_template_stage=ChatTemplateStageConfig(enabled=True),
-        tokenize_stage=TokenizerStageConfig(enabled=decouple_tokenizer),
-        detokenize_stage=DetokenizeStageConfig(enabled=decouple_tokenizer),
-    )
-
-    llm_processor = build_llm_processor(
-        llm_processor_config,
-        preprocess=lambda row: dict(
             sampling_params=dict(
                 temperature=0.3,
                 max_tokens=50,
@@ -363,7 +351,7 @@ def test_vision_model(
 
     ds = ray.data.range(60)
     ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
-    ds = llm_processor(multimodal_processor(ds))
+    ds = llm_processor(ds)
     ds = ds.materialize()
     outs = ds.take_all()
     assert len(outs) == 60
@@ -371,16 +359,27 @@ def test_vision_model(
 
 
 def test_video_model(gpu_type, model_qwen_2_5_vl_3b_instruct):
-    multimodal_processor_config = MultimodalProcessorConfig(
+    llm_processor_config = vLLMEngineProcessorConfig(
         model_source=model_qwen_2_5_vl_3b_instruct,
+        task_type="generate",
+        engine_kwargs=dict(
+            enforce_eager=True,
+            # Limit the number of videos that can be provided per prompt to prevent memory issues
+            limit_mm_per_prompt={"video": 1},
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+        chat_template_stage=ChatTemplateStageConfig(enabled=True),
+        tokenize_stage=TokenizerStageConfig(enabled=False),
+        detokenize_stage=DetokenizeStageConfig(enabled=False),
         prepare_multimodal_stage=PrepareMultimodalStageConfig(
             enabled=True,
             chat_template_content_format="openai",
         ),
-        concurrency=1,
     )
-    multimodal_processor = build_llm_processor(
-        multimodal_processor_config,
+    llm_processor = build_llm_processor(
+        llm_processor_config,
         preprocess=lambda row: dict(
             messages=[
                 {"role": "system", "content": "You are an assistant"},
@@ -400,28 +399,6 @@ def test_video_model(gpu_type, model_qwen_2_5_vl_3b_instruct):
                     ],
                 },
             ],
-        ),
-    )
-
-    llm_processor_config = vLLMEngineProcessorConfig(
-        model_source=model_qwen_2_5_vl_3b_instruct,
-        task_type="generate",
-        engine_kwargs=dict(
-            enforce_eager=True,
-            # Limit the number of videos that can be provided per prompt to prevent memory issues
-            limit_mm_per_prompt={"video": 1},
-        ),
-        batch_size=16,
-        accelerator_type=gpu_type,
-        concurrency=1,
-        chat_template_stage=ChatTemplateStageConfig(enabled=True),
-        tokenize_stage=TokenizerStageConfig(enabled=False),
-        detokenize_stage=DetokenizeStageConfig(enabled=False),
-    )
-
-    llm_processor = build_llm_processor(
-        llm_processor_config,
-        preprocess=lambda row: dict(
             sampling_params=dict(
                 temperature=0.3,
                 max_tokens=50,
@@ -439,7 +416,7 @@ def test_video_model(gpu_type, model_qwen_2_5_vl_3b_instruct):
 
     ds = ray.data.range(5)
     ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
-    ds = llm_processor(multimodal_processor(ds))
+    ds = llm_processor(ds)
     ds = ds.materialize()
     outs = ds.take_all()
     assert len(outs) == 5
@@ -451,16 +428,27 @@ def test_audio_model(
     gpu_type, model_qwen_2_5_omni_3b, audio_asset, input_raw_audio_data
 ):
     audio_url, audio_data = audio_asset
-    multimodal_processor_config = MultimodalProcessorConfig(
+    llm_processor_config = vLLMEngineProcessorConfig(
         model_source=model_qwen_2_5_omni_3b,
+        task_type="generate",
+        engine_kwargs=dict(
+            enforce_eager=True,
+            limit_mm_per_prompt={"audio": 1},
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
         prepare_multimodal_stage=PrepareMultimodalStageConfig(
             enabled=True,
             chat_template_content_format="openai",
         ),
-        concurrency=1,
+        chat_template_stage=ChatTemplateStageConfig(enabled=True),
+        tokenize_stage=TokenizerStageConfig(enabled=False),
+        detokenize_stage=DetokenizeStageConfig(enabled=False),
     )
-    multimodal_processor = build_llm_processor(
-        multimodal_processor_config,
+
+    llm_processor = build_llm_processor(
+        llm_processor_config,
         preprocess=lambda row: dict(
             messages=[
                 {"role": "system", "content": "You are an assistant"},
@@ -483,27 +471,6 @@ def test_audio_model(
                     ],
                 },
             ],
-        ),
-    )
-
-    llm_processor_config = vLLMEngineProcessorConfig(
-        model_source=model_qwen_2_5_omni_3b,
-        task_type="generate",
-        engine_kwargs=dict(
-            enforce_eager=True,
-            limit_mm_per_prompt={"audio": 1},
-        ),
-        batch_size=16,
-        accelerator_type=gpu_type,
-        concurrency=1,
-        chat_template_stage=ChatTemplateStageConfig(enabled=True),
-        tokenize_stage=TokenizerStageConfig(enabled=False),
-        detokenize_stage=DetokenizeStageConfig(enabled=False),
-    )
-
-    llm_processor = build_llm_processor(
-        llm_processor_config,
-        preprocess=lambda row: dict(
             sampling_params=dict(
                 temperature=0.3,
                 max_tokens=50,
@@ -516,7 +483,7 @@ def test_audio_model(
 
     ds = ray.data.range(60)
     ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
-    ds = llm_processor(multimodal_processor(ds))
+    ds = llm_processor(ds)
     ds = ds.materialize()
     outs = ds.take_all()
     assert len(outs) == 60

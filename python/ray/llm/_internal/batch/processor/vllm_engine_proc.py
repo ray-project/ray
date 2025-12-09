@@ -26,6 +26,7 @@ from ray.llm._internal.batch.stages import (
     ChatTemplateStage,
     DetokenizeStage,
     PrepareImageStage,
+    PrepareMultimodalStage,
     TokenizeStage,
     vLLMEngineStage,
 )
@@ -33,6 +34,7 @@ from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig,
     DetokenizeStageConfig,
     PrepareImageStageConfig,
+    PrepareMultimodalStageConfig,
     TokenizerStageConfig,
     resolve_stage_config,
 )
@@ -162,6 +164,25 @@ def build_vllm_engine_processor(
         stages.append(
             PrepareImageStage(
                 map_batches_kwargs=build_cpu_stage_map_kwargs(image_stage_cfg),
+            )
+        )
+
+    # Resolve and build PrepareMultimodalStage if enabled
+    prepare_multimodal_stage_cfg = resolve_stage_config(
+        config.prepare_multimodal_stage,
+        PrepareMultimodalStageConfig,
+        processor_defaults,
+    )
+    if prepare_multimodal_stage_cfg.enabled:
+        stages.append(
+            PrepareMultimodalStage(
+                fn_constructor_kwargs=dict(
+                    model=prepare_multimodal_stage_cfg.model_source,
+                    chat_template_content_format=prepare_multimodal_stage_cfg.chat_template_content_format,
+                ),
+                map_batches_kwargs=build_cpu_stage_map_kwargs(
+                    prepare_multimodal_stage_cfg
+                ),
             )
         )
 

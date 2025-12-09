@@ -203,6 +203,10 @@ class OfflineProcessorConfig(ProcessorConfig):
         default=False,
         description="[DEPRECATED] Prefer `prepare_multimodal_stage` for processing multimodal data. Prepare image stage config (bool | dict | PrepareImageStageConfig).",
     )
+    prepare_multimodal_stage: Any = Field(
+        default=False,
+        description="Prepare multimodal stage config (bool | dict | PrepareMultimodalStageConfig).",
+    )
 
     @model_validator(mode="before")
     def _coerce_legacy_to_stage_config(cls, values: Dict[str, Any]) -> Dict[str, Any]:

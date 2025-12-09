@@ -4,6 +4,13 @@ from ray.llm._internal.batch.stages.base import (
     wrap_preprocess,
 )
 from ray.llm._internal.batch.stages.chat_template_stage import ChatTemplateStage
+from ray.llm._internal.batch.stages.configs import (
+    ChatTemplateStageConfig,
+    DetokenizeStageConfig,
+    PrepareImageStageConfig,
+    PrepareMultimodalStageConfig,
+    TokenizerStageConfig,
+)
 from ray.llm._internal.batch.stages.http_request_stage import HttpRequestStage
 from ray.llm._internal.batch.stages.prepare_image_stage import PrepareImageStage
 from ray.llm._internal.batch.stages.prepare_multimodal_stage import (
@@ -27,4 +34,9 @@ __all__ = [
     "wrap_preprocess",
     "wrap_postprocess",
     "PrepareImageStage",
+    "ChatTemplateStageConfig",
+    "DetokenizeStageConfig",
+    "PrepareImageStageConfig",
+    "PrepareMultimodalStageConfig",
+    "TokenizerStageConfig",
 ]

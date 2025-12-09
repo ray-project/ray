@@ -5,7 +5,14 @@ import time
 import pytest
 
 import ray
-from ray.data.llm import build_processor, vLLMEngineProcessorConfig
+from ray.data.llm import (
+    build_processor,
+    vLLMEngineProcessorConfig,
+    ChatTemplateStageConfig,
+    DetokenizeStageConfig,
+    PrepareMultimodalStageConfig,
+    TokenizerStageConfig,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -284,16 +291,28 @@ def test_vllm_vision_language_models(
     tokenize = False
     detokenize = False
 
-    multimodal_processor_config = MultimodalProcessorConfig(
+    llm_processor_config = vLLMEngineProcessorConfig(
         model_source=model_source,
+        task_type="generate",
+        engine_kwargs=dict(
+            tensor_parallel_size=tp_size,
+            pipeline_parallel_size=pp_size,
+            max_model_len=4096,
+            enable_chunked_prefill=True,
+        ),
         prepare_multimodal_stage=PrepareMultimodalStageConfig(
             enabled=True,
             chat_template_content_format=chat_template_content_format,
         ),
+        apply_chat_template=True,
+        tokenize=tokenize,
+        detokenize=detokenize,
+        batch_size=16,
         concurrency=concurrency,
+        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
-    multimodal_processor = build_llm_processor(
-        multimodal_processor_config,
+    llm_processor = build_llm_processor(
+        llm_processor_config,
         preprocess=lambda row: dict(
             messages=[
                 {"role": "system", "content": "You are an assistant"},
@@ -313,29 +332,6 @@ def test_vllm_vision_language_models(
                     ],
                 },
             ],
-        ),
-    )
-
-    llm_processor_config = vLLMEngineProcessorConfig(
-        model_source=model_source,
-        task_type="generate",
-        engine_kwargs=dict(
-            tensor_parallel_size=tp_size,
-            pipeline_parallel_size=pp_size,
-            max_model_len=4096,
-            enable_chunked_prefill=True,
-        ),
-        apply_chat_template=True,
-        tokenize=tokenize,
-        detokenize=detokenize,
-        batch_size=16,
-        concurrency=concurrency,
-        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
-    )
-
-    llm_processor = build_processor(
-        llm_processor_config,
-        preprocess=lambda row: dict(
             sampling_params=dict(
                 temperature=0.3,
                 max_tokens=50,
@@ -348,7 +344,7 @@ def test_vllm_vision_language_models(
 
     ds = ray.data.range(sample_size)
     ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
-    ds = llm_processor(multimodal_processor(ds))
+    ds = llm_processor(ds)
     ds = ds.materialize()
     outs = ds.take_all()
     assert len(outs) == sample_size
@@ -372,33 +368,6 @@ def test_vllm_vision_language_models(
 )
 def test_vllm_qwen_vl_multimodal(multimodal_content):
     model_source = "Qwen/Qwen2.5-VL-3B-Instruct"
-    tokenize = False
-    detokenize = False
-
-    multimodal_processor_config = MultimodalProcessorConfig(
-        model_source=model_source,
-        prepare_multimodal_stage=PrepareMultimodalStageConfig(
-            enabled=True,
-        ),
-        concurrency=1,
-    )
-    multimodal_processor = build_llm_processor(
-        multimodal_processor_config,
-        preprocess=lambda row: dict(
-            messages=[
-                {"role": "system", "content": "You are an assistant"},
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": f"Describe this asset in {row['id']} sentences.",
-                        },
-                    ],
-                },
-            ],
-        ),
-    )
 
     llm_processor_config = vLLMEngineProcessorConfig(
         model_source=model_source,
@@ -407,9 +376,12 @@ def test_vllm_qwen_vl_multimodal(multimodal_content):
             max_model_len=4096,
             enable_chunked_prefill=True,
         ),
-        apply_chat_template=True,
-        tokenize=tokenize,
-        detokenize=detokenize,
+        prepare_multimodal_stage=PrepareMultimodalStageConfig(
+            enabled=True,
+        ),
+        chat_template_stage=ChatTemplateStageConfig(enabled=True),
+        tokenize_stage=TokenizerStageConfig(enabled=False),
+        detokenize_stage=DetokenizeStageConfig(enabled=False),
         batch_size=16,
         concurrency=1,
     )
@@ -421,6 +393,19 @@ def test_vllm_qwen_vl_multimodal(multimodal_content):
                 temperature=0.3,
                 max_tokens=50,
             ),
+            messages=[
+                {"role": "system", "content": "You are an assistant"},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Describe this asset in {row['id']} sentences.",
+                        },
+                        multimodal_content,
+                    ],
+                },
+            ],
         ),
         postprocess=lambda row: {
             "resp": row["generated_text"],
@@ -429,7 +414,7 @@ def test_vllm_qwen_vl_multimodal(multimodal_content):
 
     ds = ray.data.range(60)
     ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
-    ds = llm_processor(multimodal_processor(ds))
+    ds = llm_processor(ds)
     ds = ds.materialize()
     outs = ds.take_all()
     assert len(outs) == 60
