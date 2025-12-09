@@ -1033,7 +1033,7 @@ class Dataset:
         *,
         compute: Optional[str] = None,
         concurrency: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        **ray_remote_args,
     ) -> "Dataset":
         """Add a column with monotonically increasing IDs. The generated IDs are
         guaranteed to be monotonically increasing and unique, but not consecutive.
@@ -1065,7 +1065,7 @@ class Dataset:
                 column is overwritten.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
-            ray_remote_args: Additional resource requirements to request from
+            **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
 
