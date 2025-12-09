@@ -65,7 +65,7 @@ class TV_SquaredExp(Kernel):
         if eval_gradient:
             K_gradient_variance = K
             dist2 = np.square(euclidean_distances(X_spatial, Y_spatial))
-            K_gradient_lengthscale = K * dist2 / (self.lengthscale**2)
+            K_gradient_lengthscale = K * dist2 / self.lengthscale
             n = dists / 2
             K_gradient_epsilon = -K * n * epsilon / (1 - epsilon)
             return K, np.dstack(
