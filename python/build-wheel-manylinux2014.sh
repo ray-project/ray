@@ -16,8 +16,8 @@ if [ "$EUID" -eq 0 ]; then
   useradd -m -u "$HOST_UID" -g "$HOST_GID" -d /ray builduser
 
   # Grant the builduser permissions to access $HOME.
-  sudo chown builduser $HOME
-  sudo chmod -R u+rwx $HOME
+  chown builduser $HOME
+  chmod -R u+rwx $HOME
 
   # Give sudo access
   echo "builduser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
