@@ -47,10 +47,11 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.utils import (
 from ray.rllib.examples.rl_modules.classes.lstm_containing_rlm import (
     LSTMContainingRLModule,
 )
-from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
 )
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.tune.registry import register_env
 from ray.tune.result import TRAINING_ITERATION
 
@@ -265,8 +266,6 @@ stop = {
 }
 
 if __name__ == "__main__":
-    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
-
     results = run_rllib_example_script_experiment(
         base_config=config,
         args=args,
