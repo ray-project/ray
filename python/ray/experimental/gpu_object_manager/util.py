@@ -1,6 +1,7 @@
 import threading
 from typing import TYPE_CHECKING
 
+from ray._private.custom_types import TensorTransportEnum
 from ray.experimental.gpu_object_manager.collective_tensor_transport import (
     CollectiveTensorTransport,
 )
@@ -17,15 +18,15 @@ if TYPE_CHECKING:
 
 # Class definitions for transport managers
 transport_manager_classes: dict[str, TensorTransportManager] = {
-    "nixl": NixlTensorTransport,
-    "torch_gloo": CollectiveTensorTransport,
-    "nccl": CollectiveTensorTransport,
+    "NIXL": NixlTensorTransport,
+    "GLOO": CollectiveTensorTransport,
+    "NCCL": CollectiveTensorTransport,
 }
 
 transport_devices = {
-    "nixl": ["cuda", "cpu"],
-    "torch_gloo": ["cpu"],
-    "nccl": ["cuda"],
+    "NIXL": ["cuda", "cpu"],
+    "GLOO": ["cpu"],
+    "NCCL": ["cuda"],
 }
 
 
@@ -70,3 +71,26 @@ def device_match_transport(device: "torch.device", tensor_transport: str) -> boo
         raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
 
     return device.type in transport_devices[tensor_transport]
+
+
+def normalize_and_validate_tensor_transport(tensor_transport: str) -> str:
+    tensor_transport = tensor_transport.upper()
+
+    if (
+        tensor_transport != TensorTransportEnum.OBJECT_STORE.name
+        and tensor_transport not in transport_manager_classes
+    ):
+        raise ValueError(f"Invalid tensor transport: {tensor_transport}")
+
+    return tensor_transport
+
+
+def validate_one_sided(tensor_transport: str, ray_usage_func: str):
+    if (
+        tensor_transport != TensorTransportEnum.OBJECT_STORE.name
+        and not transport_manager_classes[tensor_transport].is_one_sided()
+    ):
+        raise ValueError(
+            f"Trying to use two-sided tensor transport: {tensor_transport} for {ray_usage_func}. "
+            "This is only supported for one-sided transports such as NIXL or the OBJECT_STORE."
+        )
