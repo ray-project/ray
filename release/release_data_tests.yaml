@@ -725,3 +725,18 @@
       env: aws
       cluster:
         cluster_compute: dataset/cross_az_250_350_compute_aws.yaml
+
+###################
+# Autoscaling tests
+###################
+
+- name: basic_autoscaling_respects_utilization
+  group: data-autoscaling
+
+  cluster:
+    byod: {}
+    cluster_compute: autoscaling/basic_autoscaling_test_config.yaml
+
+  run:
+    timeout: 3600
+    script: python basic_autoscaling_tests/respects_utilization.py
