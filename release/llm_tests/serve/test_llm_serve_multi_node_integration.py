@@ -125,8 +125,9 @@ def test_llm_serve_prefill_decode_with_data_parallelism():
     - Prefill: DP=4 (scheduled on node with "prefill" custom resource)
     - Decode: DP=4 (scheduled on node with "decode" custom resource)
 
-    TODO(seiji): remove custom resources on worker nodes when
-    https://github.com/ray-project/ray/issues/59150 is closed.
+    Note: This test requires RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1 to be set
+    (configured in release_tests.yaml). Without this flag, Serve uses the default
+    SPREAD scheduling strategy, which will prevent DP replicas from being colocated.
     """
     model_loading_config = ModelLoadingConfig(
         model_id="deepseek",
