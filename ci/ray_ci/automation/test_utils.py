@@ -1,5 +1,6 @@
 """Shared test utilities for ci/ray_ci/automation tests."""
 
+import os
 import platform
 import random
 import shutil
@@ -41,12 +42,10 @@ def _start_local_registry():
         ]
     )
 
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".yml", delete=False
-    ) as config_file:
+    config_path = os.path.join(temp_dir, "registry.yml")
+    with open(config_path, "w") as config_file:
         config_file.write(config_content)
         config_file.flush()
-        config_path = config_file.name
 
     registry_proc = subprocess.Popen(
         [_registry_binary(), "serve", config_path],
