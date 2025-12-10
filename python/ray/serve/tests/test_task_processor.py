@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -10,6 +11,10 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.test_utils import (
+    check_num_replicas_eq,
+    check_num_replicas_gte,
+)
 from ray.serve.schema import CeleryAdapterConfig, TaskProcessorConfig
 from ray.serve.task_consumer import (
     instantiate_adapter_from_config,
@@ -848,6 +853,234 @@ class TestTaskConsumerWithDLQsConfiguration:
             processor_config,
             expected_main=0,
             expected_failed=1,
+        )
+
+
+def check_app_running(app_name) -> bool:
+    try:
+        status = serve.status()
+        if app_name not in status.applications:
+            return False
+        app_status = status.applications[app_name]
+        return app_status.status == "RUNNING"
+    except Exception:
+        return False
+
+
+def get_task_processor_config(queue_name, redis_address):
+    return TaskProcessorConfig(
+        queue_name=queue_name,
+        adapter_config=CeleryAdapterConfig(
+            broker_url=f"redis://{redis_address}/0",
+            backend_url=f"redis://{redis_address}/1",
+            app_custom_config={"worker_prefetch_multiplier": 1},
+        ),
+    )
+
+
+def create_autoscaling_task_consumer(
+    processor_config: TaskProcessorConfig,
+    autoscaling_config: dict,
+    signal_actor,
+    processed_tasks_tracker,
+):
+    """Factory to create an AutoscalingTaskConsumer deployment with given config."""
+
+    @serve.deployment(
+        autoscaling_config=autoscaling_config,
+        max_ongoing_requests=1,
+    )
+    @task_consumer(task_processor_config=processor_config)
+    class AutoscalingTaskConsumer:
+        def __init__(self, signal_actor, processed_tasks_tracker):
+            self._signal = signal_actor
+            self._processed_tasks_tracker = processed_tasks_tracker
+
+        @task_handler(name="blocking_task")
+        def blocking_task(self, data):
+            ray.get(self._signal.wait.remote())
+            ray.get(self._processed_tasks_tracker.add_task.remote(data))
+            return f"Processed: {data}"
+
+    return AutoscalingTaskConsumer.bind(signal_actor, processed_tasks_tracker)
+
+
+def enqueue_tasks(processor_config: TaskProcessorConfig, num_tasks: int, task_name: str = "blocking_task"):
+    """Enqueue multiple tasks to the queue."""
+    for i in range(num_tasks):
+        send_request_to_queue.remote(processor_config, f"task_{i}", task_name=task_name)
+
+
+def wait_for_tasks_processed(processed_tasks_tracker, expected_count: int, timeout: int = 60):
+    """Wait for expected number of tasks to be processed."""
+    wait_for_condition(
+        lambda: ray.get(processed_tasks_tracker.get_count.remote()) == expected_count,
+        timeout=timeout,
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+class TestTaskConsumerQueueBasedAutoscaling:
+    """Integration tests for queue-based autoscaling with TaskConsumer.
+
+    These tests verify that TaskConsumer deployments with autoscaling enabled
+    correctly scale based on queue depth using the queue_based_autoscaling_policy.
+
+    The tests use:
+    - external_redis: Real Redis broker for task queue
+    - SignalActor: Block task handlers to accumulate tasks in queue
+    - wait_for_condition: Verify replica count scales based on queue length
+    """
+
+    def _setup_test(self):
+        """Common setup for autoscaling tests."""
+        redis_address = os.environ.get("RAY_REDIS_ADDRESS")
+        queue_name = f"autoscaling_queue_{time.time_ns()}"
+        processor_config = get_task_processor_config(queue_name, redis_address)
+        signal = SignalActor.remote()
+        processed_tasks_tracker = ProcessedTasksTracker.remote()
+        return processor_config, signal, processed_tasks_tracker
+
+    def _deploy_and_wait(self, deployment, app_name: str):
+        """Deploy and wait for the application to be running."""
+        serve.run(deployment, name=app_name)
+        wait_for_condition(lambda: check_app_running(app_name), timeout=30)
+
+    def _release_and_wait_for_completion(self, signal, processed_tasks_tracker, num_tasks: int):
+        """Release blocked tasks and wait for all to complete."""
+        ray.get(signal.send.remote())
+        wait_for_tasks_processed(processed_tasks_tracker, num_tasks)
+
+    def test_task_consumer_scales_up_based_on_queue_depth(
+        self, external_redis, serve_instance  # noqa: F811
+    ):
+        """Test that TaskConsumer deployment scales up when queue fills up.
+
+        Scenario:
+        - Deploy TaskConsumer with autoscaling (min=1, max=5, target_ongoing_requests=5)
+        - Block task handler using SignalActor
+        - Enqueue 20 tasks
+        - Verify replicas scale up: 20 tasks / 5 target = 4 replicas expected
+        """
+        processor_config, signal, tracker = self._setup_test()
+        app_name = "autoscaling_scale_up_test"
+
+        autoscaling_config = {
+            "min_replicas": 1,
+            "max_replicas": 5,
+            "target_ongoing_requests": 5,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 10,
+        }
+
+        deployment = create_autoscaling_task_consumer(
+            processor_config, autoscaling_config, signal, tracker
+        )
+        self._deploy_and_wait(deployment, app_name)
+
+        # Enqueue 20 tasks -> expect ceil(20/5) = 4 replicas
+        num_tasks = 20
+        enqueue_tasks(processor_config, num_tasks)
+
+        wait_for_condition(
+            lambda: check_num_replicas_eq("AutoscalingTaskConsumer", 4, app_name),
+            timeout=60,
+        )
+
+        # Release tasks and verify scale down to min_replicas
+        self._release_and_wait_for_completion(signal, tracker, num_tasks)
+
+        wait_for_condition(
+            lambda: check_num_replicas_eq("AutoscalingTaskConsumer", 1, app_name),
+            timeout=60,
+        )
+
+    def test_task_consumer_autoscaling_respects_max_replicas(
+        self, external_redis, serve_instance  # noqa: F811
+    ):
+        """Test that autoscaling respects max_replicas even with large queue.
+
+        Scenario:
+        - Deploy TaskConsumer with max_replicas=2
+        - Enqueue 20 tasks (would need ceil(20/2)=10 replicas)
+        - Verify scaling is capped at max_replicas=2
+        """
+        processor_config, signal, tracker = self._setup_test()
+        app_name = "autoscaling_max_replicas_test"
+
+        autoscaling_config = {
+            "min_replicas": 1,
+            "max_replicas": 2,
+            "target_ongoing_requests": 2,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 10,
+        }
+
+        deployment = create_autoscaling_task_consumer(
+            processor_config, autoscaling_config, signal, tracker
+        )
+        self._deploy_and_wait(deployment, app_name)
+
+        # Enqueue 20 tasks -> would need 10 replicas, but capped at max=2
+        num_tasks = 20
+        enqueue_tasks(processor_config, num_tasks)
+
+        wait_for_condition(
+            lambda: check_num_replicas_eq("AutoscalingTaskConsumer", 2, app_name),
+            timeout=60,
+        )
+
+        # Release tasks and verify scale down to min_replicas
+        self._release_and_wait_for_completion(signal, tracker, num_tasks)
+
+        wait_for_condition(
+            lambda: check_num_replicas_eq("AutoscalingTaskConsumer", 1, app_name),
+            timeout=60,
+        )
+
+    def test_task_consumer_autoscaling_respects_min_replicas(
+        self, external_redis, serve_instance  # noqa: F811
+    ):
+        """Test that autoscaling respects min_replicas even with empty queue.
+
+        Scenario:
+        - Deploy TaskConsumer with min_replicas=2
+        - Enqueue tasks and let them complete (queue becomes empty)
+        - Verify replicas stay at min_replicas=2, not scaling below
+        """
+        processor_config, signal, tracker = self._setup_test()
+        app_name = "autoscaling_min_replicas_test"
+
+        autoscaling_config = {
+            "min_replicas": 2,
+            "max_replicas": 5,
+            "target_ongoing_requests": 5,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 0,  # Fast downscale to test min_replicas floor
+        }
+
+        deployment = create_autoscaling_task_consumer(
+            processor_config, autoscaling_config, signal, tracker
+        )
+        self._deploy_and_wait(deployment, app_name)
+
+        # Wait for initial scale to min_replicas
+        wait_for_condition(
+            lambda: check_num_replicas_gte("AutoscalingTaskConsumer", 2, app_name),
+            timeout=30,
+        )
+
+        # Enqueue a few tasks and let them complete
+        num_tasks = 5
+        enqueue_tasks(processor_config, num_tasks)
+        self._release_and_wait_for_completion(signal, tracker, num_tasks)
+
+        # Wait and verify replicas stay at min_replicas (2), not below
+        time.sleep(5)
+
+        wait_for_condition(
+            lambda: check_num_replicas_eq("AutoscalingTaskConsumer", 2, app_name),
+            timeout=30,
         )
 
 

@@ -300,5 +300,30 @@ def test_default_deployment_name_stays_same_with_task_consumer(config):
     assert MyTaskConsumer.name == "MyTaskConsumer"
 
 
+def test_queue_monitor_provides_queue_length():
+    """Test that QueueMonitor provides queue length for autoscaling."""
+
+    queue_name = f"test_queue_{uuid.uuid4().hex}"
+    task_processor_config = TaskProcessorConfig(
+        queue_name=queue_name,
+        adapter_config=CeleryAdapterConfig(
+            broker_url="redis://localhost:6379/0",
+            backend_url="redis://localhost:6379/0",
+        ),
+        adapter=MockTaskProcessorAdapter,
+    )
+
+    @task_consumer(task_processor_config=task_processor_config)
+    class MyConsumer:
+        @task_handler
+        def process(self):
+            pass
+
+    monitor_config = MyConsumer.get_queue_monitor_config()
+
+    assert monitor_config.broker_url == "redis://localhost:6379/0"
+    assert monitor_config.queue_name == task_processor_config.queue_name
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

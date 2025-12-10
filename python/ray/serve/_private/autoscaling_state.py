@@ -23,6 +23,7 @@ from ray.serve._private.metrics_utils import (
     aggregate_timeseries,
     merge_instantaneous_total,
 )
+from ray.serve._private.queue_monitor import delete_queue_monitor_actor
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 from ray.serve.config import AutoscalingContext, AutoscalingPolicy
@@ -891,6 +892,10 @@ class AutoscalingStateManager:
                 f"Deregistering autoscaling state for deployment {deployment_id}"
             )
             app_state.deregister_deployment(deployment_id)
+
+            # Clean up QueueMonitor actor if it exists for this deployment
+            # This is needed for TaskConsumer deployments with queue-based autoscaling
+            delete_queue_monitor_actor(deployment_id.name)
 
     def register_application(
         self,

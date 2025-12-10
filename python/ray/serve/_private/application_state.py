@@ -26,6 +26,7 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
+    DEFAULT_QUEUE_BASED_AUTOSCALING_POLICY,
     DEFAULT_REQUEST_ROUTER_PATH,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     SERVE_LOGGER_NAME,
@@ -39,6 +40,10 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.logging_utils import configure_component_logger
+from ray.serve._private.queue_monitor import (
+    QueueMonitorConfig,
+    create_queue_monitor_actor,
+)
 from ray.serve._private.storage.kv_store import KVStoreBase
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
@@ -71,6 +76,73 @@ from ray.types import ObjectRef
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 CHECKPOINT_KEY = "serve-application-state-checkpoint"
+
+
+def _is_task_consumer_deployment(deployment_info: DeploymentInfo) -> bool:
+    """Check if a deployment is a TaskConsumer."""
+    try:
+        deployment_def = deployment_info.replica_config.deployment_def
+        if deployment_def is None:
+            return False
+        return getattr(deployment_def, "_is_task_consumer", False)
+    except Exception as e:
+        logger.debug(f"Error checking if deployment is TaskConsumer: {e}")
+        return False
+
+
+def _get_queue_monitor_config(deployment_info: DeploymentInfo) -> Optional[QueueMonitorConfig]:
+    """Extract QueueMonitorConfig from a TaskConsumer deployment."""
+    try:
+        deployment_def = deployment_info.replica_config.deployment_def
+        if hasattr(deployment_def, "get_queue_monitor_config"):
+            return deployment_def.get_queue_monitor_config()
+    except Exception as e:
+        logger.warning(f"Failed to get queue monitor config: {e}")
+    return None
+
+
+def _configure_queue_based_autoscaling_for_task_consumers(deployment_infos: Dict[str, DeploymentInfo]) -> None:
+    """
+    Configure queue-based autoscaling for TaskConsumers.
+
+    For TaskConsumer deployments with autoscaling enabled and no custom policy,
+    this function switches the autoscaling policy to queue-based autoscaling.
+
+    Args:
+        deployment_infos: Deployment infos dict
+    """
+    for deployment_name, deployment_info in deployment_infos.items():
+        is_task_consumer = _is_task_consumer_deployment(deployment_info)
+        has_autoscaling = deployment_info.deployment_config.autoscaling_config is not None
+
+        # Set queue-based autoscaling policy on TaskConsumer only if user hasn't set a custom policy. This respects user's explicit choice.
+        if is_task_consumer and has_autoscaling:
+            logger.info(f"Deployment '{deployment_name}' is a TaskConsumer with autoscaling enabled")
+            is_default_policy = deployment_info.deployment_config.autoscaling_config.policy.is_default_policy_function()
+
+            if is_default_policy:
+                queue_monitor_config = _get_queue_monitor_config(deployment_info)
+                if queue_monitor_config is not None:
+                    # Create QueueMonitor as a Ray actor (not Serve deployment)
+                    # This avoids deadlock when autoscaling policy queries it from controller
+                    try:
+                        create_queue_monitor_actor(
+                            deployment_name=deployment_name,
+                            config=queue_monitor_config,
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to create QueueMonitor actor for '{deployment_name}': {e}")
+                        continue
+
+                    # Switch to queue-based autoscaling policy
+                    deployment_info.deployment_config.autoscaling_config.policy = (
+                        AutoscalingPolicy(
+                            policy_function=DEFAULT_QUEUE_BASED_AUTOSCALING_POLICY
+                        )
+                    )
+                    logger.info(f"Switched TaskConsumer '{deployment_name}' to queue-based autoscaling policy")
+
+    return deployment_infos
 
 
 class BuildAppStatus(Enum):
@@ -1185,6 +1257,10 @@ class ApplicationStateManager:
                 )
                 for params in deployment_args
             }
+
+            # Configure queue-based autoscaling for TaskConsumers
+            _configure_queue_based_autoscaling_for_task_consumers(deployment_infos)
+
             self._application_states[name].deploy_app(deployment_infos)
 
     def deploy_app(self, name: str, deployment_args: List[Dict]) -> None:
