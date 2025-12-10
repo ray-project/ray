@@ -441,7 +441,7 @@ class ServeController:
             if last is not None and last.is_scaling_equivalent(deployment_snapshot):
                 continue
 
-            payload = deployment_snapshot.model_dump(exclude_none=True)
+            payload = deployment_snapshot.dict(exclude_none=True)
             self._autoscaling_logger.info(payload)
             self._last_autoscaling_snapshots[key] = deployment_snapshot
 
