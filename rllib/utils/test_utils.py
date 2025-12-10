@@ -447,11 +447,11 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                 y = y.detach().cpu().numpy()
 
         # Stats objects.
-        from ray.rllib.utils.metrics.stats import Stats
+        from ray.rllib.utils.metrics.stats import StatsBase
 
-        if isinstance(x, Stats):
+        if isinstance(x, StatsBase):
             x = x.peek()
-        if isinstance(y, Stats):
+        if isinstance(y, StatsBase):
             y = y.peek()
 
         # Using decimals.
@@ -1628,7 +1628,7 @@ def get_cartpole_dataset_reader(batch_size: int = 1) -> "DatasetReader":
         get_dataset_and_shards,
     )
 
-    path = "tests/data/cartpole/large.json"
+    path = "offline/tests/data/cartpole/large.json"
     input_config = {"format": "json", "paths": path}
     dataset, _ = get_dataset_and_shards(
         AlgorithmConfig().offline_data(input_="dataset", input_config=input_config)
