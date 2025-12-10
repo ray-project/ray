@@ -258,7 +258,7 @@ class _ListNamespace:
                 arr_is_large = pyarrow.types.is_large_list(arr_type)
                 offsets_type = pyarrow.int64() if arr_is_large else pyarrow.int32()
                 offsets_array = pyarrow.array(offsets, type=offsets_type)
-                null_bitmap = arr.buffers()[0] if arr.null_count else None
+                null_mask = arr.is_null() if arr.null_count else None
 
                 array_cls = (
                     pyarrow.LargeListArray if arr_is_large else pyarrow.ListArray
@@ -266,7 +266,7 @@ class _ListNamespace:
                 return array_cls.from_arrays(
                     offsets_array,
                     scalar_values,
-                    mask=null_bitmap,
+                    mask=null_mask,
                 )
 
             return _list_flatten_arrow(self._expr)
