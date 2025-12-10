@@ -12,7 +12,7 @@ worker_node_types:
   - name: worker
     instance_type: n2-standard-8
     min_workers: 250
-    max_workers: 375
+    max_workers: 350
 
 flags:
   enable_multi_az_serve: true
