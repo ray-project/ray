@@ -11,13 +11,13 @@ SHELL ["/bin/bash", "-ice"]
 
 COPY . .
 
-COPY $PYTHON_DEPSET $HOME/python_depset.lock
+COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 RUN <<EOF
 #!/bin/bash
 
 set -euo pipefail
 
-uv pip install -r $HOME/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
+uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
 
 EOF

@@ -2417,7 +2417,7 @@ pyyaml==6.0.3 \
     #   ray
     #   uvicorn
 .whl/ray-100.0.0.dev0-py3-none-any.whl \
-    --hash=sha256:d07709a934b3bf922e903fb548a367a3ec01650783b874ad2945438572b0fe0b
+    --hash=sha256:af39e737120ddf7c9fdce6a47a17ceddc9d7efcfd8281a2c945f665ed03064e3
     # via -r release/ray_release/byod/ray_dev.in
 referencing==0.37.0 \
     --hash=sha256:381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231 \
