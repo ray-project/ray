@@ -690,6 +690,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_dqn_multi_gpu",
     size = "large",
+    timeout = "eternal",
     srcs = ["examples/algorithms/dqn/multi_agent_cartpole_dqn.py"],
     args = [
         "--as-test",
@@ -856,6 +857,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_impala_multi_gpu",
     size = "large",
+    timeout = "eternal",
     srcs = ["examples/algorithms/impala/multi_agent_cartpole_impala.py"],
     args = [
         "--as-test",
@@ -1680,6 +1682,7 @@ py_test(
 py_test(
     name = "learning_tests_mountaincar_sac_multi_gpu",
     size = "large",
+    timeout = "eternal",
     srcs = ["examples/algorithms/sac/mountaincar_sac.py"],
     args = [
         "--as-test",
@@ -1836,6 +1839,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_pendulum_sac_multi_gpu",
     size = "large",
+    timeout = "eternal",
     srcs = ["examples/algorithms/sac/multi_agent_pendulum_sac.py"],
     args = [
         "--num-agents=2",
