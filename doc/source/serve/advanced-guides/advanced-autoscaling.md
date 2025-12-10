@@ -739,6 +739,22 @@ Programmatic configuration of application-level autoscaling policies through `se
 When you specify both a deployment-level policy and an application-level policy, the application-level policy takes precedence. Ray Serve logs a warning if you configure both.
 :::
 
+#### Applying standard autoscaling parameters to application-level policies
+
+Just like deployment-level policies, you can use the `@apply_app_level_autoscaling_config` decorator to automatically apply standard autoscaling parameters to your application-level policy. The decorator applies these parameters **per-deployment**, so each deployment uses its own `autoscaling_config` settings:
+
+```{literalinclude} ../doc_code/autoscaling_policy.py
+:language: python
+:start-after: __begin_apply_app_level_autoscaling_config_example__
+:end-before: __end_apply_app_level_autoscaling_config_example__
+```
+
+The decorator ensures that each deployment's `upscale_delay_s`, `downscale_delay_s`, `upscaling_factor`, `downscaling_factor`, `min_replicas`, and `max_replicas` are respected, even when using an application-level policy that makes coordinated decisions across deployments.
+
+:::{note}
+The decorator applies the configuration logic **after** your custom policy function returns. Your policy function should return the "raw" desired number of replicas for each deployment. The decorator then modifies these values per-deployment based on each deployment's `autoscaling_config` settings.
+:::
+
 :::{warning}
 ### Gotchas and limitations
 

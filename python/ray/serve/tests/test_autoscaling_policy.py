@@ -36,7 +36,10 @@ from ray.serve._private.test_utils import (
     get_num_alive_replicas,
     tlog,
 )
-from ray.serve.autoscaling_policy import apply_autoscaling_config
+from ray.serve.autoscaling_policy import (
+    apply_app_level_autoscaling_config,
+    apply_autoscaling_config,
+)
 from ray.serve.config import AutoscalingConfig, AutoscalingContext, AutoscalingPolicy
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ApplicationStatus, ServeDeploySchema
@@ -1899,6 +1902,33 @@ def app_level_custom_autoscaling_policy(ctxs: Dict[DeploymentID, AutoscalingCont
     return decisions, {}
 
 
+@apply_app_level_autoscaling_config
+def app_level_custom_autoscaling_policy_with_decorator(
+    ctxs: Dict[DeploymentID, AutoscalingContext]
+):
+    """App-level policy with decorator - returns raw desired replicas."""
+    decisions: Dict[DeploymentID, int] = {}
+    for deployment_id, ctx in ctxs.items():
+        if deployment_id.name == "A":
+            if ctx.total_num_requests > 50:
+                decisions[
+                    deployment_id
+                ] = 4  # Raw desired - decorator applies delays/factors
+            else:
+                decisions[
+                    deployment_id
+                ] = 0  # Raw desired - decorator applies delays/factors
+        elif deployment_id.name == "B":
+            if ctx.total_num_requests > 60:
+                decisions[deployment_id] = 5
+            else:
+                decisions[deployment_id] = 0
+        else:
+            raise RuntimeWarning(f"Unknown deployment: {deployment_id}")
+
+    return decisions, {}
+
+
 class TestAppLevelAutoscalingPolicy:
     @pytest.fixture
     def serve_instance_with_two_signal(self, serve_instance):
@@ -2214,6 +2244,300 @@ class TestAppLevelAutoscalingPolicy:
         wait_for_condition(check_num_replicas_eq, name="A", target=1)
         ray.get(signal_A.send.remote(clear=True))
         assert all(result.result(timeout_s=10) for result in results)
+
+
+class TestAppLevelAutoscalingWithDecorator:
+    """End-to-end tests for application-level autoscaling with @apply_app_level_autoscaling_config decorator."""
+
+    @pytest.fixture
+    def serve_instance_with_two_signal(self, serve_instance):
+        client = serve_instance
+
+        signal_a = SignalActor.options(name="signal_A").remote()
+        signal_b = SignalActor.options(name="signal_B").remote()
+
+        yield client, signal_a, signal_b
+
+        # Delete signal actors so there is no conflict between tests
+        ray.kill(signal_a)
+        ray.kill(signal_b)
+
+    @pytest.mark.parametrize(
+        "policy",
+        [
+            {
+                "policy_function": "ray.serve.tests.test_autoscaling_policy.app_level_custom_autoscaling_policy_with_decorator"
+            },
+            AutoscalingPolicy(
+                policy_function="ray.serve.tests.test_autoscaling_policy.app_level_custom_autoscaling_policy_with_decorator"
+            ),
+            AutoscalingPolicy(
+                policy_function=app_level_custom_autoscaling_policy_with_decorator
+            ),
+        ],
+    )
+    def test_e2e_app_level_scale_up_down_with_decorator(
+        self, serve_instance_with_two_signal, policy
+    ):
+        """Test that app-level decorator applies upscale/downscale delays per-deployment."""
+        client, signal_A, signal_B = serve_instance_with_two_signal
+
+        config_template = {
+            "import_path": "ray.serve.tests.test_config_files.get_multi_deployment_signal_app.app",
+            "autoscaling_policy": policy,
+            "deployments": [
+                {
+                    "name": "A",
+                    "max_ongoing_requests": 1000,
+                    "autoscaling_config": {
+                        "min_replicas": 0,
+                        "max_replicas": 4,
+                        "upscale_delay_s": 5.0,  # Decorator should apply this
+                        "downscale_delay_s": 3.0,  # Decorator should apply this
+                        "metrics_interval_s": 0.1,
+                        "look_back_period_s": 0.2,
+                    },
+                    "graceful_shutdown_timeout_s": 0.5,
+                },
+                {
+                    "name": "B",
+                    "max_ongoing_requests": 1000,
+                    "autoscaling_config": {
+                        "min_replicas": 0,
+                        "max_replicas": 4,
+                        "upscale_delay_s": 5.0,
+                        "downscale_delay_s": 3.0,
+                        "metrics_interval_s": 0.1,
+                        "look_back_period_s": 0.2,
+                    },
+                    "graceful_shutdown_timeout_s": 0.5,
+                },
+            ],
+        }
+
+        client.deploy_apps(
+            ServeDeploySchema.parse_obj({"applications": [config_template]})
+        )
+        wait_for_condition(check_running, timeout=15)
+
+        hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
+        hB = serve.get_deployment_handle("B", app_name=SERVE_DEFAULT_APP_NAME)
+
+        # Send traffic to trigger upscale
+        [hA.remote() for _ in range(70)]
+        [hB.remote() for _ in range(70)]
+
+        # Verify upscale delay is respected (should not scale up immediately)
+        # With upscale_delay_s=3.0, scaling should not happen within 2.5 seconds
+        with pytest.raises(RuntimeError, match="timeout"):
+            wait_for_condition(
+                check_num_replicas_eq,
+                name="A",
+                target=4,
+                timeout=2.5,
+                retry_interval_ms=100,
+            )
+        with pytest.raises(RuntimeError, match="timeout"):
+            wait_for_condition(
+                check_num_replicas_eq,
+                name="B",
+                target=4,
+                timeout=2.5,
+                retry_interval_ms=100,
+            )
+
+        # Eventually reaches 4 (after delay period)
+        wait_for_condition(check_num_replicas_eq, name="A", target=4, timeout=10)
+        wait_for_condition(check_num_replicas_eq, name="B", target=4, timeout=10)
+
+        # Release traffic to trigger downscale
+        ray.get(signal_A.send.remote())
+        ray.get(signal_B.send.remote())
+        wait_for_condition(lambda: ray.get(signal_A.cur_num_waiters.remote()) == 0)
+        wait_for_condition(lambda: ray.get(signal_B.cur_num_waiters.remote()) == 0)
+
+        # Verify downscale delay is respected (should not scale down immediately)
+        # With downscale_delay_s=2.0, scaling should not happen within 1.5 seconds
+        with pytest.raises(RuntimeError, match="timeout"):
+            wait_for_condition(
+                check_num_replicas_eq,
+                name="A",
+                target=0,
+                timeout=1.5,
+                retry_interval_ms=100,
+            )
+        with pytest.raises(RuntimeError, match="timeout"):
+            wait_for_condition(
+                check_num_replicas_eq,
+                name="B",
+                target=0,
+                timeout=1.5,
+                retry_interval_ms=100,
+            )
+
+        # Eventually reaches 0 (after delay period)
+        wait_for_condition(check_num_replicas_eq, name="A", target=0, timeout=10)
+        wait_for_condition(check_num_replicas_eq, name="B", target=0, timeout=10)
+
+    @pytest.mark.parametrize(
+        "policy",
+        [
+            {
+                "policy_function": "ray.serve.tests.test_autoscaling_policy.app_level_custom_autoscaling_policy_with_decorator"
+            },
+            AutoscalingPolicy(
+                policy_function="ray.serve.tests.test_autoscaling_policy.app_level_custom_autoscaling_policy_with_decorator"
+            ),
+            AutoscalingPolicy(
+                policy_function=app_level_custom_autoscaling_policy_with_decorator
+            ),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "upscaling_factor, expected_intermediate_steps",
+        [
+            # Target 4. Current 1. Delta 3.
+            # Factor 0.5: ceil(1 + 0.5*3) = 3. Path: 1 -> 3 -> 4
+            (0.5, [3]),
+            # Factor 0.2: ceil(1 + 0.2*3) = 2. Path: 1 -> 2 -> 3 -> 4
+            (0.2, [2, 3]),
+        ],
+    )
+    def test_e2e_app_level_upscaling_factor_with_decorator(
+        self,
+        serve_instance_with_two_signal,
+        policy,
+        upscaling_factor,
+        expected_intermediate_steps,
+    ):
+        """Test that app-level decorator applies upscaling_factor per-deployment."""
+        client, signal_A, signal_B = serve_instance_with_two_signal
+
+        config_template = {
+            "import_path": "ray.serve.tests.test_config_files.get_multi_deployment_signal_app.app",
+            "autoscaling_policy": policy,
+            "deployments": [
+                {
+                    "name": "A",
+                    "max_ongoing_requests": 1000,
+                    "autoscaling_config": {
+                        "min_replicas": 1,
+                        "max_replicas": 4,
+                        "upscale_delay_s": 0.0,  # No delay to see intermediate steps
+                        "downscale_delay_s": 5.0,
+                        "upscaling_factor": upscaling_factor,  # Decorator should apply this
+                        "metrics_interval_s": 0.1,
+                        "look_back_period_s": 0.2,
+                    },
+                    "graceful_shutdown_timeout_s": 0.5,
+                },
+            ],
+        }
+
+        client.deploy_apps(
+            ServeDeploySchema.parse_obj({"applications": [config_template]})
+        )
+        wait_for_condition(check_running, timeout=15)
+        wait_for_condition(
+            check_deployment_status,
+            name="A",
+            expected_status=DeploymentStatus.HEALTHY,
+        )
+
+        # Start from 1 replica
+        wait_for_condition(check_num_replicas_eq, name="A", target=1)
+
+        hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
+        [hA.remote() for _ in range(70)]
+
+        # Check intermediate steps
+        for step in expected_intermediate_steps:
+            wait_for_condition(check_num_replicas_eq, name="A", target=step, timeout=10)
+
+        # Eventually it should reach 4
+        wait_for_condition(check_num_replicas_eq, name="A", target=4, timeout=10)
+
+    @pytest.mark.parametrize(
+        "policy",
+        [
+            {
+                "policy_function": "ray.serve.tests.test_autoscaling_policy.app_level_custom_autoscaling_policy_with_decorator"
+            },
+            AutoscalingPolicy(
+                policy_function="ray.serve.tests.test_autoscaling_policy.app_level_custom_autoscaling_policy_with_decorator"
+            ),
+            AutoscalingPolicy(
+                policy_function=app_level_custom_autoscaling_policy_with_decorator
+            ),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "downscaling_factor, expected_intermediate_steps",
+        [
+            # Target 0. Current 4. Delta -4.
+            # Factor 0.5: ceil(4 - 2) = 2. Path: 4 -> 2 -> 1 -> 0
+            (0.5, [2, 1]),
+            # Factor 0.2: ceil(4 - 0.8) = 4 (stuck -> 3). Path: 4 -> 3 -> 2 -> 1 -> 0
+            (0.2, [3, 2, 1]),
+        ],
+    )
+    def test_e2e_app_level_downscaling_factor_with_decorator(
+        self,
+        serve_instance_with_two_signal,
+        policy,
+        downscaling_factor,
+        expected_intermediate_steps,
+    ):
+        """Test that app-level decorator applies downscaling_factor per-deployment."""
+        client, signal_A, signal_B = serve_instance_with_two_signal
+
+        config_template = {
+            "import_path": "ray.serve.tests.test_config_files.get_multi_deployment_signal_app.app",
+            "autoscaling_policy": policy,
+            "deployments": [
+                {
+                    "name": "A",
+                    "max_ongoing_requests": 1000,
+                    "autoscaling_config": {
+                        "min_replicas": 0,
+                        "max_replicas": 4,
+                        "upscale_delay_s": 0.0,
+                        "downscale_delay_s": 5.0,  # Long delay to see intermediate steps
+                        "downscaling_factor": downscaling_factor,  # Decorator should apply this
+                        "metrics_interval_s": 0.1,
+                        "look_back_period_s": 0.2,
+                    },
+                    "graceful_shutdown_timeout_s": 0.5,
+                },
+            ],
+        }
+
+        client.deploy_apps(
+            ServeDeploySchema.parse_obj({"applications": [config_template]})
+        )
+        wait_for_condition(check_running, timeout=15)
+        wait_for_condition(
+            check_deployment_status,
+            name="A",
+            expected_status=DeploymentStatus.HEALTHY,
+        )
+
+        hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
+
+        # Setup: Scale to 4 first
+        [hA.remote() for _ in range(70)]
+        wait_for_condition(check_num_replicas_eq, name="A", target=4, timeout=10)
+
+        # Trigger Downscale: Release all requests
+        ray.get(signal_A.send.remote())
+        wait_for_condition(lambda: ray.get(signal_A.cur_num_waiters.remote()) == 0)
+
+        # Check intermediate steps
+        for step in expected_intermediate_steps:
+            wait_for_condition(check_num_replicas_eq, name="A", target=step, timeout=10)
+
+        # Eventually it should reach 0
+        wait_for_condition(check_num_replicas_eq, name="A", target=0, timeout=10)
 
 
 if __name__ == "__main__":

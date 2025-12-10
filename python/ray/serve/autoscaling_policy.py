@@ -3,7 +3,12 @@ import logging
 import math
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S, SERVE_LOGGER_NAME
+from ray.serve._private.common import DeploymentID
+from ray.serve._private.constants import (
+    CONTROL_LOOP_INTERVAL_S,
+    SERVE_AUTOSCALING_DECISION_COUNTERS_KEY,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve.config import AutoscalingConfig, AutoscalingContext
 from ray.util.annotations import PublicAPI
 
@@ -121,7 +126,7 @@ def _apply_delay_logic(
 
     """Apply delay logic to the desired number of replicas."""
     decision_num_replicas = curr_target_num_replicas
-    decision_counter = policy_state.get("decision_counter", 0)
+    decision_counter = policy_state.get(SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, 0)
     # Scale up.
     if desired_num_replicas > curr_target_num_replicas:
         # If the previous decision was to scale down (the counter was
@@ -167,7 +172,7 @@ def _apply_delay_logic(
     else:
         decision_counter = 0
 
-    policy_state["decision_counter"] = decision_counter
+    policy_state[SERVE_AUTOSCALING_DECISION_COUNTERS_KEY] = decision_counter
     return decision_num_replicas, policy_state
 
 
@@ -183,6 +188,34 @@ def _apply_bounds(
     )
 
 
+def apply_default_params(
+    desired_num_replicas: int, ctx: AutoscalingContext, policy_state: Dict[str, Any]
+) -> Tuple[int, Dict[str, Any]]:
+    """Apply the default parameters to the desired number of replicas."""
+    # Apply scaling factors (if configured)
+    if (
+        ctx.config.upscaling_factor is not None
+        or ctx.config.downscaling_factor is not None
+    ):
+        desired_num_replicas = _apply_scaling_factors(
+            desired_num_replicas, ctx.current_num_replicas, ctx.config
+        )
+
+    # Apply delay logic
+    # Only send the internal state here to avoid overwriting the custom policy state.
+    decision_num_replicas, updated_state = _apply_delay_logic(
+        desired_num_replicas, ctx.target_num_replicas, ctx.config, policy_state
+    )
+
+    # Apply bounds
+    final_num_replicas = _apply_bounds(
+        decision_num_replicas,
+        ctx.capacity_adjusted_min_replicas,
+        ctx.capacity_adjusted_max_replicas,
+    )
+    return final_num_replicas, updated_state
+
+
 @PublicAPI(stability="alpha")
 def apply_autoscaling_config(
     policy_func: Callable[[AutoscalingContext], Tuple[int, Dict[str, Any]]]
@@ -196,71 +229,79 @@ def apply_autoscaling_config(
 
     @functools.wraps(policy_func)
     def wrapped_policy(ctx: AutoscalingContext) -> Tuple[int, Dict[str, Any]]:
-
-        policy_state = ctx.policy_state
-        # Get raw desired replicas from custom policy.
+        policy_state = ctx.policy_state.copy()
         # NOTE: Currently custom policies do not get the default policy's 0 replica cold start fast path.
         # upscale_delay_s applies even at 0 replicas.
-        """
-        Currently the custom policy can return a dictionary with a decision_counter key.
-        and can overwrite the decision_counter key in the policy_state dictionary currenty I am just ignoring that field.
-        There are a few ways to handle this:
-        1. One method is to create a custom_policy_state inside the policy_state dictionary to avoid overwriting decision_counter key if the custom policy also returns
-         a dictionary with decision_counter key.
-         ```
-            if "custom_policy_state" not in policy_state:
-                policy_state["custom_policy_state"] = {}
-            user_ctx = dataclasses.replace(ctx, policy_state=policy_state["custom_policy_state"])
-            desired_num_replicas, updated_custom_policy_state = policy_func(user_ctx)
-            # Update custom policy state with the updated state returned by the custom policy
-            if updated_custom_policy_state:
-                policy_state["custom_policy_state"].update(updated_custom_policy_state)
-        Pros: This can be used for future internal states and can separate the custom and internal states for policies that need to use both.
-        ```
-        2. We can ignore the decision_counter key from the custom policy and warn the user that the decision_counter key is a protected key and cannot be overwritten.
-        so we have created a new key called custom_decision_counter inside the policy_state dictionary to store the decision_counter key from the custom policy.
-        ```
+        final_state = {}
+        desired_num_replicas, updated_custom_policy_state = policy_func(ctx)
 
-        desired_num_replicas, updated_custom_policy_state = policy_func(ctx)
-        # Update custom policy state with the updated state returned by the custom policy
-        if updated_custom_policy_state:
-            if "decision_counter" in updated_custom_policy_state:
-                logger.warning("The decision_counter key is a protected key and cannot be overwritten. The decision_counter key will be stored under the `custom_decision_counter` key.")
-                policy_state["custom_decision_counter"] = updated_custom_policy_state.pop("decision_counter")
-            policy_state.update(updated_custom_policy_state)
-        Pros: This is a simple solution and can fit into the existing implementation.
-        Cons: This can become an issue if the custom policy and internal policy states have a lot of overlaps in the future.
-       """
-        desired_num_replicas, updated_custom_policy_state = policy_func(ctx)
-        if updated_custom_policy_state:
-            if "decision_counter" in updated_custom_policy_state:
-                logger.warning(
-                    "The 'decision_counter' key is reserved for internal use and will be ignored."
-                )
-                updated_custom_policy_state.pop("decision_counter")
-            policy_state.update(updated_custom_policy_state)
-        # Apply scaling factors (if configured)
-        if (
-            ctx.config.upscaling_factor is not None
-            or ctx.config.downscaling_factor is not None
-        ):
-            desired_num_replicas = _apply_scaling_factors(
-                desired_num_replicas, ctx.current_num_replicas, ctx.config
+        # Apply default params (scaling factors, delays, bounds)
+        final_num_replicas, updated_state = apply_default_params(
+            desired_num_replicas, ctx, policy_state
+        )
+        updated_custom_policy_state.pop(SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, None)
+        # Merge updated_state and updated_custom_policy_state
+        final_state = updated_custom_policy_state
+        if updated_state:
+            final_state.update(updated_state)
+        return final_num_replicas, final_state
+
+    return wrapped_policy
+
+
+@PublicAPI(stability="alpha")
+def apply_app_level_autoscaling_config(
+    policy_func: Callable[
+        [Dict[DeploymentID, AutoscalingContext]],
+        Tuple[Dict[DeploymentID, int], Optional[Dict[str, Any]]],
+    ]
+) -> Callable[
+    [Dict[DeploymentID, AutoscalingContext]],
+    Tuple[Dict[DeploymentID, int], Optional[Dict[str, Any]]],
+]:
+    """
+    Wraps an application-level custom policy function to automatically apply per-deployment:
+    - upscaling_factor / downscaling_factor
+    - min_replicas / max_replicas bounds
+    - upscale_delay_s / downscale_delay_s / downscale_to_zero_delay_s
+    """
+
+    @functools.wraps(policy_func)
+    def wrapped_policy(
+        contexts: Dict[DeploymentID, AutoscalingContext]
+    ) -> Tuple[Dict[DeploymentID, int], Optional[Dict[str, Any]]]:
+
+        # Send to the actual policy
+        desired_num_replicas, updated_custom_policy_state = policy_func(contexts)
+
+        # Build per-deployment state structure: {deployment_id: {state}}
+        final_per_deployment_state = {}
+        for dep_id, ctx in contexts.items():
+            current_internal_counter = ctx.policy_state.get(
+                SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, 0
             )
+            final_num_replicas, updated_internal_state = apply_default_params(
+                desired_num_replicas[dep_id],
+                ctx,
+                {SERVE_AUTOSCALING_DECISION_COUNTERS_KEY: current_internal_counter},
+            )
+            # Update the decision for this deployment
+            desired_num_replicas[dep_id] = final_num_replicas
 
-        # Apply delay logic
-        decision_num_replicas, updated_state = _apply_delay_logic(
-            desired_num_replicas, ctx.target_num_replicas, ctx.config, policy_state
-        )
+            dep_specific_user_state = updated_custom_policy_state.get(dep_id, {}).copy()
 
-        # Apply bounds
-        final_num_replicas = _apply_bounds(
-            decision_num_replicas,
-            ctx.capacity_adjusted_min_replicas,
-            ctx.capacity_adjusted_max_replicas,
-        )
+            # Remove the reserved key if the user accidentally included it
+            dep_specific_user_state.pop(SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, None)
 
-        return final_num_replicas, updated_state
+            # B. Merge: Start with User Data -> Update with Internal Data
+            combined_state = dep_specific_user_state
+
+            if updated_internal_state:
+                combined_state.update(updated_internal_state)
+
+            final_per_deployment_state[dep_id] = combined_state
+
+        return desired_num_replicas, final_per_deployment_state
 
     return wrapped_policy
 
