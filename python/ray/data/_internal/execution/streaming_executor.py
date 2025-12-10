@@ -593,7 +593,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 pending_str = f"{pending_usage.gpu:.4g} GPU"
             resources_status += f" (pending: {pending_str})"
 
-        self._progress_manager.update_resource_status(resources_status)
+        self._progress_manager.update_total_resource_status(resources_status)
 
     def _get_operator_id(self, op: PhysicalOperator, topology_index: int) -> str:
         return f"{op.name}_{topology_index}"

@@ -370,7 +370,7 @@ class RichExecutionProgressManager:
             )
             _update_with_conditional_rate(self._total, self._total_task_id, metrics)
 
-    def update_resource_status(self, resource_status: str):
+    def update_total_resource_status(self, resource_status: str):
         if not self._can_update_total():
             return
         if self._live.is_started:
