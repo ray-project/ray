@@ -16,8 +16,16 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <vector>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
+#include "ray/raylet/worker_interface.h"
 #include "ray/util/process.h"
 
 namespace ray {
@@ -39,33 +47,21 @@ struct MemorySnapshot {
 
 /// Callback that runs at each monitoring interval.
 ///
-/// \param is_usage_above_threshold true if memory usage is above the threshold
 /// \param system_memory snapshot of system memory information.
-/// \param usage_threshold the memory usage threshold.
-/// threshold at this instant.
-using MemoryUsageRefreshCallback = std::function<void(
-    bool is_usage_above_threshold, MemorySnapshot system_memory, float usage_threshold)>;
+using KillWorkersCallback = std::function<void(MemorySnapshot system_memory)>;
 
+/// Base class for memory monitor implementations.
 /// Monitors the memory usage of the node.
-/// It checks the memory usage p
-/// This class is thread safe.
+/// All implementations of the memory monitor must be thread safe.
 class MemoryMonitor {
  public:
   /// Constructor.
   ///
   /// \param io_service the event loop.
-  /// \param usage_threshold a value in [0-1] to indicate the max usage.
-  /// \param min_memory_free_bytes to indicate the minimum amount of free space before it
-  /// becomes over the threshold.
-  /// \param monitor_interval_ms the frequency to update the usage. 0 disables the the
-  /// monitor and callbacks won't fire.
   /// \param monitor_callback function to execute on a dedicated thread owned by this
   /// monitor when the usage is refreshed.
   MemoryMonitor(instrumented_io_context &io_service,
-                float usage_threshold,
-                int64_t min_memory_free_bytes,
-                uint64_t monitor_interval_ms,
-                MemoryUsageRefreshCallback monitor_callback);
+                KillWorkersCallback kill_workers_callback);
 
  public:
   /// \param top_n the number of top memory-using processes
@@ -85,50 +81,23 @@ class MemoryMonitor {
   static const absl::flat_hash_map<pid_t, int64_t> GetProcessMemoryUsage(
       const std::string proc_dir = kProcDirectory);
 
- private:
-  static constexpr char kCgroupsV1MemoryMaxPath[] =
-      "/sys/fs/cgroup/memory/memory.limit_in_bytes";
-  static constexpr char kCgroupsV1MemoryUsagePath[] =
-      "/sys/fs/cgroup/memory/memory.usage_in_bytes";
-  static constexpr char kCgroupsV1MemoryStatPath[] = "/sys/fs/cgroup/memory/memory.stat";
-  static constexpr char kCgroupsV1MemoryStatInactiveFileKey[] = "total_inactive_file";
-  static constexpr char kCgroupsV1MemoryStatActiveFileKey[] = "total_active_file";
-  static constexpr char kCgroupsV2MemoryMaxPath[] = "/sys/fs/cgroup/memory.max";
-  static constexpr char kCgroupsV2MemoryUsagePath[] = "/sys/fs/cgroup/memory.current";
-  static constexpr char kCgroupsV2MemoryStatPath[] = "/sys/fs/cgroup/memory.stat";
-  static constexpr char kCgroupsV2MemoryStatInactiveFileKey[] = "inactive_file";
-  static constexpr char kCgroupsV2MemoryStatActiveFileKey[] = "active_file";
+ protected:
   static constexpr char kProcDirectory[] = "/proc";
   static constexpr char kCommandlinePath[] = "cmdline";
   /// The logging frequency. Decoupled from how often the monitor runs.
   static constexpr uint32_t kLogIntervalMs = 5000;
   static constexpr int64_t kNull = -1;
 
-  /// \param system_memory snapshot of system memory information.
-  /// \param threshold_bytes usage threshold in bytes.
-  /// \return true if the memory usage of this node is above the threshold.
-  static bool IsUsageAboveThreshold(MemorySnapshot system_memory,
-                                    int64_t threshold_bytes);
+  /// The raylet's event loop.
+  instrumented_io_context &io_service_;
 
-  /// \return the used and total memory in bytes.
-  std::tuple<int64_t, int64_t> GetMemoryBytes();
+  /// Callback function that executes at each monitoring interval,
+  /// on a dedicated thread managed by this class.
+  const KillWorkersCallback kill_workers_callback_;
 
-  /// \return the used and total memory in bytes from Cgroup.
-  std::tuple<int64_t, int64_t> GetCGroupMemoryBytes();
-
-  /// \param stat_path file path to the memory.stat file.
-  /// \param usage_path file path to the memory.current file
-  /// \param inactive_file_key inactive_file key name in memory.stat file
-  /// \param active_file_key active_file key name in memory.stat file
-  /// \return the used memory for cgroup. May return negative value, which should be
-  /// discarded.
-  static int64_t GetCGroupMemoryUsedBytes(const char *stat_path,
-                                          const char *usage_path,
-                                          const char *inactive_file_key,
-                                          const char *active_file_key);
-
-  /// \return the used and total memory in bytes for linux OS.
-  std::tuple<int64_t, int64_t> GetLinuxMemoryBytes();
+  /// \return the smaller of the two integers, kNull if both are kNull,
+  /// or one of the values if the other is kNull.
+  static int64_t NullableMin(int64_t left, int64_t right);
 
   /// \param smap_path file path to the smap file
   ///
@@ -159,24 +128,6 @@ class MemoryMonitor {
   /// \return the debug string that contains the top N memory using process
   static const std::string TruncateString(const std::string value, uint32_t max_length);
 
-  /// \return the smaller of the two integers, kNull if both are kNull,
-  /// or one of the values if the other is kNull.
-  static int64_t NullableMin(int64_t left, int64_t right);
-
-  /// Computes the memory threshold, where
-  /// Memory usage threshold = max(total_memory * usage_threshold_, total_memory -
-  /// min_memory_free_bytes)
-  ///
-  /// \param total_memory_bytes the total amount of memory available in the system.
-  /// \param usage_threshold a value in [0-1] to indicate the max usage.
-  /// \param min_memory_free_bytes the min amount of free space to maintain before it is
-  /// exceeding the threshold.
-  ///
-  /// \return the memory threshold.
-  static int64_t GetMemoryThreshold(int64_t total_memory_bytes,
-                                    float usage_threshold,
-                                    int64_t min_memory_free_bytes);
-
   /// \param pid the process id
   /// \param proc_dir the process directory
   ///
@@ -191,49 +142,6 @@ class MemoryMonitor {
   /// \return the top N memory-using processes
   static const std::vector<std::tuple<pid_t, int64_t>> GetTopNMemoryUsage(
       uint32_t top_n, const absl::flat_hash_map<pid_t, int64_t> all_usage);
-
- private:
-  FRIEND_TEST(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold);
-  FRIEND_TEST(MemoryMonitorTest, TestThresholdOneMonitorAlwaysBelowThreshold);
-  FRIEND_TEST(MemoryMonitorTest, TestUsageAtThresholdReportsFalse);
-  FRIEND_TEST(MemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive);
-  FRIEND_TEST(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidReturnsWorkingSet);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidKeyLastReturnsWorkingSet);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidNegativeWorkingSet);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidMissingFieldReturnskNull);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupNonexistentStatFileReturnskNull);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupNonexistentUsageFileReturnskNull);
-  FRIEND_TEST(MemoryMonitorTest, TestMonitorPeriodSetMaxUsageThresholdCallbackExecuted);
-  FRIEND_TEST(MemoryMonitorTest, TestMonitorPeriodDisableMinMemoryCallbackExecuted);
-  FRIEND_TEST(MemoryMonitorTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues);
-  FRIEND_TEST(MemoryMonitorTest, TestGetPidsFromDirOnlyReturnsNumericFilenames);
-  FRIEND_TEST(MemoryMonitorTest, TestGetPidsFromNonExistentDirReturnsEmpty);
-  FRIEND_TEST(MemoryMonitorTest, TestGetCommandLinePidExistReturnsValid);
-  FRIEND_TEST(MemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty);
-  FRIEND_TEST(MemoryMonitorTest, TestShortStringNotTruncated);
-  FRIEND_TEST(MemoryMonitorTest, TestLongStringTruncated);
-  FRIEND_TEST(MemoryMonitorTest, TestTopNLessThanNReturnsMemoryUsedDesc);
-  FRIEND_TEST(MemoryMonitorTest, TestTopNMoreThanNReturnsAllDesc);
-
-  /// Memory usage fraction between [0, 1]
-  const float usage_threshold_;
-
-  /// Indicates the minimum amount of free space to retain before it considers
-  /// the usage as above threshold.
-  const int64_t min_memory_free_bytes_;
-
-  /// The computed threshold in bytes based on usage_threshold_ and
-  /// min_memory_free_bytes_.
-  int64_t computed_threshold_bytes_;
-
-  /// The computed threshold fraction on usage_threshold_ and min_memory_free_bytes_.
-  float computed_threshold_fraction_;
-
-  /// Callback function that executes at each monitoring interval,
-  /// on a dedicated thread managed by this class.
-  const MemoryUsageRefreshCallback monitor_callback_;
-  std::shared_ptr<PeriodicalRunner> runner_;
 };
 
 }  // namespace ray

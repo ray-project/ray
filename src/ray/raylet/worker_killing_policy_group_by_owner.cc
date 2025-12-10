@@ -35,13 +35,42 @@ namespace raylet {
 
 GroupByOwnerIdWorkerKillingPolicy::GroupByOwnerIdWorkerKillingPolicy() {}
 
-std::pair<std::shared_ptr<WorkerInterface>, bool>
-GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
+std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
+GroupByOwnerIdWorkerKillingPolicy::SelectWorkersToKill(
+    const std::vector<std::shared_ptr<WorkerInterface>> &workers,
+    const MemorySnapshot &system_memory) {
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> remaining_alive_targets;
+  for (std::pair<std::shared_ptr<WorkerInterface>, bool> high_memory_eviction_target :
+       high_memory_eviction_targets_) {
+    std::shared_ptr<WorkerInterface> worker = high_memory_eviction_target.first;
+    if (worker->GetProcess().IsAlive()) {
+      RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(worker->GetGrantedLeaseId())
+          << "Still waiting for worker eviction to free up memory. "
+          << "worker pid: " << worker->GetProcess().GetId();
+      remaining_alive_targets.push_back(high_memory_eviction_target);
+    }
+  }
+  high_memory_eviction_targets_ = remaining_alive_targets;
+  if (high_memory_eviction_targets_.empty()) {
+    high_memory_eviction_targets_ = Policy(workers, system_memory);
+    if (high_memory_eviction_targets_.empty()) {
+      RAY_LOG_EVERY_MS(WARNING, 5000) << "Worker killer did not select any workers to "
+                                         "kill even though memory usage is high.";
+    }
+    return high_memory_eviction_targets_;
+  }
+  // Else, there are workers still alive from the previous iteration.
+  // We need to wait until they are dead before we can kill more workers.
+  return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
+}
+
+std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
+GroupByOwnerIdWorkerKillingPolicy::Policy(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     const MemorySnapshot &system_memory) const {
   if (workers.empty()) {
     RAY_LOG_EVERY_MS(INFO, 5000) << "Worker list is empty. Nothing can be killed";
-    return std::make_pair(nullptr, /*should retry*/ false);
+    return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
   }
 
   TaskID non_retriable_owner_id = TaskID::Nil();
@@ -93,8 +122,12 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
   RAY_LOG(INFO) << "Sorted list of leases based on the policy:\n"
                 << PolicyDebugString(sorted, system_memory)
                 << "\nLease should be retried? " << should_retry;
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
+      workers_to_kill_and_should_retry;
+  workers_to_kill_and_should_retry.push_back(
+      std::make_pair(worker_to_kill, should_retry));
 
-  return std::make_pair(worker_to_kill, should_retry);
+  return workers_to_kill_and_should_retry;
 }
 
 std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(

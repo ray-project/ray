@@ -1,5 +1,10 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
+config_setting(
+    name = "is_linux",
+    constraint_values = ["@platforms//os:linux"],
+)
+
 ray_cc_library(
     name = "constants",
     hdrs = ["constants.h"],
@@ -81,12 +86,75 @@ ray_cc_library(
     deps = [
         ":asio",
         ":ray_config",
+        "//src/ray/raylet:worker_interface",
         "//src/ray/util:process",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_prod",
         "@nlohmann_json",
     ],
+)
+
+ray_cc_library(
+    name = "threshold_memory_monitor",
+    srcs = [
+        "threshold_memory_monitor.cc",
+    ],
+    hdrs = [
+        "threshold_memory_monitor.h",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":asio",
+        ":memory_monitor",
+        ":ray_config",
+        "//src/ray/util:logging",
+        "//src/ray/util:process",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_prod",
+    ],
+)
+
+ray_cc_library(
+    name = "noop_memory_monitor",
+    hdrs = [
+        "noop_memory_monitor.h",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":memory_monitor",
+    ],
+)
+
+ray_cc_library(
+    name = "memory_monitor_factory",
+    srcs = select({
+        ":is_linux": [
+            "threshold_memory_monitor_factory.cc",
+        ],
+        "//conditions:default": [
+            "noop_memory_monitor_factory.cc",
+        ],
+    }),
+    hdrs = [
+        "memory_monitor_factory.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":memory_monitor",
+        ":noop_memory_monitor",
+        "//src/ray/util:logging",
+    ] + select({
+        ":is_linux": [
+            ":ray_config",
+            ":threshold_memory_monitor",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 ray_cc_library(

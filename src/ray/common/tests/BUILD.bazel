@@ -104,10 +104,10 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "memory_monitor_test",
-    size = "small",
+    name = "threshold_memory_monitor_test",
+    size = "medium",
     srcs = [
-        "memory_monitor_test.cc",
+        "threshold_memory_monitor_test.cc",
     ],
     tags = [
         "no_windows",
@@ -119,6 +119,7 @@ ray_cc_test(
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:memory_monitor",
+        "//src/ray/common:threshold_memory_monitor",
         "@boost//:filesystem",
         "@boost//:thread",
         "@com_google_googletest//:gtest_main",

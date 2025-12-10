@@ -87,14 +87,29 @@ struct Group {
 class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicy {
  public:
   GroupByOwnerIdWorkerKillingPolicy();
-  std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> SelectWorkersToKill(
+      const std::vector<std::shared_ptr<WorkerInterface>> &workers,
+      const MemorySnapshot &system_memory);
+
+ private:
+  /**
+   * Executes the worker selection policy.
+   * \param workers the list of candidate workers.
+   * \param system_memory snapshot of memory usage.
+   * \return the list of workers to kill and whether the task on each worker should be
+   * retried.
+   */
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> Policy(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const MemorySnapshot &system_memory) const;
 
- private:
   /// Creates the debug string of the groups created by the policy.
   static std::string PolicyDebugString(const std::vector<Group> &groups,
                                        const MemorySnapshot &system_memory);
+
+  /// Targets to be killed.
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
+      high_memory_eviction_targets_;
 };
 
 }  // namespace raylet
