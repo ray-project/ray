@@ -131,7 +131,7 @@ class MockVLLMEngine(LLMEngine):
         response = EmbeddingResponse(
             object="list",
             data=embedding_data,
-            model=getattr(request, "model", "mock-model"),
+            model=request.model or self.llm_config.model_id,
             usage={
                 "prompt_tokens": len(str(request.input).split()),
                 "total_tokens": len(str(request.input).split()),
@@ -183,7 +183,7 @@ class MockVLLMEngine(LLMEngine):
         response = ScoreResponse(
             object="list",
             data=score_data,
-            model=getattr(request, "model", "mock-model"),
+            model=request.model or self.llm_config.model_id,
             usage={
                 "prompt_tokens": len(str(text_1).split()) + len(str(text_2).split()),
                 "total_tokens": len(str(text_1).split()) + len(str(text_2).split()),
@@ -197,6 +197,8 @@ class MockVLLMEngine(LLMEngine):
         """Generate mock chat completion response."""
 
         request_id = request.request_id or f"chatcmpl-{random.randint(1000, 9999)}"
+        # # Use request.model if provided, otherwise fall back to llm_config.model_id
+        model_name = request.model or self.llm_config.model_id
         lora_prefix = (
             ""
             if request.model not in self._current_lora_model
@@ -205,7 +207,6 @@ class MockVLLMEngine(LLMEngine):
         if request.stream:
             # Streaming response - return SSE formatted strings
             created_time = int(asyncio.get_event_loop().time())
-            model_name = getattr(request, "model", "mock-model")
 
             for i in range(max_tokens):
                 if i == 0:
@@ -255,7 +256,7 @@ class MockVLLMEngine(LLMEngine):
                 id=request_id,
                 object="chat.completion",
                 created=int(asyncio.get_event_loop().time()),
-                model=getattr(request, "model", "mock-model"),
+                model=model_name,
                 choices=[choice],
                 usage={
                     "prompt_tokens": len(prompt_text.split()),
@@ -272,6 +273,7 @@ class MockVLLMEngine(LLMEngine):
         """Generate mock completion response."""
 
         request_id = request.request_id or f"cmpl-{random.randint(1000, 9999)}"
+        model_name = request.model or self.llm_config.model_id
         lora_prefix = (
             ""
             if request.model not in self._current_lora_model
@@ -280,7 +282,6 @@ class MockVLLMEngine(LLMEngine):
         if request.stream:
             # Streaming response - return SSE formatted strings
             created_time = int(asyncio.get_event_loop().time())
-            model_name = getattr(request, "model", "mock-model")
 
             for i in range(max_tokens):
                 if i == 0:
@@ -322,7 +323,7 @@ class MockVLLMEngine(LLMEngine):
                 id=request_id,
                 object="text_completion",
                 created=int(asyncio.get_event_loop().time()),
-                model=getattr(request, "model", "mock-model"),
+                model=model_name,
                 choices=[choice],
                 usage={
                     "prompt_tokens": len(prompt_text.split()),
@@ -355,10 +356,11 @@ class MockVLLMEngine(LLMEngine):
         if lora_prefix:
             mock_transcription_text = f"{lora_prefix}{mock_transcription_text}"
 
+        model_name = request.model or self.llm_config.model_id
+
         if request.stream:
             # Streaming response - return SSE formatted strings
             created_time = int(asyncio.get_event_loop().time())
-            model_name = getattr(request, "model", "mock-model")
 
             # Split transcription into words for streaming
             words = mock_transcription_text.split()
