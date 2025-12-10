@@ -33,6 +33,7 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
     Default,
+    copy_class_metadata,
     ensure_serialization_context,
     extract_self_if_method_call,
     validate_route_prefix,
@@ -309,7 +310,7 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
                     else:
                         cls.__del__(self)
 
-        ASGIIngressWrapper.__name__ = cls.__name__
+        copy_class_metadata(ASGIIngressWrapper, cls)
 
         return ASGIIngressWrapper
 
