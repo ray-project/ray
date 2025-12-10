@@ -8,9 +8,8 @@ steps:
   - name: minbuild-ml
     label: "wanda: minbuild-ml-py{{matrix}}"
     wanda: ci/docker/min.build.wanda.yaml
-    depends_on: oss-ci-base_build
+    depends_on: oss-ci-base_test-multipy
     matrix:
-      - "3.9"
       - "3.10"
     env:
       PYTHON_VERSION: "{{matrix}}"
