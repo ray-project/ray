@@ -11,7 +11,7 @@ from ci.ray_ci.automation.crane_lib import (
     call_crane_index,
     call_crane_manifest,
 )
-from ci.ray_ci.automation.test_utils import local_registry  # noqa: F401
+from ci.ray_ci.automation.test_utils import local_registry  # noqa: F401, F811
 
 
 class TestCraneBinary:
@@ -40,7 +40,7 @@ class TestCraneBinary:
 class TestCraneCopyIntegration:
     """Integration tests for crane copy operations using a local registry."""
 
-    def test_copy_public_image_to_local_registry(self, local_registry):
+    def test_copy_public_image_to_local_registry(self, local_registry):  # noqa: F811
         """Test copying a public image to local registry."""
         port = local_registry
         # Use a small, well-known public image digest for reproducibility
@@ -57,7 +57,7 @@ class TestCraneCopyIntegration:
         )
         assert response.status_code == 200
 
-    def test_copy_nonexistent_image_fails(self, local_registry):
+    def test_copy_nonexistent_image_fails(self, local_registry):  # noqa: F811
         """Test that copying a non-existent image returns error."""
         port = local_registry
         source = "localhost:9999/nonexistent/image:tag"
@@ -71,7 +71,7 @@ class TestCraneCopyIntegration:
 class TestCraneManifestIntegration:
     """Integration tests for crane manifest operations."""
 
-    def test_get_manifest_from_local_registry(self, local_registry):
+    def test_get_manifest_from_local_registry(self, local_registry):  # noqa: F811
         """Test getting manifest from local registry."""
         port = local_registry
         # First copy an image to the registry
@@ -84,7 +84,7 @@ class TestCraneManifestIntegration:
         assert return_code == 0
         assert "schemaVersion" in output or "config" in output
 
-    def test_get_manifest_nonexistent_tag_fails(self, local_registry):
+    def test_get_manifest_nonexistent_tag_fails(self, local_registry):  # noqa: F811
         """Test that getting manifest for non-existent tag fails."""
         port = local_registry
         tag = f"localhost:{port}/does-not-exist:missing"
@@ -97,13 +97,17 @@ class TestCraneManifestIntegration:
 class TestCraneIndexIntegration:
     """Integration tests for crane index operations."""
 
-    def test_create_multiarch_index(self, local_registry):
+    def test_create_multiarch_index(self, local_registry):  # noqa: F811
         """Test creating a multi-architecture index."""
         port = local_registry
 
         # Copy two different architecture images
-        amd64_digest = "sha256:0db9d004361b106932f8c7632ae54d56e92c18281e2dd203127d77405020abf6"
-        arm64_digest = "sha256:4bdb4ac63839546daabfe0a267a363b3effa17ce02ac5f42d222174484c5686c"
+        amd64_digest = (
+            "sha256:0db9d004361b106932f8c7632ae54d56e92c18281e2dd203127d77405020abf6"
+        )
+        arm64_digest = (
+            "sha256:4bdb4ac63839546daabfe0a267a363b3effa17ce02ac5f42d222174484c5686c"
+        )
 
         amd64_dest = f"localhost:{port}/index-test:amd64"
         arm64_dest = f"localhost:{port}/index-test:arm64"

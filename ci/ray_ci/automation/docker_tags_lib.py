@@ -3,7 +3,7 @@ import re
 import subprocess
 import sys
 from datetime import datetime
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional
 
 import requests
 from dateutil import parser

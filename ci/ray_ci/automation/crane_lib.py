@@ -35,6 +35,38 @@ def _crane_binary() -> str:
     return r.Rlocation("crane_linux_x86_64/crane")
 
 
+def _run_crane_command(args: List[str]) -> Tuple[int, str]:
+    """
+    Run a crane command and return the exit code and output.
+    """
+    command = [_crane_binary()] + args
+    try:
+        with subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        ) as proc:
+            output = ""
+            if proc.stdout:
+                for line in proc.stdout:
+                    logger.info(line.rstrip("\n"))
+                    output += line
+            return_code = proc.wait()
+            if return_code:
+                stderr = proc.stderr.read() if proc.stderr else ""
+                logger.error(
+                    f"Crane command `{' '.join(command)}` failed with stderr:\n{stderr}"
+                )
+                raise subprocess.CalledProcessError(return_code, command, output, stderr)
+            return return_code, output
+    except subprocess.CalledProcessError as e:
+        return e.returncode, e.output
+    except FileNotFoundError:
+        logger.error(f"Crane binary not found at {command[0]}")
+        return 1, f"Crane binary not found at {command[0]}"
+
+
 def call_crane_copy(source: str, destination: str) -> Tuple[int, str]:
     """
     Copy a container image from source to destination.
@@ -47,27 +79,7 @@ def call_crane_copy(source: str, destination: str) -> Tuple[int, str]:
         Tuple of (return_code, output). return_code is 0 on success, non-zero on
         failure. On failure, output may be None since stderr is not captured.
     """
-    try:
-        with subprocess.Popen(
-            [
-                _crane_binary(),
-                "copy",
-                source,
-                destination,
-            ],
-            stdout=subprocess.PIPE,
-            text=True,
-        ) as proc:
-            output = ""
-            for line in proc.stdout:
-                logger.info(line + "\n")
-                output += line
-            return_code = proc.wait()
-            if return_code:
-                raise subprocess.CalledProcessError(return_code, proc.args)
-            return return_code, output
-    except subprocess.CalledProcessError as e:
-        return e.returncode, e.output
+    return _run_crane_command(["copy", source, destination])
 
 
 def call_crane_cp(tag: str, source: str, dest_repo: str) -> Tuple[int, str]:
@@ -83,27 +95,7 @@ def call_crane_cp(tag: str, source: str, dest_repo: str) -> Tuple[int, str]:
         Tuple of (return_code, output). return_code is 0 on success, non-zero on
         failure. On failure, output may be None since stderr is not captured.
     """
-    try:
-        with subprocess.Popen(
-            [
-                _crane_binary(),
-                "cp",
-                source,
-                f"{dest_repo}:{tag}",
-            ],
-            stdout=subprocess.PIPE,
-            text=True,
-        ) as proc:
-            output = ""
-            for line in proc.stdout:
-                logger.info(line + "\n")
-                output += line
-            return_code = proc.wait()
-            if return_code:
-                raise subprocess.CalledProcessError(return_code, proc.args)
-            return return_code, output
-    except subprocess.CalledProcessError as e:
-        return e.returncode, e.output
+    return _run_crane_command(["cp", source, f"{dest_repo}:{tag}"])
 
 
 def call_crane_index(index_name: str, tags: List[str]) -> Tuple[int, str]:
@@ -118,32 +110,12 @@ def call_crane_index(index_name: str, tags: List[str]) -> Tuple[int, str]:
         Tuple of (return_code, output). return_code is 0 on success, non-zero on
         failure. On failure, output may be None since stderr is not captured.
     """
-    try:
-        with subprocess.Popen(
-            [
-                _crane_binary(),
-                "index",
-                "append",
-                "-m",
-                tags[0],
-                "-m",
-                tags[1],
-                "-t",
-                index_name,
-            ],
-            stdout=subprocess.PIPE,
-            text=True,
-        ) as proc:
-            output = ""
-            for line in proc.stdout:
-                logger.info(line + "\n")
-                output += line
-            return_code = proc.wait()
-            if return_code:
-                raise subprocess.CalledProcessError(return_code, proc.args)
-            return return_code, output
-    except subprocess.CalledProcessError as e:
-        return e.returncode, e.output
+    if len(tags) != 2:
+        logger.error("call_crane_index requires exactly 2 tags")
+        return 1, "call_crane_index requires exactly 2 tags"
+
+    args = ["index", "append", "-m", tags[0], "-m", tags[1], "-t", index_name]
+    return _run_crane_command(args)
 
 
 def call_crane_manifest(tag: str) -> Tuple[int, str]:
@@ -160,24 +132,5 @@ def call_crane_manifest(tag: str) -> Tuple[int, str]:
         if image doesn't exist or fetch fails. On failure, output may be None
         since stderr is not captured.
     """
-    try:
-        with subprocess.Popen(
-            [
-                _crane_binary(),
-                "manifest",
-                tag,
-            ],
-            stdout=subprocess.PIPE,
-            text=True,
-        ) as proc:
-            output = ""
-            for line in proc.stdout:
-                logger.info(line + "\n")
-                output += line
-            return_code = proc.wait()
-            if return_code:
-                raise subprocess.CalledProcessError(return_code, proc.args)
-            return return_code, output
-    except subprocess.CalledProcessError as e:
-        return e.returncode, e.output
+    return _run_crane_command(["manifest", tag])
 

@@ -53,9 +53,7 @@ def _start_local_registry():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    registry_thread = threading.Thread(
-        target=lambda: registry_proc.wait(), daemon=True
-    )
+    registry_thread = threading.Thread(target=lambda: registry_proc.wait(), daemon=True)
     registry_thread.start()
 
     for _ in range(10):

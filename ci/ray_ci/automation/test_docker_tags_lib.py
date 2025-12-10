@@ -6,7 +6,6 @@ import pytest
 import requests
 
 from ci.ray_ci.automation.crane_lib import call_crane_copy
-from ci.ray_ci.automation.test_utils import local_registry  # noqa: F401
 from ci.ray_ci.automation.docker_tags_lib import (
     AuthTokenException,
     DockerHubRateLimitException,
@@ -26,6 +25,7 @@ from ci.ray_ci.automation.docker_tags_lib import (
     query_tags_from_docker_hub,
     query_tags_from_docker_with_oci,
 )
+from ci.ray_ci.automation.test_utils import local_registry  # noqa: F401, F811
 
 
 @mock.patch("requests.get")
@@ -636,7 +636,7 @@ def test_check_image_ray_commit_failure(
         )
 
 
-def test_generate_index(local_registry):
+def test_generate_index(local_registry):  # noqa: F811
     port = local_registry
     test_image1 = f"localhost:{port}/test-image:test-tag-amd64"
     test_image2 = f"localhost:{port}/test-image:test-tag-arm64"
