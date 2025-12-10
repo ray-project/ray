@@ -1,5 +1,5 @@
 """Shared fixtures for env runner tests."""
-from typing import Any
+from typing import Any, Optional
 
 import pytest
 
@@ -189,7 +189,7 @@ class CallbackTracker(RLlibCallback):
 
     @classmethod
     def get_calls(
-        cls, callback_name: str | None = None
+        cls, callback_name: Optional[str] = None
     ) -> list[dict[str, Any]] | list[tuple[str, dict[str, Any]]]:
         if callback_name:
             return [c[1] for c in cls.calls if c[0] == callback_name]
