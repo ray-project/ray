@@ -754,8 +754,8 @@ class ApplicationAutoscalingState:
         if policy_state is None:
             return
 
-        assert (
-            type(policy_state) is dict
+        assert isinstance(
+            policy_state, dict
         ), "Application-level autoscaling policy must return policy_state as Dict[DeploymentID, Dict[str, Any]]"
 
         # Check that all keys are valid deployment IDs
@@ -763,8 +763,8 @@ class ApplicationAutoscalingState:
             assert (
                 deployment_id in self._deployment_autoscaling_states
             ), f"Policy state contains invalid deployment ID: {deployment_id}"
-            assert (
-                type(policy_state[deployment_id]) is dict
+            assert isinstance(
+                policy_state[deployment_id], dict
             ), f"Policy state for deployment {deployment_id} must be a dictionary, got {type(policy_state[deployment_id])}"
 
     def get_decision_num_replicas(
