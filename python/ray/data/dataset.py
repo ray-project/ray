@@ -171,8 +171,8 @@ a torch.device object, or an integer (e.g. 0 for 'cuda:0').
 
 BT_API_GROUP = "Basic Transformations"
 SSR_API_GROUP = "Sorting, Shuffling and Repartitioning"
-SMJ_API_GROUP = "Splitting, Merging, Joining datasets"
-GGA_API_GROUP = "Grouped and Global aggregations"
+SMJ_API_GROUP = "Splitting, Merging, Joining Datasets"
+GGA_API_GROUP = "Grouped and Global Aggregations"
 CD_API_GROUP = "Consuming Data"
 IOC_API_GROUP = "I/O and Conversion"
 IM_API_GROUP = "Inspecting Metadata"
@@ -2963,7 +2963,7 @@ class Dataset:
 
             >>> import ray
             >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-            >>> ds.unique("target")
+            >>> sorted(ds.unique("target"))
             [0, 1, 2]
 
             One common use case is to convert the class labels
@@ -2986,7 +2986,7 @@ class Dataset:
         Returns:
             A list with unique elements in the given column.
         """  # noqa: E501
-        ret = self._aggregate_on(Unique, column)
+        ret = self._aggregate_on(Unique, column, ignore_nulls=False)
         return self._aggregate_result(ret)
 
     @AllToAllAPI
@@ -4189,6 +4189,10 @@ class Dataset:
         table_identifier: str,
         catalog_kwargs: Optional[Dict[str, Any]] = None,
         snapshot_properties: Optional[Dict[str, str]] = None,
+        mode: "SaveMode" = SaveMode.APPEND,
+        overwrite_filter: Optional["Expr"] = None,
+        upsert_kwargs: Optional[Dict[str, Any]] = None,
+        overwrite_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
     ) -> None:
@@ -4204,31 +4208,89 @@ class Dataset:
 
                 import ray
                 import pandas as pd
-                docs = [{"title": "Iceberg data sink test"} for key in range(4)]
+                from ray.data import SaveMode
+                from ray.data.expressions import col
+
+                # Basic append (default behavior)
+                docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
                 ds = ray.data.from_pandas(pd.DataFrame(docs))
                 ds.write_iceberg(
                     table_identifier="db_name.table_name",
                     catalog_kwargs={"name": "default", "type": "sql"}
                 )
 
+                # Schema evolution is automatic - new columns are added automatically
+                enriched_docs = [{"id": i, "title": f"Doc {i}", "category": "new"} for i in range(3)]
+                ds_enriched = ray.data.from_pandas(pd.DataFrame(enriched_docs))
+                ds_enriched.write_iceberg(
+                    table_identifier="db_name.table_name",
+                    catalog_kwargs={"name": "default", "type": "sql"}
+                )
+                 # Upsert mode - update existing rows or insert new ones
+                updated_docs = [{"id": 2, "title": "Updated Doc 2"}, {"id": 5, "title": "New Doc 5"}]
+                ds_updates = ray.data.from_pandas(pd.DataFrame(updated_docs))
+                ds_updates.write_iceberg(
+                    table_identifier="db_name.table_name",
+                    catalog_kwargs={"name": "default", "type": "sql"},
+                    mode=SaveMode.UPSERT,
+                    upsert_kwargs={"join_cols": ["id"]},
+                )
+
+                # Partial overwrite with Ray Data expressions
+                ds.write_iceberg(
+                    table_identifier="events.user_activity",
+                    catalog_kwargs={"name": "default", "type": "rest"},
+                    mode=SaveMode.OVERWRITE,
+                    overwrite_filter=col("date") >= "2024-10-28"
+                )
+
         Args:
             table_identifier: Fully qualified table identifier (``db_name.table_name``)
             catalog_kwargs: Optional arguments to pass to PyIceberg's catalog.load_catalog()
-                function (e.g., name, type, etc.). For the function definition, see
+                function (such as name, type, etc.). For the function definition, see
                 `pyiceberg catalog
                 <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
                 #pyiceberg.catalog.load_catalog>`_.
-            snapshot_properties: custom properties write to snapshot when committing
+            snapshot_properties: Custom properties to write to snapshot when committing
                 to an iceberg table.
+            mode: Write mode using SaveMode enum. Options:
+
+                * SaveMode.APPEND (default): Add new data to the table without checking for duplicates.
+                * SaveMode.UPSERT: Update existing rows that match on the join condition (``join_cols`` in ``upsert_kwargs``),
+                  or insert new rows if they don't exist in the table.
+                * SaveMode.OVERWRITE: Replace all existing data in the table with new data, or replace
+                  data matching overwrite_filter if specified.
+
+            overwrite_filter: Optional filter for OVERWRITE mode to perform partial overwrites.
+                Must be a Ray Data expression from `ray.data.expressions`. Only rows matching
+                this filter are replaced. If None with OVERWRITE mode, replaces all table data.
+                Example: `col("date") >= "2024-01-01"` or `(col("region") == "US") & (col("status") == "active")`
+            upsert_kwargs: Optional arguments for upsert operations.
+                Supported parameters: join_cols (List[str]), case_sensitive (bool), branch (str).
+                Note: Ray Data uses a copy-on-write strategy that always updates all columns
+                for matched keys and inserts all new keys for optimal parallelism.
+            overwrite_kwargs: Optional arguments to pass through to PyIceberg's table.overwrite() method.
+                Supported parameters: case_sensitive (bool), branch (str). See PyIceberg documentation
+                for details.
             ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
-        """
 
+        Note:
+            Schema evolution is automatically enabled. New columns in the incoming data
+            are automatically added to the table schema. The schema is extracted
+            automatically from the data being written.
+        """
         datasink = IcebergDatasink(
-            table_identifier, catalog_kwargs, snapshot_properties
+            table_identifier=table_identifier,
+            catalog_kwargs=catalog_kwargs,
+            snapshot_properties=snapshot_properties,
+            mode=mode,
+            overwrite_filter=overwrite_filter,
+            upsert_kwargs=upsert_kwargs,
+            overwrite_kwargs=overwrite_kwargs,
         )
 
         self.write_datasink(
@@ -5253,9 +5315,14 @@ class Dataset:
         logical_plan = LogicalPlan(write_op, self.context)
 
         try:
-            datasink.on_write_start()
+            # Call on_write_start for _FileDatasink before execution to handle
+            # SaveMode checks (ERROR raises, OVERWRITE deletes contents, IGNORE skips)
+            # and directory creation. For other datasinks, on_write_start is called
+            # automatically by the Write operator when the first input bundle arrives.
             if isinstance(datasink, _FileDatasink):
-                if not datasink.has_created_dir and datasink.mode == SaveMode.IGNORE:
+                datasink.on_write_start()
+                # TODO (https://github.com/ray-project/ray/issues/59326): There should be no special handling for skipping writes.
+                if datasink._skip_write:
                     logger.info(
                         f"Ignoring write because {datasink.path} already exists"
                     )
@@ -6800,7 +6867,8 @@ class Schema:
                 # Manually convert our Pandas tensor extension type to Arrow.
                 arrow_types.append(
                     pa_tensor_type_class(
-                        shape=dtype._shape, dtype=_convert_to_pa_type(dtype._dtype)
+                        shape=dtype._shape,
+                        dtype=_convert_to_pa_type(dtype._dtype),
                     )
                 )
 
