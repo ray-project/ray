@@ -70,9 +70,13 @@ def build_llm_deployment(
     if override_serve_options:
         deployment_options.update(override_serve_options)
 
-    deployment_options = deep_merge_dicts(
-        DEFAULT_DEPLOYMENT_OPTIONS, deployment_options
-    )
+    # When num_replicas is explicitly set, we should not include autoscaling_config
+    # in the defaults since Ray Serve does not allow both.
+    defaults = DEFAULT_DEPLOYMENT_OPTIONS.copy()
+    if "num_replicas" in deployment_options:
+        defaults.pop("autoscaling_config", None)
+
+    deployment_options = deep_merge_dicts(defaults, deployment_options)
 
     logger.info("============== Deployment Options ==============")
     logger.info(pprint.pformat(deployment_options))
