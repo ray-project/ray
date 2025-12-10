@@ -704,6 +704,11 @@ read from the dataset path:
     title   string
     text    string
 
+.. tip::
+
+    If you encounter serialization errors when reading from Hugging Face filesystems, try upgrading ``huggingface_hub`` to version 1.1.6 or later. For more details, see this issue: https://github.com/ray-project/ray/issues/59029
+
+
 
 .. _loading_datasets_from_ml_libraries:
 
