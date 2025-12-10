@@ -2,6 +2,10 @@ import logging
 import math
 from typing import TYPE_CHECKING, Optional
 
+from .actor_pool_resizing_policy import (
+    ActorPoolResizingPolicy,
+    DefaultResizingPolicy,
+)
 from .autoscaling_actor_pool import ActorPoolScalingRequest, AutoscalingActorPool
 from .base_actor_autoscaler import ActorAutoscaler
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
@@ -22,6 +26,7 @@ class DefaultActorAutoscaler(ActorAutoscaler):
         resource_manager: "ResourceManager",
         *,
         config: AutoscalingConfig,
+        actor_pool_resizing_policy: Optional[ActorPoolResizingPolicy] = None,
     ):
         super().__init__(topology, resource_manager)
 
@@ -32,6 +37,13 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             config.actor_pool_util_downscaling_threshold
         )
         self._actor_pool_max_upscaling_delta = config.actor_pool_max_upscaling_delta
+
+        if actor_pool_resizing_policy is None:
+            actor_pool_resizing_policy = DefaultResizingPolicy(
+                upscaling_threshold=config.actor_pool_util_upscaling_threshold,
+                max_upscaling_delta=config.actor_pool_max_upscaling_delta,
+            )
+        self._actor_pool_resizing_policy = actor_pool_resizing_policy
 
         self._validate_autoscaling_config()
 
@@ -44,9 +56,7 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                     self._derive_target_scaling_config(actor_pool, op, state)
                 )
 
-    def _compute_utilization(
-        self, actor_pool: "AutoscalingActorPool"
-    ) -> Optional[float]:
+    def _compute_utilization(self, actor_pool: AutoscalingActorPool) -> Optional[float]:
         """Compute the utilization of the actor pool.
 
         Args:
@@ -60,37 +70,22 @@ class DefaultActorAutoscaler(ActorAutoscaler):
 
     def _compute_upscale_delta(
         self,
-        actor_pool: "AutoscalingActorPool",
-        max_scale_up: Optional[int],
+        actor_pool: AutoscalingActorPool,
         util: float,
     ) -> int:
         """Compute how many actors to add when scaling up.
 
-        Override this to customize upscale delta calculation.
-
         Args:
             actor_pool: The actor pool to scale.
-            max_scale_up: Maximum actors that can be added based on resource budget,
-                or None if unlimited.
             util: The current utilization of the actor pool.
 
         Returns:
             The number of actors to add (must be >= 1).
         """
-        # Calculate desired delta based on utilization
-        plan_delta = math.ceil(
-            actor_pool.current_size()
-            * (util / self._actor_pool_scaling_up_threshold - 1)
-        )
+        return self._actor_pool_resizing_policy.compute_upscale_delta(actor_pool, util)
 
-        upscale_capacities = self._get_upscale_capacities(actor_pool, max_scale_up)
-        delta = min(plan_delta, *upscale_capacities)
-        return max(1, delta)  # At least scale up by 1
-
-    def _compute_downscale_delta(self, actor_pool: "AutoscalingActorPool") -> int:
+    def _compute_downscale_delta(self, actor_pool: AutoscalingActorPool) -> int:
         """Compute how many actors to remove when scaling down.
-
-        Override this to customize downscale delta calculation.
 
         Args:
             actor_pool: The actor pool to scale down.
@@ -98,31 +93,11 @@ class DefaultActorAutoscaler(ActorAutoscaler):
         Returns:
             The number of actors to remove (must be >= 1).
         """
-        return 1
-
-    def _should_skip_upscale(
-        self,
-        actor_pool: "AutoscalingActorPool",
-        op: "PhysicalOperator",
-        op_state: "OpState",
-    ) -> Optional[str]:
-        """Check if upscaling should be skipped.
-
-        Override this to add custom skip conditions.
-
-        Args:
-            actor_pool: The actor pool to check.
-            op: The physical operator.
-            op_state: The operator state.
-
-        Returns:
-            A reason string if upscaling should be skipped, or None to proceed.
-        """
-        return None
+        return self._actor_pool_resizing_policy.compute_downscale_delta(actor_pool)
 
     def _derive_target_scaling_config(
         self,
-        actor_pool: "AutoscalingActorPool",
+        actor_pool: AutoscalingActorPool,
         op: "PhysicalOperator",
         op_state: "OpState",
     ) -> ActorPoolScalingRequest:
@@ -153,10 +128,14 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             return ActorPoolScalingRequest.no_op(reason="no running actors")
 
         if util >= self._actor_pool_scaling_up_threshold:
-            # Check for custom skip conditions first
-            skip_reason = self._should_skip_upscale(actor_pool, op, op_state)
-            if skip_reason is not None:
-                return ActorPoolScalingRequest.no_op(reason=skip_reason)
+            average_num_inputs_per_task = op.metrics.average_num_inputs_per_task or 1
+            if (
+                op_state.total_enqueued_input_blocks()
+                <= actor_pool.num_free_task_slots() * average_num_inputs_per_task
+            ):
+                return ActorPoolScalingRequest.no_op(
+                    reason="enough free task slots to consume the existing inputs"
+                )
 
             # Do not scale up if either
             #   - Previous scale up has not finished yet
@@ -174,7 +153,10 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             max_scale_up = _get_max_scale_up(actor_pool, budget)
             if max_scale_up == 0:
                 return ActorPoolScalingRequest.no_op(reason="exceeded resource limits")
-            delta = self._compute_upscale_delta(actor_pool, max_scale_up, util)
+            delta = self._compute_upscale_delta(actor_pool, util)
+            if max_scale_up is not None:
+                delta = min(delta, max_scale_up)
+            delta = max(1, delta)  # At least scale up by 1
 
             return ActorPoolScalingRequest.upscale(
                 delta=delta,
@@ -226,21 +208,9 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             for actor_pool in op.get_autoscaling_actor_pools():
                 self._validate_actor_pool_autoscaling_config(actor_pool, op)
 
-    def _get_upscale_capacities(
-        self,
-        actor_pool: "AutoscalingActorPool",
-        max_scale_up: Optional[int],
-    ):
-        limits = []
-        if max_scale_up is not None:
-            limits.append(max_scale_up)
-        limits.append(self._actor_pool_max_upscaling_delta)
-        limits.append(actor_pool.max_size() - actor_pool.current_size())
-        return limits
-
     def _validate_actor_pool_autoscaling_config(
         self,
-        actor_pool: "AutoscalingActorPool",
+        actor_pool: AutoscalingActorPool,
         op: "PhysicalOperator",
     ) -> None:
         """Validate autoscaling configuration.
