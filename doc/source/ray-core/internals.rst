@@ -12,3 +12,4 @@ For the high level architecture overview, please refer to the `whitepaper <https
     internals/task-lifecycle.rst
     internals/autoscaler-v2.rst
     internals/rpc-fault-tolerance.rst
+    internals/metric-exporter.rst
