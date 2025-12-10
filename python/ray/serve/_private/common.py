@@ -834,7 +834,6 @@ class DeploymentSnapshot(BaseModel):
     ongoing_requests: float
     metrics_health: str
     errors: List[str]
-    decisions: List[DecisionRecord]
 
     @staticmethod
     def format_metrics_health_text(

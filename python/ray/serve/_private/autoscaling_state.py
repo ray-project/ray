@@ -1,14 +1,13 @@
 import logging
 import time
-from collections import defaultdict, deque
-from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
+from collections import defaultdict
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     ApplicationName,
     AutoscalingSnapshotError,
     AutoscalingStatus,
-    DecisionRecord,
     DeploymentID,
     DeploymentSnapshot,
     HandleMetricReport,
@@ -18,8 +17,6 @@ from ray.serve._private.common import (
     TimeSeries,
 )
 from ray.serve._private.constants import (
-    AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX,
-    AUTOSCALER_SUMMARIZER_DECISION_LIMIT,
     RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
@@ -63,9 +60,6 @@ class DeploymentAutoscalingState:
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
         self._cached_deployment_snapshot: Optional[DeploymentSnapshot] = None
-        self._decision_history: Deque[DecisionRecord] = deque(
-            maxlen=AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX
-        )
         self._latest_metrics_timestamp: Optional[float] = None
         # Track timestamps of last scale up and scale down events
         self._last_scale_up_time: Optional[float] = None
@@ -258,14 +252,6 @@ class DeploymentAutoscalingState:
 
         decision_num_replicas = self.apply_bounds(decision_num_replicas)
 
-        self._decision_history.append(
-            DecisionRecord(
-                timestamp_str=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                current_num_replicas=autoscaling_context.current_num_replicas,
-                target_num_replicas=decision_num_replicas,
-            )
-        )
-
         self._cached_deployment_snapshot = self._create_deployment_snapshot(
             ctx=autoscaling_context,
             target_replicas=decision_num_replicas,
@@ -294,9 +280,6 @@ class DeploymentAutoscalingState:
             last_scale_up_time=self._last_scale_up_time,
             last_scale_down_time=self._last_scale_down_time,
         )
-
-    def get_decision_history(self) -> List[DecisionRecord]:
-        return self._decision_history
 
     def _collect_replica_running_requests(self) -> List[TimeSeries]:
         """Collect running requests timeseries from replicas for aggregation.
@@ -636,9 +619,6 @@ class DeploymentAutoscalingState:
             look_back_period_s=look_back_period_s,
         )
 
-        decisions_summary = list(self._decision_history)[
-            -AUTOSCALER_SUMMARIZER_DECISION_LIMIT:
-        ]
         errors: List[str] = []
 
         if time_since_last_collected_metrics_s is None:
@@ -661,7 +641,6 @@ class DeploymentAutoscalingState:
             ongoing_requests=float(ctx.total_num_requests),
             metrics_health=metrics_health,
             errors=errors,
-            decisions=decisions_summary,
         )
 
     def get_deployment_snapshot(self) -> Optional[DeploymentSnapshot]:
@@ -1150,10 +1129,3 @@ class AutoscalingStateManager:
             return None
         dep_state = app_state._deployment_autoscaling_states.get(deployment_id)
         return dep_state.get_deployment_snapshot() if dep_state else None
-
-    def get_decision_history(self, deployment_id: DeploymentID) -> List[DecisionRecord]:
-        app_state = self._app_autoscaling_states.get(deployment_id.app_name)
-        if not app_state:
-            return []
-        dep_state = app_state._deployment_autoscaling_states.get(deployment_id)
-        return dep_state.get_decision_history() if dep_state else []

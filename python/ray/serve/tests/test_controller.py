@@ -395,7 +395,6 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
             "target_replicas",
             "min_replicas",
             "max_replicas",
-            "decisions",
             "policy_name",
             "metrics_health",
             "look_back_period_s",

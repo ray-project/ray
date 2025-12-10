@@ -512,10 +512,6 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
     )
     RAY_SERVE_LOG_TO_STDERR = get_env_bool("RAY_SERVE_LOG_TO_STDERR", "0")
 
-# Maximum number of past scaling decisions to retain per deployment.
-AUTOSCALER_SUMMARIZER_DECISION_HISTORY_MAX = 50
-# Maximum number of recent scaling decisions to include in each snapshot log.
-AUTOSCALER_SUMMARIZER_DECISION_LIMIT = 2
 # The maximum allowed RPC latency in milliseconds.
 # This is used to detect and warn about long RPC latencies
 # between the controller and the replicas.
