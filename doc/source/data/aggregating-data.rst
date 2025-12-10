@@ -16,18 +16,17 @@ These can be used directly on a Dataset or a GroupedData object, as shown below:
 .. testcode::
 
     import ray
-    from ray.data.aggregate import Count, Mean, Quantile
 
     # Create a sample dataset
     ds = ray.data.range(100)
     ds = ds.add_column("group_key", lambda x: x % 3)
     # Schema: {'id': int64, 'group_key': int64}
 
-    # Count all rows
+    # Find the max
     result = ds.max("id")
     # result: 99
 
-    # Find the maximum value per group
+    # Find the minimum value per group
     result = ds.groupby("group_key").min("id")
     # result: [{'group_key': 0, 'min(id)': 0}, {'group_key': 1, 'min(id)': 1}, {'group_key': 2, 'min(id)': 2}]
 
