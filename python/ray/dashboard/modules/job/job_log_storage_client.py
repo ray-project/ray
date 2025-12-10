@@ -1,10 +1,9 @@
 import os
-from collections import deque
 from typing import AsyncIterator, List, Tuple
 
 import ray
 from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
-from ray.dashboard.modules.job.utils import file_tail_iterator
+from ray.dashboard.modules.job.utils import fast_tail_last_n_lines, file_tail_iterator
 
 
 class JobLogStorageClient:
@@ -39,16 +38,11 @@ class JobLogStorageClient:
             job_id: The id of the job whose logs we want to return
             num_log_lines: The number of lines to return.
         """
-        log_tail_deque = deque(maxlen=num_log_lines)
-        async for lines in self.tail_logs(job_id):
-            if lines is None:
-                break
-            else:
-                # log_tail_iter can return batches of lines at a time.
-                for line in lines:
-                    log_tail_deque.append(line)
-
-        return "".join(log_tail_deque)[-self.MAX_LOG_SIZE :]
+        return fast_tail_last_n_lines(
+            path=self.get_log_file_path(job_id),
+            num_lines=num_log_lines,
+            max_chars=self.MAX_LOG_SIZE,
+        )
 
     def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
         """

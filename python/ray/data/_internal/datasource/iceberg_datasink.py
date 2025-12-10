@@ -2,10 +2,7 @@
 Module to write a Ray Dataset into an iceberg table, by using the Ray Datasink API.
 """
 import logging
-import uuid
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
-
-from packaging import version
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
@@ -13,20 +10,27 @@ from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
+    import pyarrow as pa
     from pyiceberg.catalog import Catalog
     from pyiceberg.manifest import DataFile
-
+    from pyiceberg.table import Table
 
 logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class IcebergDatasink(Datasink[List["DataFile"]]):
+class IcebergDatasink(
+    Datasink[Tuple[List["DataFile"], List["pa.Schema"]]]
+):  # Changed return type
     """
-    Iceberg datasink to write a Ray Dataset into an existing Iceberg table. This module
-    heavily uses PyIceberg to write to iceberg table. All the routines in this class override
-    `ray.data.Datasink`.
+    Iceberg datasink to write a Ray Dataset into an existing Iceberg table.
+    This datasink handles concurrent writes by:
+    - Each worker writes Parquet files to storage and returns DataFile metadata
+    - The driver collects all DataFile objects and performs a single commit
 
+    Schema evolution is supported:
+    - New columns in incoming data are automatically added to the table schema
+    - Type promotion across blocks is handled via schema reconciliation on the driver
     """
 
     def __init__(
@@ -39,132 +43,165 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         Initialize the IcebergDatasink
 
         Args:
-            table_identifier: The identifier of the table to read e.g. `default.taxi_dataset`
-            catalog_kwargs: Optional arguments to use when setting up the Iceberg
-                catalog
-            snapshot_properties: custom properties write to snapshot when committing
-            to an iceberg table, e.g. {"commit_time": "2021-01-01T00:00:00Z"}
+            table_identifier: The identifier of the table such as `default.taxi_dataset`
+            catalog_kwargs: Optional arguments to use when setting up the Iceberg catalog
+            snapshot_properties: Custom properties to write to snapshot summary
+
+        Note:
+            Schema evolution is automatically enabled. New columns in the incoming data
+            are automatically added to the table schema. The schema is extracted from
+            the first input bundle when on_write_start is called.
         """
-
-        from pyiceberg.io import FileIO
-        from pyiceberg.table import Transaction
-        from pyiceberg.table.metadata import TableMetadata
-
         self.table_identifier = table_identifier
-        self._catalog_kwargs = catalog_kwargs if catalog_kwargs is not None else {}
-        self._snapshot_properties = (
-            snapshot_properties if snapshot_properties is not None else {}
-        )
+        self._catalog_kwargs = (catalog_kwargs or {}).copy()
+        self._snapshot_properties = (snapshot_properties or {}).copy()
 
         if "name" in self._catalog_kwargs:
             self._catalog_name = self._catalog_kwargs.pop("name")
         else:
             self._catalog_name = "default"
 
-        self._uuid: str = None
-        self._io: FileIO = None
-        self._txn: Transaction = None
-        self._table_metadata: TableMetadata = None
+        self._table: "Table" = None
 
-    # Since iceberg transaction is not pickle-able, because of the table and catalog properties
-    # we need to exclude the transaction object during serialization and deserialization during pickle
     def __getstate__(self) -> dict:
-        """Exclude `_txn` during pickling."""
+        """Exclude `_table` during pickling."""
         state = self.__dict__.copy()
-        del state["_txn"]
+        state.pop("_table", None)
         return state
 
     def __setstate__(self, state: dict) -> None:
         self.__dict__.update(state)
-        self._txn = None
+        self._table = None
 
     def _get_catalog(self) -> "Catalog":
         from pyiceberg import catalog
 
         return catalog.load_catalog(self._catalog_name, **self._catalog_kwargs)
 
-    def on_write_start(self) -> None:
-        """Prepare for the transaction"""
-        import pyiceberg
-        from pyiceberg.table import TableProperties
-
-        if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
-            from pyiceberg.utils.properties import property_as_bool
-        else:
-            from pyiceberg.table import PropertyUtil
-
-            property_as_bool = PropertyUtil.property_as_bool
-
+    def _reload_table(self) -> None:
+        """Reload the Iceberg table from the catalog."""
         catalog = self._get_catalog()
-        table = catalog.load_table(self.table_identifier)
-        self._txn = table.transaction()
-        self._io = self._txn._table.io
-        self._table_metadata = self._txn.table_metadata
-        self._uuid = uuid.uuid4()
+        self._table = catalog.load_table(self.table_identifier)
 
-        if unsupported_partitions := [
-            field
-            for field in self._table_metadata.spec().fields
-            if not field.transform.supports_pyarrow_transform
-        ]:
-            raise ValueError(
-                f"Not all partition types are supported for writes. Following partitions cannot be written using pyarrow: {unsupported_partitions}."
-            )
+    def _append_and_commit(
+        self, txn: "Table.transaction", data_files: List["DataFile"]
+    ) -> None:
+        """Append data files to a transaction and commit.
 
-        self._manifest_merge_enabled = property_as_bool(
-            self._table_metadata.properties,
-            TableProperties.MANIFEST_MERGE_ENABLED,
-            TableProperties.MANIFEST_MERGE_ENABLED_DEFAULT,
-        )
+        Args:
+            txn: PyIceberg transaction object
+            data_files: List of DataFile objects to append
+        """
+        with txn._append_snapshot_producer(self._snapshot_properties) as append_files:
+            for data_file in data_files:
+                append_files.append_data_file(data_file)
+        txn.commit_transaction()
+
+    def on_write_start(self, schema: Optional["pa.Schema"] = None) -> None:
+        """Initialize table for writing and create a shared write UUID.
+
+        Args:
+            schema: The PyArrow schema of the data being written. This is
+                automatically extracted from the first input bundle by the
+                Write operator. Used to evolve the table schema before writing
+                to avoid PyIceberg name mapping errors.
+        """
+        self._reload_table()
+
+        # Evolve schema BEFORE any files are written
+        # This prevents PyIceberg name mapping errors when incoming data has new columns
+        if schema is not None:
+            with self._table.update_schema() as update:
+                update.union_by_name(schema)
+            # Succeeded, reload to get latest table version and exit.
+            self._reload_table()
 
     def write(
         self, blocks: Iterable[Block], ctx: TaskContext
-    ) -> WriteResult[List["DataFile"]]:
-        from pyiceberg.io.pyarrow import (
-            _check_pyarrow_schema_compatible,
-            _dataframe_to_data_files,
-        )
-        from pyiceberg.table import DOWNCAST_NS_TIMESTAMP_TO_US_ON_WRITE
-        from pyiceberg.utils.config import Config
+    ) -> Tuple[List["DataFile"], List["pa.Schema"]]:
+        """
+        Write blocks to Parquet files in storage and return DataFile metadata with schemas.
 
-        data_files_list: WriteResult[List["DataFile"]] = []
+        This runs on each worker in parallel. Files are written directly to storage
+        (S3, HDFS, etc.) and only metadata is returned to the driver.
+        Schema updates are NOT performed here - they happen on the driver.
+
+        Args:
+            blocks: Iterable of Ray Data blocks to write
+            ctx: TaskContext object containing task-specific information
+
+        Returns:
+            Tuple of (List of DataFile objects, List of PyArrow schemas from all non-empty blocks).
+        """
+        from pyiceberg.io.pyarrow import _dataframe_to_data_files
+
+        # Workers receive a pickled datasink with _table=None (excluded during
+        # serialization), so we reload it on first use.
+        if self._table is None:
+            self._reload_table()
+
+        all_data_files = []
+        block_schemas = []
+
         for block in blocks:
             pa_table = BlockAccessor.for_block(block).to_arrow()
+            if pa_table.num_rows > 0:
+                block_schemas.append(pa_table.schema)
 
-            downcast_ns_timestamp_to_us = (
-                Config().get_bool(DOWNCAST_NS_TIMESTAMP_TO_US_ON_WRITE) or False
-            )
-            _check_pyarrow_schema_compatible(
-                self._table_metadata.schema(),
-                provided_schema=pa_table.schema,
-                downcast_ns_timestamp_to_us=downcast_ns_timestamp_to_us,
-            )
+                # Write data files to storage
+                data_files = list(
+                    _dataframe_to_data_files(
+                        table_metadata=self._table.metadata,
+                        df=pa_table,
+                        io=self._table.io,
+                    )
+                )
+                all_data_files.extend(data_files)
 
-            if pa_table.shape[0] <= 0:
+        return (all_data_files, block_schemas)
+
+    def on_write_complete(self, write_result: WriteResult) -> None:
+        """
+        Complete the write by reconciling schemas and committing all data files.
+
+        This runs on the driver after all workers finish writing files.
+        Collects all DataFile objects and schemas from all workers, reconciles schemas
+        (allowing type promotion), updates table schema if needed, then performs a single
+        atomic commit.
+        """
+        # Collect all data files and schemas from all workers
+        all_data_files = []
+        all_schemas = []
+
+        for write_return in write_result.write_returns:
+            if not write_return:
                 continue
 
-            task_uuid = uuid.uuid4()
-            data_files = _dataframe_to_data_files(
-                self._table_metadata, pa_table, self._io, task_uuid
-            )
-            data_files_list.extend(data_files)
+            data_files, schemas = write_return
+            if data_files:  # Only add schema if we have data files
+                all_data_files.extend(data_files)
+                all_schemas.extend(schemas)
 
-        return data_files_list
+        if not all_data_files:
+            return
 
-    def on_write_complete(self, write_result: WriteResult[List["DataFile"]]):
-        update_snapshot = self._txn.update_snapshot(
-            snapshot_properties=self._snapshot_properties
+        # Reconcile all schemas from all blocks across all workers
+        # Get table schema and union with reconciled schema using unify_schemas with promotion
+        from pyiceberg.io import pyarrow as pyi_pa_io
+
+        from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
+
+        table_schema = pyi_pa_io.schema_to_pyarrow(self._table.schema())
+        final_reconciled_schema = unify_schemas(
+            [table_schema] + all_schemas, promote_types=True
         )
-        append_method = (
-            update_snapshot.merge_append
-            if self._manifest_merge_enabled
-            else update_snapshot.fast_append
-        )
 
-        with append_method() as append_files:
-            append_files.commit_uuid = self._uuid
-            for data_files in write_result.write_returns:
-                for data_file in data_files:
-                    append_files.append_data_file(data_file)
+        # Create transaction and commit schema update + data files atomically
+        txn = self._table.transaction()
 
-        self._txn.commit_transaction()
+        # Update table schema within the transaction if it differs
+        if not final_reconciled_schema.equals(table_schema):
+            with txn.update_schema() as update:
+                update.union_by_name(final_reconciled_schema)
+
+        self._append_and_commit(txn, all_data_files)
