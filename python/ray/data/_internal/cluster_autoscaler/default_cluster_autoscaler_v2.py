@@ -166,7 +166,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         ):
             logger.debug(
                 "Cluster utilization is below threshold: "
-                f"CPU={util.cpu:.2f}, GPU={util.gpu:.2f},, memory={util.object_store_memory:.2f}."
+                f"CPU={util.cpu:.2f}, GPU={util.gpu:.2f}, memory={util.object_store_memory:.2f}."
             )
             # Still send an empty request when upscaling is not needed,
             # to renew our registration on AutoscalingCoordinator.
