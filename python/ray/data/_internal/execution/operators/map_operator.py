@@ -90,6 +90,44 @@ def _get_arrow_schema_from_block(block: Block) -> "pa.Schema":
     return sample_accessor.to_arrow().schema
 
 
+def _get_schema_from_bundle(bundle: RefBundle) -> Optional["pa.Schema"]:
+    """Extract PyArrow schema from a RefBundle.
+
+    For Arrow schemas, returns directly. For Pandas blocks, runs a lightweight
+    remote task to convert a 1-row sample to Arrow and extract the schema.
+    This ensures schema consistency with actual block conversion logic without
+    fetching block data to the driver.
+    """
+    import pyarrow as pa
+
+    from ray.data._internal.pandas_block import PandasBlockSchema
+    from ray.data.dataset import Schema
+
+    if bundle.schema is None:
+        return None
+
+    schema = bundle.schema
+
+    # Unwrap Schema wrapper if present
+    if isinstance(schema, Schema):
+        schema = schema.base_schema
+
+    # Already a PyArrow schema - use directly
+    if isinstance(schema, pa.Schema):
+        return schema
+
+    # PandasBlockSchema - use remote task to convert via actual block conversion
+    # This runs on a worker to avoid fetching block data to the driver
+    if isinstance(schema, PandasBlockSchema):
+        if not bundle.blocks:
+            return None
+        block_ref, _ = bundle.blocks[0]
+        schema_ref = _get_arrow_schema_from_block.remote(block_ref)
+        return ray.get(schema_ref)
+
+    return None
+
+
 class BaseRefBundler(ABC):
     """Interface for the rebundling behavior of the MapOperator."""
 
@@ -227,49 +265,12 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         (e.g., schema evolution for Iceberg writes via on_write_start).
         """
         if not self._on_start_called and self._on_start is not None:
-            schema = self._get_schema_from_bundle(bundled_input)
+            schema = _get_schema_from_bundle(bundled_input)
             self._on_start(schema)
             self._on_start_called = True
             # Note: _map_transformer_ref is lazily initialized, so no need to
             # re-serialize here - it will be created with the updated state
             # when first accessed in _add_bundled_input.
-
-    def _get_schema_from_bundle(self, bundle: RefBundle) -> Optional["pa.Schema"]:
-        """Extract PyArrow schema from a RefBundle.
-
-        For Arrow schemas, returns directly. For Pandas blocks, runs a lightweight
-        remote task to convert a 1-row sample to Arrow and extract the schema.
-        This ensures schema consistency with actual block conversion logic without
-        fetching block data to the driver.
-        """
-        import pyarrow as pa
-
-        from ray.data._internal.pandas_block import PandasBlockSchema
-        from ray.data.dataset import Schema
-
-        if bundle.schema is None:
-            return None
-
-        schema = bundle.schema
-
-        # Unwrap Schema wrapper if present
-        if isinstance(schema, Schema):
-            schema = schema.base_schema
-
-        # Already a PyArrow schema - use directly
-        if isinstance(schema, pa.Schema):
-            return schema
-
-        # PandasBlockSchema - use remote task to convert via actual block conversion
-        # This runs on a worker to avoid fetching block data to the driver
-        if isinstance(schema, PandasBlockSchema):
-            if not bundle.blocks:
-                return None
-            block_ref, _ = bundle.blocks[0]
-            schema_ref = _get_arrow_schema_from_block.remote(block_ref)
-            return ray.get(schema_ref)
-
-        return None
 
     def get_map_task_kwargs(self) -> Dict[str, Any]:
         """Get the kwargs for the map task.

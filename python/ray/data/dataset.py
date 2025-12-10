@@ -5253,12 +5253,13 @@ class Dataset:
         logical_plan = LogicalPlan(write_op, self.context)
 
         try:
-            # Handle pre-flight checks for _FileDatasink before execution starts.
-            # This handles SaveMode checks (ERROR raises, OVERWRITE deletes contents,
-            # IGNORE skips). on_write_start is called automatically by the Write
-            # operator when the first input bundle arrives.
+            # Call on_write_start for _FileDatasink before execution to handle
+            # SaveMode checks (ERROR raises, OVERWRITE deletes contents, IGNORE skips)
+            # and directory creation. For other datasinks, on_write_start is called
+            # automatically by the Write operator when the first input bundle arrives.
             if isinstance(datasink, _FileDatasink):
-                if datasink._pre_flight_check():
+                datasink.on_write_start()
+                if datasink._skip_write:
                     logger.info(
                         f"Ignoring write because {datasink.path} already exists"
                     )

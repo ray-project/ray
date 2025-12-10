@@ -81,25 +81,18 @@ class _FileDatasink(Datasink[None]):
         self.file_format = file_format
         self.mode = mode
         self.has_created_dir = False
+        self._skip_write = False
+        self._write_started = False
 
     def open_output_stream(self, path: str) -> "pyarrow.NativeFile":
         return self.filesystem.open_output_stream(path, **self.open_stream_args)
 
-    def _pre_flight_check(self) -> bool:
-        """Handle SaveMode checks before execution starts.
+    def on_write_start(self, schema: Optional["pyarrow.Schema"] = None) -> None:
+        # Make idempotent - if already called, return early.
+        if self._write_started:
+            return
+        self._write_started = True
 
-        This method handles all SaveMode checks upfront so that:
-        - Errors are raised before any work begins
-        - OVERWRITE deletes existing contents before any work begins
-        - IGNORE can skip execution entirely
-
-        Returns:
-            True if the write should be skipped (SaveMode.IGNORE and path exists),
-            False otherwise (proceed with write).
-
-        Raises:
-            ValueError: If SaveMode.ERROR and path already exists.
-        """
         from pyarrow.fs import FileType
 
         dir_exists = (
@@ -113,15 +106,11 @@ class _FileDatasink(Datasink[None]):
                 )
             if self.mode == SaveMode.IGNORE:
                 logger.warning(f"[SaveMode={self.mode}] Skipping {self.path}")
-                return True
+                self._skip_write = True
+                return
             if self.mode == SaveMode.OVERWRITE:
                 logger.warning(f"[SaveMode={self.mode}] Replacing contents {self.path}")
                 self.filesystem.delete_dir_contents(self.path)
-        return False
-
-    def on_write_start(self, schema: Optional["pyarrow.Schema"] = None) -> None:
-        # Note: SaveMode checks are now handled by _pre_flight_check() which is
-        # called before execution starts. This method only handles directory creation.
         self.has_created_dir = self._create_dir(self.path)
 
     def _create_dir(self, dest) -> bool:
