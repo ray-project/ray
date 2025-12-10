@@ -1077,7 +1077,6 @@ py_test(
     name = "test_tensorflow_datasets",
     size = "small",
     srcs = ["tests/test_tensorflow_datasets.py"],
-    args = ["-vv"],
     tags = [
         "exclusive",
         "team:data",
