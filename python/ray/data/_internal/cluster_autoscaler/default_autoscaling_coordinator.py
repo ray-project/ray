@@ -145,10 +145,10 @@ def handle_timeout_errors(
 
 class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
     AUTOSCALING_REQUEST_GET_TIMEOUT_S = env_integer(
-        "RAY_AIR_AUTOSCALING_COORDINATOR_REQUEST_GET_TIMEOUT_S", 5
+        "RAY_DATA_AUTOSCALING_COORDINATOR_REQUEST_GET_TIMEOUT_S", 5
     )
     MAX_CONSECUTIVE_FAILURES = env_integer(
-        "RAY_AIR_AUTOSCALING_COORDINATOR_MAX_CONSECUTIVE_FAILURES", 10
+        "RAY_DATA_AUTOSCALING_COORDINATOR_MAX_CONSECUTIVE_FAILURES", 10
     )
 
     def __init__(self):
