@@ -644,7 +644,7 @@ def test_groupby_multi_agg_with_nans(
             Mean("B", alias_name="mean_b", ignore_nulls=ignore_nulls),
             Std("B", alias_name="std_b", ignore_nulls=ignore_nulls),
             Quantile("B", alias_name="quantile_b", ignore_nulls=ignore_nulls),
-            Unique("B", alias_name="unique_b"),
+            Unique("B", alias_name="unique_b", ignore_nulls=False),
         )
     )
 
@@ -751,7 +751,7 @@ def test_groupby_aggregations_are_associative(
         Mean("B", alias_name="mean_b", ignore_nulls=ignore_nulls),
         Std("B", alias_name="std_b", ignore_nulls=ignore_nulls),
         Quantile("B", alias_name="quantile_b", ignore_nulls=ignore_nulls),
-        Unique("B", alias_name="unique_b"),
+        Unique("B", alias_name="unique_b", ignore_nulls=False),
     ]
 
     # Step 0: Prepare expected output (using Pandas)
