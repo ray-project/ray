@@ -520,7 +520,7 @@ py_test(
         ["external/*.py"],
         exclude = ["external/test_hashes.py"],
     ),
-    exec_compatible_with = ["//bazel:py310"],
+    exec_compatible_with = ["//bazel:py3"],
     main = "external/test_hashes.py",
     tags = ["team:ml"],
     deps = [
@@ -623,6 +623,9 @@ doctest(
         ],
         exclude = [
             "source/rllib/getting-started.rst",
+            "source/rllib/algorithm-config.rst",
+            "source/rllib/checkpoints.rst",
+            "source/rllib/connector-v2.rst",
         ],
     ),
     tags = ["team:rllib"],
@@ -634,6 +637,9 @@ doctest(
     files = glob(
         include = [
             "source/rllib/getting-started.rst",
+            "source/rllib/algorithm-config.rst",
+            "source/rllib/checkpoints.rst",
+            "source/rllib/connector-v2.rst",
         ],
     ),
     tags = ["team:rllib"],
