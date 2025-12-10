@@ -8,10 +8,12 @@ ClusterUtil = ExecutionResources
 
 
 class ResourceUtilizationCalculator(abc.ABC):
+    @abc.abstractmethod
     def observe(self):
         """Observe the cluster utilization."""
         ...
 
+    @abc.abstractmethod
     def get(self) -> ClusterUtil:
         """Get the resource cluster utilization."""
         ...
