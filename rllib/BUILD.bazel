@@ -54,7 +54,7 @@
 # Our .buildkite/pipeline.yml and .buildkite/pipeline.gpu.yml files execute all
 # these tests in n different jobs.
 
-load("@rules_python//python:defs.bzl", "py_test")
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("//bazel:python.bzl", "doctest", "py_test_module_list")
 
 filegroup(
@@ -2294,6 +2294,11 @@ py_test(
     ],
 )
 
+py_library(
+    name = "env_conftest",
+    srcs = ["env/tests/conftest.py"],
+)
+
 py_test(
     name = "env/tests/test_env_runner",
     size = "medium",
@@ -2302,6 +2307,7 @@ py_test(
         "env",
         "team:rllib",
     ],
+    deps = [":env_conftest"],
 )
 
 py_test(

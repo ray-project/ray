@@ -8,18 +8,19 @@ components.
 import math
 
 import pytest
-from conftest import (
+
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
+from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+from ray.rllib.env.tests.conftest import (
     CallbackTracker,
     EnvToModuleConnectorTracker,
     ModuleToEnvConnectorTracker,
     get_t_started,
     make_env_to_module_connector_tracker,
 )
-
-from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.utils import check
 
 
 class TestEnvRunnerSampling:
@@ -216,7 +217,10 @@ class TestEnvRunnerStateManagement:
             # Check the states are not identical
             new_state = new_runner.get_state()
             assert set(state.keys()) == set(new_state.keys())
-            assert new_state != state
+            with pytest.raises(
+                AssertionError, match="Arrays are not almost equal to 5 decimal"
+            ):
+                check(state, new_state)
 
             try:
                 new_runner.set_state(state)
@@ -224,6 +228,7 @@ class TestEnvRunnerStateManagement:
                 # roundtrip the runner state
                 new_state = new_runner.get_state()
                 assert set(state.keys()) == set(new_state.keys())
+                check(state, new_state)
             finally:
                 new_runner.stop()
         finally:
