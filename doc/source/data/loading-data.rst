@@ -721,8 +721,9 @@ Ray Data interoperates with PyTorch and TensorFlow datasets.
     .. tab-item:: HuggingFace
 
         To load a HuggingFace Dataset into Ray Data, use the HuggingFace Hub ``HfFileSystem``
-        with :func:`~ray.data.read_parquet`. Since HuggingFace datasets are backed by Parquet files,
-        this approach enables efficient distributed reads directly from the Hub.
+        with :func:`~ray.data.read_parquet`, :func:`~ray.data.read_csv`, or :func:`~ray.data.read_json`.
+        Since HuggingFace datasets are often backed by these file formats, this approach enables efficient distributed
+        reads directly from the Hub.
 
         .. testcode::
             :skipif: True
