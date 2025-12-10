@@ -568,6 +568,149 @@ def test_replica_upgrade_to_cleanup_resource(serve_instance):
     assert record_handle.get_call_record.remote().result() == {"1"}
 
 
+def test_multiplexed_with_batching_splits_by_model_id(serve_instance):
+    """Test that batching with multiplexing splits batches by model ID.
+
+    When using model multiplexing with batching, requests for different models
+    may end up on the same replica. This test verifies that such requests are
+    processed in separate batches, ensuring each batch only contains requests
+    for the same model.
+    """
+
+    @serve.deployment(num_replicas=1, max_ongoing_requests=20)
+    class BatchedMultiplexModel:
+        def __init__(self):
+            self.batch_info = []
+
+        @serve.multiplexed(max_num_models_per_replica=3)
+        async def get_model(self, model_id: str):
+            return model_id
+
+        @serve.batch(max_batch_size=10, batch_wait_timeout_s=1.0)
+        async def batched_predict(self, inputs: List[str]):
+            # Get the model ID from the request context
+            model_id = serve.get_multiplexed_model_id()
+
+            # Record the batch info for verification
+            batch_size = len(inputs)
+            self.batch_info.append(
+                {
+                    "model_id": model_id,
+                    "batch_size": batch_size,
+                    "inputs": inputs,
+                }
+            )
+
+            # Load the model (would fail if different model_ids were in same batch)
+            model = await self.get_model(model_id)
+
+            # Return results
+            return [f"{model}:{inp}" for inp in inputs]
+
+        async def __call__(self, request):
+            return await self.batched_predict(request)
+
+        def get_batch_info(self):
+            return self.batch_info
+
+    handle = serve.run(BatchedMultiplexModel.bind())
+
+    # Send concurrent requests with different model IDs
+    # If batching doesn't split by model_id, requests for different models
+    # would end up in the same batch, which would be incorrect.
+    refs = []
+    for i in range(6):
+        # Alternate between model_a and model_b
+        model_id = "model_a" if i % 2 == 0 else "model_b"
+        refs.append(handle.options(multiplexed_model_id=model_id).remote(f"input_{i}"))
+
+    # Wait for all results
+    results = [ref.result() for ref in refs]
+
+    # Verify results are correct - each result should have the correct model prefix
+    for i, result in enumerate(results):
+        expected_model = "model_a" if i % 2 == 0 else "model_b"
+        assert result.startswith(
+            f"{expected_model}:"
+        ), f"Expected result to start with '{expected_model}:', got '{result}'"
+        assert f"input_{i}" in result
+
+    # Verify batch info - each batch should only contain requests for one model
+    batch_info = handle.get_batch_info.remote().result()
+    for batch in batch_info:
+        # Each batch should have a non-empty model_id
+        # (all requests in batch have the same model_id)
+        assert batch["model_id"] in [
+            "model_a",
+            "model_b",
+        ], f"Unexpected model_id in batch: {batch['model_id']}"
+        # Batch size should be > 0
+        assert batch["batch_size"] == 3
+
+    # Verify total requests processed equals what we sent
+    total_processed = sum(b["batch_size"] for b in batch_info)
+    assert total_processed == 6, f"Expected 6 requests processed, got {total_processed}"
+    assert len(batch_info) == 2
+
+
+def test_multiplexed_with_batching_same_model_batches_together(serve_instance):
+    """Test that requests for the same model are batched together.
+
+    This test verifies that when multiple requests for the same model arrive,
+    they are correctly batched together (the split-by-model-id logic doesn't
+    prevent normal batching behavior).
+    """
+    signal = SignalActor.remote()
+
+    @serve.deployment(num_replicas=1, max_ongoing_requests=20)
+    class BatchedModel:
+        def __init__(self):
+            self.batch_sizes = []
+
+        @serve.batch(max_batch_size=10, batch_wait_timeout_s=1.0)
+        async def batched_predict(self, inputs: List[str]):
+            model_id = serve.get_multiplexed_model_id()
+            self.batch_sizes.append((model_id, len(inputs)))
+            await signal.wait.remote()
+            return [f"{model_id}:{inp}" for inp in inputs]
+
+        async def __call__(self, request):
+            return await self.batched_predict(request)
+
+        def get_batch_sizes(self):
+            return self.batch_sizes
+
+    handle = serve.run(BatchedModel.bind())
+
+    # Send multiple requests for the same model - they should batch together
+    refs = []
+    for i in range(5):
+        refs.append(
+            handle.options(multiplexed_model_id="same_model").remote(f"input_{i}")
+        )
+
+    # Wait for the batch to form
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
+
+    # Unblock processing
+    ray.get(signal.send.remote())
+
+    # Wait for results
+    results = [ref.result() for ref in refs]
+    assert len(results) == 5
+
+    # Check batch sizes - all requests should have been in one batch
+    batch_sizes = handle.get_batch_sizes.remote().result()
+    total_in_batches = sum(size for _, size in batch_sizes)
+    assert total_in_batches == 5
+
+    # All batches should be for the same model
+    for model_id, _ in batch_sizes:
+        assert model_id == "same_model"
+
+    assert len(batch_sizes) == 1
+
+
 if __name__ == "__main__":
     import sys
 

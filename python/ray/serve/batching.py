@@ -373,6 +373,42 @@ class _BatchQueue:
             for future in futures:
                 _set_exception_if_not_done(future, e)
 
+    def _split_batch_by_model_id(
+        self, batch: List[_SingleRequest]
+    ) -> List[List[_SingleRequest]]:
+        """Split a batch into sub-batches based on multiplexed_model_id.
+
+        When using model multiplexing with batching, requests for different models
+        may end up in the same batch. This method ensures that each sub-batch only
+        contains requests for the same model, preventing issues where a single batch
+        contains requests for different models.
+
+        If no requests have a multiplexed_model_id set, returns the original batch
+        as a single sub-batch.
+
+        Args:
+            batch: The batch of requests to split.
+
+        Returns:
+            A list of sub-batches, where each sub-batch contains requests for the
+            same multiplexed_model_id.
+        """
+        # Group requests by their multiplexed_model_id
+        model_id_to_requests: Dict[str, List[_SingleRequest]] = {}
+        for request in batch:
+            model_id = request.request_context.multiplexed_model_id
+            if model_id not in model_id_to_requests:
+                model_id_to_requests[model_id] = []
+            model_id_to_requests[model_id].append(request)
+
+        # If all requests have the same model_id (including empty string),
+        # return the original batch as-is
+        if len(model_id_to_requests) == 1:
+            return [batch]
+
+        # Return sub-batches for each model_id
+        return list(model_id_to_requests.values())
+
     async def _process_batches(self, func: Callable) -> None:
         """Loops infinitely and processes queued request batches."""
         # When asyncio task is created, the task will inherit the request context from the current context.
@@ -380,11 +416,19 @@ class _BatchQueue:
         serve.context._unset_request_context()
         while not self._loop.is_closed():
             batch = await self.wait_for_batch()
-            promise = self._process_batch(func, batch)
-            task = asyncio.create_task(promise)
-            self.tasks.add(task)
-            self.curr_iteration_start_times[task] = time.time()
-            task.add_done_callback(self._handle_completed_task)
+
+            # Split batch by multiplexed_model_id to ensure requests for different
+            # models are processed in separate batches. This is necessary when using
+            # model multiplexing with batching, as a single batch containing requests
+            # for different models would not work correctly.
+            sub_batches = self._split_batch_by_model_id(batch)
+
+            for sub_batch in sub_batches:
+                promise = self._process_batch(func, sub_batch)
+                task = asyncio.create_task(promise)
+                self.tasks.add(task)
+                self.curr_iteration_start_times[task] = time.time()
+                task.add_done_callback(self._handle_completed_task)
 
     async def _process_batch(self, func: Callable, batch: List[_SingleRequest]) -> None:
         """Processes queued request batch."""
