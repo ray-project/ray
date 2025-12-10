@@ -138,7 +138,6 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
 
     def __getstate__(self) -> dict:
         """Exclude `_table` during pickling."""
-        """Exclude `_table` during pickling."""
         state = self.__dict__.copy()
         state.pop("_table", None)
         return state

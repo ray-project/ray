@@ -4236,14 +4236,6 @@ class Dataset:
                     upsert_kwargs={"join_cols": ["id"]},
                 )
 
-                # Schema evolution is automatic - new columns are added automatically
-                enriched_docs = [{"id": i, "title": f"Doc {i}", "category": "new"} for i in range(3)]
-                ds_enriched = ray.data.from_pandas(pd.DataFrame(enriched_docs))
-                ds_enriched.write_iceberg(
-                    table_identifier="db_name.table_name",
-                    catalog_kwargs={"name": "default", "type": "sql"}
-                )
-
                 # Partial overwrite with Ray Data expressions
                 ds.write_iceberg(
                     table_identifier="events.user_activity",
