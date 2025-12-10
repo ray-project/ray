@@ -294,6 +294,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._progress_manager.close_with_finishing_description(
                 desc, exception is None
             )
+            logger.info(desc)
 
             timer = Timer()
 

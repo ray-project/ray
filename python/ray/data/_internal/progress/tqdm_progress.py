@@ -126,7 +126,6 @@ class TqdmExecutionProgressManager:
             pg.close()
         for pg in self._sub_progress_bars:
             pg.close()
-        logger.info(desc)
 
     # Total Progress
     def update_total_progress(self, new_rows: int, total_rows: Optional[int]):
