@@ -15,10 +15,10 @@ build_arg_sets:
     - cu128
 
 depsets:
-  - name: subset_rayllm_depset_${PYTHON_VERSION}_${CUDA_CODE}
+  - name: e2e_timeseries_${PYTHON_VERSION}_${CUDA_CODE}
     operation: expand
     depsets:
-      - ray_base_extra_testdeps_cuda_${PYTHON_SHORT}
+      - ray_img_depset_${PYTHON_SHORT}
     <<: *common_settings
     requirements:
       - doc/source/ray-overview/examples/e2e-timeseries/requirements.txt
