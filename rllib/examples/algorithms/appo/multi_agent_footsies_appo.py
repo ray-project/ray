@@ -25,7 +25,6 @@ Evaluation:
 
 """
 import functools
-import platform
 from pathlib import Path
 
 from ray.rllib.algorithms.appo import APPOConfig
@@ -34,6 +33,7 @@ from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.examples.envs.classes.multi_agent.footsies.fixed_rlmodules import (
     BackFixedRLModule,
     NoopFixedRLModule,
+    platform_for_binary_to_download,
 )
 from ray.rllib.examples.envs.classes.multi_agent.footsies.footsies_env import (
     env_creator,
@@ -124,19 +124,7 @@ args = parser.parse_args()
 register_env(name="FootsiesEnv", env_creator=env_creator)
 
 # Detect platform and choose appropriate binary
-if platform.system() == "Darwin":
-    if args.render:
-        binary_to_download = "mac_windowed"
-    else:
-        binary_to_download = "mac_headless"
-elif platform.system() == "Linux":
-    if args.render:
-        binary_to_download = "linux_windowed"
-    else:
-        binary_to_download = "linux_server"
-else:
-    raise RuntimeError(f"Unsupported platform: {platform.system()}")
-
+binary_to_download = platform_for_binary_to_download(args.render)
 
 config = (
     APPOConfig()
