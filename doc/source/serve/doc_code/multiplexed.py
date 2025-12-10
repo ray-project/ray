@@ -70,9 +70,10 @@ resp = requests.get("http://localhost:8000")
 
 # __serve_multiplexed_batching_example_begin__
 from typing import List  # noqa: E402
+from starlette.requests import Request
 
 
-@serve.deployment
+@serve.deployment(max_ongoing_requests=15)
 class BatchedMultiplexModel:
     @serve.multiplexed(max_num_models_per_replica=3)
     async def get_model(self, model_id: str):
@@ -80,7 +81,7 @@ class BatchedMultiplexModel:
         return model_id
 
     @serve.batch(max_batch_size=10, batch_wait_timeout_s=0.1)
-    async def batched_predict(self, inputs: List[str]):
+    async def batched_predict(self, inputs: List[str]) -> List[str]:
         # Get the model ID - this works correctly inside batched functions
         # because all requests in the batch target the same model
         model_id = serve.get_multiplexed_model_id()
@@ -89,8 +90,10 @@ class BatchedMultiplexModel:
         # Process the batch with the loaded model
         return [f"{model}:{inp}" for inp in inputs]
 
-    async def __call__(self, request):
-        return await self.batched_predict(request)
+    async def __call__(self, request: Request):
+        # Extract input from the request body
+        input_text = await request.body()
+        return await self.batched_predict(input_text.decode())
 
 
 # __serve_multiplexed_batching_example_end__
