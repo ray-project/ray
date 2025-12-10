@@ -72,38 +72,10 @@ doctest(
             "**/examples/**",
             "**/tests/**",
             "**/test_*.py",
-            # Exclude `tuned_examples` *.py files.
-            "**/tuned_examples/**",
-            # Deprecated modules
-            "utils/memory.py",
+            # Deprecated stub files that raise ValueError on import.
             "offline/off_policy_estimator.py",
             "offline/estimators/feature_importance.py",
-            # Missing imports
-            "algorithms/dreamerv3/**",
-            # FIXME: These modules contain broken examples that weren't previously
-            # tested.
-            "algorithms/algorithm_config.py",
-            "core/distribution/torch/torch_distribution.py",
-            "core/models/base.py",
-            "core/models/specs/specs_base.py",
-            "core/models/specs/specs_dict.py",
-            "env/wrappers/pettingzoo_env.py",
-            "evaluation/collectors/sample_collector.py",
-            "evaluation/metrics.py",
-            "evaluation/observation_function.py",
-            "evaluation/postprocessing.py",
-            "execution/buffers/mixin_replay_buffer.py",
-            "models/catalog.py",
-            "models/preprocessors.py",
-            "models/repeated_values.py",
-            "policy/rnn_sequencing.py",
-            "utils/actor_manager.py",
-            "utils/filter.py",
-            "utils/from_config.py",
-            "utils/metrics/window_stat.py",
-            "utils/pre_checks/env.py",
-            "utils/replay_buffers/multi_agent_mixin_replay_buffer.py",
-            "utils/spaces/space_utils.py",
+            "utils/memory.py",
         ],
     ),
     tags = ["team:rllib"],
@@ -115,47 +87,12 @@ py_library(
 )
 
 # --------------------------------------------------------------------
-# Benchmarks
-#
-# Tag: benchmark
-#
-# This is smoke-testing the benchmark scripts.
-# --------------------------------------------------------------------
-py_test(
-    name = "torch_compile_inference_bm",
-    size = "medium",
-    srcs = ["benchmarks/torch_compile/run_inference_bm.py"],
-    args = ["--smoke-test"],
-    main = "benchmarks/torch_compile/run_inference_bm.py",
-    tags = [
-        "benchmark",
-        "exclusive",
-        "team:rllib",
-        "torch_2.x_only_benchmark",
-    ],
-)
-
-py_test(
-    name = "torch_compile_ppo_with_inference",
-    size = "medium",
-    srcs = ["benchmarks/torch_compile/run_ppo_with_inference_bm.py"],
-    args = ["--smoke-test"],
-    main = "benchmarks/torch_compile/run_ppo_with_inference_bm.py",
-    tags = [
-        "benchmark",
-        "exclusive",
-        "team:rllib",
-        "torch_2.x_only_benchmark",
-    ],
-)
-
-# --------------------------------------------------------------------
 # Algorithms learning regression tests.
 #
 # Tag: learning_tests
 #
 # This will test python/yaml config files
-# inside rllib/tuned_examples/[algo-name] for actual learning success.
+# inside rllib/examples/algorithms/[algo-name] for actual learning success.
 # --------------------------------------------------------------------
 
 # APPO
@@ -163,13 +100,13 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_appo",
     size = "large",
-    srcs = ["tuned_examples/appo/cartpole_appo.py"],
+    srcs = ["examples/algorithms/appo/cartpole_appo.py"],
     args = [
         "--as-test",
         "--num-cpus=7",
         "--num-env-runners=5",
     ],
-    main = "tuned_examples/appo/cartpole_appo.py",
+    main = "examples/algorithms/appo/cartpole_appo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -179,26 +116,17 @@ py_test(
     ],
 )
 
-# TODO (sven): For some weird reason, this test runs extremely slow on the CI (not on cluster, not locally) -> taking this out for now ...
-# py_test(
-#    name = "learning_tests_cartpole_appo_gpu",
-#    main = "tuned_examples/appo/cartpole_appo.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
-#    size = "large",
-#    srcs = ["tuned_examples/appo/cartpole_appo.py"],
-#    args = ["--as-test", "--num-gpus-per-learner=1", "--num-cpus=7", "--num-env-runners=5"]
-# )
 py_test(
     name = "learning_tests_cartpole_appo_multi_cpu",
     size = "large",
-    srcs = ["tuned_examples/appo/cartpole_appo.py"],
+    srcs = ["examples/algorithms/appo/cartpole_appo.py"],
     args = [
         "--as-test",
         "--num-learners=2",
         "--num-cpus=9",
         "--num-env-runners=6",
     ],
-    main = "tuned_examples/appo/cartpole_appo.py",
+    main = "examples/algorithms/appo/cartpole_appo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -212,7 +140,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_appo_multi_gpu",
     size = "large",
-    srcs = ["tuned_examples/appo/cartpole_appo.py"],
+    srcs = ["examples/algorithms/appo/cartpole_appo.py"],
     args = [
         "--as-test",
         "--num-learners=2",
@@ -220,7 +148,7 @@ py_test(
         "--num-cpus=7",
         "--num-env-runners=6",
     ],
-    main = "tuned_examples/appo/cartpole_appo.py",
+    main = "examples/algorithms/appo/cartpole_appo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -236,14 +164,14 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_appo",
     size = "large",
-    srcs = ["tuned_examples/appo/multi_agent_cartpole_appo.py"],
+    srcs = ["examples/algorithms/appo/multi_agent_cartpole_appo.py"],
     args = [
         "--as-test",
         "--num-agents=2",
         "--num-cpus=8",
         "--num-env-runners=6",
     ],
-    main = "tuned_examples/appo/multi_agent_cartpole_appo.py",
+    main = "examples/algorithms/appo/multi_agent_cartpole_appo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -256,7 +184,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_appo_gpu",
     size = "large",
-    srcs = ["tuned_examples/appo/multi_agent_cartpole_appo.py"],
+    srcs = ["examples/algorithms/appo/multi_agent_cartpole_appo.py"],
     args = [
         "--as-test",
         "--num-agents=2",
@@ -264,7 +192,7 @@ py_test(
         "--num-cpus=7",
         "--num-env-runners=5",
     ],
-    main = "tuned_examples/appo/multi_agent_cartpole_appo.py",
+    main = "examples/algorithms/appo/multi_agent_cartpole_appo.py",
     tags = [
         "exclusive",
         "gpu",
@@ -279,7 +207,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_appo_multi_cpu",
     size = "large",
-    srcs = ["tuned_examples/appo/multi_agent_cartpole_appo.py"],
+    srcs = ["examples/algorithms/appo/multi_agent_cartpole_appo.py"],
     args = [
         "--as-test",
         "--num-agents=2",
@@ -287,7 +215,7 @@ py_test(
         "--num-cpus=9",
         "--num-env-runners=6",
     ],
-    main = "tuned_examples/appo/multi_agent_cartpole_appo.py",
+    main = "examples/algorithms/appo/multi_agent_cartpole_appo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -303,7 +231,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_appo_multi_gpu",
     size = "large",
-    srcs = ["tuned_examples/appo/multi_agent_cartpole_appo.py"],
+    srcs = ["examples/algorithms/appo/multi_agent_cartpole_appo.py"],
     args = [
         "--as-test",
         "--num-agents=2",
@@ -312,7 +240,7 @@ py_test(
         "--num-cpus=7",
         "--num-env-runners=6",
     ],
-    main = "tuned_examples/appo/multi_agent_cartpole_appo.py",
+    main = "examples/algorithms/appo/multi_agent_cartpole_appo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -328,13 +256,13 @@ py_test(
 py_test(
     name = "learning_tests_stateless_cartpole_appo",
     size = "large",
-    srcs = ["tuned_examples/appo/stateless_cartpole_appo.py"],
+    srcs = ["examples/algorithms/appo/stateless_cartpole_appo.py"],
     args = [
         "--as-test",
         "--num-cpus=8",
         "--num-env-runners=6",
     ],
-    main = "tuned_examples/appo/stateless_cartpole_appo.py",
+    main = "examples/algorithms/appo/stateless_cartpole_appo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -348,7 +276,7 @@ py_test(
 py_test(
     name = "learning_tests_stateless_cartpole_appo_gpu",
     size = "large",
-    srcs = ["tuned_examples/appo/stateless_cartpole_appo.py"],
+    srcs = ["examples/algorithms/appo/stateless_cartpole_appo.py"],
     args = [
         "--as-test",
         "--num-agents=2",
@@ -356,7 +284,7 @@ py_test(
         "--num-cpus=7",
         "--num-env-runners=5",
     ],
-    main = "tuned_examples/appo/stateless_cartpole_appo.py",
+    main = "examples/algorithms/appo/stateless_cartpole_appo.py",
     tags = [
         "exclusive",
         "gpu",
@@ -371,14 +299,14 @@ py_test(
 py_test(
     name = "learning_tests_stateless_cartpole_appo_multi_cpu",
     size = "large",
-    srcs = ["tuned_examples/appo/stateless_cartpole_appo.py"],
+    srcs = ["examples/algorithms/appo/stateless_cartpole_appo.py"],
     args = [
         "--as-test",
         "--num-learners=2",
         "--num-cpus=9",
         "--num-env-runners=6",
     ],
-    main = "tuned_examples/appo/stateless_cartpole_appo.py",
+    main = "examples/algorithms/appo/stateless_cartpole_appo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -392,7 +320,7 @@ py_test(
 py_test(
     name = "learning_tests_stateless_cartpole_appo_multi_gpu",
     size = "large",
-    srcs = ["tuned_examples/appo/stateless_cartpole_appo.py"],
+    srcs = ["examples/algorithms/appo/stateless_cartpole_appo.py"],
     args = [
         "--as-test",
         "--num-learners=2",
@@ -400,7 +328,7 @@ py_test(
         "--num-cpus=7",
         "--num-env-runners=6",
     ],
-    main = "tuned_examples/appo/stateless_cartpole_appo.py",
+    main = "examples/algorithms/appo/stateless_cartpole_appo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -412,50 +340,17 @@ py_test(
     ],
 )
 
-# MultiAgentStatelessCartPole
-# py_test(
-#     name = "learning_tests_multi_agent_stateless_cartpole_appo",
-#     main = "tuned_examples/appo/multi_agent_stateless_cartpole_appo.py",
-#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
-#     size = "large",
-#     srcs = ["tuned_examples/appo/multi_agent_stateless_cartpole_appo.py"],
-#     args = ["--as-test"]
-# )
-# py_test(
-#     name = "learning_tests_multi_agent_stateless_cartpole_appo_gpu",
-#     main = "tuned_examples/appo/multi_agent_stateless_cartpole_appo.py",
-#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
-#     size = "large",
-#     srcs = ["tuned_examples/appo/multi_agent_stateless_cartpole_appo.py"],
-#     args = ["--as-test", "--num-agents=2", "--num-gpus-per-learner=1"]
-# )
-# py_test(
-#     name = "learning_tests_multi_agent_stateless_cartpole_appo_multi_cpu",
-#     main = "tuned_examples/appo/multi_agent_stateless_cartpole_appo.py",
-#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
-#     size = "large",
-#     srcs = ["tuned_examples/appo/multi_agent_stateless_cartpole_appo.py"],
-#     args = ["--as-test", "--num-learners=2"]
-# )
-# py_test(
-#     name = "learning_tests_multi_agent_stateless_cartpole_appo_multi_gpu",
-#     main = "tuned_examples/appo/multi_agent_stateless_cartpole_appo.py",
-#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
-#     size = "large",
-#     srcs = ["tuned_examples/appo/multi_agent_stateless_cartpole_appo.py"],
-#     args = ["--as-test", "--num-learners=2", "--num-gpus-per-learner=1"]
-# )
 # Pendulum
 py_test(
     name = "learning_tests_pendulum_appo",
     size = "large",
-    srcs = ["tuned_examples/appo/pendulum_appo.py"],
+    srcs = ["examples/algorithms/appo/pendulum_appo.py"],
     args = [
         "--as-test",
         "--num-cpus=6",
         "--num-env-runners=4",
     ],
-    main = "tuned_examples/appo/pendulum_appo.py",
+    main = "examples/algorithms/appo/pendulum_appo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -469,7 +364,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_pong_appo_multi_gpu",
     size = "large",
-    srcs = ["tuned_examples/appo/multi_agent_pong_appo.py"],
+    srcs = ["examples/algorithms/appo/multi_agent_pong_appo.py"],
     args = [
         "--stop-iters=3",
         "--num-agents=2",
@@ -477,7 +372,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--num-aggregator-actors-per-learner=1",
     ],
-    main = "tuned_examples/appo/multi_agent_pong_appo.py",
+    main = "examples/algorithms/appo/multi_agent_pong_appo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -488,29 +383,12 @@ py_test(
     ],
 )
 
-#@OldAPIStack
-py_test(
-    name = "learning_tests_multi_agent_cartpole_w_100_policies_appo_old_api_stack",
-    size = "large",
-    srcs = ["algorithms/tests/run_regression_tests.py"],
-    args = ["--dir=../tuned_examples/appo"],
-    data = ["tuned_examples/appo/multi-agent-cartpole-w-100-policies-appo.py"],
-    main = "algorithms/tests/run_regression_tests.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
-        "team:rllib",
-    ],
-)
-
 # BC
 # CartPole
 py_test(
     name = "learning_tests_cartpole_bc",
     size = "medium",
-    srcs = ["tuned_examples/bc/cartpole_bc.py"],
+    srcs = ["examples/algorithms/bc/cartpole_bc.py"],
     args = [
         "--as-test",
     ],
@@ -518,7 +396,7 @@ py_test(
     data = [
         "offline/tests/data/cartpole/cartpole-v1_large",
     ],
-    main = "tuned_examples/bc/cartpole_bc.py",
+    main = "examples/algorithms/bc/cartpole_bc.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -532,7 +410,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_bc_gpu",
     size = "medium",
-    srcs = ["tuned_examples/bc/cartpole_bc.py"],
+    srcs = ["examples/algorithms/bc/cartpole_bc.py"],
     args = [
         "--as-test",
         "--num-gpus-per-learner=1",
@@ -541,7 +419,7 @@ py_test(
     data = [
         "offline/tests/data/cartpole/cartpole-v1_large",
     ],
-    main = "tuned_examples/bc/cartpole_bc.py",
+    main = "examples/algorithms/bc/cartpole_bc.py",
     tags = [
         "exclusive",
         "gpu",
@@ -558,7 +436,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_bc_with_offline_evaluation",
     size = "medium",
-    srcs = ["tuned_examples/bc/cartpole_bc_with_offline_evaluation.py"],
+    srcs = ["examples/algorithms/bc/cartpole_bc_with_offline_evaluation.py"],
     args = [
         "--as-test",
         "--offline-evaluation-interval=1",
@@ -568,7 +446,7 @@ py_test(
     data = [
         "offline/tests/data/cartpole/cartpole-v1_large",
     ],
-    main = "tuned_examples/bc/cartpole_bc_with_offline_evaluation.py",
+    main = "examples/algorithms/bc/cartpole_bc_with_offline_evaluation.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -582,7 +460,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_bc_with_offline_evaluation_gpu",
     size = "medium",
-    srcs = ["tuned_examples/bc/cartpole_bc_with_offline_evaluation.py"],
+    srcs = ["examples/algorithms/bc/cartpole_bc_with_offline_evaluation.py"],
     args = [
         "--as-test",
         "--num-gpus-per-learner=1",
@@ -594,7 +472,7 @@ py_test(
     data = [
         "offline/tests/data/cartpole/cartpole-v1_large",
     ],
-    main = "tuned_examples/bc/cartpole_bc_with_offline_evaluation.py",
+    main = "examples/algorithms/bc/cartpole_bc_with_offline_evaluation.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -611,7 +489,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_cql",
     size = "large",
-    srcs = ["tuned_examples/cql/pendulum_cql.py"],
+    srcs = ["examples/algorithms/cql/pendulum_cql.py"],
     args = [
         "--as-test",
     ],
@@ -619,7 +497,7 @@ py_test(
     data = [
         "offline/tests/data/pendulum/pendulum-v1_enormous",
     ],
-    main = "tuned_examples/cql/pendulum_cql.py",
+    main = "examples/algorithms/cql/pendulum_cql.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -637,7 +515,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_cql_gpu",
     size = "large",
-    srcs = ["tuned_examples/cql/pendulum_cql.py"],
+    srcs = ["examples/algorithms/cql/pendulum_cql.py"],
     args = [
         "--as-test",
         "--num-gpus-per-learner=1",
@@ -646,7 +524,7 @@ py_test(
     data = [
         "offline/tests/data/pendulum/pendulum-v1_enormous",
     ],
-    main = "tuned_examples/cql/pendulum_cql.py",
+    main = "examples/algorithms/cql/pendulum_cql.py",
     tags = [
         "exclusive",
         "gpu",
@@ -666,11 +544,11 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_dqn",
     size = "large",
-    srcs = ["tuned_examples/dqn/cartpole_dqn.py"],
+    srcs = ["examples/algorithms/dqn/cartpole_dqn.py"],
     args = [
         "--as-test",
     ],
-    main = "tuned_examples/dqn/cartpole_dqn.py",
+    main = "examples/algorithms/dqn/cartpole_dqn.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -684,13 +562,13 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_dqn_gpu",
     size = "large",
-    srcs = ["tuned_examples/dqn/cartpole_dqn.py"],
+    srcs = ["examples/algorithms/dqn/cartpole_dqn.py"],
     args = [
         "--as-test",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/dqn/cartpole_dqn.py",
+    main = "examples/algorithms/dqn/cartpole_dqn.py",
     tags = [
         "exclusive",
         "gpu",
@@ -705,12 +583,12 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_dqn_multi_cpu",
     size = "large",
-    srcs = ["tuned_examples/dqn/cartpole_dqn.py"],
+    srcs = ["examples/algorithms/dqn/cartpole_dqn.py"],
     args = [
         "--as-test",
         "--num-learners=2",
     ],
-    main = "tuned_examples/dqn/cartpole_dqn.py",
+    main = "examples/algorithms/dqn/cartpole_dqn.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -724,13 +602,13 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_dqn_multi_gpu",
     size = "large",
-    srcs = ["tuned_examples/dqn/cartpole_dqn.py"],
+    srcs = ["examples/algorithms/dqn/cartpole_dqn.py"],
     args = [
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/dqn/cartpole_dqn.py",
+    main = "examples/algorithms/dqn/cartpole_dqn.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -748,13 +626,13 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_dqn",
     size = "large",
-    srcs = ["tuned_examples/dqn/multi_agent_cartpole_dqn.py"],
+    srcs = ["examples/algorithms/dqn/multi_agent_cartpole_dqn.py"],
     args = [
         "--as-test",
         "--num-agents=2",
         "--num-cpus=4",
     ],
-    main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
+    main = "examples/algorithms/dqn/multi_agent_cartpole_dqn.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -768,7 +646,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_dqn_gpu",
     size = "large",
-    srcs = ["tuned_examples/dqn/multi_agent_cartpole_dqn.py"],
+    srcs = ["examples/algorithms/dqn/multi_agent_cartpole_dqn.py"],
     args = [
         "--as-test",
         "--num-agents=2",
@@ -776,7 +654,7 @@ py_test(
         "--num-learners=1",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
+    main = "examples/algorithms/dqn/multi_agent_cartpole_dqn.py",
     tags = [
         "exclusive",
         "gpu",
@@ -791,14 +669,14 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_dqn_multi_cpu",
     size = "large",
-    srcs = ["tuned_examples/dqn/multi_agent_cartpole_dqn.py"],
+    srcs = ["examples/algorithms/dqn/multi_agent_cartpole_dqn.py"],
     args = [
         "--as-test",
         "--num-agents=2",
         "--num-cpus=5",
         "--num-learners=2",
     ],
-    main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
+    main = "examples/algorithms/dqn/multi_agent_cartpole_dqn.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -812,7 +690,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_dqn_multi_gpu",
     size = "large",
-    srcs = ["tuned_examples/dqn/multi_agent_cartpole_dqn.py"],
+    srcs = ["examples/algorithms/dqn/multi_agent_cartpole_dqn.py"],
     args = [
         "--as-test",
         "--num-agents=2",
@@ -820,7 +698,7 @@ py_test(
         "--num-learners=2",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
+    main = "examples/algorithms/dqn/multi_agent_cartpole_dqn.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -832,41 +710,16 @@ py_test(
     ],
 )
 
-# DreamerV3
-# takes too long (up to 20-30min to learn -200 on 1 GPU)
-# Pendulum
-# py_test(
-#     name = "learning_tests_pendulum_dreamerv3_gpu",
-#     size = "large",
-#     srcs = ["tuned_examples/dreamerv3/pendulum_dreamerv3.py"],
-#     args = [
-#         "--as-test",
-#         "--num-gpus-per-learner=1",
-#         "--num-learners=1",
-#         "--num-env-runners=4",
-#     ],
-#     main = "tuned_examples/dreamerv3/pendulum_dreamerv3.py",
-#     tags = [
-#         "exclusive",
-#         "gpu",
-#         "learning_tests",
-#         "learning_tests_continuous",
-#         "learning_tests_pytorch_use_all_core",
-#         "team:rllib",
-#         "torch_only",
-#     ],
-# )
-
 # IMPALA
 # CartPole
 py_test(
     name = "learning_tests_cartpole_impala",
     size = "large",
-    srcs = ["tuned_examples/impala/cartpole_impala.py"],
+    srcs = ["examples/algorithms/impala/cartpole_impala.py"],
     args = [
         "--as-test",
     ],
-    main = "tuned_examples/impala/cartpole_impala.py",
+    main = "examples/algorithms/impala/cartpole_impala.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -879,12 +732,12 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_impala_gpu",
     size = "large",
-    srcs = ["tuned_examples/impala/cartpole_impala.py"],
+    srcs = ["examples/algorithms/impala/cartpole_impala.py"],
     args = [
         "--as-test",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/impala/cartpole_impala.py",
+    main = "examples/algorithms/impala/cartpole_impala.py",
     tags = [
         "exclusive",
         "gpu",
@@ -899,12 +752,12 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_impala_multi_cpu",
     size = "large",
-    srcs = ["tuned_examples/impala/cartpole_impala.py"],
+    srcs = ["examples/algorithms/impala/cartpole_impala.py"],
     args = [
         "--as-test",
         "--num-learners=2",
     ],
-    main = "tuned_examples/impala/cartpole_impala.py",
+    main = "examples/algorithms/impala/cartpole_impala.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -918,13 +771,13 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_impala_multi_gpu",
     size = "large",
-    srcs = ["tuned_examples/impala/cartpole_impala.py"],
+    srcs = ["examples/algorithms/impala/cartpole_impala.py"],
     args = [
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/impala/cartpole_impala.py",
+    main = "examples/algorithms/impala/cartpole_impala.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -940,13 +793,13 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_impala",
     size = "large",
-    srcs = ["tuned_examples/impala/multi_agent_cartpole_impala.py"],
+    srcs = ["examples/algorithms/impala/multi_agent_cartpole_impala.py"],
     args = [
         "--as-test",
         "--num-agents=2",
         "--num-cpus=6",
     ],
-    main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
+    main = "examples/algorithms/impala/multi_agent_cartpole_impala.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -960,14 +813,14 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_impala_gpu",
     size = "large",
-    srcs = ["tuned_examples/impala/multi_agent_cartpole_impala.py"],
+    srcs = ["examples/algorithms/impala/multi_agent_cartpole_impala.py"],
     args = [
         "--as-test",
         "--num-agents=2",
         "--num-gpus-per-learner=1",
         "--num-cpus=6",
     ],
-    main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
+    main = "examples/algorithms/impala/multi_agent_cartpole_impala.py",
     tags = [
         "exclusive",
         "gpu",
@@ -982,14 +835,14 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_impala_multi_cpu",
     size = "large",
-    srcs = ["tuned_examples/impala/multi_agent_cartpole_impala.py"],
+    srcs = ["examples/algorithms/impala/multi_agent_cartpole_impala.py"],
     args = [
         "--as-test",
         "--num-agents=2",
         "--num-learners=2",
         "--num-cpus=7",
     ],
-    main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
+    main = "examples/algorithms/impala/multi_agent_cartpole_impala.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1003,7 +856,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_impala_multi_gpu",
     size = "large",
-    srcs = ["tuned_examples/impala/multi_agent_cartpole_impala.py"],
+    srcs = ["examples/algorithms/impala/multi_agent_cartpole_impala.py"],
     args = [
         "--as-test",
         "--num-agents=2",
@@ -1011,7 +864,7 @@ py_test(
         "--num-gpus-per-learner=1",
         "--num-cpus=7",
     ],
-    main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
+    main = "examples/algorithms/impala/multi_agent_cartpole_impala.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1027,11 +880,11 @@ py_test(
 py_test(
     name = "learning_tests_stateless_cartpole_impala",
     size = "large",
-    srcs = ["tuned_examples/impala/stateless_cartpole_impala.py"],
+    srcs = ["examples/algorithms/impala/stateless_cartpole_impala.py"],
     args = [
         "--as-test",
     ],
-    main = "tuned_examples/impala/stateless_cartpole_impala.py",
+    main = "examples/algorithms/impala/stateless_cartpole_impala.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1045,13 +898,13 @@ py_test(
 py_test(
     name = "learning_tests_stateless_cartpole_impala_multi_gpu",
     size = "large",
-    srcs = ["tuned_examples/impala/stateless_cartpole_impala.py"],
+    srcs = ["examples/algorithms/impala/stateless_cartpole_impala.py"],
     args = [
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/impala/stateless_cartpole_impala.py",
+    main = "examples/algorithms/impala/stateless_cartpole_impala.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1067,11 +920,11 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_stateless_cartpole_impala",
     size = "large",
-    srcs = ["tuned_examples/impala/multi_agent_stateless_cartpole_impala.py"],
+    srcs = ["examples/algorithms/impala/multi_agent_stateless_cartpole_impala.py"],
     args = [
         "--as-test",
     ],
-    main = "tuned_examples/impala/multi_agent_stateless_cartpole_impala.py",
+    main = "examples/algorithms/impala/multi_agent_stateless_cartpole_impala.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1081,21 +934,13 @@ py_test(
         "torch_only",
     ],
 )
-# py_test(
-#    name = "learning_tests_multi_agent_stateless_cartpole_impala_multi_gpu",
-#    main = "tuned_examples/impala/multi_agent_stateless_cartpole_impala.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
-#    size = "large",
-#    srcs = ["tuned_examples/impala/multi_agent_stateless_cartpole_impala.py"],
-#    args = ["--as-test", "--num-learners=2", "--num-gpus-per-learner=1"]
-# )
 
 # IQL
 # Pendulum-v1 (enormous)
 py_test(
     name = "learning_tests_pendulum_iql",
     size = "large",
-    srcs = ["tuned_examples/iql/pendulum_iql.py"],
+    srcs = ["examples/algorithms/iql/pendulum_iql.py"],
     args = [
         "--as-test",
         "--num-cpus=32",
@@ -1104,7 +949,7 @@ py_test(
     data = [
         "offline/tests/data/pendulum/pendulum-v1_enormous",
     ],
-    main = "tuned_examples/iql/pendulum_iql.py",
+    main = "examples/algorithms/iql/pendulum_iql.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1119,7 +964,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_iql_gpu",
     size = "large",
-    srcs = ["tuned_examples/iql/pendulum_iql.py"],
+    srcs = ["examples/algorithms/iql/pendulum_iql.py"],
     args = [
         "--as-test",
         "--num-cpus=32",
@@ -1129,7 +974,7 @@ py_test(
     data = [
         "offline/tests/data/pendulum/pendulum-v1_enormous",
     ],
-    main = "tuned_examples/iql/pendulum_iql.py",
+    main = "examples/algorithms/iql/pendulum_iql.py",
     tags = [
         "exclusive",
         "gpu",
@@ -1146,7 +991,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_marwil",
     size = "large",
-    srcs = ["tuned_examples/marwil/cartpole_marwil.py"],
+    srcs = ["examples/algorithms/marwil/cartpole_marwil.py"],
     args = [
         "--as-test",
     ],
@@ -1154,7 +999,7 @@ py_test(
     data = [
         "offline/tests/data/cartpole/cartpole-v1_large",
     ],
-    main = "tuned_examples/marwil/cartpole_marwil.py",
+    main = "examples/algorithms/marwil/cartpole_marwil.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1169,7 +1014,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_marwil_gpu",
     size = "large",
-    srcs = ["tuned_examples/marwil/cartpole_marwil.py"],
+    srcs = ["examples/algorithms/marwil/cartpole_marwil.py"],
     args = [
         "--as-test",
         "--num-gpus-per-learner=1",
@@ -1178,7 +1023,7 @@ py_test(
     data = [
         "offline/tests/data/cartpole/cartpole-v1_large",
     ],
-    main = "tuned_examples/marwil/cartpole_marwil.py",
+    main = "examples/algorithms/marwil/cartpole_marwil.py",
     tags = [
         "exclusive",
         "gpu",
@@ -1195,11 +1040,11 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_ppo",
     size = "large",
-    srcs = ["tuned_examples/ppo/cartpole_ppo.py"],
+    srcs = ["examples/algorithms/ppo/cartpole_ppo.py"],
     args = [
         "--as-test",
     ],
-    main = "tuned_examples/ppo/cartpole_ppo.py",
+    main = "examples/algorithms/ppo/cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1212,13 +1057,13 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_ppo_gpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/cartpole_ppo.py"],
+    srcs = ["examples/algorithms/ppo/cartpole_ppo.py"],
     args = [
         "--as-test",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/ppo/cartpole_ppo.py",
+    main = "examples/algorithms/ppo/cartpole_ppo.py",
     tags = [
         "exclusive",
         "gpu",
@@ -1233,12 +1078,12 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_ppo_multi_cpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/cartpole_ppo.py"],
+    srcs = ["examples/algorithms/ppo/cartpole_ppo.py"],
     args = [
         "--as-test",
         "--num-learners=2",
     ],
-    main = "tuned_examples/ppo/cartpole_ppo.py",
+    main = "examples/algorithms/ppo/cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1252,13 +1097,13 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_ppo_multi_gpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/cartpole_ppo.py"],
+    srcs = ["examples/algorithms/ppo/cartpole_ppo.py"],
     args = [
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/ppo/cartpole_ppo.py",
+    main = "examples/algorithms/ppo/cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1274,12 +1119,12 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_ppo",
     size = "large",
-    srcs = ["tuned_examples/ppo/multi_agent_cartpole_ppo.py"],
+    srcs = ["examples/algorithms/ppo/multi_agent_cartpole_ppo.py"],
     args = [
         "--as-test",
         "--num-agents=2",
     ],
-    main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
+    main = "examples/algorithms/ppo/multi_agent_cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1292,14 +1137,14 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_ppo_gpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/multi_agent_cartpole_ppo.py"],
+    srcs = ["examples/algorithms/ppo/multi_agent_cartpole_ppo.py"],
     args = [
         "--as-test",
         "--num-agents=2",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
+    main = "examples/algorithms/ppo/multi_agent_cartpole_ppo.py",
     tags = [
         "exclusive",
         "gpu",
@@ -1314,13 +1159,13 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_ppo_multi_cpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/multi_agent_cartpole_ppo.py"],
+    srcs = ["examples/algorithms/ppo/multi_agent_cartpole_ppo.py"],
     args = [
         "--as-test",
         "--num-agents=2",
         "--num-learners=2",
     ],
-    main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
+    main = "examples/algorithms/ppo/multi_agent_cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1334,14 +1179,14 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_ppo_multi_gpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/multi_agent_cartpole_ppo.py"],
+    srcs = ["examples/algorithms/ppo/multi_agent_cartpole_ppo.py"],
     args = [
         "--as-test",
         "--num-agents=2",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
+    main = "examples/algorithms/ppo/multi_agent_cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1357,11 +1202,11 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_truncated_ppo",
     size = "large",
-    srcs = ["tuned_examples/ppo/cartpole_truncated_ppo.py"],
+    srcs = ["examples/algorithms/ppo/cartpole_truncated_ppo.py"],
     args = [
         "--as-test",
     ],
-    main = "tuned_examples/ppo/cartpole_truncated_ppo.py",
+    main = "examples/algorithms/ppo/cartpole_truncated_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1375,11 +1220,11 @@ py_test(
 py_test(
     name = "learning_tests_stateless_cartpole_ppo",
     size = "large",
-    srcs = ["tuned_examples/ppo/stateless_cartpole_ppo.py"],
+    srcs = ["examples/algorithms/ppo/stateless_cartpole_ppo.py"],
     args = [
         "--as-test",
     ],
-    main = "tuned_examples/ppo/stateless_cartpole_ppo.py",
+    main = "examples/algorithms/ppo/stateless_cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1392,13 +1237,13 @@ py_test(
 py_test(
     name = "learning_tests_stateless_cartpole_ppo_gpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/stateless_cartpole_ppo.py"],
+    srcs = ["examples/algorithms/ppo/stateless_cartpole_ppo.py"],
     args = [
         "--as-test",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/ppo/stateless_cartpole_ppo.py",
+    main = "examples/algorithms/ppo/stateless_cartpole_ppo.py",
     tags = [
         "exclusive",
         "gpu",
@@ -1413,12 +1258,12 @@ py_test(
 py_test(
     name = "learning_tests_stateless_cartpole_ppo_multi_cpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/stateless_cartpole_ppo.py"],
+    srcs = ["examples/algorithms/ppo/stateless_cartpole_ppo.py"],
     args = [
         "--as-test",
         "--num-learners=2",
     ],
-    main = "tuned_examples/ppo/stateless_cartpole_ppo.py",
+    main = "examples/algorithms/ppo/stateless_cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1432,13 +1277,13 @@ py_test(
 py_test(
     name = "learning_tests_stateless_cartpole_ppo_multi_gpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/stateless_cartpole_ppo.py"],
+    srcs = ["examples/algorithms/ppo/stateless_cartpole_ppo.py"],
     args = [
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/ppo/stateless_cartpole_ppo.py",
+    main = "examples/algorithms/ppo/stateless_cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1454,12 +1299,12 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_stateless_cartpole_ppo",
     size = "large",
-    srcs = ["tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py"],
+    srcs = ["examples/algorithms/ppo/multi_agent_stateless_cartpole_ppo.py"],
     args = [
         "--as-test",
         "--num-agents=2",
     ],
-    main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
+    main = "examples/algorithms/ppo/multi_agent_stateless_cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1472,14 +1317,14 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_stateless_cartpole_ppo_gpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py"],
+    srcs = ["examples/algorithms/ppo/multi_agent_stateless_cartpole_ppo.py"],
     args = [
         "--as-test",
         "--num-agents=2",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
+    main = "examples/algorithms/ppo/multi_agent_stateless_cartpole_ppo.py",
     tags = [
         "exclusive",
         "gpu",
@@ -1494,13 +1339,13 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_stateless_cartpole_ppo_multi_cpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py"],
+    srcs = ["examples/algorithms/ppo/multi_agent_stateless_cartpole_ppo.py"],
     args = [
         "--as-test",
         "--num-agents=2",
         "--num-learners=2",
     ],
-    main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
+    main = "examples/algorithms/ppo/multi_agent_stateless_cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1514,14 +1359,14 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_stateless_cartpole_ppo_multi_gpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py"],
+    srcs = ["examples/algorithms/ppo/multi_agent_stateless_cartpole_ppo.py"],
     args = [
         "--as-test",
         "--num-agents=2",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py",
+    main = "examples/algorithms/ppo/multi_agent_stateless_cartpole_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1537,13 +1382,13 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_footsies_ppo",
     size = "large",
-    srcs = ["tuned_examples/ppo/multi_agent_footsies_ppo.py"],
+    srcs = ["examples/algorithms/ppo/multi_agent_footsies_ppo.py"],
     args = [
         "--as-test",
         "--num-env-runners=6",
         "--evaluation-num-env-runners=2",
     ],
-    main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
+    main = "examples/algorithms/ppo/multi_agent_footsies_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1555,7 +1400,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_footsies_ppo_gpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/multi_agent_footsies_ppo.py"],
+    srcs = ["examples/algorithms/ppo/multi_agent_footsies_ppo.py"],
     args = [
         "--as-test",
         "--num-env-runners=20",
@@ -1563,7 +1408,7 @@ py_test(
         "--num-learners=1",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
+    main = "examples/algorithms/ppo/multi_agent_footsies_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1576,14 +1421,14 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_footsies_ppo_multi_cpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/multi_agent_footsies_ppo.py"],
+    srcs = ["examples/algorithms/ppo/multi_agent_footsies_ppo.py"],
     args = [
         "--as-test",
         "--num-env-runners=6",
         "--evaluation-num-env-runners=2",
         "--num-learners=2",
     ],
-    main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
+    main = "examples/algorithms/ppo/multi_agent_footsies_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1595,7 +1440,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_footsies_ppo_multi_gpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/multi_agent_footsies_ppo.py"],
+    srcs = ["examples/algorithms/ppo/multi_agent_footsies_ppo.py"],
     args = [
         "--as-test",
         "--num-env-runners=20",
@@ -1603,7 +1448,7 @@ py_test(
         "--num-learners=2",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/ppo/multi_agent_footsies_ppo.py",
+    main = "examples/algorithms/ppo/multi_agent_footsies_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1617,11 +1462,11 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_ppo",
     size = "large",
-    srcs = ["tuned_examples/ppo/pendulum_ppo.py"],
+    srcs = ["examples/algorithms/ppo/pendulum_ppo.py"],
     args = [
         "--as-test",
     ],
-    main = "tuned_examples/ppo/pendulum_ppo.py",
+    main = "examples/algorithms/ppo/pendulum_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1634,13 +1479,13 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_ppo_gpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/pendulum_ppo.py"],
+    srcs = ["examples/algorithms/ppo/pendulum_ppo.py"],
     args = [
         "--as-test",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/ppo/pendulum_ppo.py",
+    main = "examples/algorithms/ppo/pendulum_ppo.py",
     tags = [
         "exclusive",
         "gpu",
@@ -1655,12 +1500,12 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_ppo_multi_cpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/pendulum_ppo.py"],
+    srcs = ["examples/algorithms/ppo/pendulum_ppo.py"],
     args = [
         "--as-test",
         "--num-learners=2",
     ],
-    main = "tuned_examples/ppo/pendulum_ppo.py",
+    main = "examples/algorithms/ppo/pendulum_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1674,13 +1519,13 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_ppo_multi_gpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/pendulum_ppo.py"],
+    srcs = ["examples/algorithms/ppo/pendulum_ppo.py"],
     args = [
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/ppo/pendulum_ppo.py",
+    main = "examples/algorithms/ppo/pendulum_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1696,12 +1541,12 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_pendulum_ppo",
     size = "large",
-    srcs = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
+    srcs = ["examples/algorithms/ppo/multi_agent_pendulum_ppo.py"],
     args = [
         "--as-test",
         "--num-agents=2",
     ],
-    main = "tuned_examples/ppo/multi_agent_pendulum_ppo.py",
+    main = "examples/algorithms/ppo/multi_agent_pendulum_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1714,14 +1559,14 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_pendulum_ppo_gpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
+    srcs = ["examples/algorithms/ppo/multi_agent_pendulum_ppo.py"],
     args = [
         "--as-test",
         "--num-agents=2",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/ppo/multi_agent_pendulum_ppo.py",
+    main = "examples/algorithms/ppo/multi_agent_pendulum_ppo.py",
     tags = [
         "exclusive",
         "gpu",
@@ -1736,13 +1581,13 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_pendulum_ppo_multi_cpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
+    srcs = ["examples/algorithms/ppo/multi_agent_pendulum_ppo.py"],
     args = [
         "--as-test",
         "--num-agents=2",
         "--num-learners=2",
     ],
-    main = "tuned_examples/ppo/multi_agent_pendulum_ppo.py",
+    main = "examples/algorithms/ppo/multi_agent_pendulum_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1756,14 +1601,14 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_pendulum_ppo_multi_gpu",
     size = "large",
-    srcs = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
+    srcs = ["examples/algorithms/ppo/multi_agent_pendulum_ppo.py"],
     args = [
         "--as-test",
         "--num-agents=2",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/ppo/multi_agent_pendulum_ppo.py",
+    main = "examples/algorithms/ppo/multi_agent_pendulum_ppo.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1780,11 +1625,11 @@ py_test(
 py_test(
     name = "learning_tests_mountaincar_sac",
     size = "large",
-    srcs = ["tuned_examples/sac/mountaincar_sac.py"],
+    srcs = ["examples/algorithms/sac/mountaincar_sac.py"],
     args = [
         "--as-test",
     ],
-    main = "tuned_examples/sac/mountaincar_sac.py",
+    main = "examples/algorithms/sac/mountaincar_sac.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1797,13 +1642,13 @@ py_test(
 py_test(
     name = "learning_tests_mountaincar_sac_gpu",
     size = "large",
-    srcs = ["tuned_examples/sac/mountaincar_sac.py"],
+    srcs = ["examples/algorithms/sac/mountaincar_sac.py"],
     args = [
         "--as-test",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/sac/mountaincar_sac.py",
+    main = "examples/algorithms/sac/mountaincar_sac.py",
     tags = [
         "exclusive",
         "gpu",
@@ -1817,12 +1662,12 @@ py_test(
 py_test(
     name = "learning_tests_mountaincar_sac_multi_cpu",
     size = "large",
-    srcs = ["tuned_examples/sac/mountaincar_sac.py"],
+    srcs = ["examples/algorithms/sac/mountaincar_sac.py"],
     args = [
         "--as-test",
         "--num-learners=2",
     ],
-    main = "tuned_examples/sac/mountaincar_sac.py",
+    main = "examples/algorithms/sac/mountaincar_sac.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1835,13 +1680,13 @@ py_test(
 py_test(
     name = "learning_tests_mountaincar_sac_multi_gpu",
     size = "large",
-    srcs = ["tuned_examples/sac/mountaincar_sac.py"],
+    srcs = ["examples/algorithms/sac/mountaincar_sac.py"],
     args = [
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/sac/mountaincar_sac.py",
+    main = "examples/algorithms/sac/mountaincar_sac.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1856,11 +1701,11 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_sac",
     size = "large",
-    srcs = ["tuned_examples/sac/pendulum_sac.py"],
+    srcs = ["examples/algorithms/sac/pendulum_sac.py"],
     args = [
         "--as-test",
     ],
-    main = "tuned_examples/sac/pendulum_sac.py",
+    main = "examples/algorithms/sac/pendulum_sac.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1873,13 +1718,13 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_sac_gpu",
     size = "large",
-    srcs = ["tuned_examples/sac/pendulum_sac.py"],
+    srcs = ["examples/algorithms/sac/pendulum_sac.py"],
     args = [
         "--as-test",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/sac/pendulum_sac.py",
+    main = "examples/algorithms/sac/pendulum_sac.py",
     tags = [
         "exclusive",
         "gpu",
@@ -1893,12 +1738,12 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_sac_multi_cpu",
     size = "large",
-    srcs = ["tuned_examples/sac/pendulum_sac.py"],
+    srcs = ["examples/algorithms/sac/pendulum_sac.py"],
     args = [
         "--as-test",
         "--num-learners=2",
     ],
-    main = "tuned_examples/sac/pendulum_sac.py",
+    main = "examples/algorithms/sac/pendulum_sac.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1911,13 +1756,13 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_sac_multi_gpu",
     size = "large",
-    srcs = ["tuned_examples/sac/pendulum_sac.py"],
+    srcs = ["examples/algorithms/sac/pendulum_sac.py"],
     args = [
         "--as-test",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/sac/pendulum_sac.py",
+    main = "examples/algorithms/sac/pendulum_sac.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1932,13 +1777,13 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_pendulum_sac",
     size = "large",
-    srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
+    srcs = ["examples/algorithms/sac/multi_agent_pendulum_sac.py"],
     args = [
         "--as-test",
         "--num-agents=2",
         "--num-cpus=4",
     ],
-    main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
+    main = "examples/algorithms/sac/multi_agent_pendulum_sac.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1951,7 +1796,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_pendulum_sac_gpu",
     size = "large",
-    srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
+    srcs = ["examples/algorithms/sac/multi_agent_pendulum_sac.py"],
     args = [
         "--as-test",
         "--num-agents=2",
@@ -1959,7 +1804,7 @@ py_test(
         "--num-learners=1",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
+    main = "examples/algorithms/sac/multi_agent_pendulum_sac.py",
     tags = [
         "exclusive",
         "gpu",
@@ -1973,12 +1818,12 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_pendulum_sac_multi_cpu",
     size = "large",
-    srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
+    srcs = ["examples/algorithms/sac/multi_agent_pendulum_sac.py"],
     args = [
         "--num-agents=2",
         "--num-learners=2",
     ],
-    main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
+    main = "examples/algorithms/sac/multi_agent_pendulum_sac.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1991,13 +1836,13 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_pendulum_sac_multi_gpu",
     size = "large",
-    srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
+    srcs = ["examples/algorithms/sac/multi_agent_pendulum_sac.py"],
     args = [
         "--num-agents=2",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
     ],
-    main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
+    main = "examples/algorithms/sac/multi_agent_pendulum_sac.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -2469,21 +2314,6 @@ py_test(
     ],
     deps = [":conftest"],
 )
-
-# --------------------------------------------------------------------
-# ConnectorV2 tests
-# rllib/connector/
-#
-# Tag: connector_v2
-# --------------------------------------------------------------------
-
-# TODO (sven): Add these tests in a separate PR.
-# py_test(
-#    name = "connectors/tests/test_connector_v2",
-#    tags = ["team:rllib", "connector_v2"],
-#    size = "small",
-#    srcs = ["connectors/tests/test_connector_v2.py"]
-# )
 
 # --------------------------------------------------------------------
 # Env tests
@@ -3301,6 +3131,16 @@ py_test(
 
 # Test metrics (metrics logger, stats)
 py_test(
+    name = "test_legacy_stats",
+    size = "small",
+    srcs = ["utils/metrics/tests/test_legacy_stats.py"],
+    tags = [
+        "team:rllib",
+        "utils",
+    ],
+)
+
+py_test(
     name = "test_metrics_logger",
     size = "small",
     srcs = ["utils/metrics/tests/test_metrics_logger.py"],
@@ -3316,6 +3156,7 @@ py_test(
     size = "small",
     srcs = ["utils/metrics/tests/test_stats.py"],
     tags = [
+        "gpu",
         "team:rllib",
         "utils",
     ],
@@ -3764,10 +3605,10 @@ py_test(
 )
 
 py_test(
-    name = "examples/catalogs/mobilenet_v2_encoder",
+    name = "examples/_old_api_stack/catalogs/mobilenet_v2_encoder",
     size = "small",
-    srcs = ["examples/catalogs/mobilenet_v2_encoder.py"],
-    main = "examples/catalogs/mobilenet_v2_encoder.py",
+    srcs = ["examples/_old_api_stack/catalogs/mobilenet_v2_encoder.py"],
+    main = "examples/_old_api_stack/catalogs/mobilenet_v2_encoder.py",
     tags = [
         "examples",
         "no_main",
@@ -3866,10 +3707,10 @@ py_test(
 )
 
 py_test(
-    name = "examples/checkpoints/cartpole_dqn_export",
+    name = "examples/_old_api_stack/checkpoints/cartpole_dqn_export",
     size = "small",
-    srcs = ["examples/checkpoints/cartpole_dqn_export.py"],
-    main = "examples/checkpoints/cartpole_dqn_export.py",
+    srcs = ["examples/_old_api_stack/checkpoints/cartpole_dqn_export.py"],
+    main = "examples/_old_api_stack/checkpoints/cartpole_dqn_export.py",
     tags = [
         "examples",
         "exclusive",
@@ -4465,9 +4306,9 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/envs/greyscale_env",
+    name = "examples/_old_api_stack/envs/greyscale_env",
     size = "medium",
-    srcs = ["examples/envs/greyscale_env.py"],
+    srcs = ["examples/_old_api_stack/envs/greyscale_env.py"],
     args = ["--stop-iters=1 --as-test --framework torch"],
     tags = [
         "examples",
@@ -4475,6 +4316,16 @@ py_test(
         "team:rllib",
     ],
     deps = [":conftest"],
+)
+
+py_test(
+    name = "footsies_suppress_unity_logs",
+    size = "large",
+    srcs = ["examples/envs/classes/multi_agent/footsies/test/footsies_suppress_unity_logs.py"],
+    tags = [
+        "examples",
+        "team:rllib",
+    ],
 )
 
 # subdirectory: evaluation/
@@ -4966,14 +4817,14 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/inference/policy_inference_after_training_with_lstm_tf",
+    name = "examples/_old_api_stack/inference/policy_inference_after_training_with_lstm_tf",
     size = "medium",
-    srcs = ["examples/inference/policy_inference_after_training_with_lstm.py"],
+    srcs = ["examples/_old_api_stack/inference/policy_inference_after_training_with_lstm.py"],
     args = [
         "--stop-iters=1",
         "--framework=tf",
     ],
-    main = "examples/inference/policy_inference_after_training_with_lstm.py",
+    main = "examples/_old_api_stack/inference/policy_inference_after_training_with_lstm.py",
     tags = [
         "examples",
         "exclusive",
@@ -4984,14 +4835,14 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/inference/policy_inference_after_training_with_lstm_torch",
+    name = "examples/_old_api_stack/inference/policy_inference_after_training_with_lstm_torch",
     size = "medium",
-    srcs = ["examples/inference/policy_inference_after_training_with_lstm.py"],
+    srcs = ["examples/_old_api_stack/inference/policy_inference_after_training_with_lstm.py"],
     args = [
         "--stop-iters=1",
         "--framework=torch",
     ],
-    main = "examples/inference/policy_inference_after_training_with_lstm.py",
+    main = "examples/_old_api_stack/inference/policy_inference_after_training_with_lstm.py",
     tags = [
         "examples",
         "exclusive",
@@ -5478,15 +5329,15 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/offline_rl/offline_rl_torch_old_api_stack",
+    name = "examples/_old_api_stack/offline_rl/offline_rl_torch_old_api_stack",
     size = "medium",
-    srcs = ["examples/offline_rl/offline_rl.py"],
+    srcs = ["examples/_old_api_stack/offline_rl/offline_rl.py"],
     args = [
         "--as-test",
         "--stop-reward=-300",
         "--stop-iters=1",
     ],
-    main = "examples/offline_rl/offline_rl.py",
+    main = "examples/_old_api_stack/offline_rl/offline_rl.py",
     tags = [
         "examples",
         "exclusive",
@@ -5662,9 +5513,9 @@ py_test(
 )
 
 py_test(
-    name = "examples/replay_buffer_api",
+    name = "examples/_old_api_stack/replay_buffer_api",
     size = "large",
-    srcs = ["examples/replay_buffer_api.py"],
+    srcs = ["examples/_old_api_stack/replay_buffer_api.py"],
     tags = [
         "examples",
         "team:rllib",

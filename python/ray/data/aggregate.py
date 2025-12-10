@@ -1,6 +1,7 @@
 import abc
 import math
 import pickle
+import re
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -16,6 +17,7 @@ from typing import (
 )
 
 import numpy as np
+import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
@@ -50,6 +52,8 @@ SupportsRichComparisonType = TypeVar(
     "SupportsRichComparisonType", bound=_SupportsRichComparison
 )
 AggOutputType = TypeVar("AggOutputType")
+
+_AGGREGATION_NAME_PATTERN = re.compile(r"^([^(]+)(?:\(.*\))?$")
 
 
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
@@ -199,6 +203,14 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         self._target_col_name = on
         self._ignore_nulls = ignore_nulls
 
+        # Extract and store the agg name (e.g., "sum" from "sum(col)")
+        # This avoids string parsing later
+        match = _AGGREGATION_NAME_PATTERN.match(name)
+        if match:
+            self._agg_name = match.group(1)
+        else:
+            self._agg_name = name
+
         _safe_combine = _null_safe_combine(self.combine, ignore_nulls)
         _safe_aggregate = _null_safe_aggregate(self.aggregate_block, ignore_nulls)
         _safe_finalize = _null_safe_finalize(self.finalize)
@@ -215,6 +227,14 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
 
     def get_target_column(self) -> Optional[str]:
         return self._target_col_name
+
+    def get_agg_name(self) -> str:
+        """Return the agg name (e.g., 'sum', 'mean', 'count').
+
+        Returns the aggregation type extracted from the name during initialization.
+        For example, returns 'sum' for an aggregator named 'sum(col)'.
+        """
+        return self._agg_name
 
     @abc.abstractmethod
     def combine(
@@ -916,6 +936,10 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
         ignore_nulls: Whether to ignore null values when collecting unique items.
                       Default is True (nulls are excluded).
         alias_name: Optional name for the resulting column.
+        encode_lists: If `True`, encode list elements.  If `False`, encode
+            whole lists (i.e., the entire list is considered as a single object).
+            `False` by default. Note that this is a top-level flatten (not a recursive
+            flatten) operation.
     """
 
     def __init__(
@@ -923,6 +947,7 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
         on: Optional[str] = None,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
+        encode_lists: bool = False,
     ):
         super().__init__(
             alias_name if alias_name else f"unique({str(on)})",
@@ -930,21 +955,41 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
             ignore_nulls=ignore_nulls,
             zero_factory=set,
         )
+        self._encode_lists = encode_lists
 
     def combine(self, current_accumulator: Set[Any], new: Set[Any]) -> Set[Any]:
         return self._to_set(current_accumulator) | self._to_set(new)
 
     def aggregate_block(self, block: Block) -> List[Any]:
-        import pyarrow.compute as pac
-
         col = BlockAccessor.for_block(block).to_arrow().column(self._target_col_name)
-        return pac.unique(col).to_pylist()
+        if pa.types.is_list(col.type):
+            if self._encode_lists:
+                col = pc.list_flatten(col)
+            else:
+                # pyarrow doesn't natively support calculating unique over
+                # list-like objects (ie: lists, tuples). Using pandas seem to be
+                # much more efficient than doing something like json dump/load or
+                # pickle dump/load.
+                series = BlockAccessor.for_block(block).to_pandas()[
+                    self._target_col_name
+                ]
+                series = series.map(lambda x: None if x is None else tuple(x))
+                if self._ignore_nulls:
+                    series = series.dropna()
+                return list(series.unique())
+        if self._ignore_nulls:
+            col = pc.drop_null(col)
+        return pc.unique(col).to_pylist()
 
     @staticmethod
     def _to_set(x):
         if isinstance(x, set):
             return x
         elif isinstance(x, list):
+            if len(x) > 0 and isinstance(x[0], list):
+                # necessary because pyarrow converts all tuples to
+                # list internally.
+                x = map(lambda v: None if v is None else tuple(v), x)
             return set(x)
         else:
             return {x}
