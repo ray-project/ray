@@ -150,6 +150,41 @@ class TestListNamespace:
         with pytest.raises(RayTaskError):
             ds.with_column("flattened", col("items").list.flatten()).materialize()
 
+    def test_list_flatten_large_list_type(self, dataset_format):
+        """Flatten should preserve LargeList type when present."""
+
+        if dataset_format != "arrow":
+            pytest.skip("LargeList type only available via Arrow tables.")
+
+        arrow_type = pa.large_list(pa.list_(pa.int64()))
+        table = pa.Table.from_arrays(
+            [
+                pa.array(
+                    [
+                        [[1, 2], [3]],
+                        [[], [4, 5]],
+                    ],
+                    type=arrow_type,
+                )
+            ],
+            names=["items"],
+        )
+        ds = _create_dataset(None, dataset_format, arrow_table=table)
+        result = ds.with_column("flattened", col("items").list.flatten())
+        arrow_refs = result.to_arrow_refs()
+        tables = ray.get(arrow_refs)
+        result_table = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
+
+        flattened_type = result_table.schema.field("flattened").type
+        assert flattened_type == pa.large_list(pa.int64())
+        expected = pa.Table.from_arrays(
+            [
+                pa.array([[1, 2, 3], [4, 5]], type=pa.large_list(pa.int64())),
+            ],
+            names=["flattened"],
+        )
+        assert result_table.select(["flattened"]).combine_chunks().equals(expected)
+
 
 # ──────────────────────────────────────
 # String Namespace Tests

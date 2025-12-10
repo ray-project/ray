@@ -180,56 +180,60 @@ class _ListNamespace:
         """Flatten one level of nesting for each list value."""
 
         return_dtype = DataType(object)
-        use_arrow_kernel = False
-        outer_is_large_list = False
-        requires_nested = False
         if self._expr.data_type.is_arrow_type():
             arrow_type = self._expr.data_type.to_arrow_dtype()
             if pyarrow.types.is_list(arrow_type) or pyarrow.types.is_large_list(
                 arrow_type
             ):
                 child_type = arrow_type.value_type
-                outer_is_large_list = pyarrow.types.is_large_list(arrow_type)
-                if pyarrow.types.is_list(child_type) or pyarrow.types.is_large_list(
-                    child_type
+                list_factory = (
+                    pyarrow.large_list
+                    if pyarrow.types.is_large_list(arrow_type)
+                    else pyarrow.list_
+                )
+                if (
+                    pyarrow.types.is_list(child_type)
+                    or pyarrow.types.is_large_list(child_type)
+                    or pyarrow.types.is_fixed_size_list(child_type)
                 ):
-                    return_dtype = DataType.from_arrow(child_type)
-                    use_arrow_kernel = True
-                elif pyarrow.types.is_fixed_size_list(child_type):
-                    flattened_type = pyarrow.list_(child_type.value_type)
+                    flattened_type = list_factory(child_type.value_type)
                     return_dtype = DataType.from_arrow(flattened_type)
-                    use_arrow_kernel = True
-                else:
-                    requires_nested = True
             elif pyarrow.types.is_fixed_size_list(arrow_type):
                 child_type = arrow_type.value_type
-                if pyarrow.types.is_list(child_type) or pyarrow.types.is_large_list(
-                    child_type
+                if (
+                    pyarrow.types.is_list(child_type)
+                    or pyarrow.types.is_large_list(child_type)
+                    or pyarrow.types.is_fixed_size_list(child_type)
                 ):
-                    return_dtype = DataType.from_arrow(child_type)
-                    use_arrow_kernel = True
-                elif pyarrow.types.is_fixed_size_list(child_type):
                     flattened_type = pyarrow.list_(child_type.value_type)
                     return_dtype = DataType.from_arrow(flattened_type)
-                    use_arrow_kernel = True
-                else:
-                    requires_nested = True
-            else:
-                requires_nested = True
 
-        if requires_nested:
-            raise TypeError(
-                "list.flatten() requires a list column whose elements are also lists."
-            )
-
-        if hasattr(pc, "list_flatten") and use_arrow_kernel:
+        if hasattr(pc, "list_flatten"):
 
             @pyarrow_udf(return_dtype=return_dtype)
             def _list_flatten_arrow(arr: pyarrow.Array) -> pyarrow.Array:
                 if isinstance(arr, pyarrow.ChunkedArray):
                     arr = arr.combine_chunks()
-                if not isinstance(arr, (pyarrow.ListArray, pyarrow.LargeListArray)):
-                    arr = pyarrow.array(arr)
+
+                arr_type = arr.type
+                arr_is_list = pyarrow.types.is_list(arr_type) or pyarrow.types.is_large_list(
+                    arr_type
+                )
+                arr_is_fixed_size = pyarrow.types.is_fixed_size_list(arr_type)
+                if not (arr_is_list or arr_is_fixed_size):
+                    raise TypeError(
+                        "list.flatten() requires a list column whose elements are also lists."
+                    )
+
+                child_type = arr_type.value_type
+                child_is_list = pyarrow.types.is_list(child_type) or pyarrow.types.is_large_list(
+                    child_type
+                )
+                child_is_fixed_size = pyarrow.types.is_fixed_size_list(child_type)
+                if not (child_is_list or child_is_fixed_size):
+                    raise TypeError(
+                        "list.flatten() requires a list column whose elements are also lists."
+                    )
 
                 flattened_child_lists = pc.list_flatten(arr)
                 scalar_values = pc.list_flatten(flattened_child_lists)
@@ -251,11 +255,15 @@ class _ListNamespace:
                 if counts.size > 0:
                     np.cumsum(counts, out=offsets[1:])
 
-                offsets_type = pyarrow.int64() if outer_is_large_list else pyarrow.int32()
+                arr_is_large = pyarrow.types.is_large_list(arr_type)
+                offsets_type = pyarrow.int64() if arr_is_large else pyarrow.int32()
                 offsets_array = pyarrow.array(offsets, type=offsets_type)
                 null_bitmap = arr.buffers()[0] if arr.null_count else None
 
-                return pyarrow.ListArray.from_arrays(
+                array_cls = (
+                    pyarrow.LargeListArray if arr_is_large else pyarrow.ListArray
+                )
+                return array_cls.from_arrays(
                     offsets_array,
                     scalar_values,
                     mask=null_bitmap,
@@ -274,7 +282,17 @@ class _ListNamespace:
                     flattened_lists.append(None)
                     continue
 
+                if not isinstance(list_of_lists, list):
+                    raise TypeError(
+                        "list.flatten() requires a list column whose elements are also lists."
+                    )
+
                 valid_sublists = [sub for sub in list_of_lists if sub is not None]
+                for sub in valid_sublists:
+                    if not isinstance(sub, list):
+                        raise TypeError(
+                            "list.flatten() requires a list column whose elements are also lists."
+                        )
                 flattened = list(itertools.chain.from_iterable(valid_sublists))
                 flattened_lists.append(flattened)
 
