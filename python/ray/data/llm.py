@@ -384,7 +384,6 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
 def build_llm_processor(
     config: ProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
