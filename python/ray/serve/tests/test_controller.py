@@ -1,3 +1,4 @@
+import ast
 import glob
 import json
 import os
@@ -336,11 +337,18 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
             with open(path, "r", errors="ignore") as f:
                 for line in f:
                     rec = json.loads(line)
+                    message = rec.get("message", "")
+                    try:
+                        snap = ast.literal_eval(message)
+                    except (ValueError, SyntaxError):
+                        continue
+                    if not isinstance(snap, dict):
+                        continue
                     if (
-                        rec.get("type") == "deployment"
-                        and rec.get("snapshot", {}).get("deployment") == DEPLOY_NAME
+                        snap.get("snapshot_type") == "deployment"
+                        and snap.get("deployment") == DEPLOY_NAME
                     ):
-                        snaps.append(rec["snapshot"])
+                        snaps.append(snap)
         return sorted(snaps, key=lambda s: s.get("timestamp_str", ""))
 
     def wait_for_replicas(current, timeout=10):
@@ -391,6 +399,7 @@ def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
             "policy_name",
             "metrics_health",
             "look_back_period_s",
+            "snapshot_type",
         ]:
             assert key in snap, f"Missing {key}"
 
@@ -425,10 +434,14 @@ def test_autoscaling_snapshot_not_emitted_without_config(serve_instance):
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
                 rec = json.loads(line)
-                if rec.get("type") != "deployment":
+                message = rec.get("message", "")
+                try:
+                    snap = ast.literal_eval(message)
+                except (ValueError, SyntaxError):
                     continue
-                snap = rec.get("snapshot", {})
                 if not isinstance(snap, dict):
+                    continue
+                if snap.get("snapshot_type") != "deployment":
                     continue
                 if snap.get("deployment") == DEPLOY_NAME:
                     found.append(snap)
@@ -437,6 +450,81 @@ def test_autoscaling_snapshot_not_emitted_without_config(serve_instance):
         f"Found deployment-type autoscaling snapshot logs for deployment {DEPLOY_NAME} "
         f"even though no autoscaling_config was set: {found}"
     )
+
+
+def test_autoscaling_snapshot_not_emitted_every_iteration(serve_instance):
+    """Ensure identical autoscaling snapshots are not written repeatedly."""
+
+    DEPLOY_NAME = f"snap_dedupe_{int(time.time())}"
+
+    @serve.deployment(
+        name=DEPLOY_NAME,
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 1,
+            "initial_replicas": 1,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 0.2,
+            "upscale_delay_s": 0.0,
+            "downscale_delay_s": 600.0,
+            "target_ongoing_requests": 1.0,
+        },
+    )
+    def app():
+        return "ok"
+
+    serve.run(app.bind())
+
+    serve_logs_dir = get_serve_logs_dir()
+
+    def get_snapshots():
+        log_paths = glob.glob(
+            os.path.join(serve_logs_dir, "autoscaling_snapshot_*.log")
+        )
+        snaps = []
+        for p in log_paths:
+            if not os.path.exists(p):
+                continue
+            with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    rec = json.loads(line)
+                    message = rec.get("message", "")
+                    try:
+                        snap = ast.literal_eval(message)
+                    except (ValueError, SyntaxError):
+                        continue
+                    if not isinstance(snap, dict):
+                        continue
+                    if (
+                        snap.get("snapshot_type") == "deployment"
+                        and snap.get("deployment") == DEPLOY_NAME
+                    ):
+                        snaps.append(snap)
+        return sorted(snaps, key=lambda s: s["timestamp_str"])
+
+    # Wait until the first stable snapshot shows up
+    def has_initial_snapshot():
+        snaps = get_snapshots()
+        return bool(snaps) and snaps[-1]["current_replicas"] == 1
+
+    wait_for_condition(has_initial_snapshot, timeout=10)
+
+    controller = _get_global_client()._controller
+
+    # ensure deployment is in autoscaling cache
+    ray.get(controller._refresh_autoscaling_deployments_cache.remote())
+
+    # Count current snapshots
+    initial_count = len(get_snapshots())
+
+    # Force multiple emits
+    for _ in range(5):
+        ray.get(controller._emit_deployment_autoscaling_snapshots.remote())
+
+    final_count = len(get_snapshots())
+
+    # No new snapshots should be added after the first stable write
+    assert final_count == initial_count
 
 
 if __name__ == "__main__":

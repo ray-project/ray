@@ -819,6 +819,7 @@ class DecisionRecord(BaseModel):
 
 
 class DeploymentSnapshot(BaseModel):
+    snapshot_type: str = "deployment"
     timestamp_str: str
     app: str
     deployment: str

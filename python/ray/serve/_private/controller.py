@@ -442,9 +442,7 @@ class ServeController:
                 continue
 
             payload = deployment_snapshot.model_dump(exclude_none=True)
-            self._autoscaling_logger.info(
-                "", extra={"type": "deployment", "snapshot": payload}
-            )
+            self._autoscaling_logger.info(payload)
             self._last_autoscaling_snapshots[key] = deployment_snapshot
 
     async def run_control_loop(self) -> None:
