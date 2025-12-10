@@ -153,6 +153,7 @@ contourpy==1.3.2
 
 # cupy-cuda12x requires fastrlock
 fastrlock>=0.8.3; sys_platform != 'darwin'
+lz4>=4.4.5
 
 # TODO(aslonnie): remove this
 # this is required as some packages depends on ray and will pick up older version of
