@@ -20,7 +20,7 @@ def main():
         return row
 
     with ClusterResourceMonitor() as monitor:
-        ray.data.range(1, override_num_blocks=1).map_batches(sleep_task).materialize()
+        ray.data.range(2, override_num_blocks=2).map_batches(sleep_task).materialize()
 
         peak_resources = monitor.get_peak_cluster_resources()
         assert peak_resources.cpu == 8, f"Expected 8 CPUs, got {peak_resources.cpu}"

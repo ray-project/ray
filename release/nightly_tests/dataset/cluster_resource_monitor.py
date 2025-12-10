@@ -51,7 +51,6 @@ class ClusterResourceMonitor:
                 self._peak_gpu_count = max(
                     self._peak_gpu_count, resources.get("GPU", 0)
                 )
-                print(resources)
                 time.sleep(interval_s)
 
         thread = threading.Thread(target=monitor_cluster_resources, daemon=True)
