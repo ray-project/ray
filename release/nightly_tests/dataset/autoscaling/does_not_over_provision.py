@@ -8,6 +8,7 @@ from cluster_resource_monitor import ClusterResourceMonitor
 
 def main():
     """This tests check if the cluster doesn't scale up more than necessary."""
+    ray.init()
 
     def sleep_task(row):
         # Only sleep for the first task so that some tasks finish.
