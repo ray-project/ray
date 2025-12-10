@@ -1,6 +1,12 @@
 import enum
 import os
+import shutil
+import urllib.error
+import urllib.request
 from urllib.parse import urlparse
+
+RAY_RUNTIME_ENV_HTTP_USER_AGENT_ENV_VAR = "RAY_RUNTIME_ENV_HTTP_USER_AGENT"
+_DEFAULT_HTTP_USER_AGENT = "ray-runtime-env-curl/1.0"
 
 
 class ProtocolsProvider:
@@ -198,6 +204,32 @@ class ProtocolsProvider:
         return open_file, None
 
     @classmethod
+    def _http_headers(cls) -> dict:
+        return {
+            "User-Agent": os.environ.get(
+                RAY_RUNTIME_ENV_HTTP_USER_AGENT_ENV_VAR, _DEFAULT_HTTP_USER_AGENT
+            ),
+            "Accept": "*/*",
+        }
+
+    @classmethod
+    def _download_https_uri(cls, source_uri: str, dest_file: str) -> None:
+        """Download HTTPS URI while mimicking curl's user agent.
+
+        Some hosts (e.g. gitee.com) serve HTML instead of binaries when the
+        user agent looks like python-requests.  Using a curl-like user agent
+        keeps behaviour consistent with tools such as `wget` or `curl`.
+        """
+
+        request = urllib.request.Request(source_uri, headers=cls._http_headers())
+        try:
+            with urllib.request.urlopen(request) as response:
+                with open(dest_file, "wb") as fout:
+                    shutil.copyfileobj(response, fout)
+        except urllib.error.URLError as exc:
+            raise IOError(f"Failed to download {source_uri} via HTTPS: {exc}") from exc
+
+    @classmethod
     def download_remote_uri(cls, protocol: str, source_uri: str, dest_file: str):
         """Download file from remote URI to destination file.
 
@@ -219,6 +251,10 @@ class ProtocolsProvider:
 
             def open_file(uri, mode, *, transport_params=None):
                 return open(uri, mode)
+
+        elif protocol == "https":
+            cls._download_https_uri(source_uri=source_uri, dest_file=dest_file)
+            return
 
         elif protocol == "s3":
             open_file, tp = cls._handle_s3_protocol()

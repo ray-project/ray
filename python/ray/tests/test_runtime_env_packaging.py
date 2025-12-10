@@ -1,3 +1,4 @@
+import io
 import os
 import random
 import shutil
@@ -40,6 +41,7 @@ from ray._private.runtime_env.packaging import (
     upload_package_if_needed,
     upload_package_to_gcs,
 )
+from ray._private.runtime_env.protocol import ProtocolsProvider
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_del,
@@ -779,6 +781,36 @@ class TestS3Protocol:
             mock_config_class.assert_called_with(signature_version="UNSIGNED")
             # Verify that the unsigned client is returned
             assert transport_params["client"] == mock_unsigned_client
+
+
+def test_https_downloader_sets_curl_user_agent(tmp_path, monkeypatch):
+    captured_headers = {}
+    payload = b"dummy-zip-content"
+
+    class DummyResponse(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            self.close()
+
+    def fake_urlopen(request):
+        headers = {k.lower(): v for k, v in request.header_items()}
+        captured_headers.update(headers)
+        return DummyResponse(payload)
+
+    monkeypatch.setattr(
+        "ray._private.runtime_env.protocol.urllib.request.urlopen", fake_urlopen
+    )
+
+    dest_file = tmp_path / "downloaded.zip"
+    ProtocolsProvider._download_https_uri(
+        "https://example.com/test.zip", str(dest_file)
+    )
+
+    assert dest_file.read_bytes() == payload
+    assert "curl" in captured_headers["user-agent"].lower()
+    assert captured_headers["accept"] == "*/*"
 
 
 @pytest.mark.asyncio
