@@ -320,7 +320,7 @@ def test_get_eligible_operators_to_run(ray_start_regular_shared):
         assert _get_eligible_ops_to_run(ensure_liveness=False) == [o3]
 
     # Completed ops are not eligible
-    with patch.object(o3, "completed") as _mock:
+    with patch.object(o3, "has_completed") as _mock:
         _mock.return_value = True
         assert _get_eligible_ops_to_run(ensure_liveness=False) == [o2]
 
@@ -342,7 +342,7 @@ def test_get_eligible_operators_to_run(ray_start_regular_shared):
         assert _get_eligible_ops_to_run_with_policy(ensure_liveness=False) == [o3]
 
         # Complete `o3`
-        with patch.object(o3, "completed") as _mock:
+        with patch.object(o3, "has_completed") as _mock:
             _mock.return_value = True
             # Clear up input queue
             topo[o3].input_queues[0].clear()
