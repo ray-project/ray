@@ -181,34 +181,51 @@ class SGLangServer:
         
         prompt_input = request.prompt
         
+        prompts_to_process: List[str] = []
         if isinstance(prompt_input, list):
+            # Check for empty list
             if not prompt_input:
                 raise ValueError("The 'prompt' list cannot be empty for completion requests.")
-            prompt_string = prompt_input[0]
+            # Batched prompts: process all of them
+            prompts_to_process = prompt_input
         else:
-            prompt_string = prompt_input
+            # Single string prompt: wrap it in a list for iteration
+            prompts_to_process = [prompt_input]
 
-        metadata = await self._generate_and_extract_metadata(request, prompt_string)
+        all_choices = []
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
+        last_metadata = {}
+
+        # 2. Loop through all prompts in the batch
+        for index, prompt_string in enumerate(prompts_to_process):
+            metadata = await self._generate_and_extract_metadata(request, prompt_string)
+            last_metadata = metadata # Keep track of the metadata from the last run
+
+            total_prompt_tokens += metadata["prompt_tokens"]
+            total_completion_tokens += metadata["completion_tokens"]
+
+            choice_data = {
+                "index": index,
+                "text": metadata["text"],
+                "logprobs": None,
+                "finish_reason": metadata["finish_reason"],
+            }
+            all_choices.append(choice_data)
 
         usage_data = {
-            "prompt_tokens": metadata["prompt_tokens"],
-            "completion_tokens": metadata["completion_tokens"],
-            "total_tokens": metadata["total_tokens"],
+            "prompt_tokens": total_prompt_tokens,
+            "completion_tokens": total_completion_tokens,
+            "total_tokens": total_prompt_tokens + total_completion_tokens,
         }
 
-        choice_data = {
-            "index": 0,
-            "text": metadata["text"],
-            "logprobs": None,
-            "finish_reason": metadata["finish_reason"],
-        }
-
+        # Use metadata from the last generation for shared fields (id, created)
         resp = CompletionResponse(
-            id=metadata["id"],
+            id=last_metadata.get("id", f"sglang-batch-gen-{int(time.time())}"),
             object="text_completion",
-            created=metadata["created"],
+            created=last_metadata.get("created", int(time.time())),
             model=getattr(request, "model", "default_model"),
-            choices=[choice_data],
+            choices=all_choices,
             usage=usage_data,
         )
 
