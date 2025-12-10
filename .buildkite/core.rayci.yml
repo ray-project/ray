@@ -14,6 +14,8 @@ steps:
       - "3.10"
       - "3.12"
     env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_build-py{{matrix}}
+      IMAGE_TO: corebuild-py{{matrix}}
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_build-multipy
 
@@ -35,7 +37,6 @@ steps:
     wanda: ci/docker/min.build.wanda.yaml
     tags: cibase
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -239,10 +240,8 @@ steps:
         --except-tags kubernetes,manual
 
   - label: ":ray: core: wheel tests"
-    tags:
-      - linux_wheels
-      # TODO(aslonnie): fix this test
-      - skip-on-premerge
+    key: core-wheel-tests
+    tags: linux_wheels
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core
@@ -307,7 +306,6 @@ steps:
     depends_on:
       - minbuild-core
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -427,8 +425,8 @@ steps:
       # cpp worker tests has one that tests cross-language with Java.
       - RAY_INSTALL_JAVA=1 ci/ci.sh build
       - ci/ci.sh test_cpp
-    depends_on: oss-ci-base_build
-    job_env: oss-ci-base_build
+    depends_on: oss-ci-base_build-multipy
+    job_env: oss-ci-base_build-py3.10
 
   - label: ":ray: core: java worker tests"
     tags:
