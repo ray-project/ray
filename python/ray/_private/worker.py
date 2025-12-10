@@ -3391,17 +3391,9 @@ def _make_remote(function_or_class, options):
     if inspect.isfunction(function_or_class) or is_cython(function_or_class):
         ray_option_utils.validate_task_options(options, in_options=False)
         # Validate num_returns for generator functions
-        num_returns = options.get("num_returns")
-        if num_returns in ("streaming", "dynamic"):
-            if not (
-                inspect.isgeneratorfunction(function_or_class)
-                or inspect.isasyncgenfunction(function_or_class)
-            ):
-                raise ValueError(
-                    f"@ray.remote with num_returns='{num_returns}' can only be used "
-                    f"with generator functions (functions that use 'yield'). "
-                    f"Function '{function_or_class.__name__}' is not a generator function."
-                )
+        ray_option_utils.validate_num_returns_for_remote_function(
+            function_or_class, options
+        )
         return ray.remote_function.RemoteFunction(
             Language.PYTHON,
             function_or_class,

@@ -1,4 +1,5 @@
 """Manage, parse and validate options for Ray tasks, actors and actor methods."""
+import inspect
 import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple, Union
@@ -373,6 +374,88 @@ def validate_actor_options(options: Dict[str, Any], in_options: bool):
 
     _check_deprecate_placement_group(options)
 
+
+def _validate_num_returns_generator(
+    function: Callable, num_returns: Any, decorator_name: str, function_type: str
+) -> None:
+    """Validate that num_returns='streaming' or 'dynamic' is used with generator functions.
+
+    This is a shared validation function used by both @ray.remote and @ray.method.
+
+    Args:
+        function: The function or method being decorated.
+        num_returns: The num_returns value to validate.
+        decorator_name: The name of the decorator ('@ray.remote' or '@ray.method').
+        function_type: The type description ('function' or 'method').
+
+    Raises:
+        ValueError: If num_returns is 'streaming' or 'dynamic' but the function
+            is not a generator function or async generator function.
+    """
+    if num_returns in ("streaming", "dynamic"):
+        if not (
+            inspect.isgeneratorfunction(function)
+            or inspect.isasyncgenfunction(function)
+        ):
+            raise ValueError(
+                f"{decorator_name} with num_returns='{num_returns}' can only be used "
+                f"with generator {function_type}s ({function_type}s that use 'yield'). "
+                f"{function_type.capitalize()} '{function.__name__}' is not a generator {function_type}."
+            )
+
+
+def validate_num_returns_for_remote_function(
+    function: Callable, options: Dict[str, Any]
+) -> None:
+    """Validate num_returns for @ray.remote decorator.
+
+    This function checks if num_returns='streaming' or 'dynamic' is used
+    with a non-generator function, which should fail fast.
+
+    Args:
+        function: The function being decorated with @ray.remote.
+        options: The options dictionary containing num_returns.
+
+    Raises:
+        ValueError: If num_returns is 'streaming' or 'dynamic' but the function
+            is not a generator function or async generator function.
+    """
+    num_returns = options.get("num_returns")
+    if num_returns is not None:
+        _validate_num_returns_generator(
+            function, num_returns, "@ray.remote", "function"
+        )
+
+
+def validate_num_returns_for_method(function: Callable, options: Dict[str, Any]) -> None:
+    """Validate num_returns for @ray.method decorator.
+
+    This function checks:
+    1. If num_returns is an integer < 0, it should fail fast.
+    2. If num_returns='streaming' or 'dynamic' is used with a non-generator
+       method, it should fail fast.
+
+    Args:
+        function: The method being decorated with @ray.method.
+        options: The options dictionary containing num_returns.
+
+    Raises:
+        ValueError: If num_returns < 0, or if num_returns is 'streaming' or
+            'dynamic' but the method is not a generator method or async generator method.
+    """
+    num_returns = options.get("num_returns")
+    if num_returns is None:
+        return
+    
+    # Validate num_returns < 0 (only for @ray.method)
+    if isinstance(num_returns, int) and num_returns < 0:
+        raise ValueError(
+            f"@ray.method num_returns must be >= 0, but got {num_returns}. "
+        )
+    # Validate num_returns='streaming' or 'dynamic' for generator functions
+    _validate_num_returns_generator(
+        function, num_returns, "@ray.method", "method"
+    )
 
 def update_options(
     original_options: Dict[str, Any], new_options: Dict[str, Any]
