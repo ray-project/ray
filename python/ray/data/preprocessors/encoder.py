@@ -913,11 +913,11 @@ def unique_post_fn(drop_na_values: bool = False) -> Callable[[Set], Dict[str, in
     """
 
     def gen_value_index(values: List | Set) -> Dict[str, int]:
-        if values and isinstance(values[0], list):
+        if any(isinstance(k, list) for k in values if k is not None):
             # Unique aggregator will return unique list-analogous types
             # as lists due to pyarrow. To make it hashable, we need to
             # convert them to tuple.
-            values = list(map(lambda k: None if pd.isnull(k) else tuple(k), values))
+            values = list(map(lambda k: None if k is None else tuple(k), values))
         if drop_na_values:
             values = {k for k in values if not pd.isnull(k)}
         else:
