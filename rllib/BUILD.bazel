@@ -83,7 +83,7 @@ doctest(
 
 py_library(
     name = "conftest",
-    srcs = ["tests/conftest.py"],
+    srcs = ["conftest.py"],
 )
 
 # --------------------------------------------------------------------

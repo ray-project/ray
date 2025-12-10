@@ -198,6 +198,8 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
         )
         self.assertTrue(any(e.t_started > 0 for e in episodes))
 
+        self.assertTrue(False)
+
     @patch(target="ray.rllib.env.env_runner.logger")
     def test_step_failed_reset_required(self, mock_logger):
         """Tests, whether SingleAgentEnvRunner can handle StepFailedResetRequired."""
