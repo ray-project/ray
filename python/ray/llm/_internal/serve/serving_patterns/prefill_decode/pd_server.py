@@ -13,7 +13,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     EmbeddingResponse,
     ErrorResponse,
 )
-from ray.llm._internal.serve.core.protocol import LLMServerProtocol
+from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
 from ray.llm._internal.serve.utils.server_utils import (
     get_serve_request_id,
 )
@@ -127,7 +127,7 @@ class PDProxyServer(LLMServerProtocol):
     async def _handle_request(
         self,
         request: RequestType,
-        raw_request_headers: Optional[Dict[str, str]] = None,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[
         Union[str, ChatCompletionResponse, CompletionResponse, ErrorResponse], None
     ]:
@@ -143,7 +143,7 @@ class PDProxyServer(LLMServerProtocol):
 
         prefill_request = self._prepare_prefill_request(request)
         prefill_gen = getattr(self.prefill_server, method).remote(
-            prefill_request, raw_request_headers
+            prefill_request, raw_request_info
         )
 
         prefill_chunk = await prefill_gen.__anext__()
@@ -155,7 +155,7 @@ class PDProxyServer(LLMServerProtocol):
 
         decode_request = self._prepare_decode_request(request, prefill_chunk)
         decode_gen = getattr(self.decode_server, method).remote(
-            decode_request, raw_request_headers
+            decode_request, raw_request_info
         )
 
         async for chunk in decode_gen:
@@ -164,21 +164,21 @@ class PDProxyServer(LLMServerProtocol):
     async def chat(
         self,
         request: ChatCompletionRequest,
-        raw_request_headers: Optional[Dict[str, str]] = None,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
-        return self._handle_request(request, raw_request_headers)
+        return self._handle_request(request, raw_request_info)
 
     async def completions(
         self,
         request: CompletionRequest,
-        raw_request_headers: Optional[Dict[str, str]] = None,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
-        return self._handle_request(request, raw_request_headers)
+        return self._handle_request(request, raw_request_info)
 
     async def embeddings(
         self,
         request: EmbeddingRequest,
-        raw_request_headers: Optional[Dict[str, str]] = None,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[EmbeddingResponse, None]:
         raise NotImplementedError("Embedding is not supported for P/D disaggregation")
 

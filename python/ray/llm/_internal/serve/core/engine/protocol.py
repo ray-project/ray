@@ -1,10 +1,11 @@
 import abc
-from typing import TYPE_CHECKING, AsyncGenerator, Dict, Optional, Union
+from typing import TYPE_CHECKING, AsyncGenerator, Optional, Union
 
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
     LLMConfig,
 )
+from ray.llm._internal.serve.core.protocol import RawRequestInfo
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -46,7 +47,7 @@ class LLMEngine(abc.ABC):
     async def chat(
         self,
         request: "ChatCompletionRequest",
-        raw_request_headers: Optional[Dict[str, str]] = None,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, "ChatCompletionResponse", "ErrorResponse"], None]:
         """Run a ChatCompletion with the engine.
 
@@ -60,7 +61,8 @@ class LLMEngine(abc.ABC):
 
         Args:
             request: The chat completion request.
-            raw_request_headers: Optional HTTP headers from the original request.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
 
         Yields:
             Union[str, ChatCompletionResponse, ErrorResponse]: A string representing a chunk of the response, a ChatCompletionResponse object, or an ErrorResponse object.
@@ -74,7 +76,7 @@ class LLMEngine(abc.ABC):
     async def completions(
         self,
         request: "CompletionRequest",
-        raw_request_headers: Optional[Dict[str, str]] = None,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, "CompletionResponse", "ErrorResponse"], None]:
         """Run a Completion with the engine.
 
@@ -92,7 +94,8 @@ class LLMEngine(abc.ABC):
 
         Args:
             request: The completion request.
-            raw_request_headers: Optional HTTP headers from the original request.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
 
         Yields:
             Union[str, CompletionResponse, ErrorResponse]: A string
@@ -108,7 +111,7 @@ class LLMEngine(abc.ABC):
     async def embeddings(
         self,
         request: "EmbeddingRequest",
-        raw_request_headers: Optional[Dict[str, str]] = None,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union["EmbeddingResponse", "ErrorResponse"], None]:
         """Run an Embedding with the engine.
 
@@ -122,7 +125,8 @@ class LLMEngine(abc.ABC):
 
         Args:
             request: The embedding request.
-            raw_request_headers: Optional HTTP headers from the original request.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
 
         Returns:
             An async generator that yields EmbeddingResponse objects or ErrorResponse objects, and returns None when the generator is done.
@@ -133,7 +137,7 @@ class LLMEngine(abc.ABC):
     async def transcriptions(
         self,
         request: "TranscriptionRequest",
-        raw_request_headers: Optional[Dict[str, str]] = None,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, "TranscriptionResponse", "ErrorResponse"], None]:
         """Run a Transcription with the engine.
 
@@ -149,7 +153,8 @@ class LLMEngine(abc.ABC):
 
         Args:
             request: The transcription request.
-            raw_request_headers: Optional HTTP headers from the original request.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
 
         Yields:
             Union[str, TranscriptionResponse, ErrorResponse]: A string
