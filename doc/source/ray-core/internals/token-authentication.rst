@@ -14,7 +14,7 @@ Authentication Modes
 --------------------
 
 Ray's authentication behavior is controlled by the **RAY_AUTH_MODE** environment variable.
-Ray supports two modes:
+as of now, Ray supports two modes:
 
 - ``disabled`` - Default; no authentication.
 - ``token`` - Static bearer token authentication. When combined with **RAY_ENABLE_K8S_TOKEN_AUTH**,
