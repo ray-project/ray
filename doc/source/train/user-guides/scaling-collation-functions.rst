@@ -1,7 +1,7 @@
 .. _train-scaling-collation-functions:
 
-Scaling out expensive collate functions
-=======================================
+Advanced: Scaling out expensive collate functions
+=================================================
 
 By default, the collate function executes on the training worker when you call :meth:`ray.data.DataIterator.iter_torch_batches`. This approach has two main drawbacks:
 
