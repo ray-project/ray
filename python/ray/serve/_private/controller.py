@@ -411,15 +411,22 @@ class ServeController:
 
     def _refresh_autoscaling_deployments_cache(self) -> None:
         result = []
+        active_dep_ids = set()
         for app_name in self.application_state_manager.list_app_names():
             deployment_details = self.application_state_manager.list_deployment_details(
                 app_name
             )
             for dep_name, details in deployment_details.items():
+                active_dep_ids.add(DeploymentID(name=dep_name, app_name=app_name))
                 autoscaling_config = details.deployment_config.autoscaling_config
                 if autoscaling_config:
                     result.append((app_name, dep_name, details, autoscaling_config))
         self._autoscaling_enabled_deployments_cache = result
+        self._last_autoscaling_snapshots = {
+            k: v
+            for k, v in self._last_autoscaling_snapshots.items()
+            if k in active_dep_ids
+        }
 
     def _emit_deployment_autoscaling_snapshots(self) -> None:
         """Emit a structured snapshot log per autoscaling-enabled deployment."""
