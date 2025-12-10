@@ -1905,7 +1905,7 @@ pyyaml==6.0.1
     #   webdataset
     #   yahp
     #   yq
-pyzmq==26.0.3
+pyzmq==27.1.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   ipykernel
