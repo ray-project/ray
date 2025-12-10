@@ -66,6 +66,8 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             The utilization value, or None if utilization cannot be computed
             (e.g., no running actors).
         """
+        if actor_pool.num_running_actors() == 0:
+            return None
         return actor_pool.get_pool_util()
 
     def _compute_upscale_delta(
