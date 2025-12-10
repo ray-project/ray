@@ -57,7 +57,7 @@ curl http://127.0.0.1:8000/v1/completions \
         "model": "Llama-3.1-8B-Instruct",
         "prompt": "San Francisco is a",
         "max_tokens": 30,
-        "temperature": 0            
+        "temperature": 0
     }'
 ```
 

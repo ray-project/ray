@@ -27,6 +27,7 @@ DEFAULT_DEPLOYMENT_OPTIONS = {
 def _get_deployment_name(llm_config: LLMConfig) -> str:
     return llm_config.model_id.replace("/", "--").replace(".", "_")
 
+
 def build_sglang_deployment(
     llm_config: LLMConfig,
     *,
@@ -73,6 +74,7 @@ def build_sglang_deployment(
         _llm_config=llm_config, **bind_kwargs
     )
 
+
 def build_sglang_openai_app(builder_config: dict) -> Application:
     """Build an OpenAI compatible app with the llm deployment setup from
     the given builder configuration.
@@ -106,6 +108,3 @@ def build_sglang_openai_app(builder_config: dict) -> Application:
     return serve.deployment(ingress_cls, **ingress_options).bind(
         llm_deployments=llm_deployments, **ingress_cls_config.ingress_extra_kwargs
     )
-
-
-
