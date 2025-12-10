@@ -26,7 +26,6 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.progress_manager import RichExecutionProgressManager
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
@@ -44,6 +43,7 @@ from ray.data._internal.logging import (
     unregister_dataset_logger,
 )
 from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
+from ray.data._internal.progress.rich_progress import RichExecutionProgressManager
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext

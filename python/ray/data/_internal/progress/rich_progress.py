@@ -87,7 +87,7 @@ class _ManagerMode(str, Enum):
             return cls.ALL
 
 
-class SubProgressBar(AbstractProgressBar):
+class RichSubProgressBar(AbstractProgressBar):
     """Thin wrapper to provide identical interface to the ProgressBar.
 
     Updates RichExecutionProgressManager internally.
@@ -179,7 +179,7 @@ class RichExecutionProgressManager:
     def __init__(self, dataset_id: str, topology: Topology):
         self._mode = _ManagerMode.get_mode()
         self._dataset_id = dataset_id
-        self._sub_progress_bars: List[SubProgressBar] = []
+        self._sub_progress_bars: List[RichSubProgressBar] = []
 
         if not self._mode.is_enabled():
             self._live = None
@@ -262,7 +262,7 @@ class RichExecutionProgressManager:
         sub_progress_bar_names = state.op.get_sub_progress_bar_names()
         if sub_progress_bar_names is not None:
             for name in sub_progress_bar_names:
-                name = truncate_operator_name(name, SubProgressBar.MAX_NAME_LENGTH)
+                name = truncate_operator_name(name, RichSubProgressBar.MAX_NAME_LENGTH)
                 progress = None
                 tid = None
                 total = None
@@ -281,7 +281,7 @@ class RichExecutionProgressManager:
                     )
                     self._layout_table.add_row(progress)
 
-                pg = SubProgressBar(
+                pg = RichSubProgressBar(
                     name=name,
                     total=total,
                     enabled=enabled,
