@@ -1172,6 +1172,50 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
     ), f"Latency metrics should use route patterns. Found: {latency_routes}"
 
 
+def test_routing_stats_delay_metric(metrics_start_shutdown):
+    """Test that routing stats delay metric is reported correctly."""
+
+    @serve.deployment
+    class Model:
+        def __call__(self):
+            return "hello"
+
+    serve.run(Model.bind(), name="app")
+    timeseries = PrometheusTimeseries()
+
+    # Wait for routing stats delay metric to be reported
+    # This metric is recorded when the controller polls routing stats from replicas
+    def check_routing_stats_delay_metric():
+        metrics = get_metric_dictionaries(
+            "ray_serve_routing_stats_delay_ms_count", timeseries=timeseries
+        )
+        if not metrics:
+            return False
+        # Check that at least one metric has expected tags
+        for metric in metrics:
+            assert metric["deployment"] == "Model"
+            assert metric["application"] == "app"
+            assert "replica" in metric
+            return True
+        return False
+
+    wait_for_condition(check_routing_stats_delay_metric, timeout=60)
+
+    # Verify the metric value is greater than 0
+    def check_routing_stats_delay_metric_value():
+        value = get_metric_float(
+            "ray_serve_routing_stats_delay_ms_count",
+            timeseries=timeseries,
+            expected_tags={
+                "deployment": "Model",
+                "application": "app",
+            },
+        )
+        return value > 0
+
+    wait_for_condition(check_routing_stats_delay_metric_value, timeout=60)
+
+
 def test_long_poll_host_sends_counted(serve_instance):
     """Check that the transmissions by the long_poll are counted."""
 
