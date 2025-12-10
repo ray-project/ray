@@ -94,11 +94,6 @@ class IcebergDatasink(
         Args:
             incoming_schema: The PyArrow schema to merge with the table schema
         """
-        import ray
-        from ray._private.worker import WORKER_MODE
-
-        is_driver = ray.get_runtime_context().worker.mode != WORKER_MODE
-        assert is_driver, "Schema update must be called from the driver process"
         with self._table.update_schema() as update:
             update.union_by_name(incoming_schema)
         # Succeeded, reload to get latest table version and exit.
@@ -201,22 +196,20 @@ class IcebergDatasink(
             data_files, schemas = write_return
             if data_files:  # Only add schema if we have data files
                 all_data_files.extend(data_files)
-                all_schemas.extend(schemas)  # extend instead of append
+                all_schemas.extend(schemas)
 
         if not all_data_files:
             return
 
         # Reconcile all schemas from all blocks across all workers
-        from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
-
-        reconciled_schema = unify_schemas(all_schemas, promote_types=True)
-
         # Get table schema and union with reconciled schema using unify_schemas with promotion
         from pyiceberg.io import pyarrow as pyi_pa_io
 
+        from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
+
         table_schema = pyi_pa_io.schema_to_pyarrow(self._table.schema())
         final_reconciled_schema = unify_schemas(
-            [table_schema, reconciled_schema], promote_types=True
+            [table_schema] + all_schemas, promote_types=True
         )
 
         # Create transaction and commit schema update + data files atomically
