@@ -8,6 +8,7 @@ import pandas as pd
 import pandas.api.types
 
 from ray.air.util.data_batch_conversion import BatchFormat
+from ray.data.aggregate import Unique
 from ray.data.preprocessor import (
     Preprocessor,
     PreprocessorNotFittedException,
@@ -128,15 +129,11 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         )
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self.stat_computation_plan.add_callable_stat(
-            stat_fn=lambda key_gen: compute_unique_value_indices(
-                dataset=dataset,
-                columns=self.columns,
-                encode_lists=self.encode_lists,
-                key_gen=key_gen,
+        self.stat_computation_plan.add_aggregator(
+            aggregator_fn=lambda col: Unique(
+                col, ignore_nulls=False, encode_lists=self.encode_lists
             ),
             post_process_fn=unique_post_fn(),
-            stat_key_fn=lambda col: f"unique({col})",
             post_key_fn=lambda col: f"unique_values({col})",
             columns=self.columns,
         )
@@ -915,7 +912,12 @@ def unique_post_fn(drop_na_values: bool = False) -> Callable[[Set], Dict[str, in
         mapping each value to a unique integer index.
     """
 
-    def gen_value_index(values: Set) -> Dict[str, int]:
+    def gen_value_index(values: List | Set) -> Dict[str, int]:
+        if values and isinstance(values[0], list):
+            # Unique aggregator will return unique list-analogous types
+            # as lists due to pyarrow. To make it hashable, we need to
+            # convert them to tuple.
+            values = map(lambda k: None if pd.isnull(k) else tuple(k), values)
         if drop_na_values:
             values = {k for k in values if not pd.isnull(k)}
         else:
