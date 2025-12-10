@@ -15,6 +15,7 @@
 #include "ray/rpc/authentication/authentication_token_loader.h"
 
 #include <fstream>
+#include <map>
 #include <string>
 #include <utility>
 
