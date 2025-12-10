@@ -16,6 +16,7 @@ from ray.data.llm import (
 
 logger = logging.getLogger(__name__)
 
+S3_ARTIFACT_ASSETS_URL = "https://air-example-data.s3.amazonaws.com/rayllm-ossci/assets/"
 
 @pytest.fixture(autouse=True)
 def disable_vllm_compile_cache(monkeypatch):
@@ -326,7 +327,7 @@ def test_vllm_vision_language_models(
                         {
                             "type": "image_url",
                             "image_url": {
-                                "url": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg"
+                                "url": S3_ARTIFACT_ASSETS_URL + "cherry_blossom.jpg"
                             },
                         },
                     ],
@@ -357,12 +358,12 @@ def test_vllm_vision_language_models(
         {
             "type": "image_url",
             "image_url": {
-                "url": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg"
+                "url": S3_ARTIFACT_ASSETS_URL + "cherry_blossom.jpg"
             },
         },
         {
             "type": "video_url",
-            "video_url": {"url": "https://content.pexels.com/videos/free-videos.mp4"},
+            "video_url": {"url": S3_ARTIFACT_ASSETS_URL + "free-videos.mp4"},
         },
     ],
 )
@@ -373,7 +374,6 @@ def test_vllm_qwen_vl_multimodal(multimodal_content):
         model_source=model_source,
         task_type="generate",
         engine_kwargs=dict(
-            max_model_len=4096,
             enable_chunked_prefill=True,
         ),
         prepare_multimodal_stage=PrepareMultimodalStageConfig(

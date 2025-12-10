@@ -256,6 +256,32 @@ class OfflineProcessorConfig(ProcessorConfig):
 
         return values
 
+    @model_validator(mode="before")
+    def _warn_prepare_image_stage_deprecation(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        """Warn if prepare_image_stage is enabled, recommend prepare_multimodal_stage instead."""
+        if "prepare_image_stage" in values:
+            prepare_image_stage_value = values.get("prepare_image_stage")
+            # Check if it's enabled (could be bool, dict with enabled=True, or config object)
+            is_enabled = False
+            if isinstance(prepare_image_stage_value, bool):
+                is_enabled = prepare_image_stage_value
+            elif isinstance(prepare_image_stage_value, dict):
+                is_enabled = prepare_image_stage_value.get("enabled", False)
+            elif hasattr(prepare_image_stage_value, "enabled"):
+                is_enabled = prepare_image_stage_value.enabled
+
+            if is_enabled:
+                logger.warning(
+                    "The stage `prepare_image_stage` is deprecated. "
+                    "Prefer `prepare_multimodal_stage` instead, which unifies image, audio, "
+                    "video, etc. processing with a single stage. For example: "
+                    "`prepare_multimodal_stage=PrepareMultimodalStageConfig(enabled=True)` "
+                    "or `prepare_multimodal_stage={'enabled': True}`. "
+                    "This will raise an error in a future version."
+                )
+
+        return values
+
 
 @PublicAPI(stability="alpha")
 class Processor:

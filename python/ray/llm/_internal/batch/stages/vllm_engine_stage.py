@@ -429,6 +429,7 @@ class vLLMEngineWrapper:
 
         import vllm
 
+        # TODO (jeffreywang): Consolidate to multimodal_data only
         if request.images:
             multi_modal_data = (
                 {**request.multimodal_data, "image": request.images}

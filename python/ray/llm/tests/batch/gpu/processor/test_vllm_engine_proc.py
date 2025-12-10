@@ -358,7 +358,7 @@ def test_vision_model(
     assert all("resp" in out for out in outs)
 
 
-def test_video_model(gpu_type, model_qwen_2_5_vl_3b_instruct):
+def test_video_model(gpu_type, model_qwen_2_5_vl_3b_instruct, video_asset):
     llm_processor_config = vLLMEngineProcessorConfig(
         model_source=model_qwen_2_5_vl_3b_instruct,
         task_type="generate",
@@ -366,6 +366,7 @@ def test_video_model(gpu_type, model_qwen_2_5_vl_3b_instruct):
             enforce_eager=True,
             # Limit the number of videos that can be provided per prompt to prevent memory issues
             limit_mm_per_prompt={"video": 1},
+            distributed_executor_backend="ray",
         ),
         batch_size=16,
         accelerator_type=gpu_type,
@@ -393,7 +394,7 @@ def test_video_model(gpu_type, model_qwen_2_5_vl_3b_instruct):
                         {
                             "type": "video_url",
                             "video_url": {
-                                "url": "https://content.pexels.com/videos/free-videos.mp4"
+                                "url": video_asset
                             },
                         },
                     ],
@@ -434,6 +435,7 @@ def test_audio_model(
         engine_kwargs=dict(
             enforce_eager=True,
             limit_mm_per_prompt={"audio": 1},
+            distributed_executor_backend="ray",
         ),
         batch_size=16,
         accelerator_type=gpu_type,

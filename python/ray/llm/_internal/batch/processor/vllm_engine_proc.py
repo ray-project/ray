@@ -160,12 +160,6 @@ def build_vllm_engine_processor(
         PrepareImageStageConfig,
         processor_defaults,
     )
-    if image_stage_cfg.enabled:
-        stages.append(
-            PrepareImageStage(
-                map_batches_kwargs=build_cpu_stage_map_kwargs(image_stage_cfg),
-            )
-        )
 
     # Resolve and build PrepareMultimodalStage if enabled
     prepare_multimodal_stage_cfg = resolve_stage_config(
@@ -173,6 +167,21 @@ def build_vllm_engine_processor(
         PrepareMultimodalStageConfig,
         processor_defaults,
     )
+
+    if image_stage_cfg.enabled and prepare_multimodal_stage_cfg.enabled:
+        raise ValueError(
+            "Cannot enable both 'prepare_image_stage' and 'prepare_multimodal_stage' "
+            "simultaneously. The 'prepare_multimodal_stage' handles image processing "
+            "along with other multimodal inputs. Please disable one of them."
+        )
+
+    if image_stage_cfg.enabled:
+        stages.append(
+            PrepareImageStage(
+                map_batches_kwargs=build_cpu_stage_map_kwargs(image_stage_cfg),
+            )
+        )
+
     if prepare_multimodal_stage_cfg.enabled:
         stages.append(
             PrepareMultimodalStage(

@@ -13,6 +13,7 @@ from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_llm_deployment
 
 S3_ARTIFACT_URL = "https://air-example-data.s3.amazonaws.com/"
 S3_ARTIFACT_LLM_OSSCI_URL = S3_ARTIFACT_URL + "rayllm-ossci/"
+S3_ARTIFACT_ASSETS_URL = S3_ARTIFACT_LLM_OSSCI_URL + "assets/"
 
 
 def download_model_from_s3(
@@ -157,46 +158,44 @@ def model_llama_3_2_1B_instruct():
 
 @pytest.fixture(scope="session")
 def model_qwen_2_5_vl_3b_instruct():
-    # REMOTE_URL = f"{S3_ARTIFACT_URL}Qwen2.5-VL-3B-Instruct/"
-    # FILE_LIST = [
-    #     "config.json",
-    #     "chat_template.json",
-    #     "generation_config.json",
-    #     "merges.txt",
-    #     "model-00001-of-00002.safetensors",
-    #     "model-00002-of-00002.safetensors"
-    #     "model.safetensors.index.json",
-    #     "preprocessor_config.json",
-    #     "tokenizer.json",
-    #     "tokenizer_config.json",
-    #     "vocab.json",
-    # ]
-    # yield from download_model_from_s3(REMOTE_URL, FILE_LIST)
-    yield "Qwen/Qwen2.5-VL-3B-Instruct"
+    REMOTE_URL = f"{S3_ARTIFACT_LLM_OSSCI_URL}Qwen2.5-VL-3B-Instruct/"
+    FILE_LIST = [
+        "config.json",
+        "chat_template.json",
+        "generation_config.json",
+        "merges.txt",
+        "model-00001-of-00002.safetensors",
+        "model-00002-of-00002.safetensors"
+        "model.safetensors.index.json",
+        "preprocessor_config.json",
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "vocab.json",
+    ]
+    yield from download_model_from_s3(REMOTE_URL, FILE_LIST)
 
 
 @pytest.fixture(scope="session")
 def model_qwen_2_5_omni_3b():
-    # REMOTE_URL = f"{S3_ARTIFACT_URL}Qwen2.5-Omni-3B/"
-    # FILE_LIST = [
-    #     "added_tokens.json",
-    #     "config.json",
-    #     "chat_template.json",
-    #     "generation_config.json",
-    #     "merges.txt",
-    #     "model-00001-of-00003.safetensors",
-    #     "model-00002-of-00003.safetensors",
-    #     "model-00003-of-00003.safetensors",
-    #     "model.safetensors.index.json",
-    #     "preprocessor_config.json",
-    #     "special_tokens_map.json",
-    #     "spk_dict.json",
-    #     "tokenizer.json",
-    #     "tokenizer_config.json",
-    #     "vocab.json",
-    # ]
-    # yield from download_model_from_s3(REMOTE_URL, FILE_LIST)
-    yield "Qwen/Qwen2.5-Omni-3B"
+    REMOTE_URL = f"{S3_ARTIFACT_LLM_OSSCI_URL}Qwen2.5-Omni-3B/"
+    FILE_LIST = [
+        "added_tokens.json",
+        "config.json",
+        "chat_template.json",
+        "generation_config.json",
+        "merges.txt",
+        "model-00001-of-00003.safetensors",
+        "model-00002-of-00003.safetensors",
+        "model-00003-of-00003.safetensors",
+        "model.safetensors.index.json",
+        "preprocessor_config.json",
+        "special_tokens_map.json",
+        "spk_dict.json",
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "vocab.json",
+    ]
+    yield from download_model_from_s3(REMOTE_URL, FILE_LIST)
 
 
 @pytest.fixture(scope="session")
@@ -284,7 +283,7 @@ def create_model_opt_125m_deployment(gpu_type, model_opt_125m, serve_cleanup):
 
 @pytest.fixture
 def image_asset():
-    image_url = "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg"
+    image_url = S3_ARTIFACT_ASSETS_URL + "cherry_blossom.jpg"
     with requests.get(image_url) as response:
         response.raise_for_status()
         image_pil = PIL.Image.open(io.BytesIO(response.content))
@@ -293,8 +292,13 @@ def image_asset():
 
 @pytest.fixture
 def audio_asset():
-    audio_url = "https://vllm-public-assets.s3.us-west-2.amazonaws.com/multimodal_asset/winning_call.ogg"
+    audio_url = S3_ARTIFACT_ASSETS_URL + "winning_call.ogg"
     with requests.get(audio_url) as response:
         response.raise_for_status()
         audio_data = base64.b64encode(response.content).decode("utf-8")
         yield audio_url, audio_data
+
+@pytest.fixture
+def video_asset():
+    video_url = S3_ARTIFACT_ASSETS_URL + "free-videos.mp4"
+    yield video_url

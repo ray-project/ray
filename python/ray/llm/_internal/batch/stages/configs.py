@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, Type, TypeVar, Union
+from typing import Any, Dict, Literal, Optional, Tuple, Type, TypeVar, Union
 
 from pydantic import Field
 
@@ -57,9 +57,8 @@ class PrepareMultimodalStageConfig(_StageConfigBase):
         description="Name or path of the Hugging Face model to use for the multimodal processor. "
         "This is required to process multimodal data according to a specific model.",
     )
-    chat_template_content_format: Optional[str] = Field(
+    chat_template_content_format: Optional[Literal["string", "openai"]] = Field(
         default="string",
-        choices=["string", "openai"],
         description="The content format to use for the chat template. "
         "This is used to format the chat template content according to a specific model.",
     )
