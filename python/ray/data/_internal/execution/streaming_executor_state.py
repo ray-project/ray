@@ -417,7 +417,7 @@ def process_completed_tasks(
     states, call `update_operator_states()` afterwards.
 
     Args:
-        topology: The toplogy of operators.
+        topology: The topology of operators.
         backpressure_policies: The backpressure policies to use.
         max_errored_blocks: Max number of errored blocks to allow,
             unlimited if negative.

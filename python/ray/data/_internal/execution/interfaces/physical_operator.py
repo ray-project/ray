@@ -488,7 +488,7 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources.zero()
 
-    def max_task_concurrency(self: "PhysicalOperator") -> Optional[int]:
+    def get_max_concurrency_limit(self: "PhysicalOperator") -> Optional[int]:
         """The maximum number of tasks that can be run concurrently.
 
         Some operators manually configure a maximum concurrency. For example, if you
@@ -814,11 +814,6 @@ class PhysicalOperator(Operator):
             op.num_outputs_total() or 0 for op in self.input_dependencies
         )
         return upstream_op_num_outputs
-
-    def get_max_concurrency_limit(self) -> Optional[int]:
-        """Max value of how many tasks this operator could run
-        concurrently (if limited)"""
-        return None
 
 
 class ReportsExtraResourceUsage(abc.ABC):

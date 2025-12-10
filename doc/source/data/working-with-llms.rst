@@ -56,7 +56,7 @@ Perform batch inference with LLMs
 At a high level, the :ref:`ray.data.llm <llm-ref>` module provides a :class:`Processor <ray.data.llm.Processor>` object which encapsulates
 logic for performing batch inference with LLMs on a Ray Data dataset.
 
-You can use the :func:`build_llm_processor <ray.data.llm.build_llm_processor>` API to construct a processor.
+You can use the :func:`build_processor <ray.data.llm.build_processor>` API to construct a processor.
 The following example uses the :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` to construct a processor for the `unsloth/Llama-3.1-8B-Instruct` model.
 Upon execution, the Processor object instantiates replicas of the vLLM engine (using :meth:`map_batches <ray.data.Dataset.map_batches>` under the hood).
 
