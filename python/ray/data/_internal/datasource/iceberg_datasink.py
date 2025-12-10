@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from pyiceberg.manifest import DataFile
     from pyiceberg.table import Table
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -79,7 +78,7 @@ class IcebergDatasink(
 
         return catalog.load_catalog(self._catalog_name, **self._catalog_kwargs)
 
-    def _reload_table(self) -> None:
+    def _reload_table(self, schema: Optional["pa.Schema"] = None) -> None:
         """Reload the Iceberg table from the catalog."""
         catalog = self._get_catalog()
         self._table = catalog.load_table(self.table_identifier)

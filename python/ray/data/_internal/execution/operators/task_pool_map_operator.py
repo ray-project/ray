@@ -98,6 +98,8 @@ class TaskPoolMapOperator(MapOperator):
         self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
 
     def _add_bundled_input(self, bundle: RefBundle):
+        # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
+        self._notify_first_input(bundle)
         # Submit the task as a normal Ray task.
         ctx = TaskContext(
             task_idx=self._next_data_task_idx,

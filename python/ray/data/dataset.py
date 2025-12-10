@@ -2963,7 +2963,7 @@ class Dataset:
 
             >>> import ray
             >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-            >>> ds.unique("target")
+            >>> sorted(ds.unique("target"))
             [0, 1, 2]
 
             One common use case is to convert the class labels
@@ -2986,7 +2986,7 @@ class Dataset:
         Returns:
             A list with unique elements in the given column.
         """  # noqa: E501
-        ret = self._aggregate_on(Unique, column)
+        ret = self._aggregate_on(Unique, column, ignore_nulls=False)
         return self._aggregate_result(ret)
 
     @AllToAllAPI
@@ -5271,15 +5271,13 @@ class Dataset:
         logical_plan = LogicalPlan(write_op, self.context)
 
         try:
-            # NOTE: on_write_start is now called automatically by the Write operator
-            # when the first input bundle arrives, with the schema extracted from
-            # the data. This enables schema-dependent initialization (e.g., Iceberg
-            # schema evolution) without requiring upfront schema computation.
+            # Call on_write_start for _FileDatasink before execution to handle
+            # SaveMode checks (ERROR raises, OVERWRITE deletes contents, IGNORE skips)
+            # and directory creation. For other datasinks, on_write_start is called
+            # automatically by the Write operator when the first input bundle arrives.
             if isinstance(datasink, _FileDatasink):
-                # For file datasinks, we still need to check mode before execution.
-                # Call on_write_start early to create the directory.
                 datasink.on_write_start()
-                if not datasink.has_created_dir and datasink.mode == SaveMode.IGNORE:
+                if datasink._skip_write:
                     logger.info(
                         f"Ignoring write because {datasink.path} already exists"
                     )
@@ -6792,12 +6790,23 @@ class Schema:
 
         For non-Arrow compatible types, we return "object".
         """
+        import pandas as pd
         import pyarrow as pa
+        from pandas.core.dtypes.dtypes import BaseMaskedDtype
 
-        from ray.data._internal.arrow_ops.transform_pyarrow import (
-            convert_pandas_dtype_to_pyarrow,
-        )
         from ray.data.extensions import ArrowTensorType, TensorDtype
+
+        def _convert_to_pa_type(
+            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype]
+        ) -> pa.DataType:
+            if isinstance(dtype, pd.ArrowDtype):
+                return dtype.pyarrow_dtype
+            elif isinstance(dtype, pd.StringDtype):
+                # StringDtype is not a BaseMaskedDtype, handle separately
+                return pa.string()
+            elif isinstance(dtype, BaseMaskedDtype):
+                dtype = dtype.numpy_dtype
+            return pa.from_numpy_dtype(dtype)
 
         if isinstance(self.base_schema, pa.lib.Schema):
             return list(self.base_schema.types)
@@ -6814,13 +6823,13 @@ class Schema:
                 arrow_types.append(
                     pa_tensor_type_class(
                         shape=dtype._shape,
-                        dtype=convert_pandas_dtype_to_pyarrow(dtype._dtype),
+                        dtype=_convert_to_pa_type(dtype._dtype),
                     )
                 )
 
             else:
                 try:
-                    arrow_types.append(convert_pandas_dtype_to_pyarrow(dtype))
+                    arrow_types.append(_convert_to_pa_type(dtype))
                 except pa.ArrowNotImplementedError:
                     arrow_types.append(object)
                 except Exception:

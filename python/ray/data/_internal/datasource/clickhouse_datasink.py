@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     import pyarrow as pa
 
 import pyarrow
+import pyarrow as pa
 import pyarrow.types as pat
 
 from ray.data._internal.execution.interfaces import TaskContext
