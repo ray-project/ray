@@ -1,8 +1,13 @@
-# How to contribute an improvement
+# Contributing Guide
 
 If you want your changes to be reviewed and merged quickly, following a few key 
 practices makes a big difference. Clear, focused, and well-structured contributions help 
 reviewers understand your intent and ensure your improvements land smoothly.
+
+:::{seealso}
+This guide covers contributing to Ray Data in specific. For information on contributing 
+to the Ray project in general, see the {ref}`general Ray contributing guide<getting-involved>`.
+:::
 
 ## Find something to work on
 
