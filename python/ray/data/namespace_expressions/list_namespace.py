@@ -216,9 +216,9 @@ class _ListNamespace:
                     arr = arr.combine_chunks()
 
                 arr_type = arr.type
-                arr_is_list = pyarrow.types.is_list(arr_type) or pyarrow.types.is_large_list(
+                arr_is_list = pyarrow.types.is_list(
                     arr_type
-                )
+                ) or pyarrow.types.is_large_list(arr_type)
                 arr_is_fixed_size = pyarrow.types.is_fixed_size_list(arr_type)
                 if not (arr_is_list or arr_is_fixed_size):
                     raise TypeError(
@@ -226,9 +226,9 @@ class _ListNamespace:
                     )
 
                 child_type = arr_type.value_type
-                child_is_list = pyarrow.types.is_list(child_type) or pyarrow.types.is_large_list(
+                child_is_list = pyarrow.types.is_list(
                     child_type
-                )
+                ) or pyarrow.types.is_large_list(child_type)
                 child_is_fixed_size = pyarrow.types.is_fixed_size_list(child_type)
                 if not (child_is_list or child_is_fixed_size):
                     raise TypeError(
