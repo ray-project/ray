@@ -58,7 +58,9 @@ def _run_crane_command(args: List[str]) -> Tuple[int, str]:
                 logger.error(
                     f"Crane command `{' '.join(command)}` failed with stderr:\n{stderr}"
                 )
-                raise subprocess.CalledProcessError(return_code, command, output, stderr)
+                raise subprocess.CalledProcessError(
+                    return_code, command, output, stderr
+                )
             return return_code, output
     except subprocess.CalledProcessError as e:
         return e.returncode, e.output
@@ -133,4 +135,3 @@ def call_crane_manifest(tag: str) -> Tuple[int, str]:
         since stderr is not captured.
     """
     return _run_crane_command(["manifest", tag])
-
