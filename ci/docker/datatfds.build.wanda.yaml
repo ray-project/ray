@@ -8,8 +8,9 @@ srcs:
   - python/requirements/test-requirements.txt
   - python/requirements/ml/dl-cpu-requirements.txt
   - python/requirements/ml/data-requirements.txt
+  - python/deplocks/tests/data/$REQUIREMENTS_FILE
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON
-  - ARROW_VERSION=14.*
+  - PYTHON_DEPSET=python/deplocks/tests/data/$REQUIREMENTS_FILE
 tags:
   - cr.ray.io/rayproject/datatfdsbuild-py$PYTHON

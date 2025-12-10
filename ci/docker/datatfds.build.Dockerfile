@@ -6,18 +6,18 @@ FROM $DOCKER_IMAGE_BASE_BUILD
 ARG ARROW_VERSION=14.*
 ARG ARROW_MONGO_VERSION=
 ARG RAY_CI_JAVA_BUILD=
-
+ARG PYTHON_DEPSET
 SHELL ["/bin/bash", "-ice"]
 
 COPY . .
 
+COPY $PYTHON_DEPSET $HOME/python_depset.lock
+
 RUN <<EOF
 #!/bin/bash
 
-ARROW_VERSION=$ARROW_VERSION ./ci/env/install-dependencies.sh
-# We manually install tensorflow-datasets and tensorflow here. Adding the library via dl-cpu-requirements.txt or
-# dl-gpu-requirements.txt files causes unresolvable dependency conflicts with protobuf for python < 3.11
+set -euo pipefail
 
-pip install tensorflow-datasets==4.9.9 tensorflow==2.20.0
+uv pip install -r $HOME/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
 
 EOF
