@@ -1,10 +1,19 @@
+import os
+import tempfile
 from unittest.mock import MagicMock
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 import ray.data
 import ray.train
-from ray.data import DataContext, ExecutionOptions, ExecutionResources
+from ray.data import (
+    DataContext,
+    ExecutionOptions,
+    ExecutionResources,
+    FileShuffleConfig,
+)
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data.tests.conftest import restore_data_context  # noqa: F401
 from ray.train.v2._internal.callbacks.datasets import DatasetsSetupCallback
@@ -82,7 +91,7 @@ def test_data_config_validation():
         ray.train.DataConfig(datasets_to_split={})
 
 
-def test_dataset_setup_callback(ray_start_4_cpus):
+def test_datasets_callback(ray_start_4_cpus):
     """Check that the `DatasetsSetupCallback` correctly configures the
     dataset shards and execution options."""
     NUM_WORKERS = 2
@@ -225,6 +234,135 @@ def test_per_epoch_preprocessing(ray_start_4_cpus, cache_random_preprocessing):
         scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
     )
     trainer.fit()
+
+
+@pytest.mark.parametrize("different_seeds_across_epochs", [True, False])
+def test_parquet_file_shuffle_with_epochs(
+    ray_start_4_cpus, restore_data_context, different_seeds_across_epochs  # noqa: F811,
+):
+    """Test that Parquet file shuffling produces:
+    1. Different results across epochs when different_seeds_across_epochs=True
+       (FileShuffleConfig with base_seed: seed = base_seed + epoch_idx)
+    2. Same results across epochs when different_seeds_across_epochs=False
+       (FileShuffleConfig with seed: seed remains constant)
+    3. Same results for different datasets with same shuffle config per epoch
+    """
+    NUM_WORKERS = 2
+    NUM_EPOCHS = 5
+    NUM_FILES = 15
+
+    # Create temporary directory for test files
+    with tempfile.TemporaryDirectory() as tmp_path:
+
+        def write_parquet_file(path, file_index):
+            """Write a Parquet file with unique data for each file."""
+            data = {
+                "file_id": [file_index] * 10,
+                "row_id": range(10 * file_index, 10 * (file_index + 1)),
+                "value": [f"file_{file_index}_row_{i}" for i in range(10)],
+            }
+            table = pa.Table.from_pydict(data)
+            pq.write_table(table, path)
+
+        # Create multiple Parquet files
+        paths = [
+            os.path.join(tmp_path, f"test_file_{i}.parquet") for i in range(NUM_FILES)
+        ]
+        for i, path in enumerate(paths):
+            write_parquet_file(path, i)
+
+        # Configure execution with preserve_order to ensure deterministic results
+        execution_options = ExecutionOptions()
+        execution_options.preserve_order = True
+
+        # Create shuffle config based on parameter
+        if different_seeds_across_epochs:
+            shuffle_config = FileShuffleConfig(seed=42)
+        else:
+            shuffle_config = FileShuffleConfig(seed=42, reseed_after_epoch=False)
+
+        # Create two datasets with the same shuffle config
+        ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+        ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+
+        data_config = ray.train.DataConfig(execution_options=execution_options)
+
+        def train_fn():
+            # Get dataset shards for both datasets
+            train_ds1 = ray.train.get_dataset_shard("train1")
+            train_ds2 = ray.train.get_dataset_shard("train2")
+
+            # Collect results across multiple epochs
+            ds1_epoch_results = []
+            ds2_epoch_results = []
+
+            for epoch_idx in range(NUM_EPOCHS):
+                ds1_epoch_data = list(train_ds1.iter_rows())
+                ds1_epoch_results.append(ds1_epoch_data)
+
+            for epoch_idx in range(NUM_EPOCHS):
+                ds2_epoch_data = list(train_ds2.iter_rows())
+                ds2_epoch_results.append(ds2_epoch_data)
+
+            # Assertion 1: For the same epoch, ds1 and ds2 should yield identical results
+            # (deterministic shuffling with same base_seed)
+            for i in range(NUM_EPOCHS):
+                assert ds1_epoch_results[i] == ds2_epoch_results[i], (
+                    f"Epoch {i}: ds1 and ds2 should produce identical results "
+                    f"for the same epoch with the same shuffle seed"
+                )
+
+            # Convert results to hashable format for uniqueness check
+            def make_hashable(rows):
+                """Convert a list of dicts to a hashable tuple representation."""
+                return tuple(tuple(sorted(row.items())) for row in rows)
+
+            ds1_hashable_results = {
+                make_hashable(result) for result in ds1_epoch_results
+            }
+            ds2_hashable_results = {
+                make_hashable(result) for result in ds2_epoch_results
+            }
+
+            # Assertion 2: Different epochs produce different results vs same results
+            # based on whether seed varies by epoch_idx
+            if different_seeds_across_epochs:
+                # seed varies by epoch, so expect variation
+                assert len(ds1_hashable_results) == NUM_EPOCHS, (
+                    f"ds1 should produce different results across epochs, "
+                    f"but got {len(ds1_hashable_results)} unique results out of {NUM_EPOCHS}"
+                )
+                assert len(ds2_hashable_results) == NUM_EPOCHS, (
+                    f"ds2 should produce different results across epochs, "
+                    f"but got {len(ds2_hashable_results)} unique results out of {NUM_EPOCHS}"
+                )
+            else:
+                # seed is constant, so expect no variation
+                assert len(ds1_hashable_results) == 1, (
+                    f"ds1 should produce the same results across all epochs, "
+                    f"but got {len(ds1_hashable_results)} unique results out of {NUM_EPOCHS}"
+                )
+                assert len(ds2_hashable_results) == 1, (
+                    f"ds2 should produce the same results across all epochs, "
+                    f"but got {len(ds2_hashable_results)} unique results out of {NUM_EPOCHS}"
+                )
+
+            # Additional verification: Check that the total number of rows is consistent
+            for epoch_idx in range(NUM_EPOCHS):
+                assert (
+                    len(ds1_epoch_results[epoch_idx]) == (NUM_FILES * 10) // NUM_WORKERS
+                )
+                assert (
+                    len(ds2_epoch_results[epoch_idx]) == (NUM_FILES * 10) // NUM_WORKERS
+                )
+
+        trainer = DataParallelTrainer(
+            train_fn,
+            datasets={"train1": ds1, "train2": ds2},
+            dataset_config=data_config,
+            scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+        )
+        trainer.fit()
 
 
 @pytest.mark.parametrize("exclude_resources", [None, ExecutionResources(cpu=2, gpu=1)])

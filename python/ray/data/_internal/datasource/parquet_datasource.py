@@ -40,7 +40,10 @@ from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
-from ray.data.datasource.file_based_datasource import FileShuffleConfig
+from ray.data.datasource.file_based_datasource import (
+    _shuffle_file_metadata,
+    _validate_shuffle_arg,
+)
 from ray.data.datasource.file_meta_provider import (
     FileMetadataProvider,
     _handle_read_os_error,
@@ -281,10 +284,9 @@ def _split_predicate_by_columns(
 class ParquetDatasource(Datasource):
     """Parquet datasource, for reading and writing Parquet files.
 
-    The primary difference from ParquetBulkDatasource is that this uses
-    PyArrow's `ParquetDataset` abstraction for dataset reads, and thus offers
-    automatic Arrow dataset schema inference and row count collection at the
-    cost of some potential performance and/or compatibility penalties.
+    This implementation uses PyArrow's `ParquetDataset` abstraction for dataset reads,
+    and thus offers automatic Arrow dataset schema inference and row count collection at
+    the cost of some potential performance and/or compatibility penalties.
     """
 
     _FILE_EXTENSIONS = ["parquet"]
@@ -430,13 +432,10 @@ class ParquetDatasource(Datasource):
         self._partition_schema = _get_partition_columns_schema(
             partitioning, self._pq_paths
         )
-        self._file_metadata_shuffler = None
         self._include_paths = include_paths
         self._partitioning = partitioning
-        if shuffle == "files":
-            self._file_metadata_shuffler = np.random.default_rng()
-        elif isinstance(shuffle, FileShuffleConfig):
-            self._file_metadata_shuffler = np.random.default_rng(shuffle.seed)
+        _validate_shuffle_arg(shuffle)
+        self._shuffle = shuffle
 
         # Sample small number of parquet files to estimate
         #   - Encoding ratio: ratio of file size on disk to approximate expected
@@ -471,24 +470,18 @@ class ParquetDatasource(Datasource):
         return self._estimate_in_mem_size(self._pq_fragments)
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        epoch_idx: int = 0,
     ) -> List[ReadTask]:
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
         # FileBasedDatasource's write side, however.
-        if self._file_metadata_shuffler is not None:
-            files_metadata = list(zip(self._pq_fragments, self._pq_paths))
-            shuffled_files_metadata = [
-                files_metadata[i]
-                for i in self._file_metadata_shuffler.permutation(len(files_metadata))
-            ]
-            pq_fragments, pq_paths = list(map(list, zip(*shuffled_files_metadata)))
-        else:
-            pq_fragments, pq_paths = (
-                self._pq_fragments,
-                self._pq_paths,
-            )
+        pq_fragments, pq_paths = _shuffle_file_metadata(
+            self._pq_fragments, self._pq_paths, self._shuffle, epoch_idx
+        )
 
         # Derive expected target schema of the blocks being read
         target_schema = self._derive_schema(
