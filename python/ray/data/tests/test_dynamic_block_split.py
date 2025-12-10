@@ -277,7 +277,9 @@ def test_dataset(
 
     new_ds = ds.zip(ds)
     new_ds = new_ds.materialize()
-    assert new_ds._plan.initial_num_blocks() == num_blocks_per_task * num_tasks
+    assert (
+        new_ds._plan.initial_num_blocks() == 1
+    )  # 100 rows is less than default target_rows_per_block=25600 fir zip, so there will be only one block
 
     assert len(ds.take(5)) == 5
     assert len(ds.take_all()) == num_blocks_per_task * num_tasks
