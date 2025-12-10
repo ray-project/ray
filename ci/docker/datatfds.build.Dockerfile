@@ -18,6 +18,6 @@ ARROW_VERSION=$ARROW_VERSION ./ci/env/install-dependencies.sh
 # We manually install tensorflow-datasets and tensorflow here. Adding the library via dl-cpu-requirements.txt or
 # dl-gpu-requirements.txt files causes unresolvable dependency conflicts with protobuf for python < 3.11
 
-pip install -U tensorflow-datasets==4.9.9 tensorflow==2.20.0
+pip install tensorflow-datasets==4.9.9 tensorflow==2.20.0
 
 EOF
