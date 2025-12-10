@@ -12,7 +12,7 @@ Collate Utilities
 .. _random-text-generator:
 
 Random Text Generator
----------------------
+=====================
 
 The following helper functions generate random text samples with labels:
 

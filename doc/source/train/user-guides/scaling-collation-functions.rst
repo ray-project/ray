@@ -80,24 +80,48 @@ Ensuring batch size alignment
 -----------------------------
 
 Typically, collate functions are used to create complete batches of data with a target batch size.
-However, if you move the collate function to Ray Data using :meth:`ray.data.Dataset.map_batches`, by default, it will not guarantee the batch size for each function call. Use :meth:`ray.data.Dataset.repartition` with ``target_num_rows_per_block`` to align block boundaries with batch boundaries.
+However, if you move the collate function to Ray Data using :meth:`ray.data.Dataset.map_batches`, by default, it will not guarantee the batch size for each function call.
 
+There are two common problems that you may encounter.
 
-Use ``repartition`` after ``map_batches`` when your collate function produces the same number of output rows as input rows:
+1. The collate function requires a certain number of rows provided as an input to work properly.
+2. You want to avoid any reformatting / rebatching of the data on the training worker process.
+
+To solve these problems, you can use :meth:`ray.data.Dataset.repartition` with ``target_num_rows_per_block`` to ensure the batch size alignment.
+
+By calling ``repartition`` before ``map_batches``, you ensure that the input blocks contain the desired number of rows.
+
+.. code-block:: python
+
+    # Note: If you only use map_batches(batch_size=BATCH_SIZE), you are not guaranteed to get the desired number of rows as an input.
+    dataset = dataset.repartition(target_num_rows_per_block=BATCH_SIZE).map_batches(collate_fn, batch_size=BATCH_SIZE)
+
+By calling ``repartition`` after ``map_batches``, you ensure that the output blocks contain the desired number of rows. This avoids any reformatting / rebatching of the data on the training worker process.
 
 .. code-block:: python
 
     dataset = dataset.map_batches(collate_fn, batch_size=BATCH_SIZE).repartition(target_num_rows_per_block=BATCH_SIZE)
 
-This ensures the collate function receives batches of size ``BATCH_SIZE``, and the output blocks also contain ``BATCH_SIZE`` rows.
+    def train_func():
+        for batch in ray.train.get_dataset_shard("train").iter_torch_batches(
+            collate_fn=None,
+            batch_size=BATCH_SIZE,
+        ):
+            # Training logic here
+            pass
 
+    trainer = TorchTrainer(
+        train_func,
+        datasets={"train": train_dataset},
+        scaling_config=ScalingConfig(num_workers=4, use_gpu=True)
+    )
+
+    result = trainer.fit()
 
 Putting things together
 -----------------------
 
 Throughout this guide, we use a mock text dataset to demonstrate the optimization. You can find the implementation of the mock dataset in :ref:`random-text-generator`.
-
-
 
 .. tab-set::
     .. tab-item:: Baseline implementation
@@ -200,7 +224,7 @@ Throughout this guide, we use a mock text dataset to demonstrate the optimizatio
             def train_func():
                 # Collate function already ran in Ray Data
                 for batch in ray.train.get_dataset_shard("train").iter_torch_batches(
-                    collate_fn=None,    # numpy array is converted to torch.Tensor automatically
+                    collate_fn=None,
                     batch_size=BATCH_SIZE,
                 ):
                     # Training logic here
@@ -218,7 +242,7 @@ Throughout this guide, we use a mock text dataset to demonstrate the optimizatio
                     batch_size=BATCH_SIZE,
                     batch_format="pyarrow",
                 )
-                .repartition(target_num_rows_per_block=BATCH_SIZE)  # Ensure outputs match batch size
+                .repartition(target_num_rows_per_block=BATCH_SIZE)  # Ensure batch size alignment
             )
 
             trainer = TorchTrainer(
