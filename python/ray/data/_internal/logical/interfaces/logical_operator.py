@@ -1,13 +1,15 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
 
 from .operator import Operator
 from ray.data.block import BlockMetadata
-from ray.data.expressions import Expr
 
 if TYPE_CHECKING:
     from ray.data.block import Schema
+    from ray.data.expressions import Expr
 
 
 class LogicalOperator(Operator):

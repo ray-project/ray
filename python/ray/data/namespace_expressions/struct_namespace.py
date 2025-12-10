@@ -60,7 +60,7 @@ class _StructNamespace:
         """
         # Infer return type from the struct field type
         return_dtype = DataType(object)  # fallback
-        if self._expr.data_type.is_arrow_type():
+        if self._expr._is_resolved() and self._expr.data_type.is_arrow_type():
             arrow_type = self._expr.data_type.to_arrow_dtype()
             if pyarrow.types.is_struct(arrow_type):
                 try:
