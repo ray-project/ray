@@ -72,74 +72,13 @@ doctest(
             "**/examples/**",
             "**/tests/**",
             "**/test_*.py",
-            # Deprecated modules
-            "utils/memory.py",
+            # Deprecated stub files that raise ValueError on import.
             "offline/off_policy_estimator.py",
             "offline/estimators/feature_importance.py",
-            # Missing imports
-            "algorithms/dreamerv3/**",
-            # FIXME: These modules contain broken examples that weren't previously
-            # tested.
-            "algorithms/algorithm_config.py",
-            "core/distribution/torch/torch_distribution.py",
-            "core/models/base.py",
-            "core/models/specs/specs_base.py",
-            "core/models/specs/specs_dict.py",
-            "env/wrappers/pettingzoo_env.py",
-            "evaluation/collectors/sample_collector.py",
-            "evaluation/metrics.py",
-            "evaluation/observation_function.py",
-            "evaluation/postprocessing.py",
-            "execution/buffers/mixin_replay_buffer.py",
-            "models/catalog.py",
-            "models/preprocessors.py",
-            "models/repeated_values.py",
-            "policy/rnn_sequencing.py",
-            "utils/actor_manager.py",
-            "utils/filter.py",
-            "utils/from_config.py",
-            "utils/metrics/window_stat.py",
-            "utils/pre_checks/env.py",
-            "utils/replay_buffers/multi_agent_mixin_replay_buffer.py",
-            "utils/spaces/space_utils.py",
+            "utils/memory.py",
         ],
     ),
     tags = ["team:rllib"],
-)
-
-# --------------------------------------------------------------------
-# Benchmarks
-#
-# Tag: benchmark
-#
-# This is smoke-testing the benchmark scripts.
-# --------------------------------------------------------------------
-py_test(
-    name = "torch_compile_inference_bm",
-    size = "medium",
-    srcs = ["benchmarks/torch_compile/run_inference_bm.py"],
-    args = ["--smoke-test"],
-    main = "benchmarks/torch_compile/run_inference_bm.py",
-    tags = [
-        "benchmark",
-        "exclusive",
-        "team:rllib",
-        "torch_2.x_only_benchmark",
-    ],
-)
-
-py_test(
-    name = "torch_compile_ppo_with_inference",
-    size = "medium",
-    srcs = ["benchmarks/torch_compile/run_ppo_with_inference_bm.py"],
-    args = ["--smoke-test"],
-    main = "benchmarks/torch_compile/run_ppo_with_inference_bm.py",
-    tags = [
-        "benchmark",
-        "exclusive",
-        "team:rllib",
-        "torch_2.x_only_benchmark",
-    ],
 )
 
 # --------------------------------------------------------------------
@@ -746,6 +685,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_dqn_multi_gpu",
     size = "large",
+    timeout = "eternal",
     srcs = ["examples/algorithms/dqn/multi_agent_cartpole_dqn.py"],
     args = [
         "--as-test",
@@ -912,6 +852,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_impala_multi_gpu",
     size = "large",
+    timeout = "eternal",
     srcs = ["examples/algorithms/impala/multi_agent_cartpole_impala.py"],
     args = [
         "--as-test",
@@ -1736,6 +1677,7 @@ py_test(
 py_test(
     name = "learning_tests_mountaincar_sac_multi_gpu",
     size = "large",
+    timeout = "eternal",
     srcs = ["examples/algorithms/sac/mountaincar_sac.py"],
     args = [
         "--as-test",
@@ -1892,6 +1834,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_pendulum_sac_multi_gpu",
     size = "large",
+    timeout = "eternal",
     srcs = ["examples/algorithms/sac/multi_agent_pendulum_sac.py"],
     args = [
         "--num-agents=2",
@@ -3088,6 +3031,16 @@ py_test(
 
 # Test metrics (metrics logger, stats)
 py_test(
+    name = "test_legacy_stats",
+    size = "small",
+    srcs = ["utils/metrics/tests/test_legacy_stats.py"],
+    tags = [
+        "team:rllib",
+        "utils",
+    ],
+)
+
+py_test(
     name = "test_metrics_logger",
     size = "small",
     srcs = ["utils/metrics/tests/test_metrics_logger.py"],
@@ -3102,6 +3055,7 @@ py_test(
     size = "small",
     srcs = ["utils/metrics/tests/test_stats.py"],
     tags = [
+        "gpu",
         "team:rllib",
         "utils",
     ],
@@ -3517,10 +3471,10 @@ py_test(
 )
 
 py_test(
-    name = "examples/catalogs/mobilenet_v2_encoder",
+    name = "examples/_old_api_stack/catalogs/mobilenet_v2_encoder",
     size = "small",
-    srcs = ["examples/catalogs/mobilenet_v2_encoder.py"],
-    main = "examples/catalogs/mobilenet_v2_encoder.py",
+    srcs = ["examples/_old_api_stack/catalogs/mobilenet_v2_encoder.py"],
+    main = "examples/_old_api_stack/catalogs/mobilenet_v2_encoder.py",
     tags = [
         "examples",
         "no_main",
@@ -3613,10 +3567,10 @@ py_test(
 )
 
 py_test(
-    name = "examples/checkpoints/cartpole_dqn_export",
+    name = "examples/_old_api_stack/checkpoints/cartpole_dqn_export",
     size = "small",
-    srcs = ["examples/checkpoints/cartpole_dqn_export.py"],
-    main = "examples/checkpoints/cartpole_dqn_export.py",
+    srcs = ["examples/_old_api_stack/checkpoints/cartpole_dqn_export.py"],
+    main = "examples/_old_api_stack/checkpoints/cartpole_dqn_export.py",
     tags = [
         "examples",
         "exclusive",
@@ -4181,13 +4135,23 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/envs/greyscale_env",
+    name = "examples/_old_api_stack/envs/greyscale_env",
     size = "medium",
-    srcs = ["examples/envs/greyscale_env.py"],
+    srcs = ["examples/_old_api_stack/envs/greyscale_env.py"],
     args = ["--stop-iters=1 --as-test --framework torch"],
     tags = [
         "examples",
         "no_main",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "footsies_suppress_unity_logs",
+    size = "large",
+    srcs = ["examples/envs/classes/multi_agent/footsies/test/footsies_suppress_unity_logs.py"],
+    tags = [
+        "examples",
         "team:rllib",
     ],
 )
@@ -4657,14 +4621,14 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/inference/policy_inference_after_training_with_lstm_tf",
+    name = "examples/_old_api_stack/inference/policy_inference_after_training_with_lstm_tf",
     size = "medium",
-    srcs = ["examples/inference/policy_inference_after_training_with_lstm.py"],
+    srcs = ["examples/_old_api_stack/inference/policy_inference_after_training_with_lstm.py"],
     args = [
         "--stop-iters=1",
         "--framework=tf",
     ],
-    main = "examples/inference/policy_inference_after_training_with_lstm.py",
+    main = "examples/_old_api_stack/inference/policy_inference_after_training_with_lstm.py",
     tags = [
         "examples",
         "exclusive",
@@ -4674,14 +4638,14 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/inference/policy_inference_after_training_with_lstm_torch",
+    name = "examples/_old_api_stack/inference/policy_inference_after_training_with_lstm_torch",
     size = "medium",
-    srcs = ["examples/inference/policy_inference_after_training_with_lstm.py"],
+    srcs = ["examples/_old_api_stack/inference/policy_inference_after_training_with_lstm.py"],
     args = [
         "--stop-iters=1",
         "--framework=torch",
     ],
-    main = "examples/inference/policy_inference_after_training_with_lstm.py",
+    main = "examples/_old_api_stack/inference/policy_inference_after_training_with_lstm.py",
     tags = [
         "examples",
         "exclusive",
@@ -5144,15 +5108,15 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/offline_rl/offline_rl_torch_old_api_stack",
+    name = "examples/_old_api_stack/offline_rl/offline_rl_torch_old_api_stack",
     size = "medium",
-    srcs = ["examples/offline_rl/offline_rl.py"],
+    srcs = ["examples/_old_api_stack/offline_rl/offline_rl.py"],
     args = [
         "--as-test",
         "--stop-reward=-300",
         "--stop-iters=1",
     ],
-    main = "examples/offline_rl/offline_rl.py",
+    main = "examples/_old_api_stack/offline_rl/offline_rl.py",
     tags = [
         "examples",
         "exclusive",
@@ -5316,9 +5280,9 @@ py_test(
 )
 
 py_test(
-    name = "examples/replay_buffer_api",
+    name = "examples/_old_api_stack/replay_buffer_api",
     size = "large",
-    srcs = ["examples/replay_buffer_api.py"],
+    srcs = ["examples/_old_api_stack/replay_buffer_api.py"],
     tags = [
         "examples",
         "team:rllib",

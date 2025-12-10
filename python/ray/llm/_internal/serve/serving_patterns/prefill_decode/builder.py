@@ -20,6 +20,7 @@ from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
 from ray.serve.deployment import Application
 from ray.serve.llm import (
     LLMConfig,
+    build_dp_deployment,
     build_llm_deployment,
 )
 
@@ -119,12 +120,21 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
     """Build a deployable application utilizing prefill/decode disaggregation."""
     pd_config = PDServingArgs.model_validate(pd_serving_args)
 
-    prefill_deployment = build_llm_deployment(
+    # Determine the builder function for prefill and decode deployments independently based on data parallelism.
+    prefill_dp_size = pd_config.prefill_config.engine_kwargs.get(
+        "data_parallel_size", 1
+    )
+    decode_dp_size = pd_config.decode_config.engine_kwargs.get("data_parallel_size", 1)
+
+    prefill_builder = (
+        build_dp_deployment if prefill_dp_size > 1 else build_llm_deployment
+    )
+    decode_builder = build_dp_deployment if decode_dp_size > 1 else build_llm_deployment
+
+    prefill_deployment = prefill_builder(
         pd_config.prefill_config, name_prefix="Prefill:"
     )
-    decode_deployment = build_llm_deployment(
-        pd_config.decode_config, name_prefix="Decode:"
-    )
+    decode_deployment = decode_builder(pd_config.decode_config, name_prefix="Decode:")
 
     # Get the default deployment options from the PDProxyServer class based on the prefill and decode configs.
     proxy_cls_config = pd_config.proxy_cls_config
