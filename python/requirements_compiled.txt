@@ -1094,7 +1094,7 @@ mlflow-skinny==2.22.0
     # via mlflow
 mmh3==4.1.0
     # via pyiceberg
-modin==0.22.2 ; python_version < "3.12"
+modin==0.37.1
     # via -r python/requirements/ml/data-requirements.txt
 monotonic==1.6
     # via
@@ -1447,10 +1447,11 @@ packaging==24.2
     #   transformers
     #   utilsforecast
     #   wandb
-pandas==1.5.3 ; python_version < "3.12"
+pandas==2.3.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/data-requirements.txt
+    #   -r python/requirements/test-requirements.txt
     #   ax-platform
     #   cmdstanpy
     #   dask
@@ -2411,6 +2412,7 @@ typing-extensions==4.15.0
     #   huggingface-hub
     #   lightning-utilities
     #   mlflow-skinny
+    #   modin
     #   mypy
     #   myst-nb
     #   nevergrad
@@ -2437,7 +2439,9 @@ typing-extensions==4.15.0
 typing-inspection==0.4.2
     # via pydantic
 tzdata==2025.2
-    # via kombu
+    # via
+    #   kombu
+    #   pandas
 tzlocal==5.3
     # via -r python/requirements/cloud-requirements.txt
 uc-micro-py==1.0.3

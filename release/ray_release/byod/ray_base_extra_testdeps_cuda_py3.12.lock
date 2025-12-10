@@ -2278,7 +2278,9 @@ pandas==2.3.3 \
     --hash=sha256:ee67acbbf05014ea6c763beb097e03cd629961c8a632075eeb34247120abcb4b \
     --hash=sha256:f086f6fe114e19d92014a1966f43a3e62285109afe874f067f5abbdcbb10e59c \
     --hash=sha256:f8bfc0e12dc78f777f323f55c58649591b2cd0c43534e8355c51d3fede5f4dee
-    # via ray
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   ray
 pandocfilters==1.5.0 \
     --hash=sha256:0b679503337d233b4339a817bfc8c50064e2eff681314376a47cb582305a7a38 \
     --hash=sha256:33aae3f25fd1a026079f5d27bdd52496f0e0803b3469282162bafdcbdf6ef14f
