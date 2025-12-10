@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Dict, Optional
 
-from ray._common.deprecation import deprecation_warning
+from ray._common.deprecation import Deprecated
 from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.processor import (
     HttpRequestProcessorConfig as _HttpRequestProcessorConfig,
@@ -384,6 +384,7 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
     pass
 
 
+@Deprecated(new="build_processor", error=False)
 def build_llm_processor(
     config: ProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
@@ -395,11 +396,6 @@ def build_llm_processor(
     """
     [DEPRECATED] Prefer build_processor. Build a LLM processor using the given config.
     """
-    deprecation_warning(
-        old="build_llm_processor",
-        new="build_processor",
-        error=False,
-    )
     return build_processor(
         config,
         preprocess,
