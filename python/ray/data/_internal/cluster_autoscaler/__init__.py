@@ -18,12 +18,12 @@ if TYPE_CHECKING:
 
 
 CLUSTER_AUTOSCALER_ENV_KEY = "RAY_DATA_CLUSTER_AUTOSCALER"
-CLUSTER_AUTOSCALER_ENV_DEFAULT_VALUE = "DEFAULT_V1"
+CLUSTER_AUTOSCALER_ENV_DEFAULT_VALUE = "V1"
 
 
 class ClusterAutoscalerVersion(Enum):
-    DEFAULT_V2 = "DEFAULT_V2"
-    DEFAULT_V1 = "DEFAULT_V1"
+    V2 = "V2"
+    V1 = "V1"
 
 
 def create_cluster_autoscaler(
@@ -31,14 +31,14 @@ def create_cluster_autoscaler(
 ) -> ClusterAutoscaler:
     selected_autoscaler = _get_cluster_autoscaler_version()
 
-    if selected_autoscaler == ClusterAutoscalerVersion.DEFAULT_V2:
+    if selected_autoscaler == ClusterAutoscalerVersion.V2:
         return DefaultClusterAutoscalerV2(
             topology,
             resource_manager,
             execution_id=execution_id,
         )
 
-    elif selected_autoscaler == ClusterAutoscalerVersion.DEFAULT_V1:
+    elif selected_autoscaler == ClusterAutoscalerVersion.V1:
         return DefaultClusterAutoscaler(
             topology,
             resource_manager,
