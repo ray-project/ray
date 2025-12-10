@@ -33,8 +33,10 @@ def get_cached_tokenizer(tokenizer: AnyTokenizer) -> AnyTokenizer:
 
     tokenizer_all_special_ids = set(tokenizer.all_special_ids)
     tokenizer_all_special_tokens = set(tokenizer.all_special_tokens)
-    # all_special_tokens_extended is removed in transformers v5.
-    # TODO(seiji) remove the attribute once vLLM moves to transformers v5.
+    # all_special_tokens_extended is removed in transformers v5, used in latest
+    # SGLang version. We require this SGLang version bc it's ABI compatible with
+    # PyTorch 2.9, which is installed by vLLM.
+    # TODO(seiji) remove the attribute completely once vLLM moves to transformers v5.
     tokenizer_all_special_tokens_extended = getattr(
         tokenizer, "all_special_tokens_extended", None
     )
