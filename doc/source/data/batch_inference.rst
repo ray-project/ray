@@ -189,7 +189,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
             :skipif: True
 
             import ray
-            from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
+            from ray.data.llm import vLLMEngineProcessorConfig, build_processor
             import numpy as np
 
             config = vLLMEngineProcessorConfig(
@@ -202,7 +202,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
                 concurrency=1,
                 batch_size=64,
             )
-            processor = build_llm_processor(
+            processor = build_processor(
                 config,
                 preprocess=lambda row: dict(
                     messages=[
