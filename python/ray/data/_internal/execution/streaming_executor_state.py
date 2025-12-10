@@ -27,11 +27,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     _ActorPoolInfo,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
-    AllToAllOperator,
     InternalQueueOperatorMixin,
-)
-from ray.data._internal.execution.operators.hash_shuffle import (
-    HashShuffleProgressBarMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.ranker import Ranker
@@ -39,11 +35,9 @@ from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
 from ray.data._internal.execution.util import memory_string
-from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.util import (
     unify_schemas_with_validation,
 )
-from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     from ray.data.block import Schema
@@ -199,7 +193,6 @@ class OpState:
         # thread-safe type such as `deque`.
         self.output_queue: OpBufferQueue = OpBufferQueue()
         self.op = op
-        self.progress_bar = None
         self.num_completed_tasks = 0
         self.inputs_done_called = False
         # Tracks whether `input_done` is called for each input op.
@@ -216,48 +209,6 @@ class OpState:
 
     def __repr__(self):
         return f"OpState({self.op.name})"
-
-    def initialize_progress_bars(self, index: int, verbose_progress: bool) -> int:
-        """Create progress bars at the given index (line offset in console).
-
-        For AllToAllOperator, zero or more sub progress bar would be created.
-        Return the number of enabled progress bars created for this operator.
-        """
-        contains_sub_progress_bars = isinstance(
-            self.op, AllToAllOperator
-        ) or isinstance(self.op, HashShuffleProgressBarMixin)
-        # Only show 1:1 ops when in verbose progress mode.
-
-        ctx = DataContext.get_current()
-        progress_bar_enabled = (
-            ctx.enable_progress_bars
-            and ctx.enable_operator_progress_bars
-            and (contains_sub_progress_bars or verbose_progress)
-        )
-        self.progress_bar = ProgressBar(
-            "- " + self.op.name,
-            self.op.num_output_rows_total(),
-            unit="row",
-            position=index,
-            enabled=progress_bar_enabled,
-        )
-        num_progress_bars = 1
-        if contains_sub_progress_bars:
-            # Initialize must be called for sub progress bars, even the
-            # bars are not enabled via the DataContext.
-            num_progress_bars += self.op.initialize_sub_progress_bars(index + 1)
-        return num_progress_bars if progress_bar_enabled else 0
-
-    def close_progress_bars(self):
-        """Close all progress bars for this operator."""
-        if self.progress_bar:
-            self.progress_bar.close()
-            contains_sub_progress_bars = isinstance(
-                self.op, AllToAllOperator
-            ) or isinstance(self.op, HashShuffleProgressBarMixin)
-            if contains_sub_progress_bars:
-                # Close all sub progress bars.
-                self.op.close_sub_progress_bars()
 
     def total_enqueued_input_blocks(self) -> int:
         """Total number of blocks currently enqueued among:
@@ -306,10 +257,6 @@ class OpState:
         actor_info = self.op.get_actor_info()
         if ref.num_rows() is not None:
             self.output_row_count += ref.num_rows()
-            if self.progress_bar:
-                self.progress_bar.update(
-                    ref.num_rows(), self.op.num_output_rows_total()
-                )
 
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting
@@ -319,12 +266,6 @@ class OpState:
             next_op.metrics.num_external_inqueue_bytes += ref.size_bytes()
         self.op.metrics.num_external_outqueue_blocks += len(ref.blocks)
         self.op.metrics.num_external_outqueue_bytes += ref.size_bytes()
-
-    def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
-        """Update the console with the latest operator progress."""
-        if self.progress_bar:
-            self.progress_bar.set_description(self.summary_str(resource_manager))
-            self.progress_bar.refresh()
 
     def summary_str_raw(
         self, resource_manager: ResourceManager, verbose: bool = False

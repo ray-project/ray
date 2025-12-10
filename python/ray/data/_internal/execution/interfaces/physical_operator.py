@@ -28,7 +28,6 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import StatsDict, Timer
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
@@ -866,19 +865,3 @@ def estimate_total_num_of_blocks(
         )
 
     return (0, 0, 0)
-
-
-def _create_sub_pb(
-    name: str, total_output_rows: Optional[int], position: int
-) -> Tuple[ProgressBar, int]:
-    progress_bar = ProgressBar(
-        name,
-        total_output_rows or 1,
-        unit="row",
-        position=position,
-    )
-    # NOTE: call `set_description` to trigger the initial print of progress
-    # bar on console.
-    progress_bar.set_description(f"  *- {name}")
-    position += 1
-    return progress_bar, position
