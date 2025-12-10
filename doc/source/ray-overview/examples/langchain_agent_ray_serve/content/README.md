@@ -1,4 +1,4 @@
-# Build a tool-using agent with LangChain / LangGraph, and Ray Serve on Anyscale
+# Build a tool-using agent
 
 This tutorial guides you through building and deploying a sophisticated, tool-using agent using LangChain, LangGraph, and Ray Serve on Anyscale.
 
