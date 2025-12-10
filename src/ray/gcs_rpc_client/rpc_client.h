@@ -186,6 +186,10 @@ class GcsRpcClient {
     runtime_env_grpc_client_ = std::make_shared<GrpcClient<RuntimeEnvGcsService>>(
         channel_, client_call_manager, address);
 
+    virtual_cluster_info_grpc_client_ =
+        std::make_shared<GrpcClient<VirtualClusterInfoGcsService>>(
+            channel_, client_call_manager, address);
+
     retryable_grpc_client_ = RetryableGrpcClient::Create(
         channel_,
         client_call_manager.GetMainService(),
@@ -587,6 +591,52 @@ class GcsRpcClient {
                              runtime_env_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
+  // Create or update a virtual cluster.
+  VOID_GCS_RPC_CLIENT_METHOD(VirtualClusterInfoGcsService,
+                             CreateOrUpdateVirtualCluster,
+                             virtual_cluster_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  // Remove specified nodes from a virtual cluster.
+  VOID_GCS_RPC_CLIENT_METHOD(VirtualClusterInfoGcsService,
+                             RemoveNodesFromVirtualCluster,
+                             virtual_cluster_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  // Remove a virtual cluster.
+  VOID_GCS_RPC_CLIENT_METHOD(VirtualClusterInfoGcsService,
+                             RemoveVirtualCluster,
+                             virtual_cluster_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  // Get virtual clusters.
+  VOID_GCS_RPC_CLIENT_METHOD(VirtualClusterInfoGcsService,
+                             GetVirtualClusters,
+                             virtual_cluster_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  // Create job cluster.
+  VOID_GCS_RPC_CLIENT_METHOD(VirtualClusterInfoGcsService,
+                             CreateJobCluster,
+                             virtual_cluster_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  // Get virtual clusters view.
+  VOID_GCS_RPC_CLIENT_METHOD(VirtualClusterInfoGcsService,
+                             GetAllVirtualClusterInfo,
+                             virtual_cluster_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  VOID_GCS_RPC_CLIENT_METHOD(VirtualClusterInfoGcsService,
+                             UpdateAutoscalingConfig,
+                             virtual_cluster_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  VOID_GCS_RPC_CLIENT_METHOD(VirtualClusterInfoGcsService,
+                             GetAutoscalingConfig,
+                             virtual_cluster_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
   std::pair<std::string, int64_t> GetAddress() const {
     return std::make_pair(gcs_address_, gcs_port_);
   }
@@ -614,6 +664,8 @@ class GcsRpcClient {
   std::shared_ptr<GrpcClient<RuntimeEnvGcsService>> runtime_env_grpc_client_;
   std::shared_ptr<GrpcClient<autoscaler::AutoscalerStateService>>
       autoscaler_state_grpc_client_;
+  std::shared_ptr<GrpcClient<VirtualClusterInfoGcsService>>
+      virtual_cluster_info_grpc_client_;
 
   friend class GcsClientReconnectionTest;
   FRIEND_TEST(GcsClientReconnectionTest, ReconnectionBackoff);

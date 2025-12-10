@@ -44,7 +44,6 @@ from ray._private.utils import (
     parse_resources_json,
 )
 from ray._private.internal_api import memory_summary
-from ray._private.usage import usage_lib
 from ray._private.gcs_utils import GcsChannel
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_service_pb2 import (

@@ -19,6 +19,7 @@
 #include <utility>
 
 #include "ray/common/gcs_callback_types.h"
+#include "ray/common/virtual_cluster_id.h"
 #include "ray/pubsub/subscriber_interface.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -63,6 +64,11 @@ class GcsSubscriber {
 
   Status SubscribeAllWorkerFailures(
       const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe,
+      const gcs::StatusCallback &done);
+
+  Status SubscribeAllVirtualClusters(
+      const gcs::SubscribeCallback<VirtualClusterID, rpc::VirtualClusterTableData>
+          &subscribe,
       const gcs::StatusCallback &done);
 
   /// Prints debugging info for the subscriber.

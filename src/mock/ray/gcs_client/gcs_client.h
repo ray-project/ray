@@ -50,6 +50,7 @@ class MockGcsClient : public GcsClient {
     mock_placement_group_accessor = new MockPlacementGroupInfoAccessor();
     mock_internal_kv_accessor = new MockInternalKVAccessor();
     mock_task_accessor = new MockTaskInfoAccessor();
+    mock_virtual_cluster_accessor = new MockVirtualClusterInfoAccessor();
 
     GcsClient::job_accessor_.reset(mock_job_accessor);
     GcsClient::actor_accessor_.reset(mock_actor_accessor);
@@ -60,6 +61,7 @@ class MockGcsClient : public GcsClient {
     GcsClient::placement_group_accessor_.reset(mock_placement_group_accessor);
     GcsClient::internal_kv_accessor_.reset(mock_internal_kv_accessor);
     GcsClient::task_accessor_.reset(mock_task_accessor);
+    GcsClient::virtual_cluster_accessor_.reset(mock_virtual_cluster_accessor);
   }
   MockActorInfoAccessor *mock_actor_accessor;
   MockJobInfoAccessor *mock_job_accessor;
@@ -70,6 +72,7 @@ class MockGcsClient : public GcsClient {
   MockPlacementGroupInfoAccessor *mock_placement_group_accessor;
   MockInternalKVAccessor *mock_internal_kv_accessor;
   MockTaskInfoAccessor *mock_task_accessor;
+  MockVirtualClusterInfoAccessor *mock_virtual_cluster_accessor;
 };
 
 }  // namespace gcs

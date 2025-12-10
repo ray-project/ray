@@ -119,6 +119,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
     node_accessor_->AsyncResubscribe();
     node_resource_accessor_->AsyncResubscribe();
     worker_accessor_->AsyncResubscribe();
+    virtual_cluster_accessor_->AsyncResubscribe();
   };
 
   rpc::Address gcs_address;
@@ -135,7 +136,8 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
           rpc::ChannelType::GCS_JOB_CHANNEL,
           rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
           rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL,
-          rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL},
+          rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
+          rpc::ChannelType::RAY_VIRTUAL_CLUSTER_CHANNEL},
       /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
       /*get_client=*/
       [this](const rpc::Address &) {
@@ -158,6 +160,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
   task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
   runtime_env_accessor_ = std::make_unique<RuntimeEnvAccessor>(this);
   autoscaler_state_accessor_ = std::make_unique<AutoscalerStateAccessor>(this);
+  virtual_cluster_accessor_ = std::make_unique<VirtualClusterInfoAccessor>(this);
   publisher_accessor_ = std::make_unique<PublisherAccessor>(this);
 
   RAY_LOG(DEBUG) << "GcsClient connected "

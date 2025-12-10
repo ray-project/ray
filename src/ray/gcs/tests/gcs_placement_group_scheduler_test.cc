@@ -27,10 +27,13 @@
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_node_manager.h"
 #include "ray/gcs/gcs_placement_group.h"
+#include "ray/gcs/gcs_placement_group_scheduler.h"
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/gcs_table_storage.h"
+#include "ray/gcs/gcs_virtual_cluster_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/util/counter_map.h"
@@ -66,19 +69,25 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         /*is_node_available_fn=*/
         [](auto) { return true; },
         /*is_local_node_with_raylet=*/false);
+    cluster_resource_manager_ =
+        std::make_unique<ray::ClusterResourceManager>(io_service_);
+    gcs_virtual_cluster_manager_ = std::make_unique<gcs::GcsVirtualClusterManager>(
+        io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
     gcs_node_manager_ =
         std::make_shared<GcsNodeManager>(gcs_publisher_.get(),
                                          gcs_table_storage_.get(),
                                          io_service_,
                                          raylet_client_pool_.get(),
                                          ClusterID::Nil(),
+                                         *gcs_virtual_cluster_manager_,
                                          /*ray_event_recorder=*/fake_ray_event_recorder_,
                                          /*session_name=*/"");
     gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
         io_service_,
         cluster_resource_scheduler_->GetClusterResourceManager(),
         *gcs_node_manager_,
-        local_node_id);
+        local_node_id,
+        *gcs_virtual_cluster_manager_);
     store_client_ = std::make_shared<InMemoryStoreClient>();
     raylet_client_pool_ = std::make_unique<rpc::RayletClientPool>(
         [this](const rpc::Address &addr) { return raylet_clients_[addr.port()]; });
@@ -310,6 +319,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   std::shared_ptr<GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>> counter_;
+  std::unique_ptr<ray::ClusterResourceManager> cluster_resource_manager_;
+  std::unique_ptr<ray::gcs::GcsVirtualClusterManager> gcs_virtual_cluster_manager_;
 };
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestSpreadScheduleFailedWithZeroNode) {

@@ -17,7 +17,9 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/postable.h"
 #include "ray/common/id.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/gcs/gcs_table_storage.h"
+#include "ray/util/container_util.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -65,6 +67,17 @@ class GcsInitData {
     return placement_group_table_data_;
   }
 
+  /// Get virtual cluster metadata.
+  const absl::flat_hash_map<VirtualClusterID, rpc::VirtualClusterTableData>
+      &VirtualClusters() const {
+    return virtual_cluster_table_data_;
+  }
+
+  /// Get worker metadata.
+  const absl::flat_hash_map<WorkerID, rpc::WorkerTableData> &Workers() const {
+    return worker_table_data_;
+  }
+
  private:
   /// Load job metadata from the store into memory asynchronously.
   ///
@@ -88,6 +101,16 @@ class GcsInitData {
 
   void AsyncLoadActorTaskSpecTableData(Postable<void()> on_done);
 
+  /// Load virtual cluster metadata from the store into memory asynchronously.
+  ///
+  /// \param on_done The callback when virtual cluster metadata is loaded successfully.
+  void AsyncLoadVirtualClusterTableData(Postable<void()> on_done);
+
+  /// Load worker metadata from the store into memory asynchronously.
+  ///
+  /// \param on_done The callback when worker metadata is loaded successfully.
+  void AsyncLoadWorkerTableData(Postable<void()> on_done);
+
  protected:
   /// The gcs table storage.
   gcs::GcsTableStorage &gcs_table_storage_;
@@ -106,7 +129,22 @@ class GcsInitData {
   absl::flat_hash_map<ActorID, rpc::ActorTableData> actor_table_data_;
 
   absl::flat_hash_map<ActorID, rpc::TaskSpec> actor_task_spec_table_data_;
+
+  /// Virtual cluster metadata.
+  absl::flat_hash_map<VirtualClusterID, rpc::VirtualClusterTableData>
+      virtual_cluster_table_data_;
+
+  /// Worker metadata.
+  absl::flat_hash_map<WorkerID, rpc::WorkerTableData> worker_table_data_;
 };
+
+// Returns true if an actor should be loaded to registered_actors_.
+// `false` Cases:
+// 0. state is DEAD, and is not restartable
+// 1. root owner is job, and job is dead
+// 2. root owner is another detached actor, and that actor is dead
+bool OnInitializeActorShouldLoad(const ray::gcs::GcsInitData &gcs_init_data,
+                                 ray::ActorID actor_id);
 
 }  // namespace gcs
 }  // namespace ray

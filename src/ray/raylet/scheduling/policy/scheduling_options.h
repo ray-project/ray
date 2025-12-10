@@ -50,7 +50,6 @@ struct SchedulingOptions {
                              /*avoid_local_node*/ false,
                              /*require_node_available*/ true,
                              /*avoid_gpu_nodes*/ false,
-                             /*max_cpu_fraction_per_node*/ 1.0,
                              std::move(scheduling_context));
   }
 
@@ -65,7 +64,6 @@ struct SchedulingOptions {
                              avoid_local_node,
                              require_node_available,
                              RayConfig::instance().scheduler_avoid_gpu_nodes(),
-                             /*max_cpu_fraction_per_node*/ 1.0,
                              std::move(scheduling_context));
   }
 

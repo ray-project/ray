@@ -996,6 +996,7 @@ py_test_module_list(
         "test_object_spilling_3.py",
         "test_placement_group_mini_integration.py",
         "test_scheduling_2.py",
+        "test_runtime_env_internal_plugins.py",
     ],
     tags = [
         "exclusive",

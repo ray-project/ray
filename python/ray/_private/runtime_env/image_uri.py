@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import tempfile
+import shlex
 from typing import List, Optional
 import ray
 import ray._private.runtime_env.constants as runtime_env_constants
@@ -26,55 +27,72 @@ default_logger = logging.getLogger(__name__)
 async def _create_impl(image_uri: str, logger: logging.Logger):
     # Pull image if it doesn't exist
     # Also get path to `default_worker.py` inside the image.
-    with tempfile.TemporaryDirectory() as tmpdir:
-        os.chmod(tmpdir, 0o777)
-        result_file = os.path.join(tmpdir, "worker_path.txt")
-        get_worker_path_script = """
+    custom_pull_cmd = os.getenv("RAY_PODMAN_PULL_CMD", "")
+    if custom_pull_cmd:
+        logger.info("Using custom pull command: %s", custom_pull_cmd)
+        cmd = ["sh", "-c", custom_pull_cmd]
+    else:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.chmod(tmpdir, 0o777)
+            result_file = os.path.join(tmpdir, "worker_path.txt")
+            get_worker_path_script = """
 import ray._private.workers.default_worker as dw
 with open('/shared/worker_path.txt', 'w') as f:
     f.write(dw.__file__)
 """
-        cmd = [
-            "podman",
-            "run",
-            "--rm",
-            "-v",
-            f"{tmpdir}:/shared:Z",
-            image_uri,
-            "python",
-            "-c",
-            get_worker_path_script,
-        ]
+            cmd = [
+                "podman",
+                "run",
+                "--rm",
+                "-v",
+                f"{tmpdir}:/shared:Z",
+                image_uri,
+                "python",
+                "-c",
+                get_worker_path_script,
+            ]
 
-        logger.info("Pulling image %s", image_uri)
+    logger.info("Pulling image %s", image_uri)
 
-        process = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    process = await asyncio.create_subprocess_exec(
+        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+
+    stdout, stderr = await process.communicate()
+
+    if process.returncode != 0:
+        raise RuntimeError(
+            f"Podman command failed: cmd={cmd}, returncode={process.returncode}, stdout={stdout.decode()}, stderr={stderr.decode()}"
         )
 
-        stdout, stderr = await process.communicate()
+    if not os.path.exists(result_file):
+        raise FileNotFoundError(
+            f"Worker path file not created when getting worker path for image {image_uri}"
+        )
 
-        if process.returncode != 0:
-            raise RuntimeError(
-                f"Podman command failed: cmd={cmd}, returncode={process.returncode}, stdout={stdout.decode()}, stderr={stderr.decode()}"
-            )
+    with open(result_file, "r") as f:
+        worker_path = f.read().strip()
 
-        if not os.path.exists(result_file):
-            raise FileNotFoundError(
-                f"Worker path file not created when getting worker path for image {image_uri}"
-            )
+    if not worker_path.endswith(".py"):
+        raise ValueError(
+            f"Invalid worker path inferred in image {image_uri}: {worker_path}"
+        )
 
-        with open(result_file, "r") as f:
-            worker_path = f.read().strip()
+    logger.info(f"Inferred worker path in image {image_uri}: {worker_path}")
 
-        if not worker_path.endswith(".py"):
-            raise ValueError(
-                f"Invalid worker path inferred in image {image_uri}: {worker_path}"
-            )
+    output_filter = os.getenv("RAY_PODMAN_OUTPUT_FILTER", "")
+    if output_filter:
+        worker_path = await _apply_output_filter(logger, worker_path, output_filter)
+        worker_path = worker_path.strip()
+    logger.info(f"Inferred worker path in image after filter {image_uri}: {worker_path}")
+    return worker_path
 
-        logger.info(f"Inferred worker path in image {image_uri}: {worker_path}")
-        return worker_path
-
+async def _apply_output_filter(logger, worker_path, output_filter):
+    safe_worker_path = shlex.quote(worker_path)
+    filter_cmd = ["sh", "-c", f"printf '%s' {safe_worker_path} | {output_filter}"]
+    filtered_path = await check_output_cmd(filter_cmd, logger=logger)
+    worker_path = filtered_path
+    return worker_path
 
 def _modify_container_context_impl(
     runtime_env: "RuntimeEnv",  # noqa: F821
@@ -190,9 +208,9 @@ def _modify_container_context_impl(
 
     redirected_pyenv_folder = None
     if container_install_ray or container_pip_packages:
-        container_to_host_mount_dict[
-            container_dependencies_installer_path
-        ] = get_dependencies_installer_path()
+        container_to_host_mount_dict[container_dependencies_installer_path] = (
+            get_dependencies_installer_path()
+        )
         if runtime_env_constants.RAY_PODMAN_UES_WHL_PACKAGE:
             container_to_host_mount_dict[get_ray_whl_dir()] = get_ray_whl_dir()
 
@@ -286,6 +304,16 @@ def _modify_context_impl(
     ray_tmp_dir: str,
 ):
     context.override_worker_entrypoint = worker_path
+    custom_container_cmd = os.getenv("RAY_PODMAN_CONTAINER_CMD", "")
+    if custom_container_cmd:
+        custom_container_cmd_str = custom_container_cmd.format(
+            ray_tmp_dir=ray_tmp_dir, image_uri=image_uri
+        )
+        logger.info(
+            f"Starting worker in container with prefix {custom_container_cmd_str}"
+        )
+        context.py_executable = custom_container_cmd_str
+        return
 
     container_driver = "podman"
     container_command = [
@@ -317,6 +345,12 @@ def _modify_context_impl(
     for env_var_name, env_var_value in os.environ.items():
         if env_var_name.startswith("RAY_"):
             env_vars[env_var_name] = env_var_value
+
+    extra_env_keys = os.getenv("RAY_PODMAN_EXTRA_ENV_KEYS", "")
+    if extra_env_keys:
+        for key in (k.strip() for k in extra_env_keys.split(",")):
+            if key and key in os.environ:
+                env_vars[key] = os.environ[key]
 
     # Support for runtime_env['env_vars']
     env_vars.update(context.env_vars)

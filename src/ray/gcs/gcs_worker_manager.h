@@ -14,8 +14,10 @@
 
 #pragma once
 
+#include <list>
 #include <vector>
 
+#include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_kv_manager.h"
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/gcs/grpc_service_interfaces.h"
@@ -68,6 +70,14 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
     usage_stats_client_ = usage_stats_client;
   }
 
+  void Initialize(const GcsInitData &gcs_init_data);
+
+  void AddDeadWorkerToCache(const std::shared_ptr<rpc::WorkerTableData> &worker_data);
+
+  void EvictOneDeadWorker();
+
+  void EvictExpiredWorkers();
+
  private:
   void GetWorkerInfo(const WorkerID &worker_id,
                      Postable<void(std::optional<rpc::WorkerTableData>)> callback) const;
@@ -86,6 +96,12 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
 
   /// Tracks the number of occurences of worker crash due to OOM
   int32_t worker_crash_oom_count_ = 0;
+
+  /// All dead workers.
+  absl::flat_hash_map<WorkerID, std::shared_ptr<rpc::WorkerTableData>> dead_workers_;
+  /// The dead workers are sorted according to the timestamp, and the oldest is at the
+  /// head of the list.
+  std::list<std::pair<WorkerID, int64_t>> sorted_dead_worker_list_;
 
   /// Ray metrics
   ray::stats::Count ray_metric_unintentional_worker_failures_{

@@ -133,45 +133,6 @@ const ray::rpc::ActorDeathCause GenActorRefDeletedCause(const ray::gcs::GcsActor
   return death_cause;
 }
 
-// Returns true if an actor should be loaded to registered_actors_.
-// `false` Cases:
-// 0. state is DEAD, and is not restartable
-// 1. root owner is job, and job is dead
-// 2. root owner is another detached actor, and that actor is dead
-bool OnInitializeActorShouldLoad(const ray::gcs::GcsInitData &gcs_init_data,
-                                 ray::ActorID actor_id) {
-  const auto &jobs = gcs_init_data.Jobs();
-  const auto &actors = gcs_init_data.Actors();
-  const auto &actor_task_specs = gcs_init_data.ActorTaskSpecs();
-
-  const auto &actor_table_data = actors.find(actor_id);
-  if (actor_table_data == actors.end()) {
-    return false;
-  }
-  if (actor_table_data->second.state() == ray::rpc::ActorTableData::DEAD &&
-      !ray::gcs::IsActorRestartable(actor_table_data->second)) {
-    return false;
-  }
-
-  const auto &actor_task_spec = ray::map_find_or_die(actor_task_specs, actor_id);
-  ray::ActorID root_detached_actor_id =
-      ray::TaskSpecification(actor_task_spec).RootDetachedActorId();
-  if (root_detached_actor_id.IsNil()) {
-    // owner is job, NOT detached actor, should die with job
-    auto job_iter = jobs.find(actor_id.JobId());
-    return job_iter != jobs.end() && !job_iter->second.is_dead();
-  } else if (actor_id == root_detached_actor_id) {
-    // owner is itself, just live on
-    return true;
-  } else {
-    // owner is another detached actor, should die with the owner actor
-    // Root detached actor can be dead only if state() == DEAD.
-    auto root_detached_actor_iter = actors.find(root_detached_actor_id);
-    return root_detached_actor_iter != actors.end() &&
-           root_detached_actor_iter->second.state() != ray::rpc::ActorTableData::DEAD;
-  }
-};
-
 }  // namespace
 
 namespace ray {
@@ -226,6 +187,7 @@ GcsActorManager::GcsActorManager(
     pubsub::GcsPublisher *gcs_publisher,
     RuntimeEnvManager &runtime_env_manager,
     GCSFunctionManager &function_manager,
+    GcsVirtualClusterManager &gcs_virtual_cluster_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
     rpc::CoreWorkerClientPool &worker_client_pool,
     observability::RayEventRecorderInterface &ray_event_recorder,
@@ -243,6 +205,7 @@ GcsActorManager::GcsActorManager(
           std::move(destroy_owned_placement_group_if_needed)),
       runtime_env_manager_(runtime_env_manager),
       function_manager_(function_manager),
+      gcs_virtual_cluster_manager_(gcs_virtual_cluster_manager),
       usage_stats_client_(nullptr),
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()),
       actor_by_state_gauge_(actor_by_state_gauge),
@@ -654,6 +617,18 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
 
+  auto virtual_cluster_id =
+      request.task_spec().scheduling_strategy().virtual_cluster_id();
+  if (!virtual_cluster_id.empty()) {
+    auto virtual_cluster =
+        gcs_virtual_cluster_manager_.GetVirtualCluster(virtual_cluster_id);
+    if (virtual_cluster == nullptr || virtual_cluster->Divisible()) {
+      std::stringstream stream;
+      stream << "Invalid virtual cluster, virtual cluster id: " << virtual_cluster_id;
+      return Status::InvalidArgument(stream.str());
+    }
+  }
+
   auto iter = registered_actors_.find(actor_id);
   if (iter != registered_actors_.end()) {
     auto pending_register_iter = actor_to_register_callbacks_.find(actor_id);
@@ -728,6 +703,10 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
     // If it's a detached actor, we need to register the runtime env it used to GC.
     runtime_env_manager_.AddURIReference(actor->GetActorID().Hex(),
                                          request.task_spec().runtime_env_info());
+  }
+
+  for (auto &listener : actor_registration_listeners_) {
+    listener(actor);
   }
 
   // The backend storage is supposed to be reliable, so the status must be ok.
@@ -1051,6 +1030,10 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     } else {
       runtime_env_manager_.RemoveURIReference(actor_id.Hex());
     }
+  }
+
+  for (auto &listener : actor_destroy_listeners_) {
+    listener(actor);
   }
 
   auto actor_table_data =
@@ -1808,10 +1791,7 @@ void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
 void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &actor) {
   if (destroyed_actors_.size() >=
       RayConfig::instance().maximum_gcs_destroyed_actor_cached_count()) {
-    const auto &actor_id = sorted_destroyed_actor_list_.front().first;
-    gcs_table_storage_->ActorTable().Delete(actor_id, {[](auto) {}, io_context_});
-    destroyed_actors_.erase(actor_id);
-    sorted_destroyed_actor_list_.pop_front();
+    EvictOneDestroyedActor();
   }
 
   if (destroyed_actors_.emplace(actor->GetActorID(), actor).second) {
@@ -1940,6 +1920,60 @@ void GcsActorManager::RecordMetrics() const {
                                                  liftime_num_created_actors_);
   }
   actor_state_counter_->FlushOnChangeCallbacks();
+}
+
+void GcsActorManager::EvictExpiredActors() {
+  RAY_LOG(INFO) << "Try evicting expired actors, there are "
+                << sorted_destroyed_actor_list_.size()
+                << " destroyed actors in the cache.";
+  int evicted_actor_number = 0;
+
+  std::vector<ActorID> batch_ids;
+  size_t batch_size = RayConfig::instance().gcs_dead_data_max_batch_delete_size();
+  batch_ids.reserve(batch_size);
+
+  auto current_time_ms = current_sys_time_ms();
+  auto gcs_dead_actor_data_keep_duration_ms =
+      RayConfig::instance().gcs_dead_actor_data_keep_duration_ms();
+  while (!sorted_destroyed_actor_list_.empty()) {
+    auto timestamp = sorted_destroyed_actor_list_.begin()->second;
+    if (timestamp + gcs_dead_actor_data_keep_duration_ms > current_time_ms) {
+      break;
+    }
+
+    auto iter = sorted_destroyed_actor_list_.begin();
+    const auto &actor_id = iter->first;
+    if (destroyed_actors_.erase(actor_id) == 0) {
+      // The actor may be already erased when job dead.
+      // See GcsActorManager::OnJobFinished.
+      sorted_destroyed_actor_list_.erase(iter);
+      continue;
+    }
+    batch_ids.emplace_back(actor_id);
+    sorted_destroyed_actor_list_.erase(iter);
+    ++evicted_actor_number;
+
+    if (batch_ids.size() == batch_size) {
+      gcs_table_storage_->ActorTable().BatchDelete(batch_ids, {[](auto) {}, io_context_});
+      batch_ids.clear();
+    }
+  }
+
+  if (!batch_ids.empty()) {
+    gcs_table_storage_->ActorTable().BatchDelete(batch_ids, {[](auto) {}, io_context_});
+  }
+  RAY_LOG(INFO) << evicted_actor_number << " actors are evicted, there are still "
+                << sorted_destroyed_actor_list_.size()
+                << " destroyed actors in the cache.";
+}
+
+void GcsActorManager::EvictOneDestroyedActor() {
+  if (!sorted_destroyed_actor_list_.empty()) {
+    const auto &actor_id = sorted_destroyed_actor_list_.front().first;
+    gcs_table_storage_->ActorTable().Delete(actor_id, {[](auto) {}, io_context_});
+    destroyed_actors_.erase(actor_id);
+    sorted_destroyed_actor_list_.pop_front();
+  }
 }
 
 }  // namespace gcs

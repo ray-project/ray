@@ -4,6 +4,7 @@ ray_cc_library(
     name = "gcs_client",
     srcs = [
         "accessor.cc",
+        "accessor.ant.cc",
         "gcs_client.cc",
     ],
     hdrs = [

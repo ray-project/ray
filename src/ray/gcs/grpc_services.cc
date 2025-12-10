@@ -161,6 +161,31 @@ void PlacementGroupInfoGrpcService::InitServerCallFactories(
                       max_active_rpcs_per_handler_)
 }
 
+void VirtualClusterInfoGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id) {
+  RPC_SERVICE_HANDLER(VirtualClusterInfoGcsService,
+                      CreateOrUpdateVirtualCluster,
+                      max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(VirtualClusterInfoGcsService,
+                      RemoveNodesFromVirtualCluster,
+                      max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      VirtualClusterInfoGcsService, RemoveVirtualCluster, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      VirtualClusterInfoGcsService, GetVirtualClusters, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      VirtualClusterInfoGcsService, CreateJobCluster, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(VirtualClusterInfoGcsService,
+                      GetAllVirtualClusterInfo,
+                      max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      VirtualClusterInfoGcsService, UpdateAutoscalingConfig, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      VirtualClusterInfoGcsService, GetAutoscalingConfig, max_active_rpcs_per_handler_)
+}
+
 namespace autoscaler {
 
 void AutoscalerStateGrpcService::InitServerCallFactories(

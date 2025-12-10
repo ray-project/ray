@@ -40,8 +40,15 @@ void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
     // Recover [running_job_start_times_] from storage.
     if (!job_table_data.is_dead()) {
       running_job_start_times_.insert({job_id, job_table_data.start_time()});
+    } else {
+      sorted_dead_job_list_.emplace_back(
+          job_id, static_cast<int64_t>(job_table_data.timestamp() * 1000));
     }
   }
+  sorted_dead_job_list_.sort(
+      [](const std::pair<JobID, int64_t> &left, const std::pair<JobID, int64_t> &right) {
+        return left.second < right.second;
+      });
 }
 
 void GcsJobManager::WriteDriverJobExportEvent(
@@ -147,6 +154,19 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
+  auto virtual_cluster_id = mutable_job_table_data.virtual_cluster_id();
+  if (!virtual_cluster_id.empty()) {
+    auto virtual_cluster =
+        gcs_virtual_cluster_manager_.GetVirtualCluster(virtual_cluster_id);
+    if (virtual_cluster == nullptr || virtual_cluster->Divisible()) {
+      std::stringstream stream;
+      stream << "Invalid virtual cluster, virtual cluster id: " << virtual_cluster_id;
+      auto status = Status::InvalidArgument(stream.str());
+      on_done(status);
+      return;
+    }
+  }
+
   gcs_table_storage_.JobTable().Put(
       job_id, mutable_job_table_data, {std::move(on_done), io_context_});
 }
@@ -171,6 +191,7 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
       runtime_env_manager_.RemoveURIReference(job_id.Hex());
       ClearJobInfos(job_table_data);
       RAY_LOG(DEBUG).WithField(job_id) << "Marked job as finished.";
+      AddDeadJobToCache(job_table_data);
     }
     function_manager_.RemoveJobReference(job_id);
     WriteDriverJobExportEvent(job_table_data,
@@ -519,6 +540,63 @@ void GcsJobManager::RecordMetrics() {
     job_duration_in_seconds_gauge_.Record((current_sys_time_ms() - start_time) / 1000.0,
                                           {{"JobId", job_id.Hex()}});
   }
+}
+
+void GcsJobManager::AddDeadJobToCache(const rpc::JobTableData &job_table_data) {
+  if (sorted_dead_job_list_.size() >=
+      RayConfig::instance().maximum_gcs_dead_job_cached_count()) {
+    EvictOneDeadJob();
+  }
+  auto job_id = JobID::FromBinary(job_table_data.job_id());
+  // NOTE: The unit of job_table_data->timestamp() is seconds.
+  sorted_dead_job_list_.emplace_back(
+      job_id, static_cast<int64_t>(job_table_data.timestamp() * 1000));
+}
+
+void GcsJobManager::EvictOneDeadJob() {
+  if (!sorted_dead_job_list_.empty()) {
+    auto iter = sorted_dead_job_list_.begin();
+    const auto &job_id = iter->first;
+    gcs_table_storage_.JobTable().Delete(job_id, {[](auto) {}, io_context_});
+    sorted_dead_job_list_.erase(iter);
+  }
+}
+
+void GcsJobManager::EvictExpiredJobs() {
+  RAY_LOG(INFO) << "Try evicting expired jobs, there are " << sorted_dead_job_list_.size()
+                << " dead jobs in the cache.";
+  int evicted_job_number = 0;
+
+  std::vector<JobID> batch_ids;
+  size_t batch_size = RayConfig::instance().gcs_dead_data_max_batch_delete_size();
+  batch_ids.reserve(batch_size);
+
+  auto current_time_ms = current_sys_time_ms();
+  auto gcs_dead_job_data_keep_duration_ms =
+      RayConfig::instance().gcs_dead_job_data_keep_duration_ms();
+  while (!sorted_dead_job_list_.empty()) {
+    auto timestamp = sorted_dead_job_list_.begin()->second;
+    if (timestamp + gcs_dead_job_data_keep_duration_ms > current_time_ms) {
+      break;
+    }
+
+    auto iter = sorted_dead_job_list_.begin();
+    const auto &job_id = iter->first;
+    batch_ids.emplace_back(job_id);
+    sorted_dead_job_list_.erase(iter);
+    ++evicted_job_number;
+
+    if (batch_ids.size() == batch_size) {
+      gcs_table_storage_.JobTable().BatchDelete(batch_ids, {[](auto) {}, io_context_});
+      batch_ids.clear();
+    }
+  }
+
+  if (!batch_ids.empty()) {
+    gcs_table_storage_.JobTable().BatchDelete(batch_ids, {[](auto) {}, io_context_});
+  }
+  RAY_LOG(INFO) << evicted_job_number << " jobs are evicted, there are still "
+                << sorted_dead_job_list_.size() << " dead jobs in the cache.";
 }
 
 }  // namespace gcs

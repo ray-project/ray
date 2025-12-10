@@ -448,6 +448,18 @@ TEST_F(GcsServerTest, TestNodeInfoFilters) {
   }
 
   {
+    // Get by virtual_cluster_id
+    rpc::GetAllNodeInfoRequest request;
+    request.add_node_selectors()->set_virtual_cluster_id("virt_1");
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(std::move(request), &reply));
+
+    ASSERT_EQ(reply.node_info_list_size(), 0);
+    ASSERT_EQ(reply.num_filtered(), 3);
+    ASSERT_EQ(reply.total(), 3);
+  }
+
+  {
     // Get 2 by node_id and node_name
     rpc::GetAllNodeInfoRequest request;
     request.add_node_selectors()->set_node_id(node1->node_id());

@@ -70,7 +70,9 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   auto scheduling_options =
       CreateSchedulingOptions(placement_group->GetPlacementGroupID(),
                               strategy,
-                              placement_group->GetSoftTargetNodeID());
+                              placement_group->GetSoftTargetNodeID(),
+                              placement_group->GetVirtualClusterID());
+
   auto scheduling_result =
       cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
 
@@ -472,20 +474,22 @@ GcsPlacementGroupScheduler::CreateSchedulingContext(
 SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
     const PlacementGroupID &placement_group_id,
     rpc::PlacementStrategy strategy,
-    NodeID soft_target_node_id) {
+    NodeID soft_target_node_id,
+    const std::string &virtual_cluster_id) {
   switch (strategy) {
   case rpc::PlacementStrategy::PACK:
-    return SchedulingOptions::BundlePack();
+    return SchedulingOptions::BundlePack(virtual_cluster_id);
   case rpc::PlacementStrategy::SPREAD:
-    return SchedulingOptions::BundleSpread();
+    return SchedulingOptions::BundleSpread(virtual_cluster_id);
   case rpc::PlacementStrategy::STRICT_PACK:
     return SchedulingOptions::BundleStrictPack(
         soft_target_node_id.IsNil() ? scheduling::NodeID::Nil()
-                                    : scheduling::NodeID(soft_target_node_id.Binary()));
+                                    : scheduling::NodeID(soft_target_node_id.Binary()),
+        virtual_cluster_id);
 
   case rpc::PlacementStrategy::STRICT_SPREAD:
     return SchedulingOptions::BundleStrictSpread(
-        CreateSchedulingContext(placement_group_id));
+        CreateSchedulingContext(placement_group_id), virtual_cluster_id);
   default:
     RAY_LOG(FATAL) << "Unsupported scheduling type: "
                    << rpc::PlacementStrategy_Name(strategy);

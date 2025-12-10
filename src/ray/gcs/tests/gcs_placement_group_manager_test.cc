@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "mock/ray/gcs/gcs_node_manager.h"
+#include "mock/ray/gcs/gcs_resource_manager.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
@@ -88,8 +89,8 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
     gcs_table_storage_ =
         std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
     gcs_node_manager_ = std::make_shared<gcs::MockGcsNodeManager>();
-    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
-        io_service_, cluster_resource_manager_, *gcs_node_manager_, NodeID::FromRandom());
+    gcs_resource_manager_ = std::make_shared<gcs::MockGcsResourceManager>(
+        cluster_resource_manager_, *gcs_node_manager_);
     gcs_placement_group_manager_.reset(new gcs::GcsPlacementGroupManager(
         io_service_,
         mock_placement_group_scheduler_.get(),
@@ -230,7 +231,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
  private:
   ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
-  std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
+  std::shared_ptr<gcs::MockGcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
 };
 

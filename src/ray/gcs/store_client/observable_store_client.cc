@@ -32,17 +32,16 @@ void ObservableStoreClient::AsyncPut(const std::string &table_name,
   auto start = absl::GetCurrentTimeNanos();
   storage_operation_count_counter_.Record(
       1, {{"Operation", "Put"}, {"TableName", table_name}});
-  delegate_->AsyncPut(
-      table_name,
-      key,
-      std::move(data),
-      overwrite,
-      std::move(callback).OnInvocation([this, start, table_name]() {
-        auto end = absl::GetCurrentTimeNanos();
-        storage_operation_latency_in_ms_histogram_.Record(
-            absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
-            {{"Operation", "Put"}, {"TableName", table_name}});
-      }));
+  delegate_->AsyncPut(table_name,
+                      key,
+                      std::move(data),
+                      overwrite,
+                      std::move(callback).OnInvocation([this, start, table_name]() {
+                        auto end = absl::GetCurrentTimeNanos();
+                        storage_operation_latency_in_ms_histogram_.Record(
+                            absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
+                            {{"Operation", "Put"}, {"TableName", table_name}});
+                      }));
 }
 
 void ObservableStoreClient::AsyncGet(
@@ -67,13 +66,13 @@ void ObservableStoreClient::AsyncGetAll(
   auto start = absl::GetCurrentTimeNanos();
   storage_operation_count_counter_.Record(
       1, {{"Operation", "GetAll"}, {"TableName", table_name}});
-  delegate_->AsyncGetAll(
-      table_name, std::move(callback).OnInvocation([this, start, table_name]() {
-        auto end = absl::GetCurrentTimeNanos();
-        storage_operation_latency_in_ms_histogram_.Record(
-            absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
-            {{"Operation", "GetAll"}, {"TableName", table_name}});
-      }));
+  delegate_->AsyncGetAll(table_name,
+                         std::move(callback).OnInvocation([this, start, table_name]() {
+                           auto end = absl::GetCurrentTimeNanos();
+                           storage_operation_latency_in_ms_histogram_.Record(
+                               absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
+                               {{"Operation", "GetAll"}, {"TableName", table_name}});
+                         }));
 }
 
 void ObservableStoreClient::AsyncMultiGet(

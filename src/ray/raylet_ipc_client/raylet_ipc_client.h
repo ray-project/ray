@@ -66,7 +66,9 @@ class RayletIpcClient : public RayletIpcClientInterface {
 
   Status AnnounceWorkerPortForWorker(int port) override;
 
-  Status AnnounceWorkerPortForDriver(int port, const std::string &entrypoint) override;
+  Status AnnounceWorkerPortForDriver(int port,
+                                     const std::string &entrypoint,
+                                     const std::string &virtual_cluster_id) override;
 
   Status ActorCreationTaskDone() override;
 

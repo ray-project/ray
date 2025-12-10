@@ -47,7 +47,9 @@ class FakeRayletIpcClient : public RayletIpcClientInterface {
 
   Status AnnounceWorkerPortForWorker(int port) override { return Status::OK(); }
 
-  Status AnnounceWorkerPortForDriver(int port, const std::string &entrypoint) override {
+  Status AnnounceWorkerPortForDriver(int port,
+                                     const std::string &entrypoint,
+                                     const std::string &virtual_cluster_id) override {
     return Status::OK();
   }
 

@@ -75,6 +75,7 @@ struct GcsServerConfig {
 };
 
 class GcsNodeManager;
+class GcsVirtualClusterManager;
 class GcsActorManager;
 class GcsJobManager;
 class GcsWorkerManager;
@@ -170,6 +171,9 @@ class GcsServer {
                            ray::observability::MetricInterface &actor_by_state_gauge,
                            ray::observability::MetricInterface &gcs_actor_by_state_gauge);
 
+  /// Initialize gcs virtual cluster manager.
+  void InitGcsVirtualClusterManager(const GcsInitData &gcs_init_data);
+
   /// Initialize gcs placement group manager.
   void InitGcsPlacementGroupManager(
       const GcsInitData &gcs_init_data,
@@ -181,7 +185,7 @@ class GcsServer {
       ray::observability::MetricInterface &placement_group_count_gauge);
 
   /// Initialize gcs worker manager.
-  void InitGcsWorkerManager();
+  void InitGcsWorkerManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs task manager.
   void InitGcsTaskManager(ray::observability::MetricInterface &task_events_reported_gauge,
@@ -208,6 +212,9 @@ class GcsServer {
 
   // Init RuntimeENv manager
   void InitRuntimeEnvManager();
+
+  /// Initialize dead data cleaner.
+  void InitDeadDataCleaner();
 
   /// Install event listeners.
   void InstallEventListeners();
@@ -269,6 +276,8 @@ class GcsServer {
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
   std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
+  /// The gcs virtual cluster handler and service.
+  std::shared_ptr<GcsVirtualClusterManager> gcs_virtual_cluster_manager_;
   /// The gcs placement group manager.
   std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
   /// The gcs actor manager.

@@ -80,6 +80,17 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "virtual_cluster_manager",
+    srcs = ["virtual_cluster_manager.cc"],
+    hdrs = ["virtual_cluster_manager.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/gcs:grpc_service_interfaces",
+    ],
+)
+
+ray_cc_library(
     name = "worker_interface",
     hdrs = ["worker_interface.h"],
     visibility = [":__subpackages__"],
@@ -221,6 +232,7 @@ ray_cc_library(
     name = "raylet_lib",
     srcs = [
         "node_manager.cc",
+        "node_manager.ant.cc"
     ],
     hdrs = [
         "node_manager.h",
@@ -240,6 +252,7 @@ ray_cc_library(
         ":local_object_manager_interface",
         ":placement_group_resource_manager",
         ":runtime_env_agent_client",
+        ":virtual_cluster_manager",
         ":wait_manager",
         ":worker",
         ":worker_killing_policy",

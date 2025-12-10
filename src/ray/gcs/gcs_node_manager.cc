@@ -38,6 +38,7 @@ GcsNodeManager::GcsNodeManager(
     instrumented_io_context &io_context,
     rpc::RayletClientPool *raylet_client_pool,
     const ClusterID &cluster_id,
+    GcsVirtualClusterManager &gcs_virtual_cluster_manager,
     observability::RayEventRecorderInterface &ray_event_recorder,
     const std::string &session_name)
     : gcs_publisher_(gcs_publisher),
@@ -45,6 +46,7 @@ GcsNodeManager::GcsNodeManager(
       io_context_(io_context),
       raylet_client_pool_(raylet_client_pool),
       cluster_id_(cluster_id),
+      gcs_virtual_cluster_manager_(gcs_virtual_cluster_manager),
       ray_event_recorder_(ray_event_recorder),
       session_name_(session_name),
       export_event_write_enabled_(IsExportAPIEnabledNode()) {}
@@ -240,6 +242,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   absl::flat_hash_set<NodeID> node_ids;
   absl::flat_hash_set<std::string> node_names;
   absl::flat_hash_set<std::string> node_ip_addresses;
+  absl::flat_hash_set<std::string> virtual_cluster_ids;
   bool only_node_id_filters = true;
   for (auto &selector : *request.mutable_node_selectors()) {
     switch (selector.node_selector_case()) {
@@ -252,6 +255,10 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
       break;
     case rpc::GetAllNodeInfoRequest_NodeSelector::kNodeIpAddress:
       node_ip_addresses.insert(std::move(*selector.mutable_node_ip_address()));
+      only_node_id_filters = false;
+      break;
+    case rpc::GetAllNodeInfoRequest_NodeSelector::kVirtualClusterId:
+      virtual_cluster_ids.insert(std::move(*selector.mutable_virtual_cluster_id()));
       only_node_id_filters = false;
       break;
     case rpc::GetAllNodeInfoRequest_NodeSelector::NODE_SELECTOR_NOT_SET:
@@ -292,13 +299,28 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   auto add_to_response =
       [&](const absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>>
               &nodes) {
+        auto filter_fn = [&](const NodeID &node_id,
+                             std::shared_ptr<const rpc::GcsNodeInfo> node_info) {
+          if (!has_node_selectors || node_ids.contains(node_id) ||
+              node_names.contains(node_info->node_name()) ||
+              node_ip_addresses.contains(node_info->node_manager_address())) {
+            return true;
+          }
+          for (const auto &vc_id : virtual_cluster_ids) {
+            auto virtual_cluster = gcs_virtual_cluster_manager_.GetVirtualCluster(vc_id);
+            if (virtual_cluster != nullptr &&
+                virtual_cluster->ContainsNodeInstance(node_id.Hex())) {
+              return true;
+            }
+          }
+          return false;
+        };
+
         for (const auto &[node_id, node_info_ptr] : nodes) {
           if (num_added >= limit) {
             break;
           }
-          if (!has_node_selectors || node_ids.contains(node_id) ||
-              node_names.contains(node_info_ptr->node_name()) ||
-              node_ip_addresses.contains(node_info_ptr->node_manager_address())) {
+          if (filter_fn(node_id, node_info_ptr)) {
             *reply->add_node_info_list() = *node_info_ptr;
             num_added += 1;
           }
@@ -704,10 +726,7 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
 
 void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node) {
   if (dead_nodes_.size() >= RayConfig::instance().maximum_gcs_dead_node_cached_count()) {
-    const auto &node_id = sorted_dead_node_list_.front().first;
-    gcs_table_storage_->NodeTable().Delete(node_id, {[](const auto &) {}, io_context_});
-    dead_nodes_.erase(sorted_dead_node_list_.front().first);
-    sorted_dead_node_list_.pop_front();
+    EvictOneDeadNode();
   }
   auto node_id = NodeID::FromBinary(node->node_id());
   dead_nodes_.emplace(node_id, node);
@@ -732,6 +751,54 @@ std::string GcsNodeManager::DebugString() const {
          << "\n- GetAllNodeInfo request count: "
          << counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
   return stream.str();
+}
+
+void GcsNodeManager::EvictExpiredNodes() {
+  RAY_LOG(INFO) << "Try evicting expired nodes, there are "
+                << sorted_dead_node_list_.size() << " dead nodes in the cache.";
+  int evicted_node_number = 0;
+
+  std::vector<NodeID> batch_ids;
+  size_t batch_size = RayConfig::instance().gcs_dead_data_max_batch_delete_size();
+  batch_ids.reserve(batch_size);
+
+  auto current_time_ms = current_sys_time_ms();
+  auto gcs_dead_node_data_keep_duration_ms =
+      RayConfig::instance().gcs_dead_node_data_keep_duration_ms();
+  while (!sorted_dead_node_list_.empty()) {
+    auto timestamp = sorted_dead_node_list_.begin()->second;
+    if (timestamp + gcs_dead_node_data_keep_duration_ms > current_time_ms) {
+      break;
+    }
+
+    auto iter = sorted_dead_node_list_.begin();
+    const auto &worker_id = iter->first;
+    batch_ids.emplace_back(worker_id);
+    dead_nodes_.erase(worker_id);
+    sorted_dead_node_list_.erase(iter);
+    ++evicted_node_number;
+
+    if (batch_ids.size() == batch_size) {
+      gcs_table_storage_->NodeTable().BatchDelete(batch_ids, {[](auto) {}, io_context_});
+      batch_ids.clear();
+    }
+  }
+
+  if (!batch_ids.empty()) {
+    gcs_table_storage_->NodeTable().BatchDelete(batch_ids, {[](auto) {}, io_context_});
+  }
+  RAY_LOG(INFO) << evicted_node_number << " nodes are evicted, there are still "
+                << sorted_dead_node_list_.size() << " dead nodes in the cache.";
+}
+
+void GcsNodeManager::EvictOneDeadNode() {
+  if (!sorted_dead_node_list_.empty()) {
+    auto iter = sorted_dead_node_list_.begin();
+    const auto &node_id = iter->first;
+    gcs_table_storage_->NodeTable().Delete(node_id, {[](auto) {}, io_context_});
+    dead_nodes_.erase(node_id);
+    sorted_dead_node_list_.erase(iter);
+  }
 }
 
 void GcsNodeManager::UpdateAliveNode(

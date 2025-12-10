@@ -965,7 +965,7 @@ int main(int argc, char *argv[]) {
         {ray::stats::NodeAddressKey, node_ip_address},
         {ray::stats::SessionNameKey, session_name},
         {ray::stats::StorageNamespaceKey,
-          RayConfig::instance().external_storage_namespace()}};
+         RayConfig::instance().external_storage_namespace()}};
     ray::stats::Init(global_tags, metrics_agent_port, ray::WorkerID::Nil());
     metrics_agent_client = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
         "127.0.0.1", metrics_agent_port, main_service, *client_call_manager);

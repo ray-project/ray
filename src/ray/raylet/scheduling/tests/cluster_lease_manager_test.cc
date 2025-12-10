@@ -49,7 +49,8 @@ class MockWorkerPool : public WorkerPoolInterface {
   MockWorkerPool() : num_pops(0) {}
 
   void PopWorker(const LeaseSpecification &lease_spec,
-                 const PopWorkerCallback &callback) override {
+                 const PopWorkerCallback &callback,
+                 const std::string &serialized_allocated_instances = "{}") override {
     num_pops++;
     const int runtime_env_hash = lease_spec.GetRuntimeEnvHash();
     callbacks[runtime_env_hash].push_back(callback);
@@ -210,8 +211,8 @@ class MockWorkerPool : public WorkerPoolInterface {
     RAY_CHECK(false) << "Not used.";
   }
 
-  void StartNewWorker(
-      const std::shared_ptr<PopWorkerRequest> &pop_worker_request) override {
+  void StartNewWorker(const std::shared_ptr<PopWorkerRequest> &pop_worker_request,
+                      const std::string &serialized_allocated_instances = "{}") override {
     RAY_CHECK(false) << "Not used.";
   }
 
@@ -260,14 +261,26 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   local_node_resources[ray::kGPU_ResourceLabel] = num_gpus;
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
   static instrumented_io_context io_context;
+  const absl::flat_hash_map<std::string, std::string> local_node_labels = {};
   auto scheduler = std::make_shared<ClusterResourceScheduler>(
       io_context,
       scheduling::NodeID(id),
       local_node_resources,
-      /*is_node_available_fn*/ [&gcs_client](scheduling::NodeID node_id) {
+      /*is_node_available_fn*/
+      [&gcs_client](scheduling::NodeID node_id) {
         return gcs_client.Nodes().GetNodeAddressAndLiveness(
                    NodeID::FromBinary(node_id.Binary())) != nullptr;
-      });
+      },
+      /*get_used_object_store_memory*/
+      []() -> int64_t { return 0; },
+      /*get_pull_manager_at_capacity*/
+      []() -> bool { return false; },
+      /*shutdown_raylet_gracefully*/
+      [](const rpc::NodeDeathInfo &) {},
+      /*local_node_labels*/
+      local_node_labels,
+      /*is_node_schedulable_fn*/
+      [](scheduling::NodeID, const SchedulingContext *) -> bool { return true; });
 
   return scheduler;
 }

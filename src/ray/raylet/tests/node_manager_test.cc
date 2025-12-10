@@ -517,11 +517,12 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
 
   // Save the pop_worker_callback for providing a mock worker later.
   PopWorkerCallback pop_worker_callback;
-  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
-      .WillOnce(
-          [&](const LeaseSpecification &lease_spec, const PopWorkerCallback &callback) {
-            pop_worker_callback = callback;
-          });
+  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _, _))
+      .WillOnce([&](const LeaseSpecification &lease_spec,
+                    const PopWorkerCallback &callback,
+                    const std::string &serialized_allocated_instances) {
+        pop_worker_callback = callback;
+      });
 
   // Save the publish_worker_failure_callback for publishing a worker failure event later.
   gcs::ItemCallback<rpc::WorkerDeltaData> publish_worker_failure_callback;
@@ -595,11 +596,12 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
 
   // Save the pop_worker_callback for providing a mock worker later.
   PopWorkerCallback pop_worker_callback;
-  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
-      .WillOnce(
-          [&](const LeaseSpecification &lease_spec, const PopWorkerCallback &callback) {
-            pop_worker_callback = callback;
-          });
+  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _, _))
+      .WillOnce([&](const LeaseSpecification &lease_spec,
+                    const PopWorkerCallback &callback,
+                    const std::string &serialized_allocated_instances) {
+        pop_worker_callback = callback;
+      });
 
   // Save the publish_node_change_callback for publishing a node failure event later.
   std::function<void(const NodeID &id, rpc::GcsNodeAddressAndLiveness &&node_info)>
@@ -955,9 +957,11 @@ TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseIdempotent) {
   request.set_is_selected_based_on_locality(true);
   auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
   PopWorkerCallback pop_worker_callback;
-  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
+  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _, _))
       .Times(1)
-      .WillOnce([&](const LeaseSpecification &ls, const PopWorkerCallback &callback) {
+      .WillOnce([&](const LeaseSpecification &ls,
+                    const PopWorkerCallback &callback,
+                    const std::string &serialized_allocated_instances) {
         pop_worker_callback = callback;
       });
   node_manager_->HandleRequestWorkerLease(

@@ -303,7 +303,7 @@ def ray_deps_setup():
         strip_prefix = "rules_foreign_cc-0.9.0",
         url = "https://github.com/bazelbuild/rules_foreign_cc/archive/refs/tags/0.9.0.tar.gz",
         patches = [
-            "@com_github_ray_project_ray//thirdparty/patches:rules_foreign_cc.patch",
+            "@io_ray//thirdparty/patches:rules_foreign_cc.patch",
         ],
     )
 

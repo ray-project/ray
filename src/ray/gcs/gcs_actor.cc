@@ -69,6 +69,10 @@ rpc::ActorTableData::ActorState GcsActor::GetState() const {
   return actor_table_data_.state();
 }
 
+const std::string &GcsActor::GetVirtualClusterID() const {
+  return task_spec_->scheduling_strategy().virtual_cluster_id();
+}
+
 ActorID GcsActor::GetActorID() const {
   return ActorID::FromBinary(actor_table_data_.actor_id());
 }

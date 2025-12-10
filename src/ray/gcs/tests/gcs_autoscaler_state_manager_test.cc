@@ -28,13 +28,13 @@
 #include "mock/ray/gcs/gcs_actor_manager.h"
 #include "mock/ray/gcs/gcs_node_manager.h"
 #include "mock/ray/gcs/gcs_placement_group_manager.h"
+#include "mock/ray/gcs/gcs_resource_manager.h"
 #include "mock/ray/gcs/store_client/store_client.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_init_data.h"
-#include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/store_client_kv.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
@@ -59,7 +59,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   std::shared_ptr<rpc::FakeRayletClient> raylet_client_;
   std::shared_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<ClusterResourceManager> cluster_resource_manager_;
-  std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
+  std::shared_ptr<MockGcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<MockGcsNodeManager> gcs_node_manager_;
   std::unique_ptr<MockGcsActorManager> gcs_actor_manager_;
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
@@ -95,11 +95,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
         });
     gcs_actor_manager_ = std::make_unique<MockGcsActorManager>(
         *runtime_env_manager_, *function_manager_, *worker_client_pool_);
-    gcs_resource_manager_ =
-        std::make_shared<GcsResourceManager>(io_service_,
-                                             *cluster_resource_manager_,
-                                             *gcs_node_manager_,
-                                             NodeID::FromRandom());
+    gcs_resource_manager_ = std::make_shared<MockGcsResourceManager>(
+        *cluster_resource_manager_, *gcs_node_manager_);
 
     gcs_placement_group_manager_ = std::make_shared<MockGcsPlacementGroupManager>(
         *gcs_resource_manager_,

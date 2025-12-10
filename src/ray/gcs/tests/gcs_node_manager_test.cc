@@ -23,8 +23,10 @@
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
+#include "ray/gcs/gcs_virtual_cluster_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 
 namespace ray {
@@ -42,6 +44,10 @@ class GcsNodeManagerTest : public ::testing::Test {
         std::make_shared<gcs::InMemoryStoreClient>());
     io_context_ = std::make_unique<instrumented_io_context>("GcsNodeManagerTest");
     fake_ray_event_recorder_ = std::make_unique<observability::FakeRayEventRecorder>();
+    cluster_resource_manager_ =
+        std::make_unique<ray::ClusterResourceManager>(*io_context_);
+    gcs_virtual_cluster_manager_ = std::make_unique<ray::gcs::GcsVirtualClusterManager>(
+        *io_context_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
   }
 
  protected:
@@ -49,6 +55,8 @@ class GcsNodeManagerTest : public ::testing::Test {
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::unique_ptr<instrumented_io_context> io_context_;
+  std::unique_ptr<ray::ClusterResourceManager> cluster_resource_manager_;
+  std::unique_ptr<ray::gcs::GcsVirtualClusterManager> gcs_virtual_cluster_manager_;
   std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
 };
 
@@ -64,6 +72,7 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
                                    *io_context_,
                                    client_pool_.get(),
                                    ClusterID::Nil(),
+                                   *gcs_virtual_cluster_manager_,
                                    *fake_ray_event_recorder_,
                                    "test_session_name");
   auto node = GenNodeInfo();
@@ -169,6 +178,7 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
                                    *io_context_,
                                    client_pool_.get(),
                                    ClusterID::Nil(),
+                                   *gcs_virtual_cluster_manager_,
                                    *fake_ray_event_recorder_,
                                    "test_session_name");
   // Test Add/Get/Remove functionality.
@@ -189,6 +199,7 @@ TEST_F(GcsNodeManagerTest, TestListener) {
                                    *io_context_,
                                    client_pool_.get(),
                                    ClusterID::Nil(),
+                                   *gcs_virtual_cluster_manager_,
                                    *fake_ray_event_recorder_,
                                    "test_session_name");
   // Test AddNodeAddedListener.
@@ -263,6 +274,7 @@ TEST_F(GcsNodeManagerTest, TestAddNodeListenerCallbackDeadlock) {
                                    *io_context_,
                                    client_pool_.get(),
                                    ClusterID::Nil(),
+                                   *gcs_virtual_cluster_manager_,
                                    *fake_ray_event_recorder_,
                                    "test_session_name");
   int node_count = 10;
@@ -294,6 +306,7 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
                                    *io_context_,
                                    client_pool_.get(),
                                    ClusterID::Nil(),
+                                   *gcs_virtual_cluster_manager_,
                                    *fake_ray_event_recorder_,
                                    "test_session_name");
 
@@ -373,6 +386,7 @@ TEST_F(GcsNodeManagerTest, TestGetNodeAddressAndLiveness) {
                                    *io_context_,
                                    client_pool_.get(),
                                    ClusterID::Nil(),
+                                   *gcs_virtual_cluster_manager_,
                                    *fake_ray_event_recorder_,
                                    "test_session_name");
 
@@ -412,6 +426,7 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
                                    *io_context_,
                                    client_pool_.get(),
                                    ClusterID::Nil(),
+                                   *gcs_virtual_cluster_manager_,
                                    *fake_ray_event_recorder_,
                                    "test_session_name");
 

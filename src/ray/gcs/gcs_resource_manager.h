@@ -25,6 +25,7 @@
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_node_manager.h"
+#include "ray/gcs/gcs_virtual_cluster_manager.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/raylet/scheduling/cluster_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
@@ -61,6 +62,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
       ClusterResourceManager &cluster_resource_manager,
       GcsNodeManager &gcs_node_manager,
       NodeID local_node_id,
+      GcsVirtualClusterManager &gcs_virtual_cluster_manager,
       raylet::ClusterLeaseManager *cluster_lease_manager = nullptr);
 
   virtual ~GcsResourceManager() = default;
@@ -196,6 +198,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
   ClusterResourceManager &cluster_resource_manager_;
   GcsNodeManager &gcs_node_manager_;
   NodeID local_node_id_;
+  /// The gcs virtual cluster handler and service.
+  GcsVirtualClusterManager &gcs_virtual_cluster_manager_;
   raylet::ClusterLeaseManager *cluster_lease_manager_;
   /// Num of alive nodes in the cluster.
   size_t num_alive_nodes_ = 0;

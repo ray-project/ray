@@ -291,6 +291,45 @@ class PlacementGroupInfoGcsServiceHandler {
                                             SendReplyCallback send_reply_callback) = 0;
 };
 
+class VirtualClusterInfoGcsServiceHandler {
+ public:
+  virtual ~VirtualClusterInfoGcsServiceHandler() = default;
+
+  virtual void HandleCreateOrUpdateVirtualCluster(
+      CreateOrUpdateVirtualClusterRequest request,
+      CreateOrUpdateVirtualClusterReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRemoveNodesFromVirtualCluster(
+      RemoveNodesFromVirtualClusterRequest request,
+      RemoveNodesFromVirtualClusterReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRemoveVirtualCluster(RemoveVirtualClusterRequest request,
+                                          RemoveVirtualClusterReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetVirtualClusters(GetVirtualClustersRequest request,
+                                        GetVirtualClustersReply *reply,
+                                        SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleCreateJobCluster(CreateJobClusterRequest request,
+                                      CreateJobClusterReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllVirtualClusterInfo(GetAllVirtualClusterInfoRequest request,
+                                              GetAllVirtualClusterInfoReply *reply,
+                                              SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleUpdateAutoscalingConfig(UpdateAutoscalingConfigRequest request,
+                                             UpdateAutoscalingConfigReply *reply,
+                                             SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAutoscalingConfig(GetAutoscalingConfigRequest request,
+                                          GetAutoscalingConfigReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
+};
+
 namespace autoscaler {
 
 class AutoscalerStateServiceHandler {

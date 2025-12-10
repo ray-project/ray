@@ -20,7 +20,7 @@ import "src/ray/protobuf/common.proto";
 import "google/protobuf/timestamp.proto";
 
 message ActorLifecycleEvent {
-  enum State{
+  enum State {
     // Actor info is registered in GCS. But its dependencies are not ready.
     DEPENDENCIES_UNREADY = 0;
     // Actor local dependencies are ready. This actor is being created.
@@ -40,8 +40,8 @@ message ActorLifecycleEvent {
     // The node id of the actor once it is created.
     // available when state is ALIVE updated when the actor is restarted.
     bytes node_id = 3;
-    // The worker id of the worker on which this actor is running. available when state is ALIVE.
-    // The worker id can change when the actor is restarted.
+    // The worker id of the worker on which this actor is running. available when state is
+    // ALIVE. The worker id can change when the actor is restarted.
     bytes worker_id = 4;
     // Contains metadata about why the actor is dead. available when state is DEAD.
     ActorDeathCause death_cause = 6;

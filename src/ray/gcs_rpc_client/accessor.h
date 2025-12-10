@@ -25,6 +25,7 @@
 #include "ray/common/placement_group.h"
 #include "ray/common/status_or.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/common/virtual_cluster_id.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "ray/util/sequencer.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
@@ -345,6 +346,15 @@ class NodeInfoAccessor {
       int64_t timeout_ms,
       const std::vector<NodeID> &node_ids = {});
 
+  /// Get information of all nodes from GCS asynchronously.
+  ///
+  /// \param virtual_cluster_id The ID of the virtual cluster to look up in GCS.
+  /// \param callback Callback that will be called after lookup finishes.
+  virtual void AsyncGetByVirtualClusterID(
+      const std::optional<std::string> &virtual_cluster_id,
+      const MultiItemCallback<rpc::GcsNodeInfo> &callback,
+      int64_t timeout_ms);
+
   /// Subscribe to node addition and removal events from GCS and cache those information.
   ///
   /// \param subscribe Callback that will be called if a node is
@@ -497,12 +507,14 @@ class NodeResourceInfoAccessor {
   ///
   /// \param callback Callback that will be called after lookup finishes.
   virtual void AsyncGetAllAvailableResources(
+      const std::optional<std::string> &virtual_cluster_id,
       const MultiItemCallback<rpc::AvailableResources> &callback);
 
   /// Get total resources of all nodes from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
   virtual void AsyncGetAllTotalResources(
+      const std::optional<std::string> &virtual_cluster_id,
       const MultiItemCallback<rpc::TotalResources> &callback);
 
   /// Get draining nodes from GCS asynchronously.
@@ -976,6 +988,89 @@ class AutoscalerStateAccessor {
 
  private:
   GcsClient *client_impl_;
+};
+
+class VirtualClusterInfoAccessor {
+ public:
+  VirtualClusterInfoAccessor() = default;
+  explicit VirtualClusterInfoAccessor(GcsClient *client_impl);
+  virtual ~VirtualClusterInfoAccessor() = default;
+
+  /// Get a virtual cluster data from GCS asynchronously by id.
+  ///
+  /// \param virtual_cluster_id The id of a virtual cluster to obtain from GCS.
+  virtual void AsyncGet(
+      const VirtualClusterID &virtual_cluster_id,
+      const OptionalItemCallback<rpc::VirtualClusterTableData> &callback);
+
+  /// Get all virtual cluster info from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finished.
+  virtual void AsyncGetAll(
+      bool include_job_clusters,
+      bool only_include_indivisible_clusters,
+      const MultiItemCallback<rpc::VirtualClusterTableData> &callback);
+
+  /// Subscribe to virtual cluster updates.
+  ///
+  /// \param subscribe Callback that will be called each time when a job updates.
+  /// \param done Callback that will be called when subscription is complete.
+  /// \return Status
+  virtual Status AsyncSubscribeAll(
+      const SubscribeCallback<VirtualClusterID, rpc::VirtualClusterTableData> &subscribe,
+      const StatusCallback &done);
+
+  /// Reestablish subscription.
+  /// This should be called when GCS server restarts from a failure.
+  /// PubSub server restart will cause GCS server restart. In this case, we need to
+  /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
+  /// server.
+  virtual void AsyncResubscribe();
+
+  /// Create a new or update a virtual cluster.
+  ///
+  /// \param virtual_cluster_id The id of the virtual cluster.
+  /// \param divisible Whether the virtual cluster is divisible.
+  /// \param replica_sets The map from template_id to count, which specifies
+  /// the expected replicas of the virtual cluster.
+  /// \param revision The revision (version control) of the virtual cluster.
+  /// \param timeout_ms -1 means infinite.
+  /// \param[out] serialized_reply The reply that delivers required message.
+  /// \return Status
+  virtual Status SyncCreateOrUpdateVirtualCluster(
+      const std::string &virtual_cluster_id,
+      bool divisible,
+      const std::unordered_map<std::string, int32_t> &replica_sets,
+      int64_t revision,
+      int64_t timeout_ms,
+      std::string &serialized_reply);
+
+  /// Remove specified nodes from a virtual cluster.
+  ///
+  /// \param virtual_cluster_id The id of the virtual cluster.
+  /// \param nodes_to_remove The nodes that are expected to be removed.
+  /// \param timeout_ms -1 means infinite.
+  /// \param[out] serialized_reply The reply that delivers required message.
+  /// \return Status
+  virtual Status SyncRemoveNodesFromVirtualCluster(
+      const std::string &virtual_cluster_id,
+      const std::vector<std::string> &nodes_to_remove,
+      int64_t timeout_ms,
+      std::string &serialized_reply);
+
+ private:
+  /// Save the fetch data operation in this function, so we can call it again when GCS
+  /// server restarts from a failure.
+  FetchDataOperation fetch_all_data_operation_;
+
+  /// Save the subscribe operation in this function, so we can call it again when PubSub
+  /// server restarts from a failure.
+  SubscribeOperation subscribe_operation_;
+
+  GcsClient *client_impl_;
+
+  // Local cache of the virtual cluster data. It can be used for revision control.
+  absl::flat_hash_map<VirtualClusterID, rpc::VirtualClusterTableData> virtual_clusters_;
 };
 
 /// \class PublisherAccessor

@@ -20,8 +20,10 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
+        "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_placement_group_manager",
+        "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/observability:fake_metric",
         "//src/ray/util:counter_map",
         "@com_google_googletest//:gtest_main",
@@ -236,10 +238,12 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
+        "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/gcs:gcs_actor",
         "//src/ray/gcs:gcs_actor_scheduler",
+        "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/util:counter_map",
         "@com_google_googletest//:gtest_main",
     ],
@@ -267,6 +271,7 @@ ray_cc_test(
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/observability:fake_metric",
         "//src/ray/pubsub:publisher",
+        "//src/mock/ray/pubsub:mock_publisher",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -347,6 +352,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
+        "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/common:asio",
         "//src/ray/common:protobuf_utils",
         "//src/ray/common:test_utils",
@@ -354,6 +360,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_init_data",
         "//src/ray/gcs:gcs_resource_manager",
         "//src/ray/gcs:gcs_store_client_kv",
+        "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/raylet/scheduling:cluster_resource_manager",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
         "@com_google_googletest//:gtest_main",
@@ -369,9 +376,11 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
+        "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_node_manager",
         "//src/ray/gcs:gcs_resource_manager",
+        "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/raylet/scheduling:cluster_resource_manager",
         "@com_google_googletest//:gtest_main",
     ],
@@ -423,6 +432,7 @@ ray_cc_test(
     ],
     deps = [
         "//:ray_mock",
+        "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/common:asio",
         "//src/ray/common:runtime_env",
         "//src/ray/common:test_utils",
@@ -467,6 +477,22 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/gcs:gcs_ray_event_converter",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "gcs_virtual_cluster_manager_test",
+    size = "small",
+    srcs = [
+        "gcs_virtual_cluster_manager_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/mock/ray/pubsub:mock_publisher",
+        "//src/ray/gcs:gcs_server_lib",
+        "//src/ray/common:test_utils",
+        "//:ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -69,9 +69,9 @@ py_test(
 )
 
 py_test(
-    name = "test_strict_mode",
+    name = "test_strict_in_virtual_cluster",
     size = "small",
-    srcs = ["tests/test_strict_mode.py"],
+    srcs = ["tests/test_strict_in_virtual_cluster.py"],
     tags = [
         "exclusive",
         "team:data",

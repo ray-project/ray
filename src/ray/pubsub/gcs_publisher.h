@@ -18,6 +18,7 @@
 #include <string>
 #include <utility>
 
+#include "ray/common/virtual_cluster_id.h"
 #include "ray/pubsub/publisher_interface.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -63,6 +64,9 @@ class GcsPublisher {
   void PublishWorkerFailure(const WorkerID &id, rpc::WorkerDeltaData message);
 
   void PublishError(std::string id, rpc::ErrorTableData message);
+
+  void PublishVirtualCluster(const VirtualClusterID &id,
+                             const rpc::VirtualClusterTableData &message);
 
   /// Prints debugging info for the publisher.
   std::string DebugString() const;

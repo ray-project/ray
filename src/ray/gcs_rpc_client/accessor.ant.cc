@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_client/accessor.h"
+#include "ray/gcs_rpc_client/accessor.h"
 
 #include <future>
 
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 
 namespace ray {
 namespace gcs {
@@ -24,14 +24,14 @@ namespace gcs {
 VirtualClusterInfoAccessor::VirtualClusterInfoAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 
-Status VirtualClusterInfoAccessor::AsyncGet(
+void VirtualClusterInfoAccessor::AsyncGet(
     const VirtualClusterID &virtual_cluster_id,
     const OptionalItemCallback<rpc::VirtualClusterTableData> &callback) {
   RAY_LOG(DEBUG).WithField(virtual_cluster_id) << "Getting virtual cluster info";
   rpc::GetVirtualClustersRequest request;
   request.set_virtual_cluster_id(virtual_cluster_id.Binary());
   client_impl_->GetGcsRpcClient().GetVirtualClusters(
-      request,
+      std::move(request),
       [virtual_cluster_id, callback](const Status &status,
                                      rpc::GetVirtualClustersReply &&reply) {
         if (reply.virtual_cluster_data_list_size() == 0) {
@@ -43,10 +43,9 @@ Status VirtualClusterInfoAccessor::AsyncGet(
         RAY_LOG(DEBUG).WithField(virtual_cluster_id)
             << "Finished getting virtual cluster info";
       });
-  return Status::OK();
 }
 
-Status VirtualClusterInfoAccessor::AsyncGetAll(
+void VirtualClusterInfoAccessor::AsyncGetAll(
     bool include_job_clusters,
     bool only_include_indivisible_clusters,
     const MultiItemCallback<rpc::VirtualClusterTableData> &callback) {
@@ -55,14 +54,14 @@ Status VirtualClusterInfoAccessor::AsyncGetAll(
   request.set_include_job_clusters(true);
   request.set_only_include_indivisible_clusters(true);
   client_impl_->GetGcsRpcClient().GetVirtualClusters(
-      request, [callback](const Status &status, rpc::GetVirtualClustersReply &&reply) {
+      std::move(request),
+      [callback](const Status &status, rpc::GetVirtualClustersReply &&reply) {
         callback(
             status,
             VectorFromProtobuf(std::move(*reply.mutable_virtual_cluster_data_list())));
         RAY_LOG(DEBUG) << "Finished getting all virtual cluster info, status = "
                        << status;
       });
-  return Status::OK();
 }
 
 Status VirtualClusterInfoAccessor::AsyncSubscribeAll(
@@ -91,9 +90,9 @@ Status VirtualClusterInfoAccessor::AsyncSubscribeAll(
         subscribe(virtual_cluster_id, std::move(virtual_cluster_data));
       };
   fetch_all_data_operation_ = [this, subscribe, updated_subscribe](
-                                  const StatusCallback &done) {
+                                  const StatusCallback &done_callback) {
     auto callback =
-        [this, subscribe, updated_subscribe, done](
+        [this, subscribe, updated_subscribe, done_callback](
             const Status &status,
             std::vector<rpc::VirtualClusterTableData> &&virtual_cluster_info_list) {
           absl::flat_hash_set<VirtualClusterID> virtual_cluster_id_set;
@@ -117,18 +116,18 @@ Status VirtualClusterInfoAccessor::AsyncSubscribeAll(
               virtual_clusters_.erase(curr_iter);
             }
           }
-          if (done) {
-            done(status);
+          if (done_callback) {
+            done_callback(status);
           }
         };
-    RAY_CHECK_OK(AsyncGetAll(
+    AsyncGetAll(
         /*include_job_clusters=*/true,
         /*only_include_indivisible_clusters=*/true,
-        callback));
+        callback);
   };
-  subscribe_operation_ = [this, updated_subscribe](const StatusCallback &done) {
+  subscribe_operation_ = [this, updated_subscribe](const StatusCallback &done_callback) {
     return client_impl_->GetGcsSubscriber().SubscribeAllVirtualClusters(updated_subscribe,
-                                                                        done);
+                                                                        done_callback);
   };
   return subscribe_operation_(
       [this, done](const Status &status) { fetch_all_data_operation_(done); });
@@ -164,7 +163,7 @@ Status VirtualClusterInfoAccessor::SyncCreateOrUpdateVirtualCluster(
 
   rpc::CreateOrUpdateVirtualClusterReply reply;
   RAY_RETURN_NOT_OK(client_impl_->GetGcsRpcClient().SyncCreateOrUpdateVirtualCluster(
-      request, &reply, timeout_ms));
+      std::move(request), &reply, timeout_ms));
 
   if (!reply.SerializeToString(&serialized_reply)) {
     return Status::IOError("Failed to serialize CreateOrUpdateVirtualClusterReply");
@@ -184,7 +183,7 @@ Status VirtualClusterInfoAccessor::SyncRemoveNodesFromVirtualCluster(
 
   rpc::RemoveNodesFromVirtualClusterReply reply;
   RAY_RETURN_NOT_OK(client_impl_->GetGcsRpcClient().SyncRemoveNodesFromVirtualCluster(
-      request, &reply, timeout_ms));
+      std::move(request), &reply, timeout_ms));
 
   if (!reply.SerializeToString(&serialized_reply)) {
     return Status::IOError("Failed to serialize RemoveNodesFromVirtualClusterReply");

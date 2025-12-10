@@ -57,6 +57,7 @@ from ray.dashboard.modules.reporter.gpu_profile_manager import GpuProfilingManag
 from ray.dashboard.modules.reporter.gpu_providers import (
     GpuMetricProvider,
     GpuUtilizationInfo,
+    ProcessGPUInfo,
     TpuUtilizationInfo,
 )
 from ray.dashboard.modules.reporter.profile_manager import (

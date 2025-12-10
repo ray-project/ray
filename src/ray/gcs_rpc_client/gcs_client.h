@@ -211,6 +211,11 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *autoscaler_state_accessor_;
   }
 
+  VirtualClusterInfoAccessor &VirtualCluster() {
+    RAY_CHECK(virtual_cluster_accessor_ != nullptr);
+    return *virtual_cluster_accessor_;
+  }
+
   PublisherAccessor &Publisher() {
     RAY_CHECK(publisher_accessor_ != nullptr);
     return *publisher_accessor_;
@@ -241,6 +246,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<TaskInfoAccessor> task_accessor_;
   std::unique_ptr<RuntimeEnvAccessor> runtime_env_accessor_;
   std::unique_ptr<AutoscalerStateAccessor> autoscaler_state_accessor_;
+  std::unique_ptr<VirtualClusterInfoAccessor> virtual_cluster_accessor_;
   std::unique_ptr<PublisherAccessor> publisher_accessor_;
 
  private:

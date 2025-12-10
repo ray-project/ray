@@ -25,6 +25,7 @@
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_table_storage.h"
+#include "ray/gcs/gcs_virtual_cluster_manager.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/pubsub/gcs_publisher.h"
@@ -55,6 +56,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
                  instrumented_io_context &io_context,
                  rpc::RayletClientPool *raylet_client_pool,
                  const ClusterID &cluster_id,
+                 GcsVirtualClusterManager &gcs_virtual_cluster_manager,
                  observability::RayEventRecorderInterface &ray_event_recorder,
                  const std::string &session_name);
 
@@ -209,6 +211,9 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// This is technically not draining a node. It should be just called "kill node".
   virtual void DrainNode(const NodeID &node_id);
 
+  /// Evict all dead nodes which ttl is expired.
+  void EvictExpiredNodes();
+
   /// Update node state from a resource view sync message if the node is alive.
   ///
   /// \param node_id The ID of the node to update.
@@ -249,6 +254,10 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// \param node The node which is dead.
   void AddDeadNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Evict one dead node from sorted_dead_node_list_ as well as
+  /// dead_nodes_.
+  void EvictOneDeadNode();
 
   /// Remove a node from alive nodes cache. The node's death information will also be set.
   ///
@@ -378,6 +387,8 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   rpc::RayletClientPool *raylet_client_pool_;
   /// Cluster ID to be shared with clients when connecting.
   const ClusterID cluster_id_;
+  /// The gcs virtual cluster handler and service.
+  GcsVirtualClusterManager &gcs_virtual_cluster_manager_;
   /// Class lock for node manager
   mutable absl::Mutex mutex_;
 

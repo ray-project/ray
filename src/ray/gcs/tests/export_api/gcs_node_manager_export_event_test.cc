@@ -24,8 +24,10 @@
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_node_manager.h"
+#include "ray/gcs/gcs_virtual_cluster_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/util/event.h"
 #include "ray/util/string_utils.h"
@@ -53,6 +55,10 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
         std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ = std::make_unique<gcs::GcsTableStorage>(
         std::make_unique<gcs::InMemoryStoreClient>());
+    cluster_resource_manager_ =
+        std::make_unique<ray::ClusterResourceManager>(io_service_);
+    gcs_virtual_cluster_manager_ = std::make_unique<ray::gcs::GcsVirtualClusterManager>(
+        io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
 
     RayConfig::instance().initialize(
         R"(
@@ -81,6 +87,8 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
   instrumented_io_context io_service_;
+  std::unique_ptr<ray::ClusterResourceManager> cluster_resource_manager_;
+  std::unique_ptr<ray::gcs::GcsVirtualClusterManager> gcs_virtual_cluster_manager_;
   std::string log_dir_;
 };
 
@@ -92,6 +100,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
                                    io_service_,
                                    client_pool_.get(),
                                    ClusterID::Nil(),
+                                   *gcs_virtual_cluster_manager_,
                                    /*ray_event_recorder=*/fake_ray_event_recorder,
                                    /*session_name=*/"");
   auto node = GenNodeInfo();
@@ -120,6 +129,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
                                    io_service_,
                                    client_pool_.get(),
                                    ClusterID::Nil(),
+                                   *gcs_virtual_cluster_manager_,
                                    /*ray_event_recorder=*/fake_ray_event_recorder,
                                    /*session_name=*/"");
   auto node = GenNodeInfo();

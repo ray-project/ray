@@ -73,7 +73,10 @@ ray_cc_library(
 
 ray_cc_library(
     name = "gcs_publisher",
-    srcs = ["gcs_publisher.cc"],
+    srcs = [
+        "gcs_publisher.cc",
+        "gcs_publisher.ant.cc",
+    ],
     hdrs = ["gcs_publisher.h"],
     deps = [
         ":publisher_interface",
@@ -83,7 +86,10 @@ ray_cc_library(
 
 ray_cc_library(
     name = "gcs_subscriber",
-    srcs = ["gcs_subscriber.cc"],
+    srcs = [
+        "gcs_subscriber.cc",
+        "gcs_subscriber.ant.cc",
+    ],
     hdrs = ["gcs_subscriber.h"],
     deps = [
         ":subscriber_interface",

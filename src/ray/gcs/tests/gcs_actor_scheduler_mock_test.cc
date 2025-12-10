@@ -20,13 +20,16 @@
 #include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_node_manager.h"
 #include "mock/ray/gcs/store_client/store_client.h"
+#include "mock/ray/pubsub/publisher.h"
 #include "mock/ray/raylet_client/raylet_client.h"
 #include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_actor.h"
 #include "ray/gcs/gcs_actor_scheduler.h"
+#include "ray/gcs/gcs_virtual_cluster_manager.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/util/counter_map.h"
 
 using namespace ::testing;  // NOLINT
@@ -44,6 +47,10 @@ class GcsActorSchedulerMockTest : public Test {
   void SetUp() override {
     store_client = std::make_shared<MockStoreClient>();
     actor_table = std::make_unique<GcsActorTable>(store_client);
+    cluster_resource_manager_ =
+        std::make_unique<ray::ClusterResourceManager>(io_service_);
+    gcs_virtual_cluster_manager_ = std::make_unique<ray::gcs::GcsVirtualClusterManager>(
+        io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
     raylet_client = std::make_shared<MockRayletClientInterface>();
     core_worker_client = std::make_shared<rpc::MockCoreWorkerClientInterface>();
     client_pool = std::make_unique<rpc::RayletClientPool>(
@@ -54,6 +61,7 @@ class GcsActorSchedulerMockTest : public Test {
                                          io_context,
                                          client_pool.get(),
                                          ClusterID::Nil(),
+                                         *gcs_virtual_cluster_manager_,
                                          /*ray_event_recorder=*/fake_ray_event_recorder_,
                                          /*session_name=*/"");
     local_node_id = NodeID::FromRandom();
@@ -112,6 +120,11 @@ class GcsActorSchedulerMockTest : public Test {
   NodeID node_id;
   WorkerID worker_id;
   NodeID local_node_id;
+  std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
+  instrumented_io_context io_service_;
+  std::unique_ptr<ray::ClusterResourceManager> cluster_resource_manager_;
+  std::unique_ptr<ray::gcs::GcsVirtualClusterManager> gcs_virtual_cluster_manager_;
 };
 
 TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak1) {

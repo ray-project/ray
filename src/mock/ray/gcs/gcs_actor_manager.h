@@ -16,9 +16,14 @@
 
 #include <gmock/gmock.h>
 
+#include "mock/ray/pubsub/publisher.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_actor_manager.h"
+#include "ray/gcs/gcs_virtual_cluster_manager.h"
+#include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
 
 namespace ray {
 namespace gcs {
@@ -36,6 +41,7 @@ class MockGcsActorManager : public GcsActorManager {
             /*gcs_publisher=*/nullptr,
             runtime_env_manager,
             function_manager,
+            /*gcs_virtual_cluster_manager=*/mock_virtual_cluster_manager_do_not_use_,
             [](const ActorID &) {},
             worker_client_pool,
             /*ray_event_recorder=*/fake_ray_event_recorder_,
@@ -90,6 +96,20 @@ class MockGcsActorManager : public GcsActorManager {
   observability::FakeRayEventRecorder fake_ray_event_recorder_;
   observability::FakeGauge fake_actor_by_state_gauge_;
   observability::FakeGauge fake_gcs_actor_by_state_gauge_;
+
+  std::shared_ptr<gcs::GcsTableStorage> mock_gcs_table_storage_ =
+      std::make_unique<GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
+
+  std::shared_ptr<pubsub::GcsPublisher> mock_gcs_publisher_ =
+      std::make_shared<pubsub::GcsPublisher>(std::make_unique<pubsub::MockPublisher>());
+
+  ClusterResourceManager mock_cluster_resource_manager_{mock_io_context_do_not_use_};
+
+  GcsVirtualClusterManager mock_virtual_cluster_manager_do_not_use_{
+      mock_io_context_do_not_use_,
+      *mock_gcs_table_storage_,
+      *mock_gcs_publisher_,
+      mock_cluster_resource_manager_};
 };
 
 }  // namespace gcs

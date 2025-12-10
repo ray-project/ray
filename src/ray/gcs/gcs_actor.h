@@ -192,6 +192,8 @@ class GcsActor {
   void UpdateState(rpc::ActorTableData::ActorState state);
   /// Get the state of this gcs actor.
   rpc::ActorTableData::ActorState GetState() const;
+  /// Get virtual cluster id of this actor
+  const std::string &GetVirtualClusterID() const;
 
   /// Get the id of this actor.
   ActorID GetActorID() const;

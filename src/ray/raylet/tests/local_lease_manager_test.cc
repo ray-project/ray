@@ -44,7 +44,8 @@ class MockWorkerPool : public WorkerPoolInterface {
   MockWorkerPool() : num_pops(0) {}
 
   void PopWorker(const LeaseSpecification &lease_spec,
-                 const PopWorkerCallback &callback) override {
+                 const PopWorkerCallback &callback,
+                 const std::string &serialized_allocated_instances = "{}") override {
     num_pops++;
     const int runtime_env_hash = lease_spec.GetRuntimeEnvHash();
     callbacks[runtime_env_hash].push_back(callback);
@@ -214,8 +215,8 @@ class MockWorkerPool : public WorkerPoolInterface {
     RAY_CHECK(false) << "Not used.";
   }
 
-  void StartNewWorker(
-      const std::shared_ptr<PopWorkerRequest> &pop_worker_request) override {
+  void StartNewWorker(const std::shared_ptr<PopWorkerRequest> &pop_worker_request,
+                      const std::string &serialized_allocated_instances = "{}") override {
     RAY_CHECK(false) << "Not used.";
   }
 

@@ -23,7 +23,6 @@ from ray._private.runtime_env.packaging import (
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import (
     get_directory_size_bytes,
-    try_to_create_directory,
     try_to_symlink,
 )
 from ray._raylet import GcsClient

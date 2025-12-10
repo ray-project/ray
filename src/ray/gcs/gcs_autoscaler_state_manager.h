@@ -93,7 +93,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateService
     return node_resource_info_;
   }
 
- private:
+ protected:
   /// \brief Get the aggregated resource load from all nodes.
   absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand> GetAggregatedResourceLoad()
       const;

@@ -1421,10 +1421,8 @@ void WorkerPool::StartNewWorker(
 void WorkerPool::PopWorker(const LeaseSpecification &lease_spec,
                            const PopWorkerCallback &callback,
                            const std::string &serialized_allocated_instances) {
-  RAY_LOG(DEBUG) << "Pop worker for task " << task_spec.TaskId() << " task name "
-                 << task_spec.FunctionDescriptor()->ToString();
-  // Code path of actor task.
-  RAY_CHECK(!task_spec.IsActorTask()) << "Direct call shouldn't reach here.";
+  RAY_LOG(DEBUG) << "Pop worker for task " << lease_spec.LeaseId() << " task name "
+                 << lease_spec.FunctionDescriptor()->ToString();
 
   auto pop_worker_request = std::make_shared<PopWorkerRequest>(
       lease_spec.GetLanguage(),

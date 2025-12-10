@@ -247,7 +247,8 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
                                int64_t backlog_size) = 0;
 
   virtual void StartNewWorker(
-      const std::shared_ptr<PopWorkerRequest> &pop_worker_request) = 0;
+      const std::shared_ptr<PopWorkerRequest> &pop_worker_request,
+      const std::string &serialized_allocated_instances = "{}") = 0;
 
   virtual std::string DebugString() const = 0;
 };
@@ -561,7 +562,7 @@ class WorkerPool : public WorkerPoolInterface {
   // Note: NONE of these methods guarantee that pop_worker_request.callback will be called
   // with the started worker. It may be called with any fitting workers.
   void StartNewWorker(const std::shared_ptr<PopWorkerRequest> &pop_worker_request,
-                      const std::string &serialized_allocated_instances = "{}") override;
+                      const std::string &serialized_allocated_instances = "{}");
 
  protected:
   void update_worker_startup_token_counter();

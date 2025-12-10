@@ -48,10 +48,10 @@ message NodeLifecycleEvent {
   message StateTransition {
     State state = 1;
     google.protobuf.Timestamp timestamp = 2;
-    map<string, double> resources = 3; // Resources (cpu, gpu, etc.) and their counts,
-                                       // available only in the ALIVE state.
-    DeathInfo death_info = 4;  // Available only in the DEAD state
-    AliveSubState alive_sub_state = 5; // Available only in the ALIVE state
+    map<string, double> resources = 3;  // Resources (cpu, gpu, etc.) and their counts,
+                                        // available only in the ALIVE state.
+    DeathInfo death_info = 4;           // Available only in the DEAD state
+    AliveSubState alive_sub_state = 5;  // Available only in the ALIVE state
   }
 
   bytes node_id = 1;

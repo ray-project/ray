@@ -404,7 +404,7 @@ void NodeManager::RegisterGcs() {
              rpc::VirtualClusterTableData &&virtual_cluster_data) {
         virtual_cluster_manager_->UpdateVirtualCluster(std::move(virtual_cluster_data));
       };
-  RAY_RETURN_NOT_OK(gcs_client_->VirtualCluster().AsyncSubscribeAll(
+  RAY_CHECK_OK(gcs_client_.VirtualCluster().AsyncSubscribeAll(
       virtual_cluster_update_notification_handler, [](const ray::Status &status) {
         RAY_CHECK_OK(status);
         RAY_LOG(INFO) << "Finished subscribing all virtual cluster infos.";
@@ -1352,13 +1352,11 @@ void NodeManager::ProcessAnnounceWorkerPortMessageImpl(
                                                 message->entrypoint()->str(),
                                                 *job_config);
 
-    job_data_ptr->set_virtual_cluster_id(
-        string_from_flatbuf(*message->virtual_cluster_id()));
+    job_data_ptr->set_virtual_cluster_id(message->virtual_cluster_id()->str());
 
-    RAY_CHECK_OK(
-        gcs_client_.Jobs().AsyncAdd(job_data_ptr, [this, client](Status status) {
-          SendPortAnnouncementResponse(client, std::move(status));
-        }));
+    gcs_client_.Jobs().AsyncAdd(job_data_ptr, [this, client](Status status) {
+      SendPortAnnouncementResponse(client, std::move(status));
+    });
   }
 }
 

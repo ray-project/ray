@@ -131,7 +131,9 @@ class RayletIpcClientInterface {
   /// \param port The port.
   /// \param entrypoint The entrypoint of the driver's job.
   /// \return Status.
-  virtual Status AnnounceWorkerPortForDriver(int port, const std::string &entrypoint) = 0;
+  virtual Status AnnounceWorkerPortForDriver(int port,
+                                             const std::string &entrypoint,
+                                             const std::string &virtual_cluster_id) = 0;
 
   /// Tell the raylet that the client has finished executing a task.
   ///

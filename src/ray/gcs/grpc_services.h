@@ -266,6 +266,31 @@ class PlacementGroupInfoGrpcService : public GrpcService {
   int64_t max_active_rpcs_per_handler_;
 };
 
+class VirtualClusterInfoGrpcService : public GrpcService {
+ public:
+  explicit VirtualClusterInfoGrpcService(instrumented_io_context &io_service,
+                                         VirtualClusterInfoGcsServiceHandler &handler,
+                                         int64_t max_active_rpcs_per_handler)
+      : GrpcService(io_service),
+        service_handler_(handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler) {}
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override;
+
+ private:
+  /// The grpc async service object.
+  VirtualClusterInfoGcsService::AsyncService service_;
+  /// The service handler that actually handle the requests.
+  VirtualClusterInfoGcsServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
+};
+
 namespace autoscaler {
 
 class AutoscalerStateGrpcService : public GrpcService {

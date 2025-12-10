@@ -21,6 +21,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/virtual_cluster_id.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -197,6 +198,14 @@ class GcsWorkerTable : public GcsTable<WorkerID, rpc::WorkerTableData> {
   }
 };
 
+class GcsVirtualClusterTable
+    : public GcsTable<VirtualClusterID, rpc::VirtualClusterTableData> {
+ public:
+  explicit GcsVirtualClusterTable(std::shared_ptr<StoreClient> store_client)
+      : GcsTable(std::move(store_client)) {
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::VIRTUAL_CLUSTER);
+  }
+};
 class GcsTableStorage {
  public:
   explicit GcsTableStorage(std::shared_ptr<StoreClient> store_client)
@@ -207,6 +216,7 @@ class GcsTableStorage {
     placement_group_table_ = std::make_unique<GcsPlacementGroupTable>(store_client_);
     node_table_ = std::make_unique<GcsNodeTable>(store_client_);
     worker_table_ = std::make_unique<GcsWorkerTable>(store_client_);
+    virtual_cluster_table_ = std::make_unique<GcsVirtualClusterTable>(store_client_);
   }
 
   virtual ~GcsTableStorage() = default;
@@ -241,6 +251,11 @@ class GcsTableStorage {
     return *worker_table_;
   }
 
+  GcsVirtualClusterTable &VirtualClusterTable() {
+    RAY_CHECK(virtual_cluster_table_ != nullptr);
+    return *virtual_cluster_table_;
+  }
+
   void AsyncGetNextJobID(Postable<void(int)> callback) {
     RAY_CHECK(store_client_);
     store_client_->AsyncGetNextJobID(std::move(callback));
@@ -254,6 +269,7 @@ class GcsTableStorage {
   std::unique_ptr<GcsPlacementGroupTable> placement_group_table_;
   std::unique_ptr<GcsNodeTable> node_table_;
   std::unique_ptr<GcsWorkerTable> worker_table_;
+  std::unique_ptr<GcsVirtualClusterTable> virtual_cluster_table_;
 };
 
 }  // namespace gcs

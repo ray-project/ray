@@ -26,9 +26,11 @@
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_job_manager.h"
 #include "ray/gcs/gcs_kv_manager.h"
+#include "ray/gcs/gcs_virtual_cluster_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
 
 using json = nlohmann::json;
 
@@ -53,6 +55,10 @@ class GcsJobManagerTest : public ::testing::Test {
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
     function_manager_ = std::make_unique<gcs::GCSFunctionManager>(*kv_, io_service_);
+    cluster_resource_manager_ =
+        std::make_unique<ray::ClusterResourceManager>(io_service_);
+    gcs_virtual_cluster_manager_ = std::make_unique<ray::gcs::GcsVirtualClusterManager>(
+        io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
 
     // Mock client factory which abuses the "address" argument to return a
     // CoreWorkerClient whose number of running tasks equal to the address port. This is
@@ -86,6 +92,8 @@ class GcsJobManagerTest : public ::testing::Test {
   observability::FakeGauge fake_running_job_gauge_;
   observability::FakeCounter fake_finished_job_counter_;
   observability::FakeGauge fake_job_duration_in_seconds_gauge_;
+  std::unique_ptr<ray::ClusterResourceManager> cluster_resource_manager_;
+  std::unique_ptr<ray::gcs::GcsVirtualClusterManager> gcs_virtual_cluster_manager_;
   RuntimeEnvManager runtime_env_manager_;
   const std::chrono::milliseconds timeout_ms_{5000};
   std::string log_dir_;
@@ -102,6 +110,7 @@ TEST_F(GcsJobManagerTest, TestRayEventDriverJobEvents) {
                                      *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
+                                     *gcs_virtual_cluster_manager_,
                                      *fake_kv_,
                                      io_service_,
                                      *worker_client_pool_,
@@ -152,6 +161,7 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
                                      *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
+                                     *gcs_virtual_cluster_manager_,
                                      *fake_kv_,
                                      io_service_,
                                      *worker_client_pool_,

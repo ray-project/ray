@@ -372,6 +372,10 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
         sched_cls_info.granted_leases.insert(lease_id);
         // The local node has the available resources to grant the lease, so we should
         // grant it.
+        std::string serialized_allocated_instances = "{}";
+        if (RayConfig::instance().worker_resource_limits_enabled()) {
+          serialized_allocated_instances = allocated_instances->SerializeAsJson();
+        }
         work->allocated_instances_ = allocated_instances;
         work->SetStateWaitingForWorker();
         bool is_detached_actor = spec.IsDetachedActor();
@@ -402,7 +406,8 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
                                          is_detached_actor,
                                          owner_address,
                                          runtime_env_setup_error_message);
-            });
+            },
+            serialized_allocated_instances);
         work_it++;
       }
     }

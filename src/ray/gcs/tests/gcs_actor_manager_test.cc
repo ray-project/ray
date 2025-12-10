@@ -31,9 +31,11 @@
 #include "ray/gcs/gcs_actor.h"
 #include "ray/gcs/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_function_manager.h"
+#include "ray/gcs/gcs_virtual_cluster_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
 
 namespace ray {
 namespace gcs {
@@ -140,6 +142,10 @@ class GcsActorManagerTest : public ::testing::Test {
     function_manager_ = std::make_unique<gcs::GCSFunctionManager>(*kv_, io_service_);
     auto scheduler = std::make_unique<MockActorScheduler>();
     mock_actor_scheduler_ = scheduler.get();
+    cluster_resource_manager_ =
+        std::make_unique<ray::ClusterResourceManager>(io_service_);
+    gcs_virtual_cluster_manager_ = std::make_unique<ray::gcs::GcsVirtualClusterManager>(
+        io_service_, *gcs_table_storage_, *gcs_publisher_, *cluster_resource_manager_);
     worker_client_pool_ = std::make_unique<rpc::CoreWorkerClientPool>(
         [this](const rpc::Address &address) { return worker_client_; });
     fake_ray_event_recorder_ = std::make_unique<observability::FakeRayEventRecorder>();
@@ -150,6 +156,7 @@ class GcsActorManagerTest : public ::testing::Test {
         gcs_publisher_.get(),
         *runtime_env_mgr_,
         *function_manager_,
+        *gcs_virtual_cluster_manager_,
         [](const ActorID &actor_id) {},
         *worker_client_pool_,
         *fake_ray_event_recorder_,
@@ -238,6 +245,8 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GCSFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
+  std::unique_ptr<ray::ClusterResourceManager> cluster_resource_manager_;
+  std::unique_ptr<ray::gcs::GcsVirtualClusterManager> gcs_virtual_cluster_manager_;
   std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
   ray::observability::FakeGauge fake_actor_by_state_gauge_;
   ray::observability::FakeGauge fake_gcs_actor_by_state_gauge_;

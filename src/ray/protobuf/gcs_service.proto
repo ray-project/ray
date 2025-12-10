@@ -1053,6 +1053,8 @@ service VirtualClusterInfoGcsService {
   // Get all virtual clusters info for display.
   rpc GetAllVirtualClusterInfo(GetAllVirtualClusterInfoRequest)
       returns (GetAllVirtualClusterInfoReply);
-  rpc UpdateAutoscalingConfig(UpdateAutoscalingConfigRequest) returns (UpdateAutoscalingConfigReply);
-  rpc GetAutoscalingConfig(GetAutoscalingConfigRequest) returns (GetAutoscalingConfigReply);
+  rpc UpdateAutoscalingConfig(UpdateAutoscalingConfigRequest)
+      returns (UpdateAutoscalingConfigReply);
+  rpc GetAutoscalingConfig(GetAutoscalingConfigRequest)
+      returns (GetAutoscalingConfigReply);
 }
