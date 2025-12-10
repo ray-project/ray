@@ -226,7 +226,20 @@ Putting things together
                 scaling_config=ScalingConfig(num_workers=4, use_gpu=True)
             )
 
-            result = trainer.fit()
+    # Apply preprocessing in Ray Data
+    train_dataset = (
+        create_mock_ray_text_dataset(
+            dataset_size=1000000,
+            min_len=1000,
+            max_len=3000
+        )
+        .map_batches(
+            CollateFnRayData,
+            batch_size=BATCH_SIZE,
+            batch_format="pyarrow",
+        )
+        .repartition(target_num_rows_per_block=BATCH_SIZE)  # Ensure outputs match batch size
+    )
 
     .. tab-item:: Optimized implementation
 
