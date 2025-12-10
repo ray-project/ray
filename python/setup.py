@@ -1,5 +1,4 @@
 import errno
-import io
 import logging
 import os
 import pathlib
@@ -230,7 +229,7 @@ if setup_spec.type == SetupType.RAY:
     pyarrow_deps = [
         "pyarrow >= 9.0.0",
     ]
-    pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3"
+    pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,!=2.10.*,!=2.11.*,<3"
     setup_spec.extras = {
         "cgraph": [
             "cupy-cuda12x; sys_platform != 'darwin'",
@@ -376,8 +375,10 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]>=0.11.0",
+                "vllm[audio]>=0.12.0",
                 "nixl>=0.6.1",
+                # TODO(llm): remove after next vLLM version bump
+                "transformers>=4.57.3",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
@@ -402,13 +403,11 @@ if setup_spec.type == SetupType.RAY:
 # new releases candidates.
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
-        # Click 8.3.* does not work with copy.deepcopy on Python 3.10
-        # TODO(aslonnie): https://github.com/ray-project/ray/issues/56747
-        "click>=7.0, !=8.3.*",
+        "click>=7.0",
         "filelock",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
-        "packaging",
+        "packaging>=24.2",
         "protobuf>=3.20.3",
         "pyyaml",
         "requests",
@@ -775,15 +774,24 @@ if __name__ == "__main__":
     if os.path.isdir(build_dir):
         shutil.rmtree(build_dir)
 
+    with open(
+        os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
+    ) as f:
+        long_readme = f.read()
+
+    with open(os.path.join(ROOT_DIR, "LICENSE.txt"), "r", encoding="utf-8") as f:
+        license_text = f.read().strip()
+    if "\n" in license_text:
+        # If the license text has multiple lines, add an ending endline.
+        license_text += "\n"
+
     setuptools.setup(
         name=setup_spec.name,
         version=setup_spec.version,
         author="Ray Team",
         author_email="ray-dev@googlegroups.com",
         description=(setup_spec.description),
-        long_description=io.open(
-            os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
-        ).read(),
+        long_description=long_readme,
         url="https://github.com/ray-project/ray",
         keywords=(
             "ray distributed parallel machine-learning hyperparameter-tuning"
@@ -799,8 +807,9 @@ if __name__ == "__main__":
         ],
         packages=setup_spec.get_packages(),
         cmdclass={"build_ext": build_ext},
-        # The BinaryDistribution argument triggers build_ext.
-        distclass=BinaryDistribution,
+        distclass=(  # Avoid building extensions for deps-only builds.
+            BinaryDistribution if setup_spec.build_type != BuildType.DEPS_ONLY else None
+        ),
         install_requires=setup_spec.install_requires,
         setup_requires=["cython >= 3.0.12", "pip", "wheel"],
         extras_require=setup_spec.extras,
@@ -825,5 +834,5 @@ if __name__ == "__main__":
             "": ["BUILD", "BUILD.bazel"],
         },
         zip_safe=False,
-        license="Apache 2.0",
+        license=license_text,
     )

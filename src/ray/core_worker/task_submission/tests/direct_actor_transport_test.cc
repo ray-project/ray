@@ -17,11 +17,16 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/memory_store.h"
-#include "mock/ray/core_worker/reference_counter.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/core_worker/actor_creator.h"
+#include "ray/core_worker/reference_counter.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
+#include "ray/observability/fake_metric.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/fake_subscriber.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 
 namespace ray {
 namespace core {
@@ -38,10 +43,25 @@ class DirectTaskTransportTest : public ::testing::Test {
     task_manager = std::make_shared<MockTaskManagerInterface>();
     client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
         [&](const rpc::Address &) { return nullptr; });
+    raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
+        [](const rpc::Address &) -> std::shared_ptr<RayletClientInterface> {
+          return nullptr;
+        });
     memory_store = DefaultCoreWorkerMemoryStoreWithThread::Create();
-    reference_counter = std::make_shared<MockReferenceCounter>();
+    publisher = std::make_unique<pubsub::FakePublisher>();
+    subscriber = std::make_unique<pubsub::FakeSubscriber>();
+    reference_counter = std::make_shared<ReferenceCounter>(
+        rpc::Address(),
+        publisher.get(),
+        subscriber.get(),
+        /*is_node_dead=*/[](const NodeID &) { return false; },
+        fake_owned_object_count_gauge,
+        fake_owned_object_size_gauge,
+        /*lineage_pinning_enabled=*/false);
     actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *client_pool,
+        *raylet_client_pool,
+        gcs_client,
         *memory_store,
         *task_manager,
         *actor_creator,
@@ -81,11 +101,16 @@ class DirectTaskTransportTest : public ::testing::Test {
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work;
   std::unique_ptr<ActorTaskSubmitter> actor_task_submitter;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool;
+  std::shared_ptr<rpc::RayletClientPool> raylet_client_pool;
   std::unique_ptr<CoreWorkerMemoryStore> memory_store;
   std::shared_ptr<MockTaskManagerInterface> task_manager;
   std::unique_ptr<ActorCreator> actor_creator;
   std::shared_ptr<ray::gcs::MockGcsClient> gcs_client;
-  std::shared_ptr<MockReferenceCounter> reference_counter;
+  std::unique_ptr<pubsub::FakePublisher> publisher;
+  std::unique_ptr<pubsub::FakeSubscriber> subscriber;
+  ray::observability::FakeGauge fake_owned_object_count_gauge;
+  ray::observability::FakeGauge fake_owned_object_size_gauge;
+  std::shared_ptr<ReferenceCounterInterface> reference_counter;
 };
 
 TEST_F(DirectTaskTransportTest, ActorCreationOk) {

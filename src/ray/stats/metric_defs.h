@@ -42,40 +42,6 @@ namespace stats {
 /// ray_[component]_[metrics_name]_total (e.g., ray_pull_manager_total)
 ///
 
-/// ASIO stats
-DECLARE_stats(io_context_event_loop_lag_ms);
-
-/// Event stats
-DECLARE_stats(operation_count);
-DECLARE_stats(operation_run_time_ms);
-DECLARE_stats(operation_queue_time_ms);
-DECLARE_stats(operation_active_count);
-
-/// Scheduler
-DECLARE_stats(scheduler_failed_worker_startup_total);
-DECLARE_stats(scheduler_tasks);
-DECLARE_stats(scheduler_unscheduleable_tasks);
-DECLARE_stats(local_resource_view_node_count);
-
-/// Raylet Resource Manager
-DECLARE_stats(resources);
-
-/// TODO(rickyx): migrate legacy metrics
-/// Local Object Manager
-DECLARE_stats(spill_manager_objects);
-DECLARE_stats(spill_manager_objects_bytes);
-DECLARE_stats(spill_manager_request_total);
-DECLARE_stats(spill_manager_throughput_mb);
-
-/// Object Store
-DECLARE_stats(object_store_memory);
-
-/// Memory Manager
-DECLARE_stats(memory_manager_worker_eviction_total);
-
-/// Core Worker Task Manager
-DECLARE_stats(total_lineage_bytes);
-
 }  // namespace stats
 
 }  // namespace ray
