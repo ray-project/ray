@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Union
 
+import numpy as np
 import pyarrow
 import pyarrow.compute as pc
 
@@ -178,80 +179,109 @@ class _ListNamespace:
     def flatten(self) -> "UDFExpr":
         """Flatten one level of nesting for each list value."""
 
-        def _is_list_like(pa_type: pyarrow.DataType) -> bool:
-            return pyarrow.types.is_list(pa_type) or pyarrow.types.is_large_list(
-                pa_type
-            )
-
         return_dtype = DataType(object)
-        target_arrow_type = None
+        use_arrow_kernel = False
+        outer_is_large_list = False
+        requires_nested = False
         if self._expr.data_type.is_arrow_type():
             arrow_type = self._expr.data_type.to_arrow_dtype()
-            if _is_list_like(arrow_type):
+            if pyarrow.types.is_list(arrow_type) or pyarrow.types.is_large_list(
+                arrow_type
+            ):
                 child_type = arrow_type.value_type
-                if _is_list_like(child_type):
+                outer_is_large_list = pyarrow.types.is_large_list(arrow_type)
+                if pyarrow.types.is_list(child_type) or pyarrow.types.is_large_list(
+                    child_type
+                ):
                     return_dtype = DataType.from_arrow(child_type)
-                    target_arrow_type = child_type
+                    use_arrow_kernel = True
                 elif pyarrow.types.is_fixed_size_list(child_type):
-                    inner_value = DataType.from_arrow(child_type.value_type)
-                    return_dtype = DataType.list(inner_value)
-                    target_arrow_type = pyarrow.list_(child_type.value_type)
+                    flattened_type = pyarrow.list_(child_type.value_type)
+                    return_dtype = DataType.from_arrow(flattened_type)
+                    use_arrow_kernel = True
                 else:
-                    target_arrow_type = arrow_type
+                    requires_nested = True
             elif pyarrow.types.is_fixed_size_list(arrow_type):
-                inner_value = DataType.from_arrow(arrow_type.value_type)
-                return_dtype = inner_value
-                target_arrow_type = arrow_type.value_type
+                child_type = arrow_type.value_type
+                if pyarrow.types.is_list(child_type) or pyarrow.types.is_large_list(
+                    child_type
+                ):
+                    return_dtype = DataType.from_arrow(child_type)
+                    use_arrow_kernel = True
+                elif pyarrow.types.is_fixed_size_list(child_type):
+                    flattened_type = pyarrow.list_(child_type.value_type)
+                    return_dtype = DataType.from_arrow(flattened_type)
+                    use_arrow_kernel = True
+                else:
+                    requires_nested = True
             else:
-                target_arrow_type = arrow_type
+                requires_nested = True
 
-        if target_arrow_type is None and return_dtype.is_arrow_type():
-            target_arrow_type = return_dtype.to_arrow_dtype()
+        if requires_nested:
+            raise TypeError(
+                "list.flatten() requires a list column whose elements are also lists."
+            )
+
+        if hasattr(pc, "list_flatten") and use_arrow_kernel:
+
+            @pyarrow_udf(return_dtype=return_dtype)
+            def _list_flatten_arrow(arr: pyarrow.Array) -> pyarrow.Array:
+                if isinstance(arr, pyarrow.ChunkedArray):
+                    arr = arr.combine_chunks()
+                if not isinstance(arr, (pyarrow.ListArray, pyarrow.LargeListArray)):
+                    arr = pyarrow.array(arr)
+
+                flattened_child_lists = pc.list_flatten(arr)
+                scalar_values = pc.list_flatten(flattened_child_lists)
+
+                child_to_parent = pc.list_parent_indices(arr)
+                scalar_to_child = pc.list_parent_indices(flattened_child_lists)
+
+                if len(scalar_values) == 0:
+                    counts = np.zeros(len(arr), dtype=np.int64)
+                else:
+                    parent_index_array = pc.take(child_to_parent, scalar_to_child)
+                    parent_indices = parent_index_array.to_numpy(zero_copy_only=False)
+                    counts = np.bincount(
+                        parent_indices,
+                        minlength=len(arr),
+                    ).astype(np.int64, copy=False)
+
+                offsets = np.zeros(len(arr) + 1, dtype=np.int64)
+                if counts.size > 0:
+                    np.cumsum(counts, out=offsets[1:])
+
+                offsets_type = pyarrow.int64() if outer_is_large_list else pyarrow.int32()
+                offsets_array = pyarrow.array(offsets, type=offsets_type)
+                null_bitmap = arr.buffers()[0] if arr.null_count else None
+
+                return pyarrow.ListArray.from_arrays(
+                    offsets_array,
+                    scalar_values,
+                    mask=null_bitmap,
+                )
+
+            return _list_flatten_arrow(self._expr)
 
         @pyarrow_udf(return_dtype=return_dtype)
-        def _list_flatten(arr: pyarrow.Array) -> pyarrow.Array:
-            def _flatten_value(value):
-                if value is None:
-                    return None
+        def _list_flatten_python(arr: pyarrow.Array) -> pyarrow.Array:
+            """Fallback implementation when PyArrow list_flatten is unavailable."""
+            import itertools
 
-                flattened = []
-                for sub in value:
-                    if sub is None:
-                        continue
-                    if isinstance(sub, list):
-                        flattened.extend(sub)
-                    else:
-                        flattened.append(sub)
-                return flattened
+            flattened_lists = []
+            for list_of_lists in arr.to_pylist():
+                if list_of_lists is None:
+                    flattened_lists.append(None)
+                    continue
 
-            flattened_values = [_flatten_value(value) for value in arr.to_pylist()]
+                valid_sublists = [sub for sub in list_of_lists if sub is not None]
+                flattened = list(itertools.chain.from_iterable(valid_sublists))
+                flattened_lists.append(flattened)
 
-            arrow_type = target_arrow_type
-            if arrow_type is None:
-                arr_type = arr.type
-                if pyarrow.types.is_list(arr_type) or pyarrow.types.is_large_list(
-                    arr_type
-                ):
-                    child_type = arr_type.value_type
-                    if pyarrow.types.is_list(child_type) or pyarrow.types.is_large_list(
-                        child_type
-                    ):
-                        arrow_type = child_type
-                    elif pyarrow.types.is_fixed_size_list(child_type):
-                        arrow_type = pyarrow.list_(child_type.value_type)
-                    else:
-                        arrow_type = arr_type
-                elif pyarrow.types.is_fixed_size_list(arr_type):
-                    child_type = arr_type.value_type
-                    if pyarrow.types.is_list(child_type) or pyarrow.types.is_large_list(
-                        child_type
-                    ):
-                        arrow_type = child_type
-                    else:
-                        arrow_type = pyarrow.list_(child_type)
-                else:
-                    arrow_type = arr_type
+            result_type = None
+            if return_dtype.is_arrow_type():
+                result_type = return_dtype.to_arrow_dtype()
 
-            return pyarrow.array(flattened_values, type=arrow_type)
+            return pyarrow.array(flattened_lists, type=result_type)
 
-        return _list_flatten(self._expr)
+        return _list_flatten_python(self._expr)

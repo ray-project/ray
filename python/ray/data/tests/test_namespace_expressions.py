@@ -14,6 +14,7 @@ from packaging import version
 
 import ray
 from ray.data._internal.util import rows_same
+from ray.exceptions import RayTaskError
 from ray.data.expressions import col
 
 pytestmark = pytest.mark.skipif(
@@ -140,6 +141,14 @@ class TestListNamespace:
             }
         )
         assert rows_same(result, expected)
+
+    def test_list_flatten_requires_nested_lists(self, dataset_format):
+        """list.flatten() should raise if elements aren't lists."""
+
+        data = [{"items": [1, 2]}, {"items": [3, 4]}]
+        ds = _create_dataset(data, dataset_format)
+        with pytest.raises(RayTaskError):
+            ds.with_column("flattened", col("items").list.flatten()).materialize()
 
 
 # ──────────────────────────────────────
