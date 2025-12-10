@@ -163,7 +163,7 @@ config = (
         create_env_on_local_worker=False,
     )
     .training(
-        train_batch_size_per_learner=4096 * (args.num_env_runners or 2),
+        train_batch_size_per_learner=4096 * (args.num_env_runners or 1),
         lr=1e-4,
         entropy_coeff=0.01,
     )
