@@ -13,9 +13,9 @@ def main():
     def sleep_task(row):
         # Only sleep for the first task so that some tasks finish.
         if row["id"] == 0:
-            # By sleeping for 5 mins, we're able to test whether the autoscaler scales up
-            # unnecessarily. Each node has 8 CPUs, but this release test only needs 1 CPU,
-            # so the peak num of CPUs should be at most 8 CPUs (1 node requested).
+            # By sleeping for 5 mins, we're able to test whether the autoscaler scales
+            # up unnecessarily. This pipeline can use at most 2 CPUs, so the peak num of
+            # CPUs should be at most 8 CPUs (1 node).
             time.sleep(300)
 
         return row
