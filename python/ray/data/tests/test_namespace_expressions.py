@@ -14,8 +14,8 @@ from packaging import version
 
 import ray
 from ray.data._internal.util import rows_same
-from ray.exceptions import RayTaskError
 from ray.data.expressions import col
+from ray.exceptions import RayTaskError
 
 pytestmark = pytest.mark.skipif(
     version.parse(pa.__version__) < version.parse("19.0.0"),
