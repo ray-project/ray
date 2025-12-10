@@ -730,13 +730,13 @@
 # Autoscaling tests
 ###################
 
-- name: basic_autoscaling_respects_utilization
+- name: does_not_over_provision
   group: data-autoscaling
 
   cluster:
     byod: {}
-    cluster_compute: autoscaling/basic_autoscaling_test_config.yaml
+    cluster_compute: autoscaling/does_not_over_provision_cluster_compute.yaml
 
   run:
     timeout: 3600
-    script: python basic_autoscaling_tests/respects_utilization.py
+    script: python autoscaling/does_not_over_provision.py

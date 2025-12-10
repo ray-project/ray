@@ -1,8 +1,9 @@
 import time
+import threading
+from typing import Tuple, Optional
+
 import ray
 from ray.data._internal.execution.interfaces import ExecutionResources
-from typing import Tuple
-import threading
 
 
 class ClusterResourceMonitor:
@@ -14,11 +15,14 @@ class ClusterResourceMonitor:
     """
 
     def __init__(self):
-        self._background_thread = None
-        self._stop_background_thread_event = None
+        if not ray.is_initialized():
+            raise RuntimeError("You must start Ray before using this monitor")
 
-        self._peak_cpu_count = 0
-        self._peak_gpu_count = 0
+        self._background_thread: Optional[threading.Thread] = None
+        self._stop_background_thread_event: Optional[threading.Event] = None
+
+        self._peak_cpu_count: float = 0
+        self._peak_gpu_count: float = 0
 
     def __repr__(self):
         return "ClusterResourceMonitor()"
@@ -47,6 +51,7 @@ class ClusterResourceMonitor:
                 self._peak_gpu_count = max(
                     self._peak_gpu_count, resources.get("GPU", 0)
                 )
+                print(resources)
                 time.sleep(interval_s)
 
         thread = threading.Thread(target=monitor_cluster_resources, daemon=True)
