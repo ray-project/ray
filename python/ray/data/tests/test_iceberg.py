@@ -1,5 +1,6 @@
 import os
 import random
+from typing import Any, Dict, Generator, List, Tuple, Type
 
 import numpy as np
 import pandas as pd
@@ -12,8 +13,10 @@ from pyiceberg import (
     schema as pyi_schema,
     types as pyi_types,
 )
+from pyiceberg.catalog import Catalog
 from pyiceberg.catalog.sql import SqlCatalog
 from pyiceberg.partitioning import PartitionField, PartitionSpec
+from pyiceberg.table import Table
 from pyiceberg.transforms import IdentityTransform
 
 import ray
@@ -213,9 +216,8 @@ def test_read_basic():
     )
     table: pa.Table = pa.concat_tables((ray.get(ref) for ref in ray_ds.to_arrow_refs()))
 
-    # string -> large_string because pyiceberg by default chooses large_string
     expected_schema = pa.schema(
-        [pa.field("col_a", pa.int32()), pa.field("col_b", pa.large_string())]
+        [pa.field("col_a", pa.int32()), pa.field("col_b", pa.string())]
     )
     assert table.schema.equals(expected_schema)
 
@@ -737,6 +739,245 @@ def test_predicate_pushdown_complex_expression():
     )
 
     assert rows_same(result, expected_table)
+
+
+# Helper functions and fixtures for schema evolution tests
+
+
+@pytest.fixture
+def clean_table() -> Generator[Tuple[Catalog, Table], None, None]:
+    """Pytest fixture to get a clean Iceberg table by deleting all data."""
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+    table.delete()
+    yield sql_catalog, table
+
+
+def _create_typed_dataframe(data_dict: Dict[str, List[Any]]) -> pd.DataFrame:
+    """Create a pandas DataFrame with proper int32 dtypes for col_a and col_c."""
+    df = pd.DataFrame(data_dict)
+    if "col_a" in df.columns:
+        # Use nullable Int32 to support NaN values
+        df["col_a"] = df["col_a"].astype("Int32")
+    if "col_c" in df.columns:
+        # Use nullable Int32 to support NaN values
+        df["col_c"] = df["col_c"].astype("Int32")
+    return df
+
+
+def _write_to_iceberg(df: pd.DataFrame, **kwargs: Any) -> None:
+    """Write a DataFrame to the test Iceberg table."""
+    ds = ray.data.from_pandas(df)
+    write_kwargs: Dict[str, Any] = {
+        "table_identifier": f"{_DB_NAME}.{_TABLE_NAME}",
+        "catalog_kwargs": _CATALOG_KWARGS.copy(),
+    }
+    write_kwargs.update(kwargs)
+    ds.write_iceberg(**write_kwargs)
+
+
+def _read_from_iceberg(sort_by: str = None) -> pd.DataFrame:
+    """Read data from the test Iceberg table and optionally sort."""
+    ds = ray.data.read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    result_df = ds.to_pandas()
+    if sort_by:
+        result_df = result_df.sort_values(sort_by).reset_index(drop=True)
+    return result_df
+
+
+def _verify_schema(expected_fields: Dict[str, Type[pyi_types.IcebergType]]) -> None:
+    """
+    Verify the Iceberg table schema matches expected fields.
+
+    Args:
+        expected_fields: Dict mapping field names to PyIceberg type classes
+                        e.g., {"col_a": pyi_types.IntegerType, "col_b": pyi_types.StringType}
+    """
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+    schema = {field.name: field.field_type for field in table.schema().fields}
+
+    assert len(schema) == len(
+        expected_fields
+    ), f"Expected {len(expected_fields)} fields, got {len(schema)}"
+
+    for field_name, expected_type in expected_fields.items():
+        assert field_name in schema, f"Field {field_name} not found in schema"
+        assert isinstance(schema[field_name], expected_type), (
+            f"Field {field_name} expected type {expected_type}, "
+            f"got {type(schema[field_name])}"
+        )
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+class TestSchemaEvolution:
+    """Test schema evolution during writes."""
+
+    def test_schema_evolution_add_column(self, clean_table):
+        """Test adding new columns works."""
+        initial_data = _create_typed_dataframe(
+            {"col_a": [1, 2], "col_b": ["row_1", "row_2"], "col_c": [1, 2]}
+        )
+        _write_to_iceberg(initial_data)
+
+        new_data = _create_typed_dataframe(
+            {
+                "col_a": [3, 4],
+                "col_b": ["row_3", "row_4"],
+                "col_c": [3, 4],
+                "col_d": ["extra_3", "extra_4"],
+            }
+        )
+        _write_to_iceberg(new_data)
+
+        _verify_schema(
+            {
+                "col_a": pyi_types.IntegerType,
+                "col_b": pyi_types.StringType,
+                "col_c": pyi_types.IntegerType,
+                "col_d": pyi_types.StringType,
+            }
+        )
+
+        result_df = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4],
+                "col_b": ["row_1", "row_2", "row_3", "row_4"],
+                "col_c": [1, 2, 3, 4],
+                "col_d": [None, None, "extra_3", "extra_4"],
+            }
+        )
+        assert rows_same(result_df, expected)
+
+    def test_multiple_schema_evolutions(self, clean_table):
+        """Test multiple sequential schema evolutions."""
+        initial_data = _create_typed_dataframe(
+            {"col_a": [1], "col_b": ["row_1"], "col_c": [10]}
+        )
+        _write_to_iceberg(initial_data)
+
+        # First evolution: add col_d
+        data_with_d = _create_typed_dataframe(
+            {"col_a": [2], "col_b": ["row_2"], "col_c": [20], "col_d": ["extra_2"]}
+        )
+        _write_to_iceberg(data_with_d)
+
+        _verify_schema(
+            {
+                "col_a": pyi_types.IntegerType,
+                "col_b": pyi_types.StringType,
+                "col_c": pyi_types.IntegerType,
+                "col_d": pyi_types.StringType,
+            }
+        )
+
+        # Second evolution: add col_e
+        data_with_e = _create_typed_dataframe(
+            {
+                "col_a": [3],
+                "col_b": ["row_3"],
+                "col_c": [30],
+                "col_d": ["extra_3"],
+                "col_e": ["bonus_3"],
+            }
+        )
+        _write_to_iceberg(data_with_e)
+
+        _verify_schema(
+            {
+                "col_a": pyi_types.IntegerType,
+                "col_b": pyi_types.StringType,
+                "col_c": pyi_types.IntegerType,
+                "col_d": pyi_types.StringType,
+                "col_e": pyi_types.StringType,
+            }
+        )
+
+        result_df = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3],
+                "col_b": ["row_1", "row_2", "row_3"],
+                "col_c": [10, 20, 30],
+                "col_d": [None, "extra_2", "extra_3"],
+                "col_e": [None, None, "bonus_3"],
+            }
+        )
+        assert rows_same(result_df, expected)
+
+    def test_column_order_independence(self, clean_table):
+        """Test writing data with columns in different order works."""
+        initial_data = _create_typed_dataframe(
+            {"col_a": [1, 2], "col_b": ["row_1", "row_2"], "col_c": [1, 2]}
+        )
+        _write_to_iceberg(initial_data)
+
+        # Append data with columns in different order
+        reordered_data = _create_typed_dataframe(
+            {"col_c": [3, 4], "col_a": [3, 4], "col_b": ["row_3", "row_4"]}
+        )
+        _write_to_iceberg(reordered_data)
+
+        result_df = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4],
+                "col_b": ["row_1", "row_2", "row_3", "row_4"],
+                "col_c": [1, 2, 3, 4],
+            }
+        )
+        assert rows_same(result_df, expected)
+
+    @pytest.mark.parametrize(
+        "initial_dtype,promoted_dtype,promoted_iceberg_type",
+        [
+            (np.int32, np.int64, pyi_types.LongType),
+            (np.float32, np.float64, pyi_types.DoubleType),
+        ],
+        ids=["int32_to_int64", "float32_to_float64"],
+    )
+    def test_schema_evolution_type_promotion(
+        self, clean_table, initial_dtype, promoted_dtype, promoted_iceberg_type
+    ):
+        """Test type promotion (int32 -> int64, float32 -> float64) works."""
+        initial_data = _create_typed_dataframe(
+            {"col_a": [1, 2], "col_b": ["a", "b"], "col_c": [1, 2]}
+        )
+        initial_data["col_new"] = np.array([10, 20], dtype=initial_dtype)
+        _write_to_iceberg(initial_data)
+
+        new_data = _create_typed_dataframe(
+            {"col_a": [3, 4], "col_b": ["c", "d"], "col_c": [3, 4]}
+        )
+        new_data["col_new"] = np.array([30, 40], dtype=promoted_dtype)
+        _write_to_iceberg(new_data)
+
+        _verify_schema(
+            {
+                "col_a": pyi_types.IntegerType,
+                "col_b": pyi_types.StringType,
+                "col_c": pyi_types.IntegerType,
+                "col_new": promoted_iceberg_type,
+            }
+        )
+
+        result_df = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4],
+                "col_b": ["a", "b", "c", "d"],
+                "col_c": [1, 2, 3, 4],
+            }
+        )
+        expected["col_new"] = np.array([10, 20, 30, 40], dtype=promoted_dtype)
+        assert rows_same(result_df, expected)
 
 
 if __name__ == "__main__":
