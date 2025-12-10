@@ -106,6 +106,41 @@ class TestListNamespace:
         )
         assert rows_same(result, expected)
 
+    def test_list_sort(self, dataset_format):
+        """Test list.sort() sorts each list with custom options."""
+
+        data = [
+            {"items": [3, 1, 2]},
+            {"items": [None, 4, 2]},
+        ]
+        ds = _create_dataset(data, dataset_format)
+        method = col("items").list.sort(order="descending", null_placement="at_start")
+        result = ds.with_column("sorted", method).to_pandas()
+        expected = pd.DataFrame(
+            {
+                "items": [[3, 1, 2], [None, 4, 2]],
+                "sorted": [[3, 2, 1], [None, 4, 2]],
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_list_flatten(self, dataset_format):
+        """Test list.flatten() removes one nesting level."""
+
+        data = [
+            {"items": [[1, 2], [3]]},
+            {"items": [[], [4, 5]]},
+        ]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column("flattened", col("items").list.flatten()).to_pandas()
+        expected = pd.DataFrame(
+            {
+                "items": [[[1, 2], [3]], [[], [4, 5]]],
+                "flattened": [[1, 2, 3], [4, 5]],
+            }
+        )
+        assert rows_same(result, expected)
+
 
 # ──────────────────────────────────────
 # String Namespace Tests

@@ -96,6 +96,21 @@ The following example demonstrates using the list namespace to work with array c
     {'scores': [92, 88], 'num_scores': 2}
     {'scores': [76, 82, 88, 91], 'num_scores': 4}
 
+You can also perform list-specific transformations like sorting and flattening:
+
+.. testcode::
+
+    ds = ray.data.from_items([
+        {"values": [3, 1, 2], "nested": [[1, 2], [3]]},
+        {"values": [2, None, 5], "nested": [[4], []]}
+    ])
+
+    ds = ds.with_columns(
+        sorted_values=col("values").list.sort(order="descending"),
+        flattened_nested=col("nested").list.flatten(),
+    )
+    ds.show()
+
 The following example shows how to use the struct namespace to access nested fields:
 
 .. testcode::
