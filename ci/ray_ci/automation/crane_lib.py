@@ -1,9 +1,12 @@
 """
-Wrapper library for the crane Docker registry tool.
+Wrapper library for using the crane tool for managing container images.
+https://github.com/google/go-containerregistry/blob/v0.19.0/cmd/crane/doc/crane.md
 
 All functions return (return_code, output) tuples. On success, return_code is 0.
 On failure, return_code is non-zero and output may be None (stderr is not captured).
-Callers should check return_code to detect failures rather than relying on exceptions.
+
+Callers are responsible for checking return_code to detect failures rather than
+relying on exceptions.
 """
 
 import platform
@@ -34,10 +37,10 @@ def _crane_binary() -> str:
 
 def call_crane_copy(source: str, destination: str) -> Tuple[int, str]:
     """
-    Copy a Docker image from source to destination using crane.
+    Copy a container image from source to destination.
 
     Args:
-        source: Source image reference (e.g., "registry/repo:tag").
+        source: Source image reference (e.g., "registry.example.com/repo:tag").
         destination: Destination image reference.
 
     Returns:
@@ -67,14 +70,14 @@ def call_crane_copy(source: str, destination: str) -> Tuple[int, str]:
         return e.returncode, e.output
 
 
-def call_crane_cp(tag: str, source: str, aws_ecr_repo: str) -> Tuple[int, str]:
+def call_crane_cp(tag: str, source: str, dest_repo: str) -> Tuple[int, str]:
     """
-    Copy a Docker image to AWS ECR using crane cp.
+    Copy a container image to a destination repository with a specified tag.
 
     Args:
         tag: Tag to apply to the destination image.
         source: Source image reference.
-        aws_ecr_repo: AWS ECR repository URL (tag will be appended as ":tag").
+        dest_repo: Destination repository URL (tag will be appended as ":tag").
 
     Returns:
         Tuple of (return_code, output). return_code is 0 on success, non-zero on
@@ -86,7 +89,7 @@ def call_crane_cp(tag: str, source: str, aws_ecr_repo: str) -> Tuple[int, str]:
                 _crane_binary(),
                 "cp",
                 source,
-                f"{aws_ecr_repo}:{tag}",
+                f"{dest_repo}:{tag}",
             ],
             stdout=subprocess.PIPE,
             text=True,
@@ -145,12 +148,12 @@ def call_crane_index(index_name: str, tags: List[str]) -> Tuple[int, str]:
 
 def call_crane_manifest(tag: str) -> Tuple[int, str]:
     """
-    Fetch the manifest for a Docker image.
+    Fetch the manifest for a container image.
 
     Can be used to check if an image exists (return_code 0 means it exists).
 
     Args:
-        tag: Image reference to fetch manifest for (e.g., "registry/repo:tag").
+        tag: Image reference to fetch manifest for (e.g., "registry.example.com/repo:tag").
 
     Returns:
         Tuple of (return_code, output). return_code is 0 if image exists, non-zero
