@@ -515,7 +515,7 @@ class TestAlgorithm(unittest.TestCase):
         """Tests whether no env on workers, but env on eval workers works ok."""
         script_path = Path(__file__)
         input_file = os.path.join(
-            script_path.parent.parent.parent, "tests/data/cartpole/small.json"
+            script_path.parent.parent.parent, "offline/tests/data/cartpole/small.json"
         )
 
         env = gym.make("CartPole-v1")

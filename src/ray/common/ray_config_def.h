@@ -396,7 +396,7 @@ RAY_CONFIG(std::string, gcs_storage, "memory")
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
 
 /// The threshold to trigger a global gc
-RAY_CONFIG(double, high_plasma_storage_usage, 0.7)
+RAY_CONFIG(double, plasma_store_usage_trigger_gc_threshold, 0.7)
 
 /// The amount of time between automatic local Python GC triggers.
 RAY_CONFIG(uint64_t, local_gc_interval_s, 90 * 60)
@@ -405,7 +405,7 @@ RAY_CONFIG(uint64_t, local_gc_interval_s, 90 * 60)
 RAY_CONFIG(uint64_t, local_gc_min_interval_s, 10)
 
 /// The min amount of time between triggering global_gc in raylet. This only applies
-/// to global GCs triggered due to high_plasma_storage_usage.
+/// to global GCs triggered due to plasma_store_usage_trigger_gc_threshold.
 RAY_CONFIG(uint64_t, global_gc_min_interval_s, 30)
 
 /// Duration to wait between retries for failed tasks.
@@ -898,10 +898,17 @@ RAY_CONFIG(int64_t, health_check_timeout_ms, 10000)
 /// The threshold to consider a node dead.
 RAY_CONFIG(int64_t, health_check_failure_threshold, 5)
 
-/// The pool size for grpc server call.
+/// Thread pool size for sending replies in grpc server (system components: raylet, GCS).
 RAY_CONFIG(int64_t,
            num_server_call_thread,
            std::max((int64_t)1, (int64_t)(std::thread::hardware_concurrency() / 4U)))
+
+/// Thread pool size for sending replies in grpc server (CoreWorkers).
+/// https://github.com/ray-project/ray/issues/58351 shows the
+/// reply path is light enough that 2 threads is sufficient.
+RAY_CONFIG(int64_t,
+           core_worker_num_server_call_thread,
+           std::thread::hardware_concurrency() >= 8 ? 2 : 1);
 
 /// Use madvise to prevent worker/raylet coredumps from including
 /// the mapped plasma pages.
@@ -1017,3 +1024,15 @@ RAY_CONFIG(bool, start_python_gc_manager_thread, true)
 // Whether to enable the feature of outputting error log if the task is
 // still retryable.
 RAY_CONFIG(bool, enable_output_error_log_if_still_retry, true)
+
+// The maximum batch size for ray_syncer_bidi_reactor to sync messages to other nodes.
+// If `gcs_resource_broadcast_max_batch_size == 1`, the ray_syncer_bidi_reactor will
+// disable batching. Otherwise, it will start send with maximum of
+// `gcs_resource_broadcast_max_batch_size` messages before timeout.
+RAY_CONFIG(size_t, gcs_resource_broadcast_max_batch_size, 1)
+
+// The maximum period that the GCS will wait for resource update messages before
+// broadcasting the batch. If `gcs_resource_broadcast_max_batch_size` messages arrive
+// before the timeout, the batch will be broadcasted eagerly. This flag only applies if
+// `gcs_resource_broadcast_max_batch_size != 1`.
+RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
