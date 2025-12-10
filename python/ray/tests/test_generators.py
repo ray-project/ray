@@ -398,9 +398,7 @@ def test_dynamic_generator_reconstruction(ray_start_cluster, num_returns_type):
     }
     cluster = ray_start_cluster
     # Head node with no resources.
-    cluster.add_node(
-        num_cpus=0, _system_config=config, enable_object_reconstruction=True
-    )
+    cluster.add_node(num_cpus=0, _system_config=config)
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
@@ -464,7 +462,6 @@ def test_dynamic_generator_reconstruction_nondeterministic(
     cluster.add_node(
         num_cpus=1,
         _system_config=config,
-        enable_object_reconstruction=True,
         resources={"head": 1},
     )
     ray.init(address=cluster.address)
@@ -553,7 +550,6 @@ def test_dynamic_generator_reconstruction_fails(ray_start_cluster, num_returns_t
     cluster.add_node(
         num_cpus=1,
         _system_config=config,
-        enable_object_reconstruction=True,
         resources={"head": 1},
     )
     ray.init(address=cluster.address)
@@ -625,7 +621,6 @@ def test_dynamic_empty_generator_reconstruction_nondeterministic(
     cluster.add_node(
         num_cpus=0,
         _system_config=config,
-        enable_object_reconstruction=True,
         resources={"head": 1},
     )
     ray.init(address=cluster.address)

@@ -107,8 +107,6 @@ class RayParams:
         _system_config: Configuration for overriding RayConfig
             defaults. Used to set system configuration and for experimental Ray
             core feature flags.
-        enable_object_reconstruction: Enable plasma reconstruction on
-            failure.
         ray_debugger_external: If true, make the Ray debugger for a
             worker available externally to the node it is running on. This will
             bind on 0.0.0.0 instead of localhost.
@@ -168,7 +166,6 @@ class RayParams:
         autoscaling_config: Optional[str] = None,
         ray_debugger_external: bool = False,
         _system_config: Optional[Dict[str, str]] = None,
-        enable_object_reconstruction: Optional[bool] = False,
         metrics_agent_port: Optional[int] = None,
         metrics_export_port: Optional[int] = None,
         tracing_startup_hook=None,
@@ -232,7 +229,6 @@ class RayParams:
         self.session_name = session_name
         self.webui = webui
         self._system_config = _system_config or {}
-        self._enable_object_reconstruction = enable_object_reconstruction
         self.labels = labels
         self._check_usage()
         self.cluster_id = cluster_id
@@ -243,14 +239,6 @@ class RayParams:
             self.resource_isolation_config = ResourceIsolationConfig(
                 enable_resource_isolation=False
             )
-
-        # Set the internal config options for object reconstruction.
-        if enable_object_reconstruction:
-            # Turn off object pinning.
-            if self._system_config is None:
-                self._system_config = dict()
-            print(self._system_config)
-            self._system_config["lineage_pinning_enabled"] = True
 
     def update(self, **kwargs):
         """Update the settings according to the keyword arguments.

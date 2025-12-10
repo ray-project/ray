@@ -124,7 +124,6 @@ def test_reconstruction_retry_failed(ray_start_cluster, failure_type):
     cluster.add_node(
         num_cpus=0,
         _system_config=RECONSTRUCTION_CONFIG,
-        enable_object_reconstruction=True,
     )
     ray.init(address=cluster.address)
 
@@ -451,7 +450,6 @@ def test_reconstruction_generator_out_of_scope(
         cluster.add_node(
             num_cpus=0,
             _system_config=RECONSTRUCTION_CONFIG,
-            enable_object_reconstruction=True,
         )
         ray.init(address=cluster.address)
         # Node to place the initial object.

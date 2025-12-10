@@ -570,13 +570,6 @@ Windows powershell users need additional escaping:
     help="Override system configuration defaults.",
 )
 @click.option(
-    "--enable-object-reconstruction",
-    is_flag=True,
-    default=False,
-    hidden=True,
-    help="Specify whether object reconstruction will be used for this cluster.",
-)
-@click.option(
     "--metrics-export-port",
     type=int,
     default=None,
@@ -713,7 +706,6 @@ def start(
     no_redirect_output,
     temp_dir,
     system_config,
-    enable_object_reconstruction,
     metrics_export_port,
     no_monitor,
     tracing_startup_hook,
@@ -828,7 +820,6 @@ def start(
         metrics_agent_port=dashboard_agent_grpc_port,
         runtime_env_agent_port=runtime_env_agent_port,
         _system_config=system_config,
-        enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port,
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
