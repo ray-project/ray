@@ -9,13 +9,15 @@ from cluster_resource_monitor import ClusterResourceMonitor
 def main():
     """This tests check if the cluster doesn't scale up more than necessary."""
 
-    def sleep_task(batch):
-        # By sleeping for 5 mins, we're able to test whether the autoscaler scales up
-        # unnecessarily. Each node has 8 CPUs, but this release test only needs 1 CPU,
-        # so the peak num of CPUs should be at most 8 CPUs (1 node requested).
-        time.sleep(300)
+    def sleep_task(row):
+        # Only sleep for the first task so that some tasks finish.
+        if row["id"] == 0:
+            # By sleeping for 5 mins, we're able to test whether the autoscaler scales up
+            # unnecessarily. Each node has 8 CPUs, but this release test only needs 1 CPU,
+            # so the peak num of CPUs should be at most 8 CPUs (1 node requested).
+            time.sleep(300)
 
-        return batch
+        return row
 
     with ClusterResourceMonitor() as monitor:
         ray.data.range(1, override_num_blocks=1).map_batches(sleep_task).materialize()
