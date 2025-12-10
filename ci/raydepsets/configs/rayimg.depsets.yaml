@@ -136,7 +136,7 @@ depsets:
       - py310
 
   - name: ray_base_slim_${PYTHON_SHORT}
-    operation: compile
+    operation: expand
     requirements:
       - docker/base-slim/requirements.in
     depsets:
