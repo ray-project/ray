@@ -15,6 +15,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.logging import configure_logging
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import Dataset, Schema, SinkMode, ClickHouseTableSettings
+from ray.data.stats import DatasetSummary
 from ray.data.datasource import (
     BlockBasedFileDatasink,
     Datasink,
@@ -22,7 +23,6 @@ from ray.data.datasource import (
     FileShuffleConfig,
     ReadTask,
     RowBasedFileDatasink,
-    SaveMode,
 )
 from ray.data.iterator import DataIterator, DatasetIterator
 from ray.data.preprocessor import Preprocessor
@@ -123,6 +123,7 @@ __all__ = [
     "Dataset",
     "DataContext",
     "DatasetContext",  # Backwards compatibility alias.
+    "DatasetSummary",
     "DataIterator",
     "DatasetIterator",  # Backwards compatibility alias.
     "Datasink",
@@ -133,7 +134,6 @@ __all__ = [
     "NodeIdStr",
     "ReadTask",
     "RowBasedFileDatasink",
-    "SaveMode",
     "Schema",
     "SinkMode",
     "TaskPoolStrategy",
