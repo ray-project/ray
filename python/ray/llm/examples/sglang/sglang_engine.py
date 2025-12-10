@@ -86,19 +86,18 @@ class SGLangServer:
         Handles parameter extraction, calls the SGLang engine, and processes the
         raw response to extract common metadata and generated text.
         """
-        
         temp = getattr(request, "temperature", None)
         if temp is None:
             temp = 0.7
-            
+
         top_p = getattr(request, "top_p", None)
         if top_p is None:
             top_p = 1.0
-            
+
         max_tokens = getattr(request, "max_tokens", None)
         if max_tokens is None:
             max_tokens = 128
-            
+
         stop_sequences = getattr(request, "stop", None)
 
         sampling_params = {
@@ -178,14 +177,16 @@ class SGLangServer:
     async def completions(
         self, request: CompletionRequest
     ) -> AsyncGenerator[CompletionResponse, None]:
-        
+
         prompt_input = request.prompt
-        
+
         prompts_to_process: List[str] = []
         if isinstance(prompt_input, list):
             # Check for empty list
             if not prompt_input:
-                raise ValueError("The 'prompt' list cannot be empty for completion requests.")
+                raise ValueError(
+                    "The 'prompt' list cannot be empty for completion requests."
+                )
             # Batched prompts: process all of them
             prompts_to_process = prompt_input
         else:
@@ -200,7 +201,7 @@ class SGLangServer:
         # 2. Loop through all prompts in the batch
         for index, prompt_string in enumerate(prompts_to_process):
             metadata = await self._generate_and_extract_metadata(request, prompt_string)
-            last_metadata = metadata # Keep track of the metadata from the last run
+            last_metadata = metadata  # Keep track of the metadata from the last run
 
             total_prompt_tokens += metadata["prompt_tokens"]
             total_completion_tokens += metadata["completion_tokens"]
