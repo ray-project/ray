@@ -935,6 +935,50 @@ class TestSchemaEvolution:
         )
         assert rows_same(result_df, expected)
 
+    @pytest.mark.parametrize(
+        "initial_dtype,promoted_dtype,promoted_iceberg_type",
+        [
+            (np.int32, np.int64, pyi_types.LongType),
+            (np.float32, np.float64, pyi_types.DoubleType),
+        ],
+        ids=["int32_to_int64", "float32_to_float64"],
+    )
+    def test_schema_evolution_type_promotion(
+        self, clean_table, initial_dtype, promoted_dtype, promoted_iceberg_type
+    ):
+        """Test type promotion (int32 -> int64, float32 -> float64) works."""
+        initial_data = _create_typed_dataframe(
+            {"col_a": [1, 2], "col_b": ["a", "b"], "col_c": [1, 2]}
+        )
+        initial_data["col_new"] = np.array([10, 20], dtype=initial_dtype)
+        _write_to_iceberg(initial_data)
+
+        new_data = _create_typed_dataframe(
+            {"col_a": [3, 4], "col_b": ["c", "d"], "col_c": [3, 4]}
+        )
+        new_data["col_new"] = np.array([30, 40], dtype=promoted_dtype)
+        _write_to_iceberg(new_data)
+
+        _verify_schema(
+            {
+                "col_a": pyi_types.IntegerType,
+                "col_b": pyi_types.StringType,
+                "col_c": pyi_types.IntegerType,
+                "col_new": promoted_iceberg_type,
+            }
+        )
+
+        result_df = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4],
+                "col_b": ["a", "b", "c", "d"],
+                "col_c": [1, 2, 3, 4],
+            }
+        )
+        expected["col_new"] = np.array([10, 20, 30, 40], dtype=promoted_dtype)
+        assert rows_same(result_df, expected)
+
 
 if __name__ == "__main__":
     import sys

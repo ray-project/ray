@@ -83,22 +83,6 @@ class IcebergDatasink(
         catalog = self._get_catalog()
         self._table = catalog.load_table(self.table_identifier)
 
-    def _update_schema(self, incoming_schema: "pa.Schema") -> None:
-        """
-        Update the table schema to accommodate incoming data using union-by-name semantics.
-
-        .. warning::
-            This method must only be called from the driver process.
-            It performs schema evolution which requires exclusive table access.
-
-        Args:
-            incoming_schema: The PyArrow schema to merge with the table schema
-        """
-        with self._table.update_schema() as update:
-            update.union_by_name(incoming_schema)
-        # Succeeded, reload to get latest table version and exit.
-        self._reload_table()
-
     def _append_and_commit(
         self, txn: "Table.transaction", data_files: List["DataFile"]
     ) -> None:
@@ -127,7 +111,10 @@ class IcebergDatasink(
         # Evolve schema BEFORE any files are written
         # This prevents PyIceberg name mapping errors when incoming data has new columns
         if schema is not None:
-            self._update_schema(schema)
+            with self._table.update_schema() as update:
+                update.union_by_name(schema)
+            # Succeeded, reload to get latest table version and exit.
+            self._reload_table()
 
     def write(
         self, blocks: Iterable[Block], ctx: TaskContext
@@ -182,9 +169,6 @@ class IcebergDatasink(
         (allowing type promotion), updates table schema if needed, then performs a single
         atomic commit.
         """
-        # Reload table to get latest metadata
-        self._reload_table()
-
         # Collect all data files and schemas from all workers
         all_data_files = []
         all_schemas = []
