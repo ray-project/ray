@@ -865,9 +865,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Throttler for global gc
   Throttler global_gc_throttler_;
 
-  /// Target being evicted or null if no target
-  std::shared_ptr<WorkerInterface> high_memory_eviction_target_;
-
   ray::observability::MetricInterface &memory_manager_worker_eviction_total_count_;
 
   /// These classes make up the new scheduler. ClusterResourceScheduler is
@@ -918,7 +915,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   int64_t gc_command_sync_version_ = 0;
 
   /// The Policy for selecting the worker to kill when the node runs out of memory.
-  std::shared_ptr<WorkerKillingPolicy> worker_killing_policy_;
+  std::unique_ptr<WorkerKillingPolicy> worker_killing_policy_;
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;

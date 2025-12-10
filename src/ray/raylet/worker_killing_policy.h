@@ -32,15 +32,16 @@ namespace raylet {
 /// Provides the policy on which worker to prioritize killing.
 class WorkerKillingPolicy {
  public:
-  /// Selects a worker to be killed.
+  /// Selects workers to be killed.
   ///
   /// \param workers the list of candidate workers.
   /// \param system_memory snapshot of memory usage.
   ///
-  /// \return the worker to kill and whether the task on the worker should be retried.
-  virtual std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
-      const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-      const MemorySnapshot &system_memory) const = 0;
+  /// \return the list of workers to kill and whether the task on each worker should be
+  /// retried.
+  virtual std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
+  SelectWorkersToKill(const std::vector<std::shared_ptr<WorkerInterface>> &workers,
+                      const MemorySnapshot &system_memory) = 0;
 
   virtual ~WorkerKillingPolicy() = default;
 
