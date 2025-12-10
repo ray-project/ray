@@ -45,7 +45,7 @@ class MemoryHog {
  public:
   /// Spawns a child process that allocates the specified fraction of total system memory.
   /// \param memory_fraction Fraction of total system memory to allocate
-  explicit MemoryHog(float memory_fraction) : child_pid_(-1), allocated_memory_(nullptr) {
+  explicit MemoryHog(float memory_fraction) : child_pid_(-1) {
     struct sysinfo info;
     if (sysinfo(&info) != 0) {
       return;
@@ -135,7 +135,6 @@ class MemoryHog {
 
  private:
   pid_t child_pid_;
-  void *allocated_memory_;
   size_t allocation_size_;
 };
 
