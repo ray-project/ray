@@ -19,10 +19,11 @@ export const NodeCountCard = ({ className, sx }: NodeCountCardProps) => {
     dashboardUids,
     dashboardDatasource,
     currentTimeZone,
+    themeMode,
   } = useContext(GlobalContext);
   const grafanaDefaultDashboardUid =
     dashboardUids?.default ?? "rayDefaultDashboard";
-  const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=${grafanaOrgId}&theme=light&panelId=24&var-datasource=${dashboardDatasource}`;
+  const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=${grafanaOrgId}&theme=${themeMode}&panelId=24&var-datasource=${dashboardDatasource}`;
   const timeRangeParams = "&from=now-1h&to=now";
 
   if (!metricsContextLoaded || grafanaHost === "DISABLED") {

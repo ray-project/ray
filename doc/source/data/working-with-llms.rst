@@ -56,7 +56,7 @@ Perform batch inference with LLMs
 At a high level, the :ref:`ray.data.llm <llm-ref>` module provides a :class:`Processor <ray.data.llm.Processor>` object which encapsulates
 logic for performing batch inference with LLMs on a Ray Data dataset.
 
-You can use the :func:`build_llm_processor <ray.data.llm.build_llm_processor>` API to construct a processor.
+You can use the :func:`build_processor <ray.data.llm.build_processor>` API to construct a processor.
 The following example uses the :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` to construct a processor for the `unsloth/Llama-3.1-8B-Instruct` model.
 Upon execution, the Processor object instantiates replicas of the vLLM engine (using :meth:`map_batches <ray.data.Dataset.map_batches>` under the hood).
 
@@ -166,6 +166,14 @@ Next, configure the VLM processor with the essential settings:
     :start-after: __vlm_config_example_start__
     :end-before: __vlm_config_example_end__
 
+Define preprocessing and postprocessing functions to convert dataset rows into
+the format expected by the VLM and extract model responses:
+
+.. literalinclude:: doc_code/working-with-llms/vlm_example.py
+    :language: python
+    :start-after: __vlm_preprocess_example_start__
+    :end-before: __vlm_preprocess_example_end__
+
 For a more comprehensive VLM configuration with advanced options:
 
 .. literalinclude:: doc_code/working-with-llms/vlm_example.py
@@ -179,7 +187,7 @@ Finally, run the VLM inference:
 .. literalinclude:: doc_code/working-with-llms/vlm_example.py
     :language: python
     :start-after: def run_vlm_example():
-    :end-before: # __vlm_example_end__
+    :end-before: # __vlm_run_example_end__
     :dedent: 0
 
 .. _embedding_models:

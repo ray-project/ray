@@ -2460,12 +2460,13 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
   }
 
   if (obj_addr.SerializeAsString() != rpc_address_.SerializeAsString()) {
-    // We don't have CancelRemoteTask for actor_task_submitter_
+    // We don't have RequestOwnerToCancelTask for actor_task_submitter_
     // because it requires the same implementation.
     RAY_LOG(DEBUG).WithField(object_id)
         << "Request to cancel a task of object to an owner "
         << obj_addr.SerializeAsString();
-    normal_task_submitter_->CancelRemoteTask(object_id, obj_addr, force_kill, recursive);
+    normal_task_submitter_->RequestOwnerToCancelTask(
+        object_id, obj_addr, force_kill, recursive);
     return Status::OK();
   }
 
@@ -3170,10 +3171,11 @@ Status CoreWorker::ReportGeneratorItemReturns(
   request.set_attempt_number(attempt_number);
   auto client = core_worker_client_pool_->GetOrConnect(caller_address);
 
+  // This means it is the last report when the task has finished executing.
   if (!dynamic_return_object.first.IsNil()) {
-    auto return_object_proto = request.add_dynamic_return_objects();
-    SerializeReturnObject(
-        dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
+    SerializeReturnObject(dynamic_return_object.first,
+                          dynamic_return_object.second,
+                          request.mutable_returned_object());
     std::vector<ObjectID> deleted;
     // When we allocate a dynamic return ID (AllocateDynamicReturnId),
     // we borrow the object. When the object value is allocatd, the
@@ -3910,9 +3912,10 @@ void CoreWorker::ProcessSubscribeForRefRemoved(
   reference_counter_->SubscribeRefRemoved(object_id, contained_in_id, owner_address);
 }
 
-void CoreWorker::HandleCancelRemoteTask(rpc::CancelRemoteTaskRequest request,
-                                        rpc::CancelRemoteTaskReply *reply,
-                                        rpc::SendReplyCallback send_reply_callback) {
+void CoreWorker::HandleRequestOwnerToCancelTask(
+    rpc::RequestOwnerToCancelTaskRequest request,
+    rpc::RequestOwnerToCancelTaskReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   auto status = CancelTask(ObjectID::FromBinary(request.remote_object_id()),
                            request.force_kill(),
                            request.recursive());
