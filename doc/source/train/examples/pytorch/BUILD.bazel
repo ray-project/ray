@@ -6,6 +6,15 @@ filegroup(
     visibility = ["//doc:__subpackages__"],
 )
 
+filegroup(
+    name = "pytorch_examples_ci_configs",
+    srcs = glob([
+        "**/ci/aws.yaml",
+        "**/ci/gce.yaml",
+    ]),
+    visibility = ["//doc:__pkg__"],
+)
+
 # GPU Tests
 py_test_run_all_notebooks(
     size = "large",

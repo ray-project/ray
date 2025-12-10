@@ -438,13 +438,8 @@ py_library(
     ]) + [
         "ray_release/buildkite/aws_instance_types.csv",
         "ray_release/schema.json",
-        "//doc:deployment_serve_llm_example_configs",
-        "//doc:example_configs",
-        "//doc/source/data/examples:data_example_configs",
-        "//doc/source/train/examples/pytorch/deepspeed_finetune/ci:ci_yamls",
-        "//doc/source/train/examples/pytorch/distributing-pytorch/ci:ci_yamls",
-        "//doc/source/train/examples/pytorch/pytorch-fsdp/ci:ci_yamls",
-        "//doc/source/train/examples/pytorch/pytorch-profiling/ci:ci_yamls",
+        # Comprehensive filegroup that auto-discovers all ci/{aws,gce}.yaml configs for ray examples.
+        "//doc:all_examples_ci_configs",
     ],
     imports = ["."],
     visibility = ["//visibility:public"],
