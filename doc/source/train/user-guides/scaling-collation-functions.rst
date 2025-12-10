@@ -13,11 +13,13 @@ Scaling out the collate function to Ray Data allows you to scale collation acros
 This optimization is particularly effective when the collate function is computationally expensive (such as tokenization, image augmentation, or complex feature engineering) and you have additional CPU resources available for data preprocessing.
 
 Moving the collate function to Ray Data
---------------------------------------
+---------------------------------------
 
 The following example shows a typical collate function that runs on the training worker:
 
 .. code-block:: python
+
+    train_dataset = read_parquet().map(...)
 
     def train_func():
         for batch in ray.train.get_dataset_shard("train").iter_torch_batches(
@@ -35,7 +37,8 @@ The following example shows a typical collate function that runs on the training
 
     result = trainer.fit()
 
-To modify the implementation to move the collate function to Ray Data, we need to:
+If the collate function is time/compute intensive and you'd like to scale it out,
+you can use Ray Data to scale it out. Here are the steps:
 
 1. Create a custom collate function that runs in Ray Data and use :meth:`ray.data.Dataset.map_batches` to scale it out.
 3. Use :meth:`ray.data.Dataset.repartition` to ensure the batch size alignment.
@@ -43,9 +46,7 @@ To modify the implementation to move the collate function to Ray Data, we need t
 Creating a custom collate function that runs in Ray Data
 --------------------------------------------------------
 
-First, you'll want to move the ``collate_fn`` into a Ray Data ``map_batches`` operation.
-
-The following example shows a custom collate function that runs in Ray Data:
+To scale out, you'll want to move the ``collate_fn`` into a Ray Data ``map_batches`` operation:
 
 .. code-block:: python
 
@@ -72,18 +73,15 @@ The following example shows a custom collate function that runs in Ray Data:
 
 A couple of things to note:
 
-- The ``collate_fn`` returns a dictionary of NumPy arrays, which is supported by Ray Data.
-- The ``iter_torch_batches`` method uses ``collate_fn=None``, which reduces the amount of work that the training worker has to do.
-- If you want to move the tensors onto the appropriate device, you can do so in the training loop in a trimmed down collate function.
+- The ``collate_fn`` returns a dictionary of NumPy arrays, which is a standard Ray Data batch format.
+- The ``iter_torch_batches`` method uses ``collate_fn=None``, which reduces the amount of work is done on the training worker process.
 
 Ensuring batch size alignment
-------------------------------
+-----------------------------
 
-The collate function needs to process complete batches, but :meth:`ray.data.Dataset.map_batches` doesn't guarantee the batch size for each function call. Use :meth:`ray.data.Dataset.repartition` with ``target_num_rows_per_block`` to align block boundaries with batch boundaries.
+Typically, collate functions are used to create complete batches of data with a target batch size.
+However, if you move the collate function to Ray Data using :meth:`ray.data.Dataset.map_batches`, by default, it will not guarantee the batch size for each function call. Use :meth:`ray.data.Dataset.repartition` with ``target_num_rows_per_block`` to align block boundaries with batch boundaries.
 
-There are two modes depending on whether your collate function changes the number of output rows:
-
-**Mode 1: Output row count equals input row count**
 
 Use ``repartition`` after ``map_batches`` when your collate function produces the same number of output rows as input rows:
 
@@ -93,86 +91,13 @@ Use ``repartition`` after ``map_batches`` when your collate function produces th
 
 This ensures the collate function receives batches of size ``BATCH_SIZE``, and the output blocks also contain ``BATCH_SIZE`` rows.
 
-**Mode 2: Output row count differs from input row count**
-
-Use ``repartition`` before ``map_batches`` when you don't need to ensure output block sizes. See :ref:`Advanced: Handling custom data types <train-tensor-serialization-utility>` for an example where batches are serialized into single rows.
-
-.. code-block:: python
-
-    dataset = dataset.repartition(target_num_rows_per_block=BATCH_SIZE).map_batches(collate_fn, batch_size=BATCH_SIZE)
-
-Mock dataset for examples
---------------------------
-
-Throughout this guide, we use a mock text dataset to demonstrate the optimization. The following helper functions generate random text samples with labels:
-
-.. testcode::
-    :skipif: True
-
-    import random
-    import string
-    import ray
-
-    def random_text(length: int) -> str:
-        """Generate random text of specified length."""
-        if length <= 0:
-            return ""
-        
-        if length <= 3:
-            return "".join(random.choices(string.ascii_lowercase, k=length))
-        
-        words = []
-        current_length = 0
-        
-        while current_length < length:
-            remaining = length - current_length
-            
-            if remaining <= 4:
-                word_length = remaining
-                word = "".join(random.choices(string.ascii_lowercase, k=word_length))
-                words.append(word)
-                break
-            else:
-                max_word_length = min(10, remaining - 1)
-                if max_word_length >= 3:
-                    word_length = random.randint(3, max_word_length)
-                else:
-                    word_length = remaining
-                word = "".join(random.choices(string.ascii_lowercase, k=word_length))
-                words.append(word)
-                current_length += len(word) + 1
-        
-        text = " ".join(words)
-        return text[:length]
-
-    def random_label() -> int:
-        """Pick a random label."""
-        labels = [0, 1, 2, 3, 4, 5, 6, 7]
-        return random.choice(labels)
-
-    def create_mock_ray_text_dataset(dataset_size: int = 96, min_len: int = 5, max_len: int = 100):
-        """Create a mock Ray dataset with random text and labels."""
-        numbers = random.choices(range(min_len, max_len + 1), k=dataset_size)
-        ray_dataset = ray.data.from_items(numbers)
-        
-        def map_to_text_and_label(item):
-            length = item['item']
-            text = random_text(length)
-            label = random_label()
-            return {
-                "length": length,
-                "text": text,
-                "label": label
-            }
-        
-        text_dataset = ray_dataset.map(map_to_text_and_label)
-        return text_dataset
-
-The examples below assume these functions are available.
-
 
 Putting things together
 -----------------------
+
+Throughout this guide, we use a mock text dataset to demonstrate the optimization. You can find the implementation of the mock dataset in :ref:`random-text-generator`.
+
+
 
 .. tab-set::
     .. tab-item:: Baseline implementation
@@ -253,13 +178,12 @@ Putting things together
             from typing import Dict
             from ray.train.torch import TorchTrainer
             from ray.train import ScalingConfig
-            from ray.data.collate_fn import ArrowBatchCollateFn
             from mock_dataset import create_mock_ray_text_dataset
             import pyarrow as pa
 
             BATCH_SIZE = 10000
 
-            class CollateFnRayData(ArrowBatchCollateFn):
+            class CollateFnRayData:
                 def __init__(self):
                     self.tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
 
@@ -290,7 +214,7 @@ Putting things together
                     max_len=3000
                 )
                 .map_batches(
-                    CollateFnRayData(),
+                    CollateFnRayData,
                     batch_size=BATCH_SIZE,
                     batch_format="pyarrow",
                 )
@@ -357,7 +281,7 @@ The following utility serializes PyTorch tensors into PyArrow format. It flatten
 
 The serialization and deserialization operations are typically lightweight compared to the actual collate function work (such as tokenization or image processing), so the overhead is minimal relative to the performance gains from scaling the collate function.
 
-You can use this reference implementation or adapt it to your needs: :download:`collate_utils.py <../doc_code/collate_utils.py>`
+You can use :ref:`train-collate-utils` as a reference implementation and adapt it to your needs.
 
 Example with tensor serialization
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
