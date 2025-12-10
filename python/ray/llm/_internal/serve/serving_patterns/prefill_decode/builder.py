@@ -168,6 +168,10 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
         ingress_options = deep_merge_dicts(
             ingress_options, pd_config.ingress_deployment_config
         )
+        # When num_replicas is explicitly set, we should not include autoscaling_config
+        # in the defaults since Ray Serve does not allow both.
+        if "num_replicas" in pd_config.ingress_deployment_config:
+            ingress_options.pop("autoscaling_config", None)
 
     ingress_cls = make_fastapi_ingress(ingress_cls_config.ingress_cls)
     return serve.deployment(ingress_cls, **ingress_options).bind(
