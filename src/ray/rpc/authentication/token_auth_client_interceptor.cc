@@ -14,7 +14,6 @@
 
 #include "ray/rpc/authentication/token_auth_client_interceptor.h"
 
-#include <map>
 #include <memory>
 #include <utility>
 

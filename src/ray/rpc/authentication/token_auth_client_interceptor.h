@@ -20,6 +20,8 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <map>
+#include <utility>
 
 #include "ray/common/constants.h"
 #include "ray/rpc/authentication/authentication_token.h"
