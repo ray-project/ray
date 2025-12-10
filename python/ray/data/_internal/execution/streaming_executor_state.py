@@ -178,47 +178,6 @@ class OpSchedulingStatus:
     under_resource_limits: bool = False
 
 
-@dataclass
-class OpDisplayMetrics:
-    """Metrics of an operator. Used for display purposes."""
-
-    cpu: float = 0.0
-    gpu: float = 0.0
-    object_store_memory: float = 0.0
-    tasks: int = 0
-    actors: int = 0
-    queued: int = 0
-    task_backpressured: bool = False
-    output_backpressured: bool = False
-    extra_info: str = ""
-
-    def display_str(self) -> str:
-        """Format metrics object to a displayable string."""
-        metrics = []
-        # resource metrics
-        gpu_str = f" {self.gpu:.1f} GPU," if self.gpu else ""
-        mem_str = memory_string(self.object_store_memory)
-        metrics.append(f"{self.cpu:.1f} CPU,{gpu_str} {mem_str} object store")
-        # task
-        task_str = f"Tasks: {self.tasks}"
-        if self.task_backpressured or self.output_backpressured:
-            backpressured = []
-            if self.task_backpressured:
-                backpressured.append("tasks")
-            if self.output_backpressured:
-                backpressured.append("outputs")
-            task_str += f" [backpressured: {','.join(backpressured)}]"
-        if self.extra_info:
-            task_str += f": {self.extra_info}"
-        metrics.append(task_str)
-        # actors
-        if self.actors:
-            metrics.append(f"Actors: {self.actors}")
-        # queue
-        metrics.append(f"Queued blocks: {self.queued}")
-        return "; ".join(metrics) + ";"
-
-
 class OpState:
     """The execution state tracked for each PhysicalOperator.
 
@@ -252,7 +211,6 @@ class OpState:
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
         # Progress Manager
-        self.op_display_metrics = OpDisplayMetrics()
         self.progress_manager_uuid: Optional[UUID] = None
         self.output_row_count: int = 0
 
@@ -329,26 +287,6 @@ class OpState:
         )
         return self.input_queue_bytes() + internal_queue_size_bytes
 
-    def update_display_metrics(self, resource_manager: ResourceManager):
-        """Update display metrics with current metrics."""
-        usage = resource_manager.get_op_usage(self.op)
-        self.op_display_metrics.cpu = usage.cpu
-        self.op_display_metrics.gpu = usage.gpu
-        self.op_display_metrics.object_store_memory = usage.object_store_memory
-
-        self.op_display_metrics.tasks = self.op.num_active_tasks()
-        self.op_display_metrics.queued = self.total_enqueued_input_blocks()
-        self.op_display_metrics.actors = self.op.get_actor_info().running
-
-        self.op_display_metrics.task_backpressured = (
-            self.op._in_task_submission_backpressure
-        )
-        self.op_display_metrics.output_backpressured = (
-            self.op._in_task_output_backpressure
-        )
-
-        self.op_display_metrics.extra_info = self.op.progress_str()
-
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
 
@@ -388,12 +326,12 @@ class OpState:
             self.progress_bar.set_description(self.summary_str(resource_manager))
             self.progress_bar.refresh()
 
-    def summary_str(
+    def summary_str_raw(
         self, resource_manager: ResourceManager, verbose: bool = False
     ) -> str:
         # Active tasks
         active = self.op.num_active_tasks()
-        desc = f"- {self.op.name}: Tasks: {active}"
+        desc = f"Tasks: {active}"
         if (
             self.op._in_task_submission_backpressure
             or self.op._in_task_output_backpressure
@@ -420,6 +358,11 @@ class OpState:
             desc += f"; {suffix}"
 
         return desc
+
+    def summary_str(
+        self, resource_manager: ResourceManager, verbose: bool = False
+    ) -> str:
+        return f"- {self.op.name}: {self.summary_str_raw(resource_manager, verbose)}"
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""

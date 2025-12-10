@@ -33,6 +33,7 @@ except ImportError:
     needs_rich_warning = True
 
 if typing.TYPE_CHECKING:
+    from ray.data._internal.execution.resource_manager import ResourceManager
     from ray.data._internal.execution.streaming_executor_state import OpState, Topology
 
 logger = logging.getLogger(__name__)
@@ -387,7 +388,9 @@ class RichExecutionProgressManager:
             return False
         return True
 
-    def update_operator_progress(self, op_state: "OpState"):
+    def update_operator_progress(
+        self, op_state: "OpState", resource_manager: "ResourceManager"
+    ):
         if not self._can_update_operator(op_state):
             return
         if self._start_time is None:
@@ -401,7 +404,7 @@ class RichExecutionProgressManager:
         metrics = _get_progress_metrics(self._start_time, current_rows, total_rows)
         _update_with_conditional_rate(progress, tid, metrics)
         # stats
-        stats_str = op_state.op_display_metrics.display_str()
+        stats_str = op_state.summary_str_raw(resource_manager)
         stats.plain = f"{_TREE_VERTICAL_INDENT}{stats_str}"
 
 

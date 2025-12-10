@@ -550,8 +550,9 @@ class StreamingExecutor(Executor, threading.Thread):
         if self._progress_manager:
             for op_state in topology.values():
                 if not isinstance(op_state.op, InputDataBuffer):
-                    op_state.update_display_metrics(self._resource_manager)
-                    self._progress_manager.update_operator_progress(op_state)
+                    self._progress_manager.update_operator_progress(
+                        op_state, self._resource_manager
+                    )
             self._progress_manager.refresh()
 
     def _consumer_idling(self) -> bool:
@@ -753,11 +754,9 @@ def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) 
     """
     logger.debug("Execution Progress:")
     for i, (op, state) in enumerate(topology.items()):
-        state.update_display_metrics(resource_manager)
         logger.debug(
             f"{i}: {state.summary_str(resource_manager, verbose=True)}, "
-            f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}, "
-            f"Metrics: {state.op_display_metrics.display_str()}"
+            f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
         )
 
 
