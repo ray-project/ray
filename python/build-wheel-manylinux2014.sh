@@ -15,6 +15,10 @@ if [ "$EUID" -eq 0 ]; then
   groupadd -g "$HOST_GID" builduser
   useradd -m -u "$HOST_UID" -g "$HOST_GID" -d /ray builduser
 
+  # Grant the builduser permissions to access $HOME.
+  sudo chown builduser $HOME
+  sudo chmod -R u+rwx $HOME
+
   # Give sudo access
   echo "builduser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
