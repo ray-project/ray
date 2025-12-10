@@ -646,21 +646,17 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         timeout_s: Optional[float] = None,
         _skip_asyncio_check: bool = False,
     ) -> Any:
-        """This method is not available on DeploymentResponseGenerator.
+        """Not supported on `DeploymentResponseGenerator`.
 
-        DeploymentResponseGenerator is returned when using streaming handles.
-        To get results, iterate over the generator using `for` (outside deployments)
-        or `async for` (inside deployments) instead of calling `.result()`.
+        This method exists only for API parity with `DeploymentResponse.result()` to
+        aid static typing. A `DeploymentResponseGenerator` is returned when using
+        streaming handles (e.g., `handle.options(stream=True)`).
 
-        Args:
-            timeout_s: Present for API parity with non-streaming responses; ignored.
-            _skip_asyncio_check: Present for API parity; ignored.
+        To consume results, iterate over the generator instead of calling `.result()`:
+          - Outside a deployment: use a standard `for` loop
+          - Inside a deployment: use `async for`
 
-        Returns:
-            NoReturn: This method always raises a TypeError.
-
-        Raises:
-            TypeError: Always raises, as this method is not supported for generators.
+        Always raises `TypeError`.
         """
         raise TypeError(
             "`DeploymentResponseGenerator` doesn't support `.result()`. "
