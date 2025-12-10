@@ -2249,11 +2249,10 @@
 
   cluster:
     byod:
-      type: gpu
+      type: llm-cu128 # llm image already has nixl
       runtime_env:
         - UCX_TLS=all
         - UCX_NET_DEVICES=all
-      post_build_script: byod_nixl_setup.sh
     cluster_compute: experimental/compute_t4_gpu.yaml
 
   run:
@@ -2269,11 +2268,10 @@
 
   cluster:
     byod:
-      type: gpu
+      type: llm-cu128 # llm image already has nixl
       runtime_env:
         - UCX_TLS=all
         - UCX_NET_DEVICES=all
-      post_build_script: byod_nixl_setup.sh
     cluster_compute: experimental/compute_a100_gpu.yaml
 
   run:
