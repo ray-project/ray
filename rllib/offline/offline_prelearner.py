@@ -164,6 +164,11 @@ class OfflinePreLearner:
             ]
             # Ensure that all episodes are done and no duplicates are in the batch.
             episodes = self._validate_episodes(episodes)
+            # If the module is stateful we remove states from episodes. Note, this
+            # is done to enable the offline RLModule to learn its own state.
+            # TODO (simon): Check, if users want to use pretrained states.
+            if self._module.is_stateful():
+                episodes = self._remove_states_from_episodes(episodes)
             # Add the episodes to the buffer.
             self.episode_buffer.add(episodes)
             # TODO (simon): Refactor into a single code block for both cases.
@@ -177,6 +182,8 @@ class OfflinePreLearner:
                 # cleaned up, i.e. can use episode samples for training.
                 sample_episodes=True,
                 to_numpy=True,
+                lookback=self.config.episode_lookback_horizon,
+                min_batch_len_T=self.config.burnin_len,
             )
         # Else, if we have old stack `SampleBatch`es.
         elif self.input_read_sample_batches:
@@ -191,8 +198,14 @@ class OfflinePreLearner:
             )[
                 "episodes"
             ]
+            # TODO (simon): Refactor into a single code block for both cases.
             # Ensure that all episodes are done and no duplicates are in the batch.
             episodes = self._validate_episodes(episodes)
+            # If the module is stateful we remove states from episodes. Note, this
+            # is done to enable the offline RLModule to learn its own state.
+            # TODO (simon): Check, if users want to use pretrained states.
+            if self._module.is_stateful():
+                episodes = self._remove_states_from_episodes(episodes)
             # Add the episodes to the buffer.
             self.episode_buffer.add(episodes)
             # Sample steps from the buffer.
@@ -206,6 +219,8 @@ class OfflinePreLearner:
                 # cleaned up, i.e. can use episode samples for training.
                 sample_episodes=True,
                 to_numpy=True,
+                lookback=self.config.episode_lookback_horizon,
+                min_batch_len_T=self.config.burnin_len,
             )
         # Otherwise we map the batch to episodes.
         else:
@@ -325,6 +340,28 @@ class OfflinePreLearner:
                 unique_episode_ids.add(eps.id_)
                 cleaned_episodes.add(eps)
         return cleaned_episodes
+
+    def _remove_states_from_episodes(
+        self,
+        episodes: List[SingleAgentEpisode],
+    ) -> List[SingleAgentEpisode]:
+        """Removes states from episodes.
+
+        This is necessary, if the module is stateless and we want to
+        enable the offline RLModule to learn its own state representations.
+
+        Args:
+            episodes: A list of `SingleAgentEpisode` instances.
+
+        Returns:
+            A list of `SingleAgentEpisode` instances without states.
+        """
+        for eps in episodes:
+            if Columns.STATE_OUT in eps.extra_model_outputs:
+                del eps.extra_model_outputs[Columns.STATE_OUT]
+            if Columns.STATE_IN in eps.extra_model_outputs:
+                del eps.extra_model_outputs[Columns.STATE_IN]
+        return episodes
 
     def _should_module_be_updated(self, module_id, multi_agent_batch=None) -> bool:
         """Checks which modules in a MultiRLModule should be updated."""
