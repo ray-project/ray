@@ -9,6 +9,10 @@ from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Skip due to incompatibility tensorflow with Python 3.12+",
+)
 def test_from_tf(ray_start_regular_shared_2_cpus):
     import tensorflow as tf
     import tensorflow_datasets as tfds
@@ -28,6 +32,10 @@ def test_from_tf(ray_start_regular_shared_2_cpus):
         tf.debugging.assert_equal(expected_label, actual_label)
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Skip due to incompatibility tensorflow with Python 3.12+",
+)
 def test_from_tf_e2e(ray_start_regular_shared_2_cpus):
     import tensorflow as tf
     import tensorflow_datasets as tfds
