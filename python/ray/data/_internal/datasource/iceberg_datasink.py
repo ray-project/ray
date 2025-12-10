@@ -135,15 +135,19 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             self._catalog_name = "default"
 
         self._table: "Table" = None
+        self._table: "Table" = None
 
     def __getstate__(self) -> dict:
         """Exclude `_table` during pickling."""
+        """Exclude `_table` during pickling."""
         state = self.__dict__.copy()
+        state.pop("_table", None)
         state.pop("_table", None)
         return state
 
     def __setstate__(self, state: dict) -> None:
         self.__dict__.update(state)
+        self._table = None
         self._table = None
 
     def _get_catalog(self) -> "Catalog":
