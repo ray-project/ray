@@ -36,6 +36,43 @@ class PrepareMultimodalUDF(StatefulStageUDF):
         self.model_config = ModelConfig(model=model)
         self.chat_template_content_format = chat_template_content_format
 
+    def _extract_system_messages(
+        self, messages: List[Dict[str, Any]]
+    ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Extract system messages from the message list.
+
+        System messages are kept as strings (not converted to list format) to avoid
+        issues with chat templates that expect string system messages, e.g. Pixtral.
+
+        Args:
+            messages: The full message list.
+
+        Returns:
+            A tuple of (system_messages, non_system_messages).
+        """
+        system_messages = []
+        non_system_messages = []
+        
+        for msg in messages:
+            if msg.get("role") == "system":
+                system_content = msg.get("content")
+                if isinstance(system_content, list):
+                    text_parts = []
+                    for part in system_content:
+                        if isinstance(part, dict) and part.get("type") == "text":
+                            text_value = part.get("text") or part.get("content")
+                            if text_value:
+                                text_parts.append(str(text_value))
+                        elif isinstance(part, str) and part:
+                            text_parts.append(part)
+                    system_content = "\n".join(text_parts) if text_parts else ""
+                
+                system_messages.append({**msg, "content": system_content})
+            else:
+                non_system_messages.append(msg)
+        
+        return system_messages, non_system_messages
+
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
         Process multimodal data from input messages.
@@ -61,14 +98,22 @@ class PrepareMultimodalUDF(StatefulStageUDF):
 
         tasks = []
         for row in batch:
+            system_messages, non_system_messages = self._extract_system_messages(
+                row["messages"]
+            )
+
             # Users can provide stable IDs for each multimodal item from messages to
             # enable engine to cache and reuse work across requests.
             conversation, mm_data_future, mm_uuids = parse_chat_messages_futures(
-                row["messages"],
+                non_system_messages,
                 self.model_config,
                 None,  # Tokenizer is not used in vLLM's parse_chat_messages_futures
                 content_format=self.chat_template_content_format,
             )
+
+            if system_messages:
+                conversation = system_messages + conversation
+            
             tasks.append(
                 asyncio.create_task(
                     _get_mm_data(row, conversation, mm_data_future, mm_uuids)

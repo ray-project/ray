@@ -322,7 +322,7 @@ def test_vllm_vision_language_models(
                     "content": [
                         {
                             "type": "text",
-                            "text": f"Say {row['id']} words about this image.",
+                            "text": f"Say {row['val']} words about this image.",
                         },
                         {
                             "type": "image_url",
@@ -375,6 +375,10 @@ def test_vllm_qwen_vl_multimodal(multimodal_content):
         task_type="generate",
         engine_kwargs=dict(
             enable_chunked_prefill=True,
+            distributed_executor_backend="ray",
+            # A single GPU won't be able to accomodate Qwen/Qwen2.5-VL-3B-Instruct's memory requirements
+            tensor_parallel_size=2,
+            pipeline_parallel_size=1,
         ),
         prepare_multimodal_stage=PrepareMultimodalStageConfig(
             enabled=True,
@@ -392,6 +396,11 @@ def test_vllm_qwen_vl_multimodal(multimodal_content):
             sampling_params=dict(
                 temperature=0.3,
                 max_tokens=50,
+            ),
+            mm_processor_kwargs=dict(
+                min_pixels=28 * 28,
+                max_pixels=1280 * 28 * 28,
+                fps=1,
             ),
             messages=[
                 {"role": "system", "content": "You are an assistant"},
