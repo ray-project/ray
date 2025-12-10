@@ -3555,6 +3555,10 @@ def from_huggingface(
 ) -> Union[MaterializedDataset, Dataset]:
     """Read a Hugging Face Dataset into a Ray Dataset.
 
+    Creates a :class:`~ray.data.MaterializedDataset` from a
+    `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_
+    or a :class:`~ray.data.Dataset` from a `Hugging Face Datasets IterableDataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDataset/>`_.
+
     It is recommended to use :func:`~ray.data.read_parquet` with the ``HfFileSystem``
     filesystem to read Hugging Face datasets rather than ``from_huggingface``.
 
