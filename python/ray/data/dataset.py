@@ -5253,9 +5253,13 @@ class Dataset:
         logical_plan = LogicalPlan(write_op, self.context)
 
         try:
-            datasink.on_write_start()
+            # Call on_write_start for _FileDatasink before execution to handle
+            # SaveMode checks (ERROR raises, OVERWRITE deletes contents, IGNORE skips)
+            # and directory creation. For other datasinks, on_write_start is called
+            # automatically by the Write operator when the first input bundle arrives.
             if isinstance(datasink, _FileDatasink):
-                if not datasink.has_created_dir and datasink.mode == SaveMode.IGNORE:
+                datasink.on_write_start()
+                if datasink._skip_write:
                     logger.info(
                         f"Ignoring write because {datasink.path} already exists"
                     )
@@ -6800,7 +6804,8 @@ class Schema:
                 # Manually convert our Pandas tensor extension type to Arrow.
                 arrow_types.append(
                     pa_tensor_type_class(
-                        shape=dtype._shape, dtype=_convert_to_pa_type(dtype._dtype)
+                        shape=dtype._shape,
+                        dtype=_convert_to_pa_type(dtype._dtype),
                     )
                 )
 

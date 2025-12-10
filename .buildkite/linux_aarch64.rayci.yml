@@ -217,6 +217,7 @@ steps:
         --parallelism-per-worker 3
         --only-tags post_wheel_build
         --test-env=RAY_CI_POST_WHEEL_TESTS=True
+        --python-version 3.10
     depends_on:
       - manylinux-aarch64
       - oss-ci-base_build-aarch64
@@ -233,6 +234,7 @@ steps:
         --parallelism-per-worker 3
         --only-tags post_wheel_build
         --test-env=RAY_CI_POST_WHEEL_TESTS=True
+        --python-version 3.10
     depends_on:
       - manylinux-aarch64
       - oss-ci-base_build-aarch64
