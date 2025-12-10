@@ -85,7 +85,17 @@ class OpenTelemetryMetricRecorder:
                     filtered = frozenset(
                         (k, v) for k, v in tag_set if k not in high_cardinality_labels
                     )
-                    aggregated[filtered] += val
+                    if metric_type in (MetricType.COUNTER, MetricType.SUM):
+                        aggregated[filtered] += val
+                    else:
+                        # Gauge: use last value, warn if overwriting
+                        if filtered in aggregated:
+                            logger.warning(
+                                f"Gauge {metric_name} has multiple values for the same "
+                                f"tags after filtering high cardinality labels. "
+                                f"Using last value."
+                            )
+                        aggregated[filtered] = val
 
                 return [
                     Observation(val, attributes=dict(ts))
