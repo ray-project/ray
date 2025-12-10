@@ -1,4 +1,3 @@
-import unittest
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,6 +7,21 @@ from ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2 import 
     DefaultClusterAutoscalerV2,
     _NodeResourceSpec,
 )
+from ray.data._internal.cluster_autoscaler.resource_utility_calculator import (
+    ResourceUtilizationCalculator,
+)
+from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
+
+
+class StubUtilizationCalculator(ResourceUtilizationCalculator):
+    def __init__(self, utilization: ExecutionResources):
+        self._utilization = utilization
+
+    def observe(self):
+        pass
+
+    def get(self):
+        return self._utilization
 
 
 @pytest.fixture(autouse=True)
@@ -26,7 +40,7 @@ def patch_autoscaling_coordinator():
             yield
 
 
-class TestClusterAutoscaling(unittest.TestCase):
+class TestClusterAutoscaling:
     """Tests for cluster autoscaling functions in DefaultClusterAutoscalerV2."""
 
     def setup_class(self):
@@ -94,77 +108,91 @@ class TestClusterAutoscaling(unittest.TestCase):
 
         expected = {
             _NodeResourceSpec.of(
-                self._node_type1["CPU"], self._node_type1["memory"]
+                cpu=self._node_type1["CPU"],
+                gpu=self._node_type1.get("GPU", 0),
+                mem=self._node_type1["memory"],
             ): 2,
             _NodeResourceSpec.of(
-                self._node_type2["CPU"], self._node_type2["memory"]
+                cpu=self._node_type2["CPU"],
+                gpu=self._node_type2.get("GPU", 0),
+                mem=self._node_type2["memory"],
+            ): 1,
+            _NodeResourceSpec.of(
+                cpu=self._node_type3["CPU"],
+                gpu=self._node_type3.get("GPU", 0),
+                mem=self._node_type3["memory"],
             ): 1,
         }
 
         with patch("ray.nodes", return_value=node_table):
             assert autoscaler._get_node_resource_spec_and_count() == expected
 
-    @patch(
-        "ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2.DefaultClusterAutoscalerV2._send_resource_request",  # noqa: E501
-    )
-    def test_try_scale_up_cluster(self, _send_resource_request):
-        # Test _try_scale_up_cluster
-        scale_up_delta = 1
-        autoscaler = DefaultClusterAutoscalerV2(
-            topology=MagicMock(),
-            resource_manager=MagicMock(),
-            execution_id="test_execution_id",
-            cluster_scaling_up_delta=scale_up_delta,
-        )
-        _send_resource_request.assert_called_with([])
+    @pytest.mark.parametrize("cpu_util", [0.5, 0.75])
+    @pytest.mark.parametrize("gpu_util", [0.5, 0.75])
+    @pytest.mark.parametrize("mem_util", [0.5, 0.75])
+    def test_try_scale_up_cluster(self, cpu_util, gpu_util, mem_util):
+        with patch(
+            "ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2.DefaultClusterAutoscalerV2._send_resource_request",  # noqa: E501
+        ) as _send_resource_request:
+            # Test _try_scale_up_cluster
+            scale_up_threshold = 0.75
+            scale_up_delta = 1
+            utilization = ExecutionResources(
+                cpu=cpu_util, gpu=gpu_util, object_store_memory=mem_util
+            )
 
-        resource_spec1 = _NodeResourceSpec.of(
-            self._node_type1["CPU"], self._node_type1["memory"]
-        )
-        resource_spec2 = _NodeResourceSpec.of(
-            self._node_type2["CPU"], self._node_type2["memory"]
-        )
-        autoscaler._get_node_resource_spec_and_count = MagicMock(
-            return_value={
-                resource_spec1: 2,
-                resource_spec2: 1,
-            },
-        )
+            autoscaler = DefaultClusterAutoscalerV2(
+                topology=MagicMock(),
+                resource_manager=MagicMock(),
+                execution_id="test_execution_id",
+                cluster_scaling_up_delta=scale_up_delta,
+                resource_utilization_calculator=StubUtilizationCalculator(utilization),
+                cluster_scaling_up_util_threshold=scale_up_threshold,
+            )
+            _send_resource_request.assert_called_with([])
 
-        # Test different CPU/memory utilization combinations.
-        scale_up_threshold = (
-            DefaultClusterAutoscalerV2.DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD
-        )
-        for cpu_util in [scale_up_threshold / 2, scale_up_threshold]:
-            for mem_util in [scale_up_threshold / 2, scale_up_threshold]:
-                # Should scale up if either CPU or memory utilization is above
-                # the threshold.
-                should_scale_up = (
-                    cpu_util >= scale_up_threshold or mem_util >= scale_up_threshold
-                )
-                autoscaler._get_cluster_cpu_and_mem_util = MagicMock(
-                    return_value=(cpu_util, mem_util),
-                )
-                autoscaler.try_trigger_scaling()
-                if not should_scale_up:
-                    _send_resource_request.assert_called_with([])
-                else:
-                    expected_resource_request = [
+            resource_spec1 = _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000)
+            resource_spec2 = _NodeResourceSpec.of(cpu=8, gpu=1, mem=1000)
+            autoscaler._get_node_resource_spec_and_count = MagicMock(
+                return_value={
+                    resource_spec1: 2,
+                    resource_spec2: 1,
+                },
+            )
+
+            autoscaler.try_trigger_scaling()
+
+            # Should scale up if any resource is above the threshold.
+            should_scale_up = (
+                cpu_util >= scale_up_threshold
+                or gpu_util >= scale_up_threshold
+                or mem_util >= scale_up_threshold
+            )
+            if not should_scale_up:
+                _send_resource_request.assert_called_with([])
+            else:
+                expected_num_resource_spec1_requested = 2 + scale_up_delta
+                expected_resource_request = [
+                    {
+                        "CPU": resource_spec1.cpu,
+                        "GPU": resource_spec1.gpu,
+                        "memory": resource_spec1.mem,
+                    }
+                ] * expected_num_resource_spec1_requested
+
+                expected_num_resource_spec2_requested = 1 + scale_up_delta
+                expected_resource_request.extend(
+                    [
                         {
-                            "CPU": self._node_type1["CPU"],
-                            "memory": self._node_type1["memory"],
+                            "CPU": resource_spec2.cpu,
+                            "GPU": resource_spec2.gpu,
+                            "memory": resource_spec2.mem,
                         }
-                    ] * (2 + 1)
-                    expected_resource_request.extend(
-                        [
-                            {
-                                "CPU": self._node_type2["CPU"],
-                                "memory": self._node_type2["memory"],
-                            }
-                        ]
-                        * (1 + 1)
-                    )
-                    _send_resource_request.assert_called_with(expected_resource_request)
+                    ]
+                    * expected_num_resource_spec2_requested
+                )
+
+                _send_resource_request.assert_called_with(expected_resource_request)
 
 
 if __name__ == "__main__":
