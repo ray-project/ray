@@ -2416,9 +2416,6 @@ pyyaml==6.0.3 \
     # via
     #   ray
     #   uvicorn
-.whl/ray-100.0.0.dev0-py3-none-any.whl \
-    --hash=sha256:af39e737120ddf7c9fdce6a47a17ceddc9d7efcfd8281a2c945f665ed03064e3
-    # via -r release/ray_release/byod/ray_dev.in
 referencing==0.37.0 \
     --hash=sha256:381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231 \
     --hash=sha256:44aefc3142c5b842538163acb373e24cce6632bd54bdb01b21ad5863489f50d8
@@ -3273,3 +3270,4 @@ zipp==3.23.0 \
 
 # The following packages were excluded from the output:
 # setuptools
+# ray

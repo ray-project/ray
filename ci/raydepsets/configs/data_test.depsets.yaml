@@ -15,5 +15,6 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
+      - --unsafe-package ray
     build_arg_sets:
       - py312
