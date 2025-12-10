@@ -4,7 +4,6 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import numpy as np
-import pyarrow
 from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version

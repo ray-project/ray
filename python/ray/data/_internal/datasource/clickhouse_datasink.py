@@ -3,15 +3,11 @@ import re
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import (
-    TYPE_CHECKING,
     Any,
     Dict,
     Iterable,
     Optional,
 )
-
-if TYPE_CHECKING:
-    import pyarrow as pa
 
 import pyarrow
 import pyarrow as pa

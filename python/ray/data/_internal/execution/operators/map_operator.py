@@ -517,10 +517,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             for bundle in input_refs:
                 self._metrics.on_input_dequeued(bundle)
 
-            # Invoke first-input callback before task submission (for deferred init).
-            # This is used by write operators to call on_write_start with schema.
-            self._notify_first_input(bundled_input)
-
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue
             self._add_bundled_input(bundled_input)
