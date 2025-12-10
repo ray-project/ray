@@ -59,17 +59,17 @@ std::shared_ptr<grpc::Channel> BuildChannel(
     channel_creds = grpc::InsecureChannelCredentials();
   }
 
-  // Step 2: Create channel with interceptors if token auth is enabled
-  std::string target_address = BuildAddress(address, port);
-
+  // Step 2: Add call credentials for token auth if enabled
   if (RequiresTokenAuthentication()) {
-    // Create channel with auth interceptor
-    return grpc::experimental::CreateCustomChannelWithInterceptors(
-        target_address, channel_creds, *arguments, CreateTokenAuthInterceptorFactories());
-  } else {
-    // Create channel without interceptors
-    return grpc::CreateCustomChannel(target_address, channel_creds, *arguments);
+    auto call_creds = CreateTokenAuthCallCredentials();
+    if (call_creds != nullptr) {
+      channel_creds = grpc::CompositeChannelCredentials(channel_creds, call_creds);
+    }
   }
+
+  // Step 3: Create channel
+  std::string target_address = BuildAddress(address, port);
+  return grpc::CreateCustomChannel(target_address, channel_creds, *arguments);
 }
 
 }  // namespace rpc
