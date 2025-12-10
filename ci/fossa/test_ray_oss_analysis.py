@@ -26,21 +26,21 @@ class TestRayOssAnalysis(unittest.TestCase):
         mock_file_handler.assert_called_with("test.log", mode="w")
 
     def test_isExcludedKind(self):
-        self.assertTrue(ray_oss_analysis._isExcludedKind("config_setting rule"))
-        self.assertTrue(ray_oss_analysis._isExcludedKind("py_library rule"))
-        self.assertFalse(ray_oss_analysis._isExcludedKind("cc_library rule"))
-        self.assertFalse(ray_oss_analysis._isExcludedKind("unknown_kind rule"))
+        self.assertTrue(ray_oss_analysis._is_excluded_kind("config_setting rule"))
+        self.assertTrue(ray_oss_analysis._is_excluded_kind("py_library rule"))
+        self.assertFalse(ray_oss_analysis._is_excluded_kind("cc_library rule"))
+        self.assertFalse(ray_oss_analysis._is_excluded_kind("unknown_kind rule"))
 
     def test_isBuildTool(self):
-        self.assertTrue(ray_oss_analysis._isBuildTool("@bazel_tools//src:windows"))
+        self.assertTrue(ray_oss_analysis._is_build_tool("@bazel_tools//src:windows"))
         self.assertTrue(
-            ray_oss_analysis._isBuildTool(
+            ray_oss_analysis._is_build_tool(
                 "@local_config_cc//:builtin_include_directory_paths"
             )
         )
-        self.assertFalse(ray_oss_analysis._isBuildTool("//src/ray/util:subreaper.h"))
+        self.assertFalse(ray_oss_analysis._is_build_tool("//src/ray/util:subreaper.h"))
         self.assertFalse(
-            ray_oss_analysis._isBuildTool(
+            ray_oss_analysis._is_build_tool(
                 "@upb//upbc:stage0/google/protobuf/compiler/plugin.upb.c"
             )
         )
@@ -48,15 +48,15 @@ class TestRayOssAnalysis(unittest.TestCase):
     @patch("ci.fossa.ray_oss_analysis.os.getcwd")
     def test_isOwnCode(self, mock_getcwd):
         mock_getcwd.return_value = "/repo/root"
-        self.assertTrue(ray_oss_analysis._isOwnCode("/repo/root/file.py"))
-        self.assertFalse(ray_oss_analysis._isOwnCode("/other/root/file.py"))
-        self.assertFalse(ray_oss_analysis._isOwnCode(None))
+        self.assertTrue(ray_oss_analysis._is_own_code("/repo/root/file.py"))
+        self.assertFalse(ray_oss_analysis._is_own_code("/other/root/file.py"))
+        self.assertFalse(ray_oss_analysis._is_own_code(None))
 
     def test_isCppCode(self):
-        self.assertTrue(ray_oss_analysis._isCppCode("file.cc"))
-        self.assertTrue(ray_oss_analysis._isCppCode("file.h"))
-        self.assertFalse(ray_oss_analysis._isCppCode("file.py"))
-        self.assertFalse(ray_oss_analysis._isCppCode("file.java"))
+        self.assertTrue(ray_oss_analysis._is_cpp_code("file.cc"))
+        self.assertTrue(ray_oss_analysis._is_cpp_code("file.h"))
+        self.assertFalse(ray_oss_analysis._is_cpp_code("file.py"))
+        self.assertFalse(ray_oss_analysis._is_cpp_code("file.java"))
 
     def test_get_dependency_info(self):
         # SOURCE_FILE
@@ -106,8 +106,8 @@ class TestRayOssAnalysis(unittest.TestCase):
         )
         mock_check_output.return_value = mock_output
 
-        # Mock _isOwnCode to exclude local files
-        with patch("ci.fossa.ray_oss_analysis._isOwnCode") as mock_is_own:
+        # Mock _is_own_code to exclude local files
+        with patch("ci.fossa.ray_oss_analysis._is_own_code") as mock_is_own:
             # First file is own code, second is external
             mock_is_own.side_effect = [True, False, True]
 

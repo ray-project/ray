@@ -38,7 +38,7 @@ def _setup_logger(log_file: Optional[str] = None, enable_debug: bool = False) ->
 
 
 # not being used since we moved to filtering only for source files to get c, cpp libraries
-def _isExcludedKind(kind_str: str) -> bool:
+def _is_excluded_kind(kind_str: str) -> bool:
     """
     Check if the kind is excluded.
     """
@@ -63,7 +63,7 @@ def _isExcludedKind(kind_str: str) -> bool:
     return kind in target_rule_kinds
 
 
-def _isBuildTool(label: str) -> bool:
+def _is_build_tool(label: str) -> bool:
     """
     Check if the label is a build tool.
     """
@@ -79,7 +79,7 @@ def _isBuildTool(label: str) -> bool:
     )
 
 
-def _isOwnCode(location: str) -> bool:
+def _is_own_code(location: str) -> bool:
     """
     Check if it is own code or not.
     """
@@ -89,7 +89,7 @@ def _isOwnCode(location: str) -> bool:
         return location.startswith(os.getcwd())
 
 
-def _isCppCode(location: str) -> bool:
+def _is_cpp_code(location: str) -> bool:
     """
     Check if the label is C/C++ code.
     """
@@ -185,10 +185,10 @@ def _get_bazel_dependencies(
         type, kind, label, location = _get_dependency_info(line_json)
         logger.debug(f"Dependency type: {type},  Label: {label}, Location: {location}")
 
-        if _isBuildTool(label) or _isOwnCode(location):
+        if _is_build_tool(label) or _is_own_code(location):
             logger.debug(f"Skipping dependency: {line} because it is a bad kind")
             continue
-        elif _isCppCode(location):
+        elif _is_cpp_code(location):
             file_paths.add(location)
             package_name = _get_package_name(label)
             if package_name is not None:
