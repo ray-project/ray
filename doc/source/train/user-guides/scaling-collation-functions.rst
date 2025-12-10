@@ -1,7 +1,7 @@
 .. _train-scaling-collation-functions:
 
-Scaling out expensive collation functions
-==========================================
+Scaling out expensive collate functions
+=======================================
 
 By default, the collate function executes on the training worker when you call :meth:`ray.data.DataIterator.iter_torch_batches`. This approach has two main drawbacks:
 
@@ -37,11 +37,11 @@ The following example shows a typical collate function that runs on the training
 
     result = trainer.fit()
 
-If the collate function is time/compute intensive and you'd like to scale it out,
-you can use Ray Data to scale it out. Here are the steps:
+If the collate function is time/compute intensive and you'd like to scale it out,you should:
 
-1. Create a custom collate function that runs in Ray Data and use :meth:`ray.data.Dataset.map_batches` to scale it out.
-3. Use :meth:`ray.data.Dataset.repartition` to ensure the batch size alignment.
+* Create a custom collate function that runs in Ray Data and use :meth:`ray.data.Dataset.map_batches` to scale it out.
+* Use :meth:`ray.data.Dataset.repartition` to ensure the batch size alignment.
+
 
 Creating a custom collate function that runs in Ray Data
 --------------------------------------------------------
