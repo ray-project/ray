@@ -188,6 +188,7 @@ def build_vllm_engine_processor(
                 fn_constructor_kwargs=dict(
                     model=prepare_multimodal_stage_cfg.model_source,
                     chat_template_content_format=prepare_multimodal_stage_cfg.chat_template_content_format,
+                    apply_sys_msg_formatting=prepare_multimodal_stage_cfg.apply_sys_msg_formatting,
                 ),
                 map_batches_kwargs=build_cpu_stage_map_kwargs(
                     prepare_multimodal_stage_cfg

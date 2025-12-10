@@ -157,25 +157,6 @@ def model_llama_3_2_1B_instruct():
 
 
 @pytest.fixture(scope="session")
-def model_qwen_2_5_vl_3b_instruct():
-    REMOTE_URL = f"{S3_ARTIFACT_LLM_OSSCI_URL}Qwen2.5-VL-3B-Instruct/"
-    FILE_LIST = [
-        "config.json",
-        "chat_template.json",
-        "generation_config.json",
-        "merges.txt",
-        "model-00001-of-00002.safetensors",
-        "model-00002-of-00002.safetensors"
-        "model.safetensors.index.json",
-        "preprocessor_config.json",
-        "tokenizer.json",
-        "tokenizer_config.json",
-        "vocab.json",
-    ]
-    yield from download_model_from_s3(REMOTE_URL, FILE_LIST)
-
-
-@pytest.fixture(scope="session")
 def model_qwen_2_5_omni_3b():
     REMOTE_URL = f"{S3_ARTIFACT_LLM_OSSCI_URL}Qwen2.5-Omni-3B/"
     FILE_LIST = [
@@ -297,6 +278,7 @@ def audio_asset():
         response.raise_for_status()
         audio_data = base64.b64encode(response.content).decode("utf-8")
         yield audio_url, audio_data
+
 
 @pytest.fixture
 def video_asset():

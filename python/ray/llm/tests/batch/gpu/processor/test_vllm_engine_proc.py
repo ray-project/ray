@@ -217,7 +217,10 @@ def test_embedding_model(gpu_type, model_smolvlm_256m):
 
 
 @pytest.mark.parametrize("use_nested_config", [True, False])
-def test_legacy_vision_model(gpu_type, model_smolvlm_256m, use_nested_config):
+def test_legacy_vision_model(
+    gpu_type, model_smolvlm_256m, use_nested_config, image_asset
+):
+    image_url, _ = image_asset
     processor_config = dict(
         model_source=model_smolvlm_256m,
         task_type="generate",
@@ -257,11 +260,11 @@ def test_legacy_vision_model(gpu_type, model_smolvlm_256m, use_nested_config):
                     "content": [
                         {
                             "type": "text",
-                            "text": f"Say {row['id']} words about this image.",
+                            "text": f"Say {row['val']} words about this image.",
                         },
                         {
                             "type": "image",
-                            "image": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg",
+                            "image": image_url,
                         },
                     ],
                 },
@@ -312,7 +315,7 @@ def test_vision_model(
         tokenize_stage=TokenizerStageConfig(enabled=decouple_tokenizer),
         detokenize_stage=DetokenizeStageConfig(enabled=decouple_tokenizer),
     )
-    llm_processor = build_llm_processor(
+    llm_processor = build_processor(
         llm_processor_config,
         preprocess=lambda row: dict(
             messages=[
@@ -369,7 +372,6 @@ def test_audio_model(
         engine_kwargs=dict(
             enforce_eager=True,
             limit_mm_per_prompt={"audio": 1},
-            distributed_executor_backend="ray",
         ),
         batch_size=16,
         accelerator_type=gpu_type,
@@ -383,7 +385,7 @@ def test_audio_model(
         detokenize_stage=DetokenizeStageConfig(enabled=False),
     )
 
-    llm_processor = build_llm_processor(
+    llm_processor = build_processor(
         llm_processor_config,
         preprocess=lambda row: dict(
             messages=[

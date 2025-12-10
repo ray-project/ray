@@ -16,7 +16,10 @@ from ray.data.llm import (
 
 logger = logging.getLogger(__name__)
 
-S3_ARTIFACT_ASSETS_URL = "https://air-example-data.s3.amazonaws.com/rayllm-ossci/assets/"
+S3_ARTIFACT_ASSETS_URL = (
+    "https://air-example-data.s3.amazonaws.com/rayllm-ossci/assets/"
+)
+
 
 @pytest.fixture(autouse=True)
 def disable_vllm_compile_cache(monkeypatch):
@@ -59,7 +62,7 @@ async def test_vllm_multimodal_utils():
     from vllm.config import ModelConfig
     from vllm.entrypoints.chat_utils import parse_chat_messages_futures
 
-    image_url = "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg"
+    image_url = "https://air-example-data.s3.us-west-2.amazonaws.com/rayllm-ossci/assets/cherry_blossom.jpg"
     image_uuid = str(hash(image_url))
 
     conversation, mm_future, mm_uuids = parse_chat_messages_futures(
@@ -268,12 +271,12 @@ def test_vllm_llama_lora():
 
 
 @pytest.mark.parametrize(
-    "model_source,tp_size,pp_size,concurrency,sample_size,chat_template_content_format",
+    "model_source,tp_size,pp_size,concurrency,sample_size,chat_template_content_format,apply_sys_msg_formatting",
     [
         # LLaVA model with TP=1, PP=1, concurrency=1
-        ("llava-hf/llava-1.5-7b-hf", 1, 1, 1, 60, "openai"),
+        ("llava-hf/llava-1.5-7b-hf", 1, 1, 1, 60, "openai", False),
         # Pixtral model with TP=2, PP=1, concurrency=2
-        ("mistral-community/pixtral-12b", 2, 1, 2, 60, "openai"),
+        ("mistral-community/pixtral-12b", 2, 1, 2, 60, "openai", True),
     ],
 )
 def test_vllm_vision_language_models(
@@ -283,6 +286,7 @@ def test_vllm_vision_language_models(
     concurrency,
     sample_size,
     chat_template_content_format,
+    apply_sys_msg_formatting,
 ):
     """Test vLLM with vision language models using different configurations."""
 
@@ -304,6 +308,7 @@ def test_vllm_vision_language_models(
         prepare_multimodal_stage=PrepareMultimodalStageConfig(
             enabled=True,
             chat_template_content_format=chat_template_content_format,
+            apply_sys_msg_formatting=apply_sys_msg_formatting,
         ),
         apply_chat_template=True,
         tokenize=tokenize,
@@ -312,7 +317,7 @@ def test_vllm_vision_language_models(
         concurrency=concurrency,
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
-    llm_processor = build_llm_processor(
+    llm_processor = build_processor(
         llm_processor_config,
         preprocess=lambda row: dict(
             messages=[
@@ -357,9 +362,7 @@ def test_vllm_vision_language_models(
     [
         {
             "type": "image_url",
-            "image_url": {
-                "url": S3_ARTIFACT_ASSETS_URL + "cherry_blossom.jpg"
-            },
+            "image_url": {"url": S3_ARTIFACT_ASSETS_URL + "cherry_blossom.jpg"},
         },
         {
             "type": "video_url",
@@ -390,7 +393,7 @@ def test_vllm_qwen_vl_multimodal(multimodal_content):
         concurrency=1,
     )
 
-    llm_processor = build_llm_processor(
+    llm_processor = build_processor(
         llm_processor_config,
         preprocess=lambda row: dict(
             sampling_params=dict(

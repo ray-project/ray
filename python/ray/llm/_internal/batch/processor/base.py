@@ -257,7 +257,9 @@ class OfflineProcessorConfig(ProcessorConfig):
         return values
 
     @model_validator(mode="before")
-    def _warn_prepare_image_stage_deprecation(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+    def _warn_prepare_image_stage_deprecation(
+        cls, values: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Warn if prepare_image_stage is enabled, recommend prepare_multimodal_stage instead."""
         if "prepare_image_stage" in values:
             prepare_image_stage_value = values.get("prepare_image_stage")

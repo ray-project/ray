@@ -8,7 +8,8 @@ from ray.llm._internal.batch.stages.prepare_multimodal_stage import (
 
 
 @pytest.mark.asyncio
-async def test_prepare_multimodal_udf_image_url():
+async def test_prepare_multimodal_udf_image_url(image_asset):
+    image_url, _ = image_asset
     udf = PrepareMultimodalUDF(
         data_column="__data",
         expected_input_keys=["messages"],
@@ -30,16 +31,12 @@ async def test_prepare_multimodal_udf_image_url():
                             },
                             {
                                 "type": "image_url",
-                                "image_url": {
-                                    "url": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg"
-                                },
+                                "image_url": {"url": image_url},
                                 "uuid": "image-1-id",
                             },
                             {
                                 "type": "image_url",
-                                "image_url": {
-                                    "url": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg"
-                                },
+                                "image_url": {"url": image_url},
                                 "uuid": "image-2-id",
                             },
                         ],

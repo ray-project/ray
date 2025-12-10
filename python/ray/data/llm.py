@@ -465,6 +465,8 @@ class PrepareMultimodalStageConfig(_PrepareMultimodalStageConfig):
             template. This is used to format the chat template content according
             to a specific model. Choices are "string" or "openai". Defaults to
             "string".
+        apply_sys_msg_formatting: Whether to apply formatting system messages.
+            Defaults to False.
         batch_size: Rows per batch. If not specified, will use the processor-level
             batch_size.
         concurrency: Actor pool size or range for this stage. If not specified,

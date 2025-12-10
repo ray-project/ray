@@ -62,6 +62,10 @@ class PrepareMultimodalStageConfig(_StageConfigBase):
         description="The content format to use for the chat template. "
         "This is used to format the chat template content according to a specific model.",
     )
+    apply_sys_msg_formatting: Optional[bool] = Field(
+        default=False,
+        description="Whether to apply formatting system messages.",
+    )
 
 
 def resolve_stage_config(
