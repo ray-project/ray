@@ -732,6 +732,7 @@
 
 - name: does_not_over_provision
   group: data-autoscaling
+  frequency: manual
 
   cluster:
     byod: {}
