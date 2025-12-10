@@ -5277,6 +5277,7 @@ class Dataset:
             # automatically by the Write operator when the first input bundle arrives.
             if isinstance(datasink, _FileDatasink):
                 datasink.on_write_start()
+                # TODO (https://github.com/ray-project/ray/issues/59326): There should be no special handling for skipping writes.
                 if datasink._skip_write:
                     logger.info(
                         f"Ignoring write because {datasink.path} already exists"
