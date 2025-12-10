@@ -6,7 +6,6 @@ from ray.experimental.gpu_object_manager.types import (
     CommunicatorMetadata,
     TensorTransportMetadata,
 )
-from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import torch
@@ -16,7 +15,6 @@ if TYPE_CHECKING:
 # Be sure to update the direct-transport docs when making changes to this interface, especially if changing the path to the file.
 
 
-@PublicAPI(stability="alpha")
 class TensorTransportManager(ABC):
     """Interface with which to implement custom tensor transports."""
 

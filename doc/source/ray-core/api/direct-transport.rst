@@ -36,4 +36,3 @@ Advanced APIs
 
     ray.experimental.wait_tensor_freed
     ray.experimental.register_tensor_transport
-    ray.experimental.TensorTransportManager
