@@ -807,6 +807,16 @@ class ReplicaConfig:
     def to_proto_bytes(self):
         return self.to_proto().SerializeToString()
 
+    def to_dict(self):
+        # only use for logging purposes
+        return {
+            "deployment_def_name": self.deployment_def_name,
+            "ray_actor_options": self.ray_actor_options,
+            "placement_group_bundles": self.placement_group_bundles,
+            "placement_group_strategy": self.placement_group_strategy,
+            "max_replicas_per_node": self.max_replicas_per_node,
+        }
+
 
 def prepare_imperative_http_options(
     proxy_location: Union[None, str, ProxyLocation],
