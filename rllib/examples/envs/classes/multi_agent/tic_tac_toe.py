@@ -1,4 +1,6 @@
 # __sphinx_doc_1_begin__
+import random
+
 import gymnasium as gym
 import numpy as np
 
@@ -68,7 +70,7 @@ class TicTacToe(MultiAgentEnv):
             0,
         ]
         # Pick a random player to start the game.
-        self.current_player = np.random.choice(["player1", "player2"])
+        self.current_player = random.choice(["player1", "player2"])
         # Return observations dict (only with the starting player, which is the one
         # we expect to act next).
         return {

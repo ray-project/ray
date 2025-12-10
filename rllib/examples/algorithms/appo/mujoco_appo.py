@@ -52,7 +52,10 @@ approximately 2 million timesteps. The learning curve may show some initial
 instability before stabilizing as the KL coefficient adapts.
 """
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.utils.test_utils import add_rllib_example_script_args
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 
 parser = add_rllib_example_script_args(
     default_reward=8000.0,  # TODO: Determine true default_reward
@@ -98,6 +101,4 @@ config = (
 
 
 if __name__ == "__main__":
-    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
-
     run_rllib_example_script_experiment(config, args)

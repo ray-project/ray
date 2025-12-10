@@ -1,7 +1,7 @@
 """Example showing how to run multi-agent APPO on Connect4 with self-play.
 
 This example demonstrates a multi-agent, self-play setup using APPO (Asynchronous
-Proximal Policy Optimization) on the Connect4 environment from PettingZoo. The
+Proximal Policy Optimization) on the TicTacToe environment. The
 setup trains multiple policies simultaneously, where each episode randomly pairs
 different policies as opponents, creating a diverse training curriculum.
 
@@ -25,13 +25,13 @@ This example:
 
 How to run this script
 ----------------------
-`python multi_agent_connect4_appo.py [options]`
+`python tictactoe_appo.py [options]`
 
 To run with default settings:
-`python multi_agent_connect4_appo.py`
+`python tictactoe_appo.py`
 
 To adjust the number of learners for distributed training:
-`python multi_agent_connect4_appo.py --num-learners=2 --num-env-runners=8`
+`python tictactoe_appo.py --num-learners=2 --num-env-runners=8`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -44,7 +44,7 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-Training will run for 1 million timesteps.
+Training will run for 100 thousand timesteps.
 The trainable policies should gradually improve their play quality through
 self-play, learning both offensive strategies (creating winning sequences)
 and defensive strategies (blocking opponent sequences). Due to the random
@@ -58,15 +58,16 @@ from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.examples.envs.classes.multi_agent.pettingzoo_connect4 import (
-    MultiAgentConnect4,
-)
+from ray.rllib.examples.envs.classes.multi_agent.tic_tac_toe import TicTacToe
 from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
-from ray.rllib.utils.test_utils import add_rllib_example_script_args
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 
 parser = add_rllib_example_script_args(
     default_reward=0.0,  # TODO: Confirm intended stop reward
-    default_timesteps=1_000_000,
+    default_timesteps=100_000,
 )
 parser.set_defaults(
     num_env_runners=4,
@@ -75,14 +76,9 @@ parser.set_defaults(
 )
 args = parser.parse_args()
 
-main_spec = RLModuleSpec(
-    model_config=DefaultModelConfig(vf_share_layers=True),
-)
-
-
 config = (
     APPOConfig()
-    .environment(MultiAgentConnect4)
+    .environment(TicTacToe)
     .env_runners(
         num_env_runners=args.num_env_runners,
         num_envs_per_env_runner=args.num_envs_per_env_runner,
@@ -92,7 +88,7 @@ config = (
         target_network_update_freq=2,
         lr=0.0005 * ((args.num_learners or 1) ** 0.5),
         vf_loss_coeff=1.0,
-        entropy_coeff=[[0, 0.01], [3000000, 0.0]],  # TODO: Retune
+        entropy_coeff=[[0, 0.01], [300_000, 0.0]],  # TODO: Retune
         broadcast_interval=5,
         # learner_queue_size=1,
         circular_buffer_num_batches=4,
@@ -101,7 +97,12 @@ config = (
     .rl_module(
         rl_module_spec=MultiRLModuleSpec(
             rl_module_specs=(
-                {f"p{i}": main_spec for i in range(args.num_agents)}
+                {
+                    f"p{i}": RLModuleSpec(
+                        model_config=DefaultModelConfig(vf_share_layers=True),
+                    )
+                    for i in range(args.num_agents)
+                }
                 | {"random": RLModuleSpec(module_class=RandomRLModule)}
             ),
         ),
@@ -117,7 +118,5 @@ config = (
 
 
 if __name__ == "__main__":
-    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
-
     run_rllib_example_script_experiment(config, args)
     # TODO: Add custom stop condition for results
