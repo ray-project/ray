@@ -124,6 +124,24 @@ MODEL_LOAD_LATENCY_BUCKETS_MS = parse_latency_buckets(
     DEFAULT_LATENCY_BUCKET_MS,
 )
 
+#: Histogram buckets for replica startup and reconfigure latency.
+#: These are longer operations (constructor, model loading) so buckets start higher.
+REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS = [
+    50,
+    100,
+    250,
+    500,
+    1000,
+    2000,
+    5000,
+    10000,
+    20000,
+    30000,
+    60000,
+    120000,
+    240000,
+]
+
 #: Name of deployment health check method implemented by user.
 HEALTH_CHECK_METHOD = "check_health"
 

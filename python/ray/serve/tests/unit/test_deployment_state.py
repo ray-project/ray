@@ -190,6 +190,18 @@ class MockReplicaActorWrapper:
     def initialization_latency_s(self) -> float:
         return self._initialization_latency_s
 
+    @property
+    def reconfigure_start_time(self) -> Optional[float]:
+        return None
+
+    @property
+    def last_health_check_latency_ms(self) -> Optional[float]:
+        return None
+
+    @property
+    def last_health_check_failed(self) -> bool:
+        return False
+
     def set_docs_path(self, docs_path: str):
         self._docs_path = docs_path
 
