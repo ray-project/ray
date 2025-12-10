@@ -663,10 +663,6 @@ performance and scalability than loading datasets into memory first.
 
 First, install the required dependencies
 
-.. warning::
-
-    If you encounter serialization errors when reading from Hugging Face filesystems, try upgrading ``huggingface_hub`` to version 1.1.6 or later. For more details, see this issue: https://github.com/ray-project/ray/issues/59029
-
 .. code-block:: console
 
     pip install huggingface_hub
@@ -707,6 +703,11 @@ read from the dataset path:
     url     string
     title   string
     text    string
+
+.. tip::
+
+    If you encounter serialization errors when reading from Hugging Face filesystems, try upgrading ``huggingface_hub`` to version 1.1.6 or later. For more details, see this issue: https://github.com/ray-project/ray/issues/59029
+
 
 
 .. _loading_datasets_from_ml_libraries:
