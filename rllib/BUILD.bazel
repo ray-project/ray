@@ -189,16 +189,16 @@ py_test(
 )
 
 py_test(
-    name = "learning_test_appo_connect4_local",
+    name = "learning_test_appo_tictactoe_local",
     size = "large",
-    srcs = ["examples/algorithms/appo/multi_agent_connect4_appo.py"],
+    srcs = ["examples/algorithms/appo/tictactoe_appo.py"],
     args = [
         "--as-test",
         "--num-cpus=7",
         "--num-env-runners=5",
         "--num-learners=0",
     ],
-    main = "examples/algorithms/appo/multi_agent_connect4_appo.py",
+    main = "examples/algorithms/appo/tictactoe_appo.py",
     tags = [
         "learning_tests",
         "learning_tests_discrete",
@@ -208,9 +208,9 @@ py_test(
 )
 
 py_test(
-    name = "learning_test_appo_connect4_single_gpu",
+    name = "learning_test_appo_tictactoe_single_gpu",
     size = "large",
-    srcs = ["examples/algorithms/appo/multi_agent_connect4_appo.py"],
+    srcs = ["examples/algorithms/appo/tictactoe_appo.py"],
     args = [
         "--as-test",
         "--num-cpus=7",
@@ -218,7 +218,7 @@ py_test(
         "--num-learners=1",
         "--num-gpus-per-learner=1",
     ],
-    main = "examples/algorithms/appo/multi_agent_connect4_appo.py",
+    main = "examples/algorithms/appo/tictactoe_appo.py",
     tags = [
         "gpu",
         "learning_tests",
@@ -229,9 +229,9 @@ py_test(
 )
 
 py_test(
-    name = "learning_test_appo_connect4_multi_gpu",
+    name = "learning_test_appo_tictactoe_multi_gpu",
     size = "large",
-    srcs = ["examples/algorithms/appo/multi_agent_connect4_appo.py"],
+    srcs = ["examples/algorithms/appo/tictactoe_appo.py"],
     args = [
         "--as-test",
         "--num-cpus=7",
@@ -239,7 +239,7 @@ py_test(
         "--num-learners=2",
         "--num-gpus-per-learner=1",
     ],
-    main = "examples/algorithms/appo/multi_agent_connect4_appo.py",
+    main = "examples/algorithms/appo/tictactoe_appo.py",
     tags = [
         "learning_tests",
         "learning_tests_discrete",
