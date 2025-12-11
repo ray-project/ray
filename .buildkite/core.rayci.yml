@@ -447,7 +447,8 @@ steps:
       - docker
     instance_type: large
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu --canonical-tag ha_integration
+      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version 3.10
+        --platform cpu --canonical-tag ha_integration
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags ha_integration
         --python-version 3.10 --build-name corebuild-py3.10
     depends_on:
@@ -463,8 +464,8 @@ steps:
       - oss
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu
-        --canonical-tag test_container
+      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version 3.10
+        --platform cpu --canonical-tag test_container
       - docker build --progress=plain --build-arg BASE_IMAGE="rayproject/ray:test_container"
         -t rayproject/ray:runtime_env_container -f ci/docker/runtime_env_container/Dockerfile .
       # Disable test DB, these tests will never succeed if run in the flaky step.
