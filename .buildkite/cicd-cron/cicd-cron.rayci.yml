@@ -25,7 +25,7 @@ steps:
       # are scheduling and completing correctly.
       - bazel run //ci/ray_ci/automation:copy_wanda_image --
         --wanda-image-name manylinux-cibase
-        --target-repo rayproject/manylinux2014_cibase_x86_64
+        --destination-registry rayproject/manylinux2014_cibase_x86_64
 
   - label: ":crescent_moon: push: Push manylinux (with JDK) to Docker Hub"
     depends_on:
@@ -38,4 +38,4 @@ steps:
       # are scheduling and completing correctly.
       - bazel run //ci/ray_ci/automation:copy_wanda_image --
         --wanda-image-name manylinux-cibase-jdk
-        --target-repo rayproject/manylinux2014_cibase_jdk_x86_64
+        --destination-registry rayproject/manylinux2014_cibase_jdk_x86_64

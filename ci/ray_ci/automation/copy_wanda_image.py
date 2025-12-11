@@ -1,18 +1,13 @@
 """
-CLI tool for copying Wanda-cached container images to a target registry.
+Copy Wanda-cached container images to a destination registry using crane.
 
-This script copies images that have been built and cached by Wanda to another
-container registry. It uses crane to perform the copy operation.
+Example:
+    bazel run //ci/ray_ci/automation:copy_wanda_image -- --upload \\
+        --wanda-image-name manylinux-cibase \\
+        --destination-registry rayproject/cibase \\
+        --destination-tag abc123
 
-Usage:
-    bazel run //ci/ray_ci/automation:copy_wanda_image -- [--upload]
-
-Environment Variables:
-    RAYCI_WORK_REPO: The Wanda work repository URL (source registry)
-    RAYCI_BUILD_ID: Build ID for the Wanda build
-    WANDA_IMAGE_NAME: Name of the Wanda-cached image (e.g., "forge", "manylinux-cibase")
-    TARGET_REPO: Target repository (e.g., "rayproject/my-image")
-    BUILDKITE_COMMIT: The commit hash for tagging the destination image
+Run with --help to see all options.
 """
 
 import logging
@@ -82,30 +77,30 @@ def _copy_image(source: str, destination: str, dry_run: bool = False) -> None:
     help="Name of the Wanda-cached image (e.g., 'forge'). Defaults to WANDA_IMAGE_NAME env var.",
 )
 @click.option(
-    "--target-registry",
+    "--destination-registry",
     type=str,
     default=None,
-    help="Target registry. Defaults to TARGET_REGISTRY env var.",
+    help="Destination registry to copy the image to. Defaults to DESTINATION_REGISTRY env var.",
 )
 @click.option(
-    "--commit-hash",
+    "--destination-tag",
     type=str,
     default=None,
-    help="Commit hash for tagging the image. Defaults to BUILDKITE_COMMIT env var.",
+    help="Tag for the image in the destination registry. Defaults to DESTINATION_TAG env var.",
 )
 def main(
     upload: bool,
     rayci_work_repo: Optional[str],
     rayci_build_id: Optional[str],
     wanda_image_name: Optional[str],
-    target_registry: Optional[str],
-    commit_hash: Optional[str],
+    destination_registry: Optional[str],
+    destination_tag: Optional[str],
 ) -> None:
     """
-    Copy a Wanda-cached image to a target registry.
+    Copy a Wanda-cached image to a destination registry.
 
     Assumes that the Wanda image is already built and cached, and that the
-    target registry is already authenticated (e.g., via copy_files docker_login).
+    destination registry is already authenticated (e.g., via copy_files docker_login).
 
     By default, runs in dry-run mode. Use --upload to actually copy images.
     """
@@ -116,31 +111,33 @@ def main(
         rayci_work_repo = rayci_work_repo or os.environ.get("RAYCI_WORK_REPO")
         rayci_build_id = rayci_build_id or os.environ.get("RAYCI_BUILD_ID")
         wanda_image_name = wanda_image_name or os.environ.get("WANDA_IMAGE_NAME")
-        target_repo = target_registry or os.environ.get("TARGET_REPO")
-        commit_hash = commit_hash or os.environ.get("BUILDKITE_COMMIT")
+        destination_registry = destination_registry or os.environ.get(
+            "DESTINATION_REGISTRY"
+        )
+        destination_tag = destination_tag or os.environ.get("BUILDKITE_COMMIT")
 
         required = {
             "RAYCI_WORK_REPO": rayci_work_repo,
             "RAYCI_BUILD_ID": rayci_build_id,
             "WANDA_IMAGE_NAME": wanda_image_name,
-            "TARGET_REPO": target_repo,
-            "BUILDKITE_COMMIT": commit_hash,
+            "DESTINATION_REGISTRY": destination_registry,
+            "BUILDKITE_COMMIT": destination_tag,
         }
         missing = [k for k, v in required.items() if not v]
         if missing:
             raise CopyWandaImageError(f"Missing required values: {', '.join(missing)}")
 
         source_tag = f"{rayci_work_repo}:{rayci_build_id}-{wanda_image_name}"
-        target_tag = f"{target_repo}:{commit_hash}"
+        destination_tag = f"{destination_registry}:{destination_tag}"
 
         logger.info(f"Source tag (Wanda): {source_tag}")
-        logger.info(f"Target tag: {target_tag}")
+        logger.info(f"Target tag: {destination_tag}")
 
         # Check if target already exists (only in upload mode)
         if upload:
             logger.info("Checking if image already exists at target...")
-            if _image_exists(target_tag):
-                logger.info(f"Image already exists: {target_tag}")
+            if _image_exists(destination_tag):
+                logger.info(f"Image already exists: {destination_tag}")
                 logger.info("Nothing to do, exiting successfully")
                 return
             logger.info("Image does not exist, proceeding with copy")
@@ -152,7 +149,7 @@ def main(
             )
 
         # Copy image
-        _copy_image(source_tag, target_tag, dry_run=not upload)
+        _copy_image(source_tag, destination_tag, dry_run=not upload)
 
     except CopyWandaImageError as e:
         click.echo(f"Error: {e}", err=True)
