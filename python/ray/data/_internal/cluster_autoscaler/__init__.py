@@ -1,6 +1,12 @@
 from typing import TYPE_CHECKING
 
+from .base_autoscaling_coordinator import (
+    AutoscalingCoordinator,
+    ResourceDict,
+    ResourceRequestPriority,
+)
 from .base_cluster_autoscaler import ClusterAutoscaler
+from .default_autoscaling_coordinator import DefaultAutoscalingCoordinator
 from .default_cluster_autoscaler import DefaultClusterAutoscaler
 
 if TYPE_CHECKING:
@@ -16,4 +22,11 @@ def create_cluster_autoscaler(
     )
 
 
-__all__ = ["ClusterAutoscaler"]
+__all__ = [
+    "ClusterAutoscaler",
+    # Objects related to the `AutoscalingCoordinator`.
+    "AutoscalingCoordinator",
+    "DefaultAutoscalingCoordinator",
+    "ResourceDict",
+    "ResourceRequestPriority",
+]
