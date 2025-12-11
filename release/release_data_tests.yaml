@@ -223,10 +223,13 @@
   python: "3.10"
   cluster:
     cluster_compute: fixed_size_100_cpu_compute.yaml
+    byod:
+      runtime_env:
+        - RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=.5
 
   matrix:
     setup:
-      dataset: [sf100]
+      dataset: [sf1000]
       join_type: [inner, left_outer, right_outer, full_outer]
 
   run:
@@ -238,7 +241,9 @@
       --left_join_keys column00
       --right_join_keys column0
       --join_type {{join_type}}
-      --num_partitions 50
+      --num_partitions 500
+      --max_aggregators 100
+      --finalize_batch_size 10
 
 ###############
 # Wide Schema tests
