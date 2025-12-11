@@ -357,21 +357,6 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
         assert f"Running entrypoint for job {job_id}: {entrypoint}" in logs
 
 
-def create_failure_json(rpc_method_failures):
-    failures_dict = {}
-    for method_str, failure_str in rpc_method_failures.items():
-        num_failures, req_prob, resp_prob, in_flight_prob = map(
-            int, failure_str.split(":")
-        )
-        failures_dict[method_str] = {
-            "num_failures": num_failures,
-            "req_failure_prob": req_prob,
-            "resp_failure_prob": resp_prob,
-            "in_flight_failure_prob": in_flight_prob,
-        }
-    return json.dumps(failures_dict)
-
-
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "call_ray_start",
@@ -435,10 +420,20 @@ async def test_pending_job_timeout_during_new_head_creation(
         {
             "cmd": "ray start --head",
             "env": {
-                "RAY_testing_rpc_failure": create_failure_json(
+                "RAY_testing_rpc_failure": json.dumps(
                     {
-                        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet": "3:33:33:33",
-                        "CoreWorkerService.grpc_client.PushTask": "3:33:33:33",
+                        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet": {
+                            "num_failures": 3,
+                            "req_failure_prob": 33,
+                            "resp_failure_prob": 33,
+                            "in_flight_failure_prob": 33,
+                        },
+                        "CoreWorkerService.grpc_client.PushTask": {
+                            "num_failures": 3,
+                            "req_failure_prob": 33,
+                            "resp_failure_prob": 33,
+                            "in_flight_failure_prob": 33,
+                        },
                     }
                 )
             },

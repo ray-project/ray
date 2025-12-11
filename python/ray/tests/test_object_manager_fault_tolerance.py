@@ -14,28 +14,15 @@ from ray._private.test_utils import (
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
-def create_failure_json(method, num_failures, failure_str):
-    parts = failure_str.split(":")
-    return json.dumps(
-        {
-            method: {
-                "num_failures": num_failures,
-                "req_failure_prob": int(parts[0]),
-                "resp_failure_prob": int(parts[1]),
-                "in_flight_failure_prob": int(parts[2]),
-            }
-        }
-    )
-
-
 @pytest.mark.parametrize("deterministic_failure", RPC_FAILURE_TYPES)
 def test_free_objects_idempotent(
     monkeypatch, shutdown_only, deterministic_failure, ray_start_cluster
 ):
-    failure = RPC_FAILURE_MAP[deterministic_failure]
+    failure = RPC_FAILURE_MAP[deterministic_failure].copy()
+    failure["num_failures"] = 1
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        create_failure_json("ObjectManagerService.grpc_client.FreeObjects", 1, failure),
+        json.dumps({"ObjectManagerService.grpc_client.FreeObjects": failure}),
     )
 
     @ray.remote

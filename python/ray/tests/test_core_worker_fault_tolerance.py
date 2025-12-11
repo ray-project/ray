@@ -16,20 +16,6 @@ from ray.exceptions import GetTimeoutError, TaskCancelledError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
-def create_failure_json(method, num_failures, failure_str):
-    parts = failure_str.split(":")
-    return json.dumps(
-        {
-            method: {
-                "num_failures": num_failures,
-                "req_failure_prob": int(parts[0]),
-                "resp_failure_prob": int(parts[1]),
-                "in_flight_failure_prob": int(parts[2]),
-            }
-        }
-    )
-
-
 @pytest.mark.parametrize(
     "allow_out_of_order_execution",
     [True, False],
@@ -42,10 +28,11 @@ def test_push_actor_task_failure(
     deterministic_failure: str,
 ):
     with monkeypatch.context() as m:
-        failure = RPC_FAILURE_MAP[deterministic_failure]
+        failure = RPC_FAILURE_MAP[deterministic_failure].copy()
+        failure["num_failures"] = 2
         m.setenv(
             "RAY_testing_rpc_failure",
-            create_failure_json("CoreWorkerService.grpc_client.PushTask", 2, failure),
+            json.dumps({"CoreWorkerService.grpc_client.PushTask": failure}),
         )
         m.setenv("RAY_actor_scheduling_queue_max_reorder_wait_seconds", "0")
         cluster = ray_start_cluster
@@ -72,11 +59,12 @@ def test_update_object_location_batch_failure(
     monkeypatch, ray_start_cluster, deterministic_failure
 ):
     with monkeypatch.context() as m:
-        failure = RPC_FAILURE_MAP[deterministic_failure]
+        failure = RPC_FAILURE_MAP[deterministic_failure].copy()
+        failure["num_failures"] = 1
         m.setenv(
             "RAY_testing_rpc_failure",
-            create_failure_json(
-                "CoreWorkerService.grpc_client.UpdateObjectLocationBatch", 1, failure
+            json.dumps(
+                {"CoreWorkerService.grpc_client.UpdateObjectLocationBatch": failure}
             ),
         )
         cluster = ray_start_cluster
@@ -116,12 +104,11 @@ def test_get_object_status_rpc_retry_and_idempotency(
     Cross_worker_access_task triggers GetObjectStatus because it does
     not own objects and needs to request it from the driver.
     """
-    failure = RPC_FAILURE_MAP[deterministic_failure]
+    failure = RPC_FAILURE_MAP[deterministic_failure].copy()
+    failure["num_failures"] = 1
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        create_failure_json(
-            "CoreWorkerService.grpc_client.GetObjectStatus", 1, failure
-        ),
+        json.dumps({"CoreWorkerService.grpc_client.GetObjectStatus": failure}),
     )
 
     ray.init()
@@ -150,12 +137,11 @@ def test_wait_for_actor_ref_deleted_rpc_retry_and_idempotency(
     The GCS actor manager will trigger this RPC during actor initialization
     to monitor when the actor handles have gone out of scope and the actor should be destroyed.
     """
-    failure = RPC_FAILURE_MAP[deterministic_failure]
+    failure = RPC_FAILURE_MAP[deterministic_failure].copy()
+    failure["num_failures"] = 1
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        create_failure_json(
-            "CoreWorkerService.grpc_client.WaitForActorRefDeleted", 1, failure
-        ),
+        json.dumps({"CoreWorkerService.grpc_client.WaitForActorRefDeleted": failure}),
     )
 
     ray.init()
@@ -190,12 +176,11 @@ def test_wait_for_actor_ref_deleted_rpc_retry_and_idempotency(
 @pytest.fixture
 def inject_cancel_remote_task_rpc_failure(monkeypatch, request):
     deterministic_failure = request.param
-    failure = RPC_FAILURE_MAP[deterministic_failure]
+    failure = RPC_FAILURE_MAP[deterministic_failure].copy()
+    failure["num_failures"] = 1
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        create_failure_json(
-            "CoreWorkerService.grpc_client.RequestOwnerToCancelTask", 1, failure
-        ),
+        json.dumps({"CoreWorkerService.grpc_client.RequestOwnerToCancelTask": failure}),
     )
 
 
@@ -237,7 +222,16 @@ def test_double_borrowing_with_rpc_failure(monkeypatch, shutdown_only):
     """Regression test for https://github.com/ray-project/ray/issues/57997"""
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        create_failure_json("CoreWorkerService.grpc_client.PushTask", 3, "0:100:0"),
+        json.dumps(
+            {
+                "CoreWorkerService.grpc_client.PushTask": {
+                    "num_failures": 3,
+                    "req_failure_prob": 0,
+                    "resp_failure_prob": 100,
+                    "in_flight_failure_prob": 0,
+                }
+            }
+        ),
     )
 
     ray.init()
