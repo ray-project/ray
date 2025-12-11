@@ -20,11 +20,17 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/reference_counter.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/fake_actor_creator.h"
+#include "ray/core_worker/reference_counter.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/observability/fake_metric.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/fake_subscriber.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 
 namespace ray::core {
 
@@ -88,13 +94,31 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
   ActorTaskSubmitterTest()
       : client_pool_(std::make_shared<rpc::CoreWorkerClientPool>(
             [&](const rpc::Address &addr) { return worker_client_; })),
+        raylet_client_pool_(std::make_shared<rpc::RayletClientPool>(
+            [](const rpc::Address &) -> std::shared_ptr<RayletClientInterface> {
+              return nullptr;
+            })),
         worker_client_(std::make_shared<MockWorkerClient>()),
         store_(std::make_shared<CoreWorkerMemoryStore>(io_context)),
         task_manager_(std::make_shared<MockTaskManagerInterface>()),
+        mock_gcs_client_(std::make_shared<gcs::MockGcsClient>()),
         io_work(io_context.get_executor()),
-        reference_counter_(std::make_shared<MockReferenceCounter>()),
+        publisher_(std::make_unique<pubsub::FakePublisher>()),
+        subscriber_(std::make_unique<pubsub::FakeSubscriber>()),
+        fake_owned_object_count_gauge_(),
+        fake_owned_object_size_gauge_(),
+        reference_counter_(std::make_shared<ReferenceCounter>(
+            rpc::Address(),
+            publisher_.get(),
+            subscriber_.get(),
+            /*is_node_dead=*/[](const NodeID &) { return false; },
+            fake_owned_object_count_gauge_,
+            fake_owned_object_size_gauge_,
+            /*lineage_pinning_enabled=*/false)),
         submitter_(
             *client_pool_,
+            *raylet_client_pool_,
+            mock_gcs_client_,
             *store_,
             *task_manager_,
             actor_creator_,
@@ -110,12 +134,18 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
   int64_t last_queue_warning_ = 0;
   FakeActorCreator actor_creator_;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool_;
+  std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<MockTaskManagerInterface> task_manager_;
+  std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
   instrumented_io_context io_context;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work;
-  std::shared_ptr<MockReferenceCounter> reference_counter_;
+  std::unique_ptr<pubsub::FakePublisher> publisher_;
+  std::unique_ptr<pubsub::FakeSubscriber> subscriber_;
+  ray::observability::FakeGauge fake_owned_object_count_gauge_;
+  ray::observability::FakeGauge fake_owned_object_size_gauge_;
+  std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   ActorTaskSubmitter submitter_;
 };
 
@@ -219,6 +249,8 @@ TEST_P(ActorTaskSubmitterTest, TestDependencies) {
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   task2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
       obj2.Binary());
+  reference_counter_->AddOwnedObject(obj1, {}, addr, "", 0, false, true);
+  reference_counter_->AddOwnedObject(obj2, {}, addr, "", 0, false, true);
 
   // Neither task can be submitted yet because they are still waiting on
   // dependencies.
@@ -266,6 +298,8 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   task2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
       obj2.Binary());
+  reference_counter_->AddOwnedObject(obj1, {}, addr, "", 0, false, true);
+  reference_counter_->AddOwnedObject(obj2, {}, addr, "", 0, false, true);
 
   // Neither task can be submitted yet because they are still waiting on
   // dependencies.

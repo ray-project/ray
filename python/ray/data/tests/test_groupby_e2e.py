@@ -110,6 +110,76 @@ def test_map_groups_with_gpus(
     assert rows == [{"id": 0}]
 
 
+def test_groupby_with_column_expression_udf(
+    ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
+    disable_fallback_to_object_extension,
+):
+    import pyarrow.compute as pc
+
+    from ray.data.datatype import DataType
+    from ray.data.expressions import col, udf
+
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    @udf(return_dtype=DataType.int32())
+    def min_value(values: pa.Array) -> pa.Array:
+        scalar = pc.min(values)
+        if isinstance(scalar, pa.Scalar):
+            scalar = scalar.as_py()
+        return pa.array([scalar] * len(values))
+
+    rows = (
+        ds.groupby("group")
+        .with_column("min_value", min_value(col("value")))
+        .sort(["group", "value"])
+        .take_all()
+    )
+    assert rows == [
+        {"group": 1, "value": 1, "min_value": 1},
+        {"group": 1, "value": 2, "min_value": 1},
+        {"group": 2, "value": 3, "min_value": 3},
+        {"group": 2, "value": 4, "min_value": 3},
+    ]
+
+
+def test_groupby_with_column_expression_arithmetic(
+    ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
+    disable_fallback_to_object_extension,
+):
+    from ray.data.expressions import col
+
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    rows = (
+        ds.groupby("group")
+        .with_column("value_twice", col("value") * 2)
+        .sort(["group", "value"])
+        .take_all()
+    )
+    assert rows == [
+        {"group": 1, "value": 1, "value_twice": 2},
+        {"group": 1, "value": 2, "value_twice": 4},
+        {"group": 2, "value": 3, "value_twice": 6},
+        {"group": 2, "value": 4, "value_twice": 8},
+    ]
+
+
 def test_map_groups_with_actors(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
@@ -574,7 +644,7 @@ def test_groupby_multi_agg_with_nans(
             Mean("B", alias_name="mean_b", ignore_nulls=ignore_nulls),
             Std("B", alias_name="std_b", ignore_nulls=ignore_nulls),
             Quantile("B", alias_name="quantile_b", ignore_nulls=ignore_nulls),
-            Unique("B", alias_name="unique_b"),
+            Unique("B", alias_name="unique_b", ignore_nulls=False),
         )
     )
 
@@ -681,7 +751,7 @@ def test_groupby_aggregations_are_associative(
         Mean("B", alias_name="mean_b", ignore_nulls=ignore_nulls),
         Std("B", alias_name="std_b", ignore_nulls=ignore_nulls),
         Quantile("B", alias_name="quantile_b", ignore_nulls=ignore_nulls),
-        Unique("B", alias_name="unique_b"),
+        Unique("B", alias_name="unique_b", ignore_nulls=False),
     ]
 
     # Step 0: Prepare expected output (using Pandas)
