@@ -224,10 +224,13 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         # --- Hard guardrail based on initial queue size ---
         initial_q = self._initial_queue_nbytes.get(op, None)
         if initial_q is not None and self.OBJECT_STORE_BUDGET_RATIO > 0.0:
-            # max_queue_size = initial_queue_size * (1 + OBJECT_STORE_BUDGET_RATIO/2)
+            # Here initial queue size was recorded when OBJECT_STORE_BUDGET_RATIO threshold was met.
+            # For max queue size, allow initial queue size to grow by OBJECT_STORE_BUDGET_RATIO/2.
+            # For example, if initial queue size is 100Bytes and OBJECT_STORE_BUDGET_RATIO is 0.1,
+            # then max queue size is 100Bytes * (1.0 + 0.1 / 2) = 105Bytes.
             max_queue_bytes = initial_q * (1.0 + self.OBJECT_STORE_BUDGET_RATIO / 2)
             if current_queue_size_bytes >= max_queue_bytes:
-                # We've exceeded the allowed queue size budget: slam concurrency to minimum.
+                # We've exceeded the max queue size threshold, so limit concurrency to minimum.
                 target = 1
                 if not math.isinf(cap_cfg):
                     target = min(target, int(cap_cfg))
