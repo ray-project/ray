@@ -138,7 +138,7 @@ def test_actor_pool_scaling():
 
     # Should scale down since if the op is completed, or
     # the op has no more inputs.
-    with patch(op, "completed", True):
+    with patch(op, "has_completed", True):
         # NOTE: We simulate actor pool dipping below min size upon
         #       completion (to verify that it will be able to scale to 0)
         with patch(actor_pool, "current_size", 5):
