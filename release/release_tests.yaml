@@ -1914,8 +1914,6 @@
   group: Long running tests
   working_dir: long_running_tests
 
-  stable: false
-
   frequency: weekly
   team: rllib
 
@@ -1955,8 +1953,6 @@
   python: "3.10"
   group: Long running tests
   working_dir: long_running_tests
-
-  stable: false
 
   frequency: weekly
   team: rllib
