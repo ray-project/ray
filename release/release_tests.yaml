@@ -842,47 +842,6 @@
       cluster:
         cluster_compute: tpl_cpu_1_gce.yaml
 
-- name: long_running_impala
-  python: "3.10"
-  group: Long running tests
-  working_dir: long_running_tests
-
-  frequency: weekly
-  team: rllib
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: tpl_cpu_1_large.yaml
-
-  run:
-    timeout: 86400
-    script: python workloads/impala.py
-    long_running: true
-
-  smoke_test:
-    frequency: nightly
-
-    run:
-      timeout: 3600
-
-  alert: long_running_tests
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      smoke_test:
-        frequency: manual
-        run:
-          timeout: 3600
-      cluster:
-        cluster_compute: tpl_cpu_1_large_gce.yaml
-
 - name: long_running_many_actor_tasks
   python: "3.10"
   group: Long running tests
@@ -962,52 +921,6 @@
           timeout: 3600
       cluster:
         cluster_compute: tpl_cpu_4_gce.yaml
-
-- name: long_running_many_ppo
-  python: "3.10"
-  group: Long running tests
-  working_dir: long_running_tests
-
-  stable: false
-
-  frequency: weekly
-  team: rllib
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: many_ppo.yaml
-
-  run:
-    timeout: 86400
-    script: python workloads/many_ppo.py
-    long_running: true
-    wait_for_nodes:
-      num_nodes: 1
-
-
-  smoke_test:
-    frequency: nightly
-
-    run:
-      timeout: 3600
-
-  alert: long_running_tests
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      smoke_test:
-        frequency: manual
-        run:
-          timeout: 3600
-      cluster:
-        cluster_compute: many_ppo_gce.yaml
 
 - name: long_running_many_tasks
   python: "3.10"
@@ -2024,6 +1937,96 @@
 ########################
 # RLlib tests
 ########################
+
+# ----------------------
+# Long Running Tests
+# ----------------------
+
+- name: long_running_impala
+  python: "3.10"
+  group: Long running tests
+  working_dir: long_running_tests
+
+  stable: false
+
+  frequency: weekly
+  team: rllib
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+    cluster_compute: tpl_cpu_1_large.yaml
+
+  run:
+    timeout: 86400 # 24 hours
+    script: python workloads/impala.py
+    long_running: true
+
+  smoke_test:
+    frequency: nightly
+    run:
+      timeout: 3600 # 1 hour
+
+  alert: long_running_tests
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 3600 # 1 hour
+      cluster:
+        cluster_compute: tpl_cpu_1_large_gce.yaml
+
+- name: long_running_many_ppo
+  python: "3.10"
+  group: Long running tests
+  working_dir: long_running_tests
+
+  stable: false
+
+  frequency: weekly
+  team: rllib
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+    cluster_compute: many_ppo.yaml
+
+  run:
+    timeout: 86400 # 24 hours
+    script: python workloads/many_ppo.py
+    long_running: true
+    wait_for_nodes:
+      num_nodes: 1
+
+  smoke_test:
+    frequency: nightly
+    run:
+      timeout: 3600 # 1 hour
+
+  alert: long_running_tests
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 3600 # 1 hour
+      cluster:
+        cluster_compute: many_ppo_gce.yaml
 
 # --------------------------
 # APPO
