@@ -35,7 +35,7 @@ Here is an example of how to do perform a simple batch text classification task 
 .. testcode::
     :skipif: True
 
-        import ray
+    import ray
     import pandas as pd
 
     class EmbeddingModel:
@@ -49,7 +49,13 @@ Here is an example of how to do perform a simple batch text classification task 
             return pd.concat([batch, result_df], axis=1)
 
     ds = ray.data.read_text("s3://anonymous@ray-example-data/sms_spam_collection_subset.txt")
-    ds = ds.map_batches(EmbeddingModel, compute=ray.data.ActorPoolStrategy(size=2), batch_size=64, batch_format="pandas")
+    ds = ds.map_batches(
+        EmbeddingModel,
+        compute=ray.data.ActorPoolStrategy(size=2),
+        batch_size=64,
+        batch_format="pandas"
+        # num_gpus=1  # this will set 1 GPU per worker
+    )
     ds.show(limit=10)
 
 
