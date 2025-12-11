@@ -785,6 +785,7 @@ def start(
         cgroup_path=cgroup_path,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
+        object_store_memory=object_store_memory,
     )
 
     redirect_output = None if not no_redirect_output else True

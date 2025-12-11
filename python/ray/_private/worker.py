@@ -1658,6 +1658,7 @@ def init(
         cgroup_path=_cgroup_path,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
+        object_store_memory=object_store_memory,
     )
 
     # terminate any signal before connecting driver

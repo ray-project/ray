@@ -71,7 +71,7 @@ def test_enabled_default_config_with_insufficient_cpu_and_memory_raises_value_er
     with pytest.raises(
         ValueError, match="available number of cpu cores.*less than the minimum"
     ):
-        ResourceIsolationConfig(enable_resource_isolation=True)
+        ResourceIsolationConfig(enable_resource_isolation=True, object_store_memory=0)
 
     monkeypatch.undo()
 
@@ -79,7 +79,7 @@ def test_enabled_default_config_with_insufficient_cpu_and_memory_raises_value_er
         common_utils, "get_system_memory", lambda *args, **kwargs: 400 * (1024**2)
     )
     with pytest.raises(ValueError, match="available memory.*less than the minimum"):
-        ResourceIsolationConfig(enable_resource_isolation=True)
+        ResourceIsolationConfig(enable_resource_isolation=True, object_store_memory=0)
 
 
 def test_enabled_resource_isolation_with_default_config_picks_min_values(monkeypatch):
@@ -93,7 +93,9 @@ def test_enabled_resource_isolation_with_default_config_picks_min_values(monkeyp
     monkeypatch.setattr(
         common_utils, "get_system_memory", lambda *args, **kwargs: 0.5 * (1024**3)
     )
-    config = ResourceIsolationConfig(enable_resource_isolation=True)
+    config = ResourceIsolationConfig(
+        enable_resource_isolation=True, object_store_memory=0
+    )
     assert config.system_reserved_cpu_weight == 5000
     assert config.system_reserved_memory == 500 * (1024**2)
 
@@ -101,7 +103,9 @@ def test_enabled_resource_isolation_with_default_config_picks_min_values(monkeyp
     monkeypatch.setattr(
         common_utils, "get_system_memory", lambda *args, **kwargs: 4.8 * (1024**3)
     )
-    config = ResourceIsolationConfig(enable_resource_isolation=True)
+    config = ResourceIsolationConfig(
+        enable_resource_isolation=True, object_store_memory=0
+    )
     assert config.system_reserved_cpu_weight == 526
     assert config.system_reserved_memory == 500 * (1024**2)
 
@@ -119,7 +123,9 @@ def test_enabled_resource_isolation_with_default_config_values_scale_with_system
     monkeypatch.setattr(
         common_utils, "get_system_memory", lambda *args, **kwargs: 5 * (1024**3)
     )
-    config = ResourceIsolationConfig(enable_resource_isolation=True)
+    config = ResourceIsolationConfig(
+        enable_resource_isolation=True, object_store_memory=0
+    )
     assert config.system_reserved_cpu_weight == 500
     assert config.system_reserved_memory == 536870912
 
@@ -127,7 +133,9 @@ def test_enabled_resource_isolation_with_default_config_values_scale_with_system
     monkeypatch.setattr(
         common_utils, "get_system_memory", lambda *args, **kwargs: 99 * (1024**3)
     )
-    config = ResourceIsolationConfig(enable_resource_isolation=True)
+    config = ResourceIsolationConfig(
+        enable_resource_isolation=True, object_store_memory=0
+    )
     assert config.system_reserved_cpu_weight == 500
     assert config.system_reserved_memory == 10630044057
 
@@ -143,7 +151,9 @@ def test_enabled_resource_isolation_with_default_config_picks_max_values(monkeyp
     monkeypatch.setattr(
         common_utils, "get_system_memory", lambda *args, **kwargs: 100 * (1024**3)
     )
-    config = ResourceIsolationConfig(enable_resource_isolation=True)
+    config = ResourceIsolationConfig(
+        enable_resource_isolation=True, object_store_memory=0
+    )
     assert config.system_reserved_cpu_weight == 491
     assert config.system_reserved_memory == 10 * (1024**3)
 
@@ -151,7 +161,9 @@ def test_enabled_resource_isolation_with_default_config_picks_max_values(monkeyp
     monkeypatch.setattr(
         common_utils, "get_system_memory", lambda *args, **kwargs: 500 * (1024**3)
     )
-    config = ResourceIsolationConfig(enable_resource_isolation=True)
+    config = ResourceIsolationConfig(
+        enable_resource_isolation=True, object_store_memory=0
+    )
     assert config.system_reserved_cpu_weight == 234
     assert config.system_reserved_memory == 10 * (1024**3)
 
@@ -198,28 +210,13 @@ def test_enabled_with_resource_overrides_gte_than_available_resources_raise_valu
         match="The total requested system_reserved_memory=11811160064 is greater than the amount of memory available=10737418240",
     ):
         ResourceIsolationConfig(
-            enable_resource_isolation=True, system_reserved_memory=11 * (1024**3)
+            enable_resource_isolation=True,
+            system_reserved_memory=11 * (1024**3),
+            object_store_memory=0,
         )
 
 
-def test_add_object_store_memory_called_more_than_once_raises_value_error(monkeypatch):
-    # Monkeypatch to make sure the underlying system's resources don't cause the test to fail.
-    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 32)
-    monkeypatch.setattr(
-        common_utils, "get_system_memory", lambda *args, **kwargs: 128 * (1024**3)
-    )
-    config: ResourceIsolationConfig = ResourceIsolationConfig(
-        enable_resource_isolation=True
-    )
-    config.add_object_store_memory(5 * (1024**3))
-    with pytest.raises(
-        AssertionError,
-        match="Cannot call add_object_store_memory more than once with an instance ResourceIsolationConfig. This is a bug in the ray code",
-    ):
-        config.add_object_store_memory(5 * (1024**3))
-
-
-def test_add_object_store_memory_plus_system_reserved_memory_gt_available_memory_raises_value_error(
+def test_object_store_memory_plus_system_reserved_memory_gt_available_memory_raises_value_error(
     monkeypatch,
 ):
     # Monkeypatch to make sure the underlying system's resources don't cause the test to fail.
@@ -228,16 +225,16 @@ def test_add_object_store_memory_plus_system_reserved_memory_gt_available_memory
     monkeypatch.setattr(
         common_utils, "get_system_memory", lambda *args, **kwargs: 32 * (1024**3)
     )
-    # 16GB reserved for system processes.
-    config: ResourceIsolationConfig = ResourceIsolationConfig(
-        enable_resource_isolation=True, system_reserved_memory=16 * (1024**3)
-    )
-    # 16GB + 1 byte reserved for object store.
+    # 16GB reserved for system processes + 16GB + 1 byte reserved for object store.
     with pytest.raises(
         ValueError,
-        match=r"The total requested system_reserved_memory=34359738369.*is greater than the total memory available=34359738368",
+        match=r"The total requested system_reserved_memory=34359738369.*is greater than the amount of memory available=34359738368",
     ):
-        config.add_object_store_memory(16 * (1024**3) + 1)
+        ResourceIsolationConfig(
+            enable_resource_isolation=True,
+            system_reserved_memory=16 * (1024**3),
+            object_store_memory=16 * (1024**3) + 1,
+        )
 
 
 def test_resource_isolation_enabled_with_partial_resource_overrides_and_defaults_happy_path(
@@ -252,7 +249,9 @@ def test_resource_isolation_enabled_with_partial_resource_overrides_and_defaults
 
     # Overriding cgroup_path while using default system_reserved_cpu and system_reserved_memory
     override_cgroup_path_config: ResourceIsolationConfig = ResourceIsolationConfig(
-        enable_resource_isolation=True, cgroup_path="/sys/fs/cgroup/ray"
+        enable_resource_isolation=True,
+        cgroup_path="/sys/fs/cgroup/ray",
+        object_store_memory=0,
     )
     assert override_cgroup_path_config.cgroup_path == "/sys/fs/cgroup/ray"
     # (32 cpus * 0.05 (default))/10000 = 500
@@ -262,7 +261,7 @@ def test_resource_isolation_enabled_with_partial_resource_overrides_and_defaults
 
     # Overriding system_reserved_cpu while using default cgroup_path and system_reserved_memory
     override_cpu_config: ResourceIsolationConfig = ResourceIsolationConfig(
-        enable_resource_isolation=True, system_reserved_cpu=1.5
+        enable_resource_isolation=True, system_reserved_cpu=1.5, object_store_memory=0
     )
     assert override_cpu_config.system_reserved_cpu_weight == 468
     # defaults to /sys/fs/cgroup
@@ -272,7 +271,9 @@ def test_resource_isolation_enabled_with_partial_resource_overrides_and_defaults
 
     # Overriding system_reserved_memory while using default cgroup_path and system_reserved_cpu
     override_memory_config: ResourceIsolationConfig = ResourceIsolationConfig(
-        enable_resource_isolation=True, system_reserved_memory=5 * (1024**3)
+        enable_resource_isolation=True,
+        system_reserved_memory=5 * (1024**3),
+        object_store_memory=0,
     )
     assert override_memory_config.system_reserved_memory == 5368709120
     # defaults to /sys/fs/cgroup
@@ -288,14 +289,14 @@ def test_resource_isolation_enabled_with_full_overrides_happy_path(monkeypatch):
     )
     # The system_reserved_cpu is deliberately > the maximum default.
     # The system_reserved_memory is deliberately > the maximum default.
+    # Adding the 38G of object store memory.
     override_config: ResourceIsolationConfig = ResourceIsolationConfig(
         enable_resource_isolation=True,
         cgroup_path="/sys/fs/cgroup/ray",
         system_reserved_cpu=5.0,
         system_reserved_memory=15 * 1024**3,
+        object_store_memory=38 * (1024**3),
     )
-    # Adding the 38G of object store memory.
-    override_config.add_object_store_memory(38 * (1024**3))
 
     assert override_config.cgroup_path == "/sys/fs/cgroup/ray"
     # int(5/32 * 10000)

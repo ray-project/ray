@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import sys
 from typing import Dict, Optional, Tuple
 
 import ray
@@ -373,47 +372,9 @@ class ResourceAndLabelSpec:
         # Choose a default object store size.
         system_memory = ray._common.utils.get_system_memory()
         avail_memory = ray._private.utils.estimate_available_memory()
-        object_store_memory = self.object_store_memory
-        if object_store_memory is None:
-            object_store_memory = int(
-                avail_memory * ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
-            )
-
-            # Set the object_store_memory size to 2GB on Mac
-            # to avoid degraded performance.
-            # (https://github.com/ray-project/ray/issues/20388)
-            if sys.platform == "darwin":
-                object_store_memory = min(
-                    object_store_memory, ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT
-                )
-
-            object_store_memory_cap = (
-                ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
-            )
-
-            # Cap by shm size by default to avoid low performance, but don't
-            # go lower than REQUIRE_SHM_SIZE_THRESHOLD.
-            if sys.platform == "linux" or sys.platform == "linux2":
-                # Multiple by 0.95 to give a bit of wiggle-room.
-                # https://github.com/ray-project/ray/pull/23034/files
-                shm_avail = ray._private.utils.get_shared_memory_bytes() * 0.95
-                shm_cap = max(ray_constants.REQUIRE_SHM_SIZE_THRESHOLD, shm_avail)
-
-                object_store_memory_cap = min(object_store_memory_cap, shm_cap)
-
-            # Cap memory to avoid memory waste and perf issues on large nodes
-            if (
-                object_store_memory_cap
-                and object_store_memory > object_store_memory_cap
-            ):
-                logger.debug(
-                    "Warning: Capping object memory store to {}GB. ".format(
-                        object_store_memory_cap // 1e9
-                    )
-                    + "To increase this further, specify `object_store_memory` "
-                    "when calling ray.init() or ray start."
-                )
-                object_store_memory = object_store_memory_cap
+        object_store_memory = ray._private.utils.get_configured_object_store_memory(
+            self.object_store_memory
+        )
 
         memory = self.memory
         if memory is None:

@@ -29,10 +29,10 @@ from ray._private.resource_isolation_config import ResourceIsolationConfig
 #  echo $$ | sudo tee /sys/fs/cgroup/resource_isolation_test/cgroup.procs
 #
 # Comment the following line out.
-_ROOT_CGROUP = Path("/sys/fs/cgroup")
+# _ROOT_CGROUP = Path("/sys/fs/cgroup")
 #
 # To run locally, uncomment the following line.
-# _ROOT_CGROUP = Path("/sys/fs/cgroup/resource_isolation_test")
+_ROOT_CGROUP = Path("/sys/fs/cgroup/resource_isolation_test")
 
 # The integration tests assume that the _ROOT_CGROUP exists and that
 # the process has read and write access.
@@ -487,6 +487,7 @@ def test_ray_cli_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up
         enable_resource_isolation=True,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
+        object_store_memory=object_store_memory,
     )
     node_id = ray.NodeID.from_random().hex()
     os.environ["RAY_OVERRIDE_NODE_ID_FOR_TESTING"] = node_id
@@ -509,7 +510,6 @@ def test_ray_cli_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up
         ],
     )
     assert result.exit_code == 0
-    resource_isolation_config.add_object_store_memory(object_store_memory)
     assert_cgroup_hierarchy_exists_for_node(node_id, resource_isolation_config)
 
     @ray.remote(num_cpus=1)
@@ -570,8 +570,8 @@ def test_ray_init_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
         cgroup_path=cgroup_path,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
+        object_store_memory=object_store_memory,
     )
-    resource_isolation_config.add_object_store_memory(object_store_memory)
     node_id = generate_node_id()
     os.environ["RAY_OVERRIDE_NODE_ID_FOR_TESTING"] = node_id
     ray.init(
