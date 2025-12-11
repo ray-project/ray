@@ -270,19 +270,41 @@ class ExecutionResources:
         # NOTE: We add access each resource privately because we want to preserve the
         # decimal precision. The public properties will now on runtime safe_round to
         # 5 decimals.
+        def safe_div(a: float, b: float):
+            if b == 0.0:
+                if a == 0.0:
+                    return float("nan")
+                if a > 0.0:
+                    return float("inf")
+                return float("-inf")
+            if math.isinf(a) and math.isinf(b):
+                return float("nan")
+            return a / b
+
         return ExecutionResources(
-            cpu=self._cpu / other._cpu,
-            gpu=self._gpu / other._gpu,
-            memory=self._memory / other._memory,
-            object_store_memory=self._object_store_memory / other._object_store_memory,
+            cpu=safe_div(self._cpu, other._cpu),
+            gpu=safe_div(self._gpu, other._gpu),
+            memory=safe_div(self._memory, other._memory),
+            object_store_memory=safe_div(
+                self._object_store_memory, other._object_store_memory
+            ),
         )
 
     def __mul__(self, other: "ExecutionResources") -> "ExecutionResources":
+        def safe_mul(a: float, b: float):
+            if a == 0 and math.isinf(b):
+                return float("nan")
+            if math.isinf(a) and b == 0:
+                return float("nan")
+            return a * b
+
         return ExecutionResources(
-            cpu=self._cpu * other._cpu,
-            gpu=self._gpu * other._gpu,
-            memory=self._memory * other._memory,
-            object_store_memory=self._object_store_memory * other._object_store_memory,
+            cpu=safe_mul(self._cpu, other._cpu),
+            gpu=safe_mul(self._gpu, other._gpu),
+            memory=safe_mul(self._memory, other._memory),
+            object_store_memory=safe_mul(
+                self._object_store_memory, other._object_store_memory
+            ),
         )
 
 
