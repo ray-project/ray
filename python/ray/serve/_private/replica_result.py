@@ -75,7 +75,6 @@ class ActorReplicaResult(ReplicaResult):
         self._is_streaming: bool = metadata.is_streaming
         self._request_id: str = metadata.request_id
         self._object_ref_or_gen_sync_lock = threading.Lock()
-        self._lazy_object_ref_or_gen_asyncio_lock = None
         self._with_rejection = with_rejection
         self._rejection_response = None
 
@@ -101,14 +100,6 @@ class ActorReplicaResult(ReplicaResult):
                     request_context._internal_request_id, self._response_id
                 )
             )
-
-    @property
-    def _object_ref_or_gen_asyncio_lock(self) -> asyncio.Lock:
-        """Lazy `asyncio.Lock` object."""
-        if self._lazy_object_ref_or_gen_asyncio_lock is None:
-            self._lazy_object_ref_or_gen_asyncio_lock = asyncio.Lock()
-
-        return self._lazy_object_ref_or_gen_asyncio_lock
 
     def _process_response(f: Union[Callable, Coroutine]):
         @wraps(f)
