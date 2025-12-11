@@ -266,7 +266,7 @@ class ExecutionResources:
             memory=self._memory * f,
         )
 
-    def __truediv__(self, other: "ExecutionResources") -> "ExecutionResources":
+    def divide(self, other: "ExecutionResources") -> "ExecutionResources":
         # NOTE: We add access each resource privately because we want to preserve the
         # decimal precision. The public properties will now on runtime safe_round to
         # 5 decimals.
@@ -290,7 +290,7 @@ class ExecutionResources:
             ),
         )
 
-    def __mul__(self, other: "ExecutionResources") -> "ExecutionResources":
+    def multiply(self, other: "ExecutionResources") -> "ExecutionResources":
         def safe_mul(a: float, b: float):
             if a == 0 and math.isinf(b):
                 return float("nan")
