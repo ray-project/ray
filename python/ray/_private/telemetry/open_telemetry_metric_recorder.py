@@ -1,7 +1,6 @@
 import logging
 import threading
 from collections import defaultdict
-from enum import Enum
 from typing import Callable, List
 
 from opentelemetry import metrics
@@ -11,17 +10,11 @@ from opentelemetry.sdk.metrics import MeterProvider
 
 from ray._private.metrics_agent import Record
 from ray._private.telemetry.metric_cardinality import MetricCardinality
+from ray._private.telemetry.metric_types import MetricType
 
 logger = logging.getLogger(__name__)
 
 NAMESPACE = "ray"
-
-
-class MetricType(Enum):
-    GAUGE = 0
-    COUNTER = 1
-    SUM = 2
-    HISTOGRAM = 3
 
 
 class OpenTelemetryMetricRecorder:
@@ -80,26 +73,21 @@ class OpenTelemetryMetricRecorder:
                 high_cardinality_labels = (
                     MetricCardinality.get_high_cardinality_labels_to_drop(metric_name)
                 )
-                aggregated = defaultdict(float)
+                # First, collect all values that share the same filtered tag set
+                values_by_filtered_tags = defaultdict(list)
                 for tag_set, val in observations.items():
                     filtered = frozenset(
                         (k, v) for k, v in tag_set if k not in high_cardinality_labels
                     )
-                    if metric_type in (MetricType.COUNTER, MetricType.SUM):
-                        aggregated[filtered] += val
-                    else:
-                        # Gauge: use last value, warn if overwriting
-                        if filtered in aggregated:
-                            logger.warning(
-                                f"Gauge {metric_name} has multiple values for the same "
-                                f"tags after filtering high cardinality labels. "
-                                f"Using last value."
-                            )
-                        aggregated[filtered] = val
+                    values_by_filtered_tags[filtered].append(val)
 
+                # Then aggregate each group using the appropriate aggregation function
+                agg_fn = MetricCardinality.get_aggregation_function(
+                    metric_name, metric_type
+                )
                 return [
-                    Observation(val, attributes=dict(ts))
-                    for ts, val in aggregated.items()
+                    Observation(agg_fn(values), attributes=dict(filtered))
+                    for filtered, values in values_by_filtered_tags.items()
                 ]
 
         return callback
