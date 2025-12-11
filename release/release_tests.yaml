@@ -2250,13 +2250,14 @@
   cluster:
     byod:
       type: llm-cu128 # llm image already has nixl
-      runtime_env:
+      runtime_env: # env vars for nixl
         - UCX_TLS=all
         - UCX_NET_DEVICES=all
     cluster_compute: experimental/compute_t4_gpu.yaml
 
   run:
     timeout: 1800
+    # NIXL currently only works on T4's for <100mb tensors so not enabling.
     script: python experimental/rdt_single_node_microbenchmark.py
 
 - name: rdt_single_node_A100_microbenchmark
@@ -2269,14 +2270,14 @@
   cluster:
     byod:
       type: llm-cu128 # llm image already has nixl
-      runtime_env:
+      runtime_env: # env vars for nixl
         - UCX_TLS=all
         - UCX_NET_DEVICES=all
     cluster_compute: experimental/compute_a100_gpu.yaml
 
   run:
     timeout: 1800
-    script: python experimental/rdt_single_node_microbenchmark.py --enable_10gb
+    script: python experimental/rdt_single_node_microbenchmark.py --enable_large_tensors --enable_nixl
 
 # TODO(dayshah): Add multi-node benchmarks with actual hardware RDMA support
 # - name: gpu_object_GPU_multinode
