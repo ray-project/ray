@@ -905,13 +905,19 @@ def create_autoscaling_task_consumer(
     return AutoscalingTaskConsumer.bind(signal_actor, processed_tasks_tracker)
 
 
-def enqueue_tasks(processor_config: TaskProcessorConfig, num_tasks: int, task_name: str = "blocking_task"):
+def enqueue_tasks(
+    processor_config: TaskProcessorConfig,
+    num_tasks: int,
+    task_name: str = "blocking_task",
+):
     """Enqueue multiple tasks to the queue."""
     for i in range(num_tasks):
         send_request_to_queue.remote(processor_config, f"task_{i}", task_name=task_name)
 
 
-def wait_for_tasks_processed(processed_tasks_tracker, expected_count: int, timeout: int = 60):
+def wait_for_tasks_processed(
+    processed_tasks_tracker, expected_count: int, timeout: int = 60
+):
     """Wait for expected number of tasks to be processed."""
     wait_for_condition(
         lambda: ray.get(processed_tasks_tracker.get_count.remote()) == expected_count,
@@ -946,7 +952,9 @@ class TestTaskConsumerQueueBasedAutoscaling:
         serve.run(deployment, name=app_name)
         wait_for_condition(lambda: check_app_running(app_name), timeout=30)
 
-    def _release_and_wait_for_completion(self, signal, processed_tasks_tracker, num_tasks: int):
+    def _release_and_wait_for_completion(
+        self, signal, processed_tasks_tracker, num_tasks: int
+    ):
         """Release blocked tasks and wait for all to complete."""
         ray.get(signal.send.remote())
         wait_for_tasks_processed(processed_tasks_tracker, num_tasks)

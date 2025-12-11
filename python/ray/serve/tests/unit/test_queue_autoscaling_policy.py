@@ -60,14 +60,18 @@ def create_autoscaling_context(
 @pytest.fixture
 def mock_ray_actor_methods():
     """Fixture to mock ray.get_actor and ray.get for QueueMonitor actor access."""
-    with patch("ray.serve.autoscaling_policy.ray.get_actor") as mock_get_actor, \
-         patch("ray.serve.autoscaling_policy.ray.get") as mock_ray_get:
+    with patch("ray.serve.autoscaling_policy.ray.get_actor") as mock_get_actor, patch(
+        "ray.serve.autoscaling_policy.ray.get"
+    ) as mock_ray_get:
         yield mock_get_actor, mock_ray_get
 
 
 def setup_queue_monitor_mocks(
-    mock_get_actor, mock_ray_get, queue_length, deployment_name="test_deployment",
-    config_dict=None
+    mock_get_actor,
+    mock_ray_get,
+    queue_length,
+    deployment_name="test_deployment",
+    config_dict=None,
 ):
     """Helper to set up all mocks for a successful queue monitor query."""
     queue_monitor_actor_name = f"{QUEUE_MONITOR_ACTOR_PREFIX}{deployment_name}"
@@ -99,9 +103,7 @@ def setup_queue_monitor_mocks(
 class TestQueueBasedAutoscalingPolicy:
     """Tests for queue_based_autoscaling_policy function."""
 
-    def test_queue_monitor_unavailable_maintains_replicas(
-        self, mock_ray_actor_methods
-    ):
+    def test_queue_monitor_unavailable_maintains_replicas(self, mock_ray_actor_methods):
         """Test that unavailable QueueMonitor maintains current replica count."""
         mock_get_actor, mock_ray_get = mock_ray_actor_methods
         # Mock actor not found
@@ -115,9 +117,7 @@ class TestQueueBasedAutoscalingPolicy:
         new_replicas, _ = queue_based_autoscaling_policy(ctx)
         assert new_replicas == 5
 
-    def test_queue_monitor_query_fails_maintains_replicas(
-        self, mock_ray_actor_methods
-    ):
+    def test_queue_monitor_query_fails_maintains_replicas(self, mock_ray_actor_methods):
         """Test that failed query maintains current replica count."""
         mock_get_actor, mock_ray_get = mock_ray_actor_methods
         # Mock successful actor but failed ray.get
@@ -166,9 +166,7 @@ class TestQueueBasedAutoscalingPolicy:
         new_replicas, _ = queue_based_autoscaling_policy(ctx)
         assert new_replicas == expected_replicas
 
-    def test_scale_down_to_one_before_zero(
-        self, mock_ray_actor_methods
-    ):
+    def test_scale_down_to_one_before_zero(self, mock_ray_actor_methods):
         """Test that scaling to zero goes through 1 first (policy enforces 1->0)."""
         mock_get_actor, mock_ray_get = mock_ray_actor_methods
         setup_queue_monitor_mocks(mock_get_actor, mock_ray_get, 0)
@@ -187,9 +185,7 @@ class TestQueueBasedAutoscalingPolicy:
         # Policy enforces min of 1 for non-zero to zero transition
         assert new_replicas == 1
 
-    def test_respects_max_replicas(
-        self, mock_ray_actor_methods
-    ):
+    def test_respects_max_replicas(self, mock_ray_actor_methods):
         """Test that scaling respects max_replicas bound."""
         mock_get_actor, mock_ray_get = mock_ray_actor_methods
         setup_queue_monitor_mocks(mock_get_actor, mock_ray_get, 1000)
@@ -205,9 +201,7 @@ class TestQueueBasedAutoscalingPolicy:
         new_replicas, _ = queue_based_autoscaling_policy(ctx)
         assert new_replicas == 10
 
-    def test_respects_min_replicas(
-        self, mock_ray_actor_methods
-    ):
+    def test_respects_min_replicas(self, mock_ray_actor_methods):
         """Test that scaling respects min_replicas bound."""
         mock_get_actor, mock_ray_get = mock_ray_actor_methods
         setup_queue_monitor_mocks(mock_get_actor, mock_ray_get, 5)
@@ -224,9 +218,7 @@ class TestQueueBasedAutoscalingPolicy:
         new_replicas, _ = queue_based_autoscaling_policy(ctx)
         assert new_replicas == 3
 
-    def test_scale_from_zero(
-        self, mock_ray_actor_methods
-    ):
+    def test_scale_from_zero(self, mock_ray_actor_methods):
         """Test scaling up from zero replicas."""
         mock_get_actor, mock_ray_get = mock_ray_actor_methods
         setup_queue_monitor_mocks(mock_get_actor, mock_ray_get, 50)
@@ -242,9 +234,7 @@ class TestQueueBasedAutoscalingPolicy:
         new_replicas, _ = queue_based_autoscaling_policy(ctx)
         assert new_replicas == 5  # ceil(50/10)
 
-    def test_scale_from_zero_with_one_task(
-        self, mock_ray_actor_methods
-    ):
+    def test_scale_from_zero_with_one_task(self, mock_ray_actor_methods):
         """Test scaling from zero with a single task."""
         mock_get_actor, mock_ray_get = mock_ray_actor_methods
         setup_queue_monitor_mocks(mock_get_actor, mock_ray_get, 1)
@@ -260,9 +250,7 @@ class TestQueueBasedAutoscalingPolicy:
         new_replicas, _ = queue_based_autoscaling_policy(ctx)
         assert new_replicas == 1
 
-    def test_stay_at_zero_with_empty_queue(
-        self, mock_ray_actor_methods
-    ):
+    def test_stay_at_zero_with_empty_queue(self, mock_ray_actor_methods):
         """Test staying at zero replicas when queue is empty."""
         mock_get_actor, mock_ray_get = mock_ray_actor_methods
         setup_queue_monitor_mocks(mock_get_actor, mock_ray_get, 0)
@@ -277,15 +265,12 @@ class TestQueueBasedAutoscalingPolicy:
         new_replicas, _ = queue_based_autoscaling_policy(ctx)
         assert new_replicas == 0
 
-    def test_correct_queue_monitor_actor_name(
-        self, mock_ray_actor_methods
-    ):
+    def test_correct_queue_monitor_actor_name(self, mock_ray_actor_methods):
         """Test that correct QueueMonitor actor name is used."""
         mock_get_actor, mock_ray_get = mock_ray_actor_methods
         queue_monitor_actor_name = f"{QUEUE_MONITOR_ACTOR_PREFIX}my_task_consumer"
         setup_queue_monitor_mocks(
-            mock_get_actor, mock_ray_get, 50,
-            deployment_name="my_task_consumer"
+            mock_get_actor, mock_ray_get, 50, deployment_name="my_task_consumer"
         )
 
         ctx = create_autoscaling_context(
@@ -307,9 +292,7 @@ class TestQueueBasedAutoscalingPolicy:
 class TestQueueBasedAutoscalingPolicyDelays:
     """Tests for upscale and downscale delays in queue_based_autoscaling_policy."""
 
-    def test_upscale_delay(
-        self, mock_ray_actor_methods
-    ):
+    def test_upscale_delay(self, mock_ray_actor_methods):
         """Test that upscale decisions require delay."""
         mock_get_actor, mock_ray_get = mock_ray_actor_methods
         setup_queue_monitor_mocks(mock_get_actor, mock_ray_get, 200)
@@ -344,9 +327,7 @@ class TestQueueBasedAutoscalingPolicyDelays:
         new_replicas, _ = queue_based_autoscaling_policy(ctx)
         assert new_replicas == 20
 
-    def test_downscale_delay(
-        self, mock_ray_actor_methods
-    ):
+    def test_downscale_delay(self, mock_ray_actor_methods):
         """Test that downscale decisions require delay."""
         mock_get_actor, mock_ray_get = mock_ray_actor_methods
         setup_queue_monitor_mocks(mock_get_actor, mock_ray_get, 20)
@@ -385,9 +366,7 @@ class TestQueueBasedAutoscalingPolicyDelays:
 class TestQueueBasedAutoscalingPolicyState:
     """Tests for policy state management."""
 
-    def test_stores_queue_length_in_state(
-        self, mock_ray_actor_methods
-    ):
+    def test_stores_queue_length_in_state(self, mock_ray_actor_methods):
         """Test that queue_length is stored in policy state."""
         mock_get_actor, mock_ray_get = mock_ray_actor_methods
         setup_queue_monitor_mocks(mock_get_actor, mock_ray_get, 42)
@@ -402,9 +381,7 @@ class TestQueueBasedAutoscalingPolicyState:
         _, policy_state = queue_based_autoscaling_policy(ctx)
         assert policy_state.get("last_queue_length") == 42
 
-    def test_preserves_decision_counter(
-        self, mock_ray_actor_methods
-    ):
+    def test_preserves_decision_counter(self, mock_ray_actor_methods):
         """Test that decision counter is preserved across calls."""
         mock_get_actor, mock_ray_get = mock_ray_actor_methods
         setup_queue_monitor_mocks(mock_get_actor, mock_ray_get, 200)
@@ -436,9 +413,7 @@ class TestQueueBasedAutoscalingPolicyState:
 class TestQueueBasedAutoscalingPolicyActorRecovery:
     """Tests for QueueMonitor actor recovery via policy_state."""
 
-    def test_stores_config_in_policy_state(
-        self, mock_ray_actor_methods
-    ):
+    def test_stores_config_in_policy_state(self, mock_ray_actor_methods):
         """Test that QueueMonitor config is stored in policy_state on first call."""
         mock_get_actor, mock_ray_get = mock_ray_actor_methods
         config_dict = {"broker_url": "redis://myredis:6379", "queue_name": "myqueue"}
@@ -456,14 +431,20 @@ class TestQueueBasedAutoscalingPolicyActorRecovery:
         _, policy_state = queue_based_autoscaling_policy(ctx)
 
         assert "queue_monitor_config" in policy_state
-        assert policy_state["queue_monitor_config"]["broker_url"] == "redis://myredis:6379"
+        assert (
+            policy_state["queue_monitor_config"]["broker_url"] == "redis://myredis:6379"
+        )
         assert policy_state["queue_monitor_config"]["queue_name"] == "myqueue"
 
     def test_recovers_actor_from_policy_state(self):
         """Test that actor is recreated from policy_state when not found."""
-        with patch("ray.serve.autoscaling_policy.ray.get_actor") as mock_get_actor, \
-             patch("ray.serve.autoscaling_policy.ray.get") as mock_ray_get, \
-             patch("ray.serve.autoscaling_policy.create_queue_monitor_actor") as mock_create_actor:
+        with patch(
+            "ray.serve.autoscaling_policy.ray.get_actor"
+        ) as mock_get_actor, patch(
+            "ray.serve.autoscaling_policy.ray.get"
+        ) as mock_ray_get, patch(
+            "ray.serve.autoscaling_policy.create_queue_monitor_actor"
+        ) as mock_create_actor:
 
             # First call: actor not found
             mock_get_actor.side_effect = ValueError("Actor not found")
@@ -476,7 +457,10 @@ class TestQueueBasedAutoscalingPolicyActorRecovery:
             mock_ray_get.return_value = 100  # Queue length
 
             # Pass stored config in policy_state
-            stored_config = {"broker_url": "redis://localhost:6379", "queue_name": "tasks"}
+            stored_config = {
+                "broker_url": "redis://localhost:6379",
+                "queue_name": "tasks",
+            }
             policy_state = {"queue_monitor_config": stored_config}
 
             ctx = create_autoscaling_context(

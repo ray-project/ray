@@ -15,6 +15,7 @@ QUEUE_MONITOR_ACTOR_PREFIX = "QUEUE_MONITOR::"
 
 class QueueMonitorConfig:
     """Configuration for the QueueMonitor deployment."""
+
     def __init__(self, broker_url: str, queue_name: str):
         self.broker_url = broker_url
         self.queue_name = queue_name
@@ -40,6 +41,7 @@ class QueueMonitor:
         - Redis: Uses redis-py library with LLEN command
         - RabbitMQ: Uses pika library with passive queue declaration
     """
+
     def __init__(self, config: QueueMonitorConfig):
         self._config = config
         self._client: Any = None
@@ -62,10 +64,14 @@ class QueueMonitor:
             elif broker_type == "rabbitmq":
                 self._init_rabbitmq()
             else:
-                raise ValueError(f"Unsupported broker type: {broker_type}. Supported: redis, rabbitmq")
+                raise ValueError(
+                    f"Unsupported broker type: {broker_type}. Supported: redis, rabbitmq"
+                )
 
             self._is_initialized = True
-            logger.info(f"QueueMonitor initialized for queue '{self._config.queue_name}' (broker: {broker_type})")
+            logger.info(
+                f"QueueMonitor initialized for queue '{self._config.queue_name}' (broker: {broker_type})"
+            )
 
         except Exception as e:
             logger.error(f"Failed to initialize QueueMonitor: {e}")
@@ -122,7 +128,9 @@ class QueueMonitor:
             Number of pending tasks in the queue
         """
         if not self._is_initialized:
-            logger.warning(f"QueueMonitor not initialized for queue '{self._config.queue_name}', returning 0")
+            logger.warning(
+                f"QueueMonitor not initialized for queue '{self._config.queue_name}', returning 0"
+            )
             return 0
 
         try:
@@ -141,7 +149,9 @@ class QueueMonitor:
             return queue_length
 
         except Exception as e:
-            logger.warning(f"Failed to query queue length: {e}. Using last known value: {self._last_queue_length}")
+            logger.warning(
+                f"Failed to query queue length: {e}. Using last known value: {self._last_queue_length}"
+            )
             return self._last_queue_length
 
     def shutdown(self) -> None:
@@ -168,6 +178,7 @@ class QueueMonitorActor(QueueMonitor):
     runs inside the ServeController, and using serve.get_deployment_handle()
     from within the controller causes a deadlock.
     """
+
     def __init__(self, config: QueueMonitorConfig):
         super().__init__(config)
         self.initialize()
@@ -206,7 +217,9 @@ def create_queue_monitor_actor(
         lifetime="detached",
     ).remote(config)
 
-    logger.info(f"Created QueueMonitor actor '{full_actor_name}' in namespace '{namespace}'")
+    logger.info(
+        f"Created QueueMonitor actor '{full_actor_name}' in namespace '{namespace}'"
+    )
     return actor
 
 
