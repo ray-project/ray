@@ -267,11 +267,16 @@ class VLLMEngineConfig(BaseModelExtended):
                 bundles.append(bundle)
             return bundles
 
-        # Default bundles: GPU-only; replica actor contributes CPU to first bundle via merge
-        bundle = {"GPU": 1}
-
-        if self.accelerator_type:
-            bundle[self.ray_accelerator_type()] = 0.001
+        # Default bundles: Generate based on GPU/CPU mode
+        if self.use_gpu:
+            # GPU mode: replica actor contributes CPU to first bundle via merge
+            bundle = {"GPU": 1}
+            if self.accelerator_type:
+                bundle[self.ray_accelerator_type()] = 0.001
+        else:
+            # CPU-only mode
+            bundle = {"GPU": 0}
+            
         bundles = [copy.deepcopy(bundle) for _ in range(self.num_devices)]
 
         return bundles
