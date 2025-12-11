@@ -33,7 +33,6 @@ First, install Ray Data. To learn more about installing Ray and its libraries, s
 Here is an example of how to do perform a simple batch text classification task with Ray Data:
 
 .. testcode::
-    :skipif: True
 
     import ray
     import pandas as pd
