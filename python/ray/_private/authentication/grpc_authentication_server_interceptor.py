@@ -35,13 +35,21 @@ def _authenticate_request(metadata: tuple) -> bool:
             auth_header = value
             break
 
+    # Non-enforcing mode: log warnings but allow requests to proceed
+    # This allows measuring auth overhead without blocking requests
     if not auth_header:
-        logger.warning("Authentication required but no authorization header provided")
-        return False
+        logger.warning(
+            "Authentication required but no authorization header provided, "
+            "allowing request to proceed (non-enforcing mode)"
+        )
+        return True
 
-    # Validate the token format and value
-    # validate_request_token returns bool (True if valid, False otherwise)
-    return validate_request_token(auth_header)
+    if not validate_request_token(auth_header):
+        logger.warning(
+            "Invalid authentication token, "
+            "allowing request to proceed (non-enforcing mode)"
+        )
+    return True
 
 
 class AsyncAuthenticationServerInterceptor(aiogrpc.ServerInterceptor):

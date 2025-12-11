@@ -14,6 +14,8 @@
 
 #include "ray/rpc/authentication/token_auth_client_interceptor.h"
 
+#include <grpc/grpc_security_constants.h>
+
 #include <memory>
 #include <utility>
 
@@ -27,8 +29,11 @@ std::shared_ptr<grpc::CallCredentials> CreateTokenAuthCallCredentials() {
   if (!token.has_value() || token->empty()) {
     return nullptr;
   }
-  return grpc::MetadataCredentialsFromPlugin(
-      std::make_unique<RayTokenAuthPlugin>(std::move(token)));
+  // Use experimental API with GRPC_SECURITY_NONE to allow call credentials
+  // over insecure channels. The standard MetadataCredentialsFromPlugin uses
+  // GRPC_PRIVACY_AND_INTEGRITY which requires TLS.
+  return grpc::experimental::MetadataCredentialsFromPlugin(
+      std::make_unique<RayTokenAuthPlugin>(std::move(token)), GRPC_SECURITY_NONE);
 }
 
 }  // namespace rpc
