@@ -3067,10 +3067,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
       bool should_retry = worker_to_kill_and_should_retry.second;
       /// TODO: (clarng) expose these strings in the frontend python error as well.
       std::string oom_kill_details = this->CreateOomKillMessageDetails(
-          worker_to_kill,
-          this->self_node_id_,
-          system_memory,
-          RayConfig::instance().memory_usage_threshold());
+          worker_to_kill, this->self_node_id_, system_memory, usage_threshold);
       std::string oom_kill_suggestions =
           this->CreateOomKillMessageSuggestions(worker_to_kill, should_retry);
 
