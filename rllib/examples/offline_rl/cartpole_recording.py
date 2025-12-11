@@ -125,7 +125,7 @@ if __name__ == "__main__":
 
     # Configure the algorithm for offline recording.
     config.offline_data(
-        output="local:///home/simon/git-projects/ray/cartpole/",
+        output="local:///tmp/cartpole/",
         # Store columnar (tabular) data.
         output_write_episodes=True,
         # Each file should hold 1,000 rows.
@@ -155,7 +155,7 @@ if __name__ == "__main__":
     # Build the algorithm for evaluation.
     algo = config.build()
     # Load the checkpoint stored above.
-    rl_module_checkpoint = rl_module_checkpoint = (
+    rl_module_checkpoint = (
         Path(best_checkpoint)
         / COMPONENT_LEARNER_GROUP
         / COMPONENT_LEARNER
