@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional, Tuple
 import ray
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
+    SERVE_AUTOSCALING_DECISION_COUNTERS_KEY,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
@@ -112,7 +113,7 @@ def replica_queue_length_autoscaling_policy(
     capacity_adjusted_min_replicas: int = ctx.capacity_adjusted_min_replicas
     capacity_adjusted_max_replicas: int = ctx.capacity_adjusted_max_replicas
     policy_state: Dict[str, Any] = ctx.policy_state
-    decision_counter = policy_state.get("decision_counter", 0)
+    decision_counter = policy_state.get(SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, 0)
     if num_running_replicas == 0:
         # When 0 replicas and queries are queued, scale up the replicas
         if total_num_requests > 0:
@@ -141,6 +142,7 @@ def replica_queue_length_autoscaling_policy(
     )
 
     policy_state["decision_counter"] = decision_counter
+    policy_state[SERVE_AUTOSCALING_DECISION_COUNTERS_KEY] = decision_counter
     return decision_num_replicas, policy_state
 
 
@@ -197,21 +199,23 @@ def queue_based_autoscaling_policy(
 
     try:
         queue_length = ray.get(
-            queue_monitor_actor.get_queue_length.remote(),
-            timeout=5.0
+            queue_monitor_actor.get_queue_length.remote(), timeout=5.0
         )
 
         # Store config in policy_state if not already stored (for future recovery)
         if "queue_monitor_config" not in policy_state:
             try:
                 config_dict = ray.get(
-                    queue_monitor_actor.get_config.remote(),
-                    timeout=5.0
+                    queue_monitor_actor.get_config.remote(), timeout=5.0
                 )
                 policy_state["queue_monitor_config"] = config_dict
-                logger.info(f"[{ctx.deployment_name}] Stored QueueMonitor config in policy_state for recovery")
+                logger.info(
+                    f"[{ctx.deployment_name}] Stored QueueMonitor config in policy_state for recovery"
+                )
             except Exception as e:
-                logger.warning(f"[{ctx.deployment_name}] Failed to store config in policy_state: {e}")
+                logger.warning(
+                    f"[{ctx.deployment_name}] Failed to store config in policy_state: {e}"
+                )
 
     except Exception as e:
         # Error querying actor - maintain current replicas
@@ -253,6 +257,7 @@ def queue_based_autoscaling_policy(
     # Update policy state
     policy_state["decision_counter"] = decision_counter
 
+    policy_state[SERVE_AUTOSCALING_DECISION_COUNTERS_KEY] = decision_counter
     return decision_num_replicas, policy_state
 
 
@@ -274,8 +279,6 @@ def _apply_scaling_decision_smoothing(
         decision_counter: Counter tracking consecutive scaling decisions.
             Positive = consecutive scale-up decisions, negative = scale-down.
         config: Autoscaling configuration containing delay settings.
-        deployment_name: Optional deployment name for logging.
-        log_context: Optional string with extra context for logging (e.g., "queue_length=10").
 
     Returns:
         Tuple of (decision_num_replicas, updated_decision_counter).
@@ -342,17 +345,23 @@ def _get_or_recover_queue_monitor_actor(
 
     # Try to get existing actor
     try:
-        queue_monitor_actor = ray.get_actor(queue_monitor_actor_name, namespace=SERVE_NAMESPACE)
+        queue_monitor_actor = ray.get_actor(
+            queue_monitor_actor_name, namespace=SERVE_NAMESPACE
+        )
         actor_found = True
     except ValueError:
         # Actor not found - try to recover from policy_state
-        logger.warning(f"[{deployment_name}] QueueMonitor actor not found, checking policy_state for recovery")
+        logger.warning(
+            f"[{deployment_name}] QueueMonitor actor not found, checking policy_state for recovery"
+        )
 
         stored_config = policy_state.get("queue_monitor_config")
         if stored_config is not None:
             # Attempt to recreate actor from stored config
             try:
-                logger.info(f"[{deployment_name}] Attempting to recreate QueueMonitor actor from stored config")
+                logger.info(
+                    f"[{deployment_name}] Attempting to recreate QueueMonitor actor from stored config"
+                )
                 queue_config = QueueMonitorConfig(
                     broker_url=stored_config["broker_url"],
                     queue_name=stored_config["queue_name"],
@@ -362,9 +371,13 @@ def _get_or_recover_queue_monitor_actor(
                     config=queue_config,
                 )
                 actor_found = True
-                logger.info(f"[{deployment_name}] Successfully recreated QueueMonitor actor")
+                logger.info(
+                    f"[{deployment_name}] Successfully recreated QueueMonitor actor"
+                )
             except Exception as e:
-                logger.error(f"[{deployment_name}] Failed to recreate QueueMonitor actor: {e}")
+                logger.error(
+                    f"[{deployment_name}] Failed to recreate QueueMonitor actor: {e}"
+                )
         else:
             logger.warning(
                 f"[{deployment_name}] No stored config in policy_state, "

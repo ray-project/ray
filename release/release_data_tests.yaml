@@ -20,7 +20,7 @@
 ###############
 
 - name: "read_parquet_{{scaling}}"
-
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -36,7 +36,7 @@
       --iter-bundles
 
 - name: "read_large_parquet_{{scaling}}"
-
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -52,7 +52,7 @@
       --iter-bundles
 
 - name: "read_images_{{scaling}}"
-
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -67,6 +67,7 @@
       s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
 
 - name: read_tfrecords
+  python: "3.10"
   run:
     timeout: 3600
     script: >
@@ -75,7 +76,7 @@
       --iter-bundles
 
 - name: "read_from_uris_{{scaling}}"
-
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -88,6 +89,7 @@
     script: python read_from_uris_benchmark.py
 
 - name: read_images_comparison_microbenchmark_single_node
+  python: "3.10"
   frequency: manual
 
   cluster:
@@ -104,6 +106,7 @@
 ###############
 
 - name: write_parquet
+  python: "3.10"
   run:
     timeout: 3600
     script: >
@@ -115,7 +118,7 @@
 ###################
 
 - name: "count_parquet_{{scaling}}"
-
+  python: "3.10"
   cluster:
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -155,7 +158,7 @@
 # TODO: Bump the scale from SF10 to SF1000 once we handle the scale.
 
 - name: "aggregate_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
-
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -175,13 +178,10 @@
 
 
 - name: "map_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
-
+  python: "3.10"
   matrix:
     setup:
-      # This test consistently fails on fixed-size clusters due to head OOM from
-      # too many objects references on the head node. So, we only run it on
-      # autoscaling clusters.
-      scaling: [autoscaling]
+      scaling: [fixed_size, autoscaling]
       shuffle_strategy: [sort_shuffle_pull_based, hash_shuffle]
       columns:
         - "column08 column13 column14"   # 84 groups
@@ -193,7 +193,7 @@
   run:
     timeout: 3600
     script: >
-      python groupby_benchmark.py --sf 10 --map-groups --group-by {{columns}}
+      python groupby_benchmark.py --sf 100 --map-groups --group-by {{columns}}
       --shuffle-strategy {{shuffle_strategy}}
 
 ###############
@@ -220,7 +220,7 @@
 #
 
 - name: joins_{{dataset}}_{{join_type}}
-
+  python: "3.10"
   cluster:
     cluster_compute: fixed_size_100_cpu_compute.yaml
 
@@ -245,7 +245,7 @@
 ###############
 
 - name: wide_schema_pipeline_{{data_type}}
-
+  python: "3.10"
   cluster:
     cluster_compute: fixed_size_cpu_compute.yaml
 
@@ -264,7 +264,7 @@
 #######################
 
 - name: streaming_split
-
+  python: "3.10"
   run:
     timeout: 300
     wait_for_nodes:
@@ -293,6 +293,7 @@
 ################
 
 - name: distributed_training
+  python: "3.10"
   working_dir: nightly_tests
 
   cluster:
@@ -319,7 +320,7 @@
 #################
 
 - name: "iter_batches_{{format}}"
-
+  python: "3.10"
   matrix:
     setup:
       format: [numpy, pandas, pyarrow]
@@ -332,7 +333,7 @@
       --iter-batches {{format}}
 
 - name: to_tf
-
+  python: "3.10"
   run:
     timeout: 2400
     script: >
@@ -341,7 +342,7 @@
       --to-tf image image
 
 - name: iter_torch_batches
-
+  python: "3.10"
   cluster:
     cluster_compute: fixed_size_gpu_head_compute.yaml
 
@@ -357,17 +358,19 @@
 ###########
 
 - name: map
+  python: "3.10"
   run:
     timeout: 1800
     script: python map_benchmark.py --api map --sf 100
 
 - name: flat_map
+  python: "3.10"
   run:
     timeout: 1800
     script: python map_benchmark.py --api flat_map --sf 100
 
 - name: "map_batches_{{scaling}}_{{compute}}_{{format}}_{{repeat_map_batches}}"
-
+  python: "3.10"
   matrix:
     setup:
       # Fixed-size task tests with different formats.
@@ -410,7 +413,7 @@
 ########################
 
 - name: "random_shuffle_{{scaling}}"
-
+  python: "3.10"
   matrix:
     setup:
       # This release test consistently fails on autoscaling clusters. So, we only run
@@ -430,6 +433,7 @@
 
 
 - name: random_shuffle_chaos
+  python: "3.10"
   working_dir: nightly_tests
   stable: False
 
@@ -450,7 +454,7 @@
 
 
 - name: "sort_{{scaling}}"
-
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -467,6 +471,7 @@
 
 
 - name: sort_chaos
+  python: "3.10"
   working_dir: nightly_tests
   stable: False
 
@@ -559,6 +564,7 @@
 
 
 - name: image_embedding_from_jsonl_{{case}}
+  python: "3.10"
   frequency: "{{frequency}}"
   group: data-batch-inference
 
@@ -635,7 +641,7 @@
 ##############
 
 - name: "tpch_q1_{{scaling}}"
-
+  python: "3.10"
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
@@ -691,6 +697,7 @@
  #       cluster_compute: cross_az_250_350_compute_aws.yaml
 
 - name: "cross_az_map_batches_autoscaling_iptable_failure_injection"
+  python: "3.10"
   frequency: nightly
   env: gce
   working_dir: nightly_tests

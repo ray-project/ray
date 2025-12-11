@@ -10,6 +10,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.queue_monitor import QueueMonitorConfig
 from ray.serve._private.task_consumer import TaskConsumerWrapper
+from ray.serve._private.utils import copy_class_metadata
 from ray.serve.schema import (
     TaskProcessorAdapter,
     TaskProcessorConfig,
@@ -159,15 +160,14 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
                 if hasattr(target_cls, "__del__"):
                     target_cls.__del__(self)
 
-        # Preserve the original class name
-        _TaskConsumerWrapper.__name__ = target_cls.__name__
+        copy_class_metadata(_TaskConsumerWrapper, target_cls)
 
         # Attach metadata for TaskConsumer detection
         _TaskConsumerWrapper._is_task_consumer = True
         _TaskConsumerWrapper._task_processor_config = task_processor_config
 
         @classmethod
-        def get_queue_monitor_config(cls) -> Optional[QueueMonitorConfig]:
+        def get_queue_monitor_config() -> Optional[QueueMonitorConfig]:
             """
             Returns the QueueMonitorConfig for this TaskConsumer.
 
@@ -182,7 +182,9 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
             broker_url = getattr(adapter_config, "broker_url", None)
 
             if broker_url is None:
-                raise ValueError("broker_url is required in adapter_config for queue monitoring")
+                raise ValueError(
+                    "broker_url is required in adapter_config for queue monitoring"
+                )
 
             return QueueMonitorConfig(
                 broker_url=broker_url,

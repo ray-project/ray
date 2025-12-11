@@ -57,6 +57,9 @@ class DeploymentAutoscalingState:
         self._running_replicas: List[ReplicaID] = []
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
+        # Track timestamps of last scale up and scale down events
+        self._last_scale_up_time: Optional[float] = None
+        self._last_scale_down_time: Optional[float] = None
 
     def register(self, info: DeploymentInfo, curr_target_num_replicas: int) -> int:
         """Registers an autoscaling deployment's info.
@@ -121,6 +124,14 @@ class DeploymentAutoscalingState:
     def update_running_replica_ids(self, running_replicas: List[ReplicaID]):
         """Update cached set of running replica IDs for this deployment."""
         self._running_replicas = running_replicas
+
+    def record_scale_up(self):
+        """Record a scale up event by updating the timestamp."""
+        self._last_scale_up_time = time.time()
+
+    def record_scale_down(self):
+        """Record a scale down event by updating the timestamp."""
+        self._last_scale_down_time = time.time()
 
     def is_within_bounds(self, num_replicas_running_at_target_version: int):
         """Whether or not this deployment is within the autoscaling bounds.
@@ -235,37 +246,37 @@ class DeploymentAutoscalingState:
 
         return self.apply_bounds(decision_num_replicas)
 
-    def get_autoscaling_context(self, curr_target_num_replicas):
-        total_num_requests = self.get_total_num_requests()
-        total_queued_requests = self._get_queued_requests()
-        # NOTE: for non additive aggregation functions, total_running_requests is not
-        # accurate, consider this is a approximation.
-        total_running_requests = total_num_requests - total_queued_requests
-
-        autoscaling_context: AutoscalingContext = AutoscalingContext(
+    def get_autoscaling_context(
+        self,
+        curr_target_num_replicas,
+        override_policy_state: Optional[Dict[str, Any]] = None,
+    ) -> AutoscalingContext:
+        # Adding this to overwrite policy state during application level autoscaling
+        if override_policy_state is not None:
+            current_policy_state = override_policy_state.copy()
+        elif self._policy_state is not None:
+            current_policy_state = self._policy_state.copy()
+        else:
+            current_policy_state = {}
+        return AutoscalingContext(
             deployment_id=self._deployment_id,
             deployment_name=self._deployment_id.name,
             app_name=self._deployment_id.app_name,
             current_num_replicas=len(self._running_replicas),
             target_num_replicas=curr_target_num_replicas,
             running_replicas=self._running_replicas,
-            total_num_requests=total_num_requests,
+            total_num_requests=self.get_total_num_requests,
             capacity_adjusted_min_replicas=self.get_num_replicas_lower_bound(),
             capacity_adjusted_max_replicas=self.get_num_replicas_upper_bound(),
-            policy_state=(
-                self._policy_state.copy() if self._policy_state is not None else {}
-            ),
+            policy_state=current_policy_state,
             current_time=time.time(),
             config=self._config,
-            total_queued_requests=total_queued_requests,
-            total_running_requests=total_running_requests,
-            aggregated_metrics=self._get_aggregated_custom_metrics(),
-            raw_metrics=self._get_raw_custom_metrics(),
-            last_scale_up_time=None,
-            last_scale_down_time=None,
+            total_queued_requests=self._get_queued_requests,
+            aggregated_metrics=self._get_aggregated_custom_metrics,
+            raw_metrics=self._get_raw_custom_metrics,
+            last_scale_up_time=self._last_scale_up_time,
+            last_scale_down_time=self._last_scale_down_time,
         )
-
-        return autoscaling_context
 
     def _collect_replica_running_requests(self) -> List[TimeSeries]:
         """Collect running requests timeseries from replicas for aggregation.
@@ -658,12 +669,12 @@ class ApplicationAutoscalingState:
         self._policy: Optional[
             Callable[
                 [Dict[DeploymentID, AutoscalingContext]],
-                Tuple[Dict[DeploymentID, int], Optional[Dict[str, Dict]]],
+                Tuple[Dict[DeploymentID, int], Optional[Dict[DeploymentID, Dict]]],
             ]
         ] = None
         # user defined policy returns a dictionary of state that is persisted between autoscaling decisions
-        # content of the dictionary is determined by the user defined policy
-        self._policy_state: Optional[Dict[str, Any]] = None
+        # content of the dictionary is determined by the user defined policy but is keyed by deployment id
+        self._policy_state: Optional[Dict[DeploymentID, Dict]] = None
 
     @property
     def deployments(self):
@@ -739,6 +750,26 @@ class ApplicationAutoscalingState:
     def should_autoscale_deployment(self, deployment_id: DeploymentID):
         return deployment_id in self._deployment_autoscaling_states
 
+    def _validate_policy_state(
+        self, policy_state: Optional[Dict[DeploymentID, Dict[str, Any]]]
+    ):
+        """Validate that the returned policy_state from an application-level policy is correctly formatted."""
+        if policy_state is None:
+            return
+
+        assert isinstance(
+            policy_state, dict
+        ), "Application-level autoscaling policy must return policy_state as Dict[DeploymentID, Dict[str, Any]]"
+
+        # Check that all keys are valid deployment IDs
+        for deployment_id in policy_state.keys():
+            assert (
+                deployment_id in self._deployment_autoscaling_states
+            ), f"Policy state contains invalid deployment ID: {deployment_id}"
+            assert isinstance(
+                policy_state[deployment_id], dict
+            ), f"Policy state for deployment {deployment_id} must be a dictionary, got {type(policy_state[deployment_id])}"
+
     def get_decision_num_replicas(
         self,
         deployment_to_target_num_replicas: Dict[DeploymentID, int],
@@ -752,14 +783,22 @@ class ApplicationAutoscalingState:
             # Using app-level policy
             autoscaling_contexts = {
                 deployment_id: state.get_autoscaling_context(
-                    deployment_to_target_num_replicas[deployment_id]
+                    deployment_to_target_num_replicas[deployment_id],
+                    self._policy_state.get(deployment_id, {})
+                    if self._policy_state
+                    else {},
                 )
                 for deployment_id, state in self._deployment_autoscaling_states.items()
             }
+            # Policy returns decisions: {deployment_id -> decision} and
+            # policy state: {deployment_id -> Dict}
+            decisions, returned_policy_state = self._policy(autoscaling_contexts)
 
-            # Policy returns {deployment_name -> decision}
-            decisions, self._policy_state = self._policy(autoscaling_contexts)
+            # Validate returned policy_state
+            self._validate_policy_state(returned_policy_state)
+            self._policy_state = returned_policy_state
 
+            # Validate returned decisions
             assert (
                 type(decisions) is dict
             ), "Autoscaling policy must return a dictionary of deployment_name -> decision_num_replicas"
@@ -801,6 +840,16 @@ class ApplicationAutoscalingState:
         self._deployment_autoscaling_states[deployment_id].update_running_replica_ids(
             running_replicas
         )
+
+    def record_scale_up(self, deployment_id: DeploymentID):
+        """Record a scale up event for a deployment."""
+        if deployment_id in self._deployment_autoscaling_states:
+            self._deployment_autoscaling_states[deployment_id].record_scale_up()
+
+    def record_scale_down(self, deployment_id: DeploymentID):
+        """Record a scale down event for a deployment."""
+        if deployment_id in self._deployment_autoscaling_states:
+            self._deployment_autoscaling_states[deployment_id].record_scale_down()
 
     def on_replica_stopped(self, replica_id: ReplicaID):
         dep_id = replica_id.deployment_id
@@ -956,6 +1005,26 @@ class AutoscalingStateManager:
         app_state = self._app_autoscaling_states.get(deployment_id.app_name)
         if app_state:
             app_state.update_running_replica_ids(deployment_id, running_replicas)
+
+    def record_scale_up(self, deployment_id: DeploymentID):
+        """Record a scale up event for a deployment.
+
+        Args:
+            deployment_id: The ID of the deployment being scaled up.
+        """
+        app_state = self._app_autoscaling_states.get(deployment_id.app_name)
+        if app_state:
+            app_state.record_scale_up(deployment_id)
+
+    def record_scale_down(self, deployment_id: DeploymentID):
+        """Record a scale down event for a deployment.
+
+        Args:
+            deployment_id: The ID of the deployment being scaled down.
+        """
+        app_state = self._app_autoscaling_states.get(deployment_id.app_name)
+        if app_state:
+            app_state.record_scale_down(deployment_id)
 
     def on_replica_stopped(self, replica_id: ReplicaID):
         app_state = self._app_autoscaling_states.get(replica_id.deployment_id.app_name)
