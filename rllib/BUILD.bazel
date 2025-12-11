@@ -1854,7 +1854,7 @@ py_test(
 # Algorithms (Compilation, Losses, simple functionality tests)
 # rllib/algorithms/
 #
-# Tag: algorithms_dir
+# Tag: algorithms
 # --------------------------------------------------------------------
 
 # Generic (all Algorithms)
@@ -1865,8 +1865,7 @@ py_test(
     srcs = ["algorithms/tests/test_algorithm.py"],
     data = ["offline/tests/data/cartpole/small.json"],
     tags = [
-        "algorithms_dir",
-        "algorithms_dir_generic",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -1876,8 +1875,7 @@ py_test(
     size = "medium",
     srcs = ["algorithms/tests/test_algorithm_config.py"],
     tags = [
-        "algorithms_dir",
-        "algorithms_dir_generic",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -1887,8 +1885,7 @@ py_test(
     size = "medium",
     srcs = ["algorithms/tests/test_algorithm_export_checkpoint.py"],
     tags = [
-        "algorithms_dir",
-        "algorithms_dir_generic",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -1898,8 +1895,7 @@ py_test(
     size = "medium",
     srcs = ["algorithms/tests/test_algorithm_save_load_checkpoint_learner.py"],
     tags = [
-        "algorithms_dir",
-        "algorithms_dir_generic",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -1909,8 +1905,7 @@ py_test(
     size = "medium",
     srcs = ["algorithms/tests/test_algorithm_save_load_checkpoint_connectors.py"],
     tags = [
-        "algorithms_dir",
-        "algorithms_dir_generic",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -1920,8 +1915,7 @@ py_test(
     size = "large",
     srcs = ["algorithms/tests/test_algorithm_rl_module_restore.py"],
     tags = [
-        "algorithms_dir",
-        "algorithms_dir_generic",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -1931,8 +1925,7 @@ py_test(
     size = "small",
     srcs = ["algorithms/tests/test_algorithm_imports.py"],
     tags = [
-        "algorithms_dir",
-        "algorithms_dir_generic",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -1942,8 +1935,7 @@ py_test(
     size = "small",
     srcs = ["algorithms/tests/test_registry.py"],
     tags = [
-        "algorithms_dir",
-        "algorithms_dir_generic",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -1953,8 +1945,7 @@ py_test(
     size = "large",
     srcs = ["algorithms/tests/test_env_runner_failures.py"],
     tags = [
-        "algorithms_dir",
-        "algorithms_dir_generic",
+        "algorithms",
         "exclusive",
         "team:rllib",
     ],
@@ -1965,9 +1956,9 @@ py_test(
     size = "large",
     srcs = ["algorithms/tests/test_node_failures.py"],
     tags = [
+        "algorithms",
         "exclusive",
         "team:rllib",
-        "algorithms_dir",
     ],
 )
 
@@ -1980,7 +1971,7 @@ py_test(
     size = "large",
     srcs = ["algorithms/appo/tests/test_appo.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -1990,7 +1981,7 @@ py_test(
     size = "medium",
     srcs = ["algorithms/appo/tests/test_appo_learner.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2003,7 +1994,7 @@ py_test(
     # Include the offline data files.
     data = ["offline/tests/data/cartpole/cartpole-v1_large"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2016,7 +2007,7 @@ py_test(
     srcs = ["algorithms/cql/tests/test_cql_old_api_stack.py"],
     data = ["offline/tests/data/pendulum/small.json"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2027,7 +2018,7 @@ py_test(
     size = "large",
     srcs = ["algorithms/dqn/tests/test_dqn.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2038,7 +2029,7 @@ py_test(
     size = "large",
     srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2049,7 +2040,7 @@ py_test(
     size = "large",
     srcs = ["algorithms/impala/tests/test_impala.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2059,7 +2050,7 @@ py_test(
     size = "small",
     srcs = ["algorithms/impala/tests/test_vtrace_v2.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2070,7 +2061,7 @@ py_test(
     size = "small",
     srcs = ["algorithms/impala/tests/test_vtrace_old_api_stack.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2086,7 +2077,7 @@ py_test(
         "offline/tests/data/pendulum/pendulum-v1_large",
     ],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2100,7 +2091,7 @@ py_test(
         "offline/tests/data/cartpole/large.json",
     ],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2111,7 +2102,7 @@ py_test(
     size = "medium",
     srcs = ["algorithms/ppo/tests/test_ppo.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2121,7 +2112,7 @@ py_test(
     size = "large",
     srcs = ["algorithms/ppo/tests/test_ppo_rl_module.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2131,7 +2122,7 @@ py_test(
     size = "large",
     srcs = ["algorithms/ppo/tests/test_ppo_learner.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2142,7 +2133,7 @@ py_test(
     size = "large",
     srcs = ["algorithms/sac/tests/test_sac.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2153,7 +2144,7 @@ py_test(
     size = "large",  # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["algorithms/tests/test_custom_resource.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2163,7 +2154,7 @@ py_test(
     size = "small",
     srcs = ["algorithms/tests/test_dependency_tf.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2173,7 +2164,7 @@ py_test(
     size = "small",
     srcs = ["algorithms/tests/test_dependency_torch.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2183,7 +2174,7 @@ py_test(
     size = "small",
     srcs = ["algorithms/tests/test_local.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2193,7 +2184,7 @@ py_test(
     size = "medium",
     srcs = ["algorithms/tests/test_ray_client.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2203,7 +2194,7 @@ py_test(
     size = "small",
     srcs = ["algorithms/tests/test_telemetry.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2213,7 +2204,7 @@ py_test(
     size = "small",
     srcs = ["algorithms/tests/test_nn_framework_import_errors.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2223,7 +2214,7 @@ py_test(
     size = "large",  # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["algorithms/tests/test_placement_groups.py"],
     tags = [
-        "algorithms_dir",
+        "algorithms",
         "team:rllib",
     ],
 )
@@ -2297,8 +2288,8 @@ py_test(
     size = "large",
     srcs = ["env/tests/test_multi_agent_env.py"],
     tags = [
-        "team:rllib",
         "env",
+        "team:rllib",
     ],
 )
 
