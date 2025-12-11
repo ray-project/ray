@@ -19,7 +19,6 @@
 #include <vector>
 
 #include "absl/time/time.h"
-#include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace gcs {
