@@ -1,6 +1,6 @@
-"""Connect tests for Tune & RLlib.
+"""Tests integration between Ray Tune and RLlib
 
-Runs a couple of hard learning tests using Anyscale connect.
+Runs APPO + Pong learning test.
 """
 
 import json
@@ -15,25 +15,24 @@ from ray.rllib.algorithms.appo import APPOConfig
 from ray.tune import CLIReporter, RunConfig
 
 logging.basicConfig(level=logging.WARN)
-logger = logging.getLogger("tune_framework")
+logger = logging.getLogger("rllib")
 
 
 def run(smoke_test=False, storage_path: str = None):
     stop = {"training_iteration": 1 if smoke_test else 50}
-    num_workers = 1 if smoke_test else 20
-    num_gpus = 0 if smoke_test else 1
 
     config = (
         APPOConfig()
-        .api_stack(
-            enable_rl_module_and_learner=False,
-            enable_env_runner_and_connector_v2=False,
+        .environment(
+            env="ale_py:ALE/Pong-v5",
+            clip_rewards=True,
         )
-        .environment("ale_py:ALE/Pong-v5", clip_rewards=True)
-        .framework(tune.grid_search(["tf", "torch"]))
+        .framework(
+            framework="torch",
+        )
         .env_runners(
             rollout_fragment_length=50,
-            num_env_runners=num_workers,
+            num_env_runners=0 if smoke_test else 20,
             num_envs_per_env_runner=1,
         )
         .training(
@@ -45,14 +44,17 @@ def run(smoke_test=False, storage_path: str = None):
             vtrace=True,
             use_kl_loss=False,
         )
-        .resources(num_gpus=num_gpus)
+        .learners(
+            num_learners=0 if smoke_test else 1,
+            num_gpus_per_learner=0 if smoke_test else 1,
+        )
     )
 
-    logger.info("Configuration: \n %s", pformat(config))
+    logger.info(f"Algorithm configuration: \n {pformat(config)}")
 
-    # Run the experiment.
-    return tune.Tuner(
-        "APPO",
+    # Run the experiment
+    exp_results = tune.Tuner(
+        trainable=config.algo_class,
         param_space=config,
         run_config=RunConfig(
             stop=stop,
@@ -75,6 +77,8 @@ def run(smoke_test=False, storage_path: str = None):
             num_samples=1,
         ),
     ).fit()
+
+    return exp_results
 
 
 if __name__ == "__main__":
