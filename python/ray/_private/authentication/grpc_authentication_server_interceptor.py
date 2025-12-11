@@ -11,6 +11,7 @@ from ray._private.authentication.authentication_constants import (
 )
 from ray._private.authentication.authentication_utils import (
     is_token_auth_enabled,
+    validate_request_token,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,10 +29,19 @@ def _authenticate_request(metadata: tuple) -> bool:
         return True
 
     # Extract authorization header from metadata
+    auth_header = None
     for key, value in metadata:
         if key.lower() == AUTHORIZATION_HEADER_NAME:
+            auth_header = value
             break
-    return True
+
+    if not auth_header:
+        logger.warning("Authentication required but no authorization header provided")
+        return False
+
+    # Validate the token format and value
+    # validate_request_token returns bool (True if valid, False otherwise)
+    return validate_request_token(auth_header)
 
 
 class AsyncAuthenticationServerInterceptor(aiogrpc.ServerInterceptor):
