@@ -92,7 +92,6 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_google_protobuf",
         sha256 = "76a33e2136f23971ce46c72fd697cd94dc9f73d56ab23b753c3e16854c90ddfd",
-        strip_prefix = "protobuf-2c5fa078d8e86e5f4bd34e6f4c9ea9e8d7d4d44a",
         url = "https://github.com/protocolbuffers/protobuf/archive/2c5fa078d8e86e5f4bd34e6f4c9ea9e8d7d4d44a.tar.gz",
         patches = [
             "@com_github_grpc_grpc//third_party:protobuf.patch",
@@ -119,7 +118,6 @@ def ray_deps_setup():
         build_file = "@io_ray//bazel:hiredis.BUILD",
         url = "https://github.com/redis/hiredis/archive/60e5075d4ac77424809f855ba3e398df7aacefe8.tar.gz",
         sha256 = "b6d6f799b7714d85316f9ebfb76a35a78744f42ea3b6774289d882d13a2f0383",
-        strip_prefix = "hiredis-60e5075d4ac77424809f855ba3e398df7aacefe8",
         patches = [
             "@io_ray//thirdparty/patches:hiredis-windows-msvc.patch",
         ],
@@ -130,7 +128,6 @@ def ray_deps_setup():
         build_file = "@io_ray//bazel:spdlog.BUILD",
         url = "https://github.com/gabime/spdlog/archive/refs/tags/v1.15.3.zip",
         sha256 = "b74274c32c8be5dba70b7006c1d41b7d3e5ff0dff8390c8b6390c1189424e094",
-        strip_prefix = "spdlog-1.15.3",
         # spdlog rotation filename format conflict with ray, update the format.
         patches = [
             "@io_ray//thirdparty/patches:spdlog-rotation-file-format.patch",
@@ -149,14 +146,12 @@ def ray_deps_setup():
     auto_http_archive(
         name = "rules_jvm_external",
         url = "https://github.com/bazelbuild/rules_jvm_external/archive/2.10.tar.gz",
-        strip_prefix = "rules_jvm_external-2.10",
         sha256 = "5c1b22eab26807d5286ada7392d796cbc8425d3ef9a57d114b79c5f8ef8aca7c",
     )
 
     auto_http_archive(
         name = "bazel_common",
         url = "https://github.com/google/bazel-common/archive/084aadd3b854cad5d5e754a7e7d958ac531e6801.tar.gz",
-        strip_prefix = "bazel-common-084aadd3b854cad5d5e754a7e7d958ac531e6801",
         sha256 = "a6e372118bc961b182a3a86344c0385b6b509882929c6b12dc03bb5084c775d5",
     )
 
@@ -172,7 +167,6 @@ def ray_deps_setup():
         # If you update the Boost version, remember to update the 'boost' rule.
         url = "https://github.com/nelhage/rules_boost/archive/57c99395e15720e287471d79178d36a85b64d6f6.tar.gz",
         sha256 = "490d11425393eed068966a4990ead1ff07c658f823fd982fddac67006ccc44ab",
-        strip_prefix = "rules_boost-57c99395e15720e287471d79178d36a85b64d6f6",
         patches = [
             "//thirdparty/patches:boost-headers.patch",
         ],
@@ -183,20 +177,17 @@ def ray_deps_setup():
         name = "com_github_google_flatbuffers",
         url = "https://github.com/google/flatbuffers/archive/refs/tags/v25.2.10.tar.gz",
         sha256 = "b9c2df49707c57a48fc0923d52b8c73beb72d675f9d44b2211e4569be40a7421",
-        strip_prefix = "flatbuffers-25.2.10",
     )
 
     auto_http_archive(
         name = "com_google_googletest",
         url = "https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz",
-        strip_prefix = "googletest-1.14.0",
         sha256 = "8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7",
     )
 
     auto_http_archive(
         name = "com_github_gflags_gflags",
         url = "https://github.com/gflags/gflags/archive/e171aa2d15ed9eb17054558e0b3a6a413bb01067.tar.gz",
-        strip_prefix = "gflags-e171aa2d15ed9eb17054558e0b3a6a413bb01067",
         sha256 = "b20f58e7f210ceb0e768eb1476073d0748af9b19dfbbf53f4fd16e3fb49c5ac8",
     )
 
@@ -205,7 +196,6 @@ def ray_deps_setup():
         build_file = True,
         url = "https://github.com/cython/cython/archive/refs/tags/3.0.12.tar.gz",
         sha256 = "a156fff948c2013f2c8c398612c018e2b52314fdf0228af8fbdb5585e13699c2",
-        strip_prefix = "cython-3.0.12",
         patches = [
             # Use python3 rather than python. macos does not have python installed
             # by default, and hermetic strict action does not work as python cannot
@@ -220,7 +210,6 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_johnynek_bazel_jar_jar",
         url = "https://github.com/johnynek/bazel_jar_jar/archive/171f268569384c57c19474b04aebe574d85fde0d.tar.gz",
-        strip_prefix = "bazel_jar_jar-171f268569384c57c19474b04aebe574d85fde0d",
         sha256 = "97c5f862482a05f385bd8f9d28a9bbf684b0cf3fae93112ee96f3fb04d34b193",
     )
 
@@ -228,7 +217,6 @@ def ray_deps_setup():
         name = "io_opencensus_cpp",
         url = "https://github.com/census-instrumentation/opencensus-cpp/archive/5e5f2632c84e2230fb7ccb8e336f603d2ec6aa1b.zip",
         sha256 = "1b88d6663f05c6a56c1604eb2afad22831d5f28a76f6fab8f37187f1e4ace425",
-        strip_prefix = "opencensus-cpp-5e5f2632c84e2230fb7ccb8e336f603d2ec6aa1b",
         patches = [
             "@io_ray//thirdparty/patches:opencensus-cpp-harvest-interval.patch",
             "@io_ray//thirdparty/patches:opencensus-cpp-shutdown-api.patch",
@@ -239,14 +227,12 @@ def ray_deps_setup():
     auto_http_archive(
         name = "io_opentelemetry_cpp",
         url = "https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.19.0.zip",
-        strip_prefix = "opentelemetry-cpp-1.19.0",
         sha256 = "8ef0a63f4959d5dfc3d8190d62229ef018ce41eef36e1f3198312d47ab2de05a",
     )
 
     auto_http_archive(
         name = "com_github_opentelemetry_proto",
         url = "https://github.com/open-telemetry/opentelemetry-proto/archive/refs/tags/v1.2.0.zip",
-        strip_prefix = "opentelemetry-proto-1.2.0",
         build_file = "@io_opentelemetry_cpp//bazel:opentelemetry_proto.BUILD",
         sha256 = "b3cf4fefa4eaea43879ade612639fa7029c624c1b959f019d553b86ad8e01e82",
     )
@@ -258,7 +244,6 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_google_absl",
         sha256 = "987ce98f02eefbaf930d6e38ab16aa05737234d7afbab2d5c4ea7adbe50c28ed",
-        strip_prefix = "abseil-cpp-20230802.1",
         url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20230802.1.tar.gz",
         patches = [
             # TODO (israbbani): #55430 Separate the compiler flags and remove this patch
@@ -271,7 +256,6 @@ def ray_deps_setup():
         name = "com_github_jupp0r_prometheus_cpp",
         url = "https://github.com/jupp0r/prometheus-cpp/archive/60eaa4ea47b16751a8e8740b05fe70914c68a480.tar.gz",
         sha256 = "ec825b802487ac18b0d98e2e8b7961487b12562f8f82e424521d0a891d9e1373",
-        strip_prefix = "prometheus-cpp-60eaa4ea47b16751a8e8740b05fe70914c68a480",
         patches = [
             "@io_ray//thirdparty/patches:prometheus-windows-headers.patch",
             # https://github.com/jupp0r/prometheus-cpp/pull/225
@@ -286,7 +270,6 @@ def ray_deps_setup():
         # NOTE: If you update this, also update @boringssl's hash.
         url = "https://github.com/grpc/grpc/archive/refs/tags/v1.57.1.tar.gz",
         sha256 = "0762f809b9de845e6a7c809cabccad6aa4143479fd43b396611fe5a086c0aeeb",
-        strip_prefix = "grpc-1.57.1",
         patches = [
             "@io_ray//thirdparty/patches:grpc-cython-copts.patch",
             "@io_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
@@ -307,7 +290,6 @@ def ray_deps_setup():
     auto_http_archive(
         name = "rules_foreign_cc",
         sha256 = "2a4d07cd64b0719b39a7c12218a3e507672b82a97b98c6a89d38565894cf7c51",
-        strip_prefix = "rules_foreign_cc-0.9.0",
         url = "https://github.com/bazelbuild/rules_foreign_cc/archive/refs/tags/0.9.0.tar.gz",
     )
 
@@ -334,7 +316,6 @@ def ray_deps_setup():
         # Ensure this rule matches the rule used by grpc's bazel/grpc_deps.bzl
         name = "boringssl",
         sha256 = "0675a4f86ce5e959703425d6f9063eaadf6b61b7f3399e77a154c0e85bad46b1",
-        strip_prefix = "boringssl-342e805bc1f5dfdd650e3f031686d6c939b095d9",
         url = "https://github.com/google/boringssl/archive/342e805bc1f5dfdd650e3f031686d6c939b095d9.tar.gz",
     )
 
@@ -346,7 +327,6 @@ def ray_deps_setup():
     # protobuf library that Ray supports.
     auto_http_archive(
         name = "com_google_protobuf_rules_proto_grpc",
-        strip_prefix = "protobuf-3.19.4",
         url = "https://github.com/protocolbuffers/protobuf/archive/v3.19.4.tar.gz",
         sha256 = "3bd7828aa5af4b13b99c191e8b1e884ebfa9ad371b0ce264605d347f135d2568",
     )
@@ -354,7 +334,6 @@ def ray_deps_setup():
         name = "rules_proto_grpc",
         url = "https://github.com/rules-proto-grpc/rules_proto_grpc/archive/a74fef39c5fe636580083545f76d1eab74f6450d.tar.gz",
         sha256 = "2f6606151ec042e23396f07de9e7dcf6ca9a5db1d2b09f0cc93a7fc7f4008d1b",
-        strip_prefix = "rules_proto_grpc-a74fef39c5fe636580083545f76d1eab74f6450d",
         repo_mapping = {
             "@com_google_protobuf": "@com_google_protobuf_rules_proto_grpc",
         },
@@ -365,7 +344,6 @@ def ray_deps_setup():
         build_file = True,
         url = "https://github.com/msgpack/msgpack-c/archive/8085ab8721090a447cf98bb802d1406ad7afe420.tar.gz",
         sha256 = "83c37c9ad926bbee68d564d9f53c6cbb057c1f755c264043ddd87d89e36d15bb",
-        strip_prefix = "msgpack-c-8085ab8721090a447cf98bb802d1406ad7afe420",
         patches = [
             "@io_ray//thirdparty/patches:msgpack-windows-iovec.patch",
             # TODO (israbbani): #55430 Separate the compiler flags and remove this patch
@@ -382,7 +360,6 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "nlohmann_json",
-        strip_prefix = "json-3.9.1",
         url = "https://github.com/nlohmann/json/archive/v3.9.1.tar.gz",
         sha256 = "4cf0df69731494668bdd6460ed8cb269b68de9c19ad8c27abc24cd72605b2d5b",
         build_file = "@io_ray//bazel:nlohmann_json.BUILD",
@@ -403,7 +380,6 @@ def ray_deps_setup():
         # Replace the commit hash in both places (below) with the latest, rather than using the stale one here.
         # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
         url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/2e8b7654fa10c44b9937453fa4974ed2229d5366.tar.gz",
-        strip_prefix = "bazel-compile-commands-extractor-2e8b7654fa10c44b9937453fa4974ed2229d5366",
         # When you first run this tool, it'll recommend a sha256 hash to put here with a message like: "DEBUG: Rule 'hedron_compile_commands' indicated that a canonical reproducible form can be obtained by modifying arguments sha256 = ..."
         sha256 = "7fbbbc05c112c44e9b406612e6a7a7f4789a6918d7aacefef4c35c105286930c",
     )
