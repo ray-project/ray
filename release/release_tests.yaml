@@ -456,39 +456,6 @@
 
   alert: default
 
-
-- name: tune_rllib_connect_test
-  python: "3.10"
-  group: Tune tests
-  working_dir: ml_user_tests
-
-  frequency: nightly-3x
-  team: rllib
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: tune_rllib/compute_tpl_aws.yaml
-
-  run:
-    timeout: 2000
-    script: RAY_TRAIN_V2_ENABLED=1 python tune_rllib/run_connect_tests.py
-    wait_for_nodes:
-      num_nodes: 9
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: tune_rllib/compute_tpl_gce.yaml
-
-  alert: default
-
 - name: tune_cloud_long_running_cloud_storage
   python: "3.10"
   group: Tune cloud tests
@@ -2027,6 +1994,42 @@
           timeout: 3600 # 1 hour
       cluster:
         cluster_compute: many_ppo_gce.yaml
+
+# --------------------------
+# Ray Tune // RLlib Integration Tests
+# --------------------------
+
+- name: tune_rllib_connect_test
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly-3x
+  team: rllib
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+    cluster_compute: tune_rllib/compute_tpl_aws.yaml
+
+  run:
+    timeout: 2400 # 40 minutes
+    script: RAY_TRAIN_V2_ENABLED=1 python tune_rllib/run_connect_tests.py
+    wait_for_nodes:
+      num_nodes: 9
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: tune_rllib/compute_tpl_gce.yaml
+
+  alert: default
 
 # --------------------------
 # APPO

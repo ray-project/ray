@@ -6,11 +6,10 @@ Runs a couple of hard learning tests using Anyscale connect.
 import json
 import logging
 import os
-from pprint import pformat
 import time
+from pprint import pformat
 
 import ray
-
 from ray import tune
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.tune import CLIReporter, RunConfig
