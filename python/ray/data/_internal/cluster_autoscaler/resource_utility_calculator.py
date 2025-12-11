@@ -7,7 +7,7 @@ from ray.data._internal.execution.resource_manager import ResourceManager
 ClusterUtil = ExecutionResources
 
 
-class ResourceUtilizationCalculator(abc.ABC):
+class ResourceUtilizationGauge(abc.ABC):
     @abc.abstractmethod
     def observe(self):
         """Observe the cluster utilization."""
@@ -19,7 +19,7 @@ class ResourceUtilizationCalculator(abc.ABC):
         ...
 
 
-class LogicalUtilizationCalculator(ResourceUtilizationCalculator):
+class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
 
     # Default time window in seconds to calculate the average of cluster utilization.
     DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S: int = 10
@@ -38,25 +38,36 @@ class LogicalUtilizationCalculator(ResourceUtilizationCalculator):
         self._cluster_gpu_util_calculator = TimeWindowAverageCalculator(
             cluster_util_avg_window_s
         )
-        self._cluster_ob_mem_util_calculator = TimeWindowAverageCalculator(
+        self._cluster_obj_mem_util_calculator = TimeWindowAverageCalculator(
             cluster_util_avg_window_s
         )
 
     def observe(self):
         """Report the cluster utilization based on global usage / global limits."""
+
+        def save_div(numerator, denominator):
+            if not denominator:
+                return 0
+            else:
+                return numerator / denominator
+
         global_usage = self._resource_manager.get_global_usage()
         global_limits = self._resource_manager.get_global_limits()
-        global_utilization = global_usage / global_limits
-        self._cluster_cpu_util_calculator.report(global_utilization.cpu)
-        self._cluster_gpu_util_calculator.report(global_utilization.gpu)
-        self._cluster_ob_mem_util_calculator.report(
-            global_utilization.object_store_memory
+
+        cpu_util = save_div(global_usage.cpu, global_limits.cpu)
+        gpu_util = save_div(global_usage.gpu, global_limits.gpu)
+        obj_store_mem_util = save_div(
+            global_usage.object_store_memory, global_limits.object_store_memory
         )
+
+        self._cluster_cpu_util_calculator.report(cpu_util)
+        self._cluster_gpu_util_calculator.report(gpu_util)
+        self._cluster_obj_mem_util_calculator.report(obj_store_mem_util)
 
     def get(self) -> ExecutionResources:
         """Get the average cluster utilization based on global usage / global limits."""
         return ExecutionResources(
             cpu=self._cluster_cpu_util_calculator.get_average(),
             gpu=self._cluster_gpu_util_calculator.get_average(),
-            object_store_memory=self._cluster_ob_mem_util_calculator.get_average(),
+            object_store_memory=self._cluster_obj_mem_util_calculator.get_average(),
         )
