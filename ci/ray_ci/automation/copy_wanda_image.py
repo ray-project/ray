@@ -24,7 +24,6 @@ import click
 
 from ci.ray_ci.automation.crane_lib import call_crane_copy, call_crane_manifest
 
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
