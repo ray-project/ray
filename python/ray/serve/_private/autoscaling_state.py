@@ -846,14 +846,11 @@ class ApplicationAutoscalingState:
                 )
                 for deployment_id, state in self._deployment_autoscaling_states.items()
             }
+            # Time the policy execution
+            start_time = time.time()
             # Policy returns decisions: {deployment_id -> decision} and
             # policy state: {deployment_id -> Dict}
             decisions, returned_policy_state = self._policy(autoscaling_contexts)
-
-            # Time the policy execution
-            start_time = time.time()
-            # Policy returns {deployment_name -> decision}
-            decisions, self._policy_state = self._policy(autoscaling_contexts)
             policy_execution_time_ms = (time.time() - start_time) * 1000
             # Validate returned policy_state
             self._validate_policy_state(returned_policy_state)
