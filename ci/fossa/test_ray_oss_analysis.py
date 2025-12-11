@@ -61,6 +61,7 @@ def test_is_cpp_code() -> None:
     assert not ray_oss_analysis._is_cpp_code("file.py")
     assert not ray_oss_analysis._is_cpp_code("file.java")
 
+
 def test_get_dependency_info() -> None:
     # SOURCE_FILE
     info = ray_oss_analysis._get_dependency_info(
@@ -94,6 +95,7 @@ def test_get_package_name() -> None:
     # Should be None for local targets if regex matches but group 1 is empty
     assert ray_oss_analysis._get_package_name("//pkg:target") is None
     assert ray_oss_analysis._get_package_name("@//:target") is None
+
 
 @patch("ci.fossa.ray_oss_analysis.subprocess.check_output")
 def test_get_bazel_dependencies(mock_check_output) -> None:
