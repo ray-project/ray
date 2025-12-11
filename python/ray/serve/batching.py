@@ -423,63 +423,90 @@ class _BatchQueue:
             # for different models would not work correctly.
             sub_batches = self._split_batch_by_model_id(batch)
 
-            for sub_batch in sub_batches:
-                promise = self._process_batch(func, sub_batch)
-                task = asyncio.create_task(promise)
-                self.tasks.add(task)
-                self.curr_iteration_start_times[task] = time.time()
-                task.add_done_callback(self._handle_completed_task)
+            # Process all sub-batches together under a single semaphore permit.
+            # This ensures sub-batches from the same original batch run concurrently
+            # rather than being serialized by the semaphore.
+            promise = self._process_sub_batches(func, sub_batches)
+            task = asyncio.create_task(promise)
+            self.tasks.add(task)
+            self.curr_iteration_start_times[task] = time.time()
+            task.add_done_callback(self._handle_completed_task)
+
+    async def _process_sub_batches(
+        self, func: Callable, sub_batches: List[List[_SingleRequest]]
+    ) -> None:
+        """Processes multiple sub-batches concurrently under a single semaphore permit.
+
+        This method acquires the semaphore once and then processes all sub-batches
+        in parallel, ensuring that sub-batches from the same original batch don't
+        compete for semaphore permits.
+        """
+        # NOTE: this semaphore caps the number of concurrent batches specified by `max_concurrent_batches`
+        async with self.semaphore:
+            # Process all sub-batches concurrently
+            await asyncio.gather(
+                *[
+                    self._process_batch_inner(func, sub_batch)
+                    for sub_batch in sub_batches
+                ]
+            )
+
+    async def _process_batch_inner(
+        self, func: Callable, batch: List[_SingleRequest]
+    ) -> None:
+        """Processes a single batch without acquiring the semaphore.
+
+        This is the inner implementation called by _process_sub_batches after
+        the semaphore has already been acquired.
+        """
+        # Remove requests that have been cancelled from the batch. If
+        # all requests have been cancelled, simply return and wait for
+        # the next batch.
+        batch = [req for req in batch if not req.future.cancelled()]
+        if len(batch) == 0:
+            return
+
+        futures = [item.future for item in batch]
+
+        # Most of the logic in the function should be wrapped in this try-
+        # except block, so the futures' exceptions can be set if an exception
+        # occurs. Otherwise, the futures' requests may hang indefinitely.
+        try:
+            self_arg = batch[0].self_arg
+            args, kwargs = _batch_args_kwargs([item.flattened_args for item in batch])
+
+            # Method call.
+            if self_arg is not None:
+                func_future_or_generator = func(self_arg, *args, **kwargs)
+            # Normal function call.
+            else:
+                func_future_or_generator = func(*args, **kwargs)
+
+            # Add individual request context to the batch request context
+            serve.context._set_batch_request_context(
+                [req.request_context for req in batch]
+            )
+
+            if isasyncgenfunction(func):
+                func_generator = func_future_or_generator
+                await self._consume_func_generator(func_generator, futures, len(batch))
+            else:
+                func_future = func_future_or_generator
+                await self._assign_func_results(func_future, futures, len(batch))
+
+            # Reset the batch request context after the batch is processed
+            serve.context._set_batch_request_context([])
+        except Exception as e:
+            logger.exception("_process_batch ran into an unexpected exception.")
+
+            for future in futures:
+                _set_exception_if_not_done(future, e)
 
     async def _process_batch(self, func: Callable, batch: List[_SingleRequest]) -> None:
         """Processes queued request batch."""
         # NOTE: this semaphore caps the number of concurrent batches specified by `max_concurrent_batches`
         async with self.semaphore:
-            # Remove requests that have been cancelled from the batch. If
-            # all requests have been cancelled, simply return and wait for
-            # the next batch.
-            batch = [req for req in batch if not req.future.cancelled()]
-            if len(batch) == 0:
-                return
-
-            futures = [item.future for item in batch]
-
-            # Most of the logic in the function should be wrapped in this try-
-            # except block, so the futures' exceptions can be set if an exception
-            # occurs. Otherwise, the futures' requests may hang indefinitely.
-            try:
-                self_arg = batch[0].self_arg
-                args, kwargs = _batch_args_kwargs(
-                    [item.flattened_args for item in batch]
-                )
-
-                # Method call.
-                if self_arg is not None:
-                    func_future_or_generator = func(self_arg, *args, **kwargs)
-                # Normal function call.
-                else:
-                    func_future_or_generator = func(*args, **kwargs)
-
-                # Add individual request context to the batch request context
-                serve.context._set_batch_request_context(
-                    [req.request_context for req in batch]
-                )
-
-                if isasyncgenfunction(func):
-                    func_generator = func_future_or_generator
-                    await self._consume_func_generator(
-                        func_generator, futures, len(batch)
-                    )
-                else:
-                    func_future = func_future_or_generator
-                    await self._assign_func_results(func_future, futures, len(batch))
-
-                # Reset the batch request context after the batch is processed
-                serve.context._set_batch_request_context([])
-            except Exception as e:
-                logger.exception("_process_batch ran into an unexpected exception.")
-
-                for future in futures:
-                    _set_exception_if_not_done(future, e)
+            await self._process_batch_inner(func, batch)
 
     def _handle_completed_task(self, task: asyncio.Task) -> None:
         self.tasks.remove(task)
