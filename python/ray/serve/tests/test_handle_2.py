@@ -217,7 +217,10 @@ def test_compose_args_and_kwargs(serve_instance):
 
 
 @pytest.mark.parametrize("await_order", ["b_first", "c_first"])
-def test_chained_deployment_response_await_order(serve_instance, await_order: str):
+@pytest.mark.asyncio
+async def test_chained_deployment_response_await_order(
+    serve_instance, await_order: str
+):
     @serve.deployment
     class DeploymentA:
         async def __call__(self, number: int) -> int:
@@ -265,7 +268,7 @@ def test_chained_deployment_response_await_order(serve_instance, await_order: st
     )
 
     # Use a timeout to detect hangs
-    result = handle.remote(5, await_order).result(timeout_s=30)
+    result = await handle.remote(5, await_order)
 
     # Verify the result is correct:
     # a = 5 * 2 = 10
