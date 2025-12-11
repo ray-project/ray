@@ -105,8 +105,7 @@ def test_legacy_dict_stage_config():
     [
         True,
         False,
-        {"enabled": True},
-        {"enabled": False},
+        {"batch_size": 128},
         PrepareImageStageConfig(enabled=True),
         PrepareImageStageConfig(enabled=False),
     ],
@@ -116,7 +115,7 @@ def test_prepare_image_stage_deprecation(prepare_image_stage):
     if isinstance(prepare_image_stage, bool):
         is_enabled = prepare_image_stage
     elif isinstance(prepare_image_stage, dict):
-        is_enabled = prepare_image_stage.get("enabled", False)
+        is_enabled = True
     else:
         is_enabled = prepare_image_stage.enabled
 

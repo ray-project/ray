@@ -263,13 +263,13 @@ class OfflineProcessorConfig(ProcessorConfig):
         """Warn if prepare_image_stage is enabled, recommend prepare_multimodal_stage instead."""
         if "prepare_image_stage" in values:
             prepare_image_stage_value = values.get("prepare_image_stage")
-            # Check if it's enabled (could be bool, dict with enabled=True, or config object)
-            is_enabled = False
-            if isinstance(prepare_image_stage_value, bool):
+            if prepare_image_stage_value is None:
+                is_enabled = False
+            elif isinstance(prepare_image_stage_value, bool):
                 is_enabled = prepare_image_stage_value
             elif isinstance(prepare_image_stage_value, dict):
-                is_enabled = prepare_image_stage_value.get("enabled", False)
-            elif hasattr(prepare_image_stage_value, "enabled"):
+                is_enabled = True
+            else:
                 is_enabled = prepare_image_stage_value.enabled
 
             if is_enabled:
