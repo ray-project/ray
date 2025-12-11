@@ -8,10 +8,6 @@ components.
 import math
 
 import pytest
-
-from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from conftest import (
     CallbackTracker,
     EnvToModuleConnectorTracker,
@@ -19,6 +15,10 @@ from conftest import (
     get_t_started,
     make_env_to_module_connector_tracker,
 )
+
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
+from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils import check
 

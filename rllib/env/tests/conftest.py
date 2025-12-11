@@ -197,7 +197,7 @@ class CallbackTracker(RLlibCallback):
 
 
 @pytest.fixture
-def env_runner_with_callback(runner_type):
+def env_runner_with_callback(runner_type, ray_init):
     if runner_type == "single_agent":
         config = (
             AlgorithmConfig()
