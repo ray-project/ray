@@ -1574,13 +1574,6 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
       << ", num_restarts_due_to_node_preemption = " << num_restarts_due_to_node_preemption
       << ", preempted = " << mutable_actor_table_data->preempted();
 
-  // Explicit terminations (OUT_OF_SCOPE, REF_DELETED) should never restart
-  // automatically, even if max_restarts allows it. However, manual restarts
-  // (need_reschedule=true from HandleRestartActorForLineageReconstruction)
-  // should still be allowed.
-  bool is_explicit_termination = IsExplicitTermination(death_cause);
-  bool should_block_restart = is_explicit_termination && !need_reschedule;
-
   // Creation task failures (e.g. actor __init__ raising or invalid constructor
   // arguments) are treated as permanent initialization failures and should not
   // be automatically retried, regardless of max_restarts. This preserves the
@@ -1589,9 +1582,9 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
   bool is_creation_failure = death_cause.has_creation_task_failure_context();
 
   bool should_restart =
-      !is_creation_failure && !should_block_restart &&
+      !is_creation_failure && need_reschedule &&
       (remaining_restarts != 0 ||
-       (need_reschedule && max_restarts > 0 && mutable_actor_table_data->preempted()));
+       (max_restarts > 0 && mutable_actor_table_data->preempted()));
 
   if (should_restart) {
     if (mutable_actor_table_data->preempted()) {
