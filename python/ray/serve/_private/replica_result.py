@@ -234,11 +234,35 @@ class ActorReplicaResult(ReplicaResult):
         # object ref cached in order to avoid calling `__anext__()` to
         # resolve to the underlying object ref more than once.
         # See: https://github.com/ray-project/ray/issues/43879.
-        async with self._object_ref_or_gen_asyncio_lock:
-            if self._obj_ref is None:
-                self._obj_ref = await self._obj_ref_gen.__anext__()
+        #
+        # IMPORTANT: We use a threading lock instead of asyncio.Lock because this method
+        # can be called from multiple event loops concurrently:
+        # 1. From the user's code (on the replica's event loop) when awaiting a response
+        # 2. From the router's event loop when resolving a DeploymentResponse argument
+        # asyncio.Lock is NOT thread-safe and NOT designed for cross-loop usage, which
+        # causes deadlocks.
+        #
+        # We use a non-blocking acquire pattern to avoid blocking the event loop:
+        # - Try to acquire the lock without blocking
+        # - If already held, yield and retry (allows other async tasks to run)
+        # - Once acquired, check if result is already available (double-check pattern)
+        while True:
+            # Fast path: already computed
+            if self._obj_ref is not None:
+                return self._obj_ref
 
-        return self._obj_ref
+            acquired = self._object_ref_or_gen_sync_lock.acquire(blocking=False)
+            if acquired:
+                try:
+                    # Double-check under lock
+                    if self._obj_ref is None:
+                        self._obj_ref = await self._obj_ref_gen.__anext__()
+                    return self._obj_ref
+                finally:
+                    self._object_ref_or_gen_sync_lock.release()
+            else:
+                # Lock is held by another task/thread, yield and retry
+                await asyncio.sleep(0)
 
     def to_object_ref_gen(self) -> ray.ObjectRefGenerator:
         assert (
