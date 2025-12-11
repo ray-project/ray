@@ -154,6 +154,14 @@ class OfflineProcessorConfig(ProcessorConfig):
         "or the batch processing latency is too small, but it should be good "
         "enough for batch size >= 32.",
     )
+    should_continue_on_error: bool = Field(
+        default=False,
+        description="If True, continue processing when inference fails for a row "
+        "instead of raising an exception. Failed rows will have a non-null "
+        "'__inference_error__' column containing the error message, and other "
+        "output columns will be None. Error rows bypass postprocess. "
+        "If False (default), any inference error will raise an exception.",
+    )
 
     # Processor stage configurations (legacy booleans, will be deprecated).
     apply_chat_template: bool = Field(
@@ -304,9 +312,13 @@ class Processor:
             self.DATA_COLUMN,
         )
 
+        # When should_continue_on_error is enabled, include __inference_error__ column
+        # in all output rows for consistent schema (None for success, message for error).
+        include_error_column = getattr(config, "should_continue_on_error", False)
         self.postprocess = wrap_postprocess(
             postprocess,
             self.DATA_COLUMN,
+            include_error_column=include_error_column,
         )
 
         for stage in stages:
