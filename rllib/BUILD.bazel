@@ -2837,6 +2837,16 @@ py_test(
     ],
 )
 
+py_test(
+    name = "test_offline_rl_stateful",
+    size = "medium",
+    srcs = ["offline/tests/test_offline_rl_stateful.py"],
+    tags = [
+        "offline",
+        "team:rllib",
+    ],
+)
+
 # --------------------------------------------------------------------
 # Policies
 # rllib/policy/

@@ -4,6 +4,7 @@ import numpy as np
 
 import ray
 from ray.rllib.algorithms.bc import BCConfig
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env import INPUT_ENV_SPACES
@@ -78,7 +79,108 @@ class OfflineRLStatefulTest(unittest.TestCase):
         self.algo.stop()
 
     def test_training_on_single_episode_and_evaluate(self):
+        """Trains on a single episode from the recorded dataset and evaluates.
 
+        Uses a zero initial state for training (from `RLModule`).
+        """
+        # Load these packages inline.
+        import msgpack
+        import msgpack_numpy as mnp
+
+        # Load the dataset.
+        ds = self.algo.offline_data.data
+        # Take a single-row batch (one episode).
+        batch = ds.take_batch(1)
+
+        # Read the episodes and decode them.
+        episodes = [
+            SingleAgentEpisode.from_state(
+                msgpack.unpackb(state, object_hook=mnp.decode)
+            )
+            for state in batch["item"]
+        ][:1]
+        # Assert the episode has a decent return.
+        assert episodes[0].get_return() > 350.0, "Return must be >350.0"
+
+        # Remove recorded states.
+        if Columns.STATE_OUT in episodes[0].extra_model_outputs.keys():
+            del episodes[0].extra_model_outputs[Columns.STATE_OUT]
+        if Columns.STATE_IN in episodes[0].extra_model_outputs.keys():
+            del episodes[0].extra_model_outputs[Columns.STATE_IN]
+
+        # Build the learner connector.
+        obs_space, action_space = self.algo.offline_data.spaces[INPUT_ENV_SPACES]
+        learner_connector = self.algo.config.build_learner_connector(
+            input_observation_space=obs_space,
+            input_action_space=action_space,
+        )
+        # Run the learner connector on the episode.
+        processed_batch = learner_connector(
+            rl_module=self.algo.learner_group._learner.module,
+            batch={},
+            episodes=episodes,
+            shared_data={},
+            # TODO (simon): Add MetricsLogger to non-Learner components that have a
+            #  LearnerConnector pipeline.
+            metrics=None,
+        )
+
+        # Create a MA batch from the processed batch and a TrainingData object.
+        ma_batch = MultiAgentBatch(
+            policy_batches={
+                "default_policy": SampleBatch(processed_batch["default_policy"])
+            },
+            env_steps=np.prod(processed_batch["default_policy"]["obs"].shape[:-1]),
+        )
+        training_data = TrainingData(batch=ma_batch)
+
+        # Overfit on this single episode.
+        i = 0
+        while True:
+            i += 1
+            learner_results = self.algo.learner_group.update(
+                training_data=training_data,
+                minibatch_size=self.algo.config.train_batch_size_per_learner,
+                num_iters=self.algo.config.dataset_num_iters_per_learner,
+                **self.algo.offline_data.iter_batches_kwargs,
+            )
+            if i % 10 == 0:
+                loss = learner_results[0]["default_policy"]["policy_loss"].peek()
+                print(f"Iteration {i}: policy_loss: {loss}")
+                if np.isclose(loss, 1e-6, atol=1e-7) or i >= 10000:
+                    break
+
+        # Evaluation
+        # Get the latest RLModule state from the learner and synchronize
+        # the eval env runners.
+        rl_module_state = self.algo.learner_group.get_state()["learner"]["rl_module"]
+
+        self.algo.eval_env_runner_group.foreach_env_runner(
+            func="set_state",
+            local_env_runner=False,
+            kwargs={"state": {"rl_module": rl_module_state}},
+        )
+
+        # Evaluate the updated policy for 5 episodes.
+        eval_episodes = self.algo.eval_env_runner_group.foreach_env_runner(
+            self._remote_eval_episode_fn,
+            local_env_runner=False,
+        )
+        # Assert the eval return is decent.
+        self.assertGreaterEqual(
+            np.mean([ep.get_return() for ep in eval_episodes[0]]),
+            100.0,
+            "Eval return must be >100.0",
+        )
+        print(
+            f"Eval episodes returns: {np.mean([ep.get_return() for ep in eval_episodes[0]])}"
+        )
+
+    def test_training_with_recorded_states_on_single_episode_and_evaluate(self):
+        """Trains on a single episode from the recorded dataset and evaluates.
+
+        Uses recorded states for training.
+        """
         # Load these packages inline.
         import msgpack
         import msgpack_numpy as mnp
@@ -160,14 +262,17 @@ class OfflineRLStatefulTest(unittest.TestCase):
         self.assertGreaterEqual(
             np.mean([ep.get_return() for ep in eval_episodes[0]]),
             100.0,
-            "Eval return must be >350.0",
+            "Eval return must be >100.0",
         )
         print(
             f"Eval episodes returns: {np.mean([ep.get_return() for ep in eval_episodes[0]])}"
         )
 
-    def test_training_on_single_batch_and_evaluate(self):
+    def test_training_with_recorded_states_on_single_batch_and_evaluate(self):
+        """Trains on a single batch from the recorded dataset and evaluates.
 
+        Uses recorded states for training.
+        """
         # Assign the dataset.
         ds = self.algo.offline_data.data
         # Initialize the OfflinePreLearner.
@@ -225,7 +330,7 @@ class OfflineRLStatefulTest(unittest.TestCase):
         self.assertGreaterEqual(
             np.mean([ep.get_return() for ep in eval_episodes[0]]),
             100.0,
-            "Eval return must be >350.0",
+            "Eval return must be >100.0",
         )
         print(
             f"Eval episodes returns: {np.mean([ep.get_return() for ep in eval_episodes[0]])}"

@@ -42,6 +42,7 @@ config = (
         evaluation_num_env_runners=1,
         evaluation_duration=5,
         evaluation_parallel_to_training=True,
+        evaluation_config=BCConfig.overrides(explore=False),
     )
     # Note, the `input_` argument is the major argument for the
     # new offline API. Via the `input_read_method_kwargs` the
