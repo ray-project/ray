@@ -10,9 +10,9 @@ import ray
 from .default_autoscaling_coordinator import (
     DefaultAutoscalingCoordinator,
 )
-from .resource_utility_calculator import (
-    LogicalUtilizationCalculator,
-    ResourceUtilizationCalculator,
+from .resource_utilization_gauge import (
+    ResourceUtilizationGauge,
+    RollingLogicalUtilizationGauge,
 )
 from ray.data._internal.cluster_autoscaler import ClusterAutoscaler
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
@@ -90,7 +90,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         topology: "Topology",
         resource_manager: "ResourceManager",
         execution_id: str,
-        resource_utilization_calculator: Optional[ResourceUtilizationCalculator] = None,
+        resource_utilization_calculator: Optional[ResourceUtilizationGauge] = None,
         cluster_scaling_up_util_threshold: float = DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD,  # noqa: E501
         cluster_scaling_up_delta: float = DEFAULT_CLUSTER_SCALING_UP_DELTA,
         cluster_util_avg_window_s: float = DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S,
@@ -98,7 +98,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
     ):
         if resource_utilization_calculator is None:
             assert cluster_util_check_interval_s >= 0, cluster_util_check_interval_s
-            resource_utilization_calculator = LogicalUtilizationCalculator(
+            resource_utilization_calculator = RollingLogicalUtilizationGauge(
                 resource_manager, cluster_util_avg_window_s=cluster_util_avg_window_s
             )
 

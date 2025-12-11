@@ -7,13 +7,13 @@ from ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2 import 
     DefaultClusterAutoscalerV2,
     _NodeResourceSpec,
 )
-from ray.data._internal.cluster_autoscaler.resource_utility_calculator import (
-    ResourceUtilizationCalculator,
+from ray.data._internal.cluster_autoscaler.resource_utilization_gauge import (
+    ResourceUtilizationGauge,
 )
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 
 
-class StubUtilizationCalculator(ResourceUtilizationCalculator):
+class StubUtilizationGauge(ResourceUtilizationGauge):
     def __init__(self, utilization: ExecutionResources):
         self._utilization = utilization
 
@@ -149,7 +149,7 @@ class TestClusterAutoscaling:
             resource_manager=MagicMock(),
             execution_id="test_execution_id",
             cluster_scaling_up_delta=scale_up_delta,
-            resource_utilization_calculator=StubUtilizationCalculator(utilization),
+            resource_utilization_calculator=StubUtilizationGauge(utilization),
             cluster_scaling_up_util_threshold=scale_up_threshold,
         )
         _send_resource_request.assert_called_with([])
