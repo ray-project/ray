@@ -276,7 +276,7 @@ class VLLMEngineConfig(BaseModelExtended):
         else:
             # CPU-only mode
             bundle = {"GPU": 0}
-            
+
         bundles = [copy.deepcopy(bundle) for _ in range(self.num_devices)]
 
         return bundles
@@ -284,6 +284,10 @@ class VLLMEngineConfig(BaseModelExtended):
     @property
     def use_gpu(self) -> bool:
         """Returns True if vLLM is configured to use GPU resources."""
+        # Explicit use_cpu setting takes precedence over all other configurations
+        if self.use_cpu is True:
+            return False
+
         # Check placement_group_config bundles for explicit GPU specification
         if self.placement_group_config:
             bundles = self.placement_group_config.get("bundles", [])
@@ -293,11 +297,8 @@ class VLLMEngineConfig(BaseModelExtended):
 
         # Default behavior based on accelerator_type
         if not self.accelerator_type:
-            # Use cpu if gpu not provided or none provided
-            if self.use_cpu==True:
-                return False
-            else:
-                return True
+            # Default to GPU when no accelerator_type is specified
+            return True
 
         return self.accelerator_type in (
             GPUType.NVIDIA_TESLA_V100.value,
