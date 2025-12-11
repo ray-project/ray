@@ -64,6 +64,9 @@ class MemoryMonitor {
   MemoryMonitor(instrumented_io_context &io_service,
                 KillWorkersCallback kill_workers_callback);
 
+  /// Virtual destructor to ensure proper cleanup of derived classes.
+  virtual ~MemoryMonitor() = default;
+
  public:
   /// \param top_n the number of top memory-using processes
   /// \param system_memory the snapshot of memory usage
