@@ -427,7 +427,9 @@ def validate_num_returns_for_remote_function(
         )
 
 
-def validate_num_returns_for_method(function: Callable, options: Dict[str, Any]) -> None:
+def validate_num_returns_for_method(
+    function: Callable, options: Dict[str, Any]
+) -> None:
     """Validate num_returns for @ray.method decorator.
 
     This function checks:
@@ -446,16 +448,15 @@ def validate_num_returns_for_method(function: Callable, options: Dict[str, Any])
     num_returns = options.get("num_returns")
     if num_returns is None:
         return
-    
+
     # Validate num_returns < 0 (only for @ray.method)
     if isinstance(num_returns, int) and num_returns < 0:
         raise ValueError(
             f"@ray.method num_returns must be >= 0, but got {num_returns}. "
         )
     # Validate num_returns='streaming' or 'dynamic' for generator functions
-    _validate_num_returns_generator(
-        function, num_returns, "@ray.method", "method"
-    )
+    _validate_num_returns_generator(function, num_returns, "@ray.method", "method")
+
 
 def update_options(
     original_options: Dict[str, Any], new_options: Dict[str, Any]
