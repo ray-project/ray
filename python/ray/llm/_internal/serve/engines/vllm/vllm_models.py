@@ -275,7 +275,7 @@ class VLLMEngineConfig(BaseModelExtended):
                 bundle[self.ray_accelerator_type()] = 0.001
         else:
             # CPU-only mode
-            bundle = {"GPU": 0}
+            bundle = {"CPU": 1}
 
         bundles = [copy.deepcopy(bundle) for _ in range(self.num_devices)]
 
@@ -287,6 +287,8 @@ class VLLMEngineConfig(BaseModelExtended):
         # Explicit use_cpu setting takes precedence over all other configurations
         if self.use_cpu is True:
             return False
+        if self.use_cpu is False:
+            return True
 
         # Check placement_group_config bundles for explicit GPU specification
         if self.placement_group_config:
