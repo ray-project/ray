@@ -54,7 +54,7 @@ class LogicalUtilizationCalculator(ResourceUtilizationCalculator):
         )
 
     def get(self) -> ExecutionResources:
-        """Report the cluster utilization based on global usage / global limits."""
+        """Get the average cluster utilization based on global usage / global limits."""
         return ExecutionResources(
             cpu=self._cluster_cpu_util_calculator.get_average(),
             gpu=self._cluster_gpu_util_calculator.get_average(),
