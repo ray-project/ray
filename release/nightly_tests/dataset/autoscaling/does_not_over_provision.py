@@ -15,9 +15,13 @@ def main():
         return row
 
     with ClusterResourceMonitor() as monitor:
-        ray.data.range(300, override_num_blocks=300).map(sleep_task).materialize()
+        ray.data.range(512, override_num_blocks=512, concurrency=1).map(
+            sleep_task
+        ).materialize()
 
         peak_resources = monitor.get_peak_cluster_resources()
+        # There are 8 CPUs on a single node. The autoscaler shouldn't provision more
+        # than one node.
         assert peak_resources.cpu == 8, f"Expected 8 CPUs, got {peak_resources.cpu}"
         assert peak_resources.gpu == 0, f"Expected 0 GPUs, got {peak_resources.gpu}"
 
