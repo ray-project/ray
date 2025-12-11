@@ -279,7 +279,10 @@ class VLLMEngineConfig(BaseModelExtended):
         # Default behavior based on accelerator_type
         if not self.accelerator_type:
             # Use cpu if gpu not provided or none provided
-            return False
+            if self.use_cpu==True:
+                return False
+            else:
+                return True
 
         return self.accelerator_type in (
             GPUType.NVIDIA_TESLA_V100.value,
