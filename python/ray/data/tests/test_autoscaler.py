@@ -411,8 +411,6 @@ def test_actor_pool_respects_max_size(ray_start_10_cpus_shared, restore_data_con
         ).take_all()
 
 
-# TODO(DATA-1356) re-enable
-@pytest.mark.skip(reason="DATA-1356")
 def test_autoscaling_config_validation_warnings(
     ray_start_10_cpus_shared, restore_data_context
 ):

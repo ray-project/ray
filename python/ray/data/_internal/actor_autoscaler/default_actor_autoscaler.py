@@ -38,12 +38,13 @@ class DefaultActorAutoscaler(ActorAutoscaler):
         )
         self._actor_pool_max_upscaling_delta = config.actor_pool_max_upscaling_delta
 
-        if actor_pool_resizing_policy is None:
-            actor_pool_resizing_policy = DefaultResizingPolicy(
+        self._actor_pool_resizing_policy = (
+            actor_pool_resizing_policy
+            or DefaultResizingPolicy(
                 upscaling_threshold=config.actor_pool_util_upscaling_threshold,
                 max_upscaling_delta=config.actor_pool_max_upscaling_delta,
             )
-        self._actor_pool_resizing_policy = actor_pool_resizing_policy
+        )
 
         self._validate_autoscaling_config()
 
@@ -131,6 +132,10 @@ class DefaultActorAutoscaler(ActorAutoscaler):
 
         if util >= self._actor_pool_scaling_up_threshold:
             average_num_inputs_per_task = op.metrics.average_num_inputs_per_task or 1
+            # Skip scaling up if the current free task slots can handle all pending work.
+            # Each task consumes `average_num_inputs_per_task` input blocks on average,
+            # so the total input capacity is: free_slots × avg_inputs_per_task.
+            # If enqueued blocks ≤ capacity, we have enough resources already.
             if (
                 op_state.total_enqueued_input_blocks()
                 <= actor_pool.num_free_task_slots() * average_num_inputs_per_task
@@ -171,9 +176,10 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             if actor_pool.current_size() <= actor_pool.min_size():
                 return ActorPoolScalingRequest.no_op(reason="reached min size")
 
-            num_to_scale_down = self._compute_downscale_delta(actor_pool)
-            max_can_remove = actor_pool.current_size() - actor_pool.min_size()
-            num_to_scale_down = min(num_to_scale_down, max_can_remove)
+            max_can_release = actor_pool.current_size() - actor_pool.min_size()
+            num_to_scale_down = min(
+                self._compute_downscale_delta(actor_pool), max_can_release
+            )
 
             return ActorPoolScalingRequest.downscale(
                 delta=-num_to_scale_down,
