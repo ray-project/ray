@@ -1579,12 +1579,10 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
   // be automatically retried, regardless of max_restarts. This preserves the
   // semantics that an exception in the constructor surfaces as
   // RayActorError(actor_init_failed=True) instead of infinite restarts.
-  bool is_creation_failure = death_cause.has_creation_task_failure_context();
-
-  bool should_restart =
-      !is_creation_failure && need_reschedule &&
-      (remaining_restarts != 0 ||
-       (max_restarts > 0 && mutable_actor_table_data->preempted()));
+  bool should_restart = !death_cause.has_creation_task_failure_context() &&
+                        need_reschedule &&
+                        (remaining_restarts != 0 ||
+                         (max_restarts > 0 && mutable_actor_table_data->preempted()));
 
   if (should_restart) {
     if (mutable_actor_table_data->preempted()) {
