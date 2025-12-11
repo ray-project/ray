@@ -707,8 +707,8 @@ def run_rllib_example_script_experiment(
             f"Running the example script resulted in one or more errors! {errors}"
         )
 
-    print(f'{args.as_test=}, {args.as_release_test=}')
-    print(f'{os.environ=}')
+    print(f"{args.as_test=}, {args.as_release_test=}")
+    print(f"{os.environ=}")
     print("TEST_OUTPUT_JSON:", os.environ.get("TEST_OUTPUT_JSON", "MISSING!!!"))
     print("METRICS_OUTPUT_JSON:", os.environ.get("METRICS_OUTPUT_JSON", "MISSING!!!"))
 
@@ -752,14 +752,15 @@ def run_rllib_example_script_experiment(
                 "not_passed": [not test_passed],
                 "failures": {str(trial): 1} if not test_passed else {},
             }
-            with open(
-                os.environ.get("TEST_OUTPUT_JSON", "/tmp/learning_test.json"),
-                "wt",
-            ) as f:
+            print(f"writing these {json_summary=}")
+            filename = os.environ.get("TEST_OUTPUT_JSON", "/tmp/learning_test.json")
+            print(f"{filename=}")
+            with open(filename, "wt") as f:
                 try:
                     json.dump(json_summary, f)
                 # Something went wrong writing json. Try again w/ simplified stats.
-                except Exception:
+                except Exception as e:
+                    print(f"Exception occurred trying to dump data: {e}")
                     from ray.rllib.algorithms.algorithm import Algorithm
 
                     simplified_stats = {
