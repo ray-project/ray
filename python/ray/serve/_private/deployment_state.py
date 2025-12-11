@@ -2024,7 +2024,7 @@ class DeploymentState:
         )
 
         self.target_replicas_gauge = metrics.Gauge(
-            "serve_deployment_target_replicas",
+            "serve_autoscaling_target_replicas",
             description=(
                 "The target number of replicas for this deployment. "
                 "This is the number the autoscaler is trying to reach."

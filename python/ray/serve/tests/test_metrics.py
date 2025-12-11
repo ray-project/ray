@@ -1176,9 +1176,9 @@ def test_autoscaling_metrics(metrics_start_shutdown):
     """Test that autoscaling metrics are emitted correctly.
 
     This tests the following metrics:
-    - ray_serve_deployment_target_replicas: Target number of replicas
+    - ray_serve_autoscaling_target_replicas: Target number of replicas
         Tags: deployment, application
-    - ray_serve_autoscaling_decision_replicas: Raw decision before bounds
+    - ray_serve_autoscaling_desired_replicas: Raw decision before bounds
         Tags: deployment, application
     - ray_serve_autoscaling_total_requests: Total requests seen by autoscaler
         Tags: deployment, application
@@ -1224,7 +1224,7 @@ def test_autoscaling_metrics(metrics_start_shutdown):
     wait_for_condition(
         check_metric_float_eq,
         timeout=15,
-        metric="ray_serve_deployment_target_replicas",
+        metric="ray_serve_autoscaling_target_replicas",
         expected=5,
         expected_tags=base_tags,
         timeseries=timeseries,
@@ -1235,7 +1235,7 @@ def test_autoscaling_metrics(metrics_start_shutdown):
     wait_for_condition(
         check_metric_float_eq,
         timeout=15,
-        metric="ray_serve_autoscaling_decision_replicas",
+        metric="ray_serve_autoscaling_desired_replicas",
         expected=5,
         expected_tags=base_tags,
         timeseries=timeseries,

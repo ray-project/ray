@@ -62,7 +62,7 @@ class DeploymentAutoscalingState:
         self._last_scale_down_time: Optional[float] = None
 
         self.autoscaling_decision_gauge = metrics.Gauge(
-            "serve_autoscaling_decision_replicas",
+            "serve_autoscaling_desired_replicas",
             description=(
                 "The raw autoscaling decision (number of replicas) from the autoscaling "
                 "policy before applying min/max bounds."
