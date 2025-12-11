@@ -135,9 +135,7 @@ class VLLMEngineConfig(BaseModelExtended):
         if not self.use_gpu:
             # For CPU mode, always use "mp" backend
             engine_kwargs["distributed_executor_backend"] = "mp"
-            logger.warning(
-                "install vllm package for cpu to ensure seamless execution"
-            )
+            logger.warning("install vllm package for cpu to ensure seamless execution")
         elif (
             "distributed_executor_backend" in engine_kwargs
             and engine_kwargs["distributed_executor_backend"] != "ray"
@@ -153,8 +151,7 @@ class VLLMEngineConfig(BaseModelExtended):
         # TODO (Nikhil): Remove this once vLLM fully deprecates disable_log_requests.
         if "disable_log_requests" in engine_kwargs:
             logger.warning(
-                "disable_log_requests is set in engine_kwargs, but vLLM "
-                "does not support it. Converting to enable_log_requests."
+                "disable_log_requests is set in engine_kwargs, but vLLM does not support it. Converting to enable_log_requests."
             )
             engine_kwargs["enable_log_requests"] = not engine_kwargs.pop(
                 "disable_log_requests"
