@@ -425,6 +425,20 @@ class FuseOperators(Rule):
         assert len(input_deps) == 1
         input_op = input_deps[0]
 
+        # Fuse on_start callbacks from both operators.
+        # This preserves deferred initialization (e.g., on_write_start for Write ops).
+        up_on_start = up_op._on_start
+        down_on_start = down_op._on_start
+        if up_on_start is not None and down_on_start is not None:
+
+            def fused_on_start(schema):
+                up_on_start(schema)
+                down_on_start(schema)
+
+            on_start = fused_on_start
+        else:
+            on_start = up_on_start or down_on_start
+
         # Fused physical map operator.
         assert up_op.data_context is down_op.data_context
         op = MapOperator.create(
@@ -438,6 +452,7 @@ class FuseOperators(Rule):
             map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
+            on_start=on_start,
         )
         op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
         for map_task_kwargs_fn in itertools.chain(
