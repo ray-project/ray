@@ -29,12 +29,10 @@ class ExecutionResources:
             memory: Amount of logical memory in bytes.
         """
 
-        # NOTE: Ray Core allocates fractional resources in up to 5th decimal
-        #       digit, hence we round the values here up to it
-        self._cpu: Optional[float] = safe_round(cpu, 5)
-        self._gpu: Optional[float] = safe_round(gpu, 5)
-        self._object_store_memory: Optional[float] = safe_round(object_store_memory)
-        self._memory: Optional[float] = safe_round(memory)
+        self._cpu: float = cpu or 0.0
+        self._gpu: float = gpu or 0.0
+        self._object_store_memory: float = object_store_memory or 0.0
+        self._memory: float = memory or 0.0
 
     @classmethod
     def from_resource_dict(
@@ -51,6 +49,9 @@ class ExecutionResources:
 
     def to_resource_dict(self) -> Dict[str, float]:
         """Convert this ExecutionResources object to a resource dict."""
+
+        # NOTE: Ray Core allocates fractional resources in up to 5th decimal
+        #       digit, hence we round the values here up to it
         return {
             "CPU": self.cpu,
             "GPU": self.gpu,
@@ -82,19 +83,19 @@ class ExecutionResources:
 
     @property
     def cpu(self) -> float:
-        return self._cpu or 0.0
+        return safe_round(self._cpu, 5)
 
     @property
     def gpu(self) -> float:
-        return self._gpu or 0.0
+        return safe_round(self._gpu, 5)
 
     @property
     def object_store_memory(self) -> float:
-        return self._object_store_memory or 0
+        return safe_round(self._object_store_memory)
 
     @property
     def memory(self) -> float:
-        return self._memory or 0
+        return safe_round(self._memory)
 
     def __repr__(self):
         return (
@@ -105,19 +106,19 @@ class ExecutionResources:
 
     def __eq__(self, other: "ExecutionResources") -> bool:
         return (
-            self.cpu == other.cpu
-            and self.gpu == other.gpu
-            and self.object_store_memory == other.object_store_memory
-            and self.memory == other.memory
+            self._cpu == other._cpu
+            and self._gpu == other._gpu
+            and self._object_store_memory == other._object_store_memory
+            and self._memory == other._memory
         )
 
     def __hash__(self) -> int:
         return hash(
             (
-                self.cpu,
-                self.gpu,
-                self.object_store_memory,
-                self.memory,
+                self._cpu,
+                self._gpu,
+                self._object_store_memory,
+                self._memory,
             )
         )
 
@@ -134,32 +135,32 @@ class ExecutionResources:
     def is_zero(self) -> bool:
         """Returns True if all resources are zero."""
         return (
-            self.cpu == 0.0
-            and self.gpu == 0.0
-            and self.object_store_memory == 0.0
-            and self.memory == 0.0
+            self._cpu == 0.0
+            and self._gpu == 0.0
+            and self._object_store_memory == 0.0
+            and self._memory == 0.0
         )
 
     def is_non_negative(self) -> bool:
         """Returns True if all resources are non-negative."""
         return (
-            self.cpu >= 0
-            and self.gpu >= 0
-            and self.object_store_memory >= 0
-            and self.memory >= 0
+            self._cpu >= 0
+            and self._gpu >= 0
+            and self._object_store_memory >= 0
+            and self._memory >= 0
         )
 
     def object_store_memory_str(self) -> str:
         """Returns a human-readable string for the object store memory field."""
-        if self.object_store_memory == float("inf"):
+        if self._object_store_memory == float("inf"):
             return "inf"
-        return memory_string(self.object_store_memory)
+        return memory_string(self._object_store_memory)
 
     def memory_str(self) -> str:
         """Returns a human-readable string for the memory field."""
-        if self.memory == float("inf"):
+        if self._memory == float("inf"):
             return "inf"
-        return memory_string(self.memory)
+        return memory_string(self._memory)
 
     def copy(
         self,
@@ -171,10 +172,10 @@ class ExecutionResources:
         """Returns a copy of this ExecutionResources object allowing to override
         specific resources as necessary"""
         return ExecutionResources(
-            cpu=safe_or(cpu, self.cpu),
-            gpu=safe_or(gpu, self.gpu),
-            object_store_memory=safe_or(object_store_memory, self.object_store_memory),
-            memory=safe_or(memory, self.memory),
+            cpu=safe_or(cpu, self._cpu),
+            gpu=safe_or(gpu, self._gpu),
+            object_store_memory=safe_or(object_store_memory, self._object_store_memory),
+            memory=safe_or(memory, self._memory),
         )
 
     def add(self, other: "ExecutionResources") -> "ExecutionResources":
@@ -184,10 +185,10 @@ class ExecutionResources:
             A new ExecutionResource object with summed resources.
         """
         return ExecutionResources(
-            cpu=self.cpu + other.cpu,
-            gpu=self.gpu + other.gpu,
-            object_store_memory=self.object_store_memory + other.object_store_memory,
-            memory=self.memory + other.memory,
+            cpu=self._cpu + other._cpu,
+            gpu=self._gpu + other._gpu,
+            object_store_memory=self._object_store_memory + other._object_store_memory,
+            memory=self._memory + other._memory,
         )
 
     def subtract(self, other: "ExecutionResources") -> "ExecutionResources":
@@ -197,32 +198,32 @@ class ExecutionResources:
             A new ExecutionResource object with subtracted resources.
         """
         return ExecutionResources(
-            cpu=self.cpu - other.cpu,
-            gpu=self.gpu - other.gpu,
-            object_store_memory=self.object_store_memory - other.object_store_memory,
-            memory=self.memory - other.memory,
+            cpu=self._cpu - other._cpu,
+            gpu=self._gpu - other._gpu,
+            object_store_memory=self._object_store_memory - other._object_store_memory,
+            memory=self._memory - other._memory,
         )
 
     def max(self, other: "ExecutionResources") -> "ExecutionResources":
         """Returns the maximum for each resource type."""
         return ExecutionResources(
-            cpu=max(self.cpu, other.cpu),
-            gpu=max(self.gpu, other.gpu),
+            cpu=max(self._cpu, other._cpu),
+            gpu=max(self._gpu, other._gpu),
             object_store_memory=max(
-                self.object_store_memory, other.object_store_memory
+                self._object_store_memory, other._object_store_memory
             ),
-            memory=max(self.memory, other.memory),
+            memory=max(self._memory, other._memory),
         )
 
     def min(self, other: "ExecutionResources") -> "ExecutionResources":
         """Returns the minimum for each resource type."""
         return ExecutionResources(
-            cpu=min(self.cpu, other.cpu),
-            gpu=min(self.gpu, other.gpu),
+            cpu=min(self._cpu, other._cpu),
+            gpu=min(self._gpu, other._gpu),
             object_store_memory=min(
-                self.object_store_memory, other.object_store_memory
+                self._object_store_memory, other._object_store_memory
             ),
-            memory=min(self.memory, other.memory),
+            memory=min(self._memory, other._memory),
         )
 
     def satisfies_limit(
@@ -241,13 +242,13 @@ class ExecutionResources:
                 limit when checking if this resource struct meets the limits.
         """
         return (
-            self.cpu <= limit.cpu
-            and self.gpu <= limit.gpu
+            self._cpu <= limit._cpu
+            and self._gpu <= limit._gpu
             and (
                 ignore_object_store_memory
-                or self.object_store_memory <= limit.object_store_memory
+                or self._object_store_memory <= limit._object_store_memory
             )
-            and self.memory <= limit.memory
+            and self._memory <= limit._memory
         )
 
     def scale(self, f: float) -> "ExecutionResources":
@@ -259,10 +260,29 @@ class ExecutionResources:
             return ExecutionResources.zero()
 
         return ExecutionResources(
-            cpu=self.cpu * f,
-            gpu=self.gpu * f,
-            object_store_memory=self.object_store_memory * f,
-            memory=self.memory * f,
+            cpu=self._cpu * f,
+            gpu=self._gpu * f,
+            object_store_memory=self._object_store_memory * f,
+            memory=self._memory * f,
+        )
+
+    def __truediv__(self, other: "ExecutionResources") -> "ExecutionResources":
+        # NOTE: We add access each resource privately because we want to preserve the
+        # decimal precision. The public properties will now on runtime safe_round to
+        # 5 decimals.
+        return ExecutionResources(
+            cpu=self._cpu / other._cpu,
+            gpu=self._gpu / other._gpu,
+            memory=self._memory / other._memory,
+            object_store_memory=self._object_store_memory / other._object_store_memory,
+        )
+
+    def __mul__(self, other: "ExecutionResources") -> "ExecutionResources":
+        return ExecutionResources(
+            cpu=self._cpu * other._cpu,
+            gpu=self._gpu * other._gpu,
+            memory=self._memory * other._memory,
+            object_store_memory=self._object_store_memory * other._object_store_memory,
         )
 
 
