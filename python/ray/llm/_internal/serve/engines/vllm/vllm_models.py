@@ -125,20 +125,23 @@ class VLLMEngineConfig(BaseModelExtended):
         engine_kwargs["model"] = self.actual_hf_model_id
         engine_kwargs["served_model_name"] = [self.model_id]
 
-        if (
+        # Handle distributed_executor_backend based on GPU/CPU mode
+        if not self.use_gpu:
+            # For CPU mode, always use "mp" backend
+            engine_kwargs["distributed_executor_backend"] = "mp"
+            logger.warning(
+                "install vllm package for cpu to ensure seamless execution"
+            )
+        elif (
             "distributed_executor_backend" in engine_kwargs
             and engine_kwargs["distributed_executor_backend"] != "ray"
         ):
-            if not self.use_gpu:
-                engine_kwargs["distributed_executor_backend"] = "mp"
-                logger.warning(
-                "install vllm package for cpu to ensure seamless execution"
-                )
-            else:
-                raise ValueError(
-            "distributed_executor_backend != 'ray' is not allowed in engine_kwargs when using Ray Serve LLM Configs."
+            # For GPU mode, only "ray" backend is allowed
+            raise ValueError(
+                "distributed_executor_backend != 'ray' is not allowed in engine_kwargs when using Ray Serve LLM Configs."
             )
         else:
+            # For GPU mode, use "ray" backend (default)
             engine_kwargs["distributed_executor_backend"] = "ray"
 
         # TODO (Nikhil): Remove this once vLLM fully deprecates disable_log_requests.
