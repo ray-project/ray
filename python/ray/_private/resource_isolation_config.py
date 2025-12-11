@@ -56,7 +56,7 @@ class ResourceIsolationConfig:
                 and < the total number of cores available.
             system_reserved_memory: The amount of memory in bytes reserved
                 for ray system processes. Must be >= ray_constants.MINIMUM_SYSTEM_RESERVED_MEMORY_BYTES
-                and system_reserved_cpu + object_store_bytes < the total memory available.
+                and system_reserved_memory + object_store_memory < the total memory available.
             object_store_memory: The amount of memory in bytes reserved for the object store.
         """
         self._resource_isolation_enabled = enable_resource_isolation
