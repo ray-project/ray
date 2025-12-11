@@ -251,7 +251,10 @@ class MockWorkerPool : public WorkerPoolInterface {
 namespace {
 
 std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
-    const std::string &id, double num_cpus, gcs::GcsClient &gcs_client) {
+    const std::string &id,
+    double num_cpus,
+    gcs::GcsClient &gcs_client,
+    ray::observability::MetricInterface &resource_usage_gauge) {
   absl::flat_hash_map<std::string, double> local_node_resources;
   local_node_resources[ray::kCPU_ResourceLabel] = num_cpus;
   static instrumented_io_context io_context;
@@ -259,9 +262,11 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
       io_context,
       scheduling::NodeID(id),
       local_node_resources,
-      /*is_node_available_fn*/ [&gcs_client](scheduling::NodeID node_id) {
+      /*is_node_available_fn*/
+      [&gcs_client](scheduling::NodeID node_id) {
         return gcs_client.Nodes().IsNodeAlive(NodeID::FromBinary(node_id.Binary()));
-      });
+      },
+      resource_usage_gauge);
 
   return scheduler;
 }
@@ -315,9 +320,15 @@ class LocalLeaseManagerTest : public ::testing::Test {
   explicit LocalLeaseManagerTest(double num_cpus = 3.0)
       : gcs_client_(std::make_unique<gcs::MockGcsClient>()),
         id_(NodeID::FromRandom()),
-        scheduler_(CreateSingleNodeScheduler(id_.Binary(), num_cpus, *gcs_client_)),
+        scheduler_(CreateSingleNodeScheduler(
+            id_.Binary(), num_cpus, *gcs_client_, fake_resource_usage_gauge_)),
         object_manager_(),
         fake_task_by_state_counter_(),
+        scheduler_metrics_{fake_scheduler_tasks_gauge_,
+                           fake_scheduler_unscheduleable_tasks_gauge_,
+                           fake_scheduler_failed_worker_startup_total_gauge_,
+                           fake_internal_num_spilled_tasks_gauge_,
+                           fake_internal_num_infeasible_scheduling_classes_gauge_},
         lease_dependency_manager_(object_manager_, fake_task_by_state_counter_),
         local_lease_manager_(std::make_shared<LocalLeaseManager>(
             id_,
@@ -346,6 +357,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
               return true;
             },
             /*max_pinned_lease_arguments_bytes=*/1000,
+            /*scheduler_metrics=*/scheduler_metrics_,
             /*get_time=*/[this]() { return current_time_ms_; })) {}
 
   void SetUp() override {
@@ -366,6 +378,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
 
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
   NodeID id_;
+  ray::observability::FakeGauge fake_resource_usage_gauge_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
@@ -378,6 +391,12 @@ class LocalLeaseManagerTest : public ::testing::Test {
 
   MockObjectManager object_manager_;
   ray::observability::FakeGauge fake_task_by_state_counter_;
+  ray::observability::FakeGauge fake_scheduler_tasks_gauge_;
+  ray::observability::FakeGauge fake_scheduler_unscheduleable_tasks_gauge_;
+  ray::observability::FakeGauge fake_scheduler_failed_worker_startup_total_gauge_;
+  ray::observability::FakeGauge fake_internal_num_spilled_tasks_gauge_;
+  ray::observability::FakeGauge fake_internal_num_infeasible_scheduling_classes_gauge_;
+  ray::raylet::SchedulerMetrics scheduler_metrics_;
   LeaseDependencyManager lease_dependency_manager_;
   std::shared_ptr<LocalLeaseManager> local_lease_manager_;
 };

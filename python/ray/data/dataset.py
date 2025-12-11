@@ -564,7 +564,7 @@ class Dataset:
                     .map_batches(map_fn_with_large_output)
                 )
 
-            If you require stateful transfomation,
+            If you require stateful transformation,
             use Python callable class. Here is an example showing how to use stateful transforms to create model inference workers, without having to reload the model on each call.
 
             .. testcode::
@@ -4189,6 +4189,10 @@ class Dataset:
         table_identifier: str,
         catalog_kwargs: Optional[Dict[str, Any]] = None,
         snapshot_properties: Optional[Dict[str, str]] = None,
+        mode: "SaveMode" = SaveMode.APPEND,
+        overwrite_filter: Optional["Expr"] = None,
+        upsert_kwargs: Optional[Dict[str, Any]] = None,
+        overwrite_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
     ) -> None:
@@ -4222,6 +4226,23 @@ class Dataset:
                     table_identifier="db_name.table_name",
                     catalog_kwargs={"name": "default", "type": "sql"}
                 )
+                 # Upsert mode - update existing rows or insert new ones
+                updated_docs = [{"id": 2, "title": "Updated Doc 2"}, {"id": 5, "title": "New Doc 5"}]
+                ds_updates = ray.data.from_pandas(pd.DataFrame(updated_docs))
+                ds_updates.write_iceberg(
+                    table_identifier="db_name.table_name",
+                    catalog_kwargs={"name": "default", "type": "sql"},
+                    mode=SaveMode.UPSERT,
+                    upsert_kwargs={"join_cols": ["id"]},
+                )
+
+                # Partial overwrite with Ray Data expressions
+                ds.write_iceberg(
+                    table_identifier="events.user_activity",
+                    catalog_kwargs={"name": "default", "type": "rest"},
+                    mode=SaveMode.OVERWRITE,
+                    overwrite_filter=col("date") >= "2024-10-28"
+                )
 
         Args:
             table_identifier: Fully qualified table identifier (``db_name.table_name``)
@@ -4232,6 +4253,25 @@ class Dataset:
                 #pyiceberg.catalog.load_catalog>`_.
             snapshot_properties: Custom properties to write to snapshot when committing
                 to an iceberg table.
+            mode: Write mode using SaveMode enum. Options:
+
+                * SaveMode.APPEND (default): Add new data to the table without checking for duplicates.
+                * SaveMode.UPSERT: Update existing rows that match on the join condition (``join_cols`` in ``upsert_kwargs``),
+                  or insert new rows if they don't exist in the table.
+                * SaveMode.OVERWRITE: Replace all existing data in the table with new data, or replace
+                  data matching overwrite_filter if specified.
+
+            overwrite_filter: Optional filter for OVERWRITE mode to perform partial overwrites.
+                Must be a Ray Data expression from `ray.data.expressions`. Only rows matching
+                this filter are replaced. If None with OVERWRITE mode, replaces all table data.
+                Example: `col("date") >= "2024-01-01"` or `(col("region") == "US") & (col("status") == "active")`
+            upsert_kwargs: Optional arguments for upsert operations.
+                Supported parameters: join_cols (List[str]), case_sensitive (bool), branch (str).
+                Note: Ray Data uses a copy-on-write strategy that always updates all columns
+                for matched keys and inserts all new keys for optimal parallelism.
+            overwrite_kwargs: Optional arguments to pass through to PyIceberg's table.overwrite() method.
+                Supported parameters: case_sensitive (bool), branch (str). See PyIceberg documentation
+                for details.
             ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -4247,6 +4287,10 @@ class Dataset:
             table_identifier=table_identifier,
             catalog_kwargs=catalog_kwargs,
             snapshot_properties=snapshot_properties,
+            mode=mode,
+            overwrite_filter=overwrite_filter,
+            upsert_kwargs=upsert_kwargs,
+            overwrite_kwargs=overwrite_kwargs,
         )
 
         self.write_datasink(
