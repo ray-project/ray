@@ -25,12 +25,9 @@
 #   - `offline` directory tests.
 #   - `policy` directory tests.
 #   - `utils` directory tests.
-
-# - Algorithm tests, tagged "algorithms_dir".
+#   - `algorithms` directory tests
 
 # - Examples directory (everything in rllib/examples/...), tagged: "examples"
-
-# - Memory leak tests tagged "memory_leak_tests".
 
 # Note: There is a special directory in examples: "documentation" which contains
 # all code that is linked to from within the RLlib docs. This code is tested
@@ -39,14 +36,10 @@
 # Additional tags are:
 # - "team:rllib": Indicating that all tests in this file are the responsibility of
 #   the RLlib Team.
-# - "needs_gpu": Indicating that a test needs to have a GPU in order to run.
 # - "gpu": Indicating that a test may (but doesn't have to) be run in the GPU
 #   pipeline, defined in .buildkite/pipeline.gpu.yml.
 # - "multi_gpu": Indicating that a test will definitely be run in the Large GPU
 #   pipeline, defined in .buildkite/pipeline.gpu.large.yml.
-# - "no_gpu": Indicating that a test should not be run in the GPU pipeline due
-#   to certain incompatibilities.
-# - "no_tf_eager_tracing": Exclude this test from tf-eager tracing tests.
 # - "torch_only": Only run this test case with framework=torch.
 
 # Our .buildkite/pipeline.yml and .buildkite/pipeline.gpu.yml files execute all
