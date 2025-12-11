@@ -564,7 +564,7 @@ class Dataset:
                     .map_batches(map_fn_with_large_output)
                 )
 
-            If you require stateful transfomation,
+            If you require stateful transformation,
             use Python callable class. Here is an example showing how to use stateful transforms to create model inference workers, without having to reload the model on each call.
 
             .. testcode::
