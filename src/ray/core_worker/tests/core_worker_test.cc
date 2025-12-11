@@ -278,8 +278,7 @@ class CoreWorkerTest : public ::testing::Test {
                                                 std::move(task_event_buffer),
                                                 getpid(),
                                                 fake_task_by_state_gauge_,
-                                                fake_actor_by_state_gauge_,
-                                                /*runtime_env_agent_port=*/0);
+                                                fake_actor_by_state_gauge_);
   }
 
  protected:

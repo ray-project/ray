@@ -209,7 +209,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
 
   NodeID local_node_id;
   int assigned_port = 0;
-  int runtime_env_agent_port = 0;
   Status status = raylet_ipc_client->RegisterClient(worker_context->GetWorkerID(),
                                                     options.worker_type,
                                                     worker_context->GetCurrentJobID(),
@@ -219,8 +218,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                                     options.serialized_job_config,
                                                     options.startup_token,
                                                     &local_node_id,
-                                                    &assigned_port,
-                                                    &runtime_env_agent_port);
+                                                    &assigned_port);
   if (!status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
     RAY_LOG(ERROR).WithField(worker_id)
@@ -228,7 +226,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     QuickExit();
   }
   RAY_CHECK_GE(assigned_port, 0);
-  RAY_CHECK_GE(runtime_env_agent_port, 0);
 
   // Initialize raylet client.
   // NOTE(edoakes): the core_worker_server_ must be running before registering with
@@ -689,8 +686,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(task_event_buffer),
                                    pid,
                                    *task_by_state_gauge_,
-                                   *actor_by_state_gauge_,
-                                   runtime_env_agent_port);
+                                   *actor_by_state_gauge_);
   return core_worker;
 }
 

@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "gflags/gflags.h"
+#include "ray/common/constants.h"
 #include "ray/common/metrics.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server.h"
@@ -31,7 +32,7 @@
 #include "ray/observability/metrics.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
-#include "ray/util/pipe.h"
+#include "ray/util/file_persistence.h"
 #include "ray/util/raii.h"
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
@@ -52,10 +53,7 @@ DEFINE_bool(retry_redis, false, "Whether to retry to connect to Redis.");
 DEFINE_string(node_ip_address, "", "The IP address of the node.");
 DEFINE_string(session_name, "", "session_name: The current Ray session name.");
 DEFINE_string(ray_commit, "", "The commit hash of Ray.");
-DEFINE_int64(
-    gcs_port_write_handle,
-    -1,
-    "Pipe write handle (fd on POSIX, HANDLE on Windows) to report the bound GCS port.");
+DEFINE_string(session_dir, "", "The path of this ray session directory.");
 
 int main(int argc, char *argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
@@ -113,8 +111,7 @@ int main(int argc, char *argv[]) {
   const bool retry_redis = FLAGS_retry_redis;
   const std::string node_ip_address = FLAGS_node_ip_address;
   const std::string session_name = FLAGS_session_name;
-  const intptr_t gcs_port_write_handle =
-      static_cast<intptr_t>(FLAGS_gcs_port_write_handle);
+  const std::string session_dir = FLAGS_session_dir;
   gflags::ShutDownCommandLineFlags();
 
   RayConfig::instance().initialize(config_list);
@@ -246,18 +243,11 @@ int main(int argc, char *argv[]) {
 #endif
   signals.async_wait(handler);
 
-  if (gcs_port_write_handle >= 0) {
-    gcs_server.SetPortReadyCallback([handle = gcs_port_write_handle](int bound_port) {
-      auto pipe = ray::Pipe::FromWriterHandle(handle);
-      auto status = pipe.Write(std::to_string(bound_port));
-      if (!status.ok()) {
-        RAY_LOG(WARNING) << "Failed to write GCS port to pipe: " << status.message()
-                         << ". Please check the error log of the process that passed "
-                            "the pipe.";
-      }
-      pipe.Close();
-    });
-  }
+  gcs_server.SetPortReadyCallback([session_dir](int bound_port) {
+    if (!session_dir.empty()) {
+      RAY_CHECK_OK(ray::PersistPort(session_dir, kGcsServerPortFilename, bound_port));
+    }
+  });
 
   gcs_server.Start();
   main_service.run();

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from itertools import chain
 from threading import Event, Lock, RLock, Thread
 from typing import Callable, Dict, List, Optional, Tuple
+from urllib.parse import urlparse, urlunparse
 
 import grpc
 
@@ -18,7 +19,11 @@ import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
-from ray._common.network_utils import build_address, is_ipv6, is_localhost
+from ray._common.network_utils import (
+    build_address,
+    is_ipv6,
+    is_localhost,
+)
 from ray._private.authentication.http_token_authentication import (
     format_authentication_http_error,
     get_auth_headers_if_auth_enabled,
@@ -121,12 +126,11 @@ class ProxyManager:
     def __init__(
         self,
         address: Optional[str],
-        runtime_env_agent_ip: str,
+        runtime_env_agent_address: str,
         *,
         session_dir: Optional[str] = None,
         redis_username: Optional[str] = None,
         redis_password: Optional[str] = None,
-        runtime_env_agent_port: int = 0,
     ):
         self.servers: Dict[str, SpecificServer] = dict()
         self.server_lock = RLock()
@@ -137,21 +141,24 @@ class ProxyManager:
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT)
         )
 
+        if runtime_env_agent_address:
+            parsed = urlparse(runtime_env_agent_address)
+            # runtime env agent self-assigns a free port, fetch it from GCS
+            if parsed.port is None or parsed.port == 0:
+                node_info = get_node_to_connect_for_driver(address, parsed.hostname)
+                runtime_env_agent_address = urlunparse(
+                    parsed._replace(
+                        netloc=f"{parsed.hostname}:{node_info['runtime_env_agent_port']}"
+                    )
+                )
+
+        self._runtime_env_agent_address = runtime_env_agent_address
+
         self._check_thread = Thread(target=self._check_processes, daemon=True)
         self._check_thread.start()
 
         self.fate_share = bool(detect_fate_sharing_support())
         self._node: Optional[ray._private.node.Node] = None
-
-        # If runtime_env_agent_port is 0, fetch it from GCS
-        if runtime_env_agent_port == 0:
-            node_info = get_node_to_connect_for_driver(address, runtime_env_agent_ip)
-            runtime_env_agent_port = node_info["runtime_env_agent_port"]
-
-        self._runtime_env_agent_address = (
-            f"http://{build_address(runtime_env_agent_ip, runtime_env_agent_port)}"
-        )
-
         atexit.register(self._cleanup)
 
     def _get_unused_port(self, family: int = socket.AF_INET) -> int:
@@ -874,12 +881,11 @@ def serve_proxier(
     host: str,
     port: int,
     gcs_address: Optional[str],
-    runtime_env_agent_ip: str,
     *,
     redis_username: Optional[str] = None,
     redis_password: Optional[str] = None,
     session_dir: Optional[str] = None,
-    runtime_env_agent_port: int = 0,
+    runtime_env_agent_address: Optional[str] = None,
 ):
     # Initialize internal KV to be used to upload and download working_dir
     # before calling ray.init within the RayletServicers.
@@ -899,11 +905,10 @@ def serve_proxier(
     )
     proxy_manager = ProxyManager(
         gcs_address,
-        runtime_env_agent_ip,
         session_dir=session_dir,
         redis_username=redis_username,
         redis_password=redis_password,
-        runtime_env_agent_port=runtime_env_agent_port,
+        runtime_env_agent_address=runtime_env_agent_address,
     )
     task_servicer = RayletServicerProxy(None, proxy_manager)
     data_servicer = DataServicerProxy(proxy_manager)

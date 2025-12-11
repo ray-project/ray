@@ -264,7 +264,8 @@ class PrometheusStatsExporter(base_exporter.StatsExporter):
         self._gatherer = gatherer
         self._collector = collector
         self._transport = transport(self)
-        self.serve_http()
+        server = self.serve_http()
+        self._port = server.server_address[1]
         REGISTRY.register(self._collector)
 
     @property
@@ -290,6 +291,11 @@ class PrometheusStatsExporter(base_exporter.StatsExporter):
     def options(self):
         """Options to be used to configure the exporter"""
         return self._options
+
+    @property
+    def port(self):
+        """The port the HTTP server is listening on."""
+        return self._port
 
     def export(self, view_data):
         """export send the data to the transport class
@@ -319,7 +325,8 @@ class PrometheusStatsExporter(base_exporter.StatsExporter):
         """serve_http serves the Prometheus endpoint."""
         address = str(self.options.address)
         kwargs = {"addr": address} if address else {}
-        start_http_server(port=self.options.port, **kwargs)
+        server, _ = start_http_server(port=self.options.port, **kwargs)
+        return server
 
 
 def new_stats_exporter(option):

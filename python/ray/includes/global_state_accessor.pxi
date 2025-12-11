@@ -84,6 +84,8 @@ cdef class GlobalStateAccessor:
                     c_node_info.object_store_socket_name().decode(),
                 "RayletSocketName": c_node_info.raylet_socket_name().decode(),
                 "MetricsExportPort": c_node_info.metrics_export_port(),
+                "MetricsAgentPort": c_node_info.metrics_agent_port(),
+                "DashboardAgentListenPort": c_node_info.dashboard_agent_listen_port(),
                 "NodeName": c_node_info.node_name().decode(),
                 "RuntimeEnvAgentPort": c_node_info.runtime_env_agent_port(),
                 "DeathReason": c_node_info.death_info().reason(),
@@ -280,6 +282,9 @@ cdef class GlobalStateAccessor:
             "node_manager_port": c_node_info.node_manager_port(),
             "node_id": c_node_info.node_id().hex(),
             "runtime_env_agent_port": c_node_info.runtime_env_agent_port(),
+            "metrics_agent_port": c_node_info.metrics_agent_port(),
+            "metrics_export_port": c_node_info.metrics_export_port(),
+            "dashboard_agent_listen_port": c_node_info.dashboard_agent_listen_port(),
         }
 
     def get_node(self, node_id):
@@ -298,5 +303,9 @@ cdef class GlobalStateAccessor:
             "raylet_socket_name": c_node_info.raylet_socket_name().decode(),
             "node_manager_port": c_node_info.node_manager_port(),
             "node_id": c_node_info.node_id().hex(),
+            "runtime_env_agent_port": c_node_info.runtime_env_agent_port(),
+            "metrics_agent_port": c_node_info.metrics_agent_port(),
+            "metrics_export_port": c_node_info.metrics_export_port(),
+            "dashboard_agent_listen_port": c_node_info.dashboard_agent_listen_port(),
             "labels": {key.decode(): value.decode() for key, value in c_labels},
         }

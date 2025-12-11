@@ -104,7 +104,6 @@ table RegisterClientReply {
   failure_reason: string;
   node_id: string;
   port: int;
-  runtime_env_agent_port: int;
 }
 
 table AnnounceWorkerPort {

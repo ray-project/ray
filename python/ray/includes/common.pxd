@@ -152,6 +152,17 @@ cdef extern from "ray/common/status_or.h" namespace "ray" nogil:
         const CRayStatus &status() const
         T &value()
 
+cdef extern from "ray/util/file_persistence.h" namespace "ray" nogil:
+    CRayStatus PersistPort "ray::PersistPort"(
+        const c_string &dir,
+        const c_string &file_name,
+        int port)
+    CStatusOr[int] WaitForPersistedPort "ray::WaitForPersistedPort"(
+        const c_string &dir,
+        const c_string &file_name,
+        int timeout_ms,
+        int poll_interval_ms)
+
 cdef extern from "ray/common/id.h" namespace "ray" nogil:
     const CTaskID GenerateTaskId(const CJobID &job_id,
                                  const CTaskID &parent_task_id,
@@ -711,6 +722,8 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string object_store_socket_name() const
         c_string raylet_socket_name() const
         int metrics_export_port() const
+        int metrics_agent_port() const
+        int dashboard_agent_listen_port() const
         int runtime_env_agent_port() const
         CNodeDeathInfo death_info() const
         void ParseFromString(const c_string &serialized)

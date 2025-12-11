@@ -879,19 +879,11 @@ def main():
         help="Password for connecting to Redis",
     )
     parser.add_argument(
-        "--runtime-env-agent-port",
-        required=False,
-        type=int,
-        default=0,
-        help="The port of the runtime_env_agent. Only used in proxy mode. "
-        "If 0, the port will be fetched from GCS.",
-    )
-    parser.add_argument(
-        "--runtime-env-agent-ip",
+        "--runtime-env-agent-address",
         required=False,
         type=str,
         default=None,
-        help="The IP address of the runtime env agent. Required for proxy mode.",
+        help="The port to use for connecting to the runtime_env_agent.",
     )
     args, _ = parser.parse_known_args()
     setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
@@ -906,16 +898,13 @@ def main():
         args_str = args_str.replace(args.redis_password, "****")
     logger.info(f"Starting Ray Client server on {hostport}, args {args_str}")
     if args.mode == "proxy":
-        if args.runtime_env_agent_ip is None:
-            raise ValueError("--runtime-env-agent-ip is required for proxy mode.")
         server = serve_proxier(
             args.host,
             args.port,
             args.address,
-            args.runtime_env_agent_ip,
             redis_username=args.redis_username,
             redis_password=args.redis_password,
-            runtime_env_agent_port=args.runtime_env_agent_port,
+            runtime_env_agent_address=args.runtime_env_agent_address,
         )
     else:
         server = serve(args.host, args.port, ray_connect_handler)

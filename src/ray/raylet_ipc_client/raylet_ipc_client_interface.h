@@ -95,7 +95,6 @@ class RayletIpcClientInterface {
   /// \param[out] node_id The node ID for the local Raylet.
   /// \param[out] assigned_port The assigned port for the worker to listen on. If zero,
   ///             the worker should pick a port randomly.
-  /// \param[out] runtime_env_agent_port The port of the runtime env agent.
   virtual Status RegisterClient(const WorkerID &worker_id,
                                 rpc::WorkerType worker_type,
                                 const JobID &job_id,
@@ -105,8 +104,7 @@ class RayletIpcClientInterface {
                                 const std::string &serialized_job_config,
                                 const StartupToken &startup_token,
                                 NodeID *node_id,
-                                int *assigned_port,
-                                int *runtime_env_agent_port) = 0;
+                                int *assigned_port) = 0;
 
   /// Notify the raylet that this client is disconnecting gracefully. This
   /// is used by actors to exit gracefully so that the raylet doesn't

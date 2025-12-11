@@ -12,9 +12,8 @@ from ray._private import logging_utils
 from ray._private.authentication.http_token_authentication import (
     get_token_auth_middleware,
 )
-from ray._private.pipe import Pipe
 from ray._private.process_watcher import create_check_raylet_task
-from ray._raylet import GcsClient
+from ray._raylet import GcsClient, persist_port
 from ray.core.generated import (
     runtime_env_agent_pb2,
 )
@@ -49,12 +48,11 @@ if __name__ == "__main__":
         help="The port on which the runtime env agent will receive HTTP requests.",
     )
     parser.add_argument(
-        "--runtime-env-agent-port-write-handle",
+        "--session-dir",
         required=False,
-        type=int,
+        type=str,
         default=None,
-        help="Pipe write handle (fd on POSIX, HANDLE on Windows) "
-        "to report the bound runtime env agent port.",
+        help="The path of this ray session directory.",
     )
 
     parser.add_argument(
@@ -240,16 +238,16 @@ if __name__ == "__main__":
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(sockaddr)
 
-    if args.runtime_env_agent_port_write_handle is not None:
-        port_str = str(sock.getsockname()[1])
-        with Pipe.from_writer_handle(args.runtime_env_agent_port_write_handle) as pipe:
-            try:
-                pipe.write(port_str)
-            except Exception as e:
-                logging.warning(
-                    f"Failed to write runtime env agent port to pipe: {e}. "
-                    "Please check the error log of the process that passed the pipe."
-                )
+    bound_port = sock.getsockname()[1]
+    if args.session_dir:
+        try:
+            persist_port(
+                args.session_dir,
+                ray_constants.RUNTIME_ENV_AGENT_PORT_FILENAME,
+                bound_port,
+            )
+        except Exception as e:
+            logging.warning(f"Failed to write runtime env agent port to file: {e}")
 
     try:
         web.run_app(app, sock=sock, loop=loop)

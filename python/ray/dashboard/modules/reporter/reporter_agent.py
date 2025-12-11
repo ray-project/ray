@@ -23,6 +23,7 @@ from prometheus_client.parser import text_string_to_metric_families
 
 import ray
 import ray._private.prometheus_exporter as prometheus_exporter
+import ray._private.ray_constants as ray_constants
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import (
@@ -40,7 +41,7 @@ from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
 from ray._private.utils import get_system_memory
-from ray._raylet import GCS_PID_KEY, RayletClient, WorkerID
+from ray._raylet import GCS_PID_KEY, RayletClient, WorkerID, persist_port
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
@@ -443,23 +444,21 @@ class ReporterAgent(
         self._open_telemetry_metric_recorder = None
         self._session_name = dashboard_agent.session_name
         if not self._metrics_collection_disabled:
-            try:
-                stats_exporter = prometheus_exporter.new_stats_exporter(
-                    prometheus_exporter.Options(
-                        namespace="ray",
-                        port=dashboard_agent.metrics_export_port,
-                        address="127.0.0.1" if self._ip == "127.0.0.1" else "",
-                    )
+            stats_exporter = prometheus_exporter.new_stats_exporter(
+                prometheus_exporter.Options(
+                    namespace="ray",
+                    port=dashboard_agent.metrics_export_port,
+                    address="127.0.0.1" if self._ip == "127.0.0.1" else "",
                 )
-            except Exception:
-                # TODO(SongGuyang): Catch the exception here because there is
-                # port conflict issue which brought from static port. We should
-                # remove this after we find better port resolution.
-                logger.exception(
-                    "Failed to start prometheus stats exporter. Agent will stay "
-                    "alive but disable the stats."
-                )
-                stats_exporter = None
+            )
+
+            # metrics_export_port can be 0 for dynamic port assignment. get the actual bound port.
+            persist_port(
+                dashboard_agent.session_dir,
+                ray_constants.METRICS_EXPORT_PORT_FILENAME,
+                stats_exporter.port,
+            )
+            dashboard_agent.metrics_export_port = stats_exporter.port
 
             self._metrics_agent = MetricsAgent(
                 stats_module.stats.view_manager,

@@ -14,10 +14,7 @@ import tempfile
 import threading
 import time
 import traceback
-from collections import defaultdict
-from typing import IO, AnyStr, Dict, Optional, Tuple
-
-from filelock import FileLock
+from typing import IO, AnyStr, Optional, Tuple
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -30,7 +27,6 @@ from ray._common.network_utils import (
 )
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._common.utils import try_to_create_directory
-from ray._private.pipe import Pipe
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.services import get_address, serialize_config
@@ -40,7 +36,7 @@ from ray._private.utils import (
     try_to_symlink,
     validate_socket_filepath,
 )
-from ray._raylet import GcsClient, get_session_key_from_storage
+from ray._raylet import GcsClient, get_session_key_from_storage, wait_for_persisted_port
 
 import psutil
 
@@ -150,8 +146,6 @@ class Node:
         self._ray_params = ray_params
         self._config = ray_params._system_config or {}
 
-        self._dashboard_agent_listen_port = ray_params.dashboard_agent_listen_port
-
         # Configure log rotation parameters.
         self.max_bytes = int(os.getenv("RAY_ROTATION_MAX_BYTES", LOGGING_ROTATE_BYTES))
         self.backup_count = int(
@@ -254,15 +248,14 @@ class Node:
             self._raylet_socket_name = ray_params.raylet_socket_name
             self._node_id = ray_params.node_id
 
-            # If user does not provide the socket name, get it from Redis.
+            # If user does not provide the socket name, get it from GCS.
             if (
                 self._plasma_store_socket_name is None
                 or self._raylet_socket_name is None
                 or self._ray_params.node_manager_port is None
                 or self._node_id is None
             ):
-                # Get the address info of the processes to connect to
-                # from Redis or GCS.
+                # Get the address info of the processes to connect to from GCS.
                 node_info = ray._private.services.get_node_to_connect_for_driver(
                     self.gcs_address,
                     self._node_ip_address,
@@ -298,33 +291,33 @@ class Node:
                 logger.debug(f"Setting node ID to {node_id}")
                 self._node_id = node_id
 
-        # The dashboard agent port is assigned first to avoid
-        # other processes accidentally taking its default port
-        self._dashboard_agent_listen_port = self._get_cached_port(
-            "dashboard_agent_listen_port",
-            default_port=ray_params.dashboard_agent_listen_port,
-        )
-
-        self.metrics_agent_port = self._get_cached_port(
-            "metrics_agent_port", default_port=ray_params.metrics_agent_port
-        )
-        self._metrics_export_port = self._get_cached_port(
-            "metrics_export_port", default_port=ray_params.metrics_export_port
-        )
-
         ray_params.update_if_absent(
-            metrics_agent_port=self.metrics_agent_port,
-            metrics_export_port=self._metrics_export_port,
-            dashboard_agent_listen_port=self._dashboard_agent_listen_port,
+            metrics_agent_port=ray_params.metrics_agent_port or 0,
+            metrics_export_port=ray_params.metrics_export_port or 0,
+            dashboard_agent_listen_port=ray_params.dashboard_agent_listen_port or 0,
             runtime_env_agent_port=ray_params.runtime_env_agent_port or 0,
         )
 
         # Pick a GCS server port.
         if head:
-            gcs_server_port = int(
-                os.getenv(ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE, 0)
+            # For GCS fault tolerance: if the port file already exists in the
+            # current session directory, this indicates a GCS restart scenario.
+            # We reuse the existing port so that other components can reconnect
+            # to GCS after it restarts.
+            gcs_port_file = os.path.join(
+                self._session_dir, ray_constants.GCS_SERVER_PORT_FILENAME
             )
-            ray_params.update_if_absent(gcs_server_port=gcs_server_port)
+            if os.path.exists(gcs_port_file):
+                gcs_port = wait_for_persisted_port(
+                    self._session_dir, ray_constants.GCS_SERVER_PORT_FILENAME
+                )
+                ray_params.update_if_absent(gcs_server_port=gcs_port)
+
+            else:
+                gcs_server_port = os.getenv(ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
+                ray_params.update_if_absent(
+                    gcs_server_port=int(gcs_server_port) if gcs_server_port else 0
+                )
 
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
@@ -335,6 +328,7 @@ class Node:
         if head:
             self.start_head_processes()
 
+        node_info = None
         if not connect_only:
             self.start_ray_processes()
             # Wait for the node info to be available in the GCS so that
@@ -345,7 +339,6 @@ class Node:
             time.sleep(0.1)
             start_time = time.monotonic()
             raylet_start_wait_time_s = 30
-            node_info = None
             while True:
                 try:
                     # Will raise a RuntimeError if the node info is not available.
@@ -362,9 +355,6 @@ class Node:
                         "could happen because some of the raylet failed to "
                         "startup or the GCS has become overloaded."
                     )
-            # Use node info to update port
-            if self._ray_params.node_manager_port == 0:
-                self._ray_params.node_manager_port = node_info["node_manager_port"]
 
         if connect_only:
             # Fetch node info to get labels.
@@ -374,6 +364,18 @@ class Node:
             )
             # Set node labels from GCS if provided at node init.
             self._node_labels = node_info.get("labels", {})
+
+        # port can be 0 or None for two cases:
+        # 1. user is starting a new ray cluster and does not specify the port, components self-bind.
+        # 2. user is connecting to an existing ray cluster, no port info is provided.
+        # We always update port info from GCS to ensure consistency.
+        self._ray_params.node_manager_port = node_info["node_manager_port"]
+        self._ray_params.runtime_env_agent_port = node_info["runtime_env_agent_port"]
+        self._ray_params.metrics_agent_port = node_info["metrics_agent_port"]
+        self._ray_params.metrics_export_port = node_info["metrics_export_port"]
+        self._ray_params.dashboard_agent_listen_port = node_info[
+            "dashboard_agent_listen_port"
+        ]
 
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
@@ -606,33 +608,27 @@ class Node:
     @property
     def metrics_export_port(self):
         """Get the port that exposes metrics"""
-        return self._metrics_export_port
+        return self._ray_params.metrics_export_port
+
+    @property
+    def metrics_agent_port(self):
+        """Get the metrics agent gRPC port"""
+        return self._ray_params.metrics_agent_port
 
     @property
     def runtime_env_agent_port(self):
         """Get the port that exposes runtime env agent as http"""
-        if self._ray_params.runtime_env_agent_port == 0:
-            raise RuntimeError(
-                "runtime_env_agent_port is set to agent self-binding mode (port=0). "
-                "Use ray.get_runtime_context().get_runtime_env_agent_port() instead."
-            )
         return self._ray_params.runtime_env_agent_port
 
     @property
     def runtime_env_agent_address(self):
         """Get the address that exposes runtime env agent as http"""
-        if self._ray_params.runtime_env_agent_port == 0:
-            raise RuntimeError(
-                "runtime_env_agent_port is set to agent self-binding mode (port=0). "
-                "Use ray.get_runtime_context().get_runtime_env_agent_port() to get the "
-                "port and node_ip_address property to construct the address."
-            )
         return f"http://{build_address(self._node_ip_address, self._ray_params.runtime_env_agent_port)}"
 
     @property
     def dashboard_agent_listen_port(self):
         """Get the dashboard agent's listen port"""
-        return self._dashboard_agent_listen_port
+        return self._ray_params.dashboard_agent_listen_port
 
     @property
     def logging_config(self):
@@ -652,10 +648,10 @@ class Node:
             "raylet_socket_name": self._raylet_socket_name,
             "webui_url": self._webui_url,
             "session_dir": self._session_dir,
-            "metrics_export_port": self._metrics_export_port,
+            "metrics_export_port": self._ray_params.metrics_export_port,
             "gcs_address": self.gcs_address,
             "address": self.address,
-            "dashboard_agent_listen_port": self.dashboard_agent_listen_port,
+            "dashboard_agent_listen_port": self._ray_params.dashboard_agent_listen_port,
         }
 
     @property
@@ -665,9 +661,6 @@ class Node:
 
     def is_head(self):
         return self.head
-
-    def should_start_ray_client_server(self):
-        return bool(self._ray_params.ray_client_server_port)
 
     def get_gcs_client(self):
         if self._gcs_client is None:
@@ -957,63 +950,6 @@ class Node:
             validate_socket_filepath(result.split("://", 1)[-1])
         return result
 
-    def _get_cached_port(
-        self, port_name: str, default_port: Optional[int] = None
-    ) -> int:
-        """Get a port number from a cache on this node.
-
-        Different driver processes on a node should use the same ports for
-        some purposes, e.g. exporting metrics.  This method returns a port
-        number for the given port name and caches it in a file.  If the
-        port isn't already cached, an unused port is generated and cached.
-
-        Args:
-            port_name: The name of the port, e.g. metrics_export_port.
-            default_port: The port to return and cache if no port has already been
-                cached for the given port_name. If None, an unused port is generated
-                and cached.
-
-        Returns:
-            int: The port number.
-        """
-        file_path = os.path.join(self.get_session_dir_path(), "ports_by_node.json")
-
-        # Make sure only the ports in RAY_CACHED_PORTS are cached.
-        assert port_name in ray_constants.RAY_ALLOWED_CACHED_PORTS
-
-        # Maps a Node.unique_id to a dict that maps port names to port numbers.
-        ports_by_node: Dict[str, Dict[str, int]] = defaultdict(dict)
-
-        with FileLock(file_path + ".lock"):
-            if not os.path.exists(file_path):
-                with open(file_path, "w") as f:
-                    json.dump({}, f)
-
-            with open(file_path, "r") as f:
-                ports_by_node.update(json.load(f))
-
-            if (
-                self.unique_id in ports_by_node
-                and port_name in ports_by_node[self.unique_id]
-            ):
-                # The port has already been cached at this node, so use it.
-                port = int(ports_by_node[self.unique_id][port_name])
-            else:
-                # Pick a new port to use and cache it at this node.
-                allocated_ports = set(ports_by_node[self.unique_id].values())
-
-                if default_port is not None and default_port in allocated_ports:
-                    # The default port is already in use, so don't use it.
-                    default_port = None
-
-                port = default_port or self._get_unused_port(allocated_ports)
-
-                ports_by_node[self.unique_id][port_name] = port
-                with open(file_path, "w") as f:
-                    json.dump(ports_by_node, f)
-
-        return port
-
     def _wait_and_get_for_node_address(self, timeout_s: int = 60) -> str:
         """Wait until the RAY_NODE_IP_FILENAME file is avialable.
 
@@ -1142,8 +1078,6 @@ class Node:
         stdout_log_fname, stderr_log_fname = self.get_log_file_names(
             "gcs_server", unique=True, create_out=True, create_err=True
         )
-
-        gcs_server_port_pipe = Pipe()
         process_info = ray._private.services.start_gcs_server(
             self.redis_address,
             log_dir=self._logs_dir,
@@ -1157,24 +1091,17 @@ class Node:
             gcs_server_port=self._ray_params.gcs_server_port,
             metrics_agent_port=self._ray_params.metrics_agent_port,
             node_ip_address=self._node_ip_address,
-            gcs_port_write_handle=gcs_server_port_pipe.make_writer_handle(),
+            session_dir=self._session_dir,
         )
-        gcs_server_port_pipe.close_writer_handle()
-
         assert ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
             process_info,
         ]
 
-        try:
-            gcs_server_port = gcs_server_port_pipe.read().strip()
-        except RuntimeError as e:
-            raise RuntimeError(
-                "Failed to receive GCS port. "
-                "Check GCS logs to see if it started successfully."
-            ) from e
-        self._ray_params.gcs_server_port = int(gcs_server_port)
-        gcs_server_port_pipe.close()
+        if self._ray_params.gcs_server_port == 0:
+            self._ray_params.gcs_server_port = wait_for_persisted_port(
+                self._session_dir, ray_constants.GCS_SERVER_PORT_FILENAME
+            )
 
         # Connecting via non-localhost address may be blocked by firewall rule,
         # e.g. https://github.com/ray-project/ray/issues/15780
@@ -1229,16 +1156,6 @@ class Node:
             self._get_system_processes_for_resource_isolation()
         )
 
-        runtime_env_agent_port_write_handles = []
-        runtime_env_agent_port_pipe_for_raylet = None
-
-        if self._ray_params.runtime_env_agent_port == 0:
-            runtime_env_agent_port_pipe_for_raylet = Pipe()
-            handle_for_raylet = (
-                runtime_env_agent_port_pipe_for_raylet.make_writer_handle()
-            )
-            runtime_env_agent_port_write_handles.append(handle_for_raylet)
-
         process_info = ray._private.services.start_raylet(
             self.redis_address,
             self.gcs_address,
@@ -1268,8 +1185,7 @@ class Node:
             redis_password=self._ray_params.redis_password,
             metrics_agent_port=self._ray_params.metrics_agent_port,
             runtime_env_agent_port=self._ray_params.runtime_env_agent_port,
-            runtime_env_agent_port_write_handles=runtime_env_agent_port_write_handles,
-            metrics_export_port=self._metrics_export_port,
+            metrics_export_port=self._ray_params.metrics_export_port,
             dashboard_agent_listen_port=self._ray_params.dashboard_agent_listen_port,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
@@ -1290,21 +1206,6 @@ class Node:
             webui=self._webui_url,
             resource_isolation_config=self.resource_isolation_config,
         )
-
-        if runtime_env_agent_port_pipe_for_raylet:
-            runtime_env_agent_port_pipe_for_raylet.close_writer_handle()
-            try:
-                runtime_env_agent_port = (
-                    runtime_env_agent_port_pipe_for_raylet.read().strip()
-                )
-            except RuntimeError as e:
-                raise RuntimeError(
-                    "Failed to receive runtime env agent port. "
-                    "Check raylet/runtime env agent logs to see if it started successfully."
-                ) from e
-            self._ray_params.runtime_env_agent_port = int(runtime_env_agent_port)
-            runtime_env_agent_port_pipe_for_raylet.close()
-
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
@@ -1340,7 +1241,6 @@ class Node:
         stdout_file, stderr_file = self.get_log_file_handles(
             "ray_client_server", unique=True
         )
-
         process_info = ray._private.services.start_ray_client_server(
             self.address,
             self._node_ip_address,
@@ -1350,10 +1250,8 @@ class Node:
             redis_username=self._ray_params.redis_username,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
-            runtime_env_agent_ip=self._node_ip_address,
-            runtime_env_agent_port=self._ray_params.runtime_env_agent_port,
+            runtime_env_agent_address=self.runtime_env_agent_address,
         )
-
         assert ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [
             process_info
@@ -1425,7 +1323,7 @@ class Node:
         if not self._ray_params.no_monitor:
             self.start_monitor()
 
-        if self.should_start_ray_client_server():
+        if self._ray_params.ray_client_server_port:
             self.start_ray_client_server()
 
         if self._ray_params.include_dashboard is None:

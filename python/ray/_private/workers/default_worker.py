@@ -116,6 +116,13 @@ parser.add_argument(
     help="the port of the node's metric agent.",
 )
 parser.add_argument(
+    "--runtime-env-agent-port",
+    required=True,
+    type=int,
+    default=None,
+    help="The port on which the runtime env agent receives HTTP requests.",
+)
+parser.add_argument(
     "--object-spilling-config",
     required=False,
     type=str,
@@ -223,6 +230,7 @@ if __name__ == "__main__":
         raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir,
         metrics_agent_port=args.metrics_agent_port,
+        runtime_env_agent_port=args.runtime_env_agent_port,
         gcs_address=args.gcs_address,
         session_name=args.session_name,
         webui=args.webui,
