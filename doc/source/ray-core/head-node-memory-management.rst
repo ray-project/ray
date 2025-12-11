@@ -118,7 +118,6 @@ Best Practices
 1. **Start with conservative settings** and adjust based on observed behavior  
 2. **Disable the dashboard** if not actively used for debugging  
 3. **Set appropriate Kubernetes resource limits** matching requests for memory and GPU  
-4. **Reserve sufficient memory** for system processes (at least 1GB for large clusters)  
   
 Troubleshooting  
 ---------------  
