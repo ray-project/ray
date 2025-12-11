@@ -66,14 +66,14 @@
         }
       },
       {
-        "name": "workerid",
-        "label": "Worker ID",
+        "name": "replicaid",
+        "label": "Replica ID",
         "type": "query",
         "hide": 0,
         "datasource": "${datasource}",
-        "definition": "label_values(ray_vllm:request_prompt_tokens_sum{{{global_filters}}}, WorkerId)",
+        "definition": "label_values(ray_vllm:request_prompt_tokens_sum{{{global_filters}}}, ReplicaId)",
         "query": {
-          "query": "label_values(ray_vllm:request_prompt_tokens_sum{{{global_filters}}}, WorkerId)",
+          "query": "label_values(ray_vllm:request_prompt_tokens_sum{{{global_filters}}}, ReplicaId)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
