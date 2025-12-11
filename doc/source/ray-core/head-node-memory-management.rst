@@ -116,7 +116,7 @@ Best Practices
 --------------  
   
 1. **Start with conservative settings** and adjust based on observed behavior  
-2. **Disable the dashboard** if not actively used for debugging  
+2. **Disable the dashboard** if not actively used for debugging. This will reduce observability.
 3. **Set appropriate Kubernetes resource limits** matching requests for memory and GPU  
   
 Troubleshooting  
