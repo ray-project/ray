@@ -167,7 +167,10 @@ class OfflinePreLearner:
             # If the module is stateful we remove states from episodes. Note, this
             # is done to enable the offline RLModule to learn its own state.
             # TODO (simon): Check, if users want to use pretrained states.
-            if self._module.is_stateful():
+            if (
+                self._module.is_stateful()
+                and not self.config.prelearner_use_recorded_module_states
+            ):
                 episodes = self._remove_states_from_episodes(episodes)
             # Add the episodes to the buffer.
             self.episode_buffer.add(episodes)
@@ -204,7 +207,10 @@ class OfflinePreLearner:
             # If the module is stateful we remove states from episodes. Note, this
             # is done to enable the offline RLModule to learn its own state.
             # TODO (simon): Check, if users want to use pretrained states.
-            if self._module.is_stateful():
+            if (
+                self._module.is_stateful()
+                and not self.config.prelearner_use_recorded_module_states
+            ):
                 episodes = self._remove_states_from_episodes(episodes)
             # Add the episodes to the buffer.
             self.episode_buffer.add(episodes)

@@ -1,0 +1,244 @@
+import unittest
+
+import numpy as np
+
+import ray
+from ray.rllib.algorithms.bc import BCConfig
+from ray.rllib.core.learner.training_data import TrainingData
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.env import INPUT_ENV_SPACES
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
+from ray.rllib.offline.offline_prelearner import OfflinePreLearner
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.utils import unflatten_dict
+
+
+class OfflineRLStatefulTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
+    def setUp(self):
+        # Define the BC config.
+        self.config = (
+            BCConfig()
+            .environment(StatelessCartPole)
+            # Note, the `input_` argument is the major argument for the
+            # new offline API. Via the `input_read_method_kwargs` the
+            # arguments for the `ray.data.Dataset` read method can be
+            # configured. The read method needs at least as many blocks
+            # as remote learners.
+            .offline_data(
+                input_=["s3://ray-example-data/rllib/offline-data/statelesscartpole"],
+                input_read_episodes=True,
+                input_read_batch_size=1,
+                # Concurrency defines the number of processes that run the
+                # `map_batches` transformations. This should be aligned with the
+                # 'prefetch_batches' argument in 'iter_batches_kwargs'.
+                map_batches_kwargs={"concurrency": 2, "num_cpus": 1},
+                # Default for this test: materialize both data and mapped data.
+                materialize_data=True,
+                materialize_mapped_data=True,
+                # This data set is small so do not prefetch too many batches and use no
+                # local shuffle.
+                iter_batches_kwargs={"prefetch_batches": 1},
+                # The number of iterations to be run per learner when in multi-learner
+                # mode in a single RLlib training iteration. Leave this to `None` to
+                # run an entire epoch on the dataset during a single RLlib training
+                # iteration.
+                dataset_num_iters_per_learner=5,
+            )
+            .training(
+                train_batch_size_per_learner=256,
+                lr=0.0008,
+            )
+            .rl_module(
+                model_config=DefaultModelConfig(
+                    max_seq_len=20,
+                    use_lstm=True,
+                ),
+            )
+            .evaluation(
+                evaluation_interval=3,
+                evaluation_num_env_runners=1,
+                evaluation_duration=5,
+                evaluation_duration_unit="episodes",
+                evaluation_parallel_to_training=False,
+            )
+        )
+        # Build the algorithm.
+        self.algo = self.config.build()
+
+    def tearDown(self):
+        self.algo.stop()
+
+    def test_training_on_single_episode_and_evaluate(self):
+
+        # Load these packages inline.
+        import msgpack
+        import msgpack_numpy as mnp
+
+        # Load the dataset.
+        ds = self.algo.offline_data.data
+        # Take a single-row batch (one episode).
+        batch = ds.take_batch(1)
+
+        # Read the episodes and decode them.
+        episodes = [
+            SingleAgentEpisode.from_state(
+                msgpack.unpackb(state, object_hook=mnp.decode)
+            )
+            for state in batch["item"]
+        ][:1]
+        # Assert the episode has a decent return.
+        assert episodes[0].get_return() > 350.0, "Return must be >350.0"
+
+        # Build the learner connector.
+        obs_space, action_space = self.algo.offline_data.spaces[INPUT_ENV_SPACES]
+        learner_connector = self.algo.config.build_learner_connector(
+            input_observation_space=obs_space,
+            input_action_space=action_space,
+        )
+        # Run the learner connector on the episode.
+        processed_batch = learner_connector(
+            rl_module=self.algo.learner_group._learner.module,
+            batch={},
+            episodes=episodes,
+            shared_data={},
+            # TODO (simon): Add MetricsLogger to non-Learner components that have a
+            #  LearnerConnector pipeline.
+            metrics=None,
+        )
+
+        # Create a MA batch from the processed batch and a TrainingData object.
+        ma_batch = MultiAgentBatch(
+            policy_batches={
+                "default_policy": SampleBatch(processed_batch["default_policy"])
+            },
+            env_steps=np.prod(processed_batch["default_policy"]["obs"].shape[:-1]),
+        )
+        training_data = TrainingData(batch=ma_batch)
+
+        # Overfit on this single episode.
+        i = 0
+        while True:
+            i += 1
+            learner_results = self.algo.learner_group.update(
+                training_data=training_data,
+                minibatch_size=self.algo.config.train_batch_size_per_learner,
+                num_iters=self.algo.config.dataset_num_iters_per_learner,
+                **self.algo.offline_data.iter_batches_kwargs,
+            )
+            if i % 10 == 0:
+                loss = learner_results[0]["default_policy"]["policy_loss"].peek()
+                print(f"Iteration {i}: policy_loss: {loss}")
+                if np.isclose(loss, 1e-6, atol=1e-7) or i >= 10000:
+                    break
+
+        # Evaluation
+        # Get the latest RLModule state from the learner and synchronize
+        # the eval env runners.
+        rl_module_state = self.algo.learner_group.get_state()["learner"]["rl_module"]
+
+        self.algo.eval_env_runner_group.foreach_env_runner(
+            func="set_state",
+            local_env_runner=False,
+            kwargs={"state": {"rl_module": rl_module_state}},
+        )
+
+        # Evaluate the updated policy for 5 episodes.
+        eval_episodes = self.algo.eval_env_runner_group.foreach_env_runner(
+            self._remote_eval_episode_fn,
+            local_env_runner=False,
+        )
+        # Assert the eval return is decent.
+        self.assertGreaterEqual(
+            np.mean([ep.get_return() for ep in eval_episodes[0]]),
+            100.0,
+            "Eval return must be >350.0",
+        )
+        print(
+            f"Eval episodes returns: {np.mean([ep.get_return() for ep in eval_episodes[0]])}"
+        )
+
+    def test_training_on_single_batch_and_evaluate(self):
+
+        # Assign the dataset.
+        ds = self.algo.offline_data.data
+        # Initialize the OfflinePreLearner.
+        oplr = OfflinePreLearner(
+            config=self.algo.config,
+            spaces=self.algo.offline_data.spaces[INPUT_ENV_SPACES],
+            module_spec=self.algo.offline_data.module_spec,
+            module_state=self.algo.learner_group._learner.get_state()["rl_module"],
+        )
+        # Get a single-row batch (single episode).
+        batch = ds.take_batch(1)
+        # Run the OfflinePreLearner on the batch.
+        processed_batch = oplr(batch)
+        # Create a MA batch from the processed batch and a TrainingData object.
+        processed_batch = unflatten_dict(processed_batch)
+        ma_batch = MultiAgentBatch(
+            policy_batches={
+                "default_policy": SampleBatch(processed_batch["default_policy"])
+            },
+            env_steps=np.prod(processed_batch["default_policy"]["obs"].shape[:-1]),
+        )
+        training_data = TrainingData(batch=ma_batch)
+
+        # Overfit on this single batch.
+        i = 0
+        while True:
+            i += 1
+            learner_results = self.algo.learner_group.update(
+                training_data=training_data,
+                minibatch_size=self.algo.config.train_batch_size_per_learner,
+                num_iters=self.algo.config.dataset_num_iters_per_learner,
+                **self.algo.offline_data.iter_batches_kwargs,
+            )
+            if i % 10 == 0:
+                loss = learner_results[0]["default_policy"]["policy_loss"].peek()
+                print(f"Iteration {i}: policy_loss: {loss}")
+                if np.isclose(loss, 1e-6, atol=1e-7) or i >= 10000:
+                    break
+
+        # Evaluation
+        # Get the latest RLModule state from the learner and synchronize
+        # the eval env runners.
+        rl_module_state = self.algo.learner_group.get_state()["learner"]["rl_module"]
+        self.algo.eval_env_runner_group.foreach_env_runner(
+            func="set_state",
+            local_env_runner=False,
+            kwargs={"state": {"rl_module": rl_module_state}},
+        )
+
+        eval_episodes = self.algo.eval_env_runner_group.foreach_env_runner(
+            self._remote_eval_episode_fn,
+            local_env_runner=False,
+        )
+        # Assert the eval return is decent.
+        self.assertGreaterEqual(
+            np.mean([ep.get_return() for ep in eval_episodes[0]]),
+            100.0,
+            "Eval return must be >350.0",
+        )
+        print(
+            f"Eval episodes returns: {np.mean([ep.get_return() for ep in eval_episodes[0]])}"
+        )
+
+    @staticmethod
+    def _remote_eval_episode_fn(env_runner):
+        return env_runner.sample(num_episodes=5, explore=False)
+
+
+if __name__ == "__main__":
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))
