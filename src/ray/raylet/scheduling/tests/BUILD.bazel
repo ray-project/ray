@@ -27,6 +27,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        "//src/ray/observability:fake_metric",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/raylet/scheduling:scheduling_context",
         "//src/ray/raylet/scheduling:scheduling_options",
@@ -42,6 +43,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        "//src/ray/observability:fake_metric",
         "//src/ray/raylet/scheduling:local_resource_manager",
         "@com_google_googletest//:gtest_main",
     ],
