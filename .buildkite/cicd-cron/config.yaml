@@ -13,11 +13,5 @@ env:
   BUILDKITE_BAZEL_CACHE_URL: https://bazel-cache-dev.s3.us-west-2.amazonaws.com
 hook_env_keys:
   - RAYCI_CHECKOUT_DIR
-skip_tags:
-  - disabled
-  - skip-on-release-tests
-build_env_keys:
-  - AUTOMATIC
-  - RELEASE_FREQUENCY
 docker_plugin:
   allow_mount_buildkite_agent: true

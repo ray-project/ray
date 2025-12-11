@@ -1,4 +1,4 @@
-name: "manylinux-nightly$JDK_SUFFIX"
+name: "manylinux-cibase$JDK_SUFFIX"
 froms:
   - quay.io/pypa/manylinux2014_x86_64:2024-07-02-9ac04ee
 srcs:

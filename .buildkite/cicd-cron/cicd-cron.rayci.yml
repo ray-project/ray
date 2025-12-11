@@ -1,35 +1,41 @@
 group: cicd-cron
 steps:
-  - name: manylinux-nightly-no-jdk
-    label: ":crescent_moon: wanda: manylinux-nightly (no JDK)"
-    wanda: ci/docker/manylinux-nightly.wanda.yaml
+  - name: manylinux-cibase
+    label: ":crescent_moon: wanda: manylinux-cibase"
+    wanda: ci/docker/manylinux-cibase.wanda.yaml
     env:
       RAYCI_DISABLE_JAVA: "true"
       JDK_SUFFIX: ""
-  
-  - name: manylinux-nightly-jdk
-    label: ":crescent_moon: wanda: manylinux-nightly (with JDK)"
-    wanda: ci/docker/manylinux-nightly.wanda.yaml
+
+  - name: manylinux-cibase-jdk
+    label: ":crescent_moon: wanda: manylinux-cibase (with JDK)"
+    wanda: ci/docker/manylinux-cibase.wanda.yaml
     env:
       RAYCI_DISABLE_JAVA: "false"
       JDK_SUFFIX: "-jdk"
-  
-  - label: ":crescent_moon: push: Push manylinux (no JDK) to Dockerhub"
-    depends_on: manylinux-nightly-no-jdk
+
+  - label: ":crescent_moon: push: Push manylinux to Docker Hub"
+    depends_on:
+      - manylinux-cibase
+      - forge
+    job_env: forge
     commands:
+      - bazel run //.buildkite:copy_files -- --destination docker_login
       # NOTE(andrew-anyscale): Not running w/ --upload while we verify builds
       # are scheduling and completing correctly.
-      - ./ci/base_images/nightly/push-manylinux.sh
-    env:
-      RAYCI_DISABLE_JAVA: "true"
-      JDK_SUFFIX: ""
-  
-  - label: ":crescent_moon: push: Push manylinux (with JDK) to Dockerhub"
-    depends_on: manylinux-nightly-jdk
+      - bazel run //ci/ray_ci/automation:copy_wanda_image --
+        --wanda-image-name manylinux-cibase
+        --target-repo rayproject/manylinux2014_cibase_x86_64
+
+  - label: ":crescent_moon: push: Push manylinux (with JDK) to Docker Hub"
+    depends_on:
+      - manylinux-cibase-jdk
+      - forge
+    job_env: forge
     commands:
+      - bazel run //.buildkite:copy_files -- --destination docker_login
       # NOTE(andrew-anyscale): Not running w/ --upload while we verify builds
       # are scheduling and completing correctly.
-      - ./ci/base_images/nightly/push-manylinux.sh
-    env:
-      RAYCI_DISABLE_JAVA: "false"
-      JDK_SUFFIX: "-jdk"
+      - bazel run //ci/ray_ci/automation:copy_wanda_image --
+        --wanda-image-name manylinux-cibase-jdk
+        --target-repo rayproject/manylinux2014_cibase_jdk_x86_64
