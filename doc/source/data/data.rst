@@ -38,7 +38,7 @@ Here is an example of how to do perform a simple batch text classification task 
     import ray
     import pandas as pd
 
-    class EmbeddingModel:
+    class ClassificationModel:
         def __init__(self):
             from transformers import pipeline
             self.pipe = pipeline("text-classification")
@@ -50,7 +50,7 @@ Here is an example of how to do perform a simple batch text classification task 
 
     ds = ray.data.read_text("s3://anonymous@ray-example-data/sms_spam_collection_subset.txt")
     ds = ds.map_batches(
-        EmbeddingModel,
+        ClassificationModel,
         compute=ray.data.ActorPoolStrategy(size=2),
         batch_size=64,
         batch_format="pandas"
