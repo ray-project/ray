@@ -21,18 +21,22 @@ To scale up with distributed training:
 `python cartpole_appo.py --num-env-runners=4 --num-learners=2`
 
 For debugging, use the following additional command line options
-`--no-tune --num-env-runners=0`
+`--no-tune --num-learners=0`
 which should allow you to set breakpoints anywhere in the RLlib code and
 have the execution stop there for inspection and debugging.
+By setting `--num-learners=0` and `--num-env-runners=0` will make them run locally
+instead of remote Ray Actor where breakpoints aren't possible.
 
 For logging to your WandB account, use:
-`--wandb-key=[your WandB API key] --wandb-project=[some project name]
---wandb-run-name=[optional: WandB run name (within the defined project)]`
+`--wandb-key=[your WandB API key]
+ --wandb-project=[some project name]
+ --wandb-run-name=[optional: WandB run name (within the defined project)]`
 
 Results to expect
 -----------------
 The algorithm should reach the default reward threshold of 450.0 within
-approximately 1 million timesteps. Training is fast on this simple environment,
+approximately 1 million timesteps. The number of environment steps can be
+through changed `default_timesteps`. Training is fast on this simple environment,
 typically converging in under a minute on a single machine. The low value
 function loss coefficient (0.05) and zero entropy coefficient work well for
 this deterministic environment.
@@ -46,10 +50,10 @@ from ray.rllib.examples.utils import (
 
 parser = add_rllib_example_script_args(
     default_reward=450.0,  # TODO: Can we reliably achieve this?
-    default_timesteps=10_000_000,  # TODO: I believe this should be achievable in 250k
+    default_timesteps=1_000_000,  # TODO: I believe this should be achievable in 250k
 )
 parser.set_defaults(
-    num_env_runners=4,
+    num_env_runners=5,
     num_envs_per_env_runner=16,
 )
 # Use `parser` to add your own custom command line options to this script

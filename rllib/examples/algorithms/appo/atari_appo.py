@@ -28,18 +28,22 @@ To scale up with multiple learners:
 `python atari_appo.py --num-learners=2 --num-env-runners=8`
 
 For debugging, use the following additional command line options
-`--no-tune --num-env-runners=0`
+`--no-tune --num-learners=0`
 which should allow you to set breakpoints anywhere in the RLlib code and
 have the execution stop there for inspection and debugging.
+By setting `--num-learners=0` and `--num-env-runners=0` will make them run locally
+instead of remote Ray Actor where breakpoints aren't possible.
 
 For logging to your WandB account, use:
-`--wandb-key=[your WandB API key] --wandb-project=[some project name]
---wandb-run-name=[optional: WandB run name (within the defined project)]`
+`--wandb-key=[your WandB API key]
+ --wandb-project=[some project name]
+ --wandb-run-name=[optional: WandB run name (within the defined project)]`
 
 Results to expect
 -----------------
 The algorithm should reach the default reward threshold of XX on Breakout
 within 10 million timesteps (40 million frames with 4x frame stacking).
+The number of environment steps can be changed through `default_timesteps`.
 Training performance scales with the number of learners and env runners.
 The entropy coefficient schedule (decaying from 0.01 to 0.0 over 3 million
 timesteps) is crucial for achieving good final performance - removing this
@@ -64,7 +68,7 @@ parser = add_rllib_example_script_args(
 )
 parser.set_defaults(
     env="ale_py:ALE/Breakout-v5",
-    num_env_runners=4,
+    num_env_runners=5,
     num_envs_per_env_runner=5,
 )
 args = parser.parse_args()
