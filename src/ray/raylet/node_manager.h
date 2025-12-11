@@ -754,7 +754,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void TriggerLocalOrGlobalGCIfNeeded();
 
   /// Creates the callback used in the memory monitor.
-  MemoryUsageRefreshCallback CreateMemoryUsageRefreshCallback();
+  KillWorkersCallback CreateKillWorkersCallback();
 
   /// Creates the detail message for the worker that is killed due to memory running low.
   std::string CreateOomKillMessageDetails(const std::shared_ptr<WorkerInterface> &worker,
