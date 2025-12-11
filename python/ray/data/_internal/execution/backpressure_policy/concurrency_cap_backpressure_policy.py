@@ -41,10 +41,10 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     """
 
     # Smoothing factor for the asymmetric EWMA (slow fall, faster rise).
-    EWMA_ALPHA = env_float("RAY_DATA_CONCURRENCY_CAP_EWMA_ALPHA", 0.2)
+    EWMA_ALPHA = env_float("RAY_DATA_CONCURRENCY_CAP_EWMA_ALPHA", 0.1)
     EWMA_ALPHA_UP = 1.0 - (1.0 - EWMA_ALPHA) ** 2  # fast rise
     # Deadband width in units of the EWMA absolute deviation estimate.
-    K_DEV = env_float("RAY_DATA_CONCURRENCY_CAP_K_DEV", 2.0)
+    K_DEV = env_float("RAY_DATA_CONCURRENCY_CAP_K_DEV", 1.0)
     # Factor to back off when the queue is too large.
     BACKOFF_FACTOR = env_float("RAY_DATA_CONCURRENCY_CAP_BACKOFF_FACTOR", 1)
     # Factor to ramp up when the queue is too small.
@@ -66,6 +66,9 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
 
         # EWMA state for dev
         self._q_level_dev: Dict["PhysicalOperator", float] = defaultdict(float)
+
+        # Per-operator initial queue size in bytes (recorded on first update).
+        self._initial_queue_nbytes: Dict["PhysicalOperator", float] = {}
 
         # Per-operator cached threshold (bootstrapped from first sample).
         self._queue_level_thresholds: Dict["PhysicalOperator", int] = defaultdict(int)
@@ -131,6 +134,10 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         # Now update the level itself
         level = self._update_ewma_asymmetric(level_prev, q)
 
+        # Record initial queue size on first observation
+        if op not in self._initial_queue_nbytes:
+            self._initial_queue_nbytes[op] = q
+
         self._q_level_nbytes[op] = level
         self._q_level_dev[op] = dev
 
@@ -141,10 +148,16 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         """Return whether `op` may accept another input now."""
         num_tasks_running = op.metrics.num_tasks_running
 
-        # If not a MapOperator or feature disabled, just enforce configured cap.
+        # Skip dynamic backpressure if:
+        # - Not a MapOperator
+        # - Not eligible for Op for Backpressure
+        # - Dynamic backpressure based on output queue size is disabled
+        # - Downstream is a materializing op which requires full materialization
         if (
             not isinstance(op, MapOperator)
+            or not self._resource_manager.is_op_eligible(op)
             or not self.enable_dynamic_output_queue_size_backpressure
+            or self._resource_manager.has_materializing_downstream_op(op)
         ):
             return num_tasks_running < self._concurrency_caps[op]
 
@@ -153,6 +166,9 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         op_usage = self._resource_manager.get_op_usage(op)
         op_budget = self._resource_manager.get_budget(op)
         if op_usage is not None and op_budget is not None:
+            # If budget is infinite, skip dynamic backpressure entirely.
+            if math.isinf(op_budget.object_store_memory):
+                return num_tasks_running < self._concurrency_caps[op]
             total_mem = op_usage.object_store_memory + op_budget.object_store_memory
             if total_mem == 0 or (
                 op_budget.object_store_memory / total_mem
@@ -164,12 +180,9 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
                 return num_tasks_running < self._concurrency_caps[op]
 
         # Current total queued bytes (this op + downstream)
-        current_queue_size_bytes = (
-            self._resource_manager.get_op_internal_object_store_usage(op)
-            + self._resource_manager.get_op_outputs_object_store_usage_with_downstream(
-                op
-            )
-        )
+        current_queue_size_bytes = self._resource_manager.get_mem_op_internal(
+            op
+        ) + self._resource_manager.get_op_outputs_object_store_usage_with_downstream(op)
 
         # Update EWMA state (level & dev) and compute effective cap. Note that
         # we don't update the EWMA state if the objectstore budget (available) vs total
@@ -196,7 +209,9 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         num_tasks_running: int,
         current_queue_size_bytes: int,
     ) -> int:
-        """A simple controller around EWMA level.
+        """A simple controller around EWMA level, with a hard guardrail based on
+        the initial queue size and OBJECT_STORE_BUDGET_RATIO.
+
         Args:
             op: The operator to compute the effective cap for.
             num_tasks_running: The number of tasks currently running.
@@ -206,6 +221,19 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         """
         cap_cfg = self._concurrency_caps[op]
 
+        # --- Hard guardrail based on initial queue size ---
+        initial_q = self._initial_queue_nbytes.get(op, None)
+        if initial_q is not None and self.OBJECT_STORE_BUDGET_RATIO > 0.0:
+            # max_queue_size = initial_queue_size * (1 + OBJECT_STORE_BUDGET_RATIO/2)
+            max_queue_bytes = initial_q * (1.0 + self.OBJECT_STORE_BUDGET_RATIO / 2)
+            if current_queue_size_bytes >= max_queue_bytes:
+                # We've exceeded the allowed queue size budget: slam concurrency to minimum.
+                target = 1
+                if not math.isinf(cap_cfg):
+                    target = min(target, int(cap_cfg))
+                return int(target)
+
+        # --- EWMA-based dynamic control (shape controller) ---
         level = float(self._q_level_nbytes[op])
         dev = max(1.0, float(self._q_level_dev[op]))
         upper = level + self.K_DEV * dev
