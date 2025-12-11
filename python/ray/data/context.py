@@ -151,6 +151,17 @@ DEFAULT_ENFORCE_SCHEMAS = env_bool("RAY_DATA_ENFORCE_SCHEMAS", False)
 
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
+# This default value was chosen to be conservative but to limit runaway
+# queue accumulation when there is a bottleneck operator. The default value
+# essentially means we will allow the queue up to 25x more blocks than the
+# downsteam operator is consuming per unit time. This is done to prevent
+# OOMs on the head node if the queue size grows too large. If the head node
+# is very small or the capcity is relatively very large to the head node
+# memory amount, consider lowering this value.
+DEFAULT_DOWNSTREAM_CAPACITY_OUTPUTS_RATIO: int = env_float(
+    "RAY_DATA_DOWNSTREAM_CAPACITY_OUTPUTS_RATIO", 25.0
+)
+
 
 # `write_file_retry_on_errors` is deprecated in favor of `retried_io_errors`. You
 # shouldn't need to modify `DEFAULT_WRITE_FILE_RETRY_ON_ERRORS`.
@@ -482,6 +493,10 @@ class DataContext:
             later. If `None`, this type of backpressure is disabled.
         downstream_capacity_backpressure_max_queued_bundles: Maximum number of queued
             bundles before applying backpressure. If `None`, no limit is applied.
+        downstream_capacity_outputs_ratio: Ratio for downstream capacity outputs
+            backpressure control. A lower ratio means fewer outputs will be taken
+            causing less build up in operator inqueues. If `None`, this type of
+            backpressure is disabled.
         enable_dynamic_output_queue_size_backpressure: Whether to cap the concurrency
         of an operator based on it's and downstream's queue size.
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
@@ -625,6 +640,7 @@ class DataContext:
 
     downstream_capacity_backpressure_ratio: float = None
     downstream_capacity_backpressure_max_queued_bundles: int = None
+    downstream_capacity_outputs_ratio: float = DEFAULT_DOWNSTREAM_CAPACITY_OUTPUTS_RATIO
 
     enable_dynamic_output_queue_size_backpressure: bool = (
         DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE
