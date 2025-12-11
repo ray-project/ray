@@ -29,7 +29,7 @@ See :ref:`vms-large-cluster-configure-head-node` for head-node best practices.
 Disable the Dashboard  
 ~~~~~~~~~~~~~~~~~~~~~  
   
-If you don't need the dashboard, disabling it removes event caching and related memory overhead.  
+If you don't need the dashboard, disabling it removes event caching and related memory overhead. This will reduce observability into the system so it's not recommended for production clusters.
   
 **Python API:**  
   
