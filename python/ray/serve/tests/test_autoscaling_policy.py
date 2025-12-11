@@ -5,6 +5,7 @@ import sys
 import tempfile
 import time
 import zipfile
+from asyncio import gather
 from typing import Dict, Iterable, List
 from unittest import mock
 
@@ -138,7 +139,6 @@ class TestAutoscalingMetrics:
 
         @serve.deployment(
             autoscaling_config={
-                "metrics_interval_s": 0.1,
                 "min_replicas": 1,
                 "max_replicas": 10,
                 "target_ongoing_requests": 10,
@@ -198,7 +198,6 @@ class TestAutoscalingMetrics:
         config = {
             "autoscaling_config": {
                 "target_ongoing_requests": 10,
-                "metrics_interval_s": 0.1,
                 "min_replicas": 1,
                 "max_replicas": 10,
                 "upscale_delay_s": 0,
@@ -274,7 +273,6 @@ class TestAutoscalingMetrics:
         @serve.deployment(
             autoscaling_config={
                 "target_ongoing_requests": 4,
-                "metrics_interval_s": 0.1,
                 "min_replicas": 0,
                 "max_replicas": 10,
                 "upscale_delay_s": 1,
@@ -353,7 +351,6 @@ class TestAutoscalingMetrics:
         @serve.deployment(
             autoscaling_config={
                 "target_ongoing_requests": 4,
-                "metrics_interval_s": 0.1,
                 "min_replicas": 0,
                 "max_replicas": 10,
                 "upscale_delay_s": 1,
@@ -411,7 +408,6 @@ def test_e2e_scale_up_down_basic(
 
     @serve.deployment(
         autoscaling_config={
-            "metrics_interval_s": 0.1,
             "min_replicas": min_replicas,
             "max_replicas": 3,
             "look_back_period_s": 0.2,
@@ -464,7 +460,6 @@ def test_e2e_scale_up_down_with_0_replica(
     controller = client._controller
 
     autoscaling_config = {
-        "metrics_interval_s": 0.1,
         "min_replicas": 0,
         "max_replicas": 2,
         "look_back_period_s": 0.2,
@@ -593,7 +588,6 @@ def test_e2e_bursty(serve_instance_with_signal, aggregation_function):
 
     @serve.deployment(
         autoscaling_config={
-            "metrics_interval_s": 0.1,
             "min_replicas": 1,
             "max_replicas": 2,
             "look_back_period_s": 0.5,
@@ -649,7 +643,7 @@ def test_e2e_bursty(serve_instance_with_signal, aggregation_function):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_e2e_intermediate_downscaling(serve_instance_with_signal):
+async def test_e2e_intermediate_downscaling(serve_instance_with_signal):
     """
     Scales up, then down, and up again.
     """
@@ -659,7 +653,6 @@ def test_e2e_intermediate_downscaling(serve_instance_with_signal):
 
     @serve.deployment(
         autoscaling_config={
-            "metrics_interval_s": 0.1,
             "min_replicas": 0,
             "max_replicas": 20,
             "look_back_period_s": 0.2,
@@ -681,20 +674,22 @@ def test_e2e_intermediate_downscaling(serve_instance_with_signal):
     )
     start_time = get_deployment_start_time(controller, "A")
 
-    [handle.remote() for _ in range(50)]
+    calls = [handle.remote() for _ in range(50)]
 
     wait_for_condition(check_num_replicas_gte, name="A", target=20, timeout=30)
     signal.send.remote()
 
     wait_for_condition(check_num_replicas_lte, name="A", target=1, timeout=30)
     signal.send.remote(clear=True)
+    await gather(*calls)
 
-    [handle.remote() for _ in range(50)]
+    calls = [handle.remote() for _ in range(50)]
     wait_for_condition(check_num_replicas_gte, name="A", target=20, timeout=30)
 
     signal.send.remote()
     # As the queue is drained, we should scale back down.
     wait_for_condition(check_num_replicas_eq, name="A", target=0, timeout=30)
+    await gather(*calls)
 
     # Make sure start time did not change for the deployment
     assert get_deployment_start_time(controller, "A") == start_time
@@ -716,7 +711,6 @@ def test_downscaling_with_fractional_scaling_factor(
             {
                 "name": "A",
                 "autoscaling_config": {
-                    "metrics_interval_s": 0.1,
                     "min_replicas": 0,
                     "max_replicas": 5,
                     "initial_replicas": initial_replicas,
@@ -778,7 +772,6 @@ def test_e2e_update_autoscaling_deployment(serve_instance_with_signal):
             {
                 "name": "A",
                 "autoscaling_config": {
-                    "metrics_interval_s": 0.1,
                     "min_replicas": 0,
                     "max_replicas": 10,
                     "look_back_period_s": 0.2,
@@ -867,7 +860,6 @@ def test_e2e_raise_min_replicas(serve_instance_with_signal):
             {
                 "name": "A",
                 "autoscaling_config": {
-                    "metrics_interval_s": 0.1,
                     "min_replicas": 0,
                     "max_replicas": 10,
                     "look_back_period_s": 0.2,
@@ -964,7 +956,6 @@ def test_e2e_preserve_prev_replicas(serve_instance_with_signal):
             max_replicas=2,
             downscale_delay_s=600,
             upscale_delay_s=0,
-            metrics_interval_s=1,
             look_back_period_s=1,
         ),
     )
@@ -1028,7 +1019,6 @@ def test_e2e_preserve_prev_replicas(serve_instance_with_signal):
             max_replicas=5,
             downscale_delay_s=600,
             upscale_delay_s=600,
-            metrics_interval_s=1,
             look_back_period_s=1,
         )
     )
@@ -1153,7 +1143,6 @@ def test_max_ongoing_requests_set_to_one(serve_instance_with_signal):
             max_replicas=3,
             upscale_delay_s=0.5,
             downscale_delay_s=0.5,
-            metrics_interval_s=0.5,
             look_back_period_s=2,
         ),
         max_ongoing_requests=1,

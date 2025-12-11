@@ -503,6 +503,12 @@ py_test_module_list(
 
 py_test_module_list(
     size = "small",
+    env = {
+        # Speed up Serve replica and handle autoscaling metrics pushes,
+        # so that we can test autoscaling more quickly.
+        "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
+        "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
+    },
     files = [
         "accelerators/test_accelerators.py",
         "accelerators/test_amd_gpu.py",
