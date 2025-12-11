@@ -47,32 +47,6 @@ class ThresholdMemoryMonitor : public MemoryMonitor {
                          uint64_t monitor_interval_ms);
 
  private:
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestThresholdOneMonitorAlwaysBelowThreshold);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestUsageAtThresholdReportsFalse);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestCgroupFilesValidReturnsWorkingSet);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestCgroupFilesValidKeyLastReturnsWorkingSet);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestCgroupFilesValidNegativeWorkingSet);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestCgroupFilesValidMissingFieldReturnskNull);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestCgroupNonexistentStatFileReturnskNull);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestCgroupNonexistentUsageFileReturnskNull);
-  FRIEND_TEST(ThresholdMemoryMonitorTest,
-              TestMonitorPeriodSetMaxUsageThresholdCallbackExecuted);
-  FRIEND_TEST(ThresholdMemoryMonitorTest,
-              TestMonitorPeriodDisableMinMemoryCallbackExecuted);
-  FRIEND_TEST(ThresholdMemoryMonitorTest,
-              TestGetMemoryThresholdTakeGreaterOfTheTwoValues);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestGetPidsFromDirOnlyReturnsNumericFilenames);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestGetPidsFromNonExistentDirReturnsEmpty);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestGetCommandLinePidExistReturnsValid);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestShortStringNotTruncated);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestLongStringTruncated);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestTopNLessThanNReturnsMemoryUsedDesc);
-  FRIEND_TEST(ThresholdMemoryMonitorTest, TestTopNMoreThanNReturnsAllDesc);
-
   /// The computed threshold in bytes based on usage_threshold_ and
   /// min_memory_free_bytes_.
   int64_t computed_threshold_bytes_;
