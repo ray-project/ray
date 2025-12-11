@@ -153,6 +153,7 @@ py_test_module_list(
     },
     files = [
         "test_fastapi.py",
+        "test_fastapi_2.py",
         "test_gcs_failure.py",
         "test_gradio.py",
         "test_replica_ranks.py",
