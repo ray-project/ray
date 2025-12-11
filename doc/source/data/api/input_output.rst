@@ -244,6 +244,35 @@ Delta Lake
 Lance
 -----
 
+.. note::
+
+   Lance support in Ray is provided by the external ``lance-ray`` connector,
+   which is maintained by the Lance project and provides a richer feature
+   set (catalog integration, data evolution, etc.). The built-in
+   :func:`ray.data.read_lance` and :meth:`ray.data.Dataset.write_lance`
+   keep the same Ray Data API, but now delegate to
+   ``lance_ray.read_lance``/``lance_ray.write_lance``. Install the
+   connector before using them:
+
+   .. code-block:: bash
+
+      pip install lance-ray
+
+   .. code-block:: python
+
+      import ray
+
+      ray.init()
+      data = ray.data.range(1000).map(
+          lambda row: {"id": row["id"], "value": row["id"] * 2}
+      )
+
+      data.write_lance("my_dataset.lance")
+      ds = ray.data.read_lance("my_dataset.lance")
+
+   See the `Lance-Ray documentation <https://lance.org/integrations/ray/>`_
+   for full API details.
+
 .. autosummary::
    :nosignatures:
    :toctree: doc/
