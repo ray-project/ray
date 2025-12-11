@@ -476,7 +476,7 @@ class Test(dict):
     def get_ray_version(self) -> Optional[str]:
         """
         Returns the Ray version to use from DockerHub if specified in cluster config.
-        If set, this will use released Ray images like anyscale/ray:2.50.0-py39-cpu
+        If set, this will use released Ray images like anyscale/ray:2.50.0-py310-cpu
         instead of building custom BYOD images.
         """
         return self["cluster"].get("ray_version", None)
