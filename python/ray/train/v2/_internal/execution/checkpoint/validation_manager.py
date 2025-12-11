@@ -102,7 +102,6 @@ class ValidationManager(ControllerCallback, ReportCallback):
     def _kick_off_validations(self) -> int:
         """Kick off validations and return the number of pending validations."""
         # TODO: figure out where to place run_validate_fn task:
-        # head node is faster but want to avoid putting too much there
         # TODO: provide option to run this on gpu?
         num_validations_to_start = max(
             MAX_IN_FLIGHT_VALIDATIONS - len(self._pending_validations), 0
