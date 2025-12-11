@@ -27,50 +27,9 @@
 namespace ray {
 
 MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
-                             float usage_threshold,
-                             int64_t min_memory_free_bytes,
-                             uint64_t monitor_interval_ms,
-                             MemoryUsageRefreshCallback monitor_callback)
-    : usage_threshold_(usage_threshold),
-      min_memory_free_bytes_(min_memory_free_bytes),
-      monitor_callback_(monitor_callback),
-      runner_(PeriodicalRunner::Create(io_service)) {
-  RAY_CHECK(monitor_callback_ != nullptr);
-  RAY_CHECK_GE(usage_threshold_, 0);
-  RAY_CHECK_LE(usage_threshold_, 1);
-  if (monitor_interval_ms > 0) {
-#ifdef __linux__
-    auto [used_memory_bytes, total_memory_bytes] = GetMemoryBytes();
-    computed_threshold_bytes_ =
-        GetMemoryThreshold(total_memory_bytes, usage_threshold_, min_memory_free_bytes_);
-    computed_threshold_fraction_ = float(computed_threshold_bytes_) / total_memory_bytes;
-    RAY_LOG(INFO) << "MemoryMonitor initialized with usage threshold at "
-                  << computed_threshold_bytes_ << " bytes ("
-                  << absl::StrFormat("%.2f", computed_threshold_fraction_)
-                  << " system memory), total system memory bytes: " << total_memory_bytes;
-    runner_->RunFnPeriodically(
-        [this] {
-          auto [used_mem_bytes, total_mem_bytes] = GetMemoryBytes();
-          MemorySnapshot system_memory;
-          system_memory.used_bytes = used_mem_bytes;
-          system_memory.total_bytes = total_mem_bytes;
-
-          bool is_usage_above_threshold =
-              IsUsageAboveThreshold(system_memory, computed_threshold_bytes_);
-
-          monitor_callback_(
-              is_usage_above_threshold, system_memory, computed_threshold_fraction_);
-        },
-        monitor_interval_ms,
-        "MemoryMonitor.CheckIsMemoryUsageAboveThreshold");
-#else
-    RAY_LOG(WARNING) << "Not running MemoryMonitor. It is currently supported "
-                     << "only on Linux.";
-#endif
-  } else {
-    RAY_LOG(INFO) << "MemoryMonitor disabled. Specify "
-                  << "`memory_monitor_refresh_ms` > 0 to enable the monitor.";
-  }
+                             KillWorkersCallback kill_workers_callback)
+    : io_service_(io_service), kill_workers_callback_(kill_workers_callback) {
+  RAY_CHECK(kill_workers_callback_ != nullptr);
 }
 
 bool MemoryMonitor::IsUsageAboveThreshold(MemorySnapshot system_memory,
@@ -96,9 +55,6 @@ bool MemoryMonitor::IsUsageAboveThreshold(MemorySnapshot system_memory,
 
 std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
   auto [cgroup_used_bytes, cgroup_total_bytes] = GetCGroupMemoryBytes();
-#ifndef __linux__
-  RAY_CHECK(false) << "Memory monitor currently supports only linux";
-#endif
   auto [system_used_bytes, system_total_bytes] = GetLinuxMemoryBytes();
   /// cgroup memory limit can be higher than system memory limit when it is
   /// not used. We take its value only when it is less than or equal to system memory

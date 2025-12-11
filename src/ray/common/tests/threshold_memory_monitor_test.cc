@@ -12,26 +12,137 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/memory_monitor.h"
+#include "ray/common/threshold_memory_monitor.h"
 
+#include <sys/mman.h>
 #include <sys/sysinfo.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
+#include <atomic>
 #include <boost/filesystem.hpp>
 #include <boost/thread/latch.hpp>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <memory>
 #include <string>
+#include <thread>
 #include <utility>
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
+#include "ray/common/memory_monitor.h"
 #include "ray/util/process.h"
+
+namespace {
+
+/// Helper class to spawn a child process that consumes a specified fraction of system
+/// memory. The memory is allocated using mmap with MAP_POPULATE to ensure pages are
+/// actually committed.
+class MemoryHog {
+ public:
+  /// Spawns a child process that allocates the specified fraction of total system memory.
+  /// \param memory_fraction Fraction of total system memory to allocate
+  explicit MemoryHog(float memory_fraction) : child_pid_(-1) {
+    struct sysinfo info;
+    if (sysinfo(&info) != 0) {
+      return;
+    }
+
+    int64_t total_memory = static_cast<int64_t>(info.totalram) * info.mem_unit;
+    allocation_size_ = static_cast<size_t>(total_memory * memory_fraction);
+
+    // Create a pipe to signal when child has allocated memory
+    int pipefd[2];
+    if (pipe(pipefd) != 0) {
+      return;
+    }
+
+    child_pid_ = fork();
+    if (child_pid_ == 0) {
+      // Child process: allocate memory and wait to be killed
+      close(pipefd[0]);  // Close read end
+
+      // Allocate memory using mmap with MAP_POPULATE to actually commit the pages
+      void *mem = mmap(nullptr,
+                       allocation_size_,
+                       PROT_READ | PROT_WRITE,
+                       MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE,
+                       -1,
+                       0);
+
+      if (mem != MAP_FAILED) {
+        // Touch every page to ensure memory is really allocated
+        volatile char *ptr = static_cast<volatile char *>(mem);
+        for (size_t i = 0; i < allocation_size_; i += 4096) {
+          ptr[i] = 1;
+        }
+
+        // Signal parent that memory is allocated
+        char ready = 1;
+        if (write(pipefd[1], &ready, 1) < 0) {
+          _exit(1);
+        }
+        close(pipefd[1]);
+
+        // Sleep until killed
+        while (true) {
+          sleep(1);
+        }
+      }
+      _exit(1);
+    } else if (child_pid_ > 0) {
+      // Parent process: wait for child to signal it's ready
+      close(pipefd[1]);  // Close write end
+
+      char ready = 0;
+      // Wait for child to signal memory allocation is complete
+      fd_set readfds;
+      FD_ZERO(&readfds);
+      FD_SET(pipefd[0], &readfds);
+      struct timeval timeout;
+      timeout.tv_sec = 30;  // 30 second timeout
+      timeout.tv_usec = 0;
+
+      if (select(pipefd[0] + 1, &readfds, nullptr, nullptr, &timeout) > 0) {
+        if (read(pipefd[0], &ready, 1) < 0) {
+          ready = 0;
+        }
+      }
+      close(pipefd[0]);
+
+      if (ready != 1) {
+        // Child failed to allocate memory, clean up
+        if (child_pid_ > 0) {
+          kill(child_pid_, SIGKILL);
+          waitpid(child_pid_, nullptr, 0);
+        }
+        child_pid_ = -1;
+      }
+    }
+  }
+
+  ~MemoryHog() {
+    if (child_pid_ > 0) {
+      kill(child_pid_, SIGKILL);
+      waitpid(child_pid_, nullptr, 0);
+    }
+  }
+
+  bool IsValid() const { return child_pid_ > 0; }
+
+ private:
+  pid_t child_pid_;
+  size_t allocation_size_;
+};
+
+}  // namespace
 
 namespace ray {
 
-class MemoryMonitorTest : public ::testing::Test {
+class ThresholdMemoryMonitorTest : public ::testing::Test {
  protected:
   void SetUp() override {
     thread_ = std::make_unique<std::thread>([this]() {
@@ -63,60 +174,57 @@ class MemoryMonitorTest : public ::testing::Test {
     usage_file.close();
   }
 
-  MemoryMonitor &MakeMemoryMonitor(float usage_threshold,
-                                   int64_t min_memory_free_bytes,
-                                   uint64_t monitor_interval_ms,
-                                   MemoryUsageRefreshCallback monitor_callback) {
-    instance = std::make_unique<MemoryMonitor>(io_context_,
-                                               usage_threshold,
-                                               min_memory_free_bytes,
-                                               monitor_interval_ms,
-                                               std::move(monitor_callback));
+  ThresholdMemoryMonitor &MakeThresholdMemoryMonitor(
+      float usage_threshold,
+      int64_t min_memory_free_bytes,
+      uint64_t monitor_interval_ms,
+      KillWorkersCallback kill_workers_callback) {
+    instance = std::make_unique<ThresholdMemoryMonitor>(io_context_,
+                                                        kill_workers_callback,
+                                                        usage_threshold,
+                                                        min_memory_free_bytes,
+                                                        monitor_interval_ms);
     return *instance;
   }
-  std::unique_ptr<MemoryMonitor> instance;
+  std::unique_ptr<ThresholdMemoryMonitor> instance;
 };
 
-TEST_F(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold) {
+TEST_F(ThresholdMemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold) {
   ASSERT_TRUE(MemoryMonitor::IsUsageAboveThreshold({1, 10}, 0));
 }
 
-TEST_F(MemoryMonitorTest, TestThresholdOneMonitorAlwaysBelowThreshold) {
+TEST_F(ThresholdMemoryMonitorTest, TestThresholdOneMonitorAlwaysBelowThreshold) {
   ASSERT_FALSE(MemoryMonitor::IsUsageAboveThreshold({9, 10}, 10));
 }
 
-TEST_F(MemoryMonitorTest, TestUsageAtThresholdReportsFalse) {
+TEST_F(ThresholdMemoryMonitorTest, TestUsageAtThresholdReportsFalse) {
   ASSERT_FALSE(MemoryMonitor::IsUsageAboveThreshold({4, 10}, 5));
   ASSERT_FALSE(MemoryMonitor::IsUsageAboveThreshold({5, 10}, 5));
   ASSERT_TRUE(MemoryMonitor::IsUsageAboveThreshold({6, 10}, 5));
 }
 
-TEST_F(MemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive) {
+TEST_F(ThresholdMemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive) {
   {
-    auto &monitor = MakeMemoryMonitor(
+    MakeThresholdMemoryMonitor(
         0 /*usage_threshold*/,
         -1 /*min_memory_free_bytes*/,
         0 /*refresh_interval_ms*/,
-        [](bool is_usage_above_threshold,
-           MemorySnapshot system_memory,
-           float usage_threshold) { FAIL() << "Expected monitor to not run"; });
-    auto [used_bytes, total_bytes] = monitor.GetMemoryBytes();
+        [](MemorySnapshot system_memory) { FAIL() << "Expected monitor to not run"; });
+    auto [used_bytes, total_bytes] = MemoryMonitor::GetMemoryBytes();
     ASSERT_GT(total_bytes, 0);
     ASSERT_GT(total_bytes, used_bytes);
   }
 }
 
-TEST_F(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup) {
+TEST_F(ThresholdMemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup) {
   {
-    auto &monitor = MakeMemoryMonitor(
+    MakeThresholdMemoryMonitor(
         0 /*usage_threshold*/,
         -1 /*min_memory_free_bytes*/,
         0 /*refresh_interval_ms*/,
-        [](bool is_usage_above_threshold,
-           MemorySnapshot system_memory,
-           float usage_threshold) { FAIL() << "Expected monitor to not run"; });
-    auto [used_bytes, total_bytes] = monitor.GetMemoryBytes();
-    auto [cgroup_used_bytes, cgroup_total_bytes] = monitor.GetCGroupMemoryBytes();
+        [](MemorySnapshot system_memory) { FAIL() << "Expected monitor to not run"; });
+    auto [used_bytes, total_bytes] = MemoryMonitor::GetMemoryBytes();
+    auto [cgroup_used_bytes, cgroup_total_bytes] = MemoryMonitor::GetCGroupMemoryBytes();
 
     auto cmd_out = Process::Exec("free -b");
     std::string title;
@@ -138,60 +246,56 @@ TEST_F(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup) {
   }
 }
 
-TEST_F(MemoryMonitorTest, TestMonitorPeriodSetMaxUsageThresholdCallbackExecuted) {
+TEST_F(ThresholdMemoryMonitorTest, TestMonitorTriggerCanDetectMemoryUsage) {
   std::shared_ptr<boost::latch> has_checked_once = std::make_shared<boost::latch>(1);
 
-  MakeMemoryMonitor(1 /*usage_threshold*/,
-                    -1 /*min_memory_free_bytes*/,
-                    1 /*refresh_interval_ms*/,
-                    [has_checked_once](bool is_usage_above_threshold,
-                                       MemorySnapshot system_memory,
-                                       float usage_threshold) {
-                      ASSERT_FLOAT_EQ(1.0f, usage_threshold);
-                      ASSERT_GT(system_memory.total_bytes, 0);
-                      ASSERT_GT(system_memory.used_bytes, 0);
-                      has_checked_once->count_down();
-                    });
+  MakeThresholdMemoryMonitor(0.0 /*usage_threshold*/,
+                             -1 /*min_memory_free_bytes*/,
+                             1 /*refresh_interval_ms*/,
+                             [has_checked_once](MemorySnapshot system_memory) {
+                               ASSERT_GT(system_memory.total_bytes, 0);
+                               ASSERT_GT(system_memory.used_bytes, 0);
+                               has_checked_once->count_down();
+                             });
   has_checked_once->wait();
 }
 
-TEST_F(MemoryMonitorTest, TestMonitorPeriodDisableMinMemoryCallbackExecuted) {
+// Expected to take around 30s or less to complete
+TEST_F(ThresholdMemoryMonitorTest, TestMonitorDetectsMemoryUsageAboveThreshold) {
+  MemoryHog memory_hog(0.30);
+  ASSERT_TRUE(memory_hog.IsValid()) << "Failed to spawn memory-consuming child process";
   std::shared_ptr<boost::latch> has_checked_once = std::make_shared<boost::latch>(1);
 
-  MakeMemoryMonitor(0.4 /*usage_threshold*/,
-                    -1 /*min_memory_free_bytes*/,
-                    1 /*refresh_interval_ms*/,
-                    [has_checked_once](bool is_usage_above_threshold,
-                                       MemorySnapshot system_memory,
-                                       float usage_threshold) {
-                      ASSERT_FLOAT_EQ(0.4f, usage_threshold);
-                      ASSERT_GT(system_memory.total_bytes, 0);
-                      ASSERT_GT(system_memory.used_bytes, 0);
-                      has_checked_once->count_down();
-                    });
+  MakeThresholdMemoryMonitor(0.2 /*usage_threshold*/,
+                             -1 /*min_memory_free_bytes*/,
+                             1 /*refresh_interval_ms*/,
+                             [has_checked_once](MemorySnapshot system_memory) {
+                               ASSERT_GT(system_memory.total_bytes, 0);
+                               ASSERT_GT(system_memory.used_bytes, 0);
+                               has_checked_once->count_down();
+                             });
 
   has_checked_once->wait();
+  // MemoryHog destructor will kill the child process
 }
 
-TEST_F(MemoryMonitorTest, TestMonitorMinFreeZeroThresholdIsOne) {
-  std::shared_ptr<boost::latch> has_checked_once = std::make_shared<boost::latch>(1);
+TEST_F(ThresholdMemoryMonitorTest, TestMonitorDoesNotTriggerWhenBelowThreshold) {
+  std::atomic<bool> callback_triggered{false};
 
-  MakeMemoryMonitor(0.4 /*usage_threshold*/,
-                    0 /*min_memory_free_bytes*/,
-                    1 /*refresh_interval_ms*/,
-                    [has_checked_once](bool is_usage_above_threshold,
-                                       MemorySnapshot system_memory,
-                                       float usage_threshold) {
-                      ASSERT_FLOAT_EQ(1.0f, usage_threshold);
-                      ASSERT_GT(system_memory.total_bytes, 0);
-                      ASSERT_GT(system_memory.used_bytes, 0);
-                      has_checked_once->count_down();
-                    });
+  MakeThresholdMemoryMonitor(0.4 /*usage_threshold*/,
+                             -1 /*min_memory_free_bytes*/,
+                             1 /*refresh_interval_ms*/,
+                             [&callback_triggered](MemorySnapshot system_memory) {
+                               callback_triggered.store(true);
+                             });
 
-  has_checked_once->wait();
+  std::this_thread::sleep_for(std::chrono::seconds(20));
+
+  ASSERT_FALSE(callback_triggered.load())
+      << "Callback should not have been triggered when memory is below threshold";
 }
 
-TEST_F(MemoryMonitorTest, TestCgroupFilesValidReturnsWorkingSet) {
+TEST_F(ThresholdMemoryMonitorTest, TestCgroupFilesValidReturnsWorkingSet) {
   std::string stat_file_name = UniqueID::FromRandom().Hex();
   std::ofstream stat_file;
   stat_file.open(stat_file_name);
@@ -220,7 +324,7 @@ TEST_F(MemoryMonitorTest, TestCgroupFilesValidReturnsWorkingSet) {
   ASSERT_EQ(used_bytes, 300 - 123 - 88);
 }
 
-TEST_F(MemoryMonitorTest, TestCgroupFilesValidKeyLastReturnsWorkingSet) {
+TEST_F(ThresholdMemoryMonitorTest, TestCgroupFilesValidKeyLastReturnsWorkingSet) {
   std::string stat_file_name = UniqueID::FromRandom().Hex();
   std::ofstream stat_file;
   stat_file.open(stat_file_name);
@@ -247,7 +351,7 @@ TEST_F(MemoryMonitorTest, TestCgroupFilesValidKeyLastReturnsWorkingSet) {
   ASSERT_EQ(used_bytes, 300 - 123 - 88);
 }
 
-TEST_F(MemoryMonitorTest, TestCgroupFilesValidNegativeWorkingSet) {
+TEST_F(ThresholdMemoryMonitorTest, TestCgroupFilesValidNegativeWorkingSet) {
   std::string stat_file_name = UniqueID::FromRandom().Hex();
   std::ofstream stat_file;
   stat_file.open(stat_file_name);
@@ -274,7 +378,7 @@ TEST_F(MemoryMonitorTest, TestCgroupFilesValidNegativeWorkingSet) {
   ASSERT_EQ(used_bytes, 123 - 300 - 100);
 }
 
-TEST_F(MemoryMonitorTest, TestCgroupFilesValidMissingFieldReturnskNull) {
+TEST_F(ThresholdMemoryMonitorTest, TestCgroupFilesValidMissingFieldReturnskNull) {
   std::string file_name = UniqueID::FromRandom().Hex();
   std::string stat_file_name = UniqueID::FromRandom().Hex();
   std::ofstream stat_file;
@@ -300,7 +404,7 @@ TEST_F(MemoryMonitorTest, TestCgroupFilesValidMissingFieldReturnskNull) {
   ASSERT_EQ(used_bytes, MemoryMonitor::kNull);
 }
 
-TEST_F(MemoryMonitorTest, TestCgroupNonexistentStatFileReturnskNull) {
+TEST_F(ThresholdMemoryMonitorTest, TestCgroupNonexistentStatFileReturnskNull) {
   std::string stat_file_name = UniqueID::FromRandom().Hex();
 
   std::string curr_file_name = UniqueID::FromRandom().Hex();
@@ -316,7 +420,7 @@ TEST_F(MemoryMonitorTest, TestCgroupNonexistentStatFileReturnskNull) {
   ASSERT_EQ(used_bytes, MemoryMonitor::kNull);
 }
 
-TEST_F(MemoryMonitorTest, TestCgroupNonexistentUsageFileReturnskNull) {
+TEST_F(ThresholdMemoryMonitorTest, TestCgroupNonexistentUsageFileReturnskNull) {
   std::string curr_file_name = UniqueID::FromRandom().Hex();
 
   std::string stat_file_name = UniqueID::FromRandom().Hex();
@@ -337,7 +441,7 @@ TEST_F(MemoryMonitorTest, TestCgroupNonexistentUsageFileReturnskNull) {
   ASSERT_EQ(used_bytes, MemoryMonitor::kNull);
 }
 
-TEST_F(MemoryMonitorTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues) {
+TEST_F(ThresholdMemoryMonitorTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues) {
   ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 0.5, 0), 100);
   ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 0.5, 60), 50);
 
@@ -353,7 +457,7 @@ TEST_F(MemoryMonitorTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues) {
   ASSERT_EQ(MemoryMonitor::GetMemoryThreshold(100, 1, MemoryMonitor::kNull), 100);
 }
 
-TEST_F(MemoryMonitorTest, TestGetPidsFromDirOnlyReturnsNumericFilenames) {
+TEST_F(ThresholdMemoryMonitorTest, TestGetPidsFromDirOnlyReturnsNumericFilenames) {
   std::string proc_dir = UniqueID::FromRandom().Hex();
   boost::filesystem::create_directory(proc_dir);
 
@@ -370,7 +474,7 @@ TEST_F(MemoryMonitorTest, TestGetPidsFromDirOnlyReturnsNumericFilenames) {
   non_num_file << non_num_filename;
   non_num_file.close();
 
-  auto pids = MemoryMonitor::GetPidsFromDir(proc_dir);
+  auto pids = ThresholdMemoryMonitor::GetPidsFromDir(proc_dir);
 
   boost::filesystem::remove_all(proc_dir);
 
@@ -378,35 +482,35 @@ TEST_F(MemoryMonitorTest, TestGetPidsFromDirOnlyReturnsNumericFilenames) {
   ASSERT_EQ(pids[0], 123);
 }
 
-TEST_F(MemoryMonitorTest, TestGetPidsFromNonExistentDirReturnsEmpty) {
+TEST_F(ThresholdMemoryMonitorTest, TestGetPidsFromNonExistentDirReturnsEmpty) {
   std::string proc_dir = UniqueID::FromRandom().Hex();
-  auto pids = MemoryMonitor::GetPidsFromDir(proc_dir);
+  auto pids = ThresholdMemoryMonitor::GetPidsFromDir(proc_dir);
   ASSERT_EQ(pids.size(), 0);
 }
 
-TEST_F(MemoryMonitorTest, TestGetCommandLinePidExistReturnsValid) {
+TEST_F(ThresholdMemoryMonitorTest, TestGetCommandLinePidExistReturnsValid) {
   std::string proc_dir = UniqueID::FromRandom().Hex();
   std::string pid_dir = proc_dir + "/123";
   boost::filesystem::create_directories(pid_dir);
 
-  std::string cmdline_filename = pid_dir + "/" + MemoryMonitor::kCommandlinePath;
+  std::string cmdline_filename = pid_dir + "/" + ThresholdMemoryMonitor::kCommandlinePath;
 
   std::ofstream cmdline_file;
   cmdline_file.open(cmdline_filename);
   cmdline_file << "/my/very/custom/command --test passes!     ";
   cmdline_file.close();
 
-  std::string commandline = MemoryMonitor::GetCommandLineForPid(123, proc_dir);
+  std::string commandline = ThresholdMemoryMonitor::GetCommandLineForPid(123, proc_dir);
 
   boost::filesystem::remove_all(proc_dir);
 
   ASSERT_EQ(commandline, "/my/very/custom/command --test passes!");
 }
 
-TEST_F(MemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty) {
+TEST_F(ThresholdMemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty) {
   {
     std::string proc_dir = UniqueID::FromRandom().Hex();
-    std::string commandline = MemoryMonitor::GetCommandLineForPid(123, proc_dir);
+    std::string commandline = ThresholdMemoryMonitor::GetCommandLineForPid(123, proc_dir);
     boost::filesystem::remove_all(proc_dir);
     ASSERT_EQ(commandline, "");
   }
@@ -414,7 +518,7 @@ TEST_F(MemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty) {
   {
     std::string proc_dir = UniqueID::FromRandom().Hex();
     boost::filesystem::create_directory(proc_dir);
-    std::string commandline = MemoryMonitor::GetCommandLineForPid(123, proc_dir);
+    std::string commandline = ThresholdMemoryMonitor::GetCommandLineForPid(123, proc_dir);
     boost::filesystem::remove_all(proc_dir);
     ASSERT_EQ(commandline, "");
   }
@@ -423,29 +527,29 @@ TEST_F(MemoryMonitorTest, TestGetCommandLineMissingFileReturnsEmpty) {
     std::string proc_dir = UniqueID::FromRandom().Hex();
     std::string pid_dir = proc_dir + "/123";
     boost::filesystem::create_directories(pid_dir);
-    std::string commandline = MemoryMonitor::GetCommandLineForPid(123, proc_dir);
+    std::string commandline = ThresholdMemoryMonitor::GetCommandLineForPid(123, proc_dir);
     boost::filesystem::remove_all(proc_dir);
     ASSERT_EQ(commandline, "");
   }
 }
 
-TEST_F(MemoryMonitorTest, TestShortStringNotTruncated) {
-  std::string out = MemoryMonitor::TruncateString("im short", 20);
+TEST_F(ThresholdMemoryMonitorTest, TestShortStringNotTruncated) {
+  std::string out = ThresholdMemoryMonitor::TruncateString("im short", 20);
   ASSERT_EQ(out, "im short");
 }
 
-TEST_F(MemoryMonitorTest, TestLongStringTruncated) {
-  std::string out = MemoryMonitor::TruncateString(std::string(7, 'k'), 5);
+TEST_F(ThresholdMemoryMonitorTest, TestLongStringTruncated) {
+  std::string out = ThresholdMemoryMonitor::TruncateString(std::string(7, 'k'), 5);
   ASSERT_EQ(out, "kkkkk...");
 }
 
-TEST_F(MemoryMonitorTest, TestTopNLessThanNReturnsMemoryUsedDesc) {
+TEST_F(ThresholdMemoryMonitorTest, TestTopNLessThanNReturnsMemoryUsedDesc) {
   absl::flat_hash_map<pid_t, int64_t> usage;
   usage.insert({1, 111});
   usage.insert({2, 222});
   usage.insert({3, 333});
 
-  auto list = MemoryMonitor::GetTopNMemoryUsage(2, usage);
+  auto list = ThresholdMemoryMonitor::GetTopNMemoryUsage(2, usage);
 
   ASSERT_EQ(list.size(), 2);
   ASSERT_EQ(std::get<0>(list[0]), 3);
@@ -454,12 +558,12 @@ TEST_F(MemoryMonitorTest, TestTopNLessThanNReturnsMemoryUsedDesc) {
   ASSERT_EQ(std::get<1>(list[1]), 222);
 }
 
-TEST_F(MemoryMonitorTest, TestTopNMoreThanNReturnsAllDesc) {
+TEST_F(ThresholdMemoryMonitorTest, TestTopNMoreThanNReturnsAllDesc) {
   absl::flat_hash_map<pid_t, int64_t> usage;
   usage.insert({1, 111});
   usage.insert({2, 222});
 
-  auto list = MemoryMonitor::GetTopNMemoryUsage(3, usage);
+  auto list = ThresholdMemoryMonitor::GetTopNMemoryUsage(3, usage);
 
   ASSERT_EQ(list.size(), 2);
   ASSERT_EQ(std::get<0>(list[0]), 2);
@@ -468,7 +572,7 @@ TEST_F(MemoryMonitorTest, TestTopNMoreThanNReturnsAllDesc) {
   ASSERT_EQ(std::get<1>(list[1]), 111);
 }
 
-TEST_F(MemoryMonitorTest, TestGetProcessMemoryUsageFiltersBadPids) {
+TEST_F(ThresholdMemoryMonitorTest, TestGetProcessMemoryUsageFiltersBadPids) {
   std::string proc_dir = UniqueID::FromRandom().Hex();
   MakeMemoryUsage(1, "111", proc_dir);
 
@@ -476,7 +580,7 @@ TEST_F(MemoryMonitorTest, TestGetProcessMemoryUsageFiltersBadPids) {
   boost::filesystem::create_directory(proc_dir + "/2");
   boost::filesystem::create_directory(proc_dir + "/3");
 
-  auto usage = MemoryMonitor::GetProcessMemoryUsage(proc_dir);
+  auto usage = ThresholdMemoryMonitor::GetProcessMemoryUsage(proc_dir);
 
   ASSERT_EQ(usage.size(), 1);
   ASSERT_TRUE(usage.contains(1));
