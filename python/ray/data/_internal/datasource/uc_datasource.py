@@ -95,11 +95,16 @@ class UnityCatalogConnector:
                 sas_token = sas_token[1:]
             if sas_token:
                 env_vars["AZURE_STORAGE_SAS_TOKEN"] = sas_token
-            if azure.get("storage_account"):
-                env_vars.setdefault("AZURE_STORAGE_ACCOUNT", azure["storage_account"])
-                env_vars.setdefault(
-                    "AZURE_STORAGE_ACCOUNT_NAME", azure["storage_account"]
+            else:
+                known_keys = ", ".join(azure.keys())
+                raise ValueError(
+                    "Azure UC credentials missing SAS token in azure_user_delegation_sas. "
+                    f"Available keys: {known_keys}"
                 )
+            storage_account = azure.get("storage_account")
+            if storage_account:
+                env_vars["AZURE_STORAGE_ACCOUNT"] = storage_account
+                env_vars["AZURE_STORAGE_ACCOUNT_NAME"] = storage_account
         elif "gcp_service_account" in creds:
             gcp_json = creds["gcp_service_account"]
             temp_file = tempfile.NamedTemporaryFile(
