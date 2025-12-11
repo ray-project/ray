@@ -707,6 +707,11 @@ def run_rllib_example_script_experiment(
             f"Running the example script resulted in one or more errors! {errors}"
         )
 
+    print(f'{args.as_test=}, {args.as_release_test=}')
+    print(f'{os.environ=}')
+    print("TEST_OUTPUT_JSON:", os.environ.get("TEST_OUTPUT_JSON", "MISSING!!!"))
+    print("METRICS_OUTPUT_JSON:", os.environ.get("METRICS_OUTPUT_JSON", "MISSING!!!"))
+
     # If run as a test, check whether we reached the specified success criteria.
     test_passed = False
     if args.as_test:
