@@ -21,7 +21,8 @@ def dispatch(
     """
     Dispatches a method call to all replicas of the given handle.
 
-    This is useful for dispatching a control plane message such as kv-cache reset or weight update to all replicas of the given handle.
+    This is useful for dispatching a control plane message such as kv-cache
+    reset or weight update to all replicas of the given handle.
 
     Args:
         handle: The DeploymentHandle to dispatch to.
@@ -32,7 +33,12 @@ def dispatch(
                 or a callable that takes the replica object and returns kwargs.
         combine: An optional callable that takes the list of results from all
             replicas and the method name and returns an aggregated result.
-            If not provided, returns the list of results. The default combine function is to return the list of results.
+            If not provided, returns the list of results. The default combine
+            function is to return the list of results.
+
+    Returns:
+        The result of the method call to all replicas. If combine is provided,
+        returns the aggregated result. Otherwise, returns the list of results.
     """
     if args is None:
         args = ()
