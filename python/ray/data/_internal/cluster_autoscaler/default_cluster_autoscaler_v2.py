@@ -65,9 +65,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         termination.
 
     Notes:
-      * For now, we assume GPUs are only used by actor pools. So cluster autoscaling
-        doesn't need to consider GPU nodes. GPU nodes will scale up as the actor
-        pools that require GPUs scale up.
       * It doesn't consider multiple concurrent Datasets for now, as the cluster
         utilization is calculated by "dataset_usage / global_resources".
     """
