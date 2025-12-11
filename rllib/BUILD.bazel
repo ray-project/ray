@@ -3142,6 +3142,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
