@@ -37,7 +37,6 @@ def _extract_map_component(
     child_array = None
 
     # Case 1: MapArray
-    # Standard MapArray exposes properties to get flat key/item arrays.
     if isinstance(arr, pyarrow.MapArray):
         if component == MapComponent.KEYS:
             child_array = arr.keys
@@ -54,8 +53,7 @@ def _extract_map_component(
             idx = 0 if component == MapComponent.KEYS else 1
             child_array = flat_values.field(idx)
 
-    # Case 3: Fall back
-    # If structure is unknown (e.g. FixedSizeList), attempt to cast to strict MapType.
+    # Case 3: If structure is unknown (e.g. FixedSizeList), attempt to cast to strict MapType.
     if child_array is None:
         try:
             inner_type = arr.type.value_type
@@ -80,21 +78,51 @@ def _extract_map_component(
 
 @dataclass
 class _MapNamespace:
-    """Namespace for map/dict operations on expression columns."""
+    """Namespace for map operations on expression columns.
+
+    This namespace provides methods for operating on map-typed columns
+    (including MapArrays and ListArrays of Structs) using PyArrow UDFs.
+
+    Example:
+        >>> from ray.data.expressions import col
+        >>> # Get keys from map column
+        >>> expr = col("headers").map.keys()
+        >>> # Get values from map column
+        >>> expr = col("headers").map.values()
+    """
 
     _expr: "Expr"
 
     def keys(self) -> "UDFExpr":
+        """Returns a list expression containing the keys of the map.
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> # Get keys from map column
+            >>> expr = col("headers").map.keys()
+
+        Returns:
+            A list expression containing the keys.
+        """
         return self._create_projection_udf(MapComponent.KEYS)
 
     def values(self) -> "UDFExpr":
+        """Returns a list expression containing the values of the map.
+
+        Example:
+            >>> from ray.data.expressions import col
+            >>> # Get values from map column
+            >>> expr = col("headers").map.values()
+
+        Returns:
+            A list expression containing the values.
+        """
         return self._create_projection_udf(MapComponent.VALUES)
 
     def _create_projection_udf(self, component: MapComponent) -> "UDFExpr":
         """Helper to generate UDFs for map projections."""
 
-        # --- Type Inference ---
-        return_dtype = DataType(object)  # Default fallback
+        return_dtype = DataType(object)
         if self._expr.data_type.is_arrow_type():
             arrow_type = self._expr.data_type.to_arrow_dtype()
 
@@ -118,7 +146,6 @@ class _MapNamespace:
             if inner_arrow_type:
                 return_dtype = DataType.list(DataType.from_arrow(inner_arrow_type))
 
-        # UDF Definition
         @pyarrow_udf(return_dtype=return_dtype)
         def _project_map(arr: pyarrow.Array) -> pyarrow.Array:
             return _extract_map_component(arr, component)
