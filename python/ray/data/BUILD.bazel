@@ -1074,6 +1074,21 @@ py_test(
 )
 
 py_test(
+    name = "test_tensorflow_datasets",
+    size = "small",
+    srcs = ["tests/test_tensorflow_datasets.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+        "tensorflow_datasets",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_execution_optimizer_limit_pushdown",
     size = "medium",
     srcs = ["tests/test_execution_optimizer_limit_pushdown.py"],
@@ -1583,6 +1598,20 @@ py_test(
     name = "test_autoscaler",
     size = "small",
     srcs = ["tests/test_autoscaler.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_autoscaling_coordinator",
+    size = "medium",
+    srcs = ["tests/test_autoscaling_coordinator.py"],
     tags = [
         "exclusive",
         "team:data",
