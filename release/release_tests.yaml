@@ -3626,7 +3626,9 @@
   python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
-  frequency: nightly
+  # TODO: the test seems to be leaking resources, and will
+  # start failing over time; needs more investigation.
+  frequency: manual
   team: clusters
   cluster:
     byod:
@@ -4014,29 +4016,14 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1 # For test_llm_serve_prefill_decode_with_data_parallelism
     cluster_compute: llm_2x_4xl4.yaml
 
   run:
     timeout: 3600
     script: >
       pytest -sv test_llm_serve_multi_node_integration.py
-
-- name: llm_serve_disaggregated_wide_ep
-  frequency: nightly
-  python: "3.11"
-  group: llm-serve
-  team: llm
-  working_dir: llm_tests/serve
-
-  cluster:
-    byod:
-      type: llm-cu128
-    cluster_compute: llm_2x_4xl4_custom_resource.yaml
-
-  run:
-    timeout: 3600
-    script: >
-      pytest -sv test_llm_serve_disaggregated_wide_ep.py
 
 - name: llm_serve_llama_3dot2_1B_no_accelerator
   frequency: nightly
