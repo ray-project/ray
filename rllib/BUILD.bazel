@@ -28,8 +28,6 @@
 
 # - Algorithm tests, tagged "algorithms_dir".
 
-# - Tests directory (everything in rllib/tests/...), tagged: "tests_dir"
-
 # - Examples directory (everything in rllib/examples/...), tagged: "examples"
 
 # - Memory leak tests tagged "memory_leak_tests".
@@ -1969,7 +1967,7 @@ py_test(
     tags = [
         "exclusive",
         "team:rllib",
-        "tests_dir",
+        "algorithms_dir",
     ],
 )
 
@@ -2300,7 +2298,7 @@ py_test(
     srcs = ["env/tests/test_multi_agent_env.py"],
     tags = [
         "team:rllib",
-        "tests_dir",
+        "env",
     ],
 )
 
