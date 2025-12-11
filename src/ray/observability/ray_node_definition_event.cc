@@ -19,14 +19,14 @@ namespace observability {
 
 RayNodeDefinitionEvent::RayNodeDefinitionEvent(const rpc::GcsNodeInfo &data,
                                                const std::string &session_name,
-                                               const NodeID &node_id)
+                                               const NodeID &local_node_id)
     : RayEvent<rpc::events::NodeDefinitionEvent>(
           rpc::events::RayEvent::GCS,
           rpc::events::RayEvent::NODE_DEFINITION_EVENT,
           rpc::events::RayEvent::INFO,
           "",
           session_name,
-          node_id) {
+          local_node_id) {
   data_.set_node_id(data.node_id());
   data_.set_node_ip_address(data.node_manager_address());
   data_.mutable_start_timestamp()->CopyFrom(

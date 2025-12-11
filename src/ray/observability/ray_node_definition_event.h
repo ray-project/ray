@@ -27,7 +27,7 @@ class RayNodeDefinitionEvent : public RayEvent<rpc::events::NodeDefinitionEvent>
  public:
   RayNodeDefinitionEvent(const rpc::GcsNodeInfo &data,
                          const std::string &session_name,
-                         const NodeID &node_id);
+                         const NodeID &local_node_id);
 
   std::string GetEntityId() const override;
 
