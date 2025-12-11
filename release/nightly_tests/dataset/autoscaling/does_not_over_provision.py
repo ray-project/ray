@@ -15,7 +15,7 @@ def main():
         return row
 
     with ClusterResourceMonitor() as monitor:
-        ray.data.range(512, override_num_blocks=512, concurrency=1).map(
+        ray.data.range(1024, override_num_blocks=1024, concurrency=1).map(
             sleep_task
         ).materialize()
 
