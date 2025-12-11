@@ -117,6 +117,11 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             each batch. The default value may not be optimal when the batch size
             or the batch processing latency is too small, but it should be good
             enough for batch size >= 64.
+        should_continue_on_error: If True, continue processing when inference fails for a row
+            instead of raising an exception. Failed rows will have a non-null
+            ``__inference_error__`` column containing the error message, and other
+            output columns will be None. Error rows bypass postprocess. If False
+            (default), any inference error will raise an exception.
         chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, and memory. Legacy ``apply_chat_template``
