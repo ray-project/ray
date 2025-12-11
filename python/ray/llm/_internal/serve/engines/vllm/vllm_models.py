@@ -80,6 +80,12 @@ class VLLMEngineConfig(BaseModelExtended):
         None,
         description="The type of accelerator to use. This is used to determine the placement group strategy.",
     )
+    use_cpu: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Whether to use CPU for model inference. If not set, Ray will try to infer based on the available GPU resources. If set to True the model will run on CPU."
+        ),
+    )
     placement_group_config: Optional[Dict[str, Any]] = Field(
         default=None,
         description=(
@@ -216,6 +222,7 @@ class VLLMEngineConfig(BaseModelExtended):
             hf_model_id=hf_model_id,
             mirror_config=mirror_config,
             accelerator_type=llm_config.accelerator_type,
+            use_cpu=llm_config.use_cpu,
             engine_kwargs=engine_kwargs,
             frontend_kwargs=frontend_kwargs,
             runtime_env=llm_config.runtime_env,
