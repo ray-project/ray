@@ -12,7 +12,7 @@ import pytest
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
-from ray.rllib.env.tests.conftest import (
+from conftest import (
     CallbackTracker,
     EnvToModuleConnectorTracker,
     ModuleToEnvConnectorTracker,
