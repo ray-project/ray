@@ -443,13 +443,17 @@ class _BatchQueue:
         """
         # NOTE: this semaphore caps the number of concurrent batches specified by `max_concurrent_batches`
         async with self.semaphore:
-            # Process all sub-batches concurrently
-            await asyncio.gather(
-                *[
-                    self._process_batch_inner(func, sub_batch)
-                    for sub_batch in sub_batches
-                ]
-            )
+            # Create tasks for each sub-batch. We use asyncio.create_task() instead
+            # of passing coroutines directly to asyncio.gather() because create_task
+            # copies the current context, giving each sub-batch its own isolated
+            # contextvars. This prevents concurrent sub-batches from overwriting
+            # each other's _serve_batch_request_context, which would cause
+            # get_multiplexed_model_id() to return wrong values.
+            tasks = [
+                asyncio.create_task(self._process_batch_inner(func, sub_batch))
+                for sub_batch in sub_batches
+            ]
+            await asyncio.gather(*tasks)
 
     async def _process_batch_inner(
         self, func: Callable, batch: List[_SingleRequest]

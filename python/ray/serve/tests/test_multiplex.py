@@ -711,6 +711,98 @@ def test_multiplexed_with_batching_same_model_batches_together(serve_instance):
     assert len(batch_sizes) == 1
 
 
+def test_multiplexed_batching_concurrent_subbatches_context_isolation(serve_instance):
+    # Two signals for two-phase synchronization
+    signal_barrier = SignalActor.remote()
+
+    @serve.deployment(num_replicas=1, max_ongoing_requests=100)
+    class ConcurrentBatchedModel:
+        def __init__(self):
+            self.model_id_readings = []
+
+        @serve.multiplexed(max_num_models_per_replica=5)
+        async def get_model(self, model_id: str):
+            return model_id
+
+        @serve.batch(max_batch_size=10, batch_wait_timeout_s=1.0)
+        async def batched_predict(self, inputs: List[str]):
+            # Phase 1: Wait at the barrier.
+            await signal_barrier.wait.remote()
+
+            # Phase 2: NOW read the model_id.
+            model_id_read = serve.get_multiplexed_model_id()
+
+            # Record for verification
+            self.model_id_readings.append(
+                {
+                    "model_id": model_id_read,
+                    "batch_size": len(inputs),
+                    "inputs": inputs,
+                }
+            )
+
+            return [f"{model_id_read}:{inp}" for inp in inputs]
+
+        async def __call__(self, request):
+            return await self.batched_predict(request)
+
+        def get_model_id_readings(self):
+            return self.model_id_readings
+
+    handle = serve.run(ConcurrentBatchedModel.bind())
+
+    # Send concurrent requests with different model IDs.
+    # These will be split into separate sub-batches and processed concurrently.
+    refs = []
+    model_ids = ["model_a", "model_b", "model_c"]
+    requests_per_model = 3
+
+    for model_id in model_ids:
+        for i in range(requests_per_model):
+            refs.append(
+                handle.options(multiplexed_model_id=model_id).remote(
+                    f"{model_id}_input_{i}"
+                )
+            )
+
+    # Wait for all sub-batches to be at the barrier
+    wait_for_condition(
+        lambda: ray.get(signal_barrier.cur_num_waiters.remote()) == len(model_ids)
+    )
+
+    # Release all sub-batches to read their model_id
+    ray.get(signal_barrier.send.remote())
+
+    # Collect results
+    results = [ref.result() for ref in refs]
+
+    # Verify each result has the correct model prefix
+    # With the bug, all results might have the same (wrong) model prefix
+    for i, result in enumerate(results):
+        expected_model = model_ids[i // requests_per_model]
+        assert result.startswith(f"{expected_model}:"), (
+            f"Expected result to start with '{expected_model}:', got '{result}'. "
+            "This indicates context isolation failure - a sub-batch read another "
+            "sub-batch's model_id because they share the same context."
+        )
+
+    # Verify model ID readings
+    readings = handle.get_model_id_readings.remote().result()
+
+    # Count how many different model_ids were read
+    read_model_ids = {r["model_id"] for r in readings}
+
+    # With the bug: all sub-batches read the same model_id (only 1 unique)
+    # With the fix: each sub-batch reads its own model_id (3 unique)
+    assert len(read_model_ids) == len(model_ids), (
+        f"Expected {len(model_ids)} different model_ids to be read, but got "
+        f"{len(read_model_ids)}: {read_model_ids}. "
+        f"This indicates context isolation failure - multiple sub-batches "
+        f"read the same model_id because they share context. "
+        f"Full readings: {readings}"
+    )
+
+
 if __name__ == "__main__":
     import sys
 
