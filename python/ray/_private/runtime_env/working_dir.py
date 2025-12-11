@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
+from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     Protocol,
@@ -22,7 +23,6 @@ from ray._private.runtime_env.packaging import (
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import (
     get_directory_size_bytes,
-    try_to_create_directory,
     try_to_symlink,
 )
 from ray._raylet import GcsClient

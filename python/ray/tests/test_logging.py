@@ -1,22 +1,29 @@
 import io
+import logging
 import os
 import re
 import subprocess
 import sys
-import tempfile
 import time
-import logging
 from collections import Counter, defaultdict
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Dict, List, Tuple
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import colorama
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
+from ray._private.log_monitor import (
+    LOG_NAME_UPDATE_INTERVAL_S,
+    RAY_LOG_MONITOR_MANY_FILES_THRESHOLD,
+    LogFileInfo,
+    LogMonitor,
+    is_proc_alive,
+)
 from ray._private.ray_constants import (
     PROCESS_TYPE_DASHBOARD,
     PROCESS_TYPE_DASHBOARD_AGENT,
@@ -25,31 +32,22 @@ from ray._private.ray_constants import (
     PROCESS_TYPE_MONITOR,
     PROCESS_TYPE_PYTHON_CORE_WORKER,
     PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
-    PROCESS_TYPE_RAYLET,
     PROCESS_TYPE_RAY_CLIENT_SERVER,
+    PROCESS_TYPE_RAYLET,
     PROCESS_TYPE_REAPER,
     PROCESS_TYPE_REDIS_SERVER,
     PROCESS_TYPE_RUNTIME_ENV_AGENT,
     PROCESS_TYPE_WORKER,
 )
-from ray._private.log_monitor import (
-    LOG_NAME_UPDATE_INTERVAL_S,
-    RAY_LOG_MONITOR_MANY_FILES_THRESHOLD,
-    LogFileInfo,
-    LogMonitor,
-    is_proc_alive,
-)
 from ray._private.test_utils import (
     get_log_batch,
-    get_log_message,
     get_log_data,
+    get_log_message,
     init_log_pubsub,
     run_string_as_driver,
-    wait_for_condition,
 )
-from ray.cross_language import java_actor_class
-from ray.autoscaler._private.cli_logger import cli_logger
 from ray._private.worker import print_worker_logs
+from ray.autoscaler._private.cli_logger import cli_logger
 
 
 def set_logging_config(monkeypatch, max_bytes, backup_count):
@@ -57,9 +55,9 @@ def set_logging_config(monkeypatch, max_bytes, backup_count):
     monkeypatch.setenv("RAY_ROTATION_BACKUP_COUNT", str(backup_count))
 
 
-def test_reopen_changed_inode(tmp_path):
+def test_reopen_changed_inode_seeks_on_non_empty_file(tmp_path):
     """Make sure that when we reopen a file because the inode has changed, we
-    open to the right location."""
+    open to the right location when the file has content."""
 
     path1 = tmp_path / "file"
     path2 = tmp_path / "changed_file"
@@ -83,6 +81,7 @@ def test_reopen_changed_inode(tmp_path):
     )
 
     file_info.reopen_if_necessary()
+    assert file_info.size_when_last_opened == os.path.getsize(path1)
     for _ in range(1000):
         file_info.file_handle.readline()
 
@@ -98,6 +97,56 @@ def test_reopen_changed_inode(tmp_path):
 
     assert file_info.file_position == orig_file_pos
     assert file_info.file_handle.tell() == orig_file_pos
+    assert file_info.size_when_last_opened == os.path.getsize(path1)
+
+
+def test_reopen_changed_inode_seeks_beginning_if_smaller(tmp_path):
+    """Test that after log rotation, we read from the beginning of the new file."""
+
+    original_log = tmp_path / "worker.log"
+
+    # Create original log file with content.
+    with open(original_log, "w") as f:
+        for i in range(100):
+            print(f"Log line {i}", file=f)
+
+    file_info = LogFileInfo(
+        filename=original_log,
+        size_when_last_opened=0,
+        file_position=0,
+        file_handle=None,
+        is_err_file=False,
+        job_id=None,
+        worker_pid=None,
+    )
+
+    # Start monitoring and read some lines
+    file_info.reopen_if_necessary()
+    for i in range(50):
+        line = file_info.file_handle.readline().strip()
+        assert line == f"Log line {i}".encode("utf-8")
+
+    assert file_info.size_when_last_opened == os.path.getsize(original_log)
+
+    # Save position
+    file_info.file_position = file_info.file_handle.tell()
+    file_info.file_handle.close()
+
+    # Simulate log rotation: move old file and create new one
+    os.rename(original_log, original_log.with_suffix(".log.1"))
+    with open(original_log, "w") as f:
+        print("New log line 0", file=f)
+
+    # Reopen after rotation
+    file_info.reopen_if_necessary()
+
+    # Should start from beginning of new file
+    line = file_info.file_handle.readline().strip()
+    assert line == b"New log line 0", f"Expected to read from beginning, got: '{line}'"
+    assert (
+        file_info.file_position == 0
+    ), f"Expected position 0, got: {file_info.file_position}"
+    assert file_info.size_when_last_opened == os.path.getsize(original_log)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
@@ -626,44 +675,6 @@ def test_segfault_stack_trace(ray_start_cluster, capsys):
     ), f"Python stack trace not found in stderr: {stderr}"
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32" or sys.platform == "darwin",
-    reason="TODO(simon): Failing on Windows and OSX.",
-)
-def test_log_java_worker_logs(shutdown_only, capsys):
-    tmp_dir = tempfile.mkdtemp()
-    print("using tmp_dir", tmp_dir)
-    with open(os.path.join(tmp_dir, "MyClass.java"), "w") as f:
-        f.write(
-            """
-public class MyClass {
-    public int printToLog(String line) {
-        System.err.println(line);
-        return 0;
-    }
-}
-        """
-        )
-    subprocess.check_call(["javac", "MyClass.java"], cwd=tmp_dir)
-    subprocess.check_call(["jar", "-cf", "myJar.jar", "MyClass.class"], cwd=tmp_dir)
-
-    ray.init(
-        job_config=ray.job_config.JobConfig(code_search_path=[tmp_dir]),
-    )
-
-    handle = java_actor_class("MyClass").remote()
-    ray.get(handle.printToLog.remote("here's my random line!"))
-
-    def check():
-        out, err = capsys.readouterr()
-        out += err
-        with capsys.disabled():
-            print(out)
-        return "here's my random line!" in out
-
-    wait_for_condition(check)
-
-
 """
 Unit testing log monitor.
 """
@@ -1063,7 +1074,6 @@ def test_ray_does_not_break_makeRecord():
         ("ray.serve", logging.INFO),
         ("ray.train", logging.INFO),
         ("ray.tune", logging.INFO),
-        ("ray.workflow", logging.INFO),
     ),
 )
 @pytest.mark.parametrize(

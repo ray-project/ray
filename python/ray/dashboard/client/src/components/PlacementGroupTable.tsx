@@ -15,11 +15,11 @@ import {
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
 import React, { useState } from "react";
+import { CodeDialogButtonWithPreview } from "../common/CodeDialogButton";
 import rowStyles from "../common/RowStyles";
 import { sliceToPage } from "../common/util";
 import { Bundle, PlacementGroup } from "../type/placementGroup";
 import { useFilter } from "../util/hook";
-import OverflowCollapsibleCell from "./OverflowCollapsibleCell";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 
@@ -30,12 +30,39 @@ const BundleResourceRequirements = ({
   sx?: SxProps<Theme>;
 }) => {
   const resources = bundles.map(({ unit_resources }) => unit_resources);
-  const resourceString =
-    resources.length === 0
-      ? "-"
-      : resources.map((resource) => JSON.stringify(resource)).join(", ");
+  return (
+    <React.Fragment>
+      {Object.entries(resources).length > 0 ? (
+        <CodeDialogButtonWithPreview
+          title="Required resources"
+          code={JSON.stringify(resources, undefined, 2)}
+        />
+      ) : (
+        "[]"
+      )}
+    </React.Fragment>
+  );
+};
 
-  return <OverflowCollapsibleCell text={resourceString} maxWidth={300} />;
+const LabelSelector = ({
+  bundles,
+}: {
+  bundles: Bundle[];
+  sx?: SxProps<Theme>;
+}) => {
+  const labelSelector = bundles.map(({ label_selector }) => label_selector);
+  return (
+    <React.Fragment>
+      {Object.entries(labelSelector).length > 0 ? (
+        <CodeDialogButtonWithPreview
+          title="Label selector"
+          code={JSON.stringify(labelSelector, undefined, 2)}
+        />
+      ) : (
+        "[]"
+      )}
+    </React.Fragment>
+  );
 };
 
 const PlacementGroupTable = ({
@@ -61,6 +88,7 @@ const PlacementGroupTable = ({
     { label: "Job Id" },
     { label: "State" },
     { label: "Reserved Resources" },
+    { label: "Label Selector" },
     { label: "Scheduling Detail" },
   ];
 
@@ -179,6 +207,9 @@ const PlacementGroupTable = ({
                   </TableCell>
                   <TableCell align="center">
                     <BundleResourceRequirements bundles={bundles} />
+                  </TableCell>
+                  <TableCell align="center">
+                    <LabelSelector bundles={bundles} />
                   </TableCell>
                   <TableCell align="center">
                     {stats ? stats.scheduling_state : "-"}

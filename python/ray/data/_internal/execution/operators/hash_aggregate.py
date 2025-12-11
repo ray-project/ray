@@ -2,7 +2,6 @@ import logging
 import math
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from ray.data import DataContext
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.hash_shuffle import (
@@ -10,9 +9,10 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
     StatefulShuffleAggregation,
 )
-from ray.data._internal.util import GiB
+from ray.data._internal.util import GiB, MiB
 from ray.data.aggregate import AggregateFn
 from ray.data.block import Block, BlockAccessor
+from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -111,15 +111,13 @@ class HashAggregateOperator(HashShufflingOperatorBase):
         key_columns: Tuple[str],
         aggregation_fns: Tuple[AggregateFn],
         *,
-        num_partitions: int,
+        num_partitions: Optional[int] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            name=(
-                f"HashAggregate("
-                f"num_partitions={num_partitions}, "
-                f"key_columns={key_columns}"
-                f")"
+            name_factory=(
+                lambda num_partitions: f"HashAggregate(key_columns={key_columns}, "
+                f"num_partitions={num_partitions})"
             ),
             input_ops=[input_op],
             data_context=data_context,
@@ -143,27 +141,12 @@ class HashAggregateOperator(HashShufflingOperatorBase):
                 key_columns, aggregation_fns
             ),
             aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
+            shuffle_progress_bar_name="Shuffle",
+            finalize_progress_bar_name="Aggregation",
         )
 
-    def _get_default_num_cpus_per_partition(self) -> int:
-        """
-        CPU allocation for aggregating actors of Aggregate operator is calculated as:
-        num_cpus (per partition) = CPU budget / # partitions
-
-        Assuming:
-        - Default number of partitions: 200
-        - Total operator's CPU budget with default settings: 2 cores
-        - Number of CPUs per partition: 2 / 200 = 0.01
-
-        These CPU budgets are derived such that Ray Data pipeline could run on a
-        single node (using the default settings).
-        """
-        return 0.01
-
-    def _get_operator_num_cpus_per_partition_override(self) -> int:
-        return (
-            self.data_context.hash_aggregate_operator_actor_num_cpus_per_partition_override
-        )
+    def _get_operator_num_cpus_override(self) -> float:
+        return self.data_context.hash_aggregate_operator_actor_num_cpus_override
 
     @classmethod
     def _estimate_aggregator_memory_allocation(
@@ -171,13 +154,16 @@ class HashAggregateOperator(HashShufflingOperatorBase):
         *,
         num_aggregators: int,
         num_partitions: int,
-        partition_byte_size_estimate: int,
+        estimated_dataset_bytes: int,
     ) -> int:
-        dataset_size = num_partitions * partition_byte_size_estimate
+        partition_byte_size_estimate = math.ceil(
+            estimated_dataset_bytes / num_partitions
+        )
+
         # Estimate of object store memory required to accommodate all partitions
         # handled by a single aggregator
         aggregator_shuffle_object_store_memory_required: int = math.ceil(
-            dataset_size / num_aggregators
+            estimated_dataset_bytes / num_aggregators
         )
         # Estimate of memory required to accommodate single partition as an output
         # (inside Object Store)
@@ -191,12 +177,14 @@ class HashAggregateOperator(HashShufflingOperatorBase):
             output_object_store_memory_required
         )
 
-        logger.debug(
-            f"Estimated memory requirement for aggregating operator "
-            f"(partitions={num_partitions}, aggregators={num_aggregators}): "
-            f"shuffle={aggregator_shuffle_object_store_memory_required / GiB:.2f}GiB, "
-            f"output={output_object_store_memory_required / GiB:.2f}GiB, "
-            f"total={aggregator_total_memory_required / GiB:.2f}GiB, "
+        logger.info(
+            f"Estimated memory requirement for aggregating aggregator "
+            f"(partitions={num_partitions}, "
+            f"aggregators={num_aggregators}, "
+            f"dataset (estimate)={estimated_dataset_bytes / GiB:.1f}GiB): "
+            f"shuffle={aggregator_shuffle_object_store_memory_required / MiB:.1f}MiB, "
+            f"output={output_object_store_memory_required / MiB:.1f}MiB, "
+            f"total={aggregator_total_memory_required / MiB:.1f}MiB, "
         )
 
         return aggregator_total_memory_required

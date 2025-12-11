@@ -11,9 +11,9 @@ import click
 import ray._private.ray_constants as ray_constants
 from ray._common.utils import (
     get_or_create_event_loop,
+    load_class,
 )
 from ray._private.utils import (
-    load_class,
     parse_metadata_json,
     parse_resources_json,
 )
@@ -115,7 +115,7 @@ def job_cli_group():
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the RAY_ADDRESS environment variable."
+        "using the RAY_API_SERVER_ADDRESS environment variable (falls back to RAY_ADDRESS)."
     ),
 )
 @click.option(
@@ -355,7 +355,7 @@ def submit(
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the `RAY_ADDRESS` environment variable."
+        "using the RAY_API_SERVER_ADDRESS environment variable (falls back to RAY_ADDRESS)."
     ),
 )
 @click.argument("job-id", type=str)
@@ -385,7 +385,7 @@ def status(
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the `RAY_ADDRESS` environment variable."
+        "using the RAY_API_SERVER_ADDRESS environment variable (falls back to RAY_ADDRESS)."
     ),
 )
 @click.option(
@@ -440,7 +440,7 @@ def stop(
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the RAY_ADDRESS environment variable."
+        "using the RAY_API_SERVER_ADDRESS environment variable (falls back to RAY_ADDRESS)."
     ),
 )
 @click.argument("job-id", type=str)
@@ -477,7 +477,7 @@ def delete(
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the RAY_ADDRESS environment variable."
+        "using the RAY_API_SERVER_ADDRESS environment variable (falls back to RAY_ADDRESS)."
     ),
 )
 @click.argument("job-id", type=str)
@@ -530,7 +530,7 @@ def logs(
     required=False,
     help=(
         "Address of the Ray cluster to connect to. Can also be specified "
-        "using the RAY_ADDRESS environment variable."
+        "using the RAY_API_SERVER_ADDRESS environment variable (falls back to RAY_ADDRESS)."
     ),
 )
 @add_common_job_options

@@ -3,7 +3,6 @@ import functools
 import logging
 import os
 import shutil
-import socket
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -61,16 +60,14 @@ class GpuProfilingManager:
         "GPU profiling is not available for this process."
     )
 
-    def __init__(self, profile_dir_path: str):
+    def __init__(self, profile_dir_path: str, *, ip_address: str):
         # Dump trace files to: /tmp/ray/session_latest/logs/profiles/
         self._root_log_dir = Path(profile_dir_path)
         self._profile_dir_path = self._root_log_dir / "profiles"
         self._daemon_log_file_path = (
             self._profile_dir_path / f"dynolog_daemon_{os.getpid()}.log"
         )
-
-        hostname = socket.gethostname()
-        self._ip_address = socket.gethostbyname(hostname)
+        self._ip_address = ip_address
 
         self._dynolog_bin = shutil.which("dynolog")
         self._dyno_bin = shutil.which("dyno")
@@ -109,7 +106,7 @@ class GpuProfilingManager:
         try:
             subprocess.check_output(["nvidia-smi"], stderr=subprocess.DEVNULL)
             return True
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except Exception:
             return False
 
     @classmethod

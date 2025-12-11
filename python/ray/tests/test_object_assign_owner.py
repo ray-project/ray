@@ -1,11 +1,10 @@
 import sys
 import time
 
-import pytest
 import numpy as np
+import pytest
 
 import ray
-from ray._private.test_utils import skip_flaky_core_test_premerge
 from ray.exceptions import OwnerDiedError
 
 
@@ -48,9 +47,16 @@ def test_owner_assign_bug(ray_start_regular):
     ],
 )
 def test_owner_assign_when_put(ray_start_cluster, actor_resources):
-    cluster_node_config = [
-        {"num_cpus": 1, "resources": {f"node{i+1}": 10}} for i in range(3)
-    ]
+    system_config = {
+        # Required for reducing the retry time of PubsubLongPolling and to trigger the failure callback for WORKER_OBJECT_LOCATIONS sooner
+        "grpc_client_check_connection_status_interval_milliseconds": 0,
+    }
+    cluster_node_config = []
+    for i in range(3):
+        config = {"num_cpus": 1, "resources": {f"node{i+1}": 10}}
+        if i == 0:  # Add system_config only to the first node (head node)
+            config["_system_config"] = system_config
+        cluster_node_config.append(config)
     cluster = ray_start_cluster
     for kwargs in cluster_node_config:
         cluster.add_node(**kwargs)
@@ -158,11 +164,8 @@ def test_multiple_objects(ray_start_cluster):
     assert ray.get(owner.remote_get_object_refs.remote(borrower), timeout=60)
 
 
-@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/41175")
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_owner_assign_inner_object(shutdown_only):
-
-    ray.init()
-
     @ray.remote
     class Owner:
         def warmup(self):

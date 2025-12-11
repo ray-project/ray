@@ -1,23 +1,32 @@
 import asyncio
 import logging
-import marshal
 import os
 import pickle
 import time
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
+from ray._common.network_utils import build_address
 from ray._common.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
-    DeploymentHandleSource,
     DeploymentID,
-    MultiplexedReplicaInfo,
+    HandleMetricReport,
     NodeId,
+    ReplicaMetricReport,
     RequestProtocol,
+    RequestRoutingInfo,
     RunningReplicaInfo,
     TargetCapacityDirection,
 )
@@ -25,6 +34,7 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
+    RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
@@ -36,8 +46,11 @@ from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
+from ray.serve._private.grpc_util import set_proxy_default_grpc_options
+from ray.serve._private.http_util import (
+    configure_http_options_with_defaults,
+)
 from ray.serve._private.logging_utils import (
-    configure_component_cpu_profiler,
     configure_component_logger,
     configure_component_memory_profiler,
     get_component_logger_file_path,
@@ -50,6 +63,7 @@ from ray.serve._private.utils import (
     call_function_from_import_path,
     get_all_live_placement_group_names,
     get_head_node_id,
+    is_grpc_enabled,
 )
 from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.generated.serve_pb2 import (
@@ -60,6 +74,7 @@ from ray.serve.generated.serve_pb2 import (
     EndpointSet,
 )
 from ray.serve.schema import (
+    APIType,
     ApplicationDetails,
     DeploymentDetails,
     HTTPOptionsSchema,
@@ -141,9 +156,7 @@ class ServeController:
         configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
         )
-        self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
-            component_name="controller", component_id=str(os.getpid())
-        )
+
         if RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH:
             logger.info(
                 "Calling user-provided callback from import path "
@@ -155,13 +168,16 @@ class ServeController:
         self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
         self.cluster_node_info_cache.update()
 
+        # Configure proxy default HTTP and gRPC options.
         self.proxy_state_manager = ProxyStateManager(
-            http_options=http_options,
+            http_options=configure_http_options_with_defaults(http_options),
             head_node_id=self._controller_node_id,
             cluster_node_info_cache=self.cluster_node_info_cache,
             logging_config=self.global_logging_config,
-            grpc_options=grpc_options,
+            grpc_options=set_proxy_default_grpc_options(grpc_options),
         )
+        # We modify the HTTP and gRPC options above, so delete them to avoid
+        del http_options, grpc_options
 
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
 
@@ -187,6 +203,7 @@ class ServeController:
         # Manage all applications' state
         self.application_state_manager = ApplicationStateManager(
             self.deployment_state_manager,
+            self.autoscaling_state_manager,
             self.endpoint_state,
             self.kv_store,
             self.global_logging_config,
@@ -254,42 +271,47 @@ class ServeController:
     def get_pid(self) -> int:
         return os.getpid()
 
-    def record_autoscaling_metrics(
-        self, replica_id: str, window_avg: Optional[float], send_timestamp: float
+    def record_autoscaling_metrics_from_replica(
+        self, replica_metric_report: ReplicaMetricReport
     ):
-        logger.debug(
-            f"Received metrics from replica {replica_id}: {window_avg} running requests"
-        )
+        latency = time.time() - replica_metric_report.timestamp
+        latency_ms = latency * 1000
+        if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
+            logger.warning(
+                f"Received autoscaling metrics from replica {replica_metric_report.replica_id} with timestamp {replica_metric_report.timestamp} "
+                f"which is {latency_ms}ms ago. "
+                f"This is greater than the warning threshold RPC latency of {RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS}ms. "
+                "This may indicate a performance issue with the controller try increasing the RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS environment variable."
+            )
         self.autoscaling_state_manager.record_request_metrics_for_replica(
-            replica_id, window_avg, send_timestamp
+            replica_metric_report
         )
 
-    def record_handle_metrics(
-        self,
-        deployment_id: str,
-        handle_id: str,
-        actor_id: Optional[str],
-        handle_source: DeploymentHandleSource,
-        queued_requests: float,
-        running_requests: Dict[str, float],
-        send_timestamp: float,
+    def record_autoscaling_metrics_from_handle(
+        self, handle_metric_report: HandleMetricReport
     ):
-        logger.debug(
-            f"Received metrics from handle {handle_id} for deployment {deployment_id}: "
-            f"{queued_requests} queued requests and {running_requests} running requests"
-        )
+        latency = time.time() - handle_metric_report.timestamp
+        latency_ms = latency * 1000
+        if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
+            logger.warning(
+                f"Received autoscaling metrics from handle {handle_metric_report.handle_id} for deployment {handle_metric_report.deployment_id} with timestamp {handle_metric_report.timestamp} "
+                f"which is {latency_ms}ms ago. "
+                f"This is greater than the warning threshold RPC latency of {RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS}ms. "
+                "This may indicate a performance issue with the controller try increasing the RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS environment variable."
+            )
         self.autoscaling_state_manager.record_request_metrics_for_handle(
-            deployment_id=deployment_id,
-            handle_id=handle_id,
-            actor_id=actor_id,
-            handle_source=handle_source,
-            queued_requests=queued_requests,
-            running_requests=running_requests,
-            send_timestamp=send_timestamp,
+            handle_metric_report
         )
 
-    def _dump_autoscaling_metrics_for_testing(self):
-        return self.autoscaling_state_manager.get_metrics()
+    def _get_total_num_requests_for_deployment_for_testing(
+        self, deployment_id: DeploymentID
+    ):
+        return self.autoscaling_state_manager.get_total_num_requests_for_deployment(
+            deployment_id
+        )
+
+    def _get_metrics_for_deployment_for_testing(self, deployment_id: DeploymentID):
+        return self.autoscaling_state_manager.get_metrics_for_deployment(deployment_id)
 
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
         return self.deployment_state_manager._deployment_states[deployment_id]._replicas
@@ -437,8 +459,6 @@ class ServeController:
             dsm_update_start_time = time.time()
             any_recovering = self.deployment_state_manager.update()
 
-            self.deployment_state_manager.save_checkpoint()
-
             self.dsm_update_duration_gauge_s.set(time.time() - dsm_update_start_time)
             if not self.done_recovering_event.is_set() and not any_recovering:
                 self.done_recovering_event.set()
@@ -455,11 +475,6 @@ class ServeController:
         try:
             asm_update_start_time = time.time()
             self.application_state_manager.update()
-
-            self.application_state_manager.save_checkpoint()
-            # ApplicationStateManager.update() can also mutate the
-            # DeploymentStateManager so we need to checkpoint that as well
-            self.deployment_state_manager.save_checkpoint()
 
             self.asm_update_duration_gauge_s.set(time.time() - asm_update_start_time)
         except Exception:
@@ -654,8 +669,11 @@ class ServeController:
             if SERVE_ROOT_URL_ENV_KEY in os.environ:
                 return os.environ[SERVE_ROOT_URL_ENV_KEY]
             else:
+                # HTTP is disabled
+                if http_config.host is None:
+                    return ""
                 return (
-                    f"http://{http_config.host}:{http_config.port}"
+                    f"http://{build_address(http_config.host, http_config.port)}"
                     f"{http_config.root_path}"
                 )
         return http_config.root_url
@@ -767,9 +785,6 @@ class ServeController:
                         "ingress": args.ingress,
                         "route_prefix": (
                             args.route_prefix if args.HasField("route_prefix") else None
-                        ),
-                        "docs_path": (
-                            args.docs_path if args.HasField("docs_path") else None
                         ),
                     }
                 )
@@ -914,11 +929,29 @@ class ServeController:
         """Gets the current list of all deployments' identifiers."""
         return self.deployment_state_manager._deployment_states.keys()
 
-    def get_serve_instance_details(self) -> Dict:
+    def update_deployment_replicas(
+        self, deployment_id: DeploymentID, target_num_replicas: int
+    ) -> None:
+        """Update the target number of replicas for a deployment.
+
+        Args:
+            deployment_id: The deployment to update.
+            target_num_replicas: The new target number of replicas.
+        """
+        self.deployment_state_manager.set_target_num_replicas(
+            deployment_id, target_num_replicas
+        )
+
+    def get_serve_instance_details(self, source: Optional[APIType] = None) -> Dict:
         """Gets details on all applications on the cluster and system-level info.
 
         The information includes application and deployment statuses, config options,
         error messages, etc.
+
+        Args:
+            source: If provided, returns application
+                statuses for applications matching this API type.
+                Defaults to None, which means all applications are returned.
 
         Returns:
             Dict that follows the format of the schema ServeInstanceDetails.
@@ -928,7 +961,7 @@ class ServeController:
         grpc_config = self.get_grpc_config()
         applications = {}
 
-        app_statuses = self.application_state_manager.list_app_statuses()
+        app_statuses = self.application_state_manager.list_app_statuses(source=source)
 
         # If there are no app statuses, there's no point getting the app configs.
         # Moreover, there might be no app statuses because the GCS is down,
@@ -977,30 +1010,35 @@ class ServeController:
             target_groups=self.get_target_groups(),
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
-    def get_target_groups(self) -> List[TargetGroup]:
+    def get_target_groups(self, app_name: Optional[str] = None) -> List[TargetGroup]:
         """Target groups contains information about IP
         addresses and ports of all proxies in the cluster.
 
         This information is used to setup the load balancer.
         """
-        if self.proxy_state_manager is None:
-            return []
         target_groups: List[TargetGroup] = []
 
         if self.proxy_state_manager.get_proxy_details():
             # setting prefix route to "/" because in ray serve, proxy
             # accepts requests from the client and routes them to the
             # correct application. This is true for both HTTP and gRPC proxies.
-            target_groups.extend(
-                [
-                    TargetGroup(
-                        protocol=protocol,
-                        route_prefix="/",
-                        targets=self.proxy_state_manager.get_targets(protocol),
-                    )
-                    for protocol in [RequestProtocol.HTTP, RequestProtocol.GRPC]
-                ]
+            target_groups.append(
+                TargetGroup(
+                    protocol=RequestProtocol.HTTP,
+                    route_prefix="/",
+                    targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
+                )
             )
+            if is_grpc_enabled(self.get_grpc_config()):
+                target_groups.append(
+                    TargetGroup(
+                        protocol=RequestProtocol.GRPC,
+                        route_prefix="/",
+                        targets=self.proxy_state_manager.get_targets(
+                            RequestProtocol.GRPC
+                        ),
+                    )
+                )
         return target_groups
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
@@ -1091,13 +1129,23 @@ class ServeController:
 
         self.application_state_manager.save_checkpoint()
 
-    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
-        """Record multiplexed model ids for a replica of deployment
+    def record_request_routing_info(self, info: RequestRoutingInfo):
+        """Record replica routing information for a replica.
+
         Args:
-            info: MultiplexedReplicaInfo including deployment name, replica tag and
-                model ids.
+            info: RequestRoutingInfo including deployment name, replica tag,
+                multiplex model ids, and routing stats.
         """
-        self.deployment_state_manager.record_multiplexed_replica_info(info)
+        self.deployment_state_manager.record_request_routing_info(info)
+
+    def _get_replica_ranks_mapping(self, deployment_id: DeploymentID) -> Dict[str, int]:
+        """Get the current rank mapping for all replicas in a deployment.
+        Args:
+            deployment_id: The deployment ID to get ranks for.
+        Returns:
+            Dictionary mapping replica_id to rank.
+        """
+        return self.deployment_state_manager._get_replica_ranks_mapping(deployment_id)
 
     async def graceful_shutdown(self, wait: bool = True):
         """Set the shutting down flag on controller to signal shutdown in
@@ -1119,31 +1167,12 @@ class ServeController:
         # until the controller is killed, which raises a RayActorError.
         await self._shutdown_event.wait()
 
-    def _save_cpu_profile_data(self) -> str:
-        """Saves CPU profiling data, if CPU profiling is enabled.
-
-        Logs a warning if CPU profiling is disabled.
-        """
-
-        if self.cpu_profiler is not None:
-            self.cpu_profiler.snapshot_stats()
-            with open(self.cpu_profiler_log, "wb") as f:
-                marshal.dump(self.cpu_profiler.stats, f)
-            logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
-            return self.cpu_profiler_log
-        else:
-            logger.error(
-                "Attempted to save CPU profile data, but failed because no "
-                "CPU profiler was running! Enable CPU profiling by enabling "
-                "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
-            )
-
     def _get_logging_config(self) -> Tuple:
         """Get the logging configuration (for testing purposes)."""
         log_file_path = None
         for handler in logger.handlers:
-            if isinstance(handler, logging.handlers.RotatingFileHandler):
-                log_file_path = handler.baseFilename
+            if isinstance(handler, logging.handlers.MemoryHandler):
+                log_file_path = handler.target.baseFilename
         return self.global_logging_config, log_file_path
 
     def _get_target_capacity_direction(self) -> Optional[TargetCapacityDirection]:

@@ -1,6 +1,9 @@
+import asyncio
+import json
 import logging
 from typing import Any, Dict, List, Optional
 
+from ray._common.pydantic_compat import BaseModel
 from ray.air.config import CheckpointConfig
 from ray.train._checkpoint import Checkpoint
 from ray.train._internal.checkpoint_manager import (
@@ -9,19 +12,15 @@ from ray.train._internal.checkpoint_manager import (
 )
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.exceptions import CheckpointManagerInitializationError
-from ray.train.v2._internal.execution.callback import ReportCallback
+from ray.train.v2._internal.execution.callback import (
+    ReportCallback,
+    WorkerGroupCallback,
+)
 from ray.train.v2._internal.execution.context import StorageContext
-from ray.train.v2._internal.execution.storage import _delete_fs_path, _exists_at_fs_path
-
-try:
-    from pydantic import BaseModel
-    from pydantic_core import from_json
-except (ImportError, ModuleNotFoundError) as exc:
-    raise ImportError(
-        "`ray.train.v2` requires the pydantic package, which is missing. "
-        "Run the following command to fix this: `pip install pydantic`"
-    ) from exc
-
+from ray.train.v2._internal.execution.storage import _exists_at_fs_path, delete_fs_path
+from ray.train.v2._internal.execution.training_report import _TrainingReport
+from ray.train.v2._internal.execution.worker_group import Worker
+from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +68,7 @@ def _get_state_from_training_result(
     )
 
 
-class CheckpointManager(_CheckpointManager, ReportCallback):
+class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback):
     def __init__(
         self,
         checkpoint_config: CheckpointConfig,
@@ -77,11 +76,27 @@ class CheckpointManager(_CheckpointManager, ReportCallback):
     ):
         self._storage_context = storage_context
         self._checkpoint_config = checkpoint_config
+
+        # This tracks the number of report calls that have been processed
+        # for the current worker group.
+        self._current_report_index = 0
+
+        # Map from checkpoint to training result
+        self._pending_training_results = {}
+
+        # Map from checkpoint to report index. Used to order checkpoints.
+        self._checkpoint_to_report_index = {}
+
+        self._condition = asyncio.Condition()
         super().__init__(checkpoint_config)
         # If the snapshot is found, the checkpoint manager will restore its state.
         self._maybe_load_state_from_storage()
 
-    def register_checkpoint(self, checkpoint_result: _TrainingResult):
+    def register_checkpoint(
+        self,
+        checkpoint_result: _TrainingResult,
+        is_result_pending: bool,
+    ):
         """Register new checkpoint and add to bookkeeping.
 
         This method will register a new checkpoint and add it to the internal
@@ -90,9 +105,13 @@ class CheckpointManager(_CheckpointManager, ReportCallback):
         checkpoints should be deleted.
 
         Args:
-            checkpoint: Tracked checkpoint object to add to bookkeeping.
+            checkpoint_result: Tracked checkpoint and associated metrics to add to bookkeeping.
+            is_result_pending: Whether the result is pending or fully ready.
         """
         self._latest_checkpoint_result = checkpoint_result
+        self._checkpoint_to_report_index[
+            checkpoint_result.checkpoint
+        ] = self._current_report_index
 
         if self._checkpoint_config.checkpoint_score_attribute is not None:
             # If we're ordering by a score, insert the checkpoint
@@ -101,19 +120,68 @@ class CheckpointManager(_CheckpointManager, ReportCallback):
                 self._checkpoint_results,
                 checkpoint_result,
                 key=self._get_checkpoint_score,
+                checkpoint_to_report_index=self._checkpoint_to_report_index,
             )
         else:
             # If no metric is provided, just append (ordering by time of registration).
             self._checkpoint_results.append(checkpoint_result)
 
-        results_to_delete = {}
+        if is_result_pending:
+            self._pending_training_results[
+                checkpoint_result.checkpoint
+            ] = checkpoint_result
+
+        self._save_state_and_delete_old_checkpoints()
+
+        self._current_report_index += 1
+
+        async def async_notify():
+            async with self._condition:
+                self._condition.notify_all()
+
+        asyncio.create_task(async_notify())
+
+    def update_checkpoints_with_metrics(
+        self, checkpoint_to_metrics: Dict[Checkpoint, Dict[str, Any]]
+    ):
+        """Update the checkpoints with the metrics."""
+        for checkpoint, metrics in checkpoint_to_metrics.items():
+            if checkpoint not in self._pending_training_results:
+                logger.warning(
+                    f"Checkpoint {checkpoint} not found in pending training results. "
+                )
+                continue
+            checkpoint_result = self._pending_training_results[checkpoint]
+            checkpoint_result.metrics.update(metrics)
+            if checkpoint_result not in self._checkpoint_results:
+                raise ValueError(
+                    f"Checkpoint {checkpoint} was in pending training results but not "
+                    "checkpoint results. "
+                )
+            self._checkpoint_results.remove(checkpoint_result)
+            _insert_into_sorted_list(
+                self._checkpoint_results,
+                checkpoint_result,
+                key=self._get_checkpoint_score,
+                checkpoint_to_report_index=self._checkpoint_to_report_index,
+            )
+            self._pending_training_results.pop(checkpoint)
+        self._save_state_and_delete_old_checkpoints()
+
+    def _save_state_and_delete_old_checkpoints(self):
+        """Delete the old checkpoints."""
+        # Get checkpoints to delete
+        results_to_delete = set()
         if self._checkpoint_config.num_to_keep is not None:
             # Delete the bottom (N - K) checkpoints
             worst_results = set(
                 self._checkpoint_results[: -self._checkpoint_config.num_to_keep]
             )
-            # Except for the latest checkpoint.
+            # Except for the latest checkpoint and pending checkpoints
             results_to_delete = worst_results - {self._latest_checkpoint_result}
+            results_to_delete = results_to_delete - set(
+                self._pending_training_results.values()
+            )
 
             # Update internal state before actually deleting them.
             self._checkpoint_results = [
@@ -133,7 +201,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback):
         for checkpoint_result in results_to_delete:
             checkpoint = checkpoint_result.checkpoint
             logger.debug("Deleting checkpoint: ", checkpoint)
-            _delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
+            delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
 
     # --------------------------
     # CheckpointManager state
@@ -159,14 +227,13 @@ class CheckpointManager(_CheckpointManager, ReportCallback):
             checkpoint_results=checkpoint_results,
             latest_checkpoint_result=latest_checkpoint_result,
         )
-        return manager_snapshot.model_dump_json()
+        return manager_snapshot.json()
 
     def _load_state(self, json_state: str):
         """Load the checkpoint manager state from a JSON str."""
         try:
-            manager_snapshot = _CheckpointManagerState.model_validate(
-                from_json(json_state)
-            )
+            json_dict = json.loads(json_state)
+            manager_snapshot = _CheckpointManagerState.parse_obj(json_dict)
         except Exception as e:
             raise CheckpointManagerInitializationError(repr(e)) from e
         self._assert_checkpoints_exist()
@@ -260,12 +327,51 @@ class CheckpointManager(_CheckpointManager, ReportCallback):
     # --------------------------
 
     def after_report(
-        self, metrics: List[Dict[str, Any]], checkpoint: Optional[Checkpoint]
+        self,
+        training_report: _TrainingReport,
+        metrics: List[Dict[str, Any]],
     ):
-        if not checkpoint:
+        if not training_report.checkpoint:
+            self._current_report_index += 1
             return
 
-        rank_0_metrics = metrics[0]
         self.register_checkpoint(
-            _TrainingResult(checkpoint=checkpoint, metrics=rank_0_metrics)
+            _TrainingResult(
+                checkpoint=training_report.checkpoint, metrics=training_report.metrics
+            ),
+            bool(training_report.validation_spec),
         )
+
+    # --------------------------
+    # WorkerGroupCallback
+    # --------------------------
+
+    def before_init_train_context(self, workers: List[Worker]) -> Dict[str, List[Any]]:
+        self._current_report_index = 0
+        latest_checkpoint = (
+            self.latest_checkpoint_result.checkpoint
+            if self.latest_checkpoint_result
+            else None
+        )
+        train_context_args = {
+            "checkpoint": [latest_checkpoint] * len(workers),
+        }
+        return train_context_args
+
+    async def get_all_reported_checkpoints(
+        self, current_report_index: int
+    ) -> List[ReportedCheckpoint]:
+        """Once expected_num_checkpoints are reported, return the ReportedCheckpoints."""
+        async with self._condition:
+            await self._condition.wait_for(
+                lambda: self._current_report_index == current_report_index
+            )
+            # TODO: might be nice for CheckpointManager to manage ReportedCheckpoint
+            # instead of _TrainingResult but that is a large refactor.
+            return [
+                ReportedCheckpoint(
+                    checkpoint=tr.checkpoint,
+                    metrics=tr.metrics,
+                )
+                for tr in self._checkpoint_results
+            ]

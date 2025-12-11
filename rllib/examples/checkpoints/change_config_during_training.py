@@ -18,7 +18,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-agents=[0 or 2]
+`python [script file name].py --num-agents=[0 or 2]
 --stop-reward-first-config=[return at which the algo on 1st config should stop training]
 --stop-reward=[the final return to achieve after restoration from the checkpoint with
 the 2nd config]
@@ -111,7 +111,6 @@ parser.add_argument(
 )
 # By default, set `args.checkpoint_freq` to 1 and `args.checkpoint_at_end` to True.
 parser.set_defaults(
-    enable_new_api_stack=True,
     checkpoint_freq=1,
     checkpoint_at_end=True,
 )

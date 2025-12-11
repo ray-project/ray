@@ -1,6 +1,5 @@
 from typing import Any, Dict, List
 
-
 import ray
 from ray.dag.dag_node import DAGNode
 from ray.dag.format_utils import get_dag_node_str

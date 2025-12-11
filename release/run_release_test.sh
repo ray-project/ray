@@ -96,6 +96,11 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
   START=$(date +%s)
   set +e
 
+  if [[ "$1" == *".kuberay"* ]]; then
+    export GOOGLE_CLOUD_PROJECT=dhyey-dev
+    export AWS_REGION="us-west-2"
+  fi
+
   trap _term SIGINT SIGTERM
   ${RAY_TEST_SCRIPT} "$@" &
   proc=$!

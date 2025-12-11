@@ -1,0 +1,103 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "dependency_resolver",
+    srcs = ["dependency_resolver.cc"],
+    hdrs = ["dependency_resolver.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/core_worker:actor_creator",
+        "//src/ray/core_worker:lease_policy",
+        "//src/ray/core_worker:memory_store",
+        "//src/ray/core_worker:task_manager_interface",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "actor_submit_queue",
+    hdrs = ["actor_submit_queue.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+ray_cc_library(
+    name = "out_of_order_actor_submit_queue",
+    srcs = ["out_of_order_actor_submit_queue.cc"],
+    hdrs = ["out_of_order_actor_submit_queue.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":actor_submit_queue",
+        "//src/ray/common:id",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+ray_cc_library(
+    name = "sequential_actor_submit_queue",
+    srcs = ["sequential_actor_submit_queue.cc"],
+    hdrs = ["sequential_actor_submit_queue.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":actor_submit_queue",
+        "//src/ray/common:id",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+ray_cc_library(
+    name = "actor_task_submitter",
+    srcs = ["actor_task_submitter.cc"],
+    hdrs = ["actor_task_submitter.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker:__pkg__",
+    ],
+    deps = [
+        ":actor_submit_queue",
+        ":dependency_resolver",
+        ":out_of_order_actor_submit_queue",
+        ":sequential_actor_submit_queue",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:protobuf_utils",
+        "//src/ray/core_worker:actor_creator",
+        "//src/ray/core_worker_rpc_client:core_worker_client_pool",
+        "//src/ray/rpc:rpc_callback_types",
+        "//src/ray/util:time",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "normal_task_submitter",
+    srcs = ["normal_task_submitter.cc"],
+    hdrs = ["normal_task_submitter.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker:__pkg__",
+    ],
+    deps = [
+        ":dependency_resolver",
+        "//src/ray/common:id",
+        "//src/ray/common:lease",
+        "//src/ray/common:protobuf_utils",
+        "//src/ray/core_worker:lease_policy",
+        "//src/ray/core_worker:memory_store",
+        "//src/ray/core_worker:task_manager_interface",
+        "//src/ray/core_worker_rpc_client:core_worker_client_pool",
+        "//src/ray/raylet_rpc_client:raylet_client_interface",
+        "//src/ray/util:time",
+        "@com_google_absl//absl/base:core_headers",
+    ],
+)

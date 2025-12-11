@@ -90,7 +90,7 @@ class ClusterResourceScheduler {
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
   ///
-  ///  \param task_spec: Task/Actor to be scheduled.
+  ///  \param lease_spec: Lease to be scheduled.
   ///  \param preferred_node_id: the node where the task is preferred to be placed. An
   ///  empty `preferred_node_id` (string) means no preferred node.
   ///  \param exclude_local_node: true if we want to avoid local node. This will cancel
@@ -102,7 +102,7 @@ class ClusterResourceScheduler {
   ///
   ///  \return empty string, if no node can schedule the current request; otherwise,
   ///          return the string name of a node that can schedule the resource request.
-  scheduling::NodeID GetBestSchedulableNode(const TaskSpecification &task_spec,
+  scheduling::NodeID GetBestSchedulableNode(const LeaseSpecification &lease_spec,
                                             const std::string &preferred_node_id,
                                             bool exclude_local_node,
                                             bool requires_object_store_memory,
@@ -125,8 +125,9 @@ class ClusterResourceScheduler {
   /// Check whether a task request is schedulable on a given node. A node is
   /// schedulable if it has the available resources needed to execute the task.
   ///
-  /// \param node_name Name of the node.
+  /// \param node_id Id of the node.
   /// \param label_selector: label requirements to schedule on a node.
+  /// \param requires_object_store_memory
   /// \param shape The resource demand's shape.
   bool IsSchedulableOnNode(scheduling::NodeID node_id,
                            const absl::flat_hash_map<std::string, double> &shape,
@@ -253,10 +254,11 @@ class ClusterResourceScheduler {
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, DirtyLocalViewTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, DynamicResourceTest);
-  FRIEND_TEST(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
+  FRIEND_TEST(ClusterLeaseManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorHardNodeAffinityTest);
 };
 
 }  // end namespace ray

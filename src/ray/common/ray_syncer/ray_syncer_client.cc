@@ -14,6 +14,10 @@
 
 #include "ray/common/ray_syncer/ray_syncer_client.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 namespace ray::syncer {
 
 RayClientBidiReactor::RayClientBidiReactor(

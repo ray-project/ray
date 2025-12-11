@@ -62,7 +62,7 @@ message ActorHandle {
   string ray_namespace = 11;
 
   // Whether the actor supports out of order execution.
-  bool execute_out_of_order = 12;
+  bool allow_out_of_order_execution = 12;
 
   // The max number of pending actor calls.
   int32 max_pending_calls = 13;
@@ -72,6 +72,10 @@ message ActorHandle {
 
   // The key-value labels for actor.
   map<string, string> labels = 15;
+
+  bool enable_tensor_transport = 16;
+
+  bool is_detached = 17;
 }
 
 message PushTaskRequest {
@@ -83,7 +87,13 @@ message PushTaskRequest {
   // sequentially starting from zero for each actor handle. The server
   // will guarantee tasks execute in this sequence, waiting for any
   // out-of-order request messages to arrive as necessary.
-  // If set to -1, ordering is disabled and the task executes immediately.
+  //
+  // The server will wait up to a configured timeout for the expected sequential
+  // sequence number to arrive if they come out of order. After the timeout, the
+  // server will assume the client is dead or misbehaving and cancel all pending tasks.
+  //
+  // If set to -1, ordering is disabled and the task executes once its
+  // dependencies are resolved.
   int64 sequence_number = 3;
   // The maximum sequence number for which the client has processed responses.
   // This is useful in the following example:
@@ -472,24 +482,23 @@ service CoreWorkerService {
       returns (ActorCallArgWaitCompleteReply);
 
   // A worker asks the object's owner worker about the object's current status.
-  // Failure: TODO, Needs better failure behavior, currently assumes owner is dead and
-  // object is lost.
+  // This RPC assumes the ref won't be removed in the middle of execution and it's the
+  // caller's responsibility to guarantee that.
+  // Failure: Retries, it's idempotent.
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
 
   // From GCS actor manager to the actor's owner.
   // Waits for the actor's owner to decide that the actor has no references.
   // Replying to this message indicates that the client should force-kill the
   // actor process, if still alive and mark the actor as permanently dead.
-  // Failure: TODO, needs better failure behavior, currently assumes worker failed and
-  // GCS continues to destroy actor regardless of success or failure.
+  // Failure: Retries, it's idempotent.
   rpc WaitForActorRefDeleted(WaitForActorRefDeletedRequest)
       returns (WaitForActorRefDeletedReply);
 
-  /// The long polling request sent to the core worker for pubsub operations.
-  /// It is replied once there are batch of objects that need to be published to
-  /// the caller (subscriber).
-  /// Failure: Pubsub system handles failures. TODO: all clients need subscribe failure
-  /// callbacks
+  // The long polling request sent to the core worker for pubsub operations.
+  // It is replied once there are batch of objects that need to be published to
+  // the caller (subscriber).
+  // Failure: Retries on failures, see pubsub/README.md for more details.
   rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
 
   // The RPC to report the intermediate task return from the executor worker to the owner
@@ -500,7 +509,7 @@ service CoreWorkerService {
 
   // The pubsub command batch request used by the subscriber.
   // Subscribe / unsubscribe commands to the publisher worker.
-  // Failure: TODO: Does not handle failures.
+  // Failure: Retries on failures, see pubsub/README.md for more details.
   rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
 
   // Update the batched object location information to the ownership-based object

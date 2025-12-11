@@ -1,20 +1,18 @@
 """Client tests that run their own init (as with init_and_serve) live here"""
 
-import time
 import random
-import sys
 import subprocess
+import sys
+import time
 from unittest.mock import patch
 
 import pytest
 
-import ray.util.client.server.server as ray_client_server
-import ray.core.generated.ray_client_pb2 as ray_client_pb2
-
-from ray.util.client import _ClientContext
-from ray.cluster_utils import cluster_not_supported
-
 import ray
+import ray.core.generated.ray_client_pb2 as ray_client_pb2
+import ray.util.client.server.server as ray_client_server
+from ray.cluster_utils import cluster_not_supported
+from ray.util.client import _ClientContext
 
 
 @ray.remote
@@ -53,7 +51,7 @@ def init_and_serve_lazy(ray_start_cluster):
     def connect(job_config=None, **ray_init_kwargs):
         ray.init(address=address, job_config=job_config, **ray_init_kwargs)
 
-    server_handle = ray_client_server.serve("localhost:50051", connect)
+    server_handle = ray_client_server.serve("localhost", 50051, connect)
     yield server_handle
     ray_client_server.shutdown_with_server(server_handle.grpc_server)
 

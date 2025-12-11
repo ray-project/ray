@@ -2,8 +2,8 @@
 """This script checks whether header file inclusion for ray core C++ code is correct.
 """
 
-import sys
 import re
+import sys
 
 
 def check_ray_core_inclusion(fname: str):

@@ -148,7 +148,7 @@ from the preceding Python class.
 Cross-language data serialization
 ---------------------------------
 
-Ray automatically serializes and deserializes the arguments and return values of ray call
+Ray automatically serializes and deserializes the arguments and return values of Ray calls
 if their types are the following:
 
   - Primitive data types

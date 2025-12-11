@@ -31,6 +31,7 @@ class Model(abc.ABC):
 
         from ray.rllib.core.models.base import Model
         from ray.rllib.core.models.configs import ModelConfig
+        from ray.rllib.core.models.configs import ModelConfig
         from dataclasses import dataclass
 
         class MyModel(Model):

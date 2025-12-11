@@ -1,0 +1,12 @@
+local_cpu: False
+max_local_cpu_size: 0
+max_local_disk_size: 0
+remote_serde: NULL
+
+enable_nixl: True
+nixl_role: "receiver"
+nixl_receiver_host: "localhost"
+nixl_receiver_port: 55555
+nixl_buffer_size: 1073741824 # 1GB
+nixl_buffer_device: "cuda"
+nixl_enable_gc: True

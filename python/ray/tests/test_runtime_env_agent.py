@@ -1,20 +1,22 @@
-import sys
-import pytest
 import logging
 import os
+import sys
 import time
 from typing import List, Tuple
 
+import pytest
+
 import ray
-from ray._private.runtime_env.agent.runtime_env_agent import UriType, ReferenceTable
+from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
+from ray._private.runtime_env.agent.runtime_env_agent import ReferenceTable, UriType
 from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
-    wait_for_condition,
 )
 from ray.core.generated import common_pb2
 from ray.runtime_env import RuntimeEnv
+
 import psutil
 
 logger = logging.getLogger(__name__)

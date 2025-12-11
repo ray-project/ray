@@ -1,20 +1,20 @@
 # coding: utf-8
 import os
 import sys
-import torch
 
 import pytest
+import torch
 
 import ray
 import ray.cluster_utils
+from ray._common.test_utils import wait_for_condition
+from ray.dag import InputNode
 from ray.exceptions import RayChannelError, RayTaskError
 from ray.experimental.channel.conftest import (
     Barrier,
     start_nccl_mock,
 )
 from ray.tests.conftest import *  # noqa
-from ray.tests.conftest import wait_for_condition
-from ray.dag import InputNode
 
 
 def error_logged(capsys, msg):

@@ -2,14 +2,14 @@ import os
 import sys
 import time
 
-import pytest
 import numpy as np
+import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.internal_api import memory_summary
-from ray._private.test_utils import Semaphore, SignalActor, wait_for_condition
 import ray.exceptions
+from ray._common.test_utils import Semaphore, SignalActor, wait_for_condition
+from ray._private.internal_api import memory_summary
 from ray.util.state import list_tasks
 
 # Task status.

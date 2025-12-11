@@ -2,7 +2,7 @@ import copy
 import os
 from typing import Any, Dict
 
-from ray._private.utils import get_ray_temp_dir
+from ray._common.utils import get_ray_temp_dir
 from ray.autoscaler._private.cli_logger import cli_logger
 
 unsupported_field_message = "The field {} is not supported for on-premise clusters."

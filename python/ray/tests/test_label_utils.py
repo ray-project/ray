@@ -1,22 +1,23 @@
-from contextlib import contextmanager
 import json
 import os
 import sys
 import tempfile
+from contextlib import contextmanager
 from typing import ContextManager, Dict, Optional, Union
 
 import pytest
 
 from ray._private.label_utils import (
+    parse_node_labels_from_yaml_file,
     parse_node_labels_json,
     parse_node_labels_string,
-    parse_node_labels_from_yaml_file,
-    validate_node_labels,
+    validate_fallback_strategy,
     validate_label_key,
-    validate_label_value,
     validate_label_selector,
     validate_label_selector_value,
+    validate_label_value,
     validate_node_label_syntax,
+    validate_node_labels,
 )
 
 
@@ -304,7 +305,68 @@ def test_validate_node_labels():
     assert "This is reserved for Ray defined labels." in str(e)
 
 
-if __name__ == "__main__":
+@pytest.mark.parametrize(
+    "fallback_strategy, expected_error",
+    [
+        (None, None),  # No fallback_strategy specified.
+        ([], None),  # fallback_strategy passed an empty list.
+        (
+            [
+                {"label_selector": {"valid-key": "valid-value"}, "memory": "500m"},
+            ],
+            "Unsupported option found: 'memory'. Only ['label_selector'] is currently supported.",
+        ),  # fallback_strategy contains unsupported option.
+        (
+            [
+                {},
+            ],
+            "Empty dictionary found in `fallback_strategy`.",
+        ),  # fallback_strategy contains empty dictionary.
+        (
+            [{"label_selector": {"ray.io/availability-region": "us-west4"}}],
+            None,
+        ),  # fallback_strategy contains one selector.
+        (
+            [
+                {"label_selector": {"ray.io/availability-zone": "us-central1-a"}},
+                {"label_selector": {"ray.io/accelerator-type": "A100"}},
+            ],
+            None,
+        ),  # fallback_strategy contains multiple valid selectors.
+        (
+            [
+                {"label_selector": {"valid-key": "valid-value"}},
+                {"label_selector": {"-!!invalid-key": "value"}},
+            ],
+            "Invalid label key name",
+        ),  # fallback_strategy contains selector with invalid key.
+        (
+            [
+                {"label_selector": {"valid-key": "valid-value"}},
+                {"label_selector": {"key": "-invalid-value!!"}},
+            ],
+            "Invalid label selector value",
+        ),  # fallback_strategy contains selector with invalid value.
+    ],
+    ids=[
+        "none",
+        "empty-list",
+        "unsupported-fallback-option",
+        "fallback-specified-with-empty-dict",
+        "single-valid-label-selector",
+        "multiple-valid-label-selector",
+        "invalid-label-selector-key",
+        "invalid-label-selector-value",
+    ],
+)
+def test_validate_fallback_strategy(fallback_strategy, expected_error):
+    """Tests the validation logic for the fallback_strategy remote option."""
+    result = validate_fallback_strategy(fallback_strategy)
+    if expected_error:
+        assert expected_error in result
+    else:
+        assert result is None
 
-    # Skip test_basic_2_client_mode for now- the test suite is breaking.
-    sys.exit(pytest.main(["-sv", __file__]))
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", "-vv", __file__]))

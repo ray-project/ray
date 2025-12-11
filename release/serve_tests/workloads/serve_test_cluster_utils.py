@@ -5,6 +5,7 @@ import ray
 import requests
 from ray._private.test_utils import monitor_memory_usage
 from ray.cluster_utils import Cluster
+from ray._common.network_utils import build_address
 
 from ray import serve
 from ray.serve.config import DeploymentMode
@@ -79,7 +80,8 @@ def warm_up_one_cluster(
     for _ in range(num_warmup_iterations):
         try:
             resp = requests.get(
-                f"http://{http_host}:{http_port}/{endpoint}", timeout=timeout
+                f"http://{build_address(http_host, http_port)}/{endpoint}",
+                timeout=timeout,
             ).text
             logger.info(resp)
         except requests.exceptions.ReadTimeout:

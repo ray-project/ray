@@ -15,7 +15,6 @@ from ray.rllib.utils.test_utils import (
 )
 
 parser = add_rllib_example_script_args()
-parser.set_defaults(enable_new_api_stack=True)
 
 parser.add_argument(
     "--offline-evaluation-interval",
@@ -80,7 +79,7 @@ config = (
         # The number of iterations to be run per learner when in multi-learner
         # mode in a single RLlib training iteration. Leave this to `None` to
         # run an entire epoch on the dataset during a single RLlib training
-        # iteration. For single-learner mode, 1 is the only option.
+        # iteration.
         dataset_num_iters_per_learner=5,
     )
     .training(
@@ -98,6 +97,7 @@ config = (
         evaluation_interval=1,
         evaluation_parallel_to_training=False,
         offline_evaluation_interval=1,
+        offline_evaluation_type="eval_loss",
         num_offline_eval_runners=args.num_offline_eval_runners,
         num_gpus_per_offline_eval_runner=args.num_gpus_per_offline_eval_runner,
         offline_eval_batch_size_per_runner=128,

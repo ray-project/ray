@@ -17,7 +17,7 @@ This section offers some tips and tricks to improve your Ray Serve application's
 
 Ray Serve is built on top of Ray, so its scalability is bounded by Ray’s scalability. See Ray’s [scalability envelope](https://github.com/ray-project/ray/blob/master/release/benchmarks/README.md) to learn more about the maximum number of nodes and other limitations.
 
-## Debugging performance issues
+## Debugging performance issues in request path
 
 The performance issue you're most likely to encounter is high latency or low throughput for requests.
 
@@ -46,8 +46,8 @@ According to the [FastAPI documentation](https://fastapi.tiangolo.com/async/#ver
 
 Are you using `async def` in your callable? If you are using `asyncio` and
 hitting the same queuing issue mentioned above, you might want to increase
-`max_ongoing_requests`. Serve sets a low number (100) by default so the client gets
-proper backpressure. You can increase the value in the deployment decorator; e.g.,
+`max_ongoing_requests`. By default, Serve sets this to a low value (5) to ensure clients receive proper backpressure.
+You can increase the value in the deployment decorator; for example,
 `@serve.deployment(max_ongoing_requests=1000)`.
 
 (serve-performance-e2e-timeout)=
@@ -65,12 +65,100 @@ to retry requests that time out due to transient failures.
 Serve returns a response with status code `408` when a request times out. Clients can retry when they receive this `408` response.
 :::
 
-### Give the Serve Controller more time to process requests
+
+### Set backoff time when choosing replica
+
+Ray Serve allows you to fine-tune the backoff behavior of the request router, which can help reduce latency when waiting for replicas to become ready. It uses exponential backoff strategy when retrying to route requests to replicas that are temporarily unavailable. You can optimize this behavior for your workload by configuring the following environment variables:
+
+- `RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S`: The initial backoff time (in seconds) before retrying a request. Default is `0.025`.
+- `RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER`: The multiplier applied to the backoff time after each retry. Default is `2`.
+- `RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S`: The maximum backoff time (in seconds) between retries. Default is `0.5`.
+
+
+### Enable throughput-optimized serving
+
+:::{note}
+In Ray v2.54.0, the defaults for `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD` and `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP` will change to `0` for improved performance.
+:::
+
+This section details how to enable Ray Serve options focused on improving throughput and reducing latency. These configurations focus on the following:
+
+- Reducing overhead associated with frequent logging.
+- Disabling behavior that allowed Serve applications to include blocking operations.
+
+If your Ray Serve code includes thread blocking operations, you must refactor your code to achieve enhanced throughput. The following table shows examples of blocking and non-blocking code:
+
+<table>
+<tr>
+<th>Blocking operation (❌)</th>
+<th>Non-blocking operation (✅)</th>
+</tr>
+<tr>
+<td>
+
+```python
+from ray import serve
+from fastapi import FastAPI
+import time
+
+app = FastAPI()
+
+@serve.deployment
+@serve.ingress(app)
+class BlockingDeployment:
+    @app.get("/process")
+    async def process(self):
+        # ❌ Blocking operation
+        time.sleep(2)
+        return {"message": "Processed (blocking)"}
+
+serve.run(BlockingDeployment.bind())
+```
+
+</td>
+<td>
+
+```python
+from ray import serve
+from fastapi import FastAPI
+import asyncio
+
+app = FastAPI()
+
+@serve.deployment
+@serve.ingress(app)
+class NonBlockingDeployment:
+    @app.get("/process")
+    async def process(self):
+        # ✅ Non-blocking operation
+        await asyncio.sleep(2)
+        return {"message": "Processed (non-blocking)"}
+
+serve.run(NonBlockingDeployment.bind())
+```
+
+</td>
+</tr>
+</table>
+
+To configure all options to the recommended settings, set the environment variable `RAY_SERVE_THROUGHPUT_OPTIMIZED=1`.
+
+You can also configure each option individually. The following table details the recommended configurations and their impact:
+
+| Configured value | Impact |
+| --- | --- |
+| `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0` | Your code runs in the same event loop as the replica's main event loop. You must avoid blocking operations in your request path. Set this configuration to `1` to run your code in a separate event loop, which protects the replica's ability to communicate with the Serve Controller if your code has blocking operations. |
+| `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0`| The request router runs in the same event loop as the your code's event loop. You must avoid blocking operations in your request path. Set this configuration to `1` to run the router in a separate event loop, which protect Ray Serve's request routing ability when your code has blocking operations |
+| `RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE=1000` | Sets the log buffer to batch writes to every `1000` logs, flushing the buffer on write. The system always flushes the buffer and writes logs when it detects a line with level ERROR.  Set the buffer size to `1` to disable buffering and write logs immediately. |
+| `RAY_SERVE_LOG_TO_STDERR=0` | Only write logs to files under the `logs/serve/` directory. Proxy, Controller, and Replica logs no longer appear in the console, worker files, or the Actor Logs section of the Ray Dashboard. Set this property to `1` to enable additional logging. |
+
+
+## Debugging performance issues in controller
 
 The Serve Controller runs on the Ray head node and is responsible for a variety of tasks,
 including receiving autoscaling metrics from other Ray Serve components.
 If the Serve Controller becomes overloaded
-(symptoms might include high CPU usage and a large number of pending `ServeController.record_handle_metrics` tasks),
+(symptoms might include high CPU usage and a large number of pending `ServeController.record_autoscaling_metrics_from_handle` tasks),
 you can increase the interval between cycles of the control loop
 by setting the `RAY_SERVE_CONTROL_LOOP_INTERVAL_S` environment variable (defaults to `0.1` seconds).
 This setting gives the Controller more time to process requests and may help alleviate the overload.

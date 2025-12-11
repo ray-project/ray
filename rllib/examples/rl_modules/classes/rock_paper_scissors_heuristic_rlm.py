@@ -39,14 +39,6 @@ class AlwaysSameHeuristicRLM(RLModule):
             "in your `config.multi_agent(policies_to_train={...})` set."
         )
 
-    @override(RLModule)
-    def output_specs_inference(self):
-        return [Columns.ACTIONS]
-
-    @override(RLModule)
-    def output_specs_exploration(self):
-        return [Columns.ACTIONS]
-
 
 class BeatLastHeuristicRLM(RLModule):
     """In rock-paper-scissors, always acts such that it beats prev. move of opponent.
@@ -87,14 +79,6 @@ class BeatLastHeuristicRLM(RLModule):
             "BeatLastHeuristicRLM is not trainable! Make sure you do NOT include it in "
             "your `config.multi_agent(policies_to_train={...})` set."
         )
-
-    @override(RLModule)
-    def output_specs_inference(self):
-        return [Columns.ACTIONS]
-
-    @override(RLModule)
-    def output_specs_exploration(self):
-        return [Columns.ACTIONS]
 
     @staticmethod
     def _pick_single_action(prev_opponent_obs):

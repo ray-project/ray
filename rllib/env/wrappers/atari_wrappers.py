@@ -305,20 +305,30 @@ class NormalizedImageEnv(gym.ObservationWrapper):
 
 
 @PublicAPI
-class WarpFrame(gym.ObservationWrapper):
-    def __init__(self, env, dim):
+class GrayScaleAndResize(gym.ObservationWrapper):
+    def __init__(self, env, dim, grayscale: bool = True):
         """Warp frames to the specified size (dim x dim)."""
         gym.ObservationWrapper.__init__(self, env)
         self.width = dim
         self.height = dim
+        self.grayscale = grayscale
         self.observation_space = spaces.Box(
-            low=0, high=255, shape=(self.height, self.width, 1), dtype=np.uint8
+            low=0,
+            high=255,
+            shape=(self.height, self.width, 1 if grayscale else 3),
+            dtype=np.uint8,
         )
 
     def observation(self, frame):
-        frame = rgb2gray(frame)
-        frame = resize(frame, height=self.height, width=self.width)
-        return frame[:, :, None]
+        if self.grayscale:
+            frame = rgb2gray(frame)
+            frame = resize(frame, height=self.height, width=self.width)
+            return frame[:, :, None]
+        else:
+            return resize(frame, height=self.height, width=self.width)
+
+
+WarpFrame = GrayScaleAndResize
 
 
 @PublicAPI
@@ -327,6 +337,7 @@ def wrap_atari_for_new_api_stack(
     dim: int = 64,
     frameskip: int = 4,
     framestack: Optional[int] = None,
+    grayscale: bool = True,
     # TODO (sven): Add option to NOT grayscale, in which case framestack must be None
     #  (b/c we are using the 3 color channels already as stacking frames).
 ) -> gym.Env:
@@ -352,7 +363,7 @@ def wrap_atari_for_new_api_stack(
     # Time limit.
     env = gym.wrappers.TimeLimit(env, max_episode_steps=108000)
     # Grayscale + resize.
-    env = WarpFrame(env, dim=dim)
+    env = WarpFrame(env, dim=dim, grayscale=grayscale)
     # Normalize the image.
     env = NormalizedImageEnv(env)
     # Frameskip: Take max over these n frames.

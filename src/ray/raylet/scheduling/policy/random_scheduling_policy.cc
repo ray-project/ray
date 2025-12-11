@@ -22,15 +22,15 @@ namespace raylet_scheduling_policy {
 
 scheduling::NodeID RandomSchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
-  RAY_CHECK(options.scheduling_type == SchedulingType::RANDOM)
+  RAY_CHECK(options.scheduling_type_ == SchedulingType::RANDOM)
       << "HybridPolicy policy requires type = RANDOM";
   scheduling::NodeID best_node = scheduling::NodeID::Nil();
   if (nodes_.empty()) {
     return best_node;
   }
 
-  RAY_CHECK(options.spread_threshold == 0 && !options.avoid_local_node &&
-            options.require_node_available && !options.avoid_gpu_nodes)
+  RAY_CHECK(options.spread_threshold_ == 0 && !options.avoid_local_node_ &&
+            options.require_node_available_ && !options.avoid_gpu_nodes_)
       << "Random policy requires spread_threshold = 0, "
       << "avoid_local_node = false, "
       << "require_node_available = true, "
@@ -45,7 +45,7 @@ scheduling::NodeID RandomSchedulingPolicy::Schedule(
     const auto &node_id = iter->first;
     const auto &node = iter->second;
     if (is_node_available_(node_id) &&
-        is_node_schedulable_(node_id, options.scheduling_context.get()) &&
+        is_node_schedulable_(node_id, options.scheduling_context_.get()) &&
         node.GetLocalView().IsFeasible(resource_request) &&
         node.GetLocalView().IsAvailable(resource_request,
                                         /*ignore_pull_manager_at_capacity*/ true)) {

@@ -10,7 +10,6 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
         PhysicalOperator,
     )
-    from ray.data._internal.execution.streaming_executor_state import Topology
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +24,11 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     TODO(chengsu): Consolidate with actor scaling logic of `ActorPoolMapOperator`.
     """
 
-    def __init__(self, topology: "Topology"):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._concurrency_caps: dict["PhysicalOperator", float] = {}
 
-        for op, _ in topology.items():
+        for op, _ in self._topology.items():
             if isinstance(op, TaskPoolMapOperator) and op.get_concurrency() is not None:
                 self._concurrency_caps[op] = op.get_concurrency()
             else:

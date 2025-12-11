@@ -1,133 +1,184 @@
 import copy
-from collections import deque
-from typing import Iterable, List
+from typing import List
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
+from ray.data._internal.logical.operators.map_operator import AbstractMap, MapBatches
+from ray.data._internal.logical.operators.n_ary_operator import Union
 from ray.data._internal.logical.operators.one_to_one_operator import (
     AbstractOneToOne,
     Limit,
 )
-from ray.data._internal.logical.operators.read_operator import Read
 
 
 class LimitPushdownRule(Rule):
     """Rule for pushing down the limit operator.
 
     When a limit operator is present, we apply the limit on the
-    most upstream operator that supports it. Notably, we move the
-    Limit operator downstream from Read op, any other non-OneToOne operator,
-    or any operator which could potentially change the number of output rows.
+    most upstream operator that supports it. We are conservative and only
+    push through operators that we know for certain do not modify row counts:
+    - Project operations (column selection)
+    - MapRows operations (row-wise transformations that preserve row count)
+    - Union operations (limits are prepended to each branch)
+
+    We stop at:
+    - Any operator that can modify the number of output rows (Sort, Shuffle, Aggregate, Read etc.)
+
+    For per-block limiting, we also set per-block limits on Read operators to optimize
+    I/O while keeping the Limit operator for exact row count control.
 
     In addition, we also fuse consecutive Limit operators into a single
     Limit operator, i.e. `Limit[n] -> Limit[m]` becomes `Limit[min(n, m)]`.
     """
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
-        optimized_dag = self._apply_limit_pushdown(plan.dag)
-        optimized_dag = self._apply_limit_fusion(optimized_dag)
+        # The DAG's root is the most downstream operator.
+        def transform(node: LogicalOperator) -> LogicalOperator:
+            if isinstance(node, Limit):
+                # First, try to fuse with upstream Limit if possible (reuse fusion logic)
+                upstream_op = node.input_dependency
+                if isinstance(upstream_op, Limit):
+                    # Fuse consecutive Limits: Limit[n] -> Limit[m] becomes Limit[min(n,m)]
+                    new_limit = min(node._limit, upstream_op._limit)
+                    return Limit(upstream_op.input_dependency, new_limit)
+
+                # If no fusion, apply pushdown logic
+                if isinstance(upstream_op, Union):
+                    return self._push_limit_into_union(node)
+                else:
+                    return self._push_limit_down(node)
+
+            return node
+
+        optimized_dag = plan.dag._apply_transform(transform)
         return LogicalPlan(dag=optimized_dag, context=plan.context)
 
     def _apply_limit_pushdown(self, op: LogicalOperator) -> LogicalOperator:
-        """Given a DAG of LogicalOperators, traverse the DAG and push down
-        Limit operators, i.e. move Limit operators as far upstream as possible.
+        """Push down Limit operators in the given operator DAG.
 
-        Returns a new LogicalOperator with the Limit operators pushed down."""
-        # Post-order traversal.
-        nodes: Iterable[LogicalOperator] = deque()
-        for node in op.post_order_iter():
-            nodes.appendleft(node)
+        This implementation uses ``LogicalOperator._apply_transform`` to
+        post-order-traverse the DAG and rewrite each ``Limit`` node via
+        :py:meth:`_push_limit_down`.
+        """
 
-        while len(nodes) > 0:
-            current_op = nodes.pop()
+        def transform(node: LogicalOperator) -> LogicalOperator:
+            if isinstance(node, Limit):
+                if isinstance(node.input_dependency, Union):
+                    return self._push_limit_into_union(node)
+                return self._push_limit_down(node)
+            return node
 
-            # If we encounter a Limit op, move it upstream until it reaches:
-            # - Read operator
-            # - A non-AbstractOneToOne operator (e.g. AbstractAllToAll)
-            # - An AbstractOneToOne operator that could change the number of output rows
+        # ``_apply_transform`` returns the (potentially new) root of the DAG.
+        return op._apply_transform(transform)
 
-            # TODO(scottjlee): in our current abstraction, we have Read extend
-            # AbstractMap (with no input dependency), which extends AbstractOneToOne.
-            # So we have to explicitly separate the Read op in its own check.
-            # We should remove this case once we refactor Read op to no longer
-            # be an AbstractOneToOne op.
-            if isinstance(current_op, Limit):
-                limit_op_copy = copy.copy(current_op)
+    def _push_limit_into_union(self, limit_op: Limit) -> Limit:
+        """Push `limit_op` INTO every branch of its upstream Union
+        and preserve the global limit.
 
-                # Traverse up the DAG until we reach the first operator that meets
-                # one of the conditions above, which will serve as the new input
-                # into the Limit operator.
-                new_input_into_limit = current_op.input_dependency
-                ops_between_new_input_and_limit: List[LogicalOperator] = []
-                while (
-                    isinstance(new_input_into_limit, AbstractOneToOne)
-                    and not isinstance(new_input_into_limit, Read)
-                    and not new_input_into_limit.can_modify_num_rows()
-                ):
-                    new_input_into_limit_copy = copy.copy(new_input_into_limit)
-                    ops_between_new_input_and_limit.append(new_input_into_limit_copy)
-                    new_input_into_limit = new_input_into_limit.input_dependency
+        Existing topology:
+            child₁ , child₂ , …  ->  Union  ->  Limit
 
-                # Link the Limit operator and its newly designated input op from above.
-                limit_op_copy._input_dependencies = [new_input_into_limit]
-                new_input_into_limit._output_dependencies = [limit_op_copy]
+        New topology:
+            child₁ -> Limit ->│
+                               │
+            child₂ -> Limit ->┤ Union ──► Limit   (original)
+                               │
+            …    -> Limit  ->│
+        """
+        union_op = limit_op.input_dependency
+        assert isinstance(union_op, Union)
 
-                # Build the chain of operator dependencies between the new
-                # input and the Limit operator, using copies of traversed operators.
-                ops_between_new_input_and_limit.append(limit_op_copy)
-                for idx in range(len(ops_between_new_input_and_limit) - 1):
-                    curr_op, up_op = (
-                        ops_between_new_input_and_limit[idx],
-                        ops_between_new_input_and_limit[idx + 1],
-                    )
-                    curr_op._input_dependencies = [up_op]
-                    up_op._output_dependencies = [curr_op]
-                    # Add the copied operator to the list of nodes to be traversed.
-                    nodes.append(curr_op)
+        # 1. Detach the original Union from its children.
+        original_children = list(union_op.input_dependencies)
+        for child in original_children:
+            if union_op in child._output_dependencies:
+                child._output_dependencies.remove(union_op)
 
-                # Link the Limit operator to its new input operator.
-                for limit_output_op in current_op.output_dependencies:
-                    limit_output_op._input_dependencies = [
-                        ops_between_new_input_and_limit[0]
-                    ]
-                last_op = ops_between_new_input_and_limit[0]
-                last_op._output_dependencies = current_op.output_dependencies
+        # 2. Insert a branch-local Limit and push it further upstream.
+        branch_tails: List[LogicalOperator] = []
+        for child in original_children:
+            raw_limit = Limit(child, limit_op._limit)  # child → limit
+            if isinstance(child, Union):
+                # This represents the limit operator appended after the union.
+                pushed_tail = self._push_limit_into_union(raw_limit)
+            else:
+                # This represents the operator that takes place of the original limit position.
+                pushed_tail = self._push_limit_down(raw_limit)
+            branch_tails.append(pushed_tail)
 
-        return current_op
+        # 3. Re-attach the Union so that it consumes the *tails*.
+        new_union = Union(*branch_tails)
+        for tail in branch_tails:
+            tail._output_dependencies.append(new_union)
 
-    def _apply_limit_fusion(self, op: LogicalOperator) -> LogicalOperator:
-        """Given a DAG of LogicalOperators, traverse the DAG and fuse all
-        back-to-back Limit operators, i.e.
-        Limit[n] -> Limit[m] becomes Limit[min(n, m)].
+        # 4. Re-wire the original (global) Limit to consume the *new* Union.
+        limit_op._input_dependencies = [new_union]
+        new_union._output_dependencies = [limit_op]
 
-        Returns a new LogicalOperator with the Limit operators fusion applied."""
+        return limit_op
 
-        # Post-order traversal.
-        nodes: Iterable[LogicalOperator] = deque()
-        for node in op.post_order_iter():
-            nodes.appendleft(node)
+    def _push_limit_down(self, limit_op: Limit) -> LogicalOperator:
+        """Push a single limit down through compatible operators conservatively.
 
-        while len(nodes) > 0:
-            current_op = nodes.pop()
+        Creates entirely new operators instead of mutating existing ones.
+        """
+        # Traverse up the DAG until we reach the first operator that meets
+        # one of the stopping conditions
+        current_op = limit_op.input_dependency
+        num_rows_preserving_ops: List[LogicalOperator] = []
 
-            # If we encounter two back-to-back Limit operators, fuse them.
-            if isinstance(current_op, Limit):
-                upstream_op = current_op.input_dependency
-                if isinstance(upstream_op, Limit):
-                    new_limit = min(current_op._limit, upstream_op._limit)
-                    fused_limit_op = Limit(upstream_op.input_dependency, new_limit)
+        while (
+            isinstance(current_op, AbstractOneToOne)
+            and not current_op.can_modify_num_rows()
+            and not isinstance(current_op, MapBatches)
+            # We should push past MapBatches, but MapBatches can modify the row count
+            # TODO: add a flag in map_batches that allows the user to opt in ensure row preservation
+        ):
+            num_rows_preserving_ops.append(current_op)
+            current_op = current_op.input_dependency
 
-                    # Link the fused Limit operator to its input and output ops, i.e.:
-                    # `upstream_input -> limit_upstream -> limit_downstream -> downstream_output`  # noqa: E501
-                    # becomes `upstream_input -> fused_limit -> downstream_output`
-                    fused_limit_op._input_dependencies = upstream_op.input_dependencies
-                    fused_limit_op._output_dependencies = current_op.output_dependencies
+        # If we couldn't push through any operators, return original
+        if not num_rows_preserving_ops:
+            return limit_op
 
-                    # Replace occurrences of the upstream Limit operator in
-                    # output_dependencies with the newly fused Limit operator.
-                    upstream_input = upstream_op.input_dependency
-                    upstream_input._output_dependencies = [fused_limit_op]
+        # Apply per-block limit to the deepest operator if it supports it
+        limit_input = self._apply_per_block_limit_if_supported(
+            current_op, limit_op._limit
+        )
 
-                    for current_output in current_op.output_dependencies:
-                        current_output._input_dependencies = [fused_limit_op]
-                    nodes.append(fused_limit_op)
-        return current_op
+        # Build the new operator chain: Chain non-preserving number of rows -> Limit -> Operators preserving number of rows
+        new_limit = Limit(limit_input, limit_op._limit)
+        result_op = new_limit
+
+        # Recreate the intermediate operators and apply per-block limits
+        for op_to_recreate in reversed(num_rows_preserving_ops):
+            recreated_op = self._recreate_operator_with_new_input(
+                op_to_recreate, result_op
+            )
+            result_op = recreated_op
+
+        return result_op
+
+    def _apply_per_block_limit_if_supported(
+        self, op: LogicalOperator, limit: int
+    ) -> LogicalOperator:
+        """Apply per-block limit to operators that support it."""
+        if isinstance(op, AbstractMap):
+            new_op = copy.copy(op)
+            new_op.set_per_block_limit(limit)
+            return new_op
+        return op
+
+    def _recreate_operator_with_new_input(
+        self, original_op: LogicalOperator, new_input: LogicalOperator
+    ) -> LogicalOperator:
+        """Create a new operator of the same type as original_op but with new_input as its input."""
+
+        if isinstance(original_op, Limit):
+            return Limit(new_input, original_op._limit)
+
+        # Use copy and replace input dependencies approach
+        new_op = copy.copy(original_op)
+        new_op._input_dependencies = [new_input]
+        new_op._output_dependencies = []
+
+        return new_op

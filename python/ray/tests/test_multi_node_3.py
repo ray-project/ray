@@ -4,23 +4,24 @@ import subprocess
 import sys
 from pathlib import Path
 
-import psutil
 import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.test_utils import Semaphore
 from ray._private.test_utils import (
-    Semaphore,
     check_call_ray,
     check_call_subprocess,
     kill_process_by_name,
-    start_redis_instance,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
+    start_redis_instance,
     wait_for_children_of_pid,
     wait_for_children_of_pid_to_exit,
 )
 from ray._private.utils import detect_fate_sharing_support
+
+import psutil
 
 
 def test_calling_start_ray_head(call_ray_stop_only):
@@ -128,7 +129,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     )
     check_call_ray(["stop"])
 
-    temp_dir = ray._private.utils.get_ray_temp_dir()
+    temp_dir = ray._common.utils.get_ray_temp_dir()
 
     # Test starting Ray with RAY_REDIS_ADDRESS env.
     _, proc = start_redis_instance(
@@ -338,7 +339,7 @@ def test_multi_driver_logging(ray_start_regular):
     driver_script_template = """
 import ray
 import sys
-from ray._private.test_utils import Semaphore
+from ray._common.test_utils import Semaphore
 
 @ray.remote(num_cpus=0)
 def remote_print(s, file=None):

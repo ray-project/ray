@@ -1,6 +1,8 @@
+from abc import abstractmethod
 from typing import Any, Dict, Optional
 
 import ray.train
+from ray.data import Dataset
 from ray.data.collate_fn import CollateFn
 
 from constants import DatasetKey
@@ -25,9 +27,27 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         # due to throttling during read operations.
         data_context.retried_io_errors.append("AWS Error ACCESS_DENIED")
 
+        data_context.execution_options.locality_with_output = (
+            dataloader_config.locality_with_output
+        )
+        data_context.execution_options.actor_locality_enabled = (
+            dataloader_config.actor_locality_enabled
+        )
+        data_context.execution_options.preserve_order = dataloader_config.preserve_order
+
+    @abstractmethod
+    def get_ray_datasets(self) -> Dict[str, Dataset]:
+        """Get Ray datasets."""
+        raise NotImplementedError
+
     def _get_collate_fn(self) -> Optional[CollateFn]:
         """Return the collate function for the dataloader."""
         return None
+
+    def get_ray_data_config(self) -> ray.train.DataConfig:
+        return ray.train.DataConfig(
+            enable_shard_locality=self.get_dataloader_config().enable_shard_locality,
+        )
 
     def get_train_dataloader(self):
         """Get the training dataloader.
@@ -50,6 +70,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
                 collate_fn=self._get_collate_fn(),
                 prefetch_batches=dataloader_config.ray_data_prefetch_batches,
                 drop_last=True,
+                pin_memory=dataloader_config.ray_data_pin_memory,
             )
         )
 

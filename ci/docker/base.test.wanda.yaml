@@ -3,7 +3,7 @@ froms: ["ubuntu:focal"]
 dockerfile: ci/docker/base.test.Dockerfile
 srcs:
   - ci/env/install-bazel.sh
-  - ci/env/install-miniconda.sh
+  - ci/env/install-miniforge.sh
   - ci/suppress_output
   - .bazelversion
 build_args:

@@ -1,11 +1,12 @@
+import json
 import logging
 import warnings
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from ray import cloudpickle
-from ray._common.utils import import_attr
-from ray._private.pydantic_compat import (
+from ray._common.pydantic_compat import (
     BaseModel,
     Field,
     NonNegativeFloat,
@@ -15,18 +16,257 @@ from ray._private.pydantic_compat import (
     PrivateAttr,
     validator,
 )
+from ray._common.utils import import_attr
+
+# Import types needed for AutoscalingContext
+from ray.serve._private.common import DeploymentID, ReplicaID, TimeSeries
 from ray.serve._private.constants import (
-    DEFAULT_AUTOSCALING_POLICY,
+    DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    DEFAULT_REQUEST_ROUTER_PATH,
+    DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
+    DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S,
     DEFAULT_TARGET_ONGOING_REQUESTS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.utils import validate_ssl_config
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+@PublicAPI(stability="alpha")
+@dataclass
+class AutoscalingContext:
+    """Rich context provided to custom autoscaling policies.
+
+    This class provides comprehensive information about a deployment's current state,
+    metrics, and configuration that can be used by custom autoscaling policies to
+    make intelligent scaling decisions.
+
+    The context includes deployment metadata, current replica state, built-in and
+    custom metrics, capacity bounds, policy state, and timing information.
+    """
+
+    # Deployment information
+    deployment_id: DeploymentID  #: Unique identifier for the deployment.
+    deployment_name: str  #: Name of the deployment.
+    app_name: Optional[str]  #: Name of the application containing this deployment.
+
+    # Current state
+    current_num_replicas: int  #: Current number of running replicas.
+    target_num_replicas: int  #: Target number of replicas set by the autoscaler.
+    running_replicas: List[ReplicaID]  #: List of currently running replica IDs.
+
+    # Built-in metrics
+    total_num_requests: float  #: Total number of requests across all replicas.
+    total_queued_requests: Optional[float]  #: Number of requests currently queued.
+    total_running_requests: Optional[
+        float
+    ]  #: Total number of requests currently running.
+
+    # Custom metrics
+    aggregated_metrics: Dict[
+        str, Dict[ReplicaID, float]
+    ]  #: Time-weighted averages of custom metrics per replica.
+    raw_metrics: Dict[
+        str, Dict[ReplicaID, TimeSeries]
+    ]  #: Raw custom metric timeseries per replica.
+
+    # Capacity and bounds
+    capacity_adjusted_min_replicas: int  #: Minimum replicas adjusted for cluster capacity.
+    capacity_adjusted_max_replicas: int  #: Maximum replicas adjusted for cluster capacity.
+
+    # Policy state
+    policy_state: Dict[
+        str, Any
+    ]  #: Persistent state dictionary for the autoscaling policy.
+
+    # Timing
+    last_scale_up_time: Optional[float]  #: Timestamp of last scale-up action.
+    last_scale_down_time: Optional[float]  #: Timestamp of last scale-down action.
+    current_time: Optional[float]  #: Current timestamp.
+
+    # Config
+    config: Optional[Any]  #: Autoscaling configuration for this deployment.
+
+
+@PublicAPI(stability="alpha")
+class RequestRouterConfig(BaseModel):
+    """Config for the Serve request router.
+
+    This class configures how Ray Serve routes requests to deployment replicas. The router is
+    responsible for selecting which replica should handle each incoming request based on the
+    configured routing policy. You can customize the routing behavior by specifying a custom
+    request router class and providing configuration parameters.
+
+    The router also manages periodic health checks and scheduling statistics collection from
+    replicas to make informed routing decisions.
+
+    Example:
+        .. code-block:: python
+
+            from ray.serve.config import RequestRouterConfig, DeploymentConfig
+            from ray import serve
+
+            # Use default router with custom stats collection interval
+            request_router_config = RequestRouterConfig(
+                request_routing_stats_period_s=5.0,
+                request_routing_stats_timeout_s=15.0
+            )
+
+            # Use custom router class
+            request_router_config = RequestRouterConfig(
+                request_router_class="ray.serve.llm.request_router.PrefixCacheAffinityRouter",
+                request_router_kwargs={"imbalanced_threshold": 20}
+            )
+            deployment_config = DeploymentConfig(
+                request_router_config=request_router_config
+            )
+            deployment = serve.deploy(
+                "my_deployment",
+                deployment_config=deployment_config
+            )
+    """
+
+    _serialized_request_router_cls: bytes = PrivateAttr(default=b"")
+
+    request_router_class: Union[str, Callable] = Field(
+        default=DEFAULT_REQUEST_ROUTER_PATH,
+        description=(
+            "The class of the request router that Ray Serve uses for this deployment. This value can be "
+            "a string or a class. All the deployment handles that you create for this "
+            "deployment use the routing policy defined by the request router. "
+            "Default to Serve's PowerOfTwoChoicesRequestRouter."
+        ),
+    )
+    request_router_kwargs: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Keyword arguments that Ray Serve passes to the request router class "
+            "initialize_state method."
+        ),
+    )
+
+    request_routing_stats_period_s: PositiveFloat = Field(
+        default=DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
+        description=(
+            "Duration between record scheduling stats calls for the replica. "
+            "Defaults to 10s. The health check is by default a no-op Actor call "
+            "to the replica, but you can define your own request scheduling stats "
+            "using the 'record_scheduling_stats' method in your deployment."
+        ),
+    )
+
+    request_routing_stats_timeout_s: PositiveFloat = Field(
+        default=DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S,
+        description=(
+            "Duration in seconds, that replicas wait for a request scheduling "
+            "stats method to return before considering it as failed. Defaults to 30s."
+        ),
+    )
+
+    @validator("request_router_kwargs", always=True)
+    def request_router_kwargs_json_serializable(cls, v):
+        if isinstance(v, bytes):
+            return v
+        if v is not None:
+            try:
+                json.dumps(v)
+            except TypeError as e:
+                raise ValueError(
+                    f"request_router_kwargs is not JSON-serializable: {str(e)}."
+                )
+
+        return v
+
+    def __init__(self, **kwargs: dict[str, Any]):
+        """Initialize RequestRouterConfig with the given parameters.
+
+        Needed to serialize the request router class since validators are not called
+        for attributes that begin with an underscore.
+
+        Args:
+            **kwargs: Keyword arguments to pass to BaseModel.
+        """
+        super().__init__(**kwargs)
+        self._serialize_request_router_cls()
+
+    def _serialize_request_router_cls(self) -> None:
+        """Import and serialize request router class with cloudpickle.
+
+        Import the request router if you pass it in as a string import path.
+        Then cloudpickle the request router and set to
+        `_serialized_request_router_cls`.
+        """
+        request_router_class = self.request_router_class
+        if isinstance(request_router_class, Callable):
+            request_router_class = (
+                f"{request_router_class.__module__}.{request_router_class.__name__}"
+            )
+
+        request_router_path = request_router_class or DEFAULT_REQUEST_ROUTER_PATH
+        request_router_class = import_attr(request_router_path)
+
+        self._serialized_request_router_cls = cloudpickle.dumps(request_router_class)
+        # Update the request_router_class field to be the string path
+        self.request_router_class = request_router_path
+
+    def get_request_router_class(self) -> Callable:
+        """Deserialize the request router from cloudpickled bytes."""
+        return cloudpickle.loads(self._serialized_request_router_cls)
+
+
+DEFAULT_METRICS_INTERVAL_S = 10.0
+
+
+@PublicAPI(stability="alpha")
+class AggregationFunction(str, Enum):
+    MEAN = "mean"
+    MAX = "max"
+    MIN = "min"
+
+
+@PublicAPI(stability="alpha")
+class AutoscalingPolicy(BaseModel):
+    # Cloudpickled policy definition.
+    _serialized_policy_def: bytes = PrivateAttr(default=b"")
+
+    policy_function: Union[str, Callable] = Field(
+        default=DEFAULT_AUTOSCALING_POLICY_NAME,
+        description="Policy function can be a string import path or a function callable. "
+        "If it's a string import path, it must be of the form `path.to.module:function_name`. ",
+    )
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.serialize_policy()
+
+    def serialize_policy(self) -> None:
+        """Serialize policy with cloudpickle.
+
+        Import the policy if it's passed in as a string import path. Then cloudpickle
+        the policy and set `serialized_policy_def` if it's empty.
+        """
+        policy_path = self.policy_function
+
+        if isinstance(policy_path, Callable):
+            policy_path = f"{policy_path.__module__}.{policy_path.__name__}"
+
+        if not self._serialized_policy_def:
+            self._serialized_policy_def = cloudpickle.dumps(import_attr(policy_path))
+
+        self.policy_function = policy_path
+
+    def is_default_policy_function(self) -> bool:
+        return self.policy_function == DEFAULT_AUTOSCALING_POLICY_NAME
+
+    def get_policy(self) -> Callable:
+        """Deserialize policy from cloudpickled bytes."""
+        return cloudpickle.loads(self._serialized_policy_def)
 
 
 @PublicAPI(stability="stable")
@@ -41,15 +281,23 @@ class AutoscalingConfig(BaseModel):
     initial_replicas: Optional[NonNegativeInt] = None
     max_replicas: PositiveInt = 1
 
-    target_ongoing_requests: PositiveFloat = DEFAULT_TARGET_ONGOING_REQUESTS
+    target_ongoing_requests: Optional[PositiveFloat] = DEFAULT_TARGET_ONGOING_REQUESTS
 
-    # How often to scrape for metrics
-    metrics_interval_s: PositiveFloat = 10.0
-    # Time window to average over for metrics.
-    look_back_period_s: PositiveFloat = 30.0
+    metrics_interval_s: PositiveFloat = Field(
+        default=DEFAULT_METRICS_INTERVAL_S,
+        description="[DEPRECATED] How often to scrape for metrics. "
+        "Will be replaced by the environment variables "
+        "`RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S` and "
+        "`RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S` in a future release.",
+    )
+    look_back_period_s: PositiveFloat = Field(
+        default=30.0, description="Time window to average over for metrics."
+    )
 
-    # DEPRECATED
-    smoothing_factor: PositiveFloat = 1.0
+    smoothing_factor: PositiveFloat = Field(
+        default=1.0,
+        description="[DEPRECATED] Smoothing factor for autoscaling decisions.",
+    )
     # DEPRECATED: replaced by `downscaling_factor`
     upscale_smoothing_factor: Optional[PositiveFloat] = Field(
         default=None, description="[DEPRECATED] Please use `upscaling_factor` instead."
@@ -60,22 +308,40 @@ class AutoscalingConfig(BaseModel):
         description="[DEPRECATED] Please use `downscaling_factor` instead.",
     )
 
-    # Multiplicative "gain" factor to limit scaling decisions
-    upscaling_factor: Optional[PositiveFloat] = None
-    downscaling_factor: Optional[PositiveFloat] = None
+    upscaling_factor: Optional[PositiveFloat] = Field(
+        default=None,
+        description='Multiplicative "gain" factor to limit upscaling decisions.',
+    )
+    downscaling_factor: Optional[PositiveFloat] = Field(
+        default=None,
+        description='Multiplicative "gain" factor to limit downscaling decisions.',
+    )
 
     # How frequently to make autoscaling decisions
     # loop_period_s: float = CONTROL_LOOP_PERIOD_S
-    # How long to wait before scaling down replicas
-    downscale_delay_s: NonNegativeFloat = 600.0
-    # How long to wait before scaling up replicas
-    upscale_delay_s: NonNegativeFloat = 30.0
+    downscale_delay_s: NonNegativeFloat = Field(
+        default=600.0,
+        description="How long to wait before scaling down replicas to a value greater than 0.",
+    )
+    # Optionally set for 1->0 transition
+    downscale_to_zero_delay_s: Optional[NonNegativeFloat] = Field(
+        default=None,
+        description="How long to wait before scaling down replicas from 1 to 0. If not set, the value of `downscale_delay_s` will be used.",
+    )
+    upscale_delay_s: NonNegativeFloat = Field(
+        default=30.0, description="How long to wait before scaling up replicas."
+    )
 
-    # Cloudpickled policy definition.
-    _serialized_policy_def: bytes = PrivateAttr(default=b"")
+    aggregation_function: Union[str, AggregationFunction] = Field(
+        default=AggregationFunction.MEAN,
+        description="Function used to aggregate metrics across a time window.",
+    )
 
-    # Custom autoscaling config. Defaults to the request-based autoscaler.
-    _policy: Union[str, Callable] = PrivateAttr(default=DEFAULT_AUTOSCALING_POLICY)
+    # Autoscaling policy. This policy is deployment scoped. Defaults to the request-based autoscaler.
+    policy: AutoscalingPolicy = Field(
+        default_factory=AutoscalingPolicy,
+        description="The autoscaling policy for the deployment. This option is experimental.",
+    )
 
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
@@ -101,30 +367,23 @@ class AutoscalingConfig(BaseModel):
 
         return max_replicas
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.serialize_policy()
+    @validator("metrics_interval_s")
+    def metrics_interval_s_deprecation_warning(cls, v: PositiveFloat) -> PositiveFloat:
+        if v != DEFAULT_METRICS_INTERVAL_S:
+            warnings.warn(
+                "The `metrics_interval_s` field in AutoscalingConfig is deprecated and "
+                "will be replaced by the environment variables "
+                "`RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S` and "
+                "`RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S` in a future release.",
+                DeprecationWarning,
+            )
+        return v
 
-    def serialize_policy(self) -> None:
-        """Serialize policy with cloudpickle.
-
-        Import the policy if it's passed in as a string import path. Then cloudpickle
-        the policy and set `serialized_policy_def` if it's empty.
-        """
-        values = self.dict()
-        policy = values.get("_policy")
-        if isinstance(policy, Callable):
-            policy = f"{policy.__module__}.{policy.__name__}"
-
-        if not policy:
-            policy = DEFAULT_AUTOSCALING_POLICY
-
-        policy_path = policy
-        policy = import_attr(policy)
-
-        if not values.get("_serialized_policy_def"):
-            self._serialized_policy_def = cloudpickle.dumps(policy)
-        self._policy = policy_path
+    @validator("aggregation_function", always=True)
+    def aggregation_function_valid(cls, v: Union[str, AggregationFunction]):
+        if isinstance(v, AggregationFunction):
+            return v
+        return AggregationFunction(str(v).lower())
 
     @classmethod
     def default(cls):
@@ -133,10 +392,6 @@ class AutoscalingConfig(BaseModel):
             min_replicas=1,
             max_replicas=100,
         )
-
-    def get_policy(self) -> Callable:
-        """Deserialize policy from cloudpickled bytes."""
-        return cloudpickle.loads(self._serialized_policy_def)
 
     def get_upscaling_factor(self) -> PositiveFloat:
         if self.upscaling_factor:
@@ -234,6 +489,13 @@ class HTTPOptions(BaseModel):
     - request_timeout_s: End-to-end timeout for HTTP requests.
     - keep_alive_timeout_s: Duration to keep idle connections alive when no
       requests are ongoing.
+    - ssl_keyfile: Path to the SSL key file for HTTPS. If provided with
+      ssl_certfile, the HTTP server will use HTTPS.
+    - ssl_certfile: Path to the SSL certificate file for HTTPS. If provided
+      with ssl_keyfile, the HTTP server will use HTTPS.
+    - ssl_keyfile_password: Optional password for the SSL key file.
+    - ssl_ca_certs: Optional path to CA certificate file for client certificate
+      verification.
 
     - location: [DEPRECATED: use `proxy_location` field instead] The deployment
       location of HTTP servers:
@@ -257,12 +519,22 @@ class HTTPOptions(BaseModel):
     root_path: str = ""
     request_timeout_s: Optional[float] = None
     keep_alive_timeout_s: int = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S
+    ssl_keyfile: Optional[str] = None
+    ssl_certfile: Optional[str] = None
+    ssl_keyfile_password: Optional[str] = None
+    ssl_ca_certs: Optional[str] = None
 
     @validator("location", always=True)
     def location_backfill_no_server(cls, v, values):
         if values["host"] is None or v is None:
             return DeploymentMode.NoServer
 
+        return v
+
+    @validator("ssl_certfile")
+    def validate_ssl_certfile(cls, v, values):
+        ssl_keyfile = values.get("ssl_keyfile")
+        validate_ssl_config(v, ssl_keyfile)
         return v
 
     @validator("middlewares", always=True)

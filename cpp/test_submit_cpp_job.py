@@ -5,9 +5,9 @@ import tempfile
 
 import pytest
 
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     format_web_url,
-    wait_for_condition,
     wait_until_server_available,
 )
 from ray.job_submission import JobStatus, JobSubmissionClient
@@ -21,9 +21,7 @@ def headers():
 
 @pytest.fixture(scope="module")
 def job_sdk_client(headers):
-    with _ray_start(
-        include_dashboard=True, num_cpus=1, _node_ip_address="0.0.0.0"
-    ) as ctx:
+    with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
         address = ctx.address_info["webui_url"]
         assert wait_until_server_available(address)
         yield JobSubmissionClient(format_web_url(address), headers=headers)

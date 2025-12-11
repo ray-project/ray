@@ -6,7 +6,8 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.test_utils import get_other_nodes, wait_for_condition
+from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import get_other_nodes
 from ray.cluster_utils import Cluster, cluster_not_supported
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM

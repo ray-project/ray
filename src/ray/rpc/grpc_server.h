@@ -24,7 +24,6 @@
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/status.h"
 #include "ray/rpc/server_call.h"
 
 namespace ray {
@@ -68,12 +67,6 @@ namespace rpc {
     SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE)                \
   _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, false)
 
-// Define a void RPC client method.
-#define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)            \
-  virtual void Handle##METHOD(::ray::rpc::METHOD##Request request, \
-                              ::ray::rpc::METHOD##Reply *reply,    \
-                              ::ray::rpc::SendReplyCallback send_reply_callback) = 0;
-
 class GrpcService;
 
 /// Class that represents an gRPC server.
@@ -96,17 +89,14 @@ class GrpcServer {
   GrpcServer(std::string name,
              const uint32_t port,
              bool listen_to_localhost_only,
-             const ClusterID &cluster_id = ClusterID::Nil(),
              int num_threads = 1,
              int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/)
       : name_(std::move(name)),
         port_(port),
         listen_to_localhost_only_(listen_to_localhost_only),
-        cluster_id_(ClusterID::Nil()),
-        is_closed_(true),
+        is_shutdown_(true),
         num_threads_(num_threads),
-        keepalive_time_ms_(keepalive_time_ms),
-        shutdown_(false) {
+        keepalive_time_ms_(keepalive_time_ms) {
     Init();
   }
 
@@ -116,7 +106,10 @@ class GrpcServer {
   /// Initialize and run this server.
   void Run();
 
-  // Shutdown this server
+  // Shutdown this server.
+  // NOTE: The method is idempotent but NOT THREAD-SAFE. Multiple sequential calls are
+  // safe (subsequent calls are no-ops). Concurrent calls will cause undefined behavior.
+  // Caller must ensure only one thread calls this method at a time.
   void Shutdown();
 
   /// Get the port of this gRPC server.
@@ -164,8 +157,8 @@ class GrpcServer {
   const bool listen_to_localhost_only_;
   /// Token representing ID of this cluster.
   ClusterID cluster_id_;
-  /// Indicates whether this server has been closed.
-  bool is_closed_;
+  /// Indicates whether this server is in shutdown state.
+  std::atomic<bool> is_shutdown_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
   std::vector<std::unique_ptr<grpc::Service>> grpc_services_;
   /// The `GrpcService`(defined below) objects which contain grpc::Service objects not in
@@ -185,8 +178,6 @@ class GrpcServer {
   /// gRPC server cannot get the ping response within the time, it triggers
   /// the watchdog timer fired error, which will close the connection.
   const int64_t keepalive_time_ms_;
-
-  std::atomic_bool shutdown_;
 };
 
 /// Base class that represents an abstract gRPC service.

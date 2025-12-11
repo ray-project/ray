@@ -21,6 +21,11 @@ QF_TWIN_PREDS = "qf_twin_preds"
 TD_ERROR_MEAN_KEY = "td_error_mean"
 CRITIC_TARGET = "critic_target"
 ACTION_DIST_INPUTS_NEXT = "action_dist_inputs_next"
+QF_TARGET_NEXT = "q_target_next"
+ACTION_PROBS_NEXT = "action_probs_next"
+ACTION_LOG_PROBS_NEXT = "action_log_probs_next"
+ACTION_PROBS = "action_probs"
+ACTION_LOG_PROBS = "action_log_probs"
 
 
 class SACLearner(DQNLearner):
@@ -44,25 +49,10 @@ class SACLearner(DQNLearner):
         # for the alpha already defined.
         super().build()
 
-        def get_target_entropy(module_id):
-            """Returns the target entropy to use for the loss.
-
-            Args:
-                module_id: Module ID for which the target entropy should be
-                    returned.
-
-            Returns:
-                Target entropy.
-            """
-            target_entropy = self.config.get_config_for_module(module_id).target_entropy
-            if target_entropy is None or target_entropy == "auto":
-                target_entropy = -np.prod(
-                    self._module_spec.module_specs[module_id].action_space.shape
-                )
-            return target_entropy
-
         self.target_entropy: Dict[ModuleID, TensorType] = LambdaDefaultDict(
-            lambda module_id: self._get_tensor_variable(get_target_entropy(module_id))
+            lambda module_id: self._get_tensor_variable(
+                self._get_target_entropy(module_id)
+            )
         )
 
     @override(Learner)
@@ -75,3 +65,51 @@ class SACLearner(DQNLearner):
         super().remove_module(module_id)
         self.curr_log_alpha.pop(module_id, None)
         self.target_entropy.pop(module_id, None)
+
+    @override(Learner)
+    def add_module(
+        self,
+        *,
+        module_id,
+        module_spec,
+        config_overrides=None,
+        new_should_module_be_updated=None
+    ):
+        # First call `super`'s `add_module` method.
+        super().add_module(
+            module_id=module_id,
+            module_spec=module_spec,
+            config_overrides=config_overrides,
+            new_should_module_be_updated=new_should_module_be_updated,
+        )
+        # Now add the log alpha.
+        self.curr_log_alpha[module_id] = self._get_tensor_variable(
+            # Note, we want to train the temperature parameter.
+            [
+                np.log(
+                    self.config.get_config_for_module(module_id).initial_alpha
+                ).astype(np.float32)
+            ],
+            trainable=True,
+        )
+        # Add also the target entropy for the new module.
+        self.target_entropy[module_id] = self._get_tensor_variable(
+            self._get_target_entropy(module_id)
+        )
+
+    def _get_target_entropy(self, module_id):
+        """Returns the target entropy to use for the loss.
+
+        Args:
+            module_id: Module ID for which the target entropy should be
+                returned.
+
+        Returns:
+            Target entropy.
+        """
+        target_entropy = self.config.get_config_for_module(module_id).target_entropy
+        if target_entropy is None or target_entropy == "auto":
+            target_entropy = -np.prod(
+                self._module_spec.module_specs[module_id].action_space.shape
+            )
+        return target_entropy

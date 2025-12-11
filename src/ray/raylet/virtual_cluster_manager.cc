@@ -40,12 +40,12 @@ bool VirtualClusterManager::UpdateVirtualCluster(
     if (virtual_cluster_data.revision() < it->second.revision()) {
       RAY_LOG(WARNING) << "Virtual cluster " << input_virtual_cluster_id
                        << " update rejected due to stale revision "
-                       << virtual_cluster_data.revision()
-                       << " < current revision " << it->second.revision();
+                       << virtual_cluster_data.revision() << " < current revision "
+                       << it->second.revision();
       return false;
     }
   }
-  
+
   if (virtual_cluster_data.is_removed()) {
     if (local_virtual_cluster_id_ == input_virtual_cluster_id) {
       local_virtual_cluster_id_.clear();

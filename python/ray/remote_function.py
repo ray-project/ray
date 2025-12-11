@@ -6,16 +6,16 @@ from functools import wraps
 from threading import Lock
 from typing import Optional
 
-import ray._private.signature
+import ray._common.signature
 from ray import Language, cross_language
-from ray._private import ray_option_utils
+from ray._common import ray_option_utils
+from ray._common.ray_option_utils import _warn_if_using_deprecated_placement_group
+from ray._common.serialization import pickle_dumps
 from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import (
     client_mode_convert_function,
     client_mode_should_convert,
 )
-from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
-from ray._private.serialization import pickle_dumps
 from ray._private.utils import get_runtime_env_info, parse_runtime_env_for_task_or_actor
 from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
@@ -105,11 +105,17 @@ class RemoteFunction:
         # When gpu is used, set the task non-recyclable by default.
         # https://github.com/ray-project/ray/issues/29624 for more context.
         # Note: Ray task worker process is not being reused when nsight
-        # profiler is running, as nsight generate report once the process exit.
+        # profiler is running, as nsight/rocprof-sys generate report
+        # once the process exit.
         num_gpus = self._default_options.get("num_gpus") or 0
         if (
             num_gpus > 0 and self._default_options.get("max_calls", None) is None
-        ) or "nsight" in (self._default_options.get("runtime_env") or {}):
+        ) or any(
+            [
+                s in (self._default_options.get(s) or {})
+                for s in ["nsight", "rocprof-sys"]
+            ]
+        ):
             self._default_options["max_calls"] = 1
 
         # TODO(suquark): This is a workaround for class attributes of options.
@@ -200,6 +206,8 @@ class RemoteFunction:
                 which this actor can be scheduled on. The label selector consist of key-value pairs,
                 where the keys are label names and the value are expressions consisting of an operator
                 with label values or just a value to indicate equality.
+            fallback_strategy (List[Dict[str, Any]]): If specified, expresses soft constraints
+                through a list of decorator options to fall back on when scheduling on a node.
             accelerator_type: If specified, requires that the task or actor run
                 on a node with the specified type of accelerator.
                 See :ref:`accelerator types <accelerator_types>`.
@@ -241,9 +249,6 @@ class RemoteFunction:
                 task. If set to True, task events such as (task running, finished)
                 are emitted, and available to Ray Dashboard and State API.
                 See :ref:`state-api-overview-ref` for more details.
-            _metadata: Extended options for Ray libraries. For example,
-                _metadata={"workflows.io/options": <workflow options>} for
-                Ray workflows.
             _labels: The key-value labels of a task.
 
         Examples:
@@ -326,7 +331,7 @@ class RemoteFunction:
             # Only need to record on the driver side
             # since workers are created via tasks or actors
             # launched from the driver.
-            from ray._private.usage import usage_lib
+            from ray._common.usage import usage_lib
 
             usage_lib.record_library_usage("core")
 
@@ -335,7 +340,7 @@ class RemoteFunction:
         with self._inject_lock:
             if self._function_signature is None:
                 self._function = _inject_tracing_into_function(self._function)
-                self._function_signature = ray._private.signature.extract_signature(
+                self._function_signature = ray._common.signature.extract_signature(
                     self._function
                 )
 
@@ -431,7 +436,7 @@ class RemoteFunction:
         ):
             _warn_if_using_deprecated_placement_group(task_options, 4)
 
-        resources = ray._private.utils.resources_from_ray_options(task_options)
+        resources = ray._common.utils.resources_from_ray_options(task_options)
 
         if scheduling_strategy is None or isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
@@ -480,7 +485,7 @@ class RemoteFunction:
             elif not args and not kwargs and not self._function_signature:
                 list_args = []
             else:
-                list_args = ray._private.signature.flatten_args(
+                list_args = ray._common.signature.flatten_args(
                     self._function_signature, args, kwargs
                 )
 

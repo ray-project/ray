@@ -2,12 +2,12 @@ import os
 import sys
 
 import gradio as gr
+import httpx
 import pytest
-import requests
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.serve.gradio_integrations import GradioIngress, GradioServer
 
 
@@ -48,7 +48,7 @@ def test_gradio_ingress_correctness(serve_start_shutdown, use_user_defined_class
     serve.run(app)
 
     test_input = "Alice"
-    response = requests.post(
+    response = httpx.post(
         "http://127.0.0.1:8000/api/predict/", json={"data": [test_input]}
     )
     assert response.status_code == 200 and response.json()["data"][0] == greet(
@@ -74,7 +74,7 @@ def test_gradio_ingress_scaling(serve_start_shutdown):
     def two_pids_returned():
         @ray.remote
         def get_pid_from_request():
-            r = requests.post(
+            r = httpx.post(
                 "http://127.0.0.1:8000/api/predict/", json={"data": ["input"]}
             )
             r.raise_for_status()

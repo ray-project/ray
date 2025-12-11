@@ -30,7 +30,7 @@ Intermediate
 .. list-table::
 
   * - :doc:`Running a Simple MapReduce Example with Ray Core <map_reduce>`
-  * - :doc:`Speed Up Your Web Crawler by Parallelizing it with Ray <web-crawler>`
+  * - :doc:`Speed Up Your Web Crawler by Parallelizing it with Ray <web_crawler>`
 
 
 Advanced
@@ -38,7 +38,6 @@ Advanced
 
 .. list-table::
 
-  * - :doc:`Build Simple AutoML for Time Series Using Ray <automl_for_time_series>`
   * - :doc:`Build Batch Prediction Using Ray <batch_prediction>`
   * - :doc:`Build a Simple Parameter Server Using Ray <plot_parameter_server>`
   * - :doc:`Simple Parallel Model Selection <plot_hyperparameter>`

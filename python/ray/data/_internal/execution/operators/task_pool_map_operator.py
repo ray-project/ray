@@ -21,11 +21,12 @@ class TaskPoolMapOperator(MapOperator):
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
         data_context: DataContext,
-        target_max_block_size: Optional[int],
         name: str = "TaskPoolMap",
+        target_max_block_size_override: Optional[int] = None,
         min_rows_per_bundle: Optional[int] = None,
         concurrency: Optional[int] = None,
         supports_fusion: bool = True,
+        map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -35,8 +36,7 @@ class TaskPoolMapOperator(MapOperator):
             transform_fn: The function to apply to each ref bundle input.
             input_op: Operator generating input data for this op.
             name: The name of this operator.
-            target_max_block_size: The target maximum number of bytes to
-                include in an output block.
+            target_max_block_size_override: Override for target max-block-size.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
@@ -44,6 +44,8 @@ class TaskPoolMapOperator(MapOperator):
             concurrency: The maximum number of Ray tasks to use concurrently,
                 or None to use as many tasks as possible.
             supports_fusion: Whether this operator supports fusion with other operators.
+            map_task_kwargs: A dictionary of kwargs to pass to the map task. You can
+                access these kwargs through the `TaskContext.kwargs` dictionary.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -57,9 +59,10 @@ class TaskPoolMapOperator(MapOperator):
             input_op,
             data_context,
             name,
-            target_max_block_size,
+            target_max_block_size_override,
             min_rows_per_bundle,
             supports_fusion,
+            map_task_kwargs,
             ray_remote_args_fn,
             ray_remote_args,
         )
@@ -81,10 +84,10 @@ class TaskPoolMapOperator(MapOperator):
         ctx = TaskContext(
             task_idx=self._next_data_task_idx,
             op_name=self.name,
-            target_max_block_size=self.actual_target_max_block_size,
+            target_max_block_size_override=self.target_max_block_size_override,
         )
 
-        dynamic_ray_remote_args = self._get_runtime_ray_remote_args(input_bundle=bundle)
+        dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
         dynamic_ray_remote_args["name"] = self.name
 
         if (
@@ -135,6 +138,19 @@ class TaskPoolMapOperator(MapOperator):
             object_store_memory=self._metrics.obj_store_mem_max_pending_output_per_task
             or 0,
         )
+
+    def per_task_resource_allocation(
+        self: "PhysicalOperator",
+    ) -> ExecutionResources:
+        return self.incremental_resource_usage()
+
+    def max_task_concurrency(self: "PhysicalOperator") -> Optional[int]:
+        return self._concurrency
+
+    def min_scheduling_resources(
+        self: "PhysicalOperator",
+    ) -> ExecutionResources:
+        return self.incremental_resource_usage()
 
     def get_concurrency(self) -> Optional[int]:
         return self._concurrency

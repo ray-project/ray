@@ -1,4 +1,4 @@
-(kuberay-troubleshootin-guides)=
+(kuberay-troubleshooting-guides)=
 
 # Troubleshooting guide
 
@@ -14,6 +14,7 @@ If you don't find an answer to your question here, please don't hesitate to conn
 - [Cluster domain](#cluster-domain)
 - [RayService](#rayservice)
 - [Autoscaler](#autoscaler)
+- [Multi-node GPU clusters](#multi-node-gpu)
 - [Other questions](#other-questions)
 
 (use-the-right-version-of-ray)=
@@ -28,7 +29,7 @@ When a Ray job is created, the Ray dashboard agent process on the head node gets
 
 (docker-image-for-apple-macbooks)=
 ## Use ARM-based docker images for Apple M1 or M2 MacBooks
-Ray builds different images for different platforms. Until Ray moves to building multi-architecture images, [tracked by this Github issue](https://github.com/ray-project/ray/issues/39364), use platform-specific docker images in the head and worker group specs of the [RayCluster config](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#image).
+Ray builds different images for different platforms. Until Ray moves to building multi-architecture images, [tracked by this GitHub issue](https://github.com/ray-project/ray/issues/39364), use platform-specific docker images in the head and worker group specs of the [RayCluster config](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#image).
 
 Use an image with the tag `aarch64`, for example, `image: rayproject/ray:2.41.0-aarch64`), if you are running KubeRay on a MacBook M1 or M2.
 
@@ -97,9 +98,43 @@ One common cause is that the Ray tasks or actors require an amount of resources 
 Note that Ray tasks and actors represent the smallest scheduling units in Ray, and a task or actor should be on a single Ray node.
 Take [kuberay#846](https://github.com/ray-project/kuberay/issues/846) as an example. The user attempts to schedule a Ray task that requires 2 CPUs, but the Ray Pods available for these tasks have only 1 CPU each. Consequently, the Ray Autoscaler decides not to scale up the RayCluster.
 
+(multi-node-gpu)=
+## Multi-node GPU Deployments
+
+For comprehensive troubleshooting of multi-node GPU serving issues, refer to {ref}`Troubleshooting multi-node GPU serving on KubeRay <serve-multi-node-gpu-troubleshooting>`.
+
 (other-questions)=
 ## Other questions
 
 ### Why are changes to the RayCluster or RayJob CR not taking effect?
 
 Currently, only modifications to the `replicas` field in `RayCluster/RayJob` CR are supported. Changes to other fields may not take effect or could lead to unexpected results.
+
+### How to configure reconcile concurrency when there are large mount of CRs?
+
+In this example, [kuberay#3909](https://github.com/ray-project/kuberay/issues/3909),
+the user encountered high latency when processing RayCluster CRs and found that the ReconcileConcurrency value was set to 1.
+
+The KubeRay operator supports configuring the `ReconcileConcurrency` setting, which controls the number of concurrent workers processing Ray custom resources (CRs).
+
+To configure the `ReconcileConcurrency` number, you can edit the deployment's container args:
+
+```bash
+kubectl edit deployment kuberay-operator
+```
+
+Specify the `ReconcileConcurrency` number in the container args:
+
+```yaml
+spec:
+  containers:
+  - args:
+    - --reconcile-concurrency
+    - "10"
+```
+
+You can also use the following command for kuberay version >= 1.5.0:
+
+```bash
+helm install kuberay-operator kuberay/kuberay-operator --version 1.5.0 --set reconcileConcurrency=10
+```

@@ -11,6 +11,6 @@ FAQ
 
 
 Further Questions or Issues?
-----------------------------
+-----------------------------
 
 .. include:: /_includes/_help.rst

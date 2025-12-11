@@ -1,14 +1,14 @@
+import os
 import sys
+import time
 
 import pytest
-import os
-import time
-import ray
 from pyspark.sql import SparkSession
-from ray.util.spark import setup_ray_cluster
-import ray.util.spark.databricks_hook
-from ray._private.test_utils import wait_for_condition
 
+import ray
+import ray.util.spark.databricks_hook
+from ray._common.test_utils import wait_for_condition
+from ray.util.spark import setup_ray_cluster
 
 pytestmark = pytest.mark.skipif(
     not sys.platform.startswith("linux"),

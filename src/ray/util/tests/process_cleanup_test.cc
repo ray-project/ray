@@ -23,10 +23,11 @@
 #include <thread>
 #include <utility>
 
-#include "ray/common/test/testing.h"
+#include "absl/strings/str_format.h"
+#include "ray/common/id.h"
+#include "ray/common/tests/testing.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/process_cleaner.h"
-#include "ray/util/util.h"
 
 namespace ray {
 
@@ -34,7 +35,7 @@ namespace {
 
 TEST(ProcessCleanerTest, BasicTest) {
   const std::string kTestFname =
-      absl::StrFormat("/tmp/process_cleanup_%s", GenerateUUIDV4());
+      absl::StrFormat("/tmp/process_cleanup_%s", UniqueID::FromRandom().Hex());
   auto test_func = [fname = kTestFname]() {
     std::fstream f{fname, std::ios::app | std::ios::out};
     f << "helloworld";

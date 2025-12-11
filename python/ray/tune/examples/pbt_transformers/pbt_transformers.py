@@ -17,8 +17,7 @@ from transformers import (
 )
 
 from ray import tune
-from ray.tune import CheckpointConfig
-from ray.tune import CLIReporter
+from ray.tune import CheckpointConfig, CLIReporter
 from ray.tune.examples.pbt_transformers.utils import (
     build_compute_metrics_fn,
     download_data,

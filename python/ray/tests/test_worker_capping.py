@@ -1,13 +1,13 @@
 import asyncio
 import os
-import pytest
 import sys
 import tempfile
 import time
 
-import ray
+import pytest
 
-from ray._private.test_utils import Semaphore
+import ray
+from ray._common.test_utils import Semaphore
 
 
 def test_nested_tasks(shutdown_only):

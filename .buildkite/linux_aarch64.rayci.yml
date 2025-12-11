@@ -13,13 +13,55 @@ steps:
     wanda: ci/docker/manylinux.aarch64.wanda.yaml
     instance_type: builder-arm64
 
+  - name: ray-java-build-aarch64
+    label: "wanda: java build (aarch64)"
+    wanda: ci/docker/ray-java.wanda.yaml
+    tags:
+      - release_wheels
+      - java
+      - oss
+    env:
+      ARCH_SUFFIX: "-aarch64"
+    instance_type: builder-arm64
+    depends_on: manylinux-aarch64
+
+  - name: raycpubase-aarch64
+    label: "wanda: ray.py{{matrix}}.cpu.base (aarch64)"
+    tags:
+      - python_dependencies
+      - docker
+    wanda: docker/base-deps/cpu.wanda.yaml
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+    instance_type: builder-arm64
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: "-aarch64"
+
+  - name: raycpubaseextra-aarch64
+    label: "wanda: ray.py{{matrix}}.cpu.base-extra (aarch64)"
+    wanda: docker/base-extra/cpu.wanda.yaml
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+    instance_type: builder-arm64
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      IMAGE_TYPE: "ray"
+      ARCH_SUFFIX: "-aarch64"
+    depends_on: raycpubase-aarch64
+
   - name: raycudabase-aarch64
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base (aarch64)"
     tags:
       - python_dependencies
       - docker
-      - core_cpp
-    wanda: ci/docker/ray.cuda.base.aarch64.wanda.yaml
+    wanda: docker/base-deps/cuda.wanda.yaml
     matrix:
       setup:
         python:
@@ -34,27 +76,56 @@ steps:
           - "12.3.2-cudnn9"
           - "12.4.1-cudnn"
           - "12.5.1-cudnn"
+          - "12.6.3-cudnn"
           - "12.8.1-cudnn"
     instance_type: builder-arm64
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
+      ARCH_SUFFIX: "-aarch64"
 
-  - name: raycpubase-aarch64
-    label: "wanda: ray.py{{matrix}}.cpu.base (aarch64)"
-    tags:
-      - python_dependencies
-      - docker
-      - core_cpp
-    wanda: ci/docker/ray.cpu.base.aarch64.wanda.yaml
+  - name: raycudabaseextra-aarch64
+    label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra (aarch64)"
+    wanda: docker/base-extra/cuda.wanda.yaml
+    matrix:
+      setup:
+        python:
+          - "3.9"
+          - "3.10"
+          - "3.11"
+          - "3.12"
+        cuda:
+          - "11.7.1-cudnn8"
+          - "11.8.0-cudnn8"
+          - "12.1.1-cudnn8"
+          - "12.3.2-cudnn9"
+          - "12.4.1-cudnn"
+          - "12.5.1-cudnn"
+          - "12.6.3-cudnn"
+          - "12.8.1-cudnn"
+    instance_type: builder-arm64
+    env:
+      PYTHON_VERSION: "{{matrix.python}}"
+      CUDA_VERSION: "{{matrix.cuda}}"
+      IMAGE_TYPE: "ray"
+      ARCH_SUFFIX: "-aarch64"
+    depends_on: raycudabase-aarch64
+
+  - name: ray-core-build-aarch64
+    label: "wanda: core binary parts py{{matrix}} (aarch64)"
+    wanda: ci/docker/ray-core.wanda.yaml
     matrix:
       - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
-    instance_type: builder-arm64
+      - "3.13"
     env:
       PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: "-aarch64"
+    tags: release_wheels
+    instance_type: builder-arm64
+    depends_on: manylinux-aarch64
 
   - label: ":tapioca: build: wheel {{matrix}} (aarch64)"
     tags:
@@ -75,12 +146,11 @@ steps:
       - forge-aarch64
     job_env: forge-aarch64
 
-  - label: ":tapioca: build: ray py{{matrix}} docker (aarch64)"
-    key: ray_images_aarch64
+  - label: ":tapioca: build: ray-extra py{{matrix}} docker (aarch64)"
+    key: ray_extra_images_aarch64
     tags:
       - python_dependencies
       - docker
-      - core_cpp
       - oss
     instance_type: medium-arm64
     commands:
@@ -88,7 +158,35 @@ steps:
         --platform cu11.7.1-cudnn8 --platform cu11.8.0-cudnn8
         --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
         --platform cu12.4.1-cudnn --platform cu12.5.1-cudnn
-        --platform cu12.8.1-cudnn --platform cpu
+        --platform cu12.6.3-cudnn --platform cu12.8.1-cudnn
+        --platform cpu
+        --image-type ray-extra --architecture aarch64 --upload
+    depends_on:
+      - manylinux-aarch64
+      - forge-aarch64
+      - raycudabaseextra-aarch64
+      - raycpubaseextra-aarch64
+    job_env: forge-aarch64
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+
+  - label: ":tapioca: build: ray py{{matrix}} docker (aarch64)"
+    key: ray_images_aarch64
+    tags:
+      - python_dependencies
+      - docker
+      - oss
+    instance_type: medium-arm64
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
+        --platform cu11.7.1-cudnn8 --platform cu11.8.0-cudnn8
+        --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
+        --platform cu12.4.1-cudnn --platform cu12.5.1-cudnn
+        --platform cu12.6.3-cudnn --platform cu12.8.1-cudnn
+        --platform cpu
         --image-type ray --architecture aarch64 --upload
     depends_on:
       - manylinux-aarch64
