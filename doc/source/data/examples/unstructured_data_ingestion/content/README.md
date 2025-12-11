@@ -1,17 +1,17 @@
 <!--
 Do not modify this README. This file is a copy of the notebook and is not used to display the content.
-Modify unstructured-data-ingestion.ipynb instead, then regenerate this file with:
+Modify unstructured_data_ingestion.ipynb instead, then regenerate this file with:
 jupyter nbconvert "$nb_filename" --to markdown --output "README.md"
 -->
 
 # Unstructured Data Ingestion and Processing With Ray Data
 
 <div align="left">
-<a target="_blank" href="https://console.anyscale.com/template-preview/unstructured-data-ingestion"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
-<a href="https://github.com/ray-project/ray/tree/master/doc/source/data/examples/unstructured-data-ingestion" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+<a target="_blank" href="https://console.anyscale.com/template-preview/unstructured_data_ingestion"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/data/examples/unstructured_data_ingestion/content" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
-**Time to complete**: 35 min | **Difficulty**: Advanced | **Prerequisites**: Data engineering experience, document processing, basic natural language processing (NLP) knowledge
+**Time to complete**: 35 min | **Difficulty**: Intermediate | **Prerequisites**: Data engineering experience, document processing, basic natural language processing (NLP) knowledge
 
 Build a comprehensive document ingestion pipeline that transforms unstructured documents from data lakes into structured, analytics-ready datasets using Ray Data's distributed processing capabilities for enterprise data warehouse workflows.
 
@@ -59,6 +59,24 @@ Before starting, ensure you have:
 - [ ] A Python environment with Ray Data and document processing libraries
 - [ ] Access to S3 or other cloud storage for document sources
 
+### Install system dependencies
+
+Install the following system dependencies. Make sure to include them in your worker image:
+
+```bash
+sudo apt-get update && \
+    sudo apt-get install -y libgl1-mesa-glx libmagic1 poppler-utils tesseract-ocr libreoffice && \
+    sudo rm -rf /var/lib/apt/lists/*
+```
+
+### Install Python dependencies
+
+Install the required Python packages (these can also be included in your image):
+
+```bash
+pip install --force-reinstall --no-cache-dir "unstructured[all-docs]==0.18.21" "pandas==2.3.3"
+```
+
 Setup and initialize Ray Data:
 
 
@@ -84,14 +102,15 @@ ctx = ray.data.DataContext.get_current()
 ctx.enable_progress_bars = False
 ctx.enable_operator_progress_bars = False
 
-# Initialize Ray cluster connection to set the Ray Data context
-# Use runtime env to install dependencies across all workers
+# Use runtime env to install pip dependencies across all workers
+# You can skip this if your custom image already has these dependencies installed
 runtime_env = dict(
     pip= {
         "packages": ["unstructured[all-docs]==0.18.21", "pandas==2.3.3"],
         "pip_install_options": ["--force-reinstall", "--no-cache-dir"]
     }
 )
+# Initialize Ray cluster connection to set the Ray Data context
 ray.init(ignore_reinit_error=True, runtime_env= runtime_env)
 ```
 
