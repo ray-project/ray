@@ -223,7 +223,7 @@ class ProtocolsProvider:
 
         request = urllib.request.Request(source_uri, headers=cls._http_headers())
         try:
-            with urllib.request.urlopen(request) as response:
+            with urllib.request.urlopen(request, timeout=60) as response:
                 with open(dest_file, "wb") as fout:
                     shutil.copyfileobj(response, fout)
         except urllib.error.URLError as exc:

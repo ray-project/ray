@@ -794,7 +794,7 @@ def test_https_downloader_sets_curl_user_agent(tmp_path, monkeypatch):
         def __exit__(self, exc_type, exc, tb):
             self.close()
 
-    def fake_urlopen(request):
+    def fake_urlopen(request, timeout=None):
         headers = {k.lower(): v for k, v in request.header_items()}
         captured_headers.update(headers)
         return DummyResponse(payload)
