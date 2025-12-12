@@ -93,32 +93,17 @@ def coordinated_scaling_policy(
 
 # __end_application_level_autoscaling_policy__
 
-
-# __begin_apply_autoscaling_config_example__
-from typing import Any, Dict
-from ray.serve.autoscaling_policy import apply_autoscaling_config
+# __begin app_level_policy_with_decorator_
+from typing import Dict, Tuple, Any
+from ray.serve.autoscaling_policy import apply_app_level_autoscaling_config
 from ray.serve.config import AutoscalingContext
+from ray.serve._private.common import DeploymentID
 
+@apply_app_level_autoscaling_config
+def coordinated_scaling_policy_with_defaults(contexts: Dict[DeploymentID, AutoscalingContext]) -> Tuple[Dict[DeploymentID, int], Dict[DeploymentID, Dict[str, Any]]]:
+    return coordinated_scaling_policy(contexts)
+# __end app_level_policy_with_decorator_
 
-@apply_autoscaling_config
-def queue_length_based_autoscaling_policy(
-    ctx: AutoscalingContext,
-) -> tuple[int, Dict[str, Any]]:
-    # This policy calculates the "raw" desired replicas based on queue length.
-    # The decorator automatically applies:
-    # - Scaling factors (upscaling_factor, downscaling_factor)
-    # - Delays (upscale_delay_s, downscale_delay_s/downscale_to_zero_delay_s)
-    # - Min/Max replica bounds (min_replicas, max_replicas)
-
-    queue_length = ctx.total_num_requests
-
-    if queue_length > 50:
-        return 10, {}
-    elif queue_length > 10:
-        return 5, {}
-    else:
-        return 0, {}
-# __end_apply_autoscaling_config_example__
 
 # __begin_stateful_application_level_policy__
 from typing import Dict, Tuple, Any
@@ -158,6 +143,32 @@ def stateful_application_level_policy(
 
 
 # __end_stateful_application_level_policy__
+# __begin_apply_autoscaling_config_example__
+from typing import Any, Dict
+from ray.serve.autoscaling_policy import apply_autoscaling_config
+from ray.serve.config import AutoscalingContext
+
+
+@apply_autoscaling_config
+def queue_length_based_autoscaling_policy(
+    ctx: AutoscalingContext,
+) -> tuple[int, Dict[str, Any]]:
+    # This policy calculates the "raw" desired replicas based on queue length.
+    # The decorator automatically applies:
+    # - Scaling factors (upscaling_factor, downscaling_factor)
+    # - Delays (upscale_delay_s, downscale_delay_s/downscale_to_zero_delay_s)
+    # - Min/Max replica bounds (min_replicas, max_replicas)
+
+    queue_length = ctx.total_num_requests
+
+    if queue_length > 50:
+        return 10, {}
+    elif queue_length > 10:
+        return 5, {}
+    else:
+        return 0, {}
+# __end_apply_autoscaling_config_example__
+
 # __begin_apply_autoscaling_config_usage__
 from ray import serve
 from ray.serve.config import AutoscalingConfig, AutoscalingPolicy

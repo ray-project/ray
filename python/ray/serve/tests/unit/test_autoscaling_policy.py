@@ -9,6 +9,7 @@ from ray.serve.autoscaling_policy import (
     _apply_delay_logic,
     _apply_scaling_factors,
     _calculate_desired_num_replicas,
+    apply_autoscaling_config,
     replica_queue_length_autoscaling_policy,
 )
 from ray.serve.config import AutoscalingConfig, AutoscalingContext
@@ -51,6 +52,244 @@ def create_context_with_overrides(
     params.update(kwargs)
 
     return AutoscalingContext(**params)
+
+
+def _run_upscale_downscale_flow(
+    policy,
+    config: AutoscalingConfig,
+    ctx: AutoscalingContext,
+    overload_requests: int,
+    start_replicas: int,
+    upscale_target: int,
+):
+    """
+    This runs the upscale and downscale flow to test the delays during upcale and
+    downscale.
+    This can be used by both the default autoscaling policy and custom autoscaling policy
+    with default parameters to verify scaling is properly enabled.
+    The downscale flow is from upscale_target upto zero
+    """
+
+    upscale_wait_periods = int(config.upscale_delay_s / CONTROL_LOOP_INTERVAL_S)
+    downscale_wait_periods = int(config.downscale_delay_s / CONTROL_LOOP_INTERVAL_S)
+    # Check if downscale_to_zero_delay_s is set
+    if config.downscale_to_zero_delay_s:
+        downscale_to_zero_wait_periods = int(
+            config.downscale_to_zero_delay_s / CONTROL_LOOP_INTERVAL_S
+        )
+    else:
+        downscale_to_zero_wait_periods = int(
+            config.downscale_delay_s / CONTROL_LOOP_INTERVAL_S
+        )
+
+    # Initialize local policy_state from the base context, so both default and
+    # decorated policies can persist their internal state
+    policy_state = ctx.policy_state or {}
+
+    # We should scale up only after enough consecutive scale-up decisions.
+    for i in range(upscale_wait_periods):
+        ctx = create_context_with_overrides(
+            ctx,
+            total_num_requests=overload_requests,
+            current_num_replicas=start_replicas,
+            target_num_replicas=start_replicas,
+            policy_state=policy_state,
+        )
+        new_num_replicas, policy_state = policy(ctx=ctx)
+        assert new_num_replicas == start_replicas, i
+
+    ctx = create_context_with_overrides(
+        ctx,
+        total_num_requests=overload_requests,
+        current_num_replicas=start_replicas,
+        target_num_replicas=start_replicas,
+        policy_state=policy_state,
+    )
+    new_num_replicas, policy_state = policy(ctx=ctx)
+    assert new_num_replicas == upscale_target
+
+    no_requests = 0
+
+    # We should scale down only after enough consecutive scale-down decisions.
+    for i in range(downscale_wait_periods):
+        ctx = create_context_with_overrides(
+            ctx,
+            total_num_requests=no_requests,
+            current_num_replicas=upscale_target,
+            target_num_replicas=upscale_target,
+            policy_state=policy_state,
+        )
+        new_num_replicas, policy_state = policy(ctx=ctx)
+        assert new_num_replicas == upscale_target, i
+
+    ctx = create_context_with_overrides(
+        ctx,
+        total_num_requests=no_requests,
+        current_num_replicas=upscale_target,
+        target_num_replicas=upscale_target,
+        policy_state=policy_state,
+    )
+    new_num_replicas, policy_state = policy(ctx=ctx)
+    assert new_num_replicas == 1
+
+    # We should scale down to zero only after enough consecutive downscale-to-zero decisions.
+    for i in range(downscale_to_zero_wait_periods):
+        ctx = create_context_with_overrides(
+            ctx,
+            total_num_requests=no_requests,
+            current_num_replicas=1,
+            target_num_replicas=1,
+            policy_state=policy_state,
+        )
+        new_num_replicas, policy_state = policy(ctx=ctx)
+        assert new_num_replicas == 1, i
+
+    ctx = create_context_with_overrides(
+        ctx,
+        total_num_requests=no_requests,
+        current_num_replicas=1,
+        target_num_replicas=1,
+        policy_state=policy_state,
+    )
+    new_num_replicas, policy_state = policy(ctx=ctx)
+    assert new_num_replicas == 0
+
+    # Get some scale-up decisions, but not enough to trigger a scale up.
+    for i in range(int(upscale_wait_periods / 2)):
+        ctx = create_context_with_overrides(
+            ctx,
+            total_num_requests=overload_requests,
+            current_num_replicas=1,
+            target_num_replicas=1,
+            policy_state=policy_state,
+        )
+        new_num_replicas, policy_state = policy(ctx=ctx)
+        assert new_num_replicas == 1, i
+
+        # Interrupt with a scale-down decision.
+    ctx = create_context_with_overrides(
+        ctx,
+        total_num_requests=0,
+        current_num_replicas=1,
+        target_num_replicas=1,
+        policy_state=policy_state,
+    )
+    _, policy_state = policy(ctx=ctx)
+
+    # The counter should be reset, so it should require `upscale_wait_periods`
+    # more periods before we actually scale up.
+    for i in range(upscale_wait_periods):
+        ctx = create_context_with_overrides(
+            ctx,
+            total_num_requests=overload_requests,
+            current_num_replicas=1,
+            target_num_replicas=1,
+            policy_state=policy_state,
+        )
+        new_num_replicas, policy_state = policy(ctx=ctx)
+        assert new_num_replicas == 1, i
+
+    ctx = create_context_with_overrides(
+        ctx,
+        total_num_requests=overload_requests,
+        current_num_replicas=1,
+        target_num_replicas=1,
+        policy_state=policy_state,
+    )
+    new_num_replicas, policy_state = policy(ctx=ctx)
+    assert new_num_replicas == upscale_target
+
+    # Get some scale-down decisions, but not enough to trigger a scale down.
+    for i in range(int(downscale_wait_periods / 2)):
+        ctx = create_context_with_overrides(
+            ctx,
+            total_num_requests=no_requests,
+            current_num_replicas=upscale_target,
+            target_num_replicas=upscale_target,
+            policy_state=policy_state,
+        )
+        new_num_replicas, policy_state = policy(ctx=ctx)
+        assert new_num_replicas == upscale_target, i
+
+    # Interrupt with a scale-up decision.
+    ctx = create_context_with_overrides(
+        ctx,
+        total_num_requests=overload_requests,
+        current_num_replicas=upscale_target,
+        target_num_replicas=upscale_target,
+        policy_state=policy_state,
+    )
+    _, policy_state = policy(ctx=ctx)
+
+    # The counter should be reset so it should require `downscale_wait_periods`
+    # more periods before we actually scale down.
+    # We should scale down only after enough consecutive scale-down decisions.
+    for i in range(downscale_wait_periods):
+        ctx = create_context_with_overrides(
+            ctx,
+            total_num_requests=no_requests,
+            current_num_replicas=upscale_target,
+            target_num_replicas=upscale_target,
+            policy_state=policy_state,
+        )
+        new_num_replicas, policy_state = policy(ctx=ctx)
+        assert new_num_replicas == upscale_target, i
+
+    # First scale down to 1 replica
+    ctx = create_context_with_overrides(
+        ctx,
+        total_num_requests=no_requests,
+        current_num_replicas=upscale_target,
+        target_num_replicas=upscale_target,
+        policy_state=policy_state,
+    )
+    new_num_replicas, policy_state = policy(ctx=ctx)
+    assert new_num_replicas == 1
+
+    # Scale down to 0, but not enough to trigger a complete scale down to zero.
+    for i in range(int(downscale_to_zero_wait_periods / 2)):
+        ctx = create_context_with_overrides(
+            ctx,
+            total_num_requests=no_requests,
+            current_num_replicas=1,
+            target_num_replicas=1,
+            policy_state=policy_state,
+        )
+        new_num_replicas, policy_state = policy(ctx=ctx)
+        assert new_num_replicas == 1, i
+
+    # Interrupt with a scale-up decision.
+    ctx = create_context_with_overrides(
+        ctx,
+        total_num_requests=overload_requests,
+        current_num_replicas=1,
+        target_num_replicas=1,
+        policy_state=policy_state,
+    )
+    _, policy_state = policy(ctx=ctx)
+
+    # The counter should be reset so it should require `downscale_to_zero_wait_periods`
+    # more periods before we actually scale down.
+    for i in range(downscale_to_zero_wait_periods):
+        ctx = create_context_with_overrides(
+            ctx,
+            total_num_requests=no_requests,
+            current_num_replicas=1,
+            target_num_replicas=1,
+            policy_state=policy_state,
+        )
+        new_num_replicas, policy_state = policy(ctx=ctx)
+        assert new_num_replicas == 1, i
+
+    ctx = create_context_with_overrides(
+        ctx,
+        total_num_requests=no_requests,
+        current_num_replicas=1,
+        target_num_replicas=1,
+        policy_state=policy_state,
+    )
+    new_num_replicas, policy_state = policy(ctx=ctx)
+    assert new_num_replicas == 0
 
 
 class TestCalculateDesiredNumReplicas:
@@ -369,10 +608,6 @@ class TestReplicaQueueLengthPolicy:
     @pytest.mark.parametrize("downscale_to_zero_delay_s", [None, 300])
     def test_upscale_downscale_delay(self, downscale_to_zero_delay_s):
         """Unit test for upscale_delay_s, downscale_delay_s and downscale_to_zero_delay_s"""
-
-        upscale_delay_s = 30.0
-        downscale_delay_s = 600.0
-
         min_replicas = 0
         max_replicas = 2
         policy_state = {}
@@ -384,18 +619,6 @@ class TestReplicaQueueLengthPolicy:
             downscale_delay_s=600.0,
             downscale_to_zero_delay_s=downscale_to_zero_delay_s,
         )
-
-        upscale_wait_periods = int(upscale_delay_s / CONTROL_LOOP_INTERVAL_S)
-        downscale_wait_periods = int(downscale_delay_s / CONTROL_LOOP_INTERVAL_S)
-        # Check if downscale_to_zero_delay_s is set
-        if downscale_to_zero_delay_s:
-            downscale_to_zero_wait_periods = int(
-                downscale_to_zero_delay_s / CONTROL_LOOP_INTERVAL_S
-            )
-        else:
-            downscale_to_zero_wait_periods = int(
-                downscale_delay_s / CONTROL_LOOP_INTERVAL_S
-            )
 
         overload_requests = 100
 
@@ -422,195 +645,15 @@ class TestReplicaQueueLengthPolicy:
         # Scale up when there are 0 replicas and current_handle_queued_queries > 0
         new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == 1
-
-        # We should scale up only after enough consecutive scale-up decisions.
-        for i in range(upscale_wait_periods):
-            ctx = create_context_with_overrides(
-                ctx,
-                total_num_requests=overload_requests,
-                current_num_replicas=1,
-                target_num_replicas=1,
-            )
-            new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
-            assert new_num_replicas == 1, i
-
-        ctx = create_context_with_overrides(
+        # Run the basic upscale/downscale flow
+        _run_upscale_downscale_flow(
+            replica_queue_length_autoscaling_policy,
+            config,
             ctx,
-            total_num_requests=overload_requests,
-            current_num_replicas=1,
-            target_num_replicas=1,
+            overload_requests=overload_requests,
+            start_replicas=1,
+            upscale_target=2,
         )
-        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
-        assert new_num_replicas == 2
-
-        no_requests = 0
-
-        # We should scale down only after enough consecutive scale-down decisions.
-        # Downscaling to zero follows current_num_replicas->1->0
-        for i in range(downscale_wait_periods):
-            ctx = create_context_with_overrides(
-                ctx,
-                total_num_requests=no_requests,
-                current_num_replicas=2,
-                target_num_replicas=2,
-            )
-            new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
-            assert new_num_replicas == 2, i
-
-        ctx = create_context_with_overrides(
-            ctx,
-            total_num_requests=no_requests,
-            current_num_replicas=2,
-            target_num_replicas=2,
-        )
-        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
-        assert new_num_replicas == 1
-
-        # We should scale down to zero only after enough consecutive downscale-to-zero decisions.
-        for i in range(downscale_to_zero_wait_periods):
-            ctx = create_context_with_overrides(
-                ctx,
-                total_num_requests=no_requests,
-                current_num_replicas=1,
-                target_num_replicas=1,
-            )
-            new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
-            assert new_num_replicas == 1, i
-
-        ctx = create_context_with_overrides(
-            ctx,
-            total_num_requests=no_requests,
-            current_num_replicas=1,
-            target_num_replicas=1,
-        )
-        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
-        assert new_num_replicas == 0
-
-        # Get some scale-up decisions, but not enough to trigger a scale up.
-        for i in range(int(upscale_wait_periods / 2)):
-            ctx = create_context_with_overrides(
-                ctx,
-                total_num_requests=overload_requests,
-                current_num_replicas=1,
-                target_num_replicas=1,
-            )
-            new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
-            assert new_num_replicas == 1, i
-
-        # Interrupt with a scale-down decision.
-        ctx = create_context_with_overrides(
-            ctx,
-            total_num_requests=0,
-            current_num_replicas=1,
-            target_num_replicas=1,
-        )
-        replica_queue_length_autoscaling_policy(ctx=ctx)
-
-        # The counter should be reset, so it should require `upscale_wait_periods`
-        # more periods before we actually scale up.
-        for i in range(upscale_wait_periods):
-            ctx = create_context_with_overrides(
-                ctx,
-                total_num_requests=overload_requests,
-                current_num_replicas=1,
-                target_num_replicas=1,
-            )
-            new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
-            assert new_num_replicas == 1, i
-
-        ctx = create_context_with_overrides(
-            ctx,
-            total_num_requests=overload_requests,
-            current_num_replicas=1,
-            target_num_replicas=1,
-        )
-        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
-        assert new_num_replicas == 2
-
-        # Get some scale-down decisions, but not enough to trigger a scale down.
-        for i in range(int(downscale_wait_periods / 2)):
-            ctx = create_context_with_overrides(
-                ctx,
-                total_num_requests=no_requests,
-                current_num_replicas=2,
-                target_num_replicas=2,
-            )
-            new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
-            assert new_num_replicas == 2, i
-
-        # Interrupt with a scale-up decision.
-        ctx = create_context_with_overrides(
-            ctx,
-            total_num_requests=200,
-            current_num_replicas=2,
-            target_num_replicas=2,
-        )
-        replica_queue_length_autoscaling_policy(ctx=ctx)
-
-        # The counter should be reset so it should require `downscale_wait_periods`
-        # more periods before we actually scale down.
-        # We should scale down only after enough consecutive scale-down decisions.
-        for i in range(downscale_wait_periods):
-            ctx = create_context_with_overrides(
-                ctx,
-                total_num_requests=no_requests,
-                current_num_replicas=2,
-                target_num_replicas=2,
-            )
-            new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
-            assert new_num_replicas == 2, i
-
-        # First scale down to 1 replica
-        ctx = create_context_with_overrides(
-            ctx,
-            total_num_requests=no_requests,
-            current_num_replicas=2,
-            target_num_replicas=2,
-        )
-        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
-        assert new_num_replicas == 1
-
-        # Scale down to 0, but not enough to trigger a complete scale down to zero.
-        for i in range(int(downscale_to_zero_wait_periods / 2)):
-            ctx = create_context_with_overrides(
-                ctx,
-                total_num_requests=no_requests,
-                current_num_replicas=1,
-                target_num_replicas=1,
-            )
-            new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
-            assert new_num_replicas == 1, i
-
-        # Interrupt with a scale-up decision.
-        ctx = create_context_with_overrides(
-            ctx,
-            total_num_requests=100,
-            current_num_replicas=1,
-            target_num_replicas=1,
-        )
-        replica_queue_length_autoscaling_policy(ctx=ctx)
-
-        # The counter should be reset so it should require `downscale_to_zero_wait_periods`
-        # more periods before we actually scale down.
-        for i in range(downscale_to_zero_wait_periods):
-            ctx = create_context_with_overrides(
-                ctx,
-                total_num_requests=no_requests,
-                current_num_replicas=1,
-                target_num_replicas=1,
-            )
-            new_num_replicas, v = replica_queue_length_autoscaling_policy(ctx=ctx)
-            # print(new_num_replicas, v)
-            assert new_num_replicas == 1, i
-
-        ctx = create_context_with_overrides(
-            ctx,
-            total_num_requests=no_requests,
-            current_num_replicas=1,
-            target_num_replicas=1,
-        )
-        new_num_replicas, _ = replica_queue_length_autoscaling_policy(ctx=ctx)
-        assert new_num_replicas == 0
 
     def test_replicas_delayed_startup(self):
         """Unit test simulating replicas taking time to start up."""
@@ -877,7 +920,7 @@ class TestReplicaQueueLengthPolicy:
         assert ctx2.raw_metrics["m2"][replica_id][0].value == 25.0
 
 
-class TestApplyAutoscalingConfig:
+class TestAutoscalingConfigParameters:
     def test_apply_scaling_factors_upscale(self):
         config = AutoscalingConfig(
             min_replicas=1, max_replicas=30, upscaling_factor=0.5
@@ -911,7 +954,7 @@ class TestApplyAutoscalingConfig:
         result = _apply_scaling_factors(
             desired_num_replicas, current_num_replicas, config
         )
-        # Expected: 10 - 0.5 * (10 - 9) = 9.5 = ceil(9.5) = 10. The 'stuck' logic then adjusts it to 9.
+        # Expected: 10 - 0.5 * (10 - 9) = 9.5 = ceil(9.5) = 10. The logic then adjusts it to 9.
         assert result == 9
 
     def test_apply_bounds(self):
@@ -946,7 +989,6 @@ class TestApplyAutoscalingConfig:
             current_time=None,
             total_num_requests=None,
             total_queued_requests=None,
-            total_running_requests=None,
             aggregated_metrics=None,
             raw_metrics=None,
             last_scale_up_time=None,
@@ -971,53 +1013,6 @@ class TestApplyAutoscalingConfig:
         assert decision == 5
 
     def test_apply_delay_logic_downscale(self):
-        """Test downscale delay requires consecutive periods."""
-        config = AutoscalingConfig(
-            min_replicas=1,
-            max_replicas=10,
-            downscale_delay_s=0.3,
-        )
-        ctx = AutoscalingContext(
-            target_num_replicas=10,
-            current_num_replicas=10,
-            config=config,
-            capacity_adjusted_min_replicas=1,
-            capacity_adjusted_max_replicas=10,
-            policy_state={},
-            deployment_id=None,
-            deployment_name=None,
-            app_name=None,
-            running_replicas=None,
-            current_time=None,
-            total_num_requests=None,
-            total_queued_requests=None,
-            total_running_requests=None,
-            aggregated_metrics=None,
-            raw_metrics=None,
-            last_scale_up_time=None,
-            last_scale_down_time=None,
-        )
-        downscale_wait_period = int(
-            ctx.config.downscale_delay_s / CONTROL_LOOP_INTERVAL_S
-        )
-        for i in range(downscale_wait_period):
-            decision, ctx.policy_state = _apply_delay_logic(
-                desired_num_replicas=5,
-                curr_target_num_replicas=ctx.target_num_replicas,
-                config=ctx.config,
-                policy_state=ctx.policy_state,
-            )
-            assert decision == 10, f"Should not scale down on iteration {i}"
-
-        decision, _ = _apply_delay_logic(
-            desired_num_replicas=5,
-            curr_target_num_replicas=ctx.target_num_replicas,
-            config=ctx.config,
-            policy_state=ctx.policy_state,
-        )
-        assert decision == 5
-
-    def test_apply_delay_logic_downscale_to_zero(self):
         config = AutoscalingConfig(
             min_replicas=0,
             max_replicas=10,
@@ -1038,7 +1033,6 @@ class TestApplyAutoscalingConfig:
             current_time=None,
             total_num_requests=None,
             total_queued_requests=None,
-            total_running_requests=None,
             aggregated_metrics=None,
             raw_metrics=None,
             last_scale_up_time=None,
@@ -1088,6 +1082,125 @@ class TestApplyAutoscalingConfig:
             policy_state=ctx.policy_state,
         )
         assert decision_num_replicas == 0
+
+
+@apply_autoscaling_config
+def simple_custom_policy(ctx: AutoscalingContext):
+    """
+    Custom policy to check default parameters are applied
+    """
+    if ctx.total_num_requests > 0:
+        desired_num_replicas = 3
+    else:
+        desired_num_replicas = 0
+    return desired_num_replicas, {}
+
+
+class TestCustomPolicyWithDefaultParameters:
+    @pytest.mark.parametrize("downscale_to_zero_delay_s", [None, 300])
+    def test_upscale_downscale_delay(self, downscale_to_zero_delay_s):
+        """Unit test for upscale_delay_s, downscale_delay_s and downscale_to_zero_delay_s"""
+
+        min_replicas = 0
+        max_replicas = 4
+        policy_state = {}
+        config = AutoscalingConfig(
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
+            target_ongoing_requests=1,
+            upscale_delay_s=20.0,
+            downscale_delay_s=400.0,
+            downscale_to_zero_delay_s=downscale_to_zero_delay_s,
+        )
+
+        ctx = AutoscalingContext(
+            config=config,
+            total_num_requests=1,
+            current_num_replicas=0,
+            target_num_replicas=0,
+            capacity_adjusted_min_replicas=min_replicas,
+            capacity_adjusted_max_replicas=max_replicas,
+            policy_state=policy_state,
+            deployment_id=None,
+            deployment_name=None,
+            app_name=None,
+            running_replicas=None,
+            current_time=None,
+            total_queued_requests=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
+        )
+        # Initially this starts with 0 replicas
+        _run_upscale_downscale_flow(
+            simple_custom_policy,
+            config,
+            ctx,
+            overload_requests=70,
+            start_replicas=0,
+            upscale_target=3,
+        )
+
+    @pytest.mark.parametrize(
+        "current_replicas, total_requests, upscale_factor, downscale_factor, expected_replicas",
+        [
+            # Upscale cases
+            # current=1, desired_raw=3
+            # factor=0.5 → ceil(1 + 0.5*(3-1)) = 2
+            (1, 100, 0.5, None, 2),
+            # factor=1.0 → ceil(1 + 1.0*(3-1)) = 3
+            (1, 100, 1.0, None, 3),
+            # Downscale cases
+            # current=3, desired_raw=0
+            # factor=0.5 → ceil(3 + 0.5*(0-3)) = ceil(1.5) = 2
+            (3, 0, None, 0.5, 2),
+            # factor=1.0 → max(ceil(3 + 1.0*(0-3)),1) = 1
+            (3, 0, None, 1.0, 1),
+        ],
+    )
+    def test_apply_scaling_factors(
+        self,
+        current_replicas,
+        total_requests,
+        upscale_factor,
+        downscale_factor,
+        expected_replicas,
+    ):
+        """
+        The test checks if the scaling factors are applied
+        """
+        config = AutoscalingConfig(
+            min_replicas=0,
+            max_replicas=10,
+            upscaling_factor=upscale_factor,
+            downscaling_factor=downscale_factor,
+            upscale_delay_s=0.0,
+            downscale_delay_s=0.0,
+            downscale_to_zero_delay_s=0.0,
+        )
+        ctx = AutoscalingContext(
+            config=config,
+            deployment_id=None,
+            deployment_name="test",
+            app_name=None,
+            current_num_replicas=current_replicas,
+            target_num_replicas=current_replicas,
+            running_replicas=None,
+            total_num_requests=0,
+            total_queued_requests=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            capacity_adjusted_min_replicas=config.min_replicas,
+            capacity_adjusted_max_replicas=config.max_replicas,
+            policy_state={},
+            last_scale_up_time=None,
+            last_scale_down_time=None,
+            current_time=None,
+        )
+        ctx = create_context_with_overrides(ctx, total_num_requests=total_requests)
+        num_replicas, _ = simple_custom_policy(ctx)
+        assert num_replicas == expected_replicas
 
 
 if __name__ == "__main__":

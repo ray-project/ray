@@ -192,6 +192,7 @@ def apply_default_params(
     desired_num_replicas: int, ctx: AutoscalingContext, policy_state: Dict[str, Any]
 ) -> Tuple[int, Dict[str, Any]]:
     """Apply the default parameters to the desired number of replicas."""
+
     # Apply scaling factors (if configured)
     if (
         ctx.config.upscaling_factor is not None
@@ -214,96 +215,6 @@ def apply_default_params(
         ctx.capacity_adjusted_max_replicas,
     )
     return final_num_replicas, updated_state
-
-
-@PublicAPI(stability="alpha")
-def apply_autoscaling_config(
-    policy_func: Callable[[AutoscalingContext], Tuple[int, Dict[str, Any]]]
-) -> Callable[[AutoscalingContext], Tuple[int, Dict[str, Any]]]:
-    """
-    Wraps a custom policy function to automatically apply:
-    - upscaling_factor / downscaling_factor
-    - min_replicas / max_replicas bounds
-    - upscale_delay_s / downscale_delay_s / downscale_to_zero_delay_s
-    """
-
-    @functools.wraps(policy_func)
-    def wrapped_policy(ctx: AutoscalingContext) -> Tuple[int, Dict[str, Any]]:
-        policy_state = ctx.policy_state.copy()
-        # NOTE: Currently custom policies do not get the default policy's 0 replica cold start fast path.
-        # upscale_delay_s applies even at 0 replicas.
-        final_state = {}
-        desired_num_replicas, updated_custom_policy_state = policy_func(ctx)
-
-        # Apply default params (scaling factors, delays, bounds)
-        final_num_replicas, updated_state = apply_default_params(
-            desired_num_replicas, ctx, policy_state
-        )
-        updated_custom_policy_state.pop(SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, None)
-        # Merge updated_state and updated_custom_policy_state
-        final_state = updated_custom_policy_state
-        if updated_state:
-            final_state.update(updated_state)
-        return final_num_replicas, final_state
-
-    return wrapped_policy
-
-
-@PublicAPI(stability="alpha")
-def apply_app_level_autoscaling_config(
-    policy_func: Callable[
-        [Dict[DeploymentID, AutoscalingContext]],
-        Tuple[Dict[DeploymentID, int], Optional[Dict[str, Any]]],
-    ]
-) -> Callable[
-    [Dict[DeploymentID, AutoscalingContext]],
-    Tuple[Dict[DeploymentID, int], Optional[Dict[str, Any]]],
-]:
-    """
-    Wraps an application-level custom policy function to automatically apply per-deployment:
-    - upscaling_factor / downscaling_factor
-    - min_replicas / max_replicas bounds
-    - upscale_delay_s / downscale_delay_s / downscale_to_zero_delay_s
-    """
-
-    @functools.wraps(policy_func)
-    def wrapped_policy(
-        contexts: Dict[DeploymentID, AutoscalingContext]
-    ) -> Tuple[Dict[DeploymentID, int], Optional[Dict[str, Any]]]:
-
-        # Send to the actual policy
-        desired_num_replicas, updated_custom_policy_state = policy_func(contexts)
-
-        # Build per-deployment state structure: {deployment_id: {state}}
-        final_per_deployment_state = {}
-        for dep_id, ctx in contexts.items():
-            current_internal_counter = ctx.policy_state.get(
-                SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, 0
-            )
-            final_num_replicas, updated_internal_state = apply_default_params(
-                desired_num_replicas[dep_id],
-                ctx,
-                {SERVE_AUTOSCALING_DECISION_COUNTERS_KEY: current_internal_counter},
-            )
-            # Update the decision for this deployment
-            desired_num_replicas[dep_id] = final_num_replicas
-
-            dep_specific_user_state = updated_custom_policy_state.get(dep_id, {}).copy()
-
-            # Remove the reserved key if the user accidentally included it
-            dep_specific_user_state.pop(SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, None)
-
-            # B. Merge: Start with User Data -> Update with Internal Data
-            combined_state = dep_specific_user_state
-
-            if updated_internal_state:
-                combined_state.update(updated_internal_state)
-
-            final_per_deployment_state[dep_id] = combined_state
-
-        return desired_num_replicas, final_per_deployment_state
-
-    return wrapped_policy
 
 
 @PublicAPI(stability="alpha")
@@ -353,3 +264,107 @@ def replica_queue_length_autoscaling_policy(
 
 
 default_autoscaling_policy = replica_queue_length_autoscaling_policy
+
+
+def _apply_default_params_and_merge_state(
+    policy_state: Dict[str, Any],
+    user_policy_state: Dict[str, Any],
+    desired_num_replicas: int,
+    ctx: AutoscalingContext,
+) -> Tuple[int, Dict[str, Any]]:
+
+    # Extract internal polciy state from policy_state
+    internal_policy_state = {
+        SERVE_AUTOSCALING_DECISION_COUNTERS_KEY: policy_state.get(
+            SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, 0
+        )
+    }
+    # Only pass the internal state used for delay counters so we don't
+    # overwrite any custom user state.
+    final_num_replicas, updated_state = apply_default_params(
+        desired_num_replicas, ctx, internal_policy_state
+    )
+    # Merge internal updated_state with the user's custom policy state.
+    final_state = user_policy_state.copy() or {}
+    final_state.pop(SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, None)
+    if updated_state:
+        final_state.update(updated_state)
+    return final_num_replicas, final_state
+
+
+PublicAPI(stability="alpha")
+
+
+def apply_autoscaling_config(
+    policy_func: Callable[[AutoscalingContext], Tuple[int, Dict[str, Any]]]
+) -> Callable[[AutoscalingContext], Tuple[int, Dict[str, Any]]]:
+    """
+    Wraps a custom policy function to automatically apply:
+    - upscaling_factor / downscaling_factor
+    - min_replicas / max_replicas bounds
+    - upscale_delay_s / downscale_delay_s / downscale_to_zero_delay_s
+    """
+
+    @functools.wraps(policy_func)
+    def wrapped_policy(ctx: AutoscalingContext) -> Tuple[int, Dict[str, Any]]:
+
+        # NOTE: Currently custom policies do not get the default policy's 0 replica cold start fast path.
+        # upscale_delay_s applies even at 0 replicas.
+
+        policy_state = ctx.policy_state.copy()
+        desired_num_replicas, updated_custom_policy_state = policy_func(ctx)
+        final_num_replicas, final_state = _apply_default_params_and_merge_state(
+            policy_state, updated_custom_policy_state, desired_num_replicas, ctx
+        )
+
+        return final_num_replicas, final_state
+
+    return wrapped_policy
+
+
+@PublicAPI(stability="alpha")
+def apply_app_level_autoscaling_config(
+    policy_func: Callable[
+        [Dict[DeploymentID, AutoscalingContext]],
+        Tuple[Dict[DeploymentID, int], Dict[DeploymentID, Dict]],
+    ]
+) -> Callable[
+    [Dict[DeploymentID, AutoscalingContext]],
+    Tuple[Dict[DeploymentID, int], Dict[DeploymentID, Dict]],
+]:
+    """
+    Wraps an application-level custom policy function to automatically apply per-deployment:
+    - upscaling_factor / downscaling_factor
+    - min_replicas / max_replicas bounds
+    - upscale_delay_s / downscale_delay_s / downscale_to_zero_delay_s
+    """
+
+    @functools.wraps(policy_func)
+    def wrapped_policy(
+        contexts: Dict[DeploymentID, AutoscalingContext]
+    ) -> Tuple[Dict[DeploymentID, int], Dict[DeploymentID, Dict]]:
+
+        # Store the policy state per deployment
+        state_per_deployment = {}
+        for dep_id, ctx in contexts.items():
+            state_per_deployment[dep_id] = ctx.policy_state.copy()
+
+        # Send to the actual policy
+        desired_num_replicas, updated_custom_policy_state = policy_func(contexts)
+
+        # Build per-deployment replicas count and state dictionary
+        final_state = {}
+        for dep_id, ctx in contexts.items():
+            final_num_replicas, final_dep_state = _apply_default_params_and_merge_state(
+                state_per_deployment[dep_id],
+                updated_custom_policy_state.get(dep_id, {}),
+                desired_num_replicas[dep_id],
+                ctx,
+            )
+            desired_num_replicas[dep_id], final_state[dep_id] = (
+                final_num_replicas,
+                final_dep_state,
+            )
+        return desired_num_replicas, final_state
+
+    return wrapped_policy
