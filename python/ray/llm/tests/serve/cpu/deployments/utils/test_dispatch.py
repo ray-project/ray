@@ -34,11 +34,16 @@ def serve_instance():
 
 
 @pytest.fixture
-def mock_handle(serve_instance):
+def mock_handle(serve_instance, request):
     # Ensure deployment is up and running.
     # serve.run waits for the deployment to be ready by default unless _blocking=False.
-    handle = serve.run(MockLLMDeployment.bind(), name="mock_llm_app")
-    return handle
+    app_name = f"mock-llm-{request.node.name}"
+    route_prefix = f"/{app_name}"
+    handle = serve.run(
+        MockLLMDeployment.bind(), name=app_name, route_prefix=route_prefix
+    )
+    yield handle
+    serve.delete(app_name, _blocking=True)
 
 
 @pytest.mark.asyncio
@@ -66,11 +71,8 @@ async def test_dispatch_with_combine(mock_handle):
     # Get counts using dispatch and combine
     total_count = dispatch(mock_handle, "get_reset_count", combine=sum_counts)
 
-    # We have 2 replicas.
-    # If this is the first test run, counts are 1 each -> sum 2.
-    # If other tests ran, counts might be higher.
-    # But it must be at least 2 (since we just called reset_prefix_cache).
-    assert total_count >= 2
+    # We have 2 replicas, each should have reset_count=1 after one reset call
+    assert total_count == 2
     assert isinstance(total_count, int)
 
 
