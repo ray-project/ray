@@ -2298,7 +2298,7 @@ class _ActorHandle(Generic[T]):
         return (*state, self._ray_weak_ref)
 
     @classmethod
-    def _deserialization_helper(cls, state, weak_ref: bool, outer_object_ref=None) -> "_ActorHandle":
+    def _deserialization_helper(cls, state, weak_ref: bool, outer_object_ref=None):
         """This is defined in order to make pickling work.
 
         Args:
@@ -2309,6 +2309,8 @@ class _ActorHandle(Generic[T]):
                 was contained in, if any. This is used for counting references
                 to the actor handle.
 
+        Returns:
+            A deserialized _ActorHandle.
         """
         worker = ray._private.worker.global_worker
         worker.check_connected()
