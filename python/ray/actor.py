@@ -1911,7 +1911,7 @@ class _ActorHandle(Generic[T]):
         actor_method_cpus: int,
         actor_creation_function_descriptor: PythonFunctionDescriptor,
         cluster_and_job: Any,
-        original_handle: bool =False,
+        original_handle: bool = False,
         weak_ref: bool = False,
         allow_out_of_order_execution: Optional[bool] = None,
     ):
@@ -2298,7 +2298,12 @@ class _ActorHandle(Generic[T]):
         return (*state, self._ray_weak_ref)
 
     @classmethod
-    def _deserialization_helper(cls, state: Dict, weak_ref: bool, outer_object_ref: Optional["ray.ObjectRef"] = None):
+    def _deserialization_helper(
+        cls,
+        state: Dict,
+        weak_ref: bool,
+        outer_object_ref: Optional["ray.ObjectRef"] = None,
+    ):
         """This is defined in order to make pickling work.
 
         Args:
