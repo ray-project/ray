@@ -3,9 +3,14 @@ from sklearn.datasets import make_regression
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 import mlflow
 import mlflow.sklearn
+import mlflow.pyfunc
 from mlflow.entities import LoggedModelStatus
+from mlflow.models import infer_signature
+import numpy as np
 
 
 def train_and_register_model():
@@ -24,20 +29,39 @@ def train_and_register_model():
             )
 
             params = {"max_depth": 2, "random_state": 42}
-            model = RandomForestRegressor(**params)
-            model.fit(X_train, y_train)
+            
+            # Best Practice: Use sklearn Pipeline to persist preprocessing
+            # This ensures training and serving transformations stay aligned
+            pipeline = Pipeline([
+                ("scaler", StandardScaler()),
+                ("regressor", RandomForestRegressor(**params))
+            ])
+            pipeline.fit(X_train, y_train)
 
-            # Log parameters and metrics using the MLflow APIs
+            # Log parameters and metrics
             mlflow.log_params(params)
 
-            y_pred = model.predict(X_test)
+            y_pred = pipeline.predict(X_test)
             mlflow.log_metrics({"mse": mean_squared_error(y_test, y_pred)})
 
-            # Log the sklearn model and link to the logged model
+            # Best Practice: Infer model signature for input validation
+            # Prevents silent failures from mismatched feature order or missing columns
+            signature = infer_signature(X_train, y_pred)
+
+            # Best Practice: Pin dependency versions explicitly
+            # Ensures identical behavior across training, evaluation, and serving
+            pip_requirements = [
+                f"scikit-learn=={__import__('sklearn').__version__}",
+                f"numpy=={np.__version__}",
+            ]
+
+            # Log the sklearn pipeline with signature and dependencies
             mlflow.sklearn.log_model(
-                sk_model=model,
+                sk_model=pipeline,
                 name="sklearn-model",
-                input_example=X_train,
+                input_example=X_train[:1],
+                signature=signature,
+                pip_requirements=pip_requirements,
                 registered_model_name="sk-learn-random-forest-reg-model",
                 model_id=logged_model.model_id,
             )
@@ -63,7 +87,8 @@ def train_and_register_model():
 
 # __deployment_start__
 from ray import serve
-import mlflow.sklearn
+import mlflow.pyfunc
+import numpy as np
 
 
 @serve.deployment
@@ -77,14 +102,24 @@ class MLflowModelDeployment:
         if models.empty:
             raise ValueError("No model with production tag found")
         
-        # Get the most recent production model and load it
+        # Get the most recent production model
         model_row = models.iloc[0]
         artifact_location = model_row["artifact_location"]
-        self.model = mlflow.sklearn.load_model(artifact_location)
+        
+        # Best Practice: Load model once during initialization (warm-start)
+        # This eliminates first-request latency spikes
+        self.model = mlflow.pyfunc.load_model(artifact_location)
+        
+        # Pre-warm the model with a dummy prediction
+        dummy_input = np.zeros((1, 4))
+        _ = self.model.predict(dummy_input)
 
     async def __call__(self, request):
         data = await request.json()
-        prediction = self.model.predict(data["features"])
+        features = np.array(data["features"])
+        
+        # MLflow validates input against the logged signature automatically
+        prediction = self.model.predict(features)
         return {"prediction": prediction.tolist()}
 
 
@@ -99,6 +134,6 @@ if __name__ == "__main__":
     train_and_register_model()
     serve.run(app)
 
-    # predict
+    # Test prediction
     response = requests.post("http://localhost:8000/", json={"features": [[0.1, 0.2, 0.3, 0.4]]})
     print(response.json())
