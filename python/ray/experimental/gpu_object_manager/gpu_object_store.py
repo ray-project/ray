@@ -99,6 +99,9 @@ def __ray_recv__(
         for meta in tensor_meta:
             shape, dtype = meta
             tensor = None
+            # Torch won't allow us to pin memory if cuda isn't available because it actually uses cudaHostAlloc
+            # Doing this through torch here is beneficial because it has a caching allocator that will keep
+            # and reuse old pinned memory.
             if torch.cuda.is_available() and device.type == "cpu":
                 tensor = torch.empty(shape, dtype=dtype, device=device, pin_memory=True)
             else:
