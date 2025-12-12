@@ -104,6 +104,8 @@ rm /tmp/miniforge.sh
 # We use mamba for faster resolution. Python 3.14 requires libffi>=3.5.2.
 if [[ "${PYTHON_VERSION}" == "3.14" ]]; then
     $HOME/anaconda3/bin/mamba create -y -n py314 python=$PYTHON_VERSION libgcc-ng libffi
+    # Clean conda caches BEFORE we overwrite conda with the py314 environment
+    $HOME/anaconda3/bin/conda clean -y --all
     # Make the new environment the default by updating PATH and symlinking
     rm -rf $HOME/anaconda3/envs/py314/conda-meta
     rsync -a $HOME/anaconda3/envs/py314/ $HOME/anaconda3/
@@ -111,8 +113,8 @@ if [[ "${PYTHON_VERSION}" == "3.14" ]]; then
 else
     $HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION
     $HOME/anaconda3/bin/conda install -y -c conda-forge libffi=3.4.2
+    $HOME/anaconda3/bin/conda clean -y --all
 fi
-$HOME/anaconda3/bin/conda clean -y --all
 
 # Install uv
 wget -qO- https://astral.sh/uv/install.sh | sudo -E env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
