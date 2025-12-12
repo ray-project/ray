@@ -1881,6 +1881,7 @@ class ActorClass(Generic[T]):
             self.__ray_metadata__.modified_class, args, kwargs, self._default_options
         )
 
+
 @PublicAPI
 class ActorHandle(Generic[T]):
     """A handle to an actor.
@@ -2352,6 +2353,7 @@ class ActorHandle(Generic[T]):
         # deserialized out-of-band using pickle.
         return self.__class__._deserialization_helper, (serialized, weak_ref, None)
 
+
 @PublicAPI
 class ActorHandle(_ActorHandle, Generic[T]):
     """A handle to an actor.
@@ -2368,10 +2370,6 @@ class ActorHandle(_ActorHandle, Generic[T]):
         """ActorHandles should *not* be initialized directly.
 
         Instead, call `.remote()` on an `ActorClass`.
-
-        Args:
-            args: internal arguments to create an actor handle.
-            kwargs: internal arguments to create an actor handle.
         """
         super().__init__(*args, **kwargs)
 
