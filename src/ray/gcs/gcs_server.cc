@@ -993,8 +993,7 @@ void GcsServer::InitMetricsExporter(int metrics_agent_port) {
   metrics_agent_client_->WaitForServerReady([this, metrics_agent_port](
                                                 const Status &server_status) {
     if (server_status.ok()) {
-      // Initialize both OpenCensus and OpenTelemetry exporters with the actual port.
-      stats::InitOpenCensusExporter(metrics_agent_port, WorkerID::Nil());
+      stats::ConnectOpenCensusExporter(metrics_agent_port);
       stats::InitOpenTelemetryExporter(metrics_agent_port);
       ray_event_recorder_->StartExportingEvents();
       RAY_LOG(INFO) << "Metrics exporter initialized with port " << metrics_agent_port;

@@ -137,7 +137,7 @@ int main(int argc, char *argv[]) {
                                             {ray::stats::VersionKey, kRayVersion},
                                             {ray::stats::NodeAddressKey, node_ip_address},
                                             {ray::stats::SessionNameKey, session_name}};
-  ray::stats::Init(global_tags);
+  ray::stats::Init(global_tags, ray::WorkerID::Nil());
 
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
