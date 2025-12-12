@@ -101,6 +101,15 @@ def test_actor_pool_scaling():
         expected_reason="utilization of 1.5 >= 1.0",
     )
 
+    # Should scale up immediately when the actor pool has no running actors.
+    with patch(actor_pool, "num_running_actors", 0):
+        with patch(actor_pool, "num_free_task_slots", 0):
+            with patch(actor_pool, "get_pool_util", float("inf")):
+                assert_autoscaling_action(
+                    delta=1,
+                    expected_reason="no running actors, scale up immediately",
+                )
+
     # Should be no-op since the util is below the threshold.
     with patch(actor_pool, "num_tasks_in_flight", 9):
         assert actor_pool.get_pool_util() == 0.9

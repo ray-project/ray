@@ -155,6 +155,10 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             max_scale_up = _get_max_scale_up(actor_pool, budget)
             if max_scale_up == 0:
                 return ActorPoolScalingRequest.no_op(reason="exceeded resource limits")
+            if util == float("inf"):
+                return ActorPoolScalingRequest.upscale(
+                    delta=1, reason="no running actors, scale up immediately"
+                )
             delta = self._compute_upscale_delta(actor_pool, util)
             if max_scale_up is not None:
                 delta = min(delta, max_scale_up)
