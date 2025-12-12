@@ -46,11 +46,11 @@ examples:
       - xgboost
     link: ../train/examples/xgboost/distributed-xgboost-lightgbm
   - title: Unstructured Data Ingestion and Processing
-    skill_level: advanced
+    skill_level: intermediate
     frameworks:
       - Transformers
       - Unstructured
     use_cases:
       - document processing
       - data ingestion
-    link: examples/unstructured-data-ingestion/content/unstructured-data-ingestion
+    link: examples/unstructured_data_ingestion/content/unstructured_data_ingestion

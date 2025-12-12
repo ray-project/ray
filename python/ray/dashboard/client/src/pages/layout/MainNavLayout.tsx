@@ -1,6 +1,11 @@
 import { Box, IconButton, Link, Tooltip, Typography } from "@mui/material";
 import React, { useContext } from "react";
-import { RiBookMarkLine, RiFeedbackLine } from "react-icons/ri/";
+import {
+  RiBookMarkLine,
+  RiFeedbackLine,
+  RiMoonLine,
+  RiSunLine,
+} from "react-icons/ri/";
 import { Outlet, Link as RouterLink } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { SearchTimezone } from "../../components/SearchComponent";
@@ -32,12 +37,12 @@ export const MainNavLayout = () => {
     <MainNavContext.Provider value={mainNavContextState}>
       <Box
         component="nav"
-        sx={{
+        sx={(theme) => ({
           position: "fixed",
           width: "100%",
-          backgroundColor: "white",
+          backgroundColor: theme.palette.background.paper,
           zIndex: 1000,
-        }}
+        })}
       >
         <MainNavBar />
         <MainNavBreadcrumbs />
@@ -107,8 +112,16 @@ const NAV_ITEMS = [
 const MainNavBar = () => {
   const { mainNavPageHierarchy } = useContext(MainNavContext);
   const rootRouteId = mainNavPageHierarchy[0]?.id;
-  const { metricsContextLoaded, grafanaHost, serverTimeZone, currentTimeZone } =
-    useContext(GlobalContext);
+  const {
+    metricsContextLoaded,
+    grafanaHost,
+    serverTimeZone,
+    currentTimeZone,
+    themeMode,
+    toggleTheme,
+  } = useContext(GlobalContext);
+
+  const urlTheme = new URLSearchParams(window.location.search).get("theme");
 
   let navItems = NAV_ITEMS;
   if (!metricsContextLoaded || grafanaHost === "DISABLED") {
@@ -117,15 +130,15 @@ const MainNavBar = () => {
 
   return (
     <Box
-      sx={{
+      sx={(theme) => ({
         display: "flex",
         flexDirection: "row",
         flexWrap: "nowrap",
         height: 56,
-        backgroundColor: "white",
+        backgroundColor: theme.palette.background.paper,
         alignItems: "center",
-        boxShadow: "0px 1px 0px #D2DCE6",
-      }}
+        borderBottom: `1px solid ${theme.palette.divider}`,
+      })}
     >
       <Link
         component={RouterLink}
@@ -143,13 +156,16 @@ const MainNavBar = () => {
         <Typography key={id}>
           <Link
             component={RouterLink}
-            sx={{
+            sx={(theme) => ({
               marginRight: 6,
               fontSize: "1rem",
               fontWeight: 500,
-              color: rootRouteId === id ? "#036DCF" : "black",
+              color:
+                rootRouteId === id
+                  ? theme.palette.primary.main
+                  : theme.palette.text.primary,
               textDecoration: "none",
-            }}
+            })}
             to={path}
           >
             {title}
@@ -158,9 +174,20 @@ const MainNavBar = () => {
       ))}
       <Box sx={{ flexGrow: 1 }}></Box>
       <Box sx={{ marginRight: 2 }}>
+        {!urlTheme && (
+          <Tooltip title={themeMode === "light" ? "Dark mode" : "Light mode"}>
+            <IconButton
+              onClick={toggleTheme}
+              sx={(theme) => ({ color: theme.palette.text.secondary })}
+              size="large"
+            >
+              {themeMode === "light" ? <RiMoonLine /> : <RiSunLine />}
+            </IconButton>
+          </Tooltip>
+        )}
         <Tooltip title="Docs">
           <IconButton
-            sx={{ color: "#5F6469" }}
+            sx={(theme) => ({ color: theme.palette.text.secondary })}
             href="https://docs.ray.io/en/latest/ray-core/ray-dashboard.html"
             target="_blank"
             rel="noopener noreferrer"
@@ -171,7 +198,7 @@ const MainNavBar = () => {
         </Tooltip>
         <Tooltip title="Leave feedback">
           <IconButton
-            sx={{ color: "#5F6469" }}
+            sx={(theme) => ({ color: theme.palette.text.secondary })}
             href="https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdashboard&template=bug-report.yml&title=%5BDashboard%5D+%3CTitle%3E"
             target="_blank"
             rel="noopener noreferrer"
@@ -208,7 +235,7 @@ const MainNavBreadcrumbs = () => {
 
   return (
     <Box
-      sx={{
+      sx={(theme) => ({
         display: "flex",
         flexDirection: "row",
         flexWrap: "nowrap",
@@ -216,10 +243,10 @@ const MainNavBreadcrumbs = () => {
         marginTop: "1px",
         paddingLeft: 2,
         paddingRight: 2,
-        backgroundColor: "white",
+        backgroundColor: theme.palette.background.paper,
         alignItems: "center",
-        boxShadow: "0px 1px 0px #D2DCE6",
-      }}
+        borderBottom: `1px solid ${theme.palette.divider}`,
+      })}
     >
       {mainNavPageHierarchy.map(({ title, id, path }, index) => {
         if (path) {
@@ -232,11 +259,13 @@ const MainNavBreadcrumbs = () => {
         const linkOrText = path ? (
           <Link
             component={RouterLink}
-            sx={{
+            sx={(theme) => ({
               textDecoration: "none",
               color:
-                index === mainNavPageHierarchy.length - 1 ? "black" : "#8C9196",
-            }}
+                index === mainNavPageHierarchy.length - 1
+                  ? theme.palette.text.primary
+                  : theme.palette.text.secondary,
+            })}
             to={currentPath}
           >
             {title}
@@ -248,13 +277,13 @@ const MainNavBreadcrumbs = () => {
           return (
             <Typography
               key={id}
-              sx={{
+              sx={(theme) => ({
                 fontWeight: 500,
-                color: "#8C9196",
+                color: theme.palette.text.secondary,
                 "&:not(:first-child)": {
                   marginLeft: 1,
                 },
-              }}
+              })}
               variant="body2"
             >
               {linkOrText}
@@ -264,25 +293,25 @@ const MainNavBreadcrumbs = () => {
           return (
             <React.Fragment key={id}>
               <Typography
-                sx={{
+                sx={(theme) => ({
                   fontWeight: 500,
-                  color: "#8C9196",
+                  color: theme.palette.text.secondary,
                   "&:not(:first-child)": {
                     marginLeft: 1,
                   },
-                }}
+                })}
                 variant="body2"
               >
                 {"/"}
               </Typography>
               <Typography
-                sx={{
+                sx={(theme) => ({
                   fontWeight: 500,
-                  color: "#8C9196",
+                  color: theme.palette.text.secondary,
                   "&:not(:first-child)": {
                     marginLeft: 1,
                   },
-                }}
+                })}
                 variant="body2"
               >
                 {linkOrText}

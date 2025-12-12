@@ -47,12 +47,12 @@ from ray.rllib.examples.multi_agent.utils import (
     ask_user_for_action,
 )
 from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
-from ray.rllib.policy.policy import PolicySpec
-from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray.rllib.policy.policy import PolicySpec
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.tune.registry import get_trainable_cls, register_env
 from ray.tune.result import TRAINING_ITERATION
 

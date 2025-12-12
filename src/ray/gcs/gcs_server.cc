@@ -378,8 +378,10 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
         "GcsServer.NodeDeathCallback");
   };
 
-  gcs_healthcheck_manager_ = GcsHealthCheckManager::Create(
-      io_context_provider_.GetDefaultIOContext(), node_death_callback);
+  gcs_healthcheck_manager_ =
+      GcsHealthCheckManager::Create(io_context_provider_.GetDefaultIOContext(),
+                                    node_death_callback,
+                                    metrics_.health_check_rpc_latency_ms_histogram);
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
       auto remote_address =
@@ -449,6 +451,7 @@ void GcsServer::InitClusterResourceScheduler() {
       NodeResources(),
       /*is_node_available_fn=*/
       [](auto) { return true; },
+      /*resource_usage_gauge=*/metrics_.resource_usage_gauge,
       /*is_local_node_with_raylet=*/false);
 }
 

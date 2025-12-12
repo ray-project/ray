@@ -18,19 +18,17 @@ if TYPE_CHECKING:
 
 def import_pb2_dependencies():
     try:
-        import GPy
-    except ImportError:
-        GPy = None
-    try:
         import sklearn
     except ImportError:
         sklearn = None
-    return GPy, sklearn
+    return sklearn
 
 
-GPy, has_sklearn = import_pb2_dependencies()
+has_sklearn = import_pb2_dependencies()
 
-if GPy and has_sklearn:
+if has_sklearn:
+    from sklearn.gaussian_process import GaussianProcessRegressor
+
     from ray.tune.schedulers.pb2_utils import (
         UCB,
         TV_SquaredExp,
@@ -122,26 +120,20 @@ def _select_config(
 
     fixed = normalize(newpoint, oldpoints)
 
-    kernel = TV_SquaredExp(
-        input_dim=X.shape[1], variance=1.0, lengthscale=1.0, epsilon=0.1
-    )
+    kernel = TV_SquaredExp(variance=1.0, lengthscale=1.0, epsilon=0.1)
 
     try:
-        m = GPy.models.GPRegression(X, y, kernel)
+        m = GaussianProcessRegressor(
+            kernel=kernel, optimizer="fmin_l_bfgs_b", alpha=1e-10
+        )
+        m.fit(X, y)
     except np.linalg.LinAlgError:
         # add diagonal ** we would ideally make this something more robust...
         X += np.eye(X.shape[0]) * 1e-3
-        m = GPy.models.GPRegression(X, y, kernel)
-
-    try:
-        m.optimize()
-    except np.linalg.LinAlgError:
-        # add diagonal ** we would ideally make this something more robust...
-        X += np.eye(X.shape[0]) * 1e-3
-        m = GPy.models.GPRegression(X, y, kernel)
-        m.optimize()
-
-    m.kern.lengthscale.fix(m.kern.lengthscale.clip(1e-5, 1))
+        m = GaussianProcessRegressor(
+            kernel=kernel, optimizer="fmin_l_bfgs_b", alpha=1e-10
+        )
+        m.fit(X, y)
 
     if current is None:
         m1 = deepcopy(m)
@@ -156,13 +148,11 @@ def _select_config(
         ypad = ypad.reshape(-1, 1)
         ynew = np.vstack((y, ypad))
 
-        # kernel = GPy.kern.RBF(input_dim=X.shape[1], variance=1.,
-        # lengthscale=1.)
-        kernel = TV_SquaredExp(
-            input_dim=X.shape[1], variance=1.0, lengthscale=1.0, epsilon=0.1
+        kernel1 = TV_SquaredExp(variance=1.0, lengthscale=1.0, epsilon=0.1)
+        m1 = GaussianProcessRegressor(
+            kernel=kernel1, optimizer="fmin_l_bfgs_b", alpha=1e-10
         )
-        m1 = GPy.models.GPRegression(Xnew, ynew, kernel)
-        m1.optimize()
+        m1.fit(Xnew, ynew)
 
     xt = optimize_acq(UCB, m, m1, fixed, num_f)
 
@@ -326,7 +316,6 @@ class PB2(PopulationBasedTraining):
             from ray import tune
             from ray.tune.schedulers.pb2 import PB2
             from ray.tune.examples.pbt_function import pbt_function
-            # run "pip install gpy" to use PB2
 
             pb2 = PB2(
                 metric="mean_accuracy",
@@ -360,10 +349,7 @@ class PB2(PopulationBasedTraining):
         custom_explore_fn: Optional[Callable[[dict], dict]] = None,
     ):
 
-        gpy_available, sklearn_available = import_pb2_dependencies()
-        if not gpy_available:
-            raise RuntimeError("Please install GPy to use PB2.")
-
+        sklearn_available = import_pb2_dependencies()
         if not sklearn_available:
             raise RuntimeError("Please install scikit-learn to use PB2.")
 

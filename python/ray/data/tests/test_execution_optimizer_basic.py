@@ -214,7 +214,7 @@ def test_map_batches_operator(ray_start_regular_shared_2_cpus):
 def test_map_batches_e2e(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(5)
     ds = ds.map_batches(column_udf("id", lambda x: x))
-    assert extract_values("id", ds.take_all()) == list(range(5)), ds
+    assert sorted(extract_values("id", ds.take_all())) == list(range(5)), ds
     _check_usage_record(["ReadRange", "MapBatches"])
 
 

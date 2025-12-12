@@ -3,6 +3,7 @@ from typing import Any, Dict
 import pytest
 
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
+from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import DPServer
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
 
@@ -238,6 +239,46 @@ def test_llm_serve_data_parallel_placement_override():
     # Data parallel should override to STRICT_PACK regardless of user-specified strategy
     assert serve_options["placement_group_strategy"] == "STRICT_PACK"
     # Note: num_replicas is set by build_dp_deployment, not by get_deployment_options
+
+
+def test_fractional_gpu_env_inferred_from_pg():
+    """A fractional placement group should inject VLLM_RAY_PER_WORKER_GPUS."""
+    placement_group_config = {"bundles": [{"GPU": 0.49}]}
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="test_model",
+            model_source="facebook/opt-125m",
+        ),
+        placement_group_config=placement_group_config,
+        runtime_env=dict(env_vars={"EXTRA_VAR": "1"}),
+    )
+
+    engine_config = VLLMEngineConfig.from_llm_config(llm_config)
+    runtime_env = engine_config.get_runtime_env_with_local_env_vars()
+
+    assert runtime_env["env_vars"]["EXTRA_VAR"] == "1"
+    assert runtime_env["env_vars"]["VLLM_RAY_PER_WORKER_GPUS"] == "0.49"
+
+
+def test_fractional_gpu_env_var_override_preserved():
+    """User-provided env var should be preserved when set."""
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="test_model",
+            model_source="facebook/opt-125m",
+        ),
+        placement_group_config={"bundles": [{"GPU": 0.4}]},
+        runtime_env=dict(
+            env_vars={
+                "VLLM_RAY_PER_WORKER_GPUS": "0.6",
+            }
+        ),
+    )
+
+    engine_config = VLLMEngineConfig.from_llm_config(llm_config)
+    runtime_env = engine_config.get_runtime_env_with_local_env_vars()
+
+    assert runtime_env["env_vars"]["VLLM_RAY_PER_WORKER_GPUS"] == "0.6"
 
 
 if __name__ == "__main__":

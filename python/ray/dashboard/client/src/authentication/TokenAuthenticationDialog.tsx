@@ -74,7 +74,7 @@ export const TokenAuthenticationDialog: React.FC<TokenAuthenticationDialogProps>
       (hasExistingToken
         ? "The existing authentication token is invalid."
         : "Token authentication is enabled.") +
-      " Provide the matching authentication token for this cluster.\n- Local clusters: use `ray get-auth-token` to retrieve it.\n- Remote clusters: you must retrieve the token that was used when creating the cluster.\n\nSee: https://docs.ray.io/en/latest/ray-security/auth.html";
+      " Provide the matching authentication token for this cluster.\n- Local clusters: use `ray get-auth-token` to retrieve it.\n- Remote clusters: you must retrieve the token that was used when creating the cluster.\n\nSee: https://docs.ray.io/en/latest/ray-security/token-auth.html";
 
     return (
       <Dialog
@@ -120,7 +120,19 @@ export const TokenAuthenticationDialog: React.FC<TokenAuthenticationDialogProps>
                     edge="end"
                     disabled={isSubmitting}
                   >
-                    {showToken ? <VisibilityOff /> : <Visibility />}
+                    {showToken ? (
+                      <VisibilityOff
+                        sx={(theme) => ({
+                          color: theme.palette.text.secondary,
+                        })}
+                      />
+                    ) : (
+                      <Visibility
+                        sx={(theme) => ({
+                          color: theme.palette.text.secondary,
+                        })}
+                      />
+                    )}
                   </IconButton>
                 </InputAdornment>
               ),

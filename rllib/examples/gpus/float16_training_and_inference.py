@@ -59,11 +59,11 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray.rllib.utils.annotations import override
 from ray.tune.registry import get_trainable_cls
 
 parser = add_rllib_example_script_args(

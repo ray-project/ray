@@ -63,7 +63,7 @@ class OpenTelemetryMetricRecorder:
                     self._observations_by_name[name] = {}
                     # Drop high cardinality from tag_set and sum up the value for
                     # same tag set after dropping
-                    aggregated_observations = defaultdict(float)
+                    aggregated_observations = defaultdict(list)
                     high_cardinality_labels = (
                         MetricCardinality.get_high_cardinality_labels_to_drop(name)
                     )
@@ -78,12 +78,15 @@ class OpenTelemetryMetricRecorder:
                         }
                         # Create a key for aggregation
                         filtered_key = frozenset(filtered_tags.items())
-                        # Sum up values for the same filtered tag set
-                        aggregated_observations[filtered_key] += val
+                        # Collect values for the same filtered tag set for aggregation
+                        aggregated_observations[filtered_key].append(val)
 
                     return [
-                        Observation(val, attributes=dict(tag_set))
-                        for tag_set, val in aggregated_observations.items()
+                        Observation(
+                            MetricCardinality.get_aggregation_function(name)(values),
+                            attributes=dict(tag_set),
+                        )
+                        for tag_set, values in aggregated_observations.items()
                     ]
 
             instrument = self.meter.create_observable_gauge(

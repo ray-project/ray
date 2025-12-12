@@ -1,16 +1,19 @@
 import os
-import platform
 import re
 import subprocess
 import sys
 from datetime import datetime
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional
 
 import requests
-import runfiles
 from dateutil import parser
 
 import docker
+from ci.ray_ci.automation.crane_lib import (
+    call_crane_copy,
+    call_crane_index,
+    call_crane_manifest,
+)
 from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_TAG_VERSION
 from ci.ray_ci.docker_container import (
     ARCHITECTURES_RAY,
@@ -461,114 +464,6 @@ def _is_release_tag(
     return True
 
 
-def _crane_binary():
-    r = runfiles.Create()
-    system = platform.system()
-    if system != "Linux" or platform.processor() != "x86_64":
-        raise ValueError(f"Unsupported platform: {system}")
-    return r.Rlocation("crane_linux_x86_64/crane")
-
-
-def call_crane_copy(source: str, destination: str) -> Tuple[int, str]:
-    try:
-        with subprocess.Popen(
-            [
-                _crane_binary(),
-                "copy",
-                source,
-                destination,
-            ],
-            stdout=subprocess.PIPE,
-            text=True,
-        ) as proc:
-            output = ""
-            for line in proc.stdout:
-                logger.info(line + "\n")
-                output += line
-            return_code = proc.wait()
-            if return_code:
-                raise subprocess.CalledProcessError(return_code, proc.args)
-            return return_code, output
-    except subprocess.CalledProcessError as e:
-        return e.returncode, e.output
-
-
-def _call_crane_cp(tag: str, source: str, aws_ecr_repo: str) -> Tuple[int, str]:
-    try:
-        with subprocess.Popen(
-            [
-                _crane_binary(),
-                "cp",
-                source,
-                f"{aws_ecr_repo}:{tag}",
-            ],
-            stdout=subprocess.PIPE,
-            text=True,
-        ) as proc:
-            output = ""
-            for line in proc.stdout:
-                logger.info(line + "\n")
-                output += line
-            return_code = proc.wait()
-            if return_code:
-                raise subprocess.CalledProcessError(return_code, proc.args)
-            return return_code, output
-    except subprocess.CalledProcessError as e:
-        return e.returncode, e.output
-
-
-def _call_crane_index(index_name: str, tags: List[str]) -> Tuple[int, str]:
-    try:
-        with subprocess.Popen(
-            [
-                _crane_binary(),
-                "index",
-                "append",
-                "-m",
-                tags[0],
-                "-m",
-                tags[1],
-                "-t",
-                index_name,
-            ],
-            stdout=subprocess.PIPE,
-            text=True,
-        ) as proc:
-            output = ""
-            for line in proc.stdout:
-                logger.info(line + "\n")
-                output += line
-            return_code = proc.wait()
-            if return_code:
-                raise subprocess.CalledProcessError(return_code, proc.args)
-            return return_code, output
-    except subprocess.CalledProcessError as e:
-        return e.returncode, e.output
-
-
-def _call_crane_manifest(tag: str) -> Tuple[int, str]:
-    try:
-        with subprocess.Popen(
-            [
-                _crane_binary(),
-                "manifest",
-                tag,
-            ],
-            stdout=subprocess.PIPE,
-            text=True,
-        ) as proc:
-            output = ""
-            for line in proc.stdout:
-                logger.info(line + "\n")
-                output += line
-            return_code = proc.wait()
-            if return_code:
-                raise subprocess.CalledProcessError(return_code, proc.args)
-            return return_code, output
-    except subprocess.CalledProcessError as e:
-        return e.returncode, e.output
-
-
 def copy_tag_to_aws_ecr(tag: str, aws_ecr_repo: str) -> bool:
     """
     Copy tag from Docker Hub to AWS ECR.
@@ -629,7 +524,7 @@ def generate_index(index_name: str, tags: List[str]) -> bool:
     print(f"Generating index {index_name} with tags {tags}")
     # Make sure tag is an image and not an index
     for tag in tags:
-        return_code, output = _call_crane_manifest(tag)
+        return_code, output = call_crane_manifest(tag)
         if return_code:
             logger.info(f"Failed to get manifest for {tag}")
             logger.info(f"Error: {output}")
@@ -638,7 +533,7 @@ def generate_index(index_name: str, tags: List[str]) -> bool:
             logger.info(f"Tag {tag} is an index, not an image")
             return False
 
-    return_code, output = _call_crane_index(index_name=index_name, tags=tags)
+    return_code, output = call_crane_index(index_name=index_name, tags=tags)
     if return_code:
         logger.info(f"Failed to generate index {index_name}......")
         logger.info(f"Error: {output}")

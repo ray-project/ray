@@ -318,7 +318,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     # Global env steps sampled are (roughly) this EnvRunner's lifetime
                     # count times the number of env runners in the algo.
                     global_env_steps_lifetime = (
-                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
+                        self.num_env_steps_sampled_lifetime
+                        // (self.config.num_env_runners or 1)
                         + ts
                     ) * (self.config.num_env_runners or 1)
                     with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
@@ -533,11 +534,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         not_components: Optional[Union[str, Collection[str]]] = None,
         **kwargs,
     ) -> StateDict:
-        state = {
-            NUM_ENV_STEPS_SAMPLED_LIFETIME: (
-                self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
-            ),
-        }
+        state = {NUM_ENV_STEPS_SAMPLED_LIFETIME: self.num_env_steps_sampled_lifetime}
 
         if self._check_component(COMPONENT_RL_MODULE, components, not_components):
             state[COMPONENT_RL_MODULE] = self.module.get_state(
@@ -589,14 +586,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             if weights_seq_no > 0:
                 self._weights_seq_no = weights_seq_no
 
-        # Update our lifetime counters.
+        # Update lifetime counters.
         if NUM_ENV_STEPS_SAMPLED_LIFETIME in state:
-            self.metrics.set_value(
-                key=NUM_ENV_STEPS_SAMPLED_LIFETIME,
-                value=state[NUM_ENV_STEPS_SAMPLED_LIFETIME],
-                reduce="sum",
-                with_throughput=True,
-            )
+            self.num_env_steps_sampled_lifetime = state[NUM_ENV_STEPS_SAMPLED_LIFETIME]
 
     @override(Checkpointable)
     def get_ctor_args_and_kwargs(self):
@@ -838,48 +830,43 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
     def _increase_sampled_metrics(self, num_steps, num_episodes_completed):
         # Per sample cycle stats.
-        self.metrics.log_value(
-            NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum", clear_on_reduce=True
-        )
+        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum")
         self.metrics.log_value(
             (NUM_AGENT_STEPS_SAMPLED, DEFAULT_AGENT_ID),
             num_steps,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             (NUM_MODULE_STEPS_SAMPLED, DEFAULT_MODULE_ID),
             num_steps,
             reduce="sum",
-            clear_on_reduce=True,
         )
         self.metrics.log_value(
             NUM_EPISODES,
             num_episodes_completed,
             reduce="sum",
-            clear_on_reduce=True,
         )
         # Lifetime stats.
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED_LIFETIME,
             num_steps,
-            reduce="sum",
+            reduce="lifetime_sum",
             with_throughput=True,
         )
         self.metrics.log_value(
             (NUM_AGENT_STEPS_SAMPLED_LIFETIME, DEFAULT_AGENT_ID),
             num_steps,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
         self.metrics.log_value(
             (NUM_MODULE_STEPS_SAMPLED_LIFETIME, DEFAULT_MODULE_ID),
             num_steps,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
         self.metrics.log_value(
             NUM_EPISODES_LIFETIME,
             num_episodes_completed,
-            reduce="sum",
+            reduce="lifetime_sum",
         )
         return num_steps
 

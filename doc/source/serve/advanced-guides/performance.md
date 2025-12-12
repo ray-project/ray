@@ -75,6 +75,7 @@ Ray Serve allows you to fine-tune the backoff behavior of the request router, wh
 - `RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S`: The maximum backoff time (in seconds) between retries. Default is `0.5`.
 
 
+(serve-high-throughput)=
 ### Enable throughput-optimized serving
 
 :::{note}

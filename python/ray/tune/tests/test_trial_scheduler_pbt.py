@@ -900,7 +900,11 @@ def test_pb2_nested_hyperparams():
             _save_trial_result(pb2_nested, trial_nested, t, res)
             _save_trial_result(pb2_flat, trial_flat, t, res)
 
+        # Reset seed before each _get_new_config call so both schedulers
+        # get the same random sequence in optimize_acq
+        np.random.seed(2023 + t)
         new_config, _ = pb2_nested._get_new_config(trials_nested[0], trials_nested[-1])
+        np.random.seed(2023 + t)
         new_config_flat, _ = pb2_flat._get_new_config(trials_flat[0], trials_flat[-1])
 
         # Make sure the suggested config is still nested properly

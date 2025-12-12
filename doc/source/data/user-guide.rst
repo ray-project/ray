@@ -15,6 +15,7 @@ shows you how to achieve several tasks.
     loading-data
     inspecting-data
     transforming-data
+    aggregating-data
     iterating-over-data
     joining-data
     shuffling-data
@@ -29,4 +30,3 @@ shows you how to achieve several tasks.
     batch_inference
     performance-tips
     custom-datasource-example
-    aggregations

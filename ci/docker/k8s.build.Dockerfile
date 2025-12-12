@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.3-labs
 
-FROM cr.ray.io/rayproject/oss-ci-base_build
+FROM cr.ray.io/rayproject/oss-ci-base_build-py3.10
 
 SHELL ["/bin/bash", "-ice"]
 

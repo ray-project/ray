@@ -307,7 +307,8 @@ steps:
         --only-tags gpu,gpu_only
         --python-version 3.10
     depends_on: docgpubuild
-  - label: ":data: postmerge authenticated tests"
+
+  - label: ":database: data: postmerge authenticated tests"
     key: data_postmerge_authenticated_tests
     tags:
       - python
@@ -321,5 +322,7 @@ steps:
         --build-name databuild-py3.10
         --python-version 3.10
         --only-tags needs_credentials
-        --test-env=SNOWFLAKE_USER --test-env=SNOWFLAKE_ACCOUNT --test-env=SNOWFLAKE_DATABASE --test-env=SNOWFLAKE_SCHEMA --test-env=SNOWFLAKE_WAREHOUSE --test-env=SNOWFLAKE_PRIVATE_KEY
-    depends_on: datalbuild-multipy
+        --test-env=SNOWFLAKE_USER --test-env=SNOWFLAKE_ACCOUNT
+        --test-env=SNOWFLAKE_DATABASE --test-env=SNOWFLAKE_SCHEMA
+        --test-env=SNOWFLAKE_WAREHOUSE --test-env=SNOWFLAKE_PRIVATE_KEY
+    depends_on: databuild-multipy

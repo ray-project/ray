@@ -34,17 +34,10 @@
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/status.h"
 #include "ray/core_worker_rpc_client/core_worker_client_interface.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/util/container_util.h"
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
 #include "ray/util/time.h"
-
-DEFINE_stats(worker_register_time_ms,
-             "end to end latency of register a worker process.",
-             (),
-             ({1, 10, 100, 1000, 10000}),
-             ray::stats::HISTOGRAM);
 
 namespace ray {
 
@@ -104,6 +97,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external,
                        std::function<absl::Time()> get_time,
+                       WorkerPoolMetrics &worker_pool_metrics,
                        AddProcessToCgroupHook add_to_cgroup_hook)
     : worker_startup_token_counter_(0),
       io_service_(&io_service),
@@ -127,16 +121,18 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       num_prestart_python_workers(num_prestarted_python_workers),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
       get_time_(std::move(get_time)),
-      add_to_cgroup_hook_(std::move(add_to_cgroup_hook)) {
+      add_to_cgroup_hook_(std::move(add_to_cgroup_hook)),
+      worker_pool_metrics_(worker_pool_metrics) {
   RAY_CHECK_GT(maximum_startup_concurrency_, 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
   // metric not existing at all).
-  ray_metric_num_workers_started_.Record(0);
-  ray_metric_num_workers_started_from_cache_.Record(0);
-  ray_metric_num_cached_workers_skipped_job_mismatch_.Record(0);
-  ray_metric_num_cached_workers_skipped_dynamic_options_mismatch_.Record(0);
-  ray_metric_num_cached_workers_skipped_runtime_environment_mismatch_.Record(0);
+  worker_pool_metrics_.num_workers_started_sum.Record(0);
+  worker_pool_metrics_.num_workers_started_from_cache_sum.Record(0);
+  worker_pool_metrics_.num_cached_workers_skipped_job_mismatch_sum.Record(0);
+  worker_pool_metrics_.num_cached_workers_skipped_dynamic_options_mismatch_sum.Record(0);
+  worker_pool_metrics_.num_cached_workers_skipped_runtime_environment_mismatch_sum.Record(
+      0);
   // We used to ignore SIGCHLD here. The code is moved to raylet main.cc to support the
   // subreaper feature.
   for (const auto &entry : worker_commands) {
@@ -527,7 +523,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   auto start = std::chrono::high_resolution_clock::now();
   // Start a process and measure the startup time.
   Process proc = StartProcess(worker_command_args, env);
-  ray_metric_num_workers_started_.Record(1);
+  worker_pool_metrics_.num_workers_started_sum.Record(1);
   RAY_LOG(INFO) << "Started worker process with pid " << proc.GetId() << ", the token is "
                 << worker_startup_token_counter_;
   if (!IsIOWorkerType(worker_type)) {
@@ -833,7 +829,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   auto end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
       end - starting_process_info.start_time);
-  STATS_worker_register_time_ms.Record(duration.count());
+  worker_pool_metrics_.worker_register_time_ms_histogram.Record(duration.count());
   RAY_LOG(DEBUG) << "Registering worker " << worker->WorkerId() << " with pid " << pid
                  << ", port: " << port << ", register cost: " << duration.count()
                  << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType())
@@ -1447,11 +1443,13 @@ std::shared_ptr<WorkerInterface> WorkerPool::FindAndPopIdleWorker(
     }
     skip_reason_count[reason]++;
     if (reason == WorkerUnfitForLeaseReason::DYNAMIC_OPTIONS_MISMATCH) {
-      ray_metric_num_cached_workers_skipped_dynamic_options_mismatch_.Record(1);
+      worker_pool_metrics_.num_cached_workers_skipped_dynamic_options_mismatch_sum.Record(
+          1);
     } else if (reason == WorkerUnfitForLeaseReason::RUNTIME_ENV_MISMATCH) {
-      ray_metric_num_cached_workers_skipped_runtime_environment_mismatch_.Record(1);
+      worker_pool_metrics_.num_cached_workers_skipped_runtime_environment_mismatch_sum
+          .Record(1);
     } else if (reason == WorkerUnfitForLeaseReason::ROOT_MISMATCH) {
-      ray_metric_num_cached_workers_skipped_job_mismatch_.Record(1);
+      worker_pool_metrics_.num_cached_workers_skipped_job_mismatch_sum.Record(1);
     }
     return false;
   };
@@ -1490,7 +1488,7 @@ void WorkerPool::PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request)
   }
   RAY_CHECK(worker->GetAssignedJobId().IsNil() ||
             worker->GetAssignedJobId() == pop_worker_request->job_id_);
-  ray_metric_num_workers_started_from_cache_.Record(1);
+  worker_pool_metrics_.num_workers_started_from_cache_sum.Record(1);
   PopWorkerCallbackAsync(pop_worker_request->callback_, worker, PopWorkerStatus::OK);
 }
 

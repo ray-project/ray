@@ -20,7 +20,6 @@ User Guides
     rllib-offline
     rl-modules
     rllib-learner
-    rllib-torch2x
     rllib-fault-tolerance
     rllib-dev
     scaling-guide

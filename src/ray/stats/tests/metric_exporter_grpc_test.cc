@@ -30,7 +30,6 @@
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/internal/stats_exporter_impl.h"
 #include "opencensus/stats/stats.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/stats/metric_exporter.h"
 #include "ray/stats/stats.h"
 #include "ray/stats/tag_defs.h"

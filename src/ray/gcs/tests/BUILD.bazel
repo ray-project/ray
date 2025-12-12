@@ -92,6 +92,7 @@ ray_cc_test(
     ],
     deps = [
         "//src/ray/gcs:gcs_health_check_manager",
+        "//src/ray/observability:fake_metric",
         "//src/ray/rpc:grpc_server",
         "//src/ray/util:network_util",
         "@boost//:thread",

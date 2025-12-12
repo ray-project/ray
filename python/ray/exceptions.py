@@ -515,7 +515,7 @@ class AuthenticationError(RayError):
             "RAY_AUTH_TOKEN_PATH) or as the `RAY_AUTH_TOKEN` environment variable. "
             "To generate a token for local development, use `ray get-auth-token --generate` "
             "For remote clusters, ensure that the token is propagated to all nodes of the cluster when token authentication is enabled. "
-            "For more information, see: https://docs.ray.io/en/latest/ray-security/auth.html"
+            "For more information, see: https://docs.ray.io/en/latest/ray-security/token-auth.html"
         )
         return self.message + "." + auth_mode_note + help_text
 

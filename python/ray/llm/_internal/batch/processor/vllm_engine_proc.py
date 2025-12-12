@@ -217,6 +217,7 @@ def build_vllm_engine_processor(
                 max_pending_requests=config.max_pending_requests,
                 dynamic_lora_loading_path=config.dynamic_lora_loading_path,
                 placement_group_config=config.placement_group_config,
+                should_continue_on_error=config.should_continue_on_error,
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
