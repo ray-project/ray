@@ -23,14 +23,12 @@ import ray
 from PIL import Image
 from io import BytesIO
 from ray.data.llm import vLLMEngineProcessorConfig, build_processor
+from huggingface_hub import HfFileSystem
 
-# Load "LMMs-Eval-Lite" dataset from Hugging Face
-import datasets as datasets_lib
-
-vision_dataset_llms_lite = datasets_lib.load_dataset(
-    "lmms-lab/LMMs-Eval-Lite", "coco2017_cap_val"
-)
-vision_dataset = ray.data.from_huggingface(vision_dataset_llms_lite["lite"])
+# Load "LMMs-Eval-Lite" dataset from Hugging Face using HfFileSystem
+path = "hf://datasets/lmms-lab/LMMs-Eval-Lite/coco2017_cap_val/"
+fs = HfFileSystem()
+vision_dataset = ray.data.read_parquet(path, filesystem=fs)
 
 HF_TOKEN = "your-hf-token-here"  # Replace with actual token if needed
 
@@ -146,18 +144,17 @@ def load_vision_dataset():
     - Various visual reasoning tasks
     """
     try:
-        import datasets
+        from huggingface_hub import HfFileSystem
 
-        # Load "LMMs-Eval-Lite" dataset from Hugging Face
-        vision_dataset_llms_lite = datasets.load_dataset(
-            "lmms-lab/LMMs-Eval-Lite", "coco2017_cap_val"
-        )
-        vision_dataset = ray.data.from_huggingface(vision_dataset_llms_lite["lite"])
+        # Load "LMMs-Eval-Lite" dataset from Hugging Face using HfFileSystem
+        path = "hf://datasets/lmms-lab/LMMs-Eval-Lite/coco2017_cap_val/"
+        fs = HfFileSystem()
+        vision_dataset = ray.data.read_parquet(path, filesystem=fs)
 
         return vision_dataset
     except ImportError:
         print(
-            "datasets package not available. Install with: pip install datasets>=4.0.0"
+            "huggingface_hub package not available. Install with: pip install huggingface_hub"
         )
         return None
     except Exception as e:

@@ -2,7 +2,7 @@
 
 set -exo pipefail
 
-nb_rel_path="content/unstructured-data-ingestion.ipynb"
+nb_rel_path="content/unstructured_data_ingestion.ipynb"
 content_dir="$(dirname "$nb_rel_path")"
 nb_filename="$(basename "$nb_rel_path")"
 md_rel_path="$content_dir/README.md"
