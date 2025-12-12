@@ -87,6 +87,67 @@ def test_simple_serve_deployment(serve_cleanup):
     assert all(out["resp"] == out["id"] + 1 for out in outs)
 
 
+def test_serve_deployment_continue_on_error(serve_cleanup):
+    """Integration test: pipeline continues when some rows fail with continue_on_error."""
+
+    @serve.deployment
+    class FailingServeDeployment:
+        async def process(self, request: Dict[str, Any]):
+            x = request["x"]
+            if x % 10 == 0:  # Fail every 10th row
+                raise ValueError(f"Intentional failure for x={x}")
+            yield {"result": x * 2}
+
+    app_name = "failing_serve_deployment_app"
+    deployment_name = "FailingServeDeployment"
+
+    serve.run(FailingServeDeployment.bind(), name=app_name)
+
+    config = ServeDeploymentProcessorConfig(
+        deployment_name=deployment_name,
+        app_name=app_name,
+        batch_size=16,
+        concurrency=1,
+        should_continue_on_error=True,
+    )
+
+    processor = build_processor(
+        config,
+        preprocess=lambda row: dict(
+            method="process",
+            dtype=None,
+            request_kwargs=dict(x=row["id"]),
+        ),
+        postprocess=lambda row: dict(
+            resp=row.get("result"),
+            error=row.get("__inference_error__"),
+        ),
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"]})
+    ds = processor(ds)
+
+    outs = ds.take_all()
+    assert len(outs) == 60  # All rows processed, none dropped
+
+    errors = [o for o in outs if o["error"] is not None]
+    successes = [o for o in outs if o["error"] is None]
+
+    # Rows 0, 10, 20, 30, 40, 50 should fail (6 total)
+    assert len(errors) == 6
+    assert len(successes) == 54
+
+    # Verify error messages contain expected info
+    for e in errors:
+        assert "ValueError" in e["error"]
+        assert "Intentional failure" in e["error"]
+
+    # Verify successful rows have correct result
+    for s in successes:
+        assert s["resp"] is not None
+
+
 def test_completion_model(model_opt_125m, create_model_opt_125m_deployment):
     deployment_name, app_name = create_model_opt_125m_deployment
     config = ServeDeploymentProcessorConfig(
