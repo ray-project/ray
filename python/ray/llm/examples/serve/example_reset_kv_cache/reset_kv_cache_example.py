@@ -72,11 +72,9 @@ class KVCacheResetIngress(OpenAiIngress):
     async def reset_prefix_cache(self, request: Request):
         """Reset the KV cache on all replicas for the specified model.
 
-        Query Parameters:
-            model: The model ID to reset cache for.
-
-        Returns:
-            Empty response on success.
+        Args:
+            request: The FastAPI request object. Expects a `model` query
+                parameter specifying the model ID to reset cache for.
         """
         model_id = request.query_params.get("model")
         handle = self._get_configured_serve_handle(model_id)
