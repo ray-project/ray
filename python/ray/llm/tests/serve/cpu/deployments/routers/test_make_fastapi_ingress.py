@@ -46,13 +46,17 @@ class TestMakeFastapiIngress:
             **DEFAULT_ENDPOINTS,
         }
 
-        # Should not raise
+        app = FastAPI()
         ingress_cls = make_fastapi_ingress(
-            MyCustomIngress, endpoint_map=custom_endpoints
+            MyCustomIngress, endpoint_map=custom_endpoints, app=app
         )
 
-        # Verify the class was created
+        # Verify the class was created and the custom route is registered
         assert ingress_cls is not None
+        route_paths = [
+            route.path for route in app.routes if isinstance(route, APIRoute)
+        ]
+        assert "/custom" in route_paths
 
     def test_routes_registered_correctly(self):
         """Test that routes are registered with the FastAPI app."""
