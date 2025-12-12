@@ -33,7 +33,7 @@ Transforming rows with map
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If your transformation returns exactly one row for each input row, call
-:meth:`~ray.data.Dataset.map`.
+:meth:`~ray.data.Dataset.map`. This transformation will automatically be parallelized across your Ray cluster.
 
 .. testcode::
 
@@ -72,7 +72,7 @@ Transforming rows with flat map
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If your transformation returns multiple rows for each input row, call
-:meth:`~ray.data.Dataset.flat_map`.
+:meth:`~ray.data.Dataset.flat_map`. This transformation will automatically be parallelized across your Ray cluster.
 
 .. testcode::
 
@@ -121,6 +121,8 @@ Transforming batches
 
 If your transformation can be vectorized using NumPy, PyArrow or Pandas operations, transforming
 batches is considerably more performant than transforming individual rows.
+
+This transformation will automatically be parallelized across your Ray cluster.
 
 .. testcode::
 
@@ -205,7 +207,7 @@ When using
             )
 
 The user defined function can also be a Python generator that yields batches, so the function can also
-be of type ``Callable[DataBatch, Iterator[[DataBatch]]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``.
+be of type ``Callable[DataBatch, Iterator[[DataBatch]]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray], pyarrow.Table]``.
 In this case, your function would look like:
 
 .. testcode::
@@ -245,7 +247,6 @@ If you'd like to use a more ergonomic API for transformations but avoid performa
     ds.map_batches(udf, batch_format="pyarrow")
 
 
-
 Configuring batch size
 ~~~~~~~~~~~~~~~~~~~~~~
 
@@ -255,30 +256,11 @@ program might run into out-of-memory (OOM) errors.
 
 If you encounter an OOM errors, try decreasing your ``batch_size``.
 
-.. _ordering_of_rows:
-
-Ordering of rows
-================
-
-When transforming data, the order of :ref:`blocks <data_key_concepts>` isn't preserved by default.
-
-If the order of blocks needs to be preserved/deterministic,
-you can use :meth:`~ray.data.Dataset.sort` method, or set :attr:`ray.data.ExecutionOptions.preserve_order` to `True`.
-Note that setting this flag may negatively impact performance on larger cluster setups where stragglers are more likely.
-
-.. testcode::
-
-   import ray
-   
-   ctx = ray.data.DataContext().get_current()
-   
-   # By default, this is set to False.
-   ctx.execution_options.preserve_order = True
 
 .. _stateful_transforms:
 
-Stateful Transforms
-===================
+Stateful/Class-based Transforms
+===============================
 
 If your transform requires expensive setup such as downloading
 model weights, use a callable Python class instead of a function to make the transform stateful. When a Python class
@@ -294,11 +276,9 @@ To transform data with a Python class, complete these steps:
 1. Implement a class. Perform setup in ``__init__`` and transform data in ``__call__``.
 
 2. Call :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.map`, or
-   :meth:`~ray.data.Dataset.flat_map`. Pass a compute strategy with the ``compute``
-   argument to control how many workers Ray uses. Each worker transforms a partition
-   of data in parallel. Use ``ray.data.TaskPoolStrategy(size=n)`` to cap the number of
-   concurrent tasks, or ``ray.data.ActorPoolStrategy(...)`` to run callable classes on
-   a fixed or autoscaling actor pool.
+   :meth:`~ray.data.Dataset.flat_map`. Pass a ``ray.data.ActorPoolStrategy(...)`` object to
+   the  ``compute`` argument to control how many workers Ray uses. Each worker transforms a partition
+   of data in parallel.
 
 .. tab-set::
 
@@ -346,7 +326,6 @@ To transform data with a Python class, complete these steps:
             import ray
 
             class TorchPredictor:
-
                 def __init__(self):
                     self.model = torch.nn.Identity().cuda()
                     self.model.eval()
@@ -374,12 +353,20 @@ To transform data with a Python class, complete these steps:
 
             ds.materialize()
 
-Avoiding out-of-memory errors
-=============================
+Specifying CPUs, GPUs, and Memory
+=================================
 
-If your user defined function uses lots of memory, you might encounter out-of-memory 
-errors. To avoid these errors, configure the ``memory`` parameter. It tells Ray how much 
-memory your function uses, and prevents Ray from scheduling too many tasks on a node.
+You can optionally specify logical resources per transformation by using one of the following parameters: ``num_cpus``, ``num_gpus``, ``memory``, ``resources``.
+
+* ``num_cpus``: The number of CPUs to use for the transformation. Ray will automatically configure ``OMP_NUM_THREADS`` to the number of CPUs specified.
+* ``num_gpus``: The number of GPUs to use for the transformation. Ray will automatically configure the proper CUDA_VISIBLE_DEVICES environment variable so that GPUs are isolated from other tasks/actors.
+* ``memory``: The amount of memory to use for the transformation. This is useful for avoiding out-of-memory errors by telling Ray how much memory your function uses, and preventing Ray from scheduling too many tasks on a node.
+* ``resources``: A dictionary of resources to use for the transformation. This is useful for specifying custom resources.
+
+Note that these are logical resources and do not impose limits on actual physical resource usage.
+
+Also, both ``num_cpus`` and ``num_gpus`` support fractional values less than 1. For example, specifying ``num_cpus=0.5`` on a cluster with 4 CPUs will allow for 8 concurrent tasks/actors to run.
+You can read more about resources in Ray here: :ref:`resource-requirements`.
 
 .. testcode::
     :hide:
@@ -396,6 +383,46 @@ memory your function uses, and prevents Ray from scheduling too many tasks on a 
     # Tell Ray that the function uses 1 GiB of memory
     ds.map_batches(uses_lots_of_memory, memory=1 * 1024 * 1024)
 
+Specifying Concurrency
+======================
+
+You can specify the concurrency of the transformation by using the ``compute`` parameter.
+
+For functions, use ``compute=ray.data.TaskPoolStrategy(size=n)`` to cap the number of concurrent tasks. By default, Ray Data will automatically determine the number of concurrent tasks.
+For classes, use ``compute=ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers. Currently, this is required to be specified.
+
+.. testcode::
+    :hide:
+
+    import ray
+
+    ds = ray.data.range(10).map_batches(lambda x: x * 2, compute=ray.data.TaskPoolStrategy(size=2))
+    ds.take_all()
+
+.. testoutput::
+    :options: +MOCK
+
+    [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}, {'id': 5}, {'id': 6}, {'id': 7}, {'id': 8}, {'id': 9}]
+
+.. _ordering_of_rows:
+
+Ordering of rows
+================
+
+When transforming data, the order of :ref:`blocks <data_key_concepts>` isn't preserved by default.
+
+If the order of blocks needs to be preserved/deterministic,
+you can use :meth:`~ray.data.Dataset.sort` method, or set :attr:`ray.data.ExecutionOptions.preserve_order` to `True`.
+Note that setting this flag may negatively impact performance on larger cluster setups where stragglers are more likely.
+
+.. testcode::
+
+   import ray
+
+   ctx = ray.data.DataContext().get_current()
+
+   # By default, this is set to False.
+   ctx.execution_options.preserve_order = True
 
 .. _transforming_groupby:
 
@@ -448,3 +475,127 @@ Then, call :meth:`~ray.data.grouped_data.GroupedData.map_groups` to execute a tr
                 .groupby("target")
                 .map_groups(normalize_features)
             )
+
+Advanced: Distributed UDFs with Placement Groups
+================================================
+
+While all transformations are automatically parallelized across your Ray cluster, often times these transformations themselves can themselves be distributed. For example, if you're using
+a large model, you may want to distribute the model across multiple nodes.
+You can do this by using :ref:`placement groups <ray-placement-group-doc-ref>` and ``ray_remote_args_fn``, which can dynamically create placement groups for each model replica.
+
+.. testcode::
+    :hide:
+
+    import ray
+    from typing import Dict
+    import numpy as np
+    import torch
+
+    NUM_SHARDS = 2
+    @ray.remote
+    class ModelShard:
+        def __init__(self):
+            self.model = torch.nn.Linear(10, 10)
+
+        def f(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+            return batch
+
+    class DistributedModel:
+        def __init__(self):
+            self.shards = [ModelShard.remote() for _ in range(NUM_SHARDS)]
+
+        def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+            return {"out": np.array(ray.get([shard.f.remote(batch) for shard in self.shards]))}
+
+    def ray_remote_args_fn():
+        from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+        pg = ray.util.placement_group([{"CPU": 1}] * NUM_SHARDS)
+        return {"scheduling_strategy": PlacementGroupSchedulingStrategy(placement_group=pg)}
+
+    ds = ray.data.range(10).map_batches(DistributedModel, ray_remote_args_fn=ray_remote_args_fn)
+    ds.take_all()
+
+Advanced: Async Transforms
+==========================
+
+Ray Data supports asynchronous functions by using the ``async`` keyword. This is useful for performing asynchronous operations such as fetching data from a database or making HTTP requests.
+Note that this only works when using a class-based transform function and currently requires ``uvloop==0.21.0``.
+
+.. testcode::
+    :hide:
+
+    import ray
+    from typing import Dict
+    import numpy as np
+
+    class AsyncTransform:
+        async def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+            return batch
+
+    ds = ray.data.range(10).map_batches(AsyncTransform)
+    ds.take_all()
+
+.. testoutput::
+    :options: +MOCK
+
+    [{'id': 0},
+    {'id': 1},
+    {'id': 2},
+    {'id': 3},
+    {'id': 4},
+    {'id': 5},
+    {'id': 6},
+    {'id': 7},
+    {'id': 8},
+    {'id': 9}]
+
+
+Expressions (Alpha)
+===================
+
+Ray Data expressions provide a way to specify column-based operations on datasets.
+Use :func:`col` to reference columns and :func:`lit` to create literal values.
+You can combine these with operators to create complex expressions for filtering,
+transformations, and computations.
+
+Expressions have to be used with :meth:`~ray.data.Dataset.with_column`. The core advantage of expressions
+is that because they operate on specific columns, Ray Data's optimizer can optimize the execution plan by reordering the operations.
+
+See :ref:`expressions-api` for more details.
+
+.. testcode::
+
+    import ray
+    from ray.data.expressions import col
+
+    ds = ray.data.range(10).with_column("id_2", col("id") * 2)
+    ds.show()
+
+To use a custom function with an expression, you can use :func:`udf`.
+
+.. testcode::
+
+    from ray.data.expressions import col, udf
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    import ray
+
+    # UDF that operates on a batch of values (PyArrow Array)
+    @udf(return_dtype=DataType.int32())
+    def add_one(x: pa.Array) -> pa.Array:
+        return pc.add(x, 1)  # Vectorized operation on the entire Array
+
+    # UDF that combines multiple columns (each as a PyArrow Array)
+    @udf(return_dtype=DataType.string())
+    def format_name(first: pa.Array, last: pa.Array) -> pa.Array:
+        return pc.binary_join_element_wise(first, last, " ")  # Vectorized string concatenation
+
+    # Use in dataset operations
+    ds = ray.data.from_items([
+        {"value": 5, "first": "John", "last": "Doe"},
+        {"value": 10, "first": "Jane", "last": "Smith"}
+    ])
+    ds = ds.with_column("value_plus_one", add_one(col("value")))
+    ds = ds.with_column("full_name", format_name(col("first"), col("last")))
+    ds = ds.with_column("doubled_plus_one", add_one(col("value")) * 2)
+    ds.show()
