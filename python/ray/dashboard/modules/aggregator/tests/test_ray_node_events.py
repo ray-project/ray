@@ -41,16 +41,12 @@ def test_ray_node_events(ray_start_cluster, httpserver):
     req, _ = httpserver.log[0]
     req_json = json.loads(req.data)
     assert len(req_json) == 2
-    assert (
-        base64.b64decode(req_json[0]["nodeId"]).hex() == head_node_id
-    )
+    assert base64.b64decode(req_json[0]["nodeId"]).hex() == head_node_id
     assert (
         base64.b64decode(req_json[0]["nodeDefinitionEvent"]["nodeId"]).hex()
         == cluster.head_node.node_id
     )
-    assert (
-        base64.b64decode(req_json[1]["nodeId"]).hex() == head_node_id
-    )
+    assert base64.b64decode(req_json[1]["nodeId"]).hex() == head_node_id
     assert (
         base64.b64decode(req_json[1]["nodeLifecycleEvent"]["nodeId"]).hex()
         == cluster.head_node.node_id
