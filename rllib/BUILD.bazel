@@ -4331,6 +4331,7 @@ py_test(
         "examples",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # subdirectory: evaluation/
