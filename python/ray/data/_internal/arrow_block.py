@@ -561,6 +561,7 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
             #       such, so we rely on Polars to encode and compute unique
             #       values instead
             import polars
+
             return polars.from_arrow(self._column).unique().to_arrow()
 
         return pac.unique(self._column)
