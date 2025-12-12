@@ -1,4 +1,5 @@
 import abc
+import enum
 import math
 import pickle
 import re
@@ -17,7 +18,6 @@ from typing import (
 )
 
 import numpy as np
-import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
@@ -942,12 +942,24 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
             flatten) operation.
     """
 
+    class ListEncodingMode(str, enum.Enum):
+        """Controls how to encode individual elements inside the list column:
+
+        - NONE: no encoding applied, elements (lists) are stored as is and
+                unique ones are returned.
+        - FLATTEN: column of element lists is flattened into a single list.
+        - HASH: each list element is hashed, a list of unique hashes is returned.
+        """
+
+        FLATTEN = "FLATTEN"
+        HASH = "HASH"
+
     def __init__(
         self,
         on: Optional[str] = None,
-        ignore_nulls: bool = True,
+        ignore_nulls: bool = False,
         alias_name: Optional[str] = None,
-        encode_lists: bool = False,
+        encode_lists: Union[bool, ListEncodingMode, None] = None,
     ):
         super().__init__(
             alias_name if alias_name else f"unique({str(on)})",
@@ -955,31 +967,40 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
             ignore_nulls=ignore_nulls,
             zero_factory=set,
         )
-        self._encode_lists = encode_lists
+
+        if isinstance(encode_lists, Unique.ListEncodingMode):
+            self._list_encoding_mode = encode_lists
+        elif isinstance(encode_lists, bool) and encode_lists:
+            self._list_encoding_mode = Unique.ListEncodingMode.FLATTEN
+        else:
+            self._list_encoding_mode = None
 
     def combine(self, current_accumulator: Set[Any], new: Set[Any]) -> Set[Any]:
         return self._to_set(current_accumulator) | self._to_set(new)
 
     def aggregate_block(self, block: Block) -> List[Any]:
-        col = BlockAccessor.for_block(block).to_arrow().column(self._target_col_name)
-        if pa.types.is_list(col.type):
-            if self._encode_lists:
-                col = pc.list_flatten(col)
+        column = block[self._target_col_name]
+        column_accessor = BlockColumnAccessor.for_column(column)
+
+        if (
+            column_accessor.is_composed_of_lists()
+            and self._list_encoding_mode is not None
+        ):
+            if self._list_encoding_mode == Unique.ListEncodingMode.FLATTEN:
+                column_accessor = BlockColumnAccessor.for_column(
+                    column_accessor.flatten()
+                )
+            elif self._list_encoding_mode == Unique.ListEncodingMode.HASH:
+                column_accessor = BlockColumnAccessor.for_column(column_accessor.hash())
             else:
-                # pyarrow doesn't natively support calculating unique over
-                # list-like objects (ie: lists, tuples). Using pandas seem to be
-                # much more efficient than doing something like json dump/load or
-                # pickle dump/load.
-                series = BlockAccessor.for_block(block).to_pandas()[
-                    self._target_col_name
-                ]
-                series = series.map(lambda x: None if x is None else tuple(x))
-                if self._ignore_nulls:
-                    series = series.dropna()
-                return list(series.unique())
+                raise ValueError(
+                    f"list encoding mode not supported: {self._list_encoding_mode}"
+                )
+
         if self._ignore_nulls:
-            col = pc.drop_null(col)
-        return pc.unique(col).to_pylist()
+            column_accessor = BlockColumnAccessor.for_column(column_accessor.dropna())
+
+        return column_accessor.unique()
 
     @staticmethod
     def _to_set(x):
