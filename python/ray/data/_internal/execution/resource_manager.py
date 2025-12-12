@@ -933,7 +933,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if eligible_ops and not remaining_shared.is_zero():
             for op in reversed(eligible_ops):
                 _, max_resource_usage = op.min_max_resource_requirements()
-                if max_resource_usage is None or max_resource_usage == ExecutionResources.inf():
+                if (
+                    max_resource_usage is None
+                    or max_resource_usage == ExecutionResources.inf()
+                ):
                     self._op_budgets[op] = self._op_budgets[op].add(
                         remaining_shared.copy(gpu=0)
                     )
