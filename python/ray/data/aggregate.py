@@ -1002,7 +1002,12 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
 
         # NOTE: Though we're returning `BlockColumn` here, it will be converted
         #       internally into list once added as an element into the column
-        return column_accessor.unique()
+        res = column_accessor.unique()
+
+        print(f">>> [DBG] Unique.aggregate_block(): {BlockColumnAccessor.for_column(res).to_pylist()=}")
+
+        return res
+        # return BlockColumnAccessor.for_column(res).to_pylist()
 
     @staticmethod
     def _to_set(x):

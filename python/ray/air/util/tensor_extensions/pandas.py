@@ -1398,7 +1398,11 @@ class TensorArray(
         )
 
         if self.is_variable_shaped:
-            return ArrowVariableShapedTensorArray.from_numpy(self._tensor)
+            res = ArrowVariableShapedTensorArray.from_numpy(self._tensor)
+
+            print(f">>> [DBG] TensorArray.__array__: {res=}, {res.to_numpy()=}")
+
+            return res
         else:
             return ArrowTensorArray.from_numpy(self._tensor)
 
