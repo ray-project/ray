@@ -82,10 +82,23 @@ install_miniforge() {
   local python_version
   python_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
   if [ -n "${PYTHON-}" ] && [ "${PYTHON}" != "${python_version}" ]; then  # Update Python version
+    local conda_dir
+    conda_dir="$(dirname "$(dirname "${conda}")")"
     (
       set +x
       echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
-      "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
+      if [ "${PYTHON}" = "3.14" ]; then
+        # Python 3.14 can't be installed via conda install because it would remove conda itself.
+        # Create a separate environment and merge it back.
+        "${WORKSPACE_DIR}"/ci/suppress_output mamba create -q -y -n py314 python="${PYTHON}" libgcc-ng libffi
+        "${WORKSPACE_DIR}"/ci/suppress_output conda clean -q -y --all
+        rm -rf "${conda_dir}/envs/py314/conda-meta"
+        rsync -a "${conda_dir}/envs/py314/" "${conda_dir}/"
+        rm -rf "${conda_dir}/envs/py314"
+        rm -f "${conda_dir}/bin/conda" "${conda_dir}/bin/mamba"
+      else
+        "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
+      fi
     )
   elif [ "${MINIMAL_INSTALL-}" = "1" ]; then  # Reset environment
     (

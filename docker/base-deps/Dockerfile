@@ -110,6 +110,8 @@ if [[ "${PYTHON_VERSION}" == "3.14" ]]; then
     rm -rf $HOME/anaconda3/envs/py314/conda-meta
     rsync -a $HOME/anaconda3/envs/py314/ $HOME/anaconda3/
     rm -rf $HOME/anaconda3/envs/py314
+    # Remove conda/mamba binaries since they no longer work (the conda package is gone)
+    rm -f $HOME/anaconda3/bin/conda $HOME/anaconda3/bin/mamba
 else
     $HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION
     $HOME/anaconda3/bin/conda install -y -c conda-forge libffi=3.4.2
