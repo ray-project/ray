@@ -26,6 +26,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.14"
     env:
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_test-multipy
@@ -54,6 +55,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.14"
     env:
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_test-multipy
