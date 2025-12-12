@@ -1,3 +1,4 @@
+name: asynchronous-inference-service
 applications:
   - name: async-inference
     route_prefix: /
