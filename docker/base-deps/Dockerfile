@@ -99,8 +99,19 @@ wget --quiet \
 $HOME/anaconda3/bin/conda init
 echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> $HOME/.bashrc
 rm /tmp/miniforge.sh
-$HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION
-$HOME/anaconda3/bin/conda install -y -c conda-forge libffi=3.4.2
+# For Python 3.14+, we need to create a new environment because conda can't
+# upgrade the base environment's Python to an alpha/beta version without removing itself.
+# We use mamba for faster resolution.
+if [[ "${PYTHON_VERSION}" == "3.14" ]]; then
+    $HOME/anaconda3/bin/mamba create -y -n py314 python=$PYTHON_VERSION libgcc-ng libffi=3.4.2
+    # Make the new environment the default by updating PATH and symlinking
+    rm -rf $HOME/anaconda3/envs/py314/conda-meta
+    rsync -a $HOME/anaconda3/envs/py314/ $HOME/anaconda3/
+    rm -rf $HOME/anaconda3/envs/py314
+else
+    $HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION
+    $HOME/anaconda3/bin/conda install -y -c conda-forge libffi=3.4.2
+fi
 $HOME/anaconda3/bin/conda clean -y --all
 
 # Install uv
