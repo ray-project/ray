@@ -37,6 +37,7 @@ def test_serve_deployment_processor(dtype_mapping):
         "deployment_name": deployment_name,
         "app_name": app_name,
         "dtype_mapping": dtype_mapping,
+        "should_continue_on_error": False,
     }
 
     assert stage.map_batches_kwargs == {
