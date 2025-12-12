@@ -31,13 +31,14 @@ TEST_F(RayActorLifecycleEventTest, TestMergeAndSerialize) {
   data.set_node_id("node-1");
   data.mutable_address()->set_worker_id("worker-123");
 
+  NodeID test_node_id = NodeID::FromRandom();
   auto event1 = std::make_unique<RayActorLifecycleEvent>(
       data,
       rpc::events::ActorLifecycleEvent::DEPENDENCIES_UNREADY,
       "sess1",
-      NodeID::Nil());
+      test_node_id);
   auto event2 = std::make_unique<RayActorLifecycleEvent>(
-      data, rpc::events::ActorLifecycleEvent::ALIVE, "sess1", NodeID::Nil());
+      data, rpc::events::ActorLifecycleEvent::ALIVE, "sess1", test_node_id);
 
   event1->Merge(std::move(*event2));
   auto serialized_event = std::move(*event1).Serialize();
@@ -46,6 +47,8 @@ TEST_F(RayActorLifecycleEventTest, TestMergeAndSerialize) {
   ASSERT_EQ(serialized_event.session_name(), "sess1");
   ASSERT_EQ(serialized_event.event_type(), rpc::events::RayEvent::ACTOR_LIFECYCLE_EVENT);
   ASSERT_EQ(serialized_event.severity(), rpc::events::RayEvent::INFO);
+  ASSERT_FALSE(serialized_event.node_id().empty());
+  ASSERT_EQ(serialized_event.node_id(), test_node_id.Binary());
   ASSERT_TRUE(serialized_event.has_actor_lifecycle_event());
 
   const auto &actor_life = serialized_event.actor_lifecycle_event();
