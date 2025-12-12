@@ -587,7 +587,7 @@ def test_dt_namespace_invalid_dtype_raises(ray_start_regular):
 
 
 # ──────────────────────────────────────
-# Array Namespace Tests
+# List Namespace Tests (including fixed-size lists)
 # ──────────────────────────────────────
 
 
@@ -623,11 +623,11 @@ def _make_nested_fixed_size_list_table() -> pa.Table:
     return pa.Table.from_arrays([fixed_nested], names=["features"])
 
 
-def test_arr_to_list(ray_start_regular):
+def test_list_to_list_fixed_size(ray_start_regular):
     table = _make_fixed_size_list_table()
     ds = ray.data.from_arrow(table)
 
-    result = ds.select(col("features").arr.to_list().alias("features")).to_pandas()
+    result = ds.select(col("features").list.to_list().alias("features")).to_pandas()
     expected = pd.DataFrame(
         [
             {"features": [1, 2]},
@@ -639,11 +639,11 @@ def test_arr_to_list(ray_start_regular):
     assert rows_same(result, expected)
 
 
-def test_arr_flatten(ray_start_regular):
+def test_list_flatten_fixed_size(ray_start_regular):
     table = _make_nested_fixed_size_list_table()
     ds = ray.data.from_arrow(table)
 
-    result = ds.select(col("features").arr.flatten().alias("features")).to_pandas()
+    result = ds.select(col("features").list.flatten().alias("features")).to_pandas()
     expected = pd.DataFrame(
         [
             {"features": [1, 2, 3, 4]},

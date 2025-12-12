@@ -23,7 +23,6 @@ from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
-    from ray.data.namespace_expressions.arr_namespace import _ArrayNamespace
     from ray.data.namespace_expressions.dt_namespace import _DatetimeNamespace
     from ray.data.namespace_expressions.list_namespace import _ListNamespace
     from ray.data.namespace_expressions.string_namespace import _StringNamespace
@@ -424,7 +423,8 @@ class Expr(ABC):
         """Access list operations for this expression.
 
         Returns:
-            A _ListNamespace that provides list-specific operations.
+            A _ListNamespace that provides list-specific operations for both
+            PyArrow ``List`` and ``FixedSizeList`` columns.
 
         Example:
             >>> from ray.data.expressions import col
@@ -487,20 +487,6 @@ class Expr(ABC):
         from ray.data.namespace_expressions.struct_namespace import _StructNamespace
 
         return _StructNamespace(self)
-
-    @property
-    def arr(self) -> "_ArrayNamespace":
-        """Access fixed-size array operations for this expression.
-
-        Example
-        -------
-        >>> from ray.data.expressions import col
-        >>> # Assume ``features`` is a FixedSizeList column
-        >>> expr = col("features").arr.flatten()
-        """
-        from ray.data.namespace_expressions.arr_namespace import _ArrayNamespace
-
-        return _ArrayNamespace(self)
 
     @property
     def dt(self) -> "_DatetimeNamespace":
@@ -1084,7 +1070,6 @@ __all__ = [
     "_ListNamespace",
     "_StringNamespace",
     "_StructNamespace",
-    "_ArrayNamespace",
     "_DatetimeNamespace",
 ]
 
@@ -1103,10 +1088,6 @@ def __getattr__(name: str):
         from ray.data.namespace_expressions.struct_namespace import _StructNamespace
 
         return _StructNamespace
-    elif name == "_ArrayNamespace":
-        from ray.data.namespace_expressions.arr_namespace import _ArrayNamespace
-
-        return _ArrayNamespace
     elif name == "_DatetimeNamespace":
         from ray.data.namespace_expressions.dt_namespace import _DatetimeNamespace
 
