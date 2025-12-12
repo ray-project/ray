@@ -209,11 +209,14 @@ class GcsServer {
   /// Initialize function manager.
   void InitFunctionManager();
 
-  /// Initializes PubSub handler.
+  /// Initialize PubSub handler.
   void InitPubSubHandler();
 
   // Init RuntimeENv manager
   void InitRuntimeEnvManager();
+
+  /// Initialize metrics exporter with the given port.
+  void InitMetricsExporter(int metrics_agent_port);
 
   /// Install event listeners.
   void InstallEventListeners();

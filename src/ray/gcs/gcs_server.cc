@@ -200,11 +200,6 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       /*publisher_id=*/NodeID::FromRandom());
 
   gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(std::move(inner_publisher));
-  metrics_agent_client_ = std::make_unique<rpc::MetricsAgentClientImpl>(
-      "127.0.0.1",
-      config_.metrics_agent_port,
-      io_context_provider_.GetDefaultIOContext(),
-      client_call_manager_);
 }
 
 GcsServer::~GcsServer() { Stop(); }
@@ -293,19 +288,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InstallEventListeners();
   InitGcsAutoscalerStateManager(gcs_init_data);
   InitUsageStatsClient();
-
-  // Init metrics and event exporter.
-  metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
-    if (server_status.ok()) {
-      stats::InitOpenTelemetryExporter(config_.metrics_agent_port);
-      ray_event_recorder_->StartExportingEvents();
-    } else {
-      RAY_LOG(ERROR)
-          << "Failed to establish connection to the event+metrics exporter agent. "
-             "Events and metrics will not be exported. "
-          << "Exporter agent status: " << server_status.ToString();
-    }
-  });
 
   // Start RPC server when all tables have finished loading initial
   // data.
@@ -847,6 +829,18 @@ void GcsServer::InstallEventListeners() {
         gcs_placement_group_manager_->OnNodeAdd(node_id);
         gcs_actor_manager_->SchedulePendingActors();
         gcs_autoscaler_state_manager_->OnNodeAdd(*node);
+
+        // Initialize the metrics exporter when the head node registers.
+        // We wait for head node registration to obtain the actual metrics_agent_port,
+        // which may have been dynamically assigned (port 0 at startup).
+        if (node->is_head_node()) {
+          int actual_port = node->metrics_agent_port();
+          if (actual_port > 0) {
+            InitMetricsExporter(actual_port);
+          } else {
+            RAY_LOG(WARNING) << "Metrics agent may not be started or configured.";
+          }
+        }
         auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
             node_id, node->node_manager_address(), node->node_manager_port());
 
@@ -973,6 +967,28 @@ RedisClientOptions GcsServer::GetRedisClientOptions() {
                             config_.redis_username,
                             config_.redis_password,
                             config_.enable_redis_ssl};
+}
+
+void GcsServer::InitMetricsExporter(int metrics_agent_port) {
+  metrics_agent_client_ = std::make_unique<rpc::MetricsAgentClientImpl>(
+      "127.0.0.1",
+      metrics_agent_port,
+      io_context_provider_.GetDefaultIOContext(),
+      client_call_manager_);
+
+  metrics_agent_client_->WaitForServerReady([this, metrics_agent_port](
+                                                const Status &server_status) {
+    if (server_status.ok()) {
+      stats::InitOpenTelemetryExporter(metrics_agent_port);
+      ray_event_recorder_->StartExportingEvents();
+      RAY_LOG(INFO) << "Metrics exporter initialized with port " << metrics_agent_port;
+    } else {
+      RAY_LOG(ERROR)
+          << "Failed to establish connection to the event+metrics exporter agent. "
+             "Events and metrics will not be exported. "
+          << "Exporter agent status: " << server_status.ToString();
+    }
+  });
 }
 
 void GcsServer::TryGlobalGC() {
