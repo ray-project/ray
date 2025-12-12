@@ -10,7 +10,7 @@ The standard CartPole observation contains [cart_position, cart_velocity,
 pole_angle, pole_angular_velocity]. StatelessCartPole only provides
 [cart_position, pole_angle], making it impossible to determine the dynamics
 from a single observation alone. The LSTM's hidden state acts as memory,
-allowing it to track velocity by observing how positions change over time.
+allowing it to track velocity by observing how the poles position changes over time.
 
 This example:
     - uses `StatelessCartPole` environment to create a partially observable setting
@@ -32,7 +32,7 @@ To adjust the number of env runners:
 `python stateless_cartpole_appo_with_lstm.py --num-env-runners=4`
 
 For debugging, use the following additional command line options
-`--no-tune --num-learners=0`
+`--no-tune --num-env-runners=0 --num-learners=0`
 which should allow you to set breakpoints anywhere in the RLlib code and
 have the execution stop there for inspection and debugging.
 By setting `--num-learners=0` and `--num-env-runners=0` will make them run locally
@@ -45,15 +45,17 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-The algorithm should reach the default reward threshold of 300.0 within
-approximately 2 million timesteps. The number of environment steps can be
-changed through `default_timesteps`. The LSTM successfully learns to maintain
-an internal state that tracks velocity by observing sequential position changes.
-Training takes significantly longer than the fully observable CartPole version
-(which can solve in ~1M timesteps) due to the additional complexity of learning
+The algorithm should reach the default reward threshold of 300.0 (500.0 is the
+maximum) within approximately 2 million timesteps (see: `default_timesteps`
+in the code). The number of environment
+steps can be changed through argparser's `default_timesteps`.
+The LSTM should successfully learns to maintain an internal state that
+tracks velocity by observing sequential position changes.
+This mean result in training taking significantly longer than the fully
+observable CartPole version due to the additional complexity of learning
 with partial observability and the need for the LSTM to develop useful hidden
-state representations. The learning curve may show more variance as the LSTM
-figures out how to use its memory effectively.
+state representations. Additional, the learning curve may show more variance
+as the LSTM figures out how to use its memory effectively.
 """
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
@@ -64,15 +66,13 @@ from ray.rllib.examples.utils import (
 )
 
 parser = add_rllib_example_script_args(
-    default_reward=300.0,  # TODO: Test if correct
-    default_timesteps=2_000_000,  # TODO: Test if correct
+    default_reward=30.0,
+    default_timesteps=2_000_000,
 )
 parser.set_defaults(
     num_env_runners=5,
     num_envs_per_env_runner=16,
 )
-# Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 
@@ -83,11 +83,8 @@ config = (
         num_env_runners=args.num_env_runners,
         num_envs_per_env_runner=args.num_envs_per_env_runner,
     )
-    # TODO (sven): Need to fix the MeanStdFilter(). It seems to cause NaNs when
-    #  training.
-    # .env_runners(
-    #     env_to_module_connector=lambda env, spaces, device: MeanStdFilter(),
-    # )
+    # TODO: Re-enable the MeanStdFilter() as it seems to cause NaNs when training.
+    # .env_runners(env_to_module_connector=lambda env, spaces, device: MeanStdFilter())
     .training(
         lr=0.0005 * ((args.num_learners or 1) ** 0.5),
         num_epochs=1,

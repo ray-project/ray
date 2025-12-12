@@ -97,7 +97,7 @@ doctest(
 #   - local (CPU) = 7 CPUs, 0 GPU, 5 Env Runners, 0 Learners on CPU
 #   - single (CPU) = 7 CPUs, 0 GPU, 5 Env Runner, 1 Learners on CPU
 #   - single (GPU) = 7 CPUs, 1 GPU, 5 Env Runner, 1 Learners on GPU
-#   - multi (GPU) = 7 CPUs, 2 GPUs, 5 Env Runners, 2 Learners on GPU
+#   - multi (GPU) = 14 CPUs, 2 GPUs, 10 Env Runners, 2 Learners on GPU
 #
 # Legend
 #   - SA = Single Agent Environment
@@ -251,7 +251,7 @@ py_test(
     tags = [
         "learning_tests",
         "learning_tests_discrete",
-        "mulit_gpu",
+        "multi_gpu",
         "team:rllib",
         "torch_only",
     ],
@@ -293,7 +293,6 @@ py_test(
     tags = [
         "learning_tests",
         "learning_tests_discrete",
-        "mulit_gpu",
         "multi_gpu",
         "team:rllib",
         "torch_only",
@@ -334,15 +333,16 @@ py_test(
     tags = [
         "learning_tests",
         "learning_tests_continuous",
-        "mulit_gpu",
+        "multi_gpu",
         "team:rllib",
         "torch_only",
     ],
 )
 
-# TODO: Add Footsies single GPU
-# TODO: Add Footsies multi GPU
-# TODO: Add IsaacLab single CPU
+# TODO: Add Footsies single GPU learner
+# TODO: Add Footsies multi GPU learner
+# TODO: Add IsaacLab single CPU learner
+# TODO: Add IsaacLab single GPU learner
 
 # BC
 # CartPole

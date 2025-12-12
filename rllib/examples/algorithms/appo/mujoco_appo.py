@@ -37,7 +37,7 @@ To scale up training with more env runners:
 `python mujoco_appo.py --num-env-runners=16`
 
 For debugging, use the following additional command line options
-`--no-tune --num-learners=0`
+`--no-tune --num-env-runners=0 --num-learners=0`
 which should allow you to set breakpoints anywhere in the RLlib code and
 have the execution stop there for inspection and debugging.
 By setting `--num-learners=0` and `--num-env-runners=0` will make them run locally
@@ -51,7 +51,8 @@ For logging to your WandB account, use:
 Results to expect
 -----------------
 The algorithm should reach the default reward threshold of 9000.0 within
-2 million timesteps. The number of environment steps can be changed through
+2 million timesteps (see: `default_timesteps` in the code).
+The number of environment steps can be changed through
 `default_timesteps`. The learning curve may show some initial instability
 before stabilizing as the KL coefficient adapts.
 """
@@ -62,7 +63,7 @@ from ray.rllib.examples.utils import (
 )
 
 parser = add_rllib_example_script_args(
-    default_reward=8000.0,  # TODO: Determine true default_reward
+    default_reward=200.0,
     default_timesteps=2_000_000,
 )
 parser.set_defaults(

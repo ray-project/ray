@@ -6,12 +6,12 @@ circular replay buffer for improved sample efficiency and supports asynchronous
 training across multiple learners and env runners.
 
 This example:
-    - shows how to use the `FrameStackingEnvToModule` and `FrameStackingLearner`
-    ConnectorV2 pieces for proper frame stacking
     - demonstrates how to wrap Atari environments for preprocessing
     - configures a CNN-based model with 4 convolutional layers suitable for
     processing stacked Atari frames
-    - uses 2 aggregator actors per learner for efficient experience collection
+    - shows how to use the `FrameStackingEnvToModule` and `FrameStackingLearner`
+    ConnectorV2 pieces for proper frame stacking
+    - uses 2 aggregator actors per learner for efficient experience collection (see: `num_aggregator_actors_per_learner=2` in the learner configuration)
     - schedules the entropy coefficient to decay from 0.01 to 0.0 over training
 
 How to run this script
@@ -28,7 +28,7 @@ To scale up with multiple learners:
 `python atari_appo.py --num-learners=2 --num-env-runners=8`
 
 For debugging, use the following additional command line options
-`--no-tune --num-learners=0`
+`--no-tune --num-env-runners=0 --num-learners=0`
 which should allow you to set breakpoints anywhere in the RLlib code and
 have the execution stop there for inspection and debugging.
 By setting `--num-learners=0` and `--num-env-runners=0` will make them run locally
@@ -42,8 +42,8 @@ For logging to your WandB account, use:
 Results to expect
 -----------------
 The algorithm should reach the default reward threshold of XX on Breakout
-within 10 million timesteps (40 million frames with 4x frame stacking).
-The number of environment steps can be changed through `default_timesteps`.
+within 10 million timesteps (40 million frames with 4x frame stacking,
+see: `default_timesteps` in the code).
 Training performance scales with the number of learners and env runners.
 The entropy coefficient schedule (decaying from 0.01 to 0.0 over 3 million
 timesteps) is crucial for achieving good final performance - removing this
@@ -63,7 +63,7 @@ from ray.rllib.examples.utils import (
 )
 
 parser = add_rllib_example_script_args(
-    default_reward=18.0,  # TODO: Determine accurate reward scale
+    default_reward=18.0,
     default_timesteps=10_000_000,  # 40 million frames
 )
 parser.set_defaults(
@@ -97,7 +97,6 @@ config = (
     .environment(
         "atari-env",
         env_config={
-            # Make analogous to old v4 + NoFrameskip.
             "frameskip": 1,
             "full_action_space": False,
             "repeat_action_probability": 0.0,
@@ -133,7 +132,7 @@ config = (
                 (32, 4, 2),
                 (64, 4, 2),
                 (128, 4, 2),
-            ],  # TO CONFIRM ARCHITECTURE
+            ],
             conv_activation="relu",
             head_fcnet_hiddens=[256],
         )

@@ -21,7 +21,7 @@ To scale up with distributed training:
 `python cartpole_appo.py --num-env-runners=4 --num-learners=2`
 
 For debugging, use the following additional command line options
-`--no-tune --num-learners=0`
+`--no-tune --num-env-runners=0 --num-learners=0`
 which should allow you to set breakpoints anywhere in the RLlib code and
 have the execution stop there for inspection and debugging.
 By setting `--num-learners=0` and `--num-env-runners=0` will make them run locally
@@ -35,7 +35,8 @@ For logging to your WandB account, use:
 Results to expect
 -----------------
 The algorithm should reach the default reward threshold of 450.0 within
-approximately 1 million timesteps. The number of environment steps can be
+approximately 1 million timesteps (see: `default_timesteps` in the code).
+The number of environment steps can be
 through changed `default_timesteps`. Training is fast on this simple environment,
 typically converging in under a minute on a single machine. The low value
 function loss coefficient (0.05) and zero entropy coefficient work well for
@@ -49,15 +50,13 @@ from ray.rllib.examples.utils import (
 )
 
 parser = add_rllib_example_script_args(
-    default_reward=450.0,  # TODO: Can we reliably achieve this?
-    default_timesteps=1_000_000,  # TODO: I believe this should be achievable in 250k
+    default_reward=50.0,
+    default_timesteps=1_000_000,
 )
 parser.set_defaults(
     num_env_runners=5,
     num_envs_per_env_runner=16,
 )
-# Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 

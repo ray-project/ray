@@ -18,10 +18,6 @@ This example:
     - demonstrates the use of `policies_to_train` to exclude the `RandomRLModule`
     from training while still using it for evaluation
     - shows how to set up `MultiRLModuleSpec` for multi-agent configurations
-    - uses a CNN-based model with 4 convolutional layers suitable for processing
-    the Connect4 board representation
-    - employs the same APPO hyperparameters as the Atari example (aggregator actors,
-    circular buffer, entropy schedule)
 
 How to run this script
 ----------------------
@@ -34,7 +30,7 @@ To adjust the number of learners for distributed training:
 `python tictactoe_appo.py --num-learners=2 --num-env-runners=8`
 
 For debugging, use the following additional command line options
-`--no-tune --num-learners=0`
+`--no-tune --num-env-runners=0 --num-learners=0`
 which should allow you to set breakpoints anywhere in the RLlib code and
 have the execution stop there for inspection and debugging.
 By setting `--num-learners=0` and `--num-env-runners=0` will make them run locally
@@ -47,13 +43,13 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-Training will run for 100 thousand timesteps for p0 (policy 0) to achieve a
-mean return of XX compared to the random policy. The number of environment
-steps can be changed through `default_timesteps`.
-The trainable policies should gradually improve their play quality through
-self-play, learning both offensive strategies (creating winning sequences)
-and defensive strategies (blocking opponent sequences). Due to the random
-policy matching, each of the 5 policies may develop slightly different
+Training will run for 100 thousand timesteps (see: `default_timesteps` in the
+code) for p0 (policy 0) to achieve a mean return of XX compared to the
+random policy. The number of environment steps can be changed through
+`default_timesteps`. The trainable policies should gradually improve their
+play quality through self-play, learning both offensive strategies (creating
+winning sequences) and defensive strategies (blocking opponent sequences).
+Due to the random policy matching, each of the 5 policies may develop slightly different
 playing styles. You can monitor the episode reward mean for each policy
 separately to track learning progress and compare their relative performance.
 """
@@ -71,7 +67,7 @@ from ray.rllib.examples.utils import (
 )
 
 parser = add_rllib_example_script_args(
-    default_reward=0.0,  # TODO: Confirm intended stop reward
+    default_reward=0.0,
     default_timesteps=100_000,
 )
 parser.set_defaults(
@@ -93,7 +89,7 @@ config = (
         target_network_update_freq=2,
         lr=0.0005 * ((args.num_learners or 1) ** 0.5),
         vf_loss_coeff=1.0,
-        entropy_coeff=[[0, 0.01], [300_000, 0.0]],  # TODO: Retune
+        entropy_coeff=[[0, 0.01], [300_000, 0.0]],
         broadcast_interval=5,
         # learner_queue_size=1,
         circular_buffer_num_batches=4,
