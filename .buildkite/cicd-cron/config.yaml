@@ -6,7 +6,7 @@ forge_prefix: cr.ray.io/rayproject/
 builder_queues:
   builder: builder_queue_branch
 runner_queues:
-  default: runner_queue_small_branch
+  default: runner_queue_small_pr
 buildkite_dirs:
   - .buildkite/cicd-cron
 env:
