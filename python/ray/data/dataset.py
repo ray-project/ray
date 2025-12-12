@@ -2982,6 +2982,7 @@ class Dataset:
 
         Args:
             column: The column to collect unique elements over.
+            ignore_nulls: If ``True``, ignore null values in the column.
 
         Returns:
             A list with unique elements in the given column.
