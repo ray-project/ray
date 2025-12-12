@@ -27,7 +27,8 @@
 namespace ray {
 
 /// Write a key-value pair to a file atomically.
-/// Uses temp file + rename for cross-platform(linux/windows) safe file sharing.
+/// Uses temp file + rename for cross-platform(linux/windows and
+/// cross-language(C++/Python) safe file sharing.
 inline Status WriteKVFile(const std::string &file_path,
                           const std::string &key,
                           const std::string &value) {
@@ -56,7 +57,6 @@ inline Status WriteKVFile(const std::string &file_path,
 }
 
 /// Wait for a KV file to appear and return the string value for the given key.
-/// Retries on transient IO errors (e.g., file being renamed) until timeout.
 /// Returns NotFound immediately if the key is missing from a valid JSON file.
 inline StatusOr<std::string> WaitForKVFile(const std::string &file_path,
                                            const std::string &key,

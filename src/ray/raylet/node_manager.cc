@@ -3316,8 +3316,6 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
 
 std::tuple<int, int, int> NodeManager::WaitForDashboardAgentPorts(
     const NodeManagerConfig &config) {
-  // Dashboard agent self-assigns free ports if they are 0, read the bound ports from the
-  // file written by agent. Each port has its own file.
   int metrics_agent_port = config.metrics_agent_port;
   if (metrics_agent_port == 0) {
     RAY_ASSIGN_OR_CHECK(
@@ -3342,6 +3340,7 @@ std::tuple<int, int, int> NodeManager::WaitForDashboardAgentPorts(
 std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
     const NodeID &self_node_id, const NodeManagerConfig &config) {
   auto agent_command_line = ParseCommandLine(config.runtime_env_agent_command);
+
   if (agent_command_line.empty()) {
     return nullptr;
   }
@@ -3374,8 +3373,6 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
 }
 
 int NodeManager::WaitForRuntimeEnvAgentPort(const NodeManagerConfig &config) {
-  // Runtime env agent self-assigns a free port if configured as 0, read the bound port
-  // from the file written by agent.
   if (config.runtime_env_agent_port != 0) {
     return config.runtime_env_agent_port;
   }
