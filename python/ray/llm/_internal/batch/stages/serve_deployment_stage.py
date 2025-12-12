@@ -171,6 +171,8 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
             The output dict, with __inference_error__ set if an error occurred.
         """
         idx_in_batch = row[self.IDX_IN_BATCH_COLUMN]
+        # Save request_kwargs before generate_async, which pops it from row
+        original_request_kwargs = row.get("request_kwargs", {})
         try:
             request, output, time_taken = await self.generate_async(row)
 
@@ -198,9 +200,8 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
                 error_msg,
             )
 
-            # Include request_kwargs snippet for debuggability
-            request_kwargs = row.get("request_kwargs", {})
-            prompt = str(request_kwargs)
+            # Include request_kwargs snippet
+            prompt = str(original_request_kwargs)
             if len(prompt) > _MAX_PROMPT_LENGTH_IN_ERROR:
                 prompt = prompt[:_MAX_PROMPT_LENGTH_IN_ERROR] + "...[truncated]"
 
