@@ -25,7 +25,7 @@ from ray.data.block import (
     Block,
     BlockAccessor,
     BlockColumnAccessor,
-    KeyType,
+    KeyType, BlockColumn,
 )
 from ray.util.annotations import Deprecated, PublicAPI
 
@@ -978,7 +978,7 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
     def combine(self, current_accumulator: Set[Any], new: Set[Any]) -> Set[Any]:
         return self._to_set(current_accumulator) | self._to_set(new)
 
-    def aggregate_block(self, block: Block) -> List[Any]:
+    def _compute_unique(self, block: Block) -> BlockColumn:
         column = block[self._target_col_name]
         column_accessor = BlockColumnAccessor.for_column(column)
 
@@ -1000,7 +1000,11 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
         if self._ignore_nulls:
             column_accessor = BlockColumnAccessor.for_column(column_accessor.dropna())
 
-        return BlockColumnAccessor.for_column(column_accessor.unique()).to_pylist()
+        return column_accessor.unique()
+
+    def aggregate_block(self, block: Block) -> List[Any]:
+        column = self._compute_unique(block)
+        return BlockColumnAccessor.for_column(column).to_pylist()
 
     @staticmethod
     def _to_set(x):
