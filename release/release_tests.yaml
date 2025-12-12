@@ -2241,7 +2241,7 @@
     script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
 
 - name: rdt_single_node_T4_microbenchmark
-  python: "3.11"
+  python: "3.10"
   group: core-daily-test
   team: core
   frequency: nightly
