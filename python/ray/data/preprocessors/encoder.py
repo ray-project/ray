@@ -925,7 +925,7 @@ def unique_post_fn(drop_na_values: bool = False) -> Callable[[Set], Dict[str, in
                 " values. Consider imputing missing values first."
             )
 
-        non_null_values = [v for v in values if v is not None]
+        non_null_values = [v for v in values if not is_null(v)]
 
         return {
             (v if not isinstance(v, list) else tuple(v)): i
