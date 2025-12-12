@@ -786,6 +786,8 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       reconstructable_owned_objects_.erase(index_it->second);
       reconstructable_owned_objects_index_.erase(index_it);
     }
+
+    it->second.mutable_nested()->contains.clear();
   }
 
   if (it->second.ShouldDelete(lineage_pinning_enabled_)) {
