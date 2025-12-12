@@ -6,7 +6,7 @@ import numpy as np
 
 from ray.air.util.tensor_extensions.utils import (
     create_ragged_ndarray,
-    is_ndarray_like, lazy_import_pandas, ArrayLike,
+    is_ndarray_like,
 )
 from ray.data._internal.util import _truncated_repr
 
@@ -131,8 +131,6 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
         ValueError: If an input was array-like but we failed to convert it to an array.
     """
 
-    print(f">>> [DBG] convert_to_numpy (before): {column_values=}, {type(column_values)=}, {type(column_values[0])=}")
-
     if isinstance(column_values, np.ndarray):
         # No copy/conversion needed, just keep it verbatim.
         return column_values
@@ -152,10 +150,8 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
         try:
             # Convert array-like objects (like torch.Tensor) to `np.ndarray`s
             if all(is_ndarray_like(e) for e in column_values):
-                print(f">>> [DBG] convert_to_numpy result: {type(column_values[0])=}, {column_values[0].dtype} {np.asarray(column_values[0])=}, {np.array(column_values[0])=}, {column_values[0].to_numpy(na_value=None)=}")
-
                 # Use `np.asarray` instead of `np.array` to avoid copying if possible.
-                column_values = [_array_like_to_ndarray(e) for e in column_values]
+                column_values = [np.asarray(e) for e in column_values]
 
             shapes = set()
             has_object = False
@@ -202,7 +198,7 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
         # Converts other array-like objects such as torch.Tensor.
         try:
             # Use `np.asarray` instead of `np.array` to avoid copying if possible.
-            return _array_like_to_ndarray(column_values)
+            return np.asarray(column_values)
         except Exception as e:
             logger.error(
                 f"Failed to convert column values to numpy array: "
@@ -217,12 +213,3 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
 
     else:
         return column_values
-
-
-def _array_like_to_ndarray(array_like: "ArrayLike") -> np.ndarray:
-    pd = lazy_import_pandas()
-    if pd and isinstance(array_like, pd.Series):
-        return array_like.to_numpy(na_value=None)
-
-    return np.asarray(array_like)
-

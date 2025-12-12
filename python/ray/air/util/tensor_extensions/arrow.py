@@ -421,8 +421,6 @@ def _infer_pyarrow_type(
 
     if len(column_values) == 0:
         return None
-    elif isinstance(column_values, np.ndarray) and column_values.dtype != np.object_:
-        return pa.from_numpy_dtype(column_values.dtype)
 
     # `pyarrow.infer_type` leaks memory if you pass an array with a datetime64 dtype.
     # To avoid this, we handle datetime64 dtypes separately.
@@ -799,7 +797,7 @@ class ArrowTensorArray(pa.ExtensionArray):
             # We only natively support C-contiguous ndarrays.
             arr = np.ascontiguousarray(arr)
 
-        scalar_dtype = _infer_pyarrow_type(arr)
+        scalar_dtype = pa.from_numpy_dtype(arr.dtype)
 
         if pa.types.is_string(scalar_dtype):
             if arr.dtype.byteorder == ">" or (
@@ -1205,14 +1203,6 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
             ndim = a.ndim
             shapes[i] = a.shape
             sizes[i] = a.size
-
-            # NOTE: In cases of nullable types being passed from Pandas
-            #       we might get ndarrays(type='0') that unfortunately
-            #       would have to be copied. We cycle these t/h Pyarrow
-            #       to appropriately handle type conversions
-            if a.dtype == np.object_:
-                a = pa.array(a).to_numpy(zero_copy_only=False)
-
             # Convert to 1D array view; this should be zero-copy in the common case.
             # NOTE: If array is not in C-contiguous order, this will convert it to
             # C-contiguous order, incurring a copy.
@@ -1229,8 +1219,6 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
 
         dtype = data_buffer.dtype
         pa_scalar_type = pa.from_numpy_dtype(dtype)
-
-        print(f">>> [DBG] AVSTA.from_numpy: {data_buffer=}, {pa_scalar_type=} {dtype=}, {type(data_buffer)=}")
 
         if pa.types.is_string(pa_scalar_type):
             if dtype.byteorder == ">" or (
