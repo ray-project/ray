@@ -1110,39 +1110,36 @@ def test_ingress_with_starlette_builder_with_deployment_class(serve_instance):
     assert docs_path is None
 
 
-def test_ingress_inheritance(serve_instance):
-    """Test that class inheritance works correctly with serve.ingress.
+def test_ingress_multi_level_inheritance(serve_instance):
+    """Test multi-level inheritance works correctly with serve.ingress.
+
+    Tests: Grandparent -> Parent -> Child -> ServedIngress
 
     This tests the fix in make_fastapi_class_based_view that properly handles
     inherited methods by checking the MRO instead of just the immediate class.
 
     Without the fix, inherited endpoints would fail with:
     'Field required at ('query', 'self')'
-
-    Tests two cases:
-    1. Multi-level inheritance: Grandparent -> Parent -> Child -> ServedIngress
-    2. Direct inheritance: Parent -> DirectServedIngress
     """
-    # --- Case 1: Multi-level inheritance ---
-    app1 = FastAPI()
+    app = FastAPI()
 
     class GrandparentIngress:
-        @app1.get("/grandparent")
+        @app.get("/grandparent")
         def grandparent_endpoint(self):
             return {"level": "grandparent"}
 
     class ParentIngress(GrandparentIngress):
-        @app1.get("/parent")
+        @app.get("/parent")
         def parent_endpoint(self):
             return {"level": "parent"}
 
     class ChildIngress(ParentIngress):
-        @app1.get("/child")
+        @app.get("/child")
         def child_endpoint(self):
             return {"level": "child"}
 
     @serve.deployment
-    @serve.ingress(app1)
+    @serve.ingress(app)
     class ServedIngress(ChildIngress):
         pass
 
@@ -1163,23 +1160,35 @@ def test_ingress_inheritance(serve_instance):
     assert resp.status_code == 200, f"Child failed: {resp.text}"
     assert resp.json() == {"level": "child"}
 
-    # --- Case 2: Direct inheritance (skip intermediate classes) ---
-    app2 = FastAPI()
+
+def test_ingress_direct_inheritance(serve_instance):
+    """Test direct inheritance works correctly with serve.ingress.
+
+    Tests: BaseIngress -> DirectServedIngress (with own endpoint)
+
+    This tests the fix in make_fastapi_class_based_view that properly handles
+    inherited methods by checking the MRO instead of just the immediate class.
+
+    Without the fix, inherited endpoints would fail with:
+    'Field required at ('query', 'self')'
+    """
+    app = FastAPI()
 
     class BaseIngress:
-        @app2.get("/base")
+        @app.get("/base")
         def base_endpoint(self):
             return {"level": "base"}
 
-    # Directly inherit from BaseIngress and serve
     @serve.deployment
-    @serve.ingress(app2)
+    @serve.ingress(app)
     class DirectServedIngress(BaseIngress):
-        @app2.get("/direct")
+        @app.get("/direct")
         def direct_endpoint(self):
             return {"level": "direct"}
 
     serve.run(DirectServedIngress.bind())
+
+    url = get_application_url("HTTP")
 
     # Test both inherited and own endpoints
     resp = httpx.get(f"{url}/base")
