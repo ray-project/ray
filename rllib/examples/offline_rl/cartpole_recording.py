@@ -173,7 +173,7 @@ if __name__ == "__main__":
     )
 
     # Evaluate over 10 iterations and record the data.
-    for i in range(50):
+    for i in range(10):
         print(f"Iteration: {i + 1}:\n")
         res = algo.evaluate()
         print(res)

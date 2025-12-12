@@ -68,6 +68,15 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                 self.subdir_path = self.env.unwrapped.envs[
                     0
                 ].unwrapped.__class__.__name__.lower()
+        elif not self.env and (
+            (self.config.create_env_on_local_worker and self.worker_index == 0)
+            or self.worker_index > 0
+        ):
+            raise ValueError(
+                "To set up the output path, the environment "
+                "`env` must be provided when creating the "
+                "`OfflineSingleAgentEnvRunner`."
+            )
         # Set the worker-specific path name. Note, this is
         # specifically to enable multi-threaded writing into
         # the same directory.

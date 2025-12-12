@@ -355,7 +355,7 @@ class OfflinePreLearner:
         return self.episode_buffer.sample(
             num_items=self.config.train_batch_size_per_learner,
             batch_length_T=batch_length_T,
-            n_step=self.config.get("n_step", 1) or 1,
+            n_step=self.config.get("n_step", 1),
             # TODO (simon): This can be removed as soon as DreamerV3 has been
             # cleaned up, i.e. can use episode samples for training.
             sample_episodes=True,

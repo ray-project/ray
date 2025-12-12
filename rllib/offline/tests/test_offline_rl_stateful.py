@@ -89,16 +89,23 @@ class OfflineRLStatefulTest(unittest.TestCase):
 
         # Load the dataset.
         ds = self.algo.offline_data.data
-        # Take a single-row batch (one episode).
-        batch = ds.take_batch(1)
 
-        # Read the episodes and decode them.
-        episodes = [
-            SingleAgentEpisode.from_state(
-                msgpack.unpackb(state, object_hook=mnp.decode)
-            )
-            for state in batch["item"]
-        ][:1]
+        # Find a single episode with return >350.0
+        episode_return = 0.0
+        while episode_return <= 350.0:
+            # Take a single-row batch (one episode).
+            batch = ds.take_batch(1)
+
+            # Read the episodes and decode them.
+            episodes = [
+                SingleAgentEpisode.from_state(
+                    msgpack.unpackb(state, object_hook=mnp.decode)
+                )
+                for state in batch["item"]
+            ][:1]
+            # Get the episode return.
+            episode_return = episodes[0].get_return()
+
         # Assert the episode has a decent return.
         assert episodes[0].get_return() > 350.0, "Return must be >350.0"
 
@@ -167,14 +174,13 @@ class OfflineRLStatefulTest(unittest.TestCase):
             local_env_runner=False,
         )
         # Assert the eval return is decent.
+        episode_return_mean = np.mean([ep.get_return() for ep in eval_episodes[0]])
         self.assertGreaterEqual(
-            np.mean([ep.get_return() for ep in eval_episodes[0]]),
+            episode_return_mean,
             100.0,
-            "Eval return must be >100.0",
+            f"Eval return must be >100.0 but is {episode_return_mean}",
         )
-        print(
-            f"Eval episodes returns: {np.mean([ep.get_return() for ep in eval_episodes[0]])}"
-        )
+        print(f"Eval episodes returns: {episode_return_mean}")
 
     def test_training_with_recorded_states_on_single_episode_and_evaluate(self):
         """Trains on a single episode from the recorded dataset and evaluates.
@@ -187,16 +193,22 @@ class OfflineRLStatefulTest(unittest.TestCase):
 
         # Load the dataset.
         ds = self.algo.offline_data.data
-        # Take a single-row batch (one episode).
-        batch = ds.take_batch(1)
+        # Find a single episode with return >350.0
+        episode_return = 0.0
+        while episode_return <= 350.0:
+            # Take a single-row batch (one episode).
+            batch = ds.take_batch(1)
 
-        # Read the episodes and decode them.
-        episodes = [
-            SingleAgentEpisode.from_state(
-                msgpack.unpackb(state, object_hook=mnp.decode)
-            )
-            for state in batch["item"]
-        ][:1]
+            # Read the episodes and decode them.
+            episodes = [
+                SingleAgentEpisode.from_state(
+                    msgpack.unpackb(state, object_hook=mnp.decode)
+                )
+                for state in batch["item"]
+            ][:1]
+            # Get the episode return.
+            episode_return = episodes[0].get_return()
+
         # Assert the episode has a decent return.
         assert episodes[0].get_return() > 350.0, "Return must be >350.0"
 
@@ -259,20 +271,22 @@ class OfflineRLStatefulTest(unittest.TestCase):
             local_env_runner=False,
         )
         # Assert the eval return is decent.
+        episode_return_mean = np.mean([ep.get_return() for ep in eval_episodes[0]])
         self.assertGreaterEqual(
-            np.mean([ep.get_return() for ep in eval_episodes[0]]),
+            episode_return_mean,
             100.0,
-            "Eval return must be >100.0",
+            f"Eval return must be >100.0 but is {episode_return_mean}",
         )
-        print(
-            f"Eval episodes returns: {np.mean([ep.get_return() for ep in eval_episodes[0]])}"
-        )
+        print(f"Eval episodes returns: {episode_return_mean}")
 
     def test_training_with_recorded_states_on_single_batch_and_evaluate(self):
         """Trains on a single batch from the recorded dataset and evaluates.
 
         Uses recorded states for training.
         """
+        import msgpack
+        import msgpack_numpy as mnp
+
         # Assign the dataset.
         ds = self.algo.offline_data.data
         # Initialize the OfflinePreLearner.
@@ -282,8 +296,25 @@ class OfflineRLStatefulTest(unittest.TestCase):
             module_spec=self.algo.offline_data.module_spec,
             module_state=self.algo.learner_group._learner.get_state()["rl_module"],
         )
-        # Get a single-row batch (single episode).
-        batch = ds.take_batch(1)
+        # Find a single episode with return >350.0
+        episode_return = 0.0
+        while episode_return <= 350.0:
+            # Take a single-row batch (one episode).
+            batch = ds.take_batch(1)
+
+            # Read the episodes and decode them.
+            episodes = [
+                SingleAgentEpisode.from_state(
+                    msgpack.unpackb(state, object_hook=mnp.decode)
+                )
+                for state in batch["item"]
+            ][:1]
+            # Get the episode return.
+            episode_return = episodes[0].get_return()
+
+        # Assert the episode has a decent return.
+        assert episodes[0].get_return() > 350.0, "Return must be >350.0"
+
         # Run the OfflinePreLearner on the batch.
         processed_batch = oplr(batch)
         # Create a MA batch from the processed batch and a TrainingData object.
@@ -327,14 +358,13 @@ class OfflineRLStatefulTest(unittest.TestCase):
             local_env_runner=False,
         )
         # Assert the eval return is decent.
+        episode_return_mean = np.mean([ep.get_return() for ep in eval_episodes[0]])
         self.assertGreaterEqual(
-            np.mean([ep.get_return() for ep in eval_episodes[0]]),
+            episode_return_mean,
             100.0,
-            "Eval return must be >100.0",
+            f"Eval return must be >100.0 but is {episode_return_mean}",
         )
-        print(
-            f"Eval episodes returns: {np.mean([ep.get_return() for ep in eval_episodes[0]])}"
-        )
+        print(f"Eval episodes returns: {episode_return_mean}")
 
     @staticmethod
     def _remote_eval_episode_fn(env_runner):

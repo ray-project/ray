@@ -37,13 +37,11 @@ class DefaultBCTorchRLModule(TorchRLModule, abc.ABC):
     @override(TorchRLModule)
     def _forward(self, batch: Dict, **kwargs) -> Dict[str, Any]:
         """Generic BC forward pass (for all phases of training/evaluation)."""
-        outputs = {}
         # Encoder embeddings.
         encoder_outs = self._encoder(batch)
         # Action dist inputs.
-        outputs.update(
-            {Columns.ACTION_DIST_INPUTS: self._pi_head(encoder_outs[ENCODER_OUT])}
-        )
+        outputs = {Columns.ACTION_DIST_INPUTS: self._pi_head(encoder_outs[ENCODER_OUT])}
+
         # Add the state if the encoder is stateful.
         if Columns.STATE_OUT in encoder_outs:
             outputs[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
