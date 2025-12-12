@@ -928,13 +928,16 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 self._op_budgets[op].add(op_shared).copy(gpu=target_num_gpu)
             )
 
-        # Give any remaining shared resources to the most downstream op.
+        # Give any remaining shared resources to the most downstream uncapped op.
         # This can happen when some ops have their shared allocation capped.
         if eligible_ops and not remaining_shared.is_zero():
-            downstream_op = eligible_ops[-1]
-            self._op_budgets[downstream_op] = self._op_budgets[downstream_op].add(
-                remaining_shared.copy(gpu=0)
-            )
+            for op in reversed(eligible_ops):
+                _, max_resource_usage = op.min_max_resource_requirements()
+                if max_resource_usage is None or max_resource_usage == ExecutionResources.inf():
+                    self._op_budgets[op] = self._op_budgets[op].add(
+                        remaining_shared.copy(gpu=0)
+                    )
+                    break
 
         # A materializing operator like `AllToAllOperator` waits for all its input
         # operator's outputs before processing data. This often forces the input
