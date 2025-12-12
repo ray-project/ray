@@ -74,8 +74,8 @@ steps:
         --python-version 3.10
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
-        --only-tags learning_tests_pytorch_use_all_core,manual
-        --except-tags gpu,multi_gpu
+        --only-tags learning_tests_pytorch_use_all_core
+        --except-tags gpu,multi_gpu,manual
         --test-arg --framework=torch
         --skip-ray-installation
         --build-name rllibbuild-py3.10

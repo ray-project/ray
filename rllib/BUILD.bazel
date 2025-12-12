@@ -2390,11 +2390,11 @@ py_test(
     main = "core/learner/tests/test_learner_group.py",
     # TODO(#50114): mark as manual as it is flaky.
     tags = [
+        "core",
         "exclusive",
         "manual",
         "multi_gpu",
         "team:rllib",
-        "core",
     ],
 )
 
@@ -2405,10 +2405,10 @@ py_test(
     args = ["TestLearnerGroupSyncUpdate"],
     main = "core/learner/tests/test_learner_group.py",
     tags = [
+        "core",
         "exclusive",
         "multi_gpu",
         "team:rllib",
-        "core",
     ],
 )
 
@@ -2419,10 +2419,10 @@ py_test(
     args = ["TestLearnerGroupCheckpointRestore"],
     main = "core/learner/tests/test_learner_group.py",
     tags = [
+        "core",
         "exclusive",
         "multi_gpu",
         "team:rllib",
-        "core",
     ],
 )
 
@@ -2433,10 +2433,10 @@ py_test(
     args = ["TestLearnerGroupSaveAndRestoreState"],
     main = "core/learner/tests/test_learner_group.py",
     tags = [
+        "core",
         "exclusive",
         "multi_gpu",
         "team:rllib",
-        "core",
     ],
 )
 
