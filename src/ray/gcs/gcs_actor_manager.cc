@@ -970,9 +970,12 @@ void GcsActorManager::PollOwnerForActorRefDeleted(
         if (node_it != owners_.end() && node_it->second.count(owner_id)) {
           // Only destroy the actor if its owner is still alive. The actor may
           // have already been destroyed if the owner died.
+          int64_t timeout_ms = RayConfig::instance().actor_graceful_shutdown_timeout_ms();
           DestroyActor(actor_id,
                        GenActorRefDeletedCause(GetActor(actor_id)),
-                       /*force_kill=*/true);
+                       /*force_kill=*/false,
+                       nullptr,
+                       timeout_ms);
         }
       });
 }

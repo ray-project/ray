@@ -256,6 +256,23 @@ TEST_F(LeaseDependencyManagerTest, TestCancelingSingleGetRequestForWorker) {
   AssertNoLeaks();
 }
 
+TEST_F(LeaseDependencyManagerTest,
+       TestCancelingMultipleGetRequestsForSameObjectForWorker) {
+  WorkerID worker_id = WorkerID::FromRandom();
+  ObjectID argument_id = ObjectID::FromRandom();
+  int num_requests = 5;
+  for (int64_t i = 0; i < num_requests; i++) {
+    lease_dependency_manager_.StartGetRequest(
+        worker_id, ObjectIdsToRefs({argument_id}), i);
+  }
+  ASSERT_EQ(object_manager_mock_.active_get_requests.size(), num_requests);
+  for (int64_t i = 0; i < num_requests; i++) {
+    lease_dependency_manager_.CancelGetRequest(worker_id, i);
+    ASSERT_EQ(object_manager_mock_.active_get_requests.size(), num_requests - (i + 1));
+  }
+  AssertNoLeaks();
+}
+
 TEST_F(LeaseDependencyManagerTest, TestCancelingAllGetRequestsForWorker) {
   WorkerID worker_id = WorkerID::FromRandom();
   int num_requests = 5;

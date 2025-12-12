@@ -95,82 +95,122 @@ result = adapter.enqueue_task_sync(task_name="process_request", args=["hello"])
 status = adapter.get_task_status_sync(result.id)
 ```
 
+:::{note}
+All Ray actor options specified in the `@serve.deployment` decorator (such as `num_gpus`, `num_cpus`, `resources`, etc.) are applied to the task consumer replicas. This allows you to allocate specific hardware resources for your task processing workloads.
+:::
+
 
 ## End-to-end example: Document indexing
 
 This example shows how to configure the processor, build a consumer with a handler, enqueue tasks from an ingress deployment, and check task status.
 
 ```python
-import ray
+import io
+import logging
+import requests
+from fastapi import FastAPI
+from pydantic import BaseModel, HttpUrl
+from PyPDF2 import PdfReader
 from ray import serve
-from fastapi import FastAPI, Request
-
-from ray.serve.schema import CeleryAdapterConfig, TaskProcessorConfig, TaskResult
+from ray.serve.schema import CeleryAdapterConfig, TaskProcessorConfig
 from ray.serve.task_consumer import (
+    instantiate_adapter_from_config,
     task_consumer,
     task_handler,
-    instantiate_adapter_from_config,
 )
 
-# 1) Configure the Celery adapter
-celery_config = CeleryAdapterConfig(
-    broker_url="redis://localhost:6379/0",   # Broker URL
-    backend_url="redis://localhost:6379/1",  # Optional result backend
-)
+logger = logging.getLogger("ray.serve")
+fastapi_app = FastAPI(title="Async PDF Processing API")
 
-# 2) Configure the task processor
-processor_config = TaskProcessorConfig(
-    queue_name="document_indexing_queue",
-    adapter_config=celery_config,
+TASK_PROCESSOR_CONFIG = TaskProcessorConfig(
+    queue_name="pdf_processing_queue",
+    adapter_config=CeleryAdapterConfig(
+        broker_url="redis://127.0.0.1:6379/0",
+        backend_url="redis://127.0.0.1:6379/0",
+    ),
     max_retries=3,
-    failed_task_queue_name="doc_failed",
+    failed_task_queue_name="failed_pdfs",
 )
 
-# 3) Define the consumer deployment for background processing
-@serve.deployment(num_replicas=2)
-@task_consumer(task_processor_config=processor_config)
-class DocumentIndexingConsumer:
-    def __init__(self):
-        self.indexer = DocumentIndexingEngine()  # Your implementation
+class ProcessPDFRequest(BaseModel):
+    pdf_url: HttpUrl
+    max_summary_paragraphs: int = 3
 
-    @task_handler(name="index_document")
-    def index_document(self, document_id: str, document_url: str) -> dict:
-        content = self.indexer.download(document_url)
-        metadata = self.indexer.process(content)
-        return {"document_id": document_id, "status": "indexed", "metadata": metadata}
 
-# 4) Define an ingress deployment to submit tasks and fetch status
-app = FastAPI()
+@serve.deployment(num_replicas=2, max_ongoing_requests=5)
+@task_consumer(task_processor_config=TASK_PROCESSOR_CONFIG)
+class PDFProcessor:
+    """Background worker that processes PDF documents asynchronously."""
 
-@serve.deployment
-@serve.ingress(app)
-class API:
-    def __init__(self, consumer_handle, task_processor_config: TaskProcessorConfig):
-        # Keep a reference to the consumer to include it in the application graph
-        self.consumer = consumer_handle
-        self.adapter = instantiate_adapter_from_config(
-            task_processor_config=task_processor_config
+    @task_handler(name="process_pdf")
+    def process_pdf(self, pdf_url: str, max_summary_paragraphs: int = 3):
+        """Download PDF, extract text, and generate summary."""
+        try:
+            response = requests.get(pdf_url, timeout=30)
+            response.raise_for_status()
+
+            pdf_reader = PdfReader(io.BytesIO(response.content))
+            if not pdf_reader.pages:
+                raise ValueError("PDF contains no pages")
+
+            full_text = "\n".join(
+                page.extract_text() for page in pdf_reader.pages if page.extract_text()
+            )
+            if not full_text.strip():
+                raise ValueError("PDF contains no extractable text")
+
+            paragraphs = [p.strip() for p in full_text.split("\n\n") if p.strip()]
+            summary = "\n\n".join(paragraphs[:max_summary_paragraphs])
+
+            return {
+                "status": "success",
+                "pdf_url": pdf_url,
+                "page_count": len(pdf_reader.pages),
+                "word_count": len(full_text.split()),
+                "summary": summary,
+            }
+        except requests.exceptions.RequestException as e:
+            raise ValueError(f"Failed to download PDF: {str(e)}")
+        except Exception as e:
+            raise ValueError(f"Failed to process PDF: {str(e)}")
+
+
+@serve.deployment()
+@serve.ingress(fastapi_app)
+class AsyncPDFAPI:
+    """HTTP API for submitting and checking PDF processing tasks."""
+
+    def __init__(self, task_processor_config: TaskProcessorConfig, handler):
+        self.adapter = instantiate_adapter_from_config(task_processor_config)
+
+    @fastapi_app.post("/process")
+    async def process_pdf(self, request: ProcessPDFRequest):
+        """Submit a PDF processing task and return task_id immediately."""
+        task_result = self.adapter.enqueue_task_sync(
+            task_name="process_pdf",
+            kwargs={
+                "pdf_url": str(request.pdf_url),
+                "max_summary_paragraphs": request.max_summary_paragraphs,
+            },
         )
+        return {
+            "task_id": task_result.id,
+            "status": task_result.status,
+            "message": "PDF processing task submitted successfully",
+        }
 
-    @app.post("/submit")
-    async def submit(self, request: Request):
-        data = await request.json()
-        # Enqueue synchronously; returns TaskResult containing ID
-        task: TaskResult = self.adapter.enqueue_task_sync(
-            task_name="index_document", kwargs=data
-        )
-        return {"task_id": task.id}
+    @fastapi_app.get("/status/{task_id}")
+    async def get_status(self, task_id: str):
+        """Get task status and results."""
+        status = self.adapter.get_task_status_sync(task_id)
+        return {
+            "task_id": task_id,
+            "status": status.status,
+            "result": status.result if status.status == "SUCCESS" else None,
+            "error": str(status.result) if status.status == "FAILURE" else None,
+        }
 
-    @app.get("/status/{task_id}")
-    async def status(self, task_id: str):
-        # Synchronously fetch current status or result
-        return self.adapter.get_task_status_sync(task_id)
-
-# 5) Build and run the application
-consumer = DocumentIndexingConsumer.bind()
-app_graph = API.bind(consumer, processor_config)
-
-serve.run(app_graph)
+app = AsyncPDFAPI.bind(TASK_PROCESSOR_CONFIG, PDFProcessor.bind())
 ```
 
 In this example:

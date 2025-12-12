@@ -349,6 +349,31 @@ Lower-performing checkpoints are deleted to save storage space. By default, all 
     :py:class:`~ray.train.CheckpointConfig`,
     please ensure that the metric is always reported together with the checkpoints.
 
+Using checkpoints during training
+----------------------------------
+
+During training, you may want to access checkpoints you've reported and their associated metrics
+from training workers for a variety of reasons, such as
+reporting the best checkpoint so far to an experiment tracker. You can do this by calling
+:func:`~ray.train.get_all_reported_checkpoints` from within your training function. This function returns
+a list of :class:`~ray.train.ReportedCheckpoint` objects that represent all the
+:class:`~ray.train.Checkpoint`\s and their associated metrics that you've reported so far
+and have been kept based on the :ref:`checkpoint configuration <train-dl-configure-checkpoints>`.
+
+This function supports two consistency modes:
+
+- ``CheckpointConsistencyMode.COMMITTED``: Block until the checkpoint from the latest ``ray.train.report``
+  has been uploaded to persistent storage and committed.
+- ``CheckpointConsistencyMode.VALIDATED``: Block until the checkpoint from the latest ``ray.train.report``
+  has been uploaded to persistent storage, committed, and validated (see :ref:`train-validating-checkpoints`).
+  This is the default consistency mode and has the same behavior as ``CheckpointConsistencyMode.COMMITTED``
+  if your report did not kick off validation.
+
+.. literalinclude:: ../doc_code/checkpoints.py
+    :language: python
+    :start-after: __get_all_reported_checkpoints_example_start__
+    :end-before: __get_all_reported_checkpoints_example_end__
+
 
 Using checkpoints after training
 --------------------------------

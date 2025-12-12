@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -94,8 +94,8 @@ class Concatenator(Preprocessor):
         raise_if_missing: bool = False,
         flatten: bool = False,
     ):
+        super().__init__()
         self.columns = columns
-
         self.output_column_name = output_column_name
         self.dtype = dtype
         self.raise_if_missing = raise_if_missing
@@ -137,6 +137,12 @@ class Concatenator(Preprocessor):
         df.loc[:, self.output_column_name] = pd.Series(list(concatenated))
         return df
 
+    def get_input_columns(self) -> List[str]:
+        return self.columns
+
+    def get_output_columns(self) -> List[str]:
+        return [self.output_column_name]
+
     def __repr__(self):
         default_values = {
             "output_column_name": "concat_out",
@@ -153,3 +159,10 @@ class Concatenator(Preprocessor):
                 non_default_arguments.append(f"{parameter}={value}")
 
         return f"{self.__class__.__name__}({', '.join(non_default_arguments)})"
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        # flatten is a recent field, to ensure backwards compatibility
+        # assign a default in case it is missing in the serialized state
+        if not hasattr(self, "flatten"):
+            self.flatten = False

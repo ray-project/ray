@@ -125,6 +125,8 @@ class ReferenceCounterInterface {
   /// owner ID will change for workers executing normal tasks and it is
   /// possible to have leftover references after a task has finished.
   ///
+  /// NOTE: RAY CHECK fails if the object was already added.
+  ///
   /// \param[in] object_id The ID of the object that we own.
   /// \param[in] contained_ids ObjectIDs that are contained in the object's value.
   /// As long as the object_id is in scope, the inner objects should not be GC'ed.

@@ -1,5 +1,6 @@
 import warnings
-from typing import Any, Dict, List, Optional, Sequence, Union
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -369,7 +370,8 @@ def arrow_batch_to_tensors(
     dtypes: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     combine_chunks: bool = False,
     pin_memory: bool = False,
-) -> Dict[str, List[torch.Tensor]]:
+    threadpool: Optional[ThreadPoolExecutor] = None,
+) -> Union[Dict[str, torch.Tensor], Dict[str, List[torch.Tensor]]]:
     """Convert PyArrow batch to PyTorch tensors.
 
     Args:
@@ -379,33 +381,99 @@ def arrow_batch_to_tensors(
         combine_chunks: If True, combine chunks in Arrow batch before converting to
             tensors.
         pin_memory: Whether to pin the memory of the created tensors.
+        threadpool: Optional ThreadPoolExecutor for parallel processing. If provided,
+            columns/arrays will be processed in parallel. If None, processing is
+            sequential.
 
     Returns:
-        A dictionary of column name to list of tensors. For non-chunked columns,
-        the list will contain a single tensor.
+        When combine_chunks=True: A dictionary of column name to single tensor.
+        When combine_chunks=False: A dictionary of column name to list of tensors.
     """
     from ray.data._internal.arrow_block import ArrowBlockAccessor
     from ray.data._internal.arrow_ops import transform_pyarrow
 
     if combine_chunks:
         numpy_batch = ArrowBlockAccessor(batch).to_batch_format("numpy")
-        return {
-            col_name: convert_ndarray_batch_to_torch_tensor_batch(
-                col_array,
-                dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
-                pin_memory=pin_memory,
-            )
-            for col_name, col_array in numpy_batch.items()
-        }
+        num_columns = len(numpy_batch)
+
+        if num_columns > 1 and threadpool is not None:
+            # Process columns in parallel using provided threadpool
+            def process_column(
+                col_name_col_array: Tuple[str, np.ndarray]
+            ) -> Tuple[str, torch.Tensor]:
+                col_name, col_array = col_name_col_array
+                return col_name, convert_ndarray_batch_to_torch_tensor_batch(
+                    col_array,
+                    dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+                    pin_memory=pin_memory,
+                )
+
+            # Submit all columns to threadpool and collect results
+            processed_cols = threadpool.map(process_column, numpy_batch.items())
+            return dict(processed_cols)
+        else:
+            # Sequential processing for single column or single worker
+            return {
+                col_name: convert_ndarray_batch_to_torch_tensor_batch(
+                    col_array,
+                    dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+                    pin_memory=pin_memory,
+                )
+                for col_name, col_array in numpy_batch.items()
+            }
     else:
         numpy_list = transform_pyarrow.table_to_numpy_dict_chunked(
             batch,
         )
-        return convert_ndarray_list_to_torch_tensor_list(
-            numpy_list,
-            dtypes=dtypes,
-            pin_memory=pin_memory,
-        )
+        # Count total number of arrays across all columns
+        total_arrays = sum(len(arrays) for arrays in numpy_list.values())
+        num_columns = len(numpy_list)
+
+        if total_arrays > 1 and threadpool is not None:
+            # Process arrays in parallel using provided threadpool
+            def process_array(
+                array_item: Tuple[str, int, np.ndarray]
+            ) -> Tuple[str, int, torch.Tensor]:
+                col_name, array_index, array = array_item
+                return (
+                    col_name,
+                    array_index,
+                    convert_ndarray_batch_to_torch_tensor_batch(
+                        array,
+                        dtypes=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+                        pin_memory=pin_memory,
+                    ),
+                )
+
+            # Flatten arrays with column name and index for parallel processing
+            array_items = [
+                (col_name, idx, array)
+                for col_name, arrays in numpy_list.items()
+                for idx, array in enumerate(arrays)
+            ]
+
+            # Submit all arrays to threadpool and collect results
+            processed_arrays = list(threadpool.map(process_array, array_items))
+
+            # Initialize result with all columns from numpy_list, including empty ones
+            # Pre-allocate lists of the correct size for each column
+            result: Dict[str, List[torch.Tensor]] = {
+                col_name: [None] * len(arrays)
+                for col_name, arrays in numpy_list.items()
+            }
+
+            # Populate result with processed tensors
+            for col_name, array_index, tensor in processed_arrays:
+                result[col_name][array_index] = tensor
+
+            return result
+        else:
+            # Sequential processing
+            return convert_ndarray_list_to_torch_tensor_list(
+                numpy_list,
+                dtypes=dtypes,
+                pin_memory=pin_memory,
+            )
 
 
 @torch.no_grad()
@@ -418,7 +486,7 @@ def concat_tensors_to_device(
 
     Args:
         tensor_sequence: Sequence of tensors to stack
-        device: The device to move tensors to
+        device: The device to move tensors to. If None, tensors are not moved.
         non_blocking: If True, perform device transfer without forcing a
             synchronization.
 
@@ -435,6 +503,12 @@ def concat_tensors_to_device(
     ), "All items must be torch.Tensor. Found invalid types: " + str(
         [type(t) for t in tensor_sequence if not isinstance(t, torch.Tensor)]
     )
+
+    # If there is only one tensor and its device already matches, return it directly.
+    if len(tensor_sequence) == 1 and (
+        device is None or tensor_sequence[0].device == torch.device(device)
+    ):
+        return tensor_sequence[0]
 
     first_dtype = tensor_sequence[0].dtype
     assert all(t.dtype == first_dtype for t in tensor_sequence), (

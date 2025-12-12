@@ -18,7 +18,7 @@ First, install and import the required Python modules.
 
 ```bash
 %%bash
-pip install torch torchvision
+pip install torch==2.7.0 torchvision==0.22.0
 ```
 
 
@@ -139,20 +139,6 @@ The training should take about 2 minutes and 10 seconds with an accuracy of abou
 Next, modify this example to run with Ray Train on multiple machines with distributed data parallel (DDP) training. In DDP training, each process trains a copy of the model on a subset of the data and synchronizes gradients across all processes after each backward pass to keep models consistent. Essentially, Ray Train allows you to wrap PyTorch training code in a function and run the function on each worker in your Ray Cluster. With a few modifications, you get the fault tolerance and auto-scaling of a [Ray Cluster](https://docs.ray.io/en/latest/cluster/getting-started.html), as well as the observability and ease-of-use of [Ray Train](https://docs.ray.io/en/latest/train/train.html).
 
 First, set some environment variables and import some modules.
-
-
-```bash
-%%bash
-# Remove when Ray Train v2 is the default in an upcoming release.
-echo "RAY_TRAIN_V2_ENABLED=1" > /home/ray/default/.env
-```
-
-
-```python
-# Load env vars in notebooks.
-from dotenv import load_dotenv
-load_dotenv()
-```
 
 
 ```python

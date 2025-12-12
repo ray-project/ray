@@ -73,6 +73,8 @@ def _lightgbm_train_fn_per_worker(
 
     # Add network params of the worker group to enable distributed training.
     config.update(ray.train.lightgbm.get_network_params())
+    config.setdefault("tree_learner", "data_parallel")
+    config.setdefault("pre_partition", True)
 
     lightgbm.train(
         params=config,

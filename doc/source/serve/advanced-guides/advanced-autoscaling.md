@@ -723,3 +723,96 @@ When your custom autoscaling policy has complex dependencies or you want better 
 - **Contribute to Ray Serve**: If your policy is general-purpose and might benefit others, consider contributing it to Ray Serve as a built-in policy by opening a feature request or pull request on the [Ray GitHub repository](https://github.com/ray-project/ray/issues). The recommended location for the implementation is `python/ray/serve/autoscaling_policy.py`.
 - **Ensure dependencies in your environment**: Make sure that the external dependencies are installed in your Docker image or environment.
 :::
+
+
+(serve-external-scale-api)=
+
+### External scaling API
+
+:::{warning}
+This API is in alpha and may change before becoming stable.
+:::
+
+The external scaling API provides programmatic control over the number of replicas for any deployment in your Ray Serve application. Unlike Ray Serve's built-in autoscaling, which scales based on queue depth and ongoing requests, this API allows you to scale based on any external criteria you define.
+
+#### Example: Predictive scaling
+
+This example shows how to implement predictive scaling based on historical patterns or forecasts. You can preemptively scale up before anticipated traffic spikes by running an external script that adjusts replica counts based on time of day.
+
+##### Define the deployment
+
+The following example creates a simple text processing deployment that you can scale externally. Save this code to a file named `external_scaler_predictive.py`:
+
+```{literalinclude} ../doc_code/external_scaler_predictive.py
+:language: python
+:start-after: __serve_example_begin__
+:end-before: __serve_example_end__
+```
+
+##### Configure external scaling
+
+Before using the external scaling API, enable it in your application configuration by setting `external_scaler_enabled: true`. Save this configuration to a file named `external_scaler_config.yaml`:
+
+```{literalinclude} ../doc_code/external_scaler_config.yaml
+:language: yaml
+:start-after: __external_scaler_config_begin__
+:end-before: __external_scaler_config_end__
+```
+
+:::{warning}
+External scaling and built-in autoscaling are mutually exclusive. You can't use both for the same application. If you set `external_scaler_enabled: true`, you **must not** configure `autoscaling_config` on any deployment in that application. Attempting to use both results in an error.
+:::
+
+##### Implement the scaling logic
+
+The following script implements predictive scaling based on time of day and historical traffic patterns. Save this script to a file named `external_scaler_predictive_client.py`:
+
+```{literalinclude} ../doc_code/external_scaler_predictive_client.py
+:language: python
+:start-after: __client_script_begin__
+:end-before: __client_script_end__
+```
+
+The script uses the external scaling API endpoint to scale deployments:
+- **API endpoint**: `POST http://localhost:8265/api/v1/applications/{application_name}/deployments/{deployment_name}/scale`
+- **Request body**: `{"target_num_replicas": <number>}` (must conform to the [`ScaleDeploymentRequest`](../api/doc/ray.serve.schema.ScaleDeploymentRequest.rst) schema)
+
+The scaling client continuously adjusts the number of replicas based on the time of day:
+- Business hours (9 AM - 5 PM): 10 replicas
+- Off-peak hours: 3 replicas
+
+##### Run the example
+
+Follow these steps to run the complete example:
+
+1. Start the Ray Serve application with the configuration:
+
+```bash
+serve run external_scaler_config.yaml
+```
+
+2. Run the predictive scaling client in a separate terminal:
+
+```bash
+python external_scaler_predictive_client.py
+```
+
+The client adjusts replica counts automatically based on the time of day. You can monitor the scaling behavior in the Ray dashboard or by checking the application logs.
+
+#### Important considerations
+
+Understanding how the external scaler interacts with your deployments helps you build reliable scaling logic:
+
+- **Idempotent API calls**: The scaling API is idempotent. You can safely call it multiple times with the same `target_num_replicas` value without side effects. This makes it safe to run your scaling logic on a schedule or in response to repeated metric updates.
+
+- **Interaction with serve deploy**: When you upgrade your service with `serve deploy`, the number of replicas you set through the external scaler API stays intact. This behavior matches what you'd expect from Ray Serve's built-in autoscaler—deployment updates don't reset replica counts.
+
+- **Query current replica count**: You can get the current number of replicas for any deployment by querying the GET `/applications` API:
+
+  ```bash
+  curl -X GET http://localhost:8265/api/serve/applications/ \
+  ```
+
+  The response follows the [`ServeInstanceDetails`](../api/doc/ray.serve.schema.ServeInstanceDetails.rst) schema, which includes an `applications` field containing a dictionary with application names as keys. Each application includes detailed information about all its deployments, including current replica counts. Use this information to make informed scaling decisions. For example, you might scale up gradually by adding a percentage of existing replicas rather than jumping to a fixed number.
+
+- **Initial replica count**: When you deploy an application for the first time, Ray Serve creates the number of replicas specified in the `num_replicas` field of your deployment configuration. The external scaler can then adjust this count dynamically based on your scaling logic.

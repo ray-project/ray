@@ -1,4 +1,5 @@
 - name: DEFAULTS
+  python: "3.10"
   group: multimodal-inference-benchmarks
   working_dir: nightly_tests/multimodal_inference_benchmarks
 
@@ -6,7 +7,7 @@
   team: data
 
 - name: image_classification
-  python: "3.10"
+
   cluster:
     cluster_compute: image_classification/compute.yaml
     byod:
@@ -26,7 +27,7 @@
         script: python image_classification/daft_main.py
 
 - name: large_image_embedding
-  python: "3.10"
+
   cluster:
     cluster_compute: large_image_embedding/compute.yaml
     byod:
@@ -46,7 +47,7 @@
         script: python large_image_embedding/daft_main.py
 
 - name: document_embedding
-  python: "3.10"
+
   cluster:
     cluster_compute: document_embedding/compute.yaml
     byod:
@@ -67,7 +68,7 @@
 
 
 - name: audio_transcription
-  python: "3.10"
+
   cluster:
     cluster_compute: audio_transcription/compute.yaml
     byod:
@@ -88,7 +89,7 @@
         script: python audio_transcription/daft_main.py
 
 - name: video_object_detection
-  python: "3.10"
+
   cluster:
     cluster_compute: video_object_detection/compute.yaml
     byod:

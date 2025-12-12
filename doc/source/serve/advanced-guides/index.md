@@ -6,6 +6,7 @@
 
 app-builder-guide
 advanced-autoscaling
+asyncio-best-practices
 performance
 dyn-req-batch
 inplace-updates
@@ -24,6 +25,7 @@ If you’re new to Ray Serve, start with the [Ray Serve Quickstart](serve-gettin
 Use these advanced guides for more options and configurations:
 - [Pass Arguments to Applications](app-builder-guide)
 - [Advanced Ray Serve Autoscaling](serve-advanced-autoscaling)
+- [Asyncio and Concurrency best practices in Ray Serve](serve-asyncio-best-practices)
 - [Performance Tuning](serve-perf-tuning)
 - [Dynamic Request Batching](serve-performance-batching-requests)
 - [In-Place Updates for Serve](serve-inplace-updates)

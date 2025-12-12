@@ -15,7 +15,7 @@ The Ray scheduler uses a `label_selector` specified in the `@ray.remote` decorat
 
 
 ```{admonition} Label selectors are an experimental feature in Ray 2.49.1.
-Full autoscaling support for tasks, actors, and placement groups with label selectors is available in Ray 2.51.0 and KubeRay v1.5.0.
+Full autoscaling support for tasks, actors, and placement groups with label selectors is available in Ray 2.51.0 and KubeRay v1.5.1.
 ```
 
 ## Overview
@@ -75,7 +75,7 @@ In a real-world scenario, you would use a cloud provider's Kubernetes service (l
 
 ### Step 2: Install the KubeRay operator
 
-Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository. The minimum KubeRay version for this guide is v1.5.0.
+Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository. The minimum KubeRay version for this guide is v1.5.1.
 
 ### Step 3: Create a RayCluster CR with autoscaling enabled and labels specified
 

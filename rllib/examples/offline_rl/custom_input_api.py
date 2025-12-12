@@ -9,7 +9,7 @@ Instead of using the built in JsonReader, we will create our own custom input
 api, and show how to pass config arguments to it.
 
 To train CQL on the pendulum environment:
-$ python custom_input_api.py --input-files=../tests/data/pendulum/enormous.zip
+$ python custom_input_api.py --input-files=../offline/tests/data/pendulum/enormous.zip
 """
 
 import argparse
@@ -42,7 +42,7 @@ parser.add_argument(
     type=str,
     default=os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
-        "../../tests/data/pendulum/small.json",
+        "../../offline/tests/data/pendulum/small.json",
     ),
 )
 
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     # we register our custom input creator with this convenient function
     register_input("custom_input", input_creator)
 
-    # Config modified from rllib/tuned_examples/cql/pendulum-cql.yaml
+    # Config modified from rllib/examples/algorithms/cql/pendulum-cql.yaml
     default_config = get_trainable_cls(args.run).get_default_config()
     config = (
         default_config.environment("Pendulum-v1", clip_actions=True)

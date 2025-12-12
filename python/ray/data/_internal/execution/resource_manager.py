@@ -271,12 +271,14 @@ class ResourceManager:
     def get_op_usage_str(self, op: PhysicalOperator, *, verbose: bool) -> str:
         """Return a human-readable string representation of the resource usage of
         the given operator."""
-        usage_str = f"{self._op_running_usages[op].cpu:.1f} CPU"
-        if self._op_running_usages[op].gpu:
-            usage_str += f", {self._op_running_usages[op].gpu:.1f} GPU"
-        usage_str += (
-            f", {self._op_running_usages[op].object_store_memory_str()} object store"
-        )
+        # Handle case where operator is not in _op_running_usages dict
+        if op not in self._op_running_usages:
+            usage_str = "n/a"
+        else:
+            usage_str = f"{self._op_running_usages[op].cpu:.1f} CPU"
+            if self._op_running_usages[op].gpu:
+                usage_str += f", {self._op_running_usages[op].gpu:.1f} GPU"
+            usage_str += f", {self._op_running_usages[op].object_store_memory_str()} object store"
 
         # NOTE: Config can override requested verbosity level
         if LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE is not None:
@@ -341,7 +343,7 @@ class ResourceManager:
             not op.throttling_disabled()
             # As long as the op has finished execution, even if there are still
             # non-taken outputs, we don't need to allocate resources for it.
-            and not op.execution_finished()
+            and not op.has_execution_finished()
         )
 
     def get_eligible_ops(self) -> List[PhysicalOperator]:
@@ -553,7 +555,7 @@ class OpResourceAllocator(ABC):
             not op.throttling_disabled()
             # As long as the op has finished execution, even if there are still
             # non-taken outputs, we don't need to allocate resources for it.
-            and not op.execution_finished()
+            and not op.has_execution_finished()
         )
 
     def _get_downstream_eligible_ops(
@@ -674,9 +676,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         ops_to_exclude_from_reservation = []
         # Traverse operator tree collecting all operators that have already finished
         for op in self._topology:
-            if not op.execution_finished():
+            if not op.has_execution_finished():
                 for dep in op.input_dependencies:
-                    if dep.execution_finished():
+                    if dep.has_execution_finished():
                         last_completed_ops.append(dep)
 
         # In addition to completed operators,

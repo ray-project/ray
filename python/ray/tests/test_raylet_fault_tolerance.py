@@ -4,7 +4,11 @@ import sys
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import (
+    RPC_FAILURE_MAP,
+    RPC_FAILURE_TYPES,
+    wait_for_condition,
+)
 from ray.core.generated import autoscaler_pb2
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import (
@@ -15,14 +19,14 @@ from ray.util.scheduling_strategies import (
 import psutil
 
 
-@pytest.mark.parametrize("deterministic_failure", ["request", "response"])
+@pytest.mark.parametrize("deterministic_failure", RPC_FAILURE_TYPES)
 def test_request_worker_lease_idempotent(
     monkeypatch, shutdown_only, deterministic_failure, ray_start_cluster
 ):
+    failure = RPC_FAILURE_MAP[deterministic_failure]
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "NodeManagerService.grpc_client.RequestWorkerLease=1:"
-        + ("100:0" if deterministic_failure == "request" else "0:100"),
+        f"NodeManagerService.grpc_client.RequestWorkerLease=1:{failure}",
     )
 
     @ray.remote
@@ -57,7 +61,7 @@ def test_drain_node_idempotent(monkeypatch, shutdown_only, ray_start_cluster):
     # NOTE: not testing response failure since the node is already marked as draining and shuts down gracefully.
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "NodeManagerService.grpc_client.DrainRaylet=1:100:0",
+        "NodeManagerService.grpc_client.DrainRaylet=1:100:0:0",
     )
 
     cluster = ray_start_cluster
@@ -94,16 +98,18 @@ def test_drain_node_idempotent(monkeypatch, shutdown_only, ray_start_cluster):
 @pytest.fixture
 def inject_release_unused_bundles_rpc_failure(monkeypatch, request):
     deterministic_failure = request.param
+    failure = RPC_FAILURE_MAP[deterministic_failure]
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "NodeManagerService.grpc_client.ReleaseUnusedBundles=1:"
-        + ("100:0" if deterministic_failure == "request" else "0:100")
-        + ",NodeManagerService.grpc_client.CancelResourceReserve=-1:100:0",
+        f"NodeManagerService.grpc_client.ReleaseUnusedBundles=1:{failure}"
+        + ",NodeManagerService.grpc_client.CancelResourceReserve=-1:100:0:0",
     )
 
 
 @pytest.mark.parametrize(
-    "inject_release_unused_bundles_rpc_failure", ["request", "response"], indirect=True
+    "inject_release_unused_bundles_rpc_failure",
+    RPC_FAILURE_TYPES,
+    indirect=True,
 )
 @pytest.mark.parametrize(
     "ray_start_cluster_head_with_external_redis",
@@ -146,15 +152,17 @@ def test_release_unused_bundles_idempotent(
 @pytest.fixture
 def inject_notify_gcs_restart_rpc_failure(monkeypatch, request):
     deterministic_failure = request.param
+    failure = RPC_FAILURE_MAP[deterministic_failure]
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "NodeManagerService.grpc_client.NotifyGCSRestart=1:"
-        + ("100:0" if deterministic_failure == "request" else "0:100"),
+        f"NodeManagerService.grpc_client.NotifyGCSRestart=1:{failure}",
     )
 
 
 @pytest.mark.parametrize(
-    "inject_notify_gcs_restart_rpc_failure", ["request", "response"], indirect=True
+    "inject_notify_gcs_restart_rpc_failure",
+    RPC_FAILURE_TYPES,
+    indirect=True,
 )
 @pytest.mark.parametrize(
     "ray_start_cluster_head_with_external_redis",
@@ -207,7 +215,7 @@ def test_kill_local_actor_rpc_retry_and_idempotency(monkeypatch, shutdown_only):
 
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "NodeManagerService.grpc_client.KillLocalActor=1:100:0",
+        "NodeManagerService.grpc_client.KillLocalActor=1:100:0:0",
     )
 
     ray.init()

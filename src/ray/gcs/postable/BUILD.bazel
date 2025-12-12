@@ -1,0 +1,22 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "postable",
+    hdrs = [
+        "postable.h",
+    ],
+    visibility = ["//src/ray/gcs:__subpackages__"],
+    deps = [
+        ":function_traits",
+        "//src/ray/common:asio",
+    ],
+)
+
+ray_cc_library(
+    name = "function_traits",
+    hdrs = ["function_traits.h"],
+    visibility = ["//src/ray/gcs/postable:__subpackages__"],
+    deps = [
+        "@boost//:functional",
+    ],
+)

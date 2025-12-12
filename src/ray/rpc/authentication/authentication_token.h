@@ -107,6 +107,14 @@ class AuthenticationToken {
     return std::string(secret_.begin(), secret_.end());
   }
 
+  /// Get token hash
+  /// @return Hash of the token value
+  std::size_t ToHash() const {
+    // TODO(andrewsykim): consider using a more secure hashing algorithm like SHA256
+    // before documenting this feature in Ray docs.
+    return std::hash<std::string>()(std::string(secret_.begin(), secret_.end()));
+  }
+
   /// Create AuthenticationToken from gRPC metadata value
   /// Strips "Bearer " prefix and creates token object
   /// @param metadata_value The raw value from server metadata (should include "Bearer "
@@ -170,6 +178,13 @@ class AuthenticationToken {
     // Clear the moved-from object explicitly for security
     // Note: 'other' is already an rvalue reference, no need to move again
     other.SecureClear();
+  }
+};
+
+// Hash function for AuthenticationToken
+struct AuthenticationTokenHash {
+  std::size_t operator()(const AuthenticationToken &token) const {
+    return token.ToHash();
   }
 };
 

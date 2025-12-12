@@ -150,7 +150,7 @@ For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
   sudo yum groupinstall 'Development Tools'
   sudo yum install psmisc
 
-In RedHat, install Bazel manually from this link: https://docs.bazel.build/versions/main/install-redhat.html
+In RedHat, install Bazel manually from this link: https://bazel.build/versions/6.5.0/install/redhat
 
 Preparing to build Ray on MacOS
 -------------------------------

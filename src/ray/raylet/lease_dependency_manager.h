@@ -18,6 +18,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -218,8 +219,8 @@ class LeaseDependencyManager : public LeaseDependencyManagerInterface {
     /// argument or because the lease of the lease called `ray.get` on the object.
     std::unordered_set<LeaseID> dependent_leases;
     /// The workers that depend on this object because they called `ray.get` on the
-    /// object.
-    std::unordered_set<WorkerID> dependent_get_requests;
+    /// object and the count of outstanding get_requests per worker.
+    std::unordered_map<WorkerID, int64_t> dependent_get_requests;
     /// The workers that depend on this object because they called `ray.wait` on the
     /// object.
     std::unordered_set<WorkerID> dependent_wait_requests;

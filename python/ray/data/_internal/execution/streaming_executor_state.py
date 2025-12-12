@@ -672,7 +672,7 @@ def update_operator_states(topology: Topology) -> None:
         # Drain external input queue if current operator is execution finished.
         # This is needed when the limit is reached, and `mark_execution_finished`
         # is called manually.
-        if op.execution_finished():
+        if op.has_execution_finished():
             for input_queue in op_state.input_queues:
                 # Drain input queue
                 input_queue.clear()

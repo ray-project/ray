@@ -117,7 +117,7 @@ static inline void InitOpenTelemetryExporter(const int metrics_agent_port) {
   if (!RayConfig::instance().enable_open_telemetry()) {
     return;
   }
-  OpenTelemetryMetricRecorder::GetInstance().RegisterGrpcExporter(
+  OpenTelemetryMetricRecorder::GetInstance().Start(
       /*endpoint=*/std::string("127.0.0.1:") + std::to_string(metrics_agent_port),
       /*interval=*/
       std::chrono::milliseconds(

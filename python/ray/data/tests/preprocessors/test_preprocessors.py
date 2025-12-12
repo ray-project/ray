@@ -31,6 +31,7 @@ from ray.data.preprocessors import (
     SimpleImputer,
     StandardScaler,
     Tokenizer,
+    TorchVisionPreprocessor,
 )
 
 
@@ -415,6 +416,81 @@ def test_numpy_pandas_support_transform_batch_tensor(create_dummy_preprocessors)
     assert isinstance(
         with_pandas_and_numpy_preferred.transform_batch(np_multi_column), dict
     )
+
+
+def test_get_input_output_columns():
+    """Tests get_input_columns() and get_output_columns() methods."""
+    # Test with preprocessors that have columns attribute
+    scaler = StandardScaler(columns=["A", "B"])
+    assert scaler.get_input_columns() == ["A", "B"]
+    assert scaler.get_output_columns() == ["A", "B"]
+
+    # Test with output_columns specified
+    scaler_with_output = StandardScaler(
+        columns=["A", "B"], output_columns=["A_scaled", "B_scaled"]
+    )
+    assert scaler_with_output.get_input_columns() == ["A", "B"]
+    assert scaler_with_output.get_output_columns() == ["A_scaled", "B_scaled"]
+
+    # Test with encoders
+    encoder = OneHotEncoder(columns=["X", "Y"])
+    assert encoder.get_input_columns() == ["X", "Y"]
+    assert encoder.get_output_columns() == ["X", "Y"]
+
+    encoder_with_output = OneHotEncoder(
+        columns=["X", "Y"], output_columns=["X_encoded", "Y_encoded"]
+    )
+    assert encoder_with_output.get_input_columns() == ["X", "Y"]
+    assert encoder_with_output.get_output_columns() == ["X_encoded", "Y_encoded"]
+
+    # Test LabelEncoder without output_column (in-place transformation)
+    label_encoder = LabelEncoder(label_column="target")
+    assert label_encoder.get_input_columns() == ["target"]
+    assert label_encoder.get_output_columns() == ["target"]
+
+    # Test LabelEncoder with output_column (append mode)
+    label_encoder = LabelEncoder(label_column="target", output_column="target_encoded")
+    assert label_encoder.get_input_columns() == ["target"]
+    assert label_encoder.get_output_columns() == ["target_encoded"]
+
+    # Test Concatenator (uses output_column_name instead of output_columns)
+    concatenator = Concatenator(columns=["A", "B"])
+    assert concatenator.get_input_columns() == ["A", "B"]
+    assert concatenator.get_output_columns() == ["concat_out"]
+
+    concatenator_with_output = Concatenator(
+        columns=["A", "B"], output_column_name="AB_concat"
+    )
+    assert concatenator_with_output.get_input_columns() == ["A", "B"]
+    assert concatenator_with_output.get_output_columns() == ["AB_concat"]
+
+    # Test FeatureHasher (uses output_column instead of output_columns)
+    feature_hasher = FeatureHasher(
+        columns=["token1", "token2"], num_features=8, output_column="hashed"
+    )
+    assert feature_hasher.get_input_columns() == ["token1", "token2"]
+    assert feature_hasher.get_output_columns() == ["hashed"]
+
+    # Test TorchVisionPreprocessor (uses _columns and _output_columns)
+    torch_preprocessor = TorchVisionPreprocessor(
+        columns=["image"], transform=lambda x: x
+    )
+    assert torch_preprocessor.get_input_columns() == ["image"]
+    assert torch_preprocessor.get_output_columns() == ["image"]
+
+    torch_preprocessor_with_output = TorchVisionPreprocessor(
+        columns=["image"], transform=lambda x: x, output_columns=["image_transformed"]
+    )
+    assert torch_preprocessor_with_output.get_input_columns() == ["image"]
+    assert torch_preprocessor_with_output.get_output_columns() == ["image_transformed"]
+
+    # Test with preprocessor without columns attribute
+    class CustomPreprocessor(Preprocessor):
+        _is_fittable = False
+
+    custom = CustomPreprocessor()
+    assert custom.get_input_columns() == []
+    assert custom.get_output_columns() == []
 
 
 if __name__ == "__main__":

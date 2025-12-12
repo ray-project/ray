@@ -1,4 +1,4 @@
-load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
 
 py_library(
@@ -14,7 +14,7 @@ py_test(
         ":determine_tests_to_run.py",
         ":test_rules.txt",
     ],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",

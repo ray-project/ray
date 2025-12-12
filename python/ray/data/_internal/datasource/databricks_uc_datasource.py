@@ -201,7 +201,10 @@ class DatabricksUCDatasource(Datasource):
         return self._estimate_inmemory_data_size
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        epoch_idx: int = 0,
     ) -> List[ReadTask]:
         # Handle empty dataset case
         if self.num_chunks == 0:

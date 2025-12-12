@@ -145,6 +145,7 @@ steps:
       - data
       - skip-on-premerge
       - oss
+      - disabled
     instance_type: medium
     parallelism: 2
     commands:
@@ -161,6 +162,7 @@ steps:
       - data
       - skip-on-premerge
       - oss
+      - disabled
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data

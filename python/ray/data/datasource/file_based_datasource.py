@@ -11,6 +11,8 @@ from typing import (
     List,
     Literal,
     Optional,
+    Tuple,
+    TypeVar,
     Union,
 )
 
@@ -65,31 +67,58 @@ class FileShuffleConfig:
     """Configuration for file shuffling.
 
     This configuration object controls how files are shuffled while reading file-based
-    datasets.
+    datasets. The random seed behavior is determined by the combination of ``seed``
+    and ``reseed_after_epoch``:
+
+    - If ``seed`` is None, the random seed is always None (non-deterministic shuffling).
+    - If ``seed`` is not None and ``reseed_after_epoch`` is False, the random seed is
+      constantly ``seed`` across epochs.
+    - If ``seed`` is not None and ``reseed_after_epoch`` is True, the random seed is
+      different for each epoch.
 
     .. note::
         Even if you provided a seed, you might still observe a non-deterministic row
         order. This is because tasks are executed in parallel and their completion
         order might vary. If you need to preserve the order of rows, set
-        `DataContext.get_current().execution_options.preserve_order`.
+        ``DataContext.get_current().execution_options.preserve_order``.
 
     Args:
-        seed: An optional integer seed for the file shuffler. If provided, Ray Data
-            shuffles files deterministically based on this seed.
+        seed: An optional integer seed for the file shuffler. If None, shuffling is
+            non-deterministic. If provided, shuffling is deterministic based on this
+            seed and the ``reseed_after_epoch`` setting.
+        reseed_after_epoch: If True, the random seed considers both ``seed`` and
+            ``epoch_idx``, resulting in different shuffling orders across epochs.
+            If False, the random seed is constantly ``seed``, resulting in the same
+            shuffling order across epochs. Only takes effect when ``seed`` is not None.
+            Defaults to True.
 
     Example:
         >>> import ray
         >>> from ray.data import FileShuffleConfig
-        >>> shuffle = FileShuffleConfig(seed=42)
+        >>> # Fixed seed - same shuffle across epochs
+        >>> shuffle = FileShuffleConfig(seed=42, reseed_after_epoch=False)
+        >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/batoidea", shuffle=shuffle)
+        >>>
+        >>> # Seed with reseed_after_epoch - different shuffle per epoch
+        >>> shuffle = FileShuffleConfig(seed=42, reseed_after_epoch=True)
         >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/batoidea", shuffle=shuffle)
     """  # noqa: E501
 
     seed: Optional[int] = None
+    reseed_after_epoch: bool = True
 
     def __post_init__(self):
         """Ensure that the seed is either None or an integer."""
         if self.seed is not None and not isinstance(self.seed, int):
             raise ValueError("Seed must be an integer or None.")
+
+    def get_seed(self, epoch_idx: int = 0) -> Optional[int]:
+        if self.seed is None:
+            return None
+        elif self.reseed_after_epoch:
+            return self.seed + epoch_idx
+        else:
+            return self.seed
 
 
 @DeveloperAPI
@@ -189,12 +218,7 @@ class FileBasedDatasource(Datasource):
                 )
 
         _validate_shuffle_arg(shuffle)
-        self._file_metadata_shuffler = None
-        if shuffle == "files":
-            self._file_metadata_shuffler = np.random.default_rng()
-        elif isinstance(shuffle, FileShuffleConfig):
-            # Create a NumPy random generator with a fixed seed if provided
-            self._file_metadata_shuffler = np.random.default_rng(shuffle.seed)
+        self._shuffle = shuffle
 
         # Read tasks serialize `FileBasedDatasource` instances, and the list of paths
         # can be large. To avoid slow serialization speeds, we store a reference to
@@ -216,7 +240,10 @@ class FileBasedDatasource(Datasource):
         return total_size
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        epoch_idx: int = 0,
     ) -> List[ReadTask]:
         import numpy as np
 
@@ -226,13 +253,9 @@ class FileBasedDatasource(Datasource):
         paths = self._paths()
         file_sizes = self._file_sizes()
 
-        if self._file_metadata_shuffler is not None:
-            files_metadata = list(zip(paths, file_sizes))
-            shuffled_files_metadata = [
-                files_metadata[i]
-                for i in self._file_metadata_shuffler.permutation(len(files_metadata))
-            ]
-            paths, file_sizes = list(map(list, zip(*shuffled_files_metadata)))
+        paths, file_sizes = _shuffle_file_metadata(
+            paths, file_sizes, self._shuffle, epoch_idx
+        )
 
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
 
@@ -555,5 +578,39 @@ def _validate_shuffle_arg(
     ):
         raise ValueError(
             f"Invalid value for 'shuffle': {shuffle}. "
-            "Valid values are None, 'files', `FileShuffleConfig`."
+            "Valid values are None, 'files', or `FileShuffleConfig`."
         )
+
+
+FileMetadata = TypeVar("FileMetadata")
+
+
+def _shuffle_file_metadata(
+    paths: List[str],
+    file_metadata: List[FileMetadata],
+    shuffler: Union[Literal["files"], FileShuffleConfig, None],
+    epoch_idx: int,
+) -> Tuple[List[str], List[FileMetadata]]:
+    """Shuffle file paths and sizes together using the given shuffler."""
+    if shuffler is None:
+        return paths, file_metadata
+
+    assert len(paths) == len(file_metadata), (
+        "Number of paths and file metadata must match. "
+        f"Got {len(paths)} paths and {len(file_metadata)} file metadata."
+    )
+    if len(paths) == 0:
+        return paths, file_metadata
+
+    if shuffler == "files":
+        file_metadata_shuffler = np.random.default_rng()
+    else:
+        assert isinstance(shuffler, FileShuffleConfig)
+        file_metadata_shuffler = np.random.default_rng(shuffler.get_seed(epoch_idx))
+
+    files_metadata = list(zip(paths, file_metadata))
+    shuffled_files_metadata = [
+        files_metadata[i]
+        for i in file_metadata_shuffler.permutation(len(files_metadata))
+    ]
+    return list(map(list, zip(*shuffled_files_metadata)))

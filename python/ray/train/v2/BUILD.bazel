@@ -198,6 +198,22 @@ py_test(
 )
 
 py_test(
+    name = "test_data_resource_cleanup",
+    size = "medium",
+    srcs = ["tests/test_data_resource_cleanup.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_env_callbacks",
     size = "small",
     srcs = ["tests/test_env_callbacks.py"],
@@ -238,6 +254,22 @@ py_test(
         "exclusive",
         "team:ml",
         "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_jax_gpu",
+    size = "medium",
+    srcs = ["tests/test_jax_gpu.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2_gpu",
     ],
     deps = [
         ":conftest",
@@ -329,6 +361,22 @@ py_test(
     name = "test_report_handler",
     size = "small",
     srcs = ["tests/test_report_handler.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_placement_group_cleaner",
+    size = "small",
+    srcs = ["tests/test_placement_group_cleaner.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
@@ -649,6 +697,22 @@ py_test(
     name = "test_local_mode",
     size = "medium",
     srcs = ["tests/test_local_mode.py"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_data_config",
+    size = "medium",
+    srcs = ["tests/test_data_config.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",

@@ -1,4 +1,4 @@
-load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_library(
@@ -42,7 +42,7 @@ py_binary(
 py_binary(
     name = "build_in_docker",
     srcs = ["build_in_docker.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     deps = [":ray_ci_lib"],
 )
 
@@ -56,7 +56,7 @@ py_test(
     name = "test_linux_container",
     size = "small",
     srcs = ["test_linux_container.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -72,7 +72,7 @@ py_test(
     name = "test_windows_container",
     size = "small",
     srcs = ["test_windows_container.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -88,7 +88,7 @@ py_test(
     name = "test_tester",
     size = "small",
     srcs = ["test_tester.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -104,7 +104,7 @@ py_test(
     name = "test_utils",
     size = "small",
     srcs = ["test_utils.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -120,7 +120,7 @@ py_test(
     name = "test_container",
     size = "small",
     srcs = ["test_container.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -135,7 +135,7 @@ py_test(
     name = "test_builder_container",
     size = "small",
     srcs = ["test_builder_container.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -151,7 +151,7 @@ py_test(
     name = "test_linux_tester_container",
     size = "small",
     srcs = ["test_linux_tester_container.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -167,7 +167,7 @@ py_test(
     name = "test_windows_tester_container",
     size = "small",
     srcs = ["test_windows_tester_container.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -183,7 +183,7 @@ py_test(
     name = "test_ray_docker_container",
     size = "small",
     srcs = ["test_ray_docker_container.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -199,7 +199,7 @@ py_test(
     name = "test_anyscale_docker_container",
     size = "small",
     srcs = ["test_anyscale_docker_container.py"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -216,7 +216,7 @@ py_test(
     size = "small",
     srcs = ["test_bazel_sharding.py"],
     data = ["mock_BUILD"],
-    exec_compatible_with = ["//bazel:py39"],
+    exec_compatible_with = ["//bazel:py310"],
     tags = [
         "ci_unit",
         "team:ci",

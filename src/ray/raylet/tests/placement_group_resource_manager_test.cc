@@ -75,14 +75,15 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
   std::function<bool(scheduling::NodeID)> is_node_available_fn_;
-  rpc::GcsNodeInfo node_info_;
+  rpc::GcsNodeAddressAndLiveness node_info_;
   void SetUp() {
     gcs_client_ = std::make_unique<gcs::MockGcsClient>();
     is_node_available_fn_ = [this](scheduling::NodeID node_id) {
-      return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
+      return gcs_client_->Nodes().IsNodeAlive(NodeID::FromBinary(node_id.Binary()));
     };
-    EXPECT_CALL(*gcs_client_->mock_node_accessor, Get(::testing::_, ::testing::_))
-        .WillRepeatedly(::testing::Return(&node_info_));
+    EXPECT_CALL(*gcs_client_->mock_node_accessor,
+                GetNodeAddressAndLiveness(::testing::_, ::testing::_))
+        .WillRepeatedly(::testing::Return(node_info_));
   }
   void InitLocalAvailableResource(
       absl::flat_hash_map<std::string, double> &unit_resource) {

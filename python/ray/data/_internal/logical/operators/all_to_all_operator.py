@@ -1,6 +1,10 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
+    LogicalOperatorSupportsPredicatePassThrough,
+    PredicatePassThroughBehavior,
+)
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
@@ -40,7 +44,7 @@ class AbstractAllToAll(LogicalOperator):
         self._sub_progress_bar_names = sub_progress_bar_names
 
 
-class RandomizeBlocks(AbstractAllToAll):
+class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for randomize_block_order."""
 
     def __init__(
@@ -66,8 +70,12 @@ class RandomizeBlocks(AbstractAllToAll):
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
 
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        # Randomizing block order doesn't affect filtering correctness
+        return PredicatePassThroughBehavior.PASSTHROUGH
 
-class RandomShuffle(AbstractAllToAll):
+
+class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for random_shuffle."""
 
     def __init__(
@@ -100,8 +108,12 @@ class RandomShuffle(AbstractAllToAll):
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
 
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        # Random shuffle doesn't affect filtering correctness
+        return PredicatePassThroughBehavior.PASSTHROUGH
 
-class Repartition(AbstractAllToAll):
+
+class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for repartition."""
 
     def __init__(
@@ -143,8 +155,12 @@ class Repartition(AbstractAllToAll):
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
 
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        # Repartition doesn't affect filtering correctness
+        return PredicatePassThroughBehavior.PASSTHROUGH
 
-class Sort(AbstractAllToAll):
+
+class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for sort."""
 
     def __init__(
@@ -176,6 +192,10 @@ class Sort(AbstractAllToAll):
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         assert isinstance(self._input_dependencies[0], LogicalOperator)
         return self._input_dependencies[0].infer_schema()
+
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        # Sort doesn't affect filtering correctness
+        return PredicatePassThroughBehavior.PASSTHROUGH
 
 
 class Aggregate(AbstractAllToAll):

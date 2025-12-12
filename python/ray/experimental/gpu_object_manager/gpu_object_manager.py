@@ -159,7 +159,8 @@ class GPUObjectManager:
                         not_done[0],
                         ref_info_map,
                         TimeoutError(
-                            f"RDT transfer failed after {ray_constants.FETCH_FAIL_TIMEOUT_SECONDS}s."
+                            f"RDT transfer failed after {ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS}s. "
+                            "You can increase the timeout by setting RAY_rdt_fetch_fail_timeout_milliseconds"
                         ),
                     )
                 else:
@@ -519,7 +520,7 @@ class GPUObjectManager:
                     communicator_meta=communicator_meta,
                     backend=gpu_object_meta.tensor_transport_backend,
                     obj_id=obj_id,
-                    timeout=time.time() + ray_constants.FETCH_FAIL_TIMEOUT_SECONDS,
+                    timeout=time.time() + ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS,
                 )
             )
             if self._monitor_failures_thread is None:
@@ -554,11 +555,11 @@ class GPUObjectManager:
         pop_object = not gpu_object_store.is_primary_copy(object_id)
         if pop_object:
             gpu_object = gpu_object_store.wait_and_pop_object(
-                object_id, timeout=ray_constants.FETCH_FAIL_TIMEOUT_SECONDS
+                object_id, timeout=ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
             )
         else:
             gpu_object = gpu_object_store.wait_and_get_object(
-                object_id, timeout=ray_constants.FETCH_FAIL_TIMEOUT_SECONDS
+                object_id, timeout=ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
             )
         return gpu_object
 
