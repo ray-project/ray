@@ -88,6 +88,8 @@ class DashboardAgent:
                 ray_constants.METRICS_AGENT_PORT_FILENAME,
                 -1,
             )
+            # This metric export port is run by reporter module
+            # which is not included in minimal mode.
             persist_port(
                 self.session_dir,
                 ray_constants.METRICS_EXPORT_PORT_FILENAME,

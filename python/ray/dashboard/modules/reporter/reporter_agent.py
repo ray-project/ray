@@ -470,13 +470,15 @@ class ReporterAgent(
                 # proxy_exporter_collector is None
                 # if Prometheus server is not started.
                 REGISTRY.register(self._metrics_agent.proxy_exporter_collector)
-        else:
-            # Metrics collection is disabled, write -1 to indicate the port is not in use.
-            persist_port(
-                dashboard_agent.session_dir,
-                ray_constants.METRICS_EXPORT_PORT_FILENAME,
-                -1,
-            )
+
+        # Metrics collection is disabled, write -1 to indicate the port is not in use.
+        persist_port(
+            dashboard_agent.session_dir,
+            ray_constants.METRICS_EXPORT_PORT_FILENAME,
+            dashboard_agent.metrics_export_port
+            if not self._metrics_collection_disabled
+            else -1,
+        )
         self._key = (
             f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
         )
