@@ -27,7 +27,7 @@ from ray._common.network_utils import (
     parse_address,
 )
 from ray._private.resource_isolation_config import ResourceIsolationConfig
-from ray._raylet import GcsClient, GcsClientOptions
+from ray._raylet import GcsClient, GcsClientOptions, NodeID
 from ray.core.generated.common_pb2 import Language
 from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
@@ -364,14 +364,14 @@ def _find_address_from_flag(flag: str):
     return addresses
 
 
+def find_node_ids():
+    """Finds any local raylet processes and returns the node id."""
+    return _find_address_from_flag("--node_id")
+
+
 def find_gcs_addresses():
     """Finds any local GCS processes based on grepping ps."""
     return _find_address_from_flag("--gcs-address")
-
-
-def find_node_ip_addresses():
-    """Finds any local raylet processes and returns the node ip address."""
-    return _find_address_from_flag("--node-ip-address")
 
 
 def find_bootstrap_address(temp_dir: Optional[str]):
@@ -472,7 +472,10 @@ def wait_for_node(
 
 
 def get_node_to_connect_for_driver(
-    gcs_client: GcsClient, node_ip_address: str = None
+    gcs_client: GcsClient,
+    node_ip_address: str = None,
+    node_name: str = None,
+    temp_dir: str = None,
 ) -> GcsNodeInfo:
     """
     Get the node to connect to for the driver.
@@ -485,23 +488,28 @@ def get_node_to_connect_for_driver(
         gcs_client: The GCS client.
         node_ip_address: The IP address of the node to connect to. If not provided,
                          it will be resolved to a ray node on the same host.
+        node_name: The name of the node to connect to. If not provided, it will be resolved to a ray node on the same host.
+        temp_dir: The temp directory of the node to connect to. If not provided, it will be resolved to a ray node on the same host.
 
     Returns:
         The node info of the node to connect to.
     """
     node_to_connect_info = None
-    if node_ip_address is None:
-        possible_node_ip_addresses = find_node_ip_addresses()
-        if len(possible_node_ip_addresses) == 0:
-            raise RuntimeError(
-                "No node ip address found for raylet on this host. Is there an instance of raylet running on this host?"
-            )
-    else:
-        possible_node_ip_addresses = [node_ip_address]
+    possible_node_ids = find_node_ids()
     node_selectors = []
-    for ip in possible_node_ip_addresses:
-        ip_node_selector = GetAllNodeInfoRequest.NodeSelector(node_ip_address=ip)
+    for id in possible_node_ids:
+        id_node_selector = GetAllNodeInfoRequest.NodeSelector(
+            node_id=NodeID.from_hex(id).binary()
+        )
+        node_selectors.append(id_node_selector)
+    if node_ip_address is not None:
+        ip_node_selector = GetAllNodeInfoRequest.NodeSelector(
+            node_ip_address=node_ip_address
+        )
         node_selectors.append(ip_node_selector)
+    if node_name is not None:
+        node_name_selector = GetAllNodeInfoRequest.NodeSelector(node_name=node_name)
+        node_selectors.append(node_name_selector)
     try:
         node_to_connect_infos = gcs_client.get_all_node_info(
             timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
@@ -510,13 +518,13 @@ def get_node_to_connect_for_driver(
         ).values()
     except Exception as e:
         raise RuntimeError(
-            f"Failed to get node info for possible node ip addresses: {possible_node_ip_addresses}"
+            f"Failed to get node info for possible node ids: {possible_node_ids}"
             f" when trying to resolve node to connect to. Error: {repr(e)}"
         )
     if not node_to_connect_infos:
         raise RuntimeError(
-            f"No node info found matching node ip addresses: {possible_node_ip_addresses}"
-            f"when trying to resolve node to connect to."
+            f"No node info found matching node ids: {possible_node_ids}"
+            f" when trying to resolve node to connect to."
         )
 
     # Prioritize head node if available
@@ -1024,6 +1032,7 @@ def start_log_monitor(
     session_dir: str,
     logs_dir: str,
     gcs_address: str,
+    node_ip_address: str,
     fate_share: Optional[bool] = None,
     max_bytes: int = 0,
     backup_count: int = 0,
@@ -1036,14 +1045,13 @@ def start_log_monitor(
         session_dir: The session directory.
         logs_dir: The directory of logging files.
         gcs_address: GCS address for pubsub.
+        node_ip_address: The IP address of the node we are connected to.
         fate_share: Whether to share fate between log_monitor
             and this process.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
-        redirect_logging: Whether we should redirect logging to
-            the provided log directory.
         stdout_filepath: The file path to dump log monitor stdout.
             If None, stdout is not redirected.
         stderr_filepath: The file path to dump log monitor stderr.
@@ -1061,6 +1069,7 @@ def start_log_monitor(
         f"--session-dir={session_dir}",
         f"--logs-dir={logs_dir}",
         f"--gcs-address={gcs_address}",
+        f"--node-ip-address={node_ip_address}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
     ]

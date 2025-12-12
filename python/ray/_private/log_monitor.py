@@ -13,7 +13,6 @@ import traceback
 from typing import Callable, List, Optional, Set
 
 import ray._private.ray_constants as ray_constants
-import ray._private.services as services
 import ray._private.utils
 from ray._private import logging_utils
 from ray._private.ray_logging import setup_component_logger
@@ -509,6 +508,12 @@ if __name__ == "__main__":
         "--gcs-address", required=False, type=str, help="The address (ip:port) of GCS."
     )
     parser.add_argument(
+        "--node-ip-address",
+        required=False,
+        type=str,
+        help="The IP address of the node.",
+    )
+    parser.add_argument(
         "--logging-level",
         required=False,
         type=str,
@@ -596,21 +601,9 @@ if __name__ == "__main__":
         logging_rotation_backup_count,
     )
 
-    possible_node_ips = list(services.find_node_ip_addresses())
-    if len(possible_node_ips) == 0:
-        raise Exception(
-            "No node ip address found for raylet on this host. Is there an instance of raylet running on this host?"
-        )
-    node_ip = possible_node_ips[0]
-    if len(possible_node_ips) > 1:
-        logger.warning(
-            f"Multiple possible node ip addresses found: {possible_node_ips}. "
-            "If you are running multiple nodes on the same host, log monitor may connect to the wrong node."
-            f"Choosing node ip address: {node_ip}."
-        )
     gcs_client = GcsClient(address=args.gcs_address)
     log_monitor = LogMonitor(
-        node_ip,
+        args.node_ip_address,
         args.logs_dir,
         gcs_client,
         is_proc_alive,

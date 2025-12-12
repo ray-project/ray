@@ -207,35 +207,32 @@ class Node:
                     ray_params.dashboard_host, ray_params.dashboard_port
                 )
 
-        node_ip_address = ray_params.node_ip_address
+        # Resolve node to connect to
         node_to_connect_info = None
         if connect_only:
-            # If connecting without a node ip address,
-            # fetch the node to connect to based on running raylet's IP address.
-            if node_ip_address is None:
-                node_to_connect_info = (
-                    ray._private.services.get_node_to_connect_for_driver(
-                        self.get_gcs_client()
-                    )
-                )
+            node_to_connect_info = ray._private.services.get_node_to_connect_for_driver(
+                self.get_gcs_client(),
+                node_ip_address=ray_params.node_ip_address,
+                node_name=ray_params.node_name,
+                temp_dir=ray_params.temp_dir,
+            )
+
+        # It creates a session_dir.
+        self._init_temp()
+
+        node_ip_address = ray_params.node_ip_address
+        if node_ip_address is None:
+            if connect_only:
+                assert node_to_connect_info is not None
                 node_ip_address = getattr(
                     node_to_connect_info, "node_manager_address", None
                 )
             else:
-                node_to_connect_info = (
-                    ray._private.services.get_node_to_connect_for_driver(
-                        self.get_gcs_client(), node_ip_address
-                    )
-                )
-        elif node_ip_address is None:
-            node_ip_address = ray.util.get_node_ip_address()
+                node_ip_address = ray.util.get_node_ip_address()
 
         assert node_ip_address is not None
         ray_params.update_if_absent(node_ip_address=node_ip_address)
         self._node_ip_address = node_ip_address
-
-        # It creates a session_dir.
-        self._init_temp()
 
         self._object_spilling_config = self._get_object_spilling_config()
         logger.debug(
@@ -1043,6 +1040,7 @@ class Node:
             self.get_session_dir_path(),
             self._logs_dir,
             self.gcs_address,
+            self._node_ip_address,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
