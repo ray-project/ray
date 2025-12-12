@@ -1,9 +1,11 @@
 import logging
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import ray
 from ray.actor import ActorHandle
+from ray.train import BackendConfig
+from ray.train._internal.data_config import DataConfig
 from ray.train.v2._internal.execution.context import DistributedContext
 from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
     ResizeDecision,
@@ -11,8 +13,11 @@ from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
 from ray.train.v2._internal.execution.worker_group import ActorMetadata, Worker
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
+    DatasetsDetails,
     RunAttemptStatus,
     RunStatus,
+    RuntimeConfiguration,
+    TrainingExecutionConfiguration,
     TrainResources,
     TrainRun,
     TrainRunAttempt,
@@ -20,11 +25,13 @@ from ray.train.v2._internal.state.schema import (
 )
 from ray.train.v2._internal.state.state_actor import get_or_create_state_actor
 from ray.train.v2._internal.state.util import (
+    construct_data_config_dict,
     current_time_ns,
     mark_workers_dead,
     update_train_run_aborted,
     update_train_run_attempt_aborted,
 )
+from ray.train.v2.api.config import RunConfig, ScalingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +54,32 @@ class TrainStateManager:
         job_id: str,
         controller_actor_id: str,
         controller_log_file_path: str,
+        run_config: RunConfig,
+        train_loop_config: Dict[str, Any],
+        scaling_config: ScalingConfig,
+        backend_config: BackendConfig,
+        datasets: Dict[str, ray.data.Dataset],
+        dataset_config: DataConfig,
     ) -> None:
+
+        datasets_details = DatasetsDetails(
+            datasets=datasets.keys(),
+            data_config=construct_data_config_dict(dataset_config),
+        )
+
+        runtime_configuration = RuntimeConfiguration(
+            failure_config=run_config.failure_config.to_dict(),
+            worker_runtime_env=run_config.worker_runtime_env,
+            checkpoint_config=run_config.checkpoint_config.to_dict(),
+            storage_path=run_config.storage_path,
+        )
+
+        training_execution_config = TrainingExecutionConfiguration(
+            train_loop_config=train_loop_config,
+            backend_config=backend_config.to_dict(),
+            scaling_config=scaling_config.to_dict(),
+        )
+
         run = TrainRun(
             id=id,
             name=name,
@@ -57,6 +89,10 @@ class TrainStateManager:
             controller_actor_id=controller_actor_id,
             start_time_ns=current_time_ns(),
             controller_log_file_path=controller_log_file_path,
+            framework_versions={"ray": ray.__version__},
+            datasets_details=datasets_details,
+            runtime_configuration=runtime_configuration,
+            training_execution_config=training_execution_config,
         )
         self._runs[run.id] = run
         self._create_or_update_train_run(run)
@@ -132,6 +168,13 @@ class TrainStateManager:
     ):
         run = self._runs[run_id]
         update_train_run_aborted(run=run, graceful=True)
+        self._create_or_update_train_run(run)
+
+    def update_train_run_framework_versions(
+        self, run_id: str, framework_versions: Dict[str, str]
+    ):
+        run = self._runs[run_id]
+        run.framework_versions = framework_versions
         self._create_or_update_train_run(run)
 
     def create_train_run_attempt(
@@ -222,6 +265,10 @@ class TrainStateManager:
         run_attempt = self._run_attempts[run_id][attempt_id]
         update_train_run_attempt_aborted(run_attempt=run_attempt, graceful=True)
         self._create_or_update_train_run_attempt(run_attempt)
+
+    def get_train_run_framework(self, run_id: str) -> Dict[str, str]:
+        run = self._runs[run_id]
+        return run.training_execution_config.backend_config["framework"]
 
     def _create_or_update_train_run(self, run: TrainRun) -> None:
         ref = self._state_actor.create_or_update_train_run.remote(run)

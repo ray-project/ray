@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ray._common.pydantic_compat import BaseModel, Field
 from ray.dashboard.modules.job.pydantic_models import JobDetails
@@ -215,6 +215,47 @@ class DecoratedTrainRunAttempt(TrainRunAttempt):
 
 
 @DeveloperAPI
+class DatasetsDetails(BaseModel):
+    """Datasets details for a Train run, including dataset names and data config."""
+
+    datasets: List[str] = Field(description="A list of dataset names for a Train run.")
+    data_config: Dict[str, Any] = Field(description="The data config for a Train run.")
+
+
+@DeveloperAPI
+class RuntimeConfiguration(BaseModel):
+    """Runtime configuration parameters for a Train run, encompassing failure,
+    runtime environment, checkpoint settings, and storage path."""
+
+    failure_config: Dict[str, Any] = Field(
+        description="The failure config for a Train run."
+    )
+    worker_runtime_env: Dict[str, Any] = Field(
+        description="The worker runtime env for a Train run."
+    )
+    checkpoint_config: Dict[str, Any] = Field(
+        description="The checkpoint config for a Train run."
+    )
+    storage_path: str = Field(description="The storage path for a Train run.")
+
+
+@DeveloperAPI
+class TrainingExecutionConfiguration(BaseModel):
+    """Configuration parameters for executing the training loop,
+    including details about the training configs, scaling configs, and backend settings."""
+
+    train_loop_config: Dict[str, Any] = Field(
+        description="The train loop config for a Train run."
+    )
+    backend_config: Dict[str, Any] = Field(
+        description="The backend config for a Train run. Can vary with the framework (e.g. TorchConfig)"
+    )
+    scaling_config: Dict[str, Any] = Field(
+        description="The scaling config for this Train run."
+    )
+
+
+@DeveloperAPI
 class TrainRun(BaseModel):
     """Metadata for a Ray Train run, including its details and status."""
 
@@ -240,6 +281,19 @@ class TrainRun(BaseModel):
     )
     controller_log_file_path: Optional[str] = Field(
         description="The path to the log file for the Train run controller."
+    )
+    framework_versions: Dict[str, str] = Field(
+        description="The relevant framework versions for this Train run,"
+        "including the Ray version and training framework version."
+    )
+    datasets_details: DatasetsDetails = Field(
+        description="Datasets details for this Train run, including dataset names and data config."
+    )
+    runtime_configuration: RuntimeConfiguration = Field(
+        description="Runtime configuration for this Train run, including failure, runtime environment, checkpoint settings, and storage path."
+    )
+    training_execution_config: TrainingExecutionConfiguration = Field(
+        description="Training execution configuration for this Train run, including train loop config and backend config."
     )
 
 
