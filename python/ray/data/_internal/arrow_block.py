@@ -557,8 +557,10 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
         import pyarrow.compute as pac
 
         if self.is_composed_of_lists():
+            # NOTE: Arrow doesn't provide unique kernels for `ListArray`s and
+            #       such, so we rely on Polars to encode and compute unique
+            #       values instead
             import polars
-
             return polars.from_arrow(self._column).unique().to_arrow()
 
         return pac.unique(self._column)

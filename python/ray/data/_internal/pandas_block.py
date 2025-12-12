@@ -215,6 +215,9 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
 
         try:
             if self.is_composed_of_lists():
+                # NOTE: Pandas uses hashing internally to compute unique values,
+                #       and hence we have to convert lists into tuples to make
+                #       them hashable
                 col = self._column.map(lambda l: l if l is None else tuple(l))
             else:
                 col = self._column
