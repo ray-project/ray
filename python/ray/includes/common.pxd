@@ -287,9 +287,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTensorTransport TENSOR_TRANSPORT_OBJECT_STORE "ray::rpc::TensorTransport::OBJECT_STORE"
-    cdef CTensorTransport TENSOR_TRANSPORT_NCCL "ray::rpc::TensorTransport::NCCL"
-    cdef CTensorTransport TENSOR_TRANSPORT_GLOO "ray::rpc::TensorTransport::GLOO"
-    cdef CTensorTransport TENSOR_TRANSPORT_NIXL "ray::rpc::TensorTransport::NIXL"
+    cdef CTensorTransport TENSOR_TRANSPORT_DIRECT_TRANSPORT "ray::rpc::TensorTransport::DIRECT_TRANSPORT"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CPlacementStrategy PLACEMENT_STRATEGY_PACK \
