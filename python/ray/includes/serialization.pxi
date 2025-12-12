@@ -4,6 +4,7 @@ import contextlib
 import cython
 
 DEF MEMCOPY_THREADS = 6
+cdef public int MEMCOPY_THREAD_COUNT = MEMCOPY_THREADS
 
 # This is the default alignment value for len(buffer) < 2048.
 DEF kMinorBufferAlign = 8
@@ -17,8 +18,36 @@ DEF kLanguageSpecificTypeExtensionId = 101
 DEF kMessagePackOffset = 9
 
 cdef extern from "ray/util/memory.h" namespace "ray" nogil:
+    cdef cppclass ParallelMemcopyThreadPool:
+        pass
     void parallel_memcopy(uint8_t* dst, const uint8_t* src, int64_t nbytes,
                           uintptr_t block_size, int num_threads)
+    ParallelMemcopyThreadPool* CreateParallelMemcopyThreadPool(int num_threads)
+    void DestroyParallelMemcopyThreadPool(ParallelMemcopyThreadPool* pool)
+    void parallel_memcopy_with_pool(ParallelMemcopyThreadPool* pool,
+                                    uint8_t* dst,
+                                    const uint8_t* src,
+                                    int64_t nbytes,
+                                    uintptr_t block_size,
+                                    int num_threads)
+
+
+cdef class _MemcopyThreadPool:
+    cdef ParallelMemcopyThreadPool *_pool
+
+    def __cinit__(self, int num_threads):
+        self._pool = CreateParallelMemcopyThreadPool(num_threads)
+
+    def __dealloc__(self):
+        if self._pool != NULL:
+            DestroyParallelMemcopyThreadPool(self._pool)
+            self._pool = NULL
+
+    def __bool__(self):
+        return self._pool != NULL
+
+    cdef ParallelMemcopyThreadPool* get(self):
+        return self._pool
 
 cdef extern from "google/protobuf/repeated_field.h" nogil:
     cdef cppclass RepeatedField[Element]:
@@ -346,7 +375,8 @@ cdef class Pickle5Writer:
     @cython.boundscheck(False)
     @cython.wraparound(False)
     cdef void write_to(self, const uint8_t[:] inband, uint8_t[:] data,
-                       int memcopy_threads) nogil:
+                       int memcopy_threads,
+                       ParallelMemcopyThreadPool *pool) nogil:
         cdef:
             uint8_t *ptr = &data[0]
             uint64_t buffer_addr
@@ -378,10 +408,13 @@ cdef class Pickle5Writer:
             with nogil:
                 if (memcopy_threads > 1 and
                         buffer_len > kMemcopyDefaultThreshold):
-                    parallel_memcopy(ptr + buffer_addr,
-                                     <const uint8_t*> self.buffers[i].buf,
-                                     buffer_len,
-                                     kMemcopyDefaultBlocksize, memcopy_threads)
+                    parallel_memcopy_with_pool(
+                        pool,
+                        ptr + buffer_addr,
+                        <const uint8_t*> self.buffers[i].buf,
+                        buffer_len,
+                        kMemcopyDefaultBlocksize,
+                        memcopy_threads)
                 else:
                     memcpy(ptr + buffer_addr, self.buffers[i].buf, buffer_len)
 
@@ -390,10 +423,12 @@ cdef class SerializedObject(object):
     cdef:
         object _metadata
         object _contained_object_refs
+        ParallelMemcopyThreadPool *_memcopy_pool
 
     def __init__(self, metadata, contained_object_refs=None):
         self._metadata = metadata
         self._contained_object_refs = contained_object_refs or []
+        self._memcopy_pool = NULL
 
     @property
     def total_bytes(self):
@@ -413,6 +448,12 @@ cdef class SerializedObject(object):
     cdef void write_to(self, uint8_t[:] buffer) nogil:
         raise NotImplementedError("{}.write_to not implemented.".format(
                 type(self).__name__))
+
+    cpdef set_memcopy_thread_pool(self, _MemcopyThreadPool pool):
+        if pool is not None and pool.get() != NULL:
+            self._memcopy_pool = pool.get()
+        else:
+            self._memcopy_pool = NULL
 
 
 cdef class Pickle5SerializedObject(SerializedObject):
@@ -439,7 +480,8 @@ cdef class Pickle5SerializedObject(SerializedObject):
     @cython.boundscheck(False)
     @cython.wraparound(False)
     cdef void write_to(self, uint8_t[:] buffer) nogil:
-        self.writer.write_to(self.inband, buffer, MEMCOPY_THREADS)
+        self.writer.write_to(self.inband, buffer, MEMCOPY_THREADS,
+                             self._memcopy_pool)
 
 
 cdef class MessagePackSerializedObject(SerializedObject):
@@ -490,6 +532,11 @@ cdef class MessagePackSerializedObject(SerializedObject):
         self.write_to(buffer)
         return buffer.to_pybytes()
 
+    cpdef set_memcopy_thread_pool(self, _MemcopyThreadPool pool):
+        SerializedObject.set_memcopy_thread_pool(self, pool)
+        if self.nest_serialized_object is not None:
+            self.nest_serialized_object.set_memcopy_thread_pool(pool)
+
     @cython.boundscheck(False)
     @cython.wraparound(False)
     cdef void write_to(self, uint8_t[:] buffer) nogil:
@@ -529,9 +576,12 @@ cdef class RawSerializedObject(SerializedObject):
         with nogil:
             if (MEMCOPY_THREADS > 1 and
                     self._total_bytes > kMemcopyDefaultThreshold):
-                parallel_memcopy(&buffer[0],
-                                 self.value_ptr,
-                                 self._total_bytes, kMemcopyDefaultBlocksize,
-                                 MEMCOPY_THREADS)
+                parallel_memcopy_with_pool(
+                    self._memcopy_pool,
+                    &buffer[0],
+                    self.value_ptr,
+                    self._total_bytes,
+                    kMemcopyDefaultBlocksize,
+                    MEMCOPY_THREADS)
             else:
                 memcpy(&buffer[0], self.value_ptr, self._total_bytes)

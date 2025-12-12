@@ -18,12 +18,14 @@ from ray._private import (
 )
 from ray._raylet import (
     DynamicObjectRefGenerator,
+    MEMCOPY_THREAD_COUNT,
     MessagePackSerializedObject,
     MessagePackSerializer,
     Pickle5SerializedObject,
     Pickle5Writer,
     RawSerializedObject,
     SerializedRayObject,
+    _MemcopyThreadPool,
     split_buffer,
     unpack_pickle5_buffers,
 )
@@ -162,6 +164,18 @@ class SerializationContext:
         # (e.g. gloo, nccl, etc.) for tensor communication between actors,
         # instead of the normal serialize -> object store -> deserialize codepath.
         self._torch_custom_serializer_registered = False
+
+        self._memcopy_thread_pool = None
+        if MEMCOPY_THREAD_COUNT > 1:
+            try:
+                pool = _MemcopyThreadPool(MEMCOPY_THREAD_COUNT)
+                if pool:
+                    self._memcopy_thread_pool = pool
+            except Exception:
+                logger.warning(
+                    "Failed to initialize serialization memcopy thread pool.",
+                    exc_info=True,
+                )
 
         # Enable zero-copy serialization of tensors if the environment variable is set.
         self._zero_copy_tensors_enabled = (
@@ -329,6 +343,12 @@ class SerializationContext:
                 ray._private.worker.global_worker.core_worker.add_object_ref_reference(
                     object_ref
                 )
+
+    def _attach_memcopy_thread_pool(self, serialized_obj):
+        if serialized_obj is None:
+            return
+        if self._memcopy_thread_pool:
+            serialized_obj.set_memcopy_thread_pool(self._memcopy_thread_pool)
 
     def _deserialize_pickle5_data(
         self,
@@ -622,9 +642,11 @@ class SerializationContext:
         finally:
             self.set_out_of_band_serialization()
 
-        return Pickle5SerializedObject(
+        serialized = Pickle5SerializedObject(
             metadata, inband, writer, self.get_and_clear_contained_object_refs()
         )
+        self._attach_memcopy_thread_pool(serialized)
+        return serialized
 
     def _serialize_to_msgpack(self, value):
         # Only RayTaskError is possible to be serialized here. We don't
@@ -677,9 +699,11 @@ class SerializationContext:
         else:
             pickle5_serialized_object = None
 
-        return MessagePackSerializedObject(
+        serialized = MessagePackSerializedObject(
             metadata, msgpack_data, contained_object_refs, pickle5_serialized_object
         )
+        self._attach_memcopy_thread_pool(serialized)
+        return serialized
 
     def serialize_gpu_objects(
         self,
@@ -743,7 +767,9 @@ class SerializationContext:
             # If the object is a byte array, skip serializing it and
             # use a special metadata to indicate it's raw binary. So
             # that this object can also be read by Java.
-            return RawSerializedObject(value)
+            serialized = RawSerializedObject(value)
+            self._attach_memcopy_thread_pool(serialized)
+            return serialized
         else:
             return self._serialize_to_msgpack(value)
 
