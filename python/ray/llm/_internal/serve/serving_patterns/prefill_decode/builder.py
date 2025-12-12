@@ -167,12 +167,8 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
         [pd_config.prefill_config, pd_config.decode_config]
     )
 
-    default_ingress_options = maybe_apply_llm_deployment_config_defaults(
+    ingress_options = maybe_apply_llm_deployment_config_defaults(
         default_ingress_options, pd_config.ingress_deployment_config
-    )
-
-    ingress_options = deep_merge_dicts(
-        default_ingress_options, pd_config.ingress_deployment_config or {}
     )
 
     ingress_cls = make_fastapi_ingress(ingress_cls_config.ingress_cls)

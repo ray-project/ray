@@ -7,7 +7,6 @@ from pydantic import Field, field_validator, model_validator
 from ray import serve
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.dict_utils import (
-    deep_merge_dicts,
     maybe_apply_llm_deployment_config_defaults,
 )
 from ray.llm._internal.common.utils.import_utils import load_class
@@ -126,12 +125,8 @@ def build_openai_app(builder_config: dict) -> Application:
         llm_configs
     )
 
-    default_ingress_options = maybe_apply_llm_deployment_config_defaults(
+    ingress_options = maybe_apply_llm_deployment_config_defaults(
         default_ingress_options, builder_config.ingress_deployment_config
-    )
-
-    ingress_options = deep_merge_dicts(
-        default_ingress_options, builder_config.ingress_deployment_config or {}
     )
 
     ingress_cls = make_fastapi_ingress(ingress_cls_config.ingress_cls)

@@ -3,7 +3,6 @@ from typing import Optional, Type
 
 from ray import serve
 from ray.llm._internal.common.dict_utils import (
-    deep_merge_dicts,
     maybe_apply_llm_deployment_config_defaults,
 )
 from ray.llm._internal.serve.constants import (
@@ -73,10 +72,9 @@ def build_llm_deployment(
     if override_serve_options:
         deployment_options.update(override_serve_options)
 
-    defaults = maybe_apply_llm_deployment_config_defaults(
+    deployment_options = maybe_apply_llm_deployment_config_defaults(
         DEFAULT_DEPLOYMENT_OPTIONS, deployment_options
     )
-    deployment_options = deep_merge_dicts(defaults, deployment_options)
 
     logger.info("============== Deployment Options ==============")
     logger.info(pprint.pformat(deployment_options))
