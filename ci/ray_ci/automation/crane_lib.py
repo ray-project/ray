@@ -9,11 +9,17 @@ Callers are responsible for checking return_code to detect failures rather than
 relying on exceptions.
 """
 
+import base64
+import os
 import platform
 import subprocess
+import time
 from typing import List, Tuple
 
+import boto3
+import requests
 import runfiles
+from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
 
 from ci.ray_ci.utils import logger
 
@@ -46,6 +52,7 @@ def _run_crane_command(args: List[str]) -> Tuple[int, str]:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env=os.environ,
         ) as proc:
             output = ""
             if proc.stdout:
@@ -67,6 +74,71 @@ def _run_crane_command(args: List[str]) -> Tuple[int, str]:
     except FileNotFoundError:
         logger.error(f"Crane binary not found at {command[0]}")
         return 1, f"Crane binary not found at {command[0]}"
+
+
+def crane_ecr_login(ecr_registry: str, region: str = "us-west-2") -> Tuple[int, str]:
+    """
+    Authenticate crane with AWS ECR using boto3.
+
+    Args:
+        ecr_registry: ECR registry URL (e.g., "029272617770.dkr.ecr.us-west-2.amazonaws.com").
+        region: AWS region for ECR. Defaults to "us-west-2".
+
+    Returns:
+        Tuple of (return_code, output). return_code is 0 on success.
+    """
+    logger.info(f"Authenticating crane with ECR: {ecr_registry}")
+    token = boto3.client("ecr", region_name=region).get_authorization_token()
+    auth_data = token["authorizationData"][0]["authorizationToken"]
+    user, password = base64.b64decode(auth_data).decode("utf-8").split(":")
+    return _run_crane_command(
+        ["auth", "login", "-u", user, "-p", password, ecr_registry]
+    )
+
+
+def crane_docker_hub_login() -> Tuple[int, str]:
+    """
+    Authenticate crane with Docker Hub using Ray CI API Gateway.
+
+    Requires BUILDKITE_JOB_ID environment variable to be set.
+
+    Returns:
+        Tuple of (return_code, output). return_code is 0 on success.
+    """
+    logger.info("Authenticating crane with Docker Hub")
+    job_id = os.environ.get("BUILDKITE_JOB_ID")
+    if not job_id:
+        raise ValueError("BUILDKITE_JOB_ID environment variable is required")
+
+    auth = BotoAWSRequestsAuth(
+        aws_host="vop4ss7n22.execute-api.us-west-2.amazonaws.com",
+        aws_region="us-west-2",
+        aws_service="execute-api",
+    )
+
+    # Retry logic for API Gateway
+    resp = None
+    for attempt in range(5):
+        resp = requests.get(
+            "https://vop4ss7n22.execute-api.us-west-2.amazonaws.com/endpoint/",
+            auth=auth,
+            params={"job_id": job_id},
+        )
+        logger.info(f"Getting Docker Hub credentials, status_code: {resp.status_code}")
+        if resp.status_code < 500:
+            break
+        logger.info(f"API Gateway error, retrying (attempt {attempt + 1}/5)...")
+        time.sleep(5)
+
+    if resp is None or resp.status_code >= 400:
+        raise RuntimeError(
+            f"Failed to get Docker Hub credentials: {resp.text if resp else 'no response'}"
+        )
+
+    password = resp.json()["docker_password"]
+    return _run_crane_command(
+        ["auth", "login", "-u", "raydockerreleaser", "-p", password, "index.docker.io"]
+    )
 
 
 def call_crane_copy(source: str, destination: str) -> Tuple[int, str]:

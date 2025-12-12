@@ -18,7 +18,12 @@ from typing import Optional
 
 import click
 
-from ci.ray_ci.automation.crane_lib import call_crane_copy, call_crane_manifest
+from ci.ray_ci.automation.crane_lib import (
+    call_crane_copy,
+    call_crane_manifest,
+    crane_docker_hub_login,
+    crane_ecr_login,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -100,8 +105,8 @@ def main(
     """
     Copy a Wanda-cached image to a destination registry.
 
-    Assumes that the Wanda image is already built and cached, and that the
-    destination registry is already authenticated (e.g., via copy_files docker_login).
+    Handles authentication for both ECR (source/Wanda cache) and Docker Hub
+    (destination). Requires BUILDKITE_JOB_ID for Docker Hub authentication.
 
     By default, runs in dry-run mode. Use --upload to actually copy images.
     """
@@ -132,6 +137,11 @@ def main(
 
     logger.info(f"Source tag (Wanda): {source_tag}")
     logger.info(f"Target tag: {destination_tag}")
+
+    # Authenticate crane with ECR (source registry) and Docker Hub (destination)
+    ecr_registry = rayci_work_repo.split("/")[0]
+    crane_ecr_login(ecr_registry)
+    crane_docker_hub_login()
 
     # Check if target already exists (only in upload mode)
     if upload:
