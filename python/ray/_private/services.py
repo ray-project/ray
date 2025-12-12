@@ -502,14 +502,6 @@ def get_node_to_connect_for_driver(
             node_id=NodeID.from_hex(id).binary()
         )
         node_selectors.append(id_node_selector)
-    if node_ip_address is not None:
-        ip_node_selector = GetAllNodeInfoRequest.NodeSelector(
-            node_ip_address=node_ip_address
-        )
-        node_selectors.append(ip_node_selector)
-    if node_name is not None:
-        node_name_selector = GetAllNodeInfoRequest.NodeSelector(node_name=node_name)
-        node_selectors.append(node_name_selector)
     try:
         node_to_connect_infos = gcs_client.get_all_node_info(
             timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
@@ -527,13 +519,20 @@ def get_node_to_connect_for_driver(
             f" when trying to resolve node to connect to."
         )
 
-    # Prioritize head node if available
+    filtered_node_to_connect_infos = []
     for node_info in node_to_connect_infos:
+        if (
+            node_ip_address is None or node_info.node_manager_address == node_ip_address
+        ) and (node_name is None or node_info.node_name == node_name):
+            filtered_node_to_connect_infos.append(node_info)
+
+    # Prioritize head node if available
+    for node_info in filtered_node_to_connect_infos:
         if node_info.is_head_node:
             node_to_connect_info = node_info
             break
     if node_to_connect_info is None:
-        node_to_connect_info = next(iter(node_to_connect_infos))
+        node_to_connect_info = next(iter(filtered_node_to_connect_infos))
 
     return node_to_connect_info
 
