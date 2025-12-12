@@ -2298,7 +2298,7 @@ class _ActorHandle(Generic[T]):
         return (*state, self._ray_weak_ref)
 
     @classmethod
-    def _deserialization_helper(cls, state, weak_ref: bool, outer_object_ref=None):
+    def _deserialization_helper(cls, state, weak_ref: bool, outer_object_ref: Optional["ray.ObjectRef"] = None):
         """This is defined in order to make pickling work.
 
         Args:
