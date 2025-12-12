@@ -177,7 +177,7 @@ This is different from simply requesting resources in `ray_actor_options`. With 
 Don't use placement groups when:
 - Your replica is self-contained and doesn't spawn additional actors/tasks
 - You only need simple resource requirements (use `ray_actor_options` instead)
-- You want to use `max_replicas_per_node`. These options are mutually exclusive because `max_replicas_per_node` controls replica distribution at the node level, while placement groups control scheduling at the placement group level with their own strategies. Combining them would create conflicting scheduling behavior.
+- You want to use `max_replicas_per_node`. The combination of these two options is not supported today.
 
 :::{note}
 **How `max_replicas_per_node` works:** Ray Serve creates a synthetic custom resource for each deployment. Every node implicitly has 1.0 of this resource, and each replica requests `1.0 / max_replicas_per_node` of it. For example, with `max_replicas_per_node=3`, each replica requests ~0.33 of the resource, so only 3 replicas can fit on a node before the resource is exhausted. This mechanism relies on Ray's standard resource scheduling, which conflicts with placement group scheduling.
