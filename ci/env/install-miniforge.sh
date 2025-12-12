@@ -96,6 +96,12 @@ install_miniforge() {
         rsync -a "${conda_dir}/envs/py314/" "${conda_dir}/"
         rm -rf "${conda_dir}/envs/py314"
         rm -f "${conda_dir}/bin/conda" "${conda_dir}/bin/mamba"
+        # Since conda is removed, create symlinks in /usr/local/bin for python/pip
+        # This ensures they're in PATH for all shells without needing .bashrc
+        ln -sf "${conda_dir}/bin/python" /usr/local/bin/python
+        ln -sf "${conda_dir}/bin/python3" /usr/local/bin/python3
+        ln -sf "${conda_dir}/bin/pip" /usr/local/bin/pip
+        ln -sf "${conda_dir}/bin/pip3" /usr/local/bin/pip3
       else
         "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
       fi
