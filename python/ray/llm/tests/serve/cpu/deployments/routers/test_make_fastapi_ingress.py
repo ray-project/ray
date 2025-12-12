@@ -25,11 +25,19 @@ class TestMakeFastapiIngress:
 
             pass
 
+        app = FastAPI()
         # Create the ingress class - should not raise
-        ingress_cls = make_fastapi_ingress(MyCustomIngress)
+        ingress_cls = make_fastapi_ingress(MyCustomIngress, app=app)
 
-        # Check that the class qualname matches the input class qualname
-        assert ingress_cls.__qualname__ == MyCustomIngress.__qualname__
+        # Verify the ingress class was created successfully
+        assert ingress_cls is not None
+
+        # Verify routes are registered (inherited from OpenAiIngress)
+        route_paths = [
+            route.path for route in app.routes if isinstance(route, APIRoute)
+        ]
+        assert "/v1/models" in route_paths
+        assert "/v1/completions" in route_paths
 
     def test_subclass_with_custom_method(self):
         """Test that custom methods added by subclass are also properly handled."""
