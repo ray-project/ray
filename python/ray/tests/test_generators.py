@@ -327,14 +327,12 @@ def test_dynamic_generator(
 
     if num_returns_type == "dynamic":
         # Normal remote functions don't work with num_returns="dynamic".
-        @ray.remote(num_returns=num_returns_type)
-        def static(num_returns):
-            return list(range(num_returns))
+        # This should fail at decoration time, not at runtime.
+        with pytest.raises(ValueError, match="can only be used with generator"):
 
-        with pytest.raises(ray.exceptions.RayTaskError):
-            gen = ray.get(static.remote(3))
-            for ref in gen:
-                ray.get(ref)
+            @ray.remote(num_returns=num_returns_type)
+            def static(num_returns):
+                return list(range(num_returns))
 
 
 def test_dynamic_generator_gc_each_yield(ray_start_cluster):
