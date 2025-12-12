@@ -1,4 +1,28 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+
+
+def maybe_apply_llm_deployment_config_defaults(
+    defaults: Dict[str, Any],
+    user_deployment_config: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Apply defaults based on user-provided deployment config.
+
+    If the user has explicitly set 'num_replicas' in their deployment config,
+    we need to remove 'autoscaling_config' from the defaults since Ray Serve
+    does not allow both to be set simultaneously.
+
+    Args:
+        defaults: The default deployment options dictionary.
+        user_deployment_config: The user-provided deployment configuration.
+
+    Returns:
+        A copy of defaults with 'autoscaling_config' removed if 'num_replicas'
+        is present in user_deployment_config.
+    """
+    if user_deployment_config and "num_replicas" in user_deployment_config:
+        defaults = defaults.copy()
+        defaults.pop("autoscaling_config", None)
+    return defaults
 
 
 def deep_merge_dicts(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:

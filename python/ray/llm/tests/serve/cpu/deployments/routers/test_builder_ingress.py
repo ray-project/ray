@@ -10,7 +10,7 @@ import yaml
 
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.llm._internal.serve.constants import DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS
+from ray.llm._internal.serve.constants import DEFAULT_MAX_TARGET_ONGOING_REQUESTS
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     ModelLoadingConfig,
@@ -325,7 +325,7 @@ class TestBuildOpenaiApp:
         assert autoscaling_config is not None
         assert (
             autoscaling_config.target_ongoing_requests
-            == DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS
+            == DEFAULT_MAX_TARGET_ONGOING_REQUESTS
         )
 
     def test_autoscaling_config_removed_from_defaults_when_num_replicas_specified(

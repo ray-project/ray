@@ -6,7 +6,10 @@ from pydantic import Field, field_validator, model_validator
 
 from ray import serve
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
-from ray.llm._internal.common.dict_utils import deep_merge_dicts
+from ray.llm._internal.common.dict_utils import (
+    deep_merge_dicts,
+    maybe_apply_llm_deployment_config_defaults,
+)
 from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
     load_class,
@@ -164,14 +167,9 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
         [pd_config.prefill_config, pd_config.decode_config]
     )
 
-    # When num_replicas is explicitly set, we should not include autoscaling_config
-    # in the defaults since Ray Serve does not allow both.
-    if (
-        pd_config.ingress_deployment_config
-        and "num_replicas" in pd_config.ingress_deployment_config
-    ):
-        default_ingress_options = default_ingress_options.copy()
-        default_ingress_options.pop("autoscaling_config", None)
+    default_ingress_options = maybe_apply_llm_deployment_config_defaults(
+        default_ingress_options, pd_config.ingress_deployment_config
+    )
 
     ingress_options = deep_merge_dicts(
         default_ingress_options, pd_config.ingress_deployment_config or {}
