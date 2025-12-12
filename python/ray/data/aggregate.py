@@ -1000,6 +1000,8 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
         if self._ignore_nulls:
             column_accessor = BlockColumnAccessor.for_column(column_accessor.dropna())
 
+        # NOTE: Though we're returning `BlockColumn` here, it will be converted
+        #       internally into list once added as an element into the column
         return column_accessor.unique()
 
     @staticmethod
