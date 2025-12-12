@@ -1894,13 +1894,13 @@ class _ActorHandle(Generic[T]):
 
     def __init__(
         self,
-        language,
-        actor_id,
+        language: Language,
+        actor_id: str,
         max_task_retries: Optional[int],
         enable_task_events: bool,
         method_is_generator: Dict[str, bool],
-        method_decorators,
-        method_signatures,
+        method_decorators: Dict,
+        method_signatures Dict,
         method_num_returns: Dict[str, Union[int, Literal["streaming"]]],
         method_max_task_retries: Dict[str, int],
         method_retry_exceptions: Dict[str, Union[bool, list, tuple]],
@@ -1909,9 +1909,9 @@ class _ActorHandle(Generic[T]):
         enable_tensor_transport: bool,
         method_name_to_tensor_transport: Dict[str, str],
         actor_method_cpus: int,
-        actor_creation_function_descriptor,
-        cluster_and_job,
-        original_handle=False,
+        actor_creation_function_descriptor: PythonFunctionDescriptor,
+        cluster_and_job: Any,
+        original_handle: bool =False,
         weak_ref: bool = False,
         allow_out_of_order_execution: Optional[bool] = None,
     ):
@@ -2298,7 +2298,7 @@ class _ActorHandle(Generic[T]):
         return (*state, self._ray_weak_ref)
 
     @classmethod
-    def _deserialization_helper(cls, state, weak_ref: bool, outer_object_ref: Optional["ray.ObjectRef"] = None):
+    def _deserialization_helper(cls, state: Dict, weak_ref: bool, outer_object_ref: Optional["ray.ObjectRef"] = None):
         """This is defined in order to make pickling work.
 
         Args:
