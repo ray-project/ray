@@ -144,8 +144,8 @@ inline ray::stats::Gauge GetSpillManagerThroughputMBGaugeMetric() {
   };
 }
 
-inline ray::stats::Gauge GetMemoryManagerWorkerEvictionTotalGaugeMetric() {
-  return ray::stats::Gauge{
+inline ray::stats::Count GetMemoryManagerWorkerEvictionTotalCountMetric() {
+  return ray::stats::Count{
       /*name=*/"memory_manager_worker_eviction_total",
       /*description=*/
       "Total worker eviction events broken per work type {Actor, Task, Driver} and name.",
