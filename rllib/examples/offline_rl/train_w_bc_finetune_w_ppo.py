@@ -255,7 +255,6 @@ if __name__ == "__main__":
         / COMPONENT_LEARNER_GROUP
         / COMPONENT_LEARNER
         / COMPONENT_RL_MODULE
-        / "default_policy"
     )
 
     # Create a new PPO config.
@@ -279,18 +278,34 @@ if __name__ == "__main__":
                 load_state_path=rl_module_checkpoint,
             )
         )
+        .evaluation(
+            evaluation_interval=1,
+            evaluation_num_env_runners=1,
+            evaluation_duration=5,
+            evaluation_parallel_to_training=True,
+            evaluation_config=PPOConfig.overrides(explore=False),
+        )
     )
 
     # Quick test, whether initial performance in the loaded (now PPO) model is ok.
     ppo = base_config.build()
+    ppo.restore_from_path(
+        rl_module_checkpoint,
+        component=(
+            f"{COMPONENT_LEARNER_GROUP}"
+            f"/{COMPONENT_LEARNER}"
+            f"/{COMPONENT_RL_MODULE}"
+        ),
+    )
     eval_results = ppo.evaluate()
     R = eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
     assert R >= 200.0, f"Initial PPO performance bad! R={R} (expected 200.0+)."
     print(f"PPO return after initialization: {R}")
     # Check, whether training 2 times causes catastrophic forgetting.
-    ppo.train()
-    train_results = ppo.train()
-    R = train_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+    for _ in range(3):
+        ppo.train()
+    eval_results = ppo.evaluate()
+    R = eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
     assert R >= 250.0, f"PPO performance (training) bad! R={R} (expected 250.0+)."
     print(f"PPO return after 2x training: {R}")
 
