@@ -323,6 +323,8 @@ class GcsServer {
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
+  /// Flag to ensure InitMetricsExporter is only called once.
+  bool metrics_exporter_initialized_ = false;
   int task_pending_schedule_detected_ = 0;
   // Invoked when the RPC server has bound to a port.
   std::function<void(int)> port_ready_callback_;

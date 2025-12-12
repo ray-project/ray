@@ -315,6 +315,13 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       /*ms*/ RayConfig::instance().gcs_global_gc_interval_milliseconds(),
       "GCSServer.deadline_timer.gcs_global_gc");
 
+  // If the metrics agent port is already known (not dynamically assigned),
+  // initialize the metrics exporter now. Otherwise, it will be initialized
+  // when the raylet registers and reports the actual port.
+  if (config_.metrics_agent_port > 0) {
+    InitMetricsExporter(config_.metrics_agent_port);
+  }
+
   is_started_ = true;
 }
 
@@ -831,10 +838,10 @@ void GcsServer::InstallEventListeners() {
         gcs_actor_manager_->SchedulePendingActors();
         gcs_autoscaler_state_manager_->OnNodeAdd(*node);
 
-        // Initialize the metrics exporter when the head node registers.
-        // We wait for head node registration to obtain the actual metrics_agent_port,
-        // which may have been dynamically assigned (port 0 at startup).
-        if (node->is_head_node()) {
+        // Initialize the metrics exporter when the head node registers,
+        // but only if we haven't already initialized it (i.e., when using
+        // dynamic port assignment where config_.metrics_agent_port was 0).
+        if (node->is_head_node() && !metrics_exporter_initialized_) {
           int actual_port = node->metrics_agent_port();
           if (actual_port > 0) {
             InitMetricsExporter(actual_port);
@@ -971,6 +978,10 @@ RedisClientOptions GcsServer::GetRedisClientOptions() {
 }
 
 void GcsServer::InitMetricsExporter(int metrics_agent_port) {
+  RAY_CHECK(!metrics_exporter_initialized_)
+      << "InitMetricsExporter should only be called once.";
+  metrics_exporter_initialized_ = true;
+
   event_aggregator_client_->Connect(metrics_agent_port);
 
   metrics_agent_client_ = std::make_unique<rpc::MetricsAgentClientImpl>(
