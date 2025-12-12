@@ -140,8 +140,12 @@ def main(
 
     # Authenticate crane with ECR (source registry) and Docker Hub (destination)
     ecr_registry = rayci_work_repo.split("/")[0]
-    crane_ecr_login(ecr_registry)
-    crane_docker_hub_login()
+    return_code, output = crane_ecr_login(ecr_registry)
+    if return_code != 0:
+        raise CopyWandaImageError(f"ECR authentication failed: {output}")
+    return_code, output = crane_docker_hub_login()
+    if return_code != 0:
+        raise CopyWandaImageError(f"Docker Hub authentication failed: {output}")
 
     # Check if target already exists (only in upload mode)
     if upload:
