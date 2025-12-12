@@ -193,14 +193,9 @@ def apply_default_params(
 ) -> Tuple[int, Dict[str, Any]]:
     """Apply the default parameters to the desired number of replicas."""
 
-    # Apply scaling factors (if configured)
-    if (
-        ctx.config.upscaling_factor is not None
-        or ctx.config.downscaling_factor is not None
-    ):
-        desired_num_replicas = _apply_scaling_factors(
-            desired_num_replicas, ctx.current_num_replicas, ctx.config
-        )
+    desired_num_replicas = _apply_scaling_factors(
+        desired_num_replicas, ctx.current_num_replicas, ctx.config
+    )
 
     # Apply delay logic
     # Only send the internal state here to avoid overwriting the custom policy state.
