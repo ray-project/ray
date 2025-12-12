@@ -300,6 +300,10 @@ class DeploymentConfig(BaseModel):
     def to_proto_bytes(self):
         return self.to_proto().SerializeToString()
 
+    def to_dict(self):
+        # only use for logging purposes
+        return self.dict()
+
     @classmethod
     def from_proto(cls, proto: DeploymentConfigProto):
         data = _proto_to_dict(proto)
