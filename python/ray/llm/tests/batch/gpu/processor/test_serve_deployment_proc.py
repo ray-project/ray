@@ -88,8 +88,6 @@ def test_simple_serve_deployment(serve_cleanup):
 
 
 def test_serve_deployment_continue_on_error(serve_cleanup):
-    """Integration test: pipeline continues when some rows fail with continue_on_error."""
-
     @serve.deployment
     class FailingServeDeployment:
         async def process(self, request: Dict[str, Any]):
@@ -118,9 +116,11 @@ def test_serve_deployment_continue_on_error(serve_cleanup):
             dtype=None,
             request_kwargs=dict(x=row["id"]),
         ),
+        # Error rows will bypass this postprocess and return raw data with
+        # __inference_error__ set. Only success rows get resp/id keys.
         postprocess=lambda row: dict(
             resp=row.get("result"),
-            error=row.get("__inference_error__"),
+            id=row.get("id"),
         ),
     )
 
@@ -129,23 +129,24 @@ def test_serve_deployment_continue_on_error(serve_cleanup):
     ds = processor(ds)
 
     outs = ds.take_all()
-    assert len(outs) == 60  # All rows processed, none dropped
+    assert len(outs) == 60
 
-    errors = [o for o in outs if o["error"] is not None]
-    successes = [o for o in outs if o["error"] is None]
+    # Check __inference_error__ directly
+    errors = [o for o in outs if o.get("__inference_error__") is not None]
+    successes = [o for o in outs if o.get("__inference_error__") is None]
 
-    # Rows 0, 10, 20, 30, 40, 50 should fail (6 total)
-    assert len(errors) == 6
+    assert len(errors) == 6, f"Expected 6 errors, got {len(errors)}: {errors[:3]}..."
     assert len(successes) == 54
 
-    # Verify error messages contain expected info
     for e in errors:
-        assert "ValueError" in e["error"]
-        assert "Intentional failure" in e["error"]
+        error_msg = e["__inference_error__"]
+        assert "ValueError" in error_msg, f"Expected ValueError in: {error_msg}"
+        assert (
+            "Intentional failure" in error_msg
+        ), f"Expected 'Intentional failure' in: {error_msg}"
 
-    # Verify successful rows have correct result
     for s in successes:
-        assert s["resp"] is not None
+        assert s.get("resp") is not None, f"Missing resp in success row: {s}"
 
 
 def test_completion_model(model_opt_125m, create_model_opt_125m_deployment):
