@@ -1882,8 +1882,7 @@ class ActorClass(Generic[T]):
         )
 
 
-@PublicAPI
-class ActorHandle(Generic[T]):
+class _ActorHandle(Generic[T]):
     """A handle to an actor.
 
     An ActorHandle is created by calling `.remote()` on an `ActorClass` and can be
