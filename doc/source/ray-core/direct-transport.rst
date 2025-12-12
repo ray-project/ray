@@ -322,7 +322,7 @@ Advanced: Registering a new tensor transport
 
 Ray allows users to register new tensor transports for use in RDT at runtime.
 To implement a new tensor transport, you need to implement the abstract interface :class:`ray.experimental.TensorTransportManager <ray.experimental.TensorTransportManager>` defined in `tensor_transport_manager.py <https://github.com/ray-project/ray/blob/master/python/ray/experimental/gpu_object_manager/tensor_transport_manager.py>`__.
-Then you can simply give `register_tensor_transport` the transport name, supported devices for the transport, and the class that implements `TensorTransportManager`.
+Then you can give `register_tensor_transport` the transport name, supported devices for the transport, and the class that implements `TensorTransportManager`.
 NIXL, NCCL, and GLOO are registered through this API as well, see `nixl_tensor_transport.py <https://github.com/ray-project/ray/blob/00b1f9d5d3aa37a01c74ea29ef0f8c7d7a31e368/python/ray/experimental/gpu_object_manager/nixl_tensor_transport.py>`__ for a reference example.
 
 .. code-block:: python

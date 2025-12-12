@@ -1,5 +1,5 @@
 import threading
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict, List, NamedTuple
 
 from ray._private.custom_types import TensorTransportEnum
 from ray.experimental.gpu_object_manager.collective_tensor_transport import (
@@ -17,10 +17,14 @@ if TYPE_CHECKING:
     import torch
 
 
-# Class definitions for transport managers
-transport_manager_classes: Dict[str, type[TensorTransportManager]] = {}
+class TransportManagerInfo(NamedTuple):
+    """Contains the transport mananger class definition and the list of supported devices for the transport."""
 
-transport_devices: Dict[str, List[str]] = {}
+    transport_manager_class: type[TensorTransportManager]
+    devices: List[str]
+
+
+transport_manager_info: Dict[str, TransportManagerInfo] = {}
 
 # Singleton instances of transport managers
 transport_managers: Dict[str, TensorTransportManager] = {}
@@ -44,14 +48,13 @@ def register_tensor_transport(
         transport_manager_class: A class that implements TensorTransportManager.
 
     Raises:
-        ValueError: If transport_manager_class is not a class or does not subclass TensorTransportManager.
+        ValueError: If transport_manager_class is not a subclass of TensorTransportManager.
     """
-    global transport_manager_classes
-    global transport_devices
+    global transport_manager_info
 
     transport_name = transport_name.upper()
 
-    if transport_name in transport_manager_classes:
+    if transport_name in transport_manager_info:
         raise ValueError(f"Transport {transport_name} already registered.")
 
     if not issubclass(transport_manager_class, TensorTransportManager):
@@ -59,8 +62,9 @@ def register_tensor_transport(
             f"transport_manager_class {transport_manager_class.__name__} must be a subclass of TensorTransportManager."
         )
 
-    transport_manager_classes[transport_name] = transport_manager_class
-    transport_devices[transport_name] = devices
+    transport_manager_info[transport_name] = TransportManagerInfo(
+        transport_manager_class, devices
+    )
 
 
 register_tensor_transport("NIXL", ["cuda", "cpu"], NixlTensorTransport)
@@ -79,7 +83,7 @@ def get_tensor_transport_manager(
     Returns:
         TensorTransportManager: The tensor transport manager for the given tensor transport protocol.
     """
-    global transport_manager_classes
+    global transport_manager_info
     global transport_managers
     global transport_managers_lock
 
@@ -87,22 +91,22 @@ def get_tensor_transport_manager(
         if transport_name in transport_managers:
             return transport_managers[transport_name]
 
-        if transport_name not in transport_manager_classes:
+        if transport_name not in transport_manager_info:
             raise ValueError(f"Unsupported tensor transport protocol: {transport_name}")
 
-        transport_managers[transport_name] = transport_manager_classes[transport_name](
+        transport_managers[transport_name] = transport_manager_info[
             transport_name
-        )
+        ].transport_manager_class(transport_name)
         return transport_managers[transport_name]
 
 
 def device_match_transport(device: "torch.device", tensor_transport: str) -> bool:
     """Check if the device matches the transport."""
 
-    if tensor_transport not in transport_devices:
+    if tensor_transport not in transport_manager_info:
         raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
 
-    return device.type in transport_devices[tensor_transport]
+    return device.type in transport_manager_info[tensor_transport].devices
 
 
 def normalize_and_validate_tensor_transport(tensor_transport: str) -> str:
@@ -110,7 +114,7 @@ def normalize_and_validate_tensor_transport(tensor_transport: str) -> str:
 
     if (
         tensor_transport != TensorTransportEnum.OBJECT_STORE.name
-        and tensor_transport not in transport_manager_classes
+        and tensor_transport not in transport_manager_info
     ):
         raise ValueError(f"Invalid tensor transport: {tensor_transport}")
 
@@ -120,7 +124,9 @@ def normalize_and_validate_tensor_transport(tensor_transport: str) -> str:
 def validate_one_sided(tensor_transport: str, ray_usage_func: str):
     if (
         tensor_transport != TensorTransportEnum.OBJECT_STORE.name
-        and not transport_manager_classes[tensor_transport].is_one_sided()
+        and not transport_manager_info[
+            tensor_transport
+        ].transport_manager_class.is_one_sided()
     ):
         raise ValueError(
             f"Trying to use two-sided tensor transport: {tensor_transport} for {ray_usage_func}. "
