@@ -26,6 +26,7 @@ from ray.llm._internal.batch.stages import (
     ChatTemplateStage,
     DetokenizeStage,
     PrepareImageStage,
+    PrepareMultimodalStage,
     TokenizeStage,
     vLLMEngineStage,
 )
@@ -33,6 +34,7 @@ from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig,
     DetokenizeStageConfig,
     PrepareImageStageConfig,
+    PrepareMultimodalStageConfig,
     TokenizerStageConfig,
     resolve_stage_config,
 )
@@ -158,10 +160,39 @@ def build_vllm_engine_processor(
         PrepareImageStageConfig,
         processor_defaults,
     )
+
+    # Resolve and build PrepareMultimodalStage if enabled
+    prepare_multimodal_stage_cfg = resolve_stage_config(
+        config.prepare_multimodal_stage,
+        PrepareMultimodalStageConfig,
+        processor_defaults,
+    )
+
+    if image_stage_cfg.enabled and prepare_multimodal_stage_cfg.enabled:
+        raise ValueError(
+            "Cannot enable both 'prepare_image_stage' and 'prepare_multimodal_stage' "
+            "simultaneously. The 'prepare_multimodal_stage' handles image processing "
+            "along with other multimodal inputs. Please disable one of them."
+        )
+
     if image_stage_cfg.enabled:
         stages.append(
             PrepareImageStage(
                 map_batches_kwargs=build_cpu_stage_map_kwargs(image_stage_cfg),
+            )
+        )
+
+    if prepare_multimodal_stage_cfg.enabled:
+        stages.append(
+            PrepareMultimodalStage(
+                fn_constructor_kwargs=dict(
+                    model=prepare_multimodal_stage_cfg.model_source,
+                    chat_template_content_format=prepare_multimodal_stage_cfg.chat_template_content_format,
+                    apply_sys_msg_formatting=prepare_multimodal_stage_cfg.apply_sys_msg_formatting,
+                ),
+                map_batches_kwargs=build_cpu_stage_map_kwargs(
+                    prepare_multimodal_stage_cfg
+                ),
             )
         )
 

@@ -33,7 +33,10 @@ py_test_module_list(
         "exclusive",
         "team:llm",
     ],
-    deps = ["//:ray_lib"],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )
 
 py_test_module_list(

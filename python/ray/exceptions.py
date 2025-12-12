@@ -145,7 +145,9 @@ class RayTaskError(RayError):
                 f"Original exception details:\n{traceback_str}"
             )
 
-            logger.exception(f"The original cause of the RayTaskError ({err_type}) couldn't be serialized.")
+            logger.exception(
+                f"The original cause of the RayTaskError ({err_type}) couldn't be serialized."
+            )
             self.cause = RayError(err_msg)
 
         # BaseException implements a __reduce__ method that returns
