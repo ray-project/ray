@@ -721,11 +721,6 @@ class BlockColumnAccessor:
         """
         Checks whether the column is composed of list-like elements.
 
-        Args:
-            types: Optional tuple of backend-specific types to check against.
-                If not provided, defaults to list-like types appropriate
-                for the underlying backend (e.g., PyArrow list types).
-
         Returns:
             True if the column is made up of list-like values; False otherwise.
         """
