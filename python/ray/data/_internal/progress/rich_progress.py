@@ -10,7 +10,8 @@ from typing import Any, List, Optional
 
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.progress_bar import AbstractProgressBar, truncate_operator_name
+from ray.data._internal.progress.base_progress import BaseProgressBar
+from ray.data._internal.progress.utils import truncate_operator_name
 from ray.util.debug import log_once
 
 try:
@@ -91,7 +92,7 @@ class _ManagerMode(str, Enum):
             return cls.ALL
 
 
-class RichSubProgressBar(AbstractProgressBar):
+class RichSubProgressBar(BaseProgressBar):
     """Thin wrapper to provide identical interface to the ProgressBar.
 
     Updates RichExecutionProgressManager internally.
