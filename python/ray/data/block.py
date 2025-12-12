@@ -717,7 +717,7 @@ class BlockColumnAccessor:
     def dropna(self) -> BlockColumn:
         raise NotImplementedError()
 
-    def is_composed_of_lists(self, types: Optional[Tuple] = None) -> bool:
+    def is_composed_of_lists(self) -> bool:
         """
         Checks whether the column is composed of list-like elements.
 
