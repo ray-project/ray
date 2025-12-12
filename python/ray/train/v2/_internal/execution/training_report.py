@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 if TYPE_CHECKING:
     from ray.train import Checkpoint
+    from ray.train.v2.api.report_config import ValidateTaskConfig
 
 
 class _ValidationSpec:
@@ -11,12 +12,14 @@ class _ValidationSpec:
         self,
         validate_fn: Callable[["Checkpoint", Optional[Dict]], Dict],
         validate_config: Dict,
+        validate_task_config: "ValidateTaskConfig",
     ):
         self.validate_fn = validate_fn
         self.validate_config = validate_config
+        self.validate_task_config = validate_task_config
 
     def __repr__(self) -> str:
-        return f"ValidationSpec(validate_fn={self.validate_fn}, validate_config={self.validate_config})"
+        return f"ValidationSpec(validate_fn={self.validate_fn}, validate_config={self.validate_config}, validate_task_config={self.validate_task_config})"
 
 
 class _TrainingReport:
