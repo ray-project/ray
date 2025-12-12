@@ -25,6 +25,7 @@ from ray.rllib.utils.metrics import (
     EVALUATION_RESULTS,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
+from ray.rllib.utils.serialization import convert_numpy_to_python_primitives
 from ray.rllib.utils.typing import ResultDict
 from ray.tune import CLIReporter
 from ray.tune.result import TRAINING_ITERATION
@@ -362,23 +363,6 @@ def should_stop(
 
     # If none of the criteria are fulfilled, return False.
     return False
-
-
-def convert_results(results: dict[str, Any]) -> dict[str, Any]:
-    """Converts the training results from NumPy data to json compatible (python native) datatypes."""
-    output = {}
-    for key, val in results.items():
-        if isinstance(val, dict):
-            output[key] = convert_results(val)
-        elif np.issubdtype(type(val), np.integer):
-            output[key] = int(val)
-        elif np.issubdtype(type(val), np.floating):
-            output[key] = float(val)
-        elif isinstance(val, (int, float, bool, str)):
-            output[key] = val
-        else:
-            raise ValueError(f"Unexpected type {type(val)} for key {key}")
-    return output
 
 
 # TODO (sven): Make this the de-facto, well documented, and unified utility for most of
@@ -759,7 +743,7 @@ def run_rllib_example_script_experiment(
                 "time_taken": float(time_taken),
                 "trial_states": [trial.status],
                 "last_update": float(time.time()),
-                "stats": convert_results(stats),
+                "stats": convert_numpy_to_python_primitives(stats),
                 "passed": [test_passed],
                 "not_passed": [not test_passed],
                 "failures": {str(trial): 1} if not test_passed else {},
