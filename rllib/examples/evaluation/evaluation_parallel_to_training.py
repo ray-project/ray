@@ -71,6 +71,10 @@ from typing import Optional
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -80,10 +84,6 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    run_rllib_example_script_experiment,
-)
 from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import get_trainable_cls, register_env
 from ray.tune.result import TRAINING_ITERATION

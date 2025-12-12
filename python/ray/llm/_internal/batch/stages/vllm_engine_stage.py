@@ -33,6 +33,21 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
+# vLLM fatal errors that should always be re-raised, never swallowed.
+# EngineDeadError indicates the vLLM engine process has crashed and is
+# unrecoverable - all subsequent requests would fail anyway.
+_VLLM_FATAL_ERRORS: Tuple[Type[Exception], ...] = ()
+try:
+    from vllm.v1.engine.exceptions import EngineDeadError
+
+    _VLLM_FATAL_ERRORS = (EngineDeadError,)
+except ImportError:
+    # vLLM not installed or older version without this exception
+    pass
+
+# Length of prompt snippet to surface in case of recoverable error
+_MAX_PROMPT_LENGTH_IN_ERROR = 500
+
 
 class vLLMTaskType(str, Enum):
     """The type of task to run on the vLLM engine."""
@@ -332,16 +347,16 @@ class vLLMEngineWrapper:
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
             if "guided_decoding" in sampling_params:
-                guided_decoding = vllm.sampling_params.GuidedDecodingParams(
+                structured_outputs = vllm.sampling_params.StructuredOutputsParams(
                     **maybe_convert_ndarray_to_list(
                         sampling_params.pop("guided_decoding")
                     )
                 )
             else:
-                guided_decoding = None
+                structured_outputs = None
             params = vllm.SamplingParams(
                 **maybe_convert_ndarray_to_list(sampling_params),
-                guided_decoding=guided_decoding,
+                structured_outputs=structured_outputs,
             )
         elif self.task_type == vLLMTaskType.EMBED:
             params = vllm.PoolingParams(task=self.task_type.value)
@@ -406,11 +421,19 @@ class vLLMEngineWrapper:
         )
 
         # Send the request to the LLM engine.
-        stream = self.engine.generate(
-            request_id=str(request.request_id),
-            prompt=llm_prompt,
-            sampling_params=request.params,
-        )
+        # vLLM 0.12.0 uses encode() for pooling/embedding tasks, generate() for text generation
+        if self.task_type == vLLMTaskType.EMBED:
+            stream = self.engine.encode(
+                request_id=str(request.request_id),
+                prompt=llm_prompt,
+                pooling_params=request.params,
+            )
+        else:
+            stream = self.engine.generate(
+                request_id=str(request.request_id),
+                prompt=llm_prompt,
+                sampling_params=request.params,
+            )
 
         # Consume the stream until the request is finished.
         async for request_output in stream:
@@ -449,6 +472,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         task_type: vLLMTaskType = vLLMTaskType.GENERATE,
         max_pending_requests: Optional[int] = None,
         dynamic_lora_loading_path: Optional[str] = None,
+        should_continue_on_error: bool = False,
     ):
         """
         Initialize the vLLMEngineStageUDF.
@@ -463,9 +487,13 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 it will be set to 1.1 * max_num_seqs * pipeline_parallel_size.
             dynamic_lora_loading_path: The path to the dynamic LoRA adapter. It is expected
                 to hold subfolders each for a different lora checkpoint.
+            should_continue_on_error: If True, continue processing when inference fails for
+                a row instead of raising. Failed rows will have '__inference_error__'
+                set to the error message.
         """
         super().__init__(data_column, expected_input_keys)
         self.model = model
+        self.should_continue_on_error = should_continue_on_error
 
         # Setup vLLM engine kwargs.
         self.task_type = task_type
@@ -557,6 +585,57 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         engine_kwargs["task"] = task_type
         return engine_kwargs
 
+    async def _generate_with_error_handling(
+        self,
+        row: Dict[str, Any],
+        batch_uuid: uuid.UUID,
+    ) -> Dict[str, Any]:
+        """Generate output for a single row, catching errors if should_continue_on_error is set.
+
+        Args:
+            row: The input row.
+            batch_uuid: The batch UUID for logging.
+
+        Returns:
+            The output dict, with __inference_error__ set if an error occurred.
+        """
+        idx_in_batch = row[self.IDX_IN_BATCH_COLUMN]
+        try:
+            request, output, time_taken_llm = await self.llm.generate_async(row)
+            return {
+                **output,
+                "request_id": request.request_id,
+                self.IDX_IN_BATCH_COLUMN: request.idx_in_batch,
+                "batch_uuid": batch_uuid.hex,
+                "time_taken_llm": time_taken_llm,
+                "params": str(request.params),
+                "__inference_error__": None,
+            }
+        except _VLLM_FATAL_ERRORS:
+            # Fatal engine errors (e.g., EngineDeadError) must always propagate.
+            # The engine is dead and all subsequent requests would fail.
+            raise
+        except Exception as e:
+            if not self.should_continue_on_error:
+                raise
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            logger.warning(
+                "[vLLM] Inference failed for row %d in batch %s: %s",
+                idx_in_batch,
+                batch_uuid.hex,
+                error_msg,
+            )
+            # Include snippet of failed prompt
+            prompt = row.get("prompt", "")
+            if len(prompt) > _MAX_PROMPT_LENGTH_IN_ERROR:
+                prompt = prompt[:_MAX_PROMPT_LENGTH_IN_ERROR] + "...[truncated]"
+            return {
+                self.IDX_IN_BATCH_COLUMN: idx_in_batch,
+                "batch_uuid": batch_uuid.hex,
+                "__inference_error__": error_msg,
+                "prompt": prompt,
+            }
+
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """Run the vLLM engine.
 
@@ -569,19 +648,13 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         batch_uuid = uuid.uuid4()
         batch_start_time = time.perf_counter()
 
-        tasks = [asyncio.create_task(self.llm.generate_async(row)) for row in batch]
+        tasks = [
+            asyncio.create_task(self._generate_with_error_handling(row, batch_uuid))
+            for row in batch
+        ]
 
         for resp in asyncio.as_completed(tasks):
-            request, output, time_taken_llm = await resp
-
-            yield {
-                **output,
-                "request_id": request.request_id,
-                self.IDX_IN_BATCH_COLUMN: request.idx_in_batch,
-                "batch_uuid": batch_uuid.hex,
-                "time_taken_llm": time_taken_llm,
-                "params": str(request.params),
-            }
+            yield await resp
 
         batch_time_taken = time.perf_counter() - batch_start_time
         # TODO: Add metrics to the UDf wrapper so that we don't need
