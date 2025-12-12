@@ -61,14 +61,7 @@ static inline bool should_enable_open_census() {
 /// We recommend you to use this only once inside a main script and add Shutdown() method
 /// to any signal handler.
 /// \param global_tags[in] Tags that will be appended to all metrics in this process.
-/// \param metrics_agent_port[in] The port to export metrics at each node.
-/// \param worker_id[in] The worker ID of the current component.
-static inline void Init(
-    const TagsType &global_tags,
-    const int metrics_agent_port,
-    const WorkerID &worker_id,
-    int64_t metrics_report_batch_size = RayConfig::instance().metrics_report_batch_size(),
-    int64_t max_grpc_payload_size = RayConfig::instance().agent_max_grpc_message_size()) {
+static inline void Init(const TagsType &global_tags) {
   absl::MutexLock lock(&stats_mutex);
   if (StatsConfig::instance().IsInitialized()) {
     return;
@@ -99,11 +92,6 @@ static inline void Init(
         StatsConfig::instance().GetReportInterval());
     opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
         StatsConfig::instance().GetHarvestInterval());
-    OpenCensusProtoExporter::Register(metrics_agent_port,
-                                      (*metrics_io_service),
-                                      worker_id,
-                                      metrics_report_batch_size,
-                                      max_grpc_payload_size);
   }
 
   StatsConfig::instance().SetGlobalTags(global_tags);
@@ -126,6 +114,28 @@ static inline void InitOpenTelemetryExporter(const int metrics_agent_port) {
          queueing.*/
       std::chrono::milliseconds(
           absl::ToInt64Milliseconds(0.5 * StatsConfig::instance().GetReportInterval())));
+}
+
+/// Initialize the OpenCensus exporter with the given port.
+/// \param metrics_agent_port[in] The port to export metrics at each node.
+/// \param worker_id[in] The worker ID of the current component.
+static inline void InitOpenCensusExporter(
+    const int metrics_agent_port,
+    const WorkerID &worker_id,
+    int64_t metrics_report_batch_size = RayConfig::instance().metrics_report_batch_size(),
+    int64_t max_grpc_payload_size = RayConfig::instance().agent_max_grpc_message_size()) {
+  if (!should_enable_open_census() || metrics_io_service_pool == nullptr) {
+    return;
+  }
+  instrumented_io_context *metrics_io_service = metrics_io_service_pool->Get();
+  if (metrics_io_service == nullptr) {
+    return;
+  }
+  OpenCensusProtoExporter::Register(metrics_agent_port,
+                                    (*metrics_io_service),
+                                    worker_id,
+                                    metrics_report_batch_size,
+                                    max_grpc_payload_size);
 }
 
 /// Shutdown the initialized stats library.

@@ -131,8 +131,9 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           config.node_ip_address,
           ClusterID::Nil(),
           RayConfig::instance().gcs_server_rpc_client_thread_num()),
+      // Use deferred connection - will connect when actual port is known.
       event_aggregator_client_(std::make_unique<rpc::EventAggregatorClientImpl>(
-          config_.metrics_agent_port, event_aggregator_client_call_manager_)),
+          event_aggregator_client_call_manager_)),
       ray_event_recorder_(std::make_unique<observability::RayEventRecorder>(
           *event_aggregator_client_,
           io_context_provider_.GetIOContext<observability::RayEventRecorder>(),
@@ -970,6 +971,8 @@ RedisClientOptions GcsServer::GetRedisClientOptions() {
 }
 
 void GcsServer::InitMetricsExporter(int metrics_agent_port) {
+  event_aggregator_client_->Connect(metrics_agent_port);
+
   metrics_agent_client_ = std::make_unique<rpc::MetricsAgentClientImpl>(
       "127.0.0.1",
       metrics_agent_port,
@@ -979,6 +982,8 @@ void GcsServer::InitMetricsExporter(int metrics_agent_port) {
   metrics_agent_client_->WaitForServerReady([this, metrics_agent_port](
                                                 const Status &server_status) {
     if (server_status.ok()) {
+      // Initialize both OpenCensus and OpenTelemetry exporters with the actual port.
+      stats::InitOpenCensusExporter(metrics_agent_port, WorkerID::Nil());
       stats::InitOpenTelemetryExporter(metrics_agent_port);
       ray_event_recorder_->StartExportingEvents();
       RAY_LOG(INFO) << "Metrics exporter initialized with port " << metrics_agent_port;

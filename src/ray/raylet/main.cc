@@ -1029,13 +1029,17 @@ int main(int argc, char *argv[]) {
         {ray::stats::VersionKey, kRayVersion},
         {ray::stats::NodeAddressKey, node_ip_address},
         {ray::stats::SessionNameKey, session_name}};
+    ray::stats::Init(global_tags);
+    // Use the actual bound port returned by the node manager.
+    // config.metrics_agent_port can be 0 (dynamic port assignment).
     int actual_metrics_agent_port = node_manager->GetMetricsAgentPort();
-    ray::stats::Init(global_tags, actual_metrics_agent_port, ray::WorkerID::Nil());
     metrics_agent_client = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
         "127.0.0.1", actual_metrics_agent_port, main_service, *client_call_manager);
     metrics_agent_client->WaitForServerReady([actual_metrics_agent_port](
                                                  const ray::Status &server_status) {
       if (server_status.ok()) {
+        ray::stats::InitOpenCensusExporter(actual_metrics_agent_port,
+                                           ray::WorkerID::Nil());
         ray::stats::InitOpenTelemetryExporter(actual_metrics_agent_port);
       } else {
         RAY_LOG(ERROR) << "Failed to establish connection to the metrics exporter agent. "

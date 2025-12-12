@@ -451,13 +451,6 @@ class ReporterAgent(
                     address="127.0.0.1" if self._ip == "127.0.0.1" else "",
                 )
             )
-
-            # metrics_export_port can be 0 for dynamic port assignment. get the actual bound port.
-            persist_port(
-                dashboard_agent.session_dir,
-                ray_constants.METRICS_EXPORT_PORT_FILENAME,
-                stats_exporter.port,
-            )
             dashboard_agent.metrics_export_port = stats_exporter.port
 
             self._metrics_agent = MetricsAgent(
