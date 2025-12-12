@@ -3325,7 +3325,7 @@ std::tuple<int, int, int> NodeManager::WaitForDashboardAgentPorts(
         WaitForPersistedPort(config.session_dir, kMetricsAgentPortFilename));
   }
   int metrics_export_port = config.metrics_export_port;
-  if (metrics_export_port == 0) {
+  if (metrics_export_port == 0 && RayConfig::instance().enable_metrics_collection()) {
     RAY_ASSIGN_OR_CHECK(
         metrics_export_port,
         WaitForPersistedPort(config.session_dir, kMetricsExportPortFilename));
