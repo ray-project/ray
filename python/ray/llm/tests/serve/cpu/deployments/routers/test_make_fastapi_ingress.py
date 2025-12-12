@@ -15,37 +15,25 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 class TestMakeFastapiIngressInheritance:
     """Test suite for make_fastapi_ingress with inherited classes.
 
-    These tests verify that when subclassing OpenAiIngress, inherited methods
-    are properly transformed so that `self` is treated as a dependency
-    (instance binding) rather than a query parameter.
+    These tests verify that when subclassing OpenAiIngress, make_fastapi_ingress
+    correctly creates a new class with all routes properly registered.
+    The actual fix for inherited methods is in Ray Serve's make_fastapi_class_based_view
+    which uses MRO to identify inherited methods.
     """
 
-    def test_subclass_methods_have_correct_qualname(self):
-        """Test that inherited methods get their __qualname__ updated to the subclass.
-
-        If inherited methods keep their parent's __qualname__, they won't be
-        recognized as belonging to the subclass and won't be transformed.
-        """
+    def test_subclass_inherits_endpoints(self):
+        """Test that subclassing OpenAiIngress works with make_fastapi_ingress."""
 
         class MyCustomIngress(OpenAiIngress):
             """Custom ingress that inherits all OpenAI endpoints."""
 
             pass
 
-        # Create the ingress class
+        # Create the ingress class - should not raise
         ingress_cls = make_fastapi_ingress(MyCustomIngress)
 
         # Check that the class qualname matches the input class qualname
-        # (classes defined inside methods have full path in qualname)
         assert ingress_cls.__qualname__ == MyCustomIngress.__qualname__
-
-        # Check that inherited methods have updated __qualname__
-        for method_name in DEFAULT_ENDPOINTS.keys():
-            method = getattr(ingress_cls, method_name)
-            assert "MyCustomIngress" in method.__qualname__, (
-                f"Method {method_name} should have MyCustomIngress in __qualname__, "
-                f"but got {method.__qualname__}"
-            )
 
     def test_subclass_with_custom_method(self):
         """Test that custom methods added by subclass are also properly handled."""
@@ -62,17 +50,17 @@ class TestMakeFastapiIngressInheritance:
             **DEFAULT_ENDPOINTS,
         }
 
+        app = FastAPI()
         ingress_cls = make_fastapi_ingress(
-            MyCustomIngress, endpoint_map=custom_endpoints
+            MyCustomIngress, endpoint_map=custom_endpoints, app=app
         )
 
-        # Check custom method has correct qualname
-        custom_method = ingress_cls.custom_endpoint
-        assert "MyCustomIngress" in custom_method.__qualname__
-
-        # Check inherited methods also have correct qualname
-        completions_method = ingress_cls.completions
-        assert "MyCustomIngress" in completions_method.__qualname__
+        # Verify the class was created and the custom route is registered
+        assert ingress_cls is not None
+        route_paths = [
+            route.path for route in app.routes if isinstance(route, APIRoute)
+        ]
+        assert "/custom" in route_paths
 
     def test_routes_registered_correctly(self):
         """Test that routes are registered with the FastAPI app."""
@@ -138,15 +126,16 @@ class TestMakeFastapiIngressInheritance:
             **DEFAULT_ENDPOINTS,
         }
 
-        ingress_cls = make_fastapi_ingress(FinalIngress, endpoint_map=custom_endpoints)
+        app = FastAPI()
+        make_fastapi_ingress(FinalIngress, endpoint_map=custom_endpoints, app=app)
 
-        # All methods should have FinalIngress in their qualname
-        for method_name in custom_endpoints.keys():
-            method = getattr(ingress_cls, method_name)
-            assert "FinalIngress" in method.__qualname__, (
-                f"Method {method_name} should have FinalIngress in __qualname__, "
-                f"but got {method.__qualname__}"
-            )
+        # Verify all routes are registered
+        route_paths = [
+            route.path for route in app.routes if isinstance(route, APIRoute)
+        ]
+        assert "/intermediate" in route_paths
+        assert "/final" in route_paths
+        assert "/v1/completions" in route_paths
 
     def test_method_signature_preserved(self):
         """Test that method signatures are preserved after decoration."""

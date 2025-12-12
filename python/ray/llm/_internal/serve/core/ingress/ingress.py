@@ -237,22 +237,10 @@ def make_fastapi_ingress(
         class_dict[method_name] = decorated_method
 
     # Create new class with the decorated methods in its __dict__.
-    # IMPORTANT: We keep the same __name__ and __qualname__ as the original
-    # class so that make_fastapi_class_based_view can properly identify the routes
-    # (it checks if cls.__qualname__ is in route.endpoint.__qualname__).
+    # We keep the same __name__ and __qualname__ as the original class
+    # so that the new class properly represents the input class.
     new_cls = type(cls.__name__, (cls,), class_dict)
     new_cls.__qualname__ = cls.__qualname__
-
-    # Fix: Update each decorated method's __qualname__ to match the new class.
-    # This is necessary for inherited methods whose __qualname__ still references
-    # the parent class (e.g., "OpenAiIngress.completions" instead of
-    # "MyOpenAiIngress.completions"). Without this fix, make_fastapi_class_based_view
-    # won't recognize inherited methods as belonging to the subclass.
-    for method_name in endpoint_map.keys():
-        method = getattr(new_cls, method_name)
-        if hasattr(method, "__qualname__"):
-            # Replace any parent class qualname with the new class qualname
-            method.__qualname__ = f"{cls.__qualname__}.{method_name}"
 
     # Apply the serve.ingress decorator to the new class
     return serve.ingress(app)(new_cls)
