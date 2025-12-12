@@ -712,6 +712,86 @@ class TestReservationOpResourceAllocator:
             cpu=1, object_store_memory=1
         )
 
+    def test_budget_capped_by_max_resource_usage(self, restore_data_context):
+        """Test that the total allocation is capped by max_resource_usage.
+
+        Total allocation = max(total_reserved, op_usage) + op_shared
+        We cap op_shared so that total allocation <= max_resource_usage.
+        Excess shared resources should remain available for other operators.
+        """
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1, incremental_resource_usage=ExecutionResources(1, 0, 10))
+        o3 = mock_map_op(o2, incremental_resource_usage=ExecutionResources(1, 0, 10))
+
+        # o2 has a small max CPU, so its CPU shared allocation will be capped.
+        # o3 has unlimited max_resource_usage.
+        o2.min_max_resource_requirements = MagicMock(
+            return_value=(
+                ExecutionResources.zero(),
+                ExecutionResources(cpu=4, object_store_memory=float("inf")),
+            )
+        )
+        o3.min_max_resource_requirements = MagicMock(
+            return_value=(
+                ExecutionResources.zero(),
+                ExecutionResources.inf(),
+            )
+        )
+
+        topo = build_streaming_topology(o3, ExecutionOptions())
+
+        global_limits = ExecutionResources(cpu=20, object_store_memory=400)
+
+        op_usages = {
+            o1: ExecutionResources.zero(),
+            o2: ExecutionResources(cpu=2, object_store_memory=40),
+            o3: ExecutionResources(cpu=2, object_store_memory=40),
+        }
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_op_internal = {o1: 0, o2: 40, o3: 40}
+        resource_manager._mem_op_outputs = {o1: 0, o2: 0, o3: 0}
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+        assert isinstance(allocator, ReservationOpResourceAllocator)
+        allocator.update_budgets(limits=global_limits)
+
+        # All tuples below are (cpu, object_store_memory).
+        #
+        # Reservation phase:
+        # - default_reserved per op = global_limits * 0.5 / 2 = (5, 100)
+        # - reserved_for_outputs per op = 100 / 2 = 50
+        # - o2's reserved_for_tasks is capped by max (4, inf) -> (4, 50)
+        # - o3's reserved_for_tasks = (5, 50)
+        # - total_shared = global_limits - o2_total_reserved - o3_total_reserved
+        #                = (20, 400) - (4, 100) - (5, 100) = (11, 200)
+        #
+        # Budget phase (first loop calculates reserved_remaining):
+        # - o2: reserved_remaining = reserved_for_tasks - usage = (4, 50) - (2, 40) = (2, 10)
+        # - o3: reserved_remaining = (5, 50) - (2, 40) = (3, 10)
+        #
+        # Shared allocation (second loop, reversed order):
+        # - o3: op_shared = remaining_shared / 2 = (5.5, 100), no cap
+        #       budget = reserved_remaining + op_shared = (3, 10) + (5.5, 100) = (8.5, 110)
+        # - o2: op_shared = (5.5, 100), CPU capped to (0, 100)
+        #       budget = (2, 10) + (0, 100) = (2, 110)
+        #       remaining_shared = (5.5, 0)
+        # - After loop, remaining (5.5, 0) given to most downstream op (o3):
+        #       o3 budget = (8.5, 110) + (5.5, 0) = (14, 110)
+        assert allocator._op_budgets[o2] == ExecutionResources(
+            cpu=2, object_store_memory=110
+        )
+        assert allocator._op_budgets[o3] == ExecutionResources(
+            cpu=14, object_store_memory=110
+        )
+
     def test_only_handle_eligible_ops(self, restore_data_context):
         """Test that we only handle non-completed map ops."""
         DataContext.get_current().op_resource_reservation_enabled = True

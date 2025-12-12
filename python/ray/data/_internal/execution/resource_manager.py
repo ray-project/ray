@@ -778,6 +778,14 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # TODO fix
         return ExecutionResources.zero()
 
+    def _get_total_reserved(self, op: PhysicalOperator) -> ExecutionResources:
+        """Get total reserved resources for an operator, including outputs reservation."""
+        op_reserved = self._op_reserved[op]
+        reserved_for_outputs = self._reserved_for_op_outputs[op]
+        return op_reserved.copy(
+            object_store_memory=op_reserved.object_store_memory + reserved_for_outputs
+        )
+
     def max_task_output_bytes_to_read(
         self,
         op: PhysicalOperator,
@@ -879,6 +887,20 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 remaining_shared
             ):
                 op_shared = op_shared.add(to_borrow)
+
+            # Cap op_shared so that total allocation doesn't exceed max_resource_usage.
+            # Total allocation = max(total_reserved, op_usage) + op_shared
+            # This ensures excess resources stay in remaining_shared for other operators.
+            _, max_resource_usage = op.min_max_resource_requirements()
+            if max_resource_usage is not None:
+                total_reserved = self._get_total_reserved(op)
+                op_usage = self._resource_manager.get_op_usage(op)
+                current_allocation = total_reserved.max(op_usage)
+                max_shared = max_resource_usage.subtract(current_allocation).max(
+                    ExecutionResources.zero()
+                )
+                op_shared = op_shared.min(max_shared)
+
             remaining_shared = remaining_shared.subtract(op_shared)
             assert remaining_shared.is_non_negative(), (
                 remaining_shared,
@@ -887,7 +909,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 to_borrow,
             )
 
-            if op.min_max_resource_requirements()[1].gpu > 0:
+            if max_resource_usage is not None and max_resource_usage.gpu > 0:
                 # If an operator needs GPU, we just allocate all GPUs to it.
                 # TODO(hchen): allocate resources across multiple GPU operators.
 
@@ -904,6 +926,14 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
             self._op_budgets[op] = (
                 self._op_budgets[op].add(op_shared).copy(gpu=target_num_gpu)
+            )
+
+        # Give any remaining shared resources to the most downstream op.
+        # This can happen when some ops have their shared allocation capped.
+        if eligible_ops and not remaining_shared.is_zero():
+            downstream_op = eligible_ops[-1]
+            self._op_budgets[downstream_op] = self._op_budgets[downstream_op].add(
+                remaining_shared.copy(gpu=0)
             )
 
         # A materializing operator like `AllToAllOperator` waits for all its input
