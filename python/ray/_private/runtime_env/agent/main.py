@@ -239,15 +239,14 @@ if __name__ == "__main__":
     sock.bind(sockaddr)
 
     bound_port = sock.getsockname()[1]
-    if args.session_dir:
-        try:
-            persist_port(
-                args.session_dir,
-                ray_constants.RUNTIME_ENV_AGENT_PORT_FILENAME,
-                bound_port,
-            )
-        except Exception as e:
-            logging.warning(f"Failed to write runtime env agent port to file: {e}")
+    try:
+        persist_port(
+            args.session_dir,
+            ray_constants.RUNTIME_ENV_AGENT_PORT_FILENAME,
+            bound_port,
+        )
+    except Exception as e:
+        logging.warning(f"Failed to write runtime env agent port to file: {e}")
 
     try:
         web.run_app(app, sock=sock, loop=loop)

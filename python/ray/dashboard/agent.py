@@ -93,11 +93,6 @@ class DashboardAgent:
                 ray_constants.METRICS_EXPORT_PORT_FILENAME,
                 -1,
             )
-            persist_port(
-                self.session_dir,
-                ray_constants.DASHBOARD_AGENT_LISTEN_PORT_FILENAME,
-                -1,
-            )
 
     def _init_non_minimal(self):
         from grpc import aio as aiogrpc
@@ -218,16 +213,15 @@ class DashboardAgent:
                 )
                 launch_http_server = False
 
-        if launch_http_server:
-            # listen_port can be 0 for dynamic port assignment. get the actual bound port.
-            if self.http_server and self.http_server.http_port:
-                self.listen_port = self.http_server.http_port
-            persist_port(
-                self.session_dir,
-                ray_constants.DASHBOARD_AGENT_LISTEN_PORT_FILENAME,
-                self.listen_port,
-            )
+        # If the HTTP server fails to start or is not launched, we should
+        # persist -1 to indicate that the service is not available.
+        persist_port(
+            self.session_dir,
+            ray_constants.DASHBOARD_AGENT_LISTEN_PORT_FILENAME,
+            self.listen_port if self.http_server and launch_http_server else -1,
+        )
 
+        if launch_http_server:
             # Writes agent address to kv.
             # DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX: <node_id> -> (ip, http_port, grpc_port)
             # DASHBOARD_AGENT_ADDR_IP_PREFIX: <ip> -> (node_id, http_port, grpc_port)
