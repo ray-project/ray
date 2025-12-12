@@ -1120,27 +1120,42 @@ def test_ingress_multi_level_inheritance(serve_instance):
 
     Without the fix, inherited endpoints would fail with:
     'Field required at ('query', 'self')'
+
+    Also tests that unrelated classes whose names CONTAIN an MRO class name
+    as a substring don't cause false positives. For example, if MRO contains
+    "Child", an unrelated class "ChildExtra" should not have its routes matched
+    because "Child" in "ChildExtra.method" would be True with substring matching.
+    This validates that the matching uses prefix matching with a dot delimiter.
     """
     app = FastAPI()
 
-    class GrandparentIngress:
+    class Grandparent:
         @app.get("/grandparent")
         def grandparent_endpoint(self):
             return {"level": "grandparent"}
 
-    class ParentIngress(GrandparentIngress):
+    class Parent(Grandparent):
         @app.get("/parent")
         def parent_endpoint(self):
             return {"level": "parent"}
 
-    class ChildIngress(ParentIngress):
+    class Child(Parent):
         @app.get("/child")
         def child_endpoint(self):
             return {"level": "child"}
 
+    # Unrelated class whose name CONTAINS "Child" (an MRO class) as a substring.
+    # With substring matching, "Child" in "ChildExtra.extra_endpoint" would be
+    # True, causing incorrect self injection into this unrelated route.
+    class ChildExtra:
+        @app.get("/extra")
+        def extra_endpoint(self):
+            # This should NOT have self injection since ChildExtra is not in MRO
+            return {"level": "extra"}
+
     @serve.deployment
     @serve.ingress(app)
-    class ServedIngress(ChildIngress):
+    class ServedIngress(Child):
         pass
 
     serve.run(ServedIngress.bind())
@@ -1159,6 +1174,15 @@ def test_ingress_multi_level_inheritance(serve_instance):
     resp = httpx.get(f"{url}/child")
     assert resp.status_code == 200, f"Child failed: {resp.text}"
     assert resp.json() == {"level": "child"}
+
+    # Test that the unrelated ChildExtra route is NOT processed.
+    # With substring matching bug, "Child" in "ChildExtra.extra_endpoint" would
+    # be True, incorrectly applying self injection and making this route work.
+    # With the fix, the route is correctly excluded from processing, so `self`
+    # is not injected. FastAPI then treats `self` as a required query parameter,
+    # which fails with 422 (unprocessable entity).
+    resp = httpx.get(f"{url}/extra")
+    assert resp.status_code == 422, f"Expected 422 for unprocessed route: {resp.text}"
 
 
 def test_ingress_direct_inheritance(serve_instance):

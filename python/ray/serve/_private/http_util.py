@@ -452,8 +452,10 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         # NOTE: We check against all classes in the MRO to handle inherited
         # methods. When a method is inherited, its __qualname__ still references
         # the parent class (e.g., "ParentClass.method" not "ChildClass.method").
+        # We use "ClassName." prefix matching (not substring) to avoid false
+        # positives where class "A" would incorrectly match routes from "AA".
         and any(
-            base.__qualname__ in route.endpoint.__qualname__
+            route.endpoint.__qualname__.startswith(base.__qualname__ + ".")
             for base in cls.__mro__
             if base is not object
         )
