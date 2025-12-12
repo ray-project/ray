@@ -4247,7 +4247,7 @@
   python: "3.11"
   group: llm-batch
   working_dir: llm_tests/batch
-  frequency: weekly
+  frequency: nightly
   team: llm
 
   cluster:
