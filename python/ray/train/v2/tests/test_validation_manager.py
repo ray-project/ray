@@ -15,7 +15,7 @@ from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
     _ValidationSpec,
 )
-from ray.train.v2.tests.util import create_dummy_training_results
+from ray.train.v2.tests.util import create_dummy_training_reports
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -61,7 +61,7 @@ def test_checkpoint_validation_management_reordering(tmp_path):
     (
         low_initial_high_final_training_result,
         high_initial_low_final_training_result,
-    ) = create_dummy_training_results(
+    ) = create_dummy_training_reports(
         num_results=2,
         storage_context=StorageContext(
             storage_path=tmp_path,
@@ -69,7 +69,7 @@ def test_checkpoint_validation_management_reordering(tmp_path):
         ),
     )
 
-    # Start validation tasks and wait for them to complete
+    # Enqueue validation tasks
     vm.after_report(
         training_report=_TrainingReport(
             metrics=low_initial_high_final_training_result.metrics,
@@ -92,17 +92,23 @@ def test_checkpoint_validation_management_reordering(tmp_path):
         ),
         metrics={},
     )
+
+    # Assert ValidationManager state after each poll
+    assert vm._poll_validations() == 1
     ray.wait(
         list(vm._pending_validations.keys()),
-        num_returns=2,
+        num_returns=1,
         # Pick high timeout to guarantee completion but ray.wait should finish much earlier
         timeout=100,
     )
-
-    # Assert ValidationManager state after each poll
-    assert vm._poll_validations() == 0
+    assert vm._poll_validations() == 1
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
         {low_initial_high_final_training_result.checkpoint: {"score": 200}}
+    )
+    ray.wait(
+        list(vm._pending_validations.keys()),
+        num_returns=1,
+        timeout=100,
     )
     assert vm._poll_validations() == 0
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_with(
@@ -113,7 +119,7 @@ def test_checkpoint_validation_management_reordering(tmp_path):
 def test_checkpoint_validation_management_failure(tmp_path):
     checkpoint_manager = create_autospec(CheckpointManager, instance=True)
     vm = validation_manager.ValidationManager(checkpoint_manager=checkpoint_manager)
-    failing_training_result = create_dummy_training_results(
+    failing_training_result = create_dummy_training_reports(
         num_results=1,
         storage_context=StorageContext(
             storage_path=tmp_path,
@@ -135,6 +141,7 @@ def test_checkpoint_validation_management_failure(tmp_path):
         ),
         metrics={},
     )
+    assert vm._poll_validations() == 1
     ray.wait(
         list(vm._pending_validations.keys()),
         num_returns=1,
@@ -149,7 +156,7 @@ def test_checkpoint_validation_management_failure(tmp_path):
 def test_checkpoint_validation_management_slow_validate_fn(tmp_path):
     checkpoint_manager = create_autospec(CheckpointManager, instance=True)
     vm = validation_manager.ValidationManager(checkpoint_manager=checkpoint_manager)
-    timing_out_training_result = create_dummy_training_results(
+    timing_out_training_result = create_dummy_training_reports(
         num_results=1,
         storage_context=StorageContext(
             storage_path=tmp_path,

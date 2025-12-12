@@ -443,7 +443,6 @@ def test_get_all_reported_checkpoints_all_consistency_modes():
             ]
 
             # Assert that we get validated chceckpoints
-            # modoru: replace with signal actor
             signal_actor.send.remote()
             assert [
                 reported_checkpoint.metrics
