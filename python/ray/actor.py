@@ -2302,7 +2302,6 @@ class _ActorHandle(Generic[T]):
         """This is defined in order to make pickling work.
 
         Args:
-            cls: The class definition.
             state: The serialized state of the actor handle.
             weak_ref: Whether this was serialized from an actor handle with a
                 weak ref to the actor.
