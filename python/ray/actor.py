@@ -2302,12 +2302,13 @@ class _ActorHandle(Generic[T]):
         """This is defined in order to make pickling work.
 
         Args:
+            cls: The class definition.
             state: The serialized state of the actor handle.
+            weak_ref: Whether this was serialized from an actor handle with a
+                weak ref to the actor.
             outer_object_ref: The ObjectRef that the serialized actor handle
                 was contained in, if any. This is used for counting references
                 to the actor handle.
-            weak_ref: Whether this was serialized from an actor handle with a
-                weak ref to the actor.
 
         """
         worker = ray._private.worker.global_worker
