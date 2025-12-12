@@ -361,7 +361,7 @@ class OfflinePreLearner:
             sample_episodes=True,
             to_numpy=True,
             lookback=self.config.episode_lookback_horizon,
-            min_batch_len_T=getattr(self.config, "burnin_len", 0),
+            min_batch_length_T=getattr(self.config, "burnin_len", 0),
         )
 
     def _should_module_be_updated(self, module_id, multi_agent_batch=None) -> bool:

@@ -40,7 +40,7 @@ class MARWILTorchLearner(MARWILLearner, TorchLearner):
         # simplify the actual computation.
         if Columns.LOSS_MASK in batch:
             # Get the loss mask from the batch.
-            mask = batch[Columns.LOSS_MASK]
+            mask = batch[Columns.LOSS_MASK].clone()
             # Check, if a burn-in should be used to recover from a poor state.
             if self.config.burnin_len > 0:
                 # Train only on the timesteps after the burn-in period.
