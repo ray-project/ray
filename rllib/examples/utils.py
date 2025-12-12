@@ -364,6 +364,23 @@ def should_stop(
     return False
 
 
+def convert_results(results: dict[str, Any]) -> dict[str, Any]:
+    """Converts the training results from NumPy data to json compatible (python native) datatypes."""
+    output = {}
+    for key, val in results.items():
+        if isinstance(val, dict):
+            output[key] = convert_results(val)
+        elif np.issubdtype(type(val), np.integer):
+            output[key] = int(val)
+        elif np.issubdtype(type(val), np.floating):
+            output[key] = float(val)
+        elif isinstance(val, (int, float, bool, str)):
+            output[key] = val
+        else:
+            raise ValueError(f"Unexpected type {type(val)} for key {key}")
+    return output
+
+
 # TODO (sven): Make this the de-facto, well documented, and unified utility for most of
 #  our tests:
 #  - CI (label: "learning_tests")
@@ -707,11 +724,6 @@ def run_rllib_example_script_experiment(
             f"Running the example script resulted in one or more errors! {errors}"
         )
 
-    print(f"{args.as_test=}, {args.as_release_test=}")
-    print(f"{os.environ=}")
-    print("TEST_OUTPUT_JSON:", os.environ.get("TEST_OUTPUT_JSON", "MISSING!!!"))
-    print("METRICS_OUTPUT_JSON:", os.environ.get("METRICS_OUTPUT_JSON", "MISSING!!!"))
-
     # If run as a test, check whether we reached the specified success criteria.
     test_passed = False
     if args.as_test:
@@ -747,27 +759,14 @@ def run_rllib_example_script_experiment(
                 "time_taken": float(time_taken),
                 "trial_states": [trial.status],
                 "last_update": float(time.time()),
-                "stats": stats,
+                "stats": convert_results(stats),
                 "passed": [test_passed],
                 "not_passed": [not test_passed],
                 "failures": {str(trial): 1} if not test_passed else {},
             }
-            print(f"writing these {json_summary=}")
             filename = os.environ.get("TEST_OUTPUT_JSON", "/tmp/learning_test.json")
-            print(f"{filename=}")
             with open(filename, "wt") as f:
-                try:
-                    json.dump(json_summary, f)
-                # Something went wrong writing json. Try again w/ simplified stats.
-                except Exception as e:
-                    print(f"Exception occurred trying to dump data: {e}")
-                    from ray.rllib.algorithms.algorithm import Algorithm
-
-                    simplified_stats = {
-                        k: stats[k] for k in Algorithm._progress_metrics if k in stats
-                    }
-                    json_summary["stats"] = simplified_stats
-                    json.dump(json_summary, f)
+                json.dump(json_summary, f)
 
         if not test_passed:
             raise ValueError(
