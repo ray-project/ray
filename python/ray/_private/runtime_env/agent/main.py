@@ -49,7 +49,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--session-dir",
-        required=False,
+        required=True,
         type=str,
         default=None,
         help="The path of this ray session directory.",

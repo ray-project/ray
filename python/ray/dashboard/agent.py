@@ -81,6 +81,23 @@ class DashboardAgent:
 
         if not self.minimal:
             self._init_non_minimal()
+        else:
+            # Write -1 to indicate the service is not in use.
+            persist_port(
+                self.session_dir,
+                ray_constants.METRICS_AGENT_PORT_FILENAME,
+                -1,
+            )
+            persist_port(
+                self.session_dir,
+                ray_constants.METRICS_EXPORT_PORT_FILENAME,
+                -1,
+            )
+            persist_port(
+                self.session_dir,
+                ray_constants.DASHBOARD_AGENT_LISTEN_PORT_FILENAME,
+                -1,
+            )
 
     def _init_non_minimal(self):
         from grpc import aio as aiogrpc
@@ -187,6 +204,8 @@ class DashboardAgent:
         if self.http_server:
             try:
                 await self.http_server.start(modules)
+                # listen_port can be 0 for dynamic port assignment. get the actual bound port.
+                self.listen_port = self.http_server.http_port
             except Exception as e:
                 # TODO(kevin85421): We should fail the agent if the HTTP server
                 # fails to start to avoid hiding the root cause. However,
