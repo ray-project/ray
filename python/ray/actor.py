@@ -1900,7 +1900,7 @@ class _ActorHandle(Generic[T]):
         enable_task_events: bool,
         method_is_generator: Dict[str, bool],
         method_decorators: Dict,
-        method_signatures Dict,
+        method_signatures: Dict,
         method_num_returns: Dict[str, Union[int, Literal["streaming"]]],
         method_max_task_retries: Dict[str, int],
         method_retry_exceptions: Dict[str, Union[bool, list, tuple]],
