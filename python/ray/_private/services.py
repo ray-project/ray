@@ -526,6 +526,13 @@ def get_node_to_connect_for_driver(
         ) and (node_name is None or node_info.node_name == node_name):
             filtered_node_to_connect_infos.append(node_info)
 
+    if not filtered_node_to_connect_infos:
+        attrs = [node_ip_address, node_name, temp_dir]
+        attrs_str = ", ".join(f"{attr}" for attr in attrs if attr is not None)
+        raise RuntimeError(
+            f"No node info found matching attributes: '{attrs_str}' when trying to resolve node to connect to."
+        )
+
     # Prioritize head node if available
     for node_info in filtered_node_to_connect_infos:
         if node_info.is_head_node:
