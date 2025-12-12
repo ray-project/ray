@@ -323,7 +323,7 @@ if setup_spec.type == SetupType.RAY:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
-        "dm_tree",
+        "dm_tree; python_version < '3.14'",
         "gymnasium==1.1.1",
         "lz4",
         "ormsgpack==1.7.0",
