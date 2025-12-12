@@ -6,6 +6,7 @@ from datetime import datetime
 from dataclasses import is_dataclass
 from importlib import import_module
 from typing import Any, Dict
+import json
 
 import sphinx
 from docutils import nodes
@@ -13,6 +14,7 @@ from jinja2.filters import FILTERS
 from sphinx.ext import autodoc
 from sphinx.ext.autosummary import generate
 from sphinx.util.inspect import safe_getattr
+from sphinx.util.matching import compile_matchers
 
 DEFAULT_API_GROUP = "Others"
 
@@ -137,7 +139,10 @@ nitpick_ignore_regex = [
     ("py:obj", "ray\\.data\\.datasource\\.datasink\\.WriteReturnType"),
     # UnknownPreprocessorError is an internal exception not exported in public API
     ("py:exc", "UnknownPreprocessorError"),
-    ("py:exc", "ray\\.data\\.preprocessors\\.version_support\\.UnknownPreprocessorError"),
+    (
+        "py:exc",
+        "ray\\.data\\.preprocessors\\.version_support\\.UnknownPreprocessorError",
+    ),
 ]
 
 # Cache notebook outputs in _build/.jupyter_cache
@@ -233,9 +238,13 @@ exclude_patterns = [
     "data/api/ray.data.*.rst",
     "ray-overview/examples/**/README.md",  # Exclude .md files in examples subfolders
     "train/examples/**/README.md",
-    "serve/tutorials/deployment-serve-llm/README.*",
-    "serve/tutorials/deployment-serve-llm/*/notebook.ipynb",
+    ## Exclude all .ipynb/.md published on anyscale console (templates) but not published on Ray docs
+    # notebooks in serve/tutorials/ because we use their markdown conversion instead
+    "serve/tutorials/**/content/**.ipynb",
+    # README.md in data/examples/ because we use their .ipynb notebook version instead
     "data/examples/**/content/README.md",
+    # Other misc files (overviews, etc)
+    "serve/tutorials/deployment-serve-llm/content/README.*",
     "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
     "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
 ] + autogen_files
@@ -610,6 +619,19 @@ def setup(app):
 
     logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
 
+    # Apply orphan metadata to avoid warnings and CI failures
+    app.add_config_value("mark_orphan_patterns", [], "env")
+    app.add_config_value("mark_orphan_exclude_patterns", [], "env")
+    app.connect('source-read', mark_documents_as_orphan)
+    
+    # Apply ipython3 lexer to avoid warnings and CI failures
+    app.add_config_value("ipython3_lexer_patterns", [], "env")
+    app.add_config_value("ipython3_lexer_exclude_patterns", [], "env")
+    app.connect('source-read', apply_ipython3_lexer)
+    
+    # Compile and save pattern matchers
+    app.connect('config-inited', _compile_pattern_matchers)
+
 
 redoc = [
     {
@@ -751,3 +773,89 @@ assert (
 os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
 os.environ["RAY_DOC_BUILD"] = "1"
+
+# apply orphan metadata to
+mark_orphan_patterns = [
+    "data/examples/**/content/**.ipynb",
+    "serve/tutorials/**/content/**.ipynb",
+    # should refactor to follow the content/ pattern above
+    "serve/tutorials/deployment-serve-llm/**.ipynb",
+]
+# Exclude patterns here
+mark_orphan_exclude_patterns = [
+    "serve/tutorials/deployment-serve-llm/gpt-oss/*.ipynb",
+]
+
+# apply ipython3 lexer to
+ipython3_lexer_patterns = [
+    "serve/tutorials/deployment-serve-llm/**.ipynb",
+]
+# Exclude patterns here
+ipython3_lexer_exclude_patterns = [
+    "serve/tutorials/deployment-serve-llm/gpt-oss/*.ipynb",
+]
+
+def _compile_pattern_matchers(app, config):
+    """
+    Hook to compile and save pattern matchers.
+    """
+    # orphan matchers
+    app.mark_orphan_patterns = compile_matchers(
+        config.mark_orphan_patterns or []
+    )
+    app.mark_orphan_exclude_patterns = compile_matchers(
+        config.mark_orphan_exclude_patterns or []
+    )
+    # lexer matchers
+    app.ipython3_lexer_patterns = compile_matchers(
+        config.ipython3_lexer_patterns or []
+    )
+    app.ipython3_lexer_exclude_patterns = compile_matchers(
+        config.ipython3_lexer_exclude_patterns or []
+    )
+
+def mark_documents_as_orphan(app, docname, source):
+    """
+    Apply orphan metadata to True to documents matching mark_orphan_patterns.
+    
+    If you want to preserve a document's existing orphan metadata, add it to mark_orphan_exclude_patterns.
+    """
+    doc_source = app.env.doc2path(docname, base=False)
+    
+    # exclude patterns takes priority
+    if any(matcher(doc_source) for matcher in app.mark_orphan_exclude_patterns):
+        return
+    if any(matcher(doc_source) for matcher in app.mark_orphan_patterns):
+        # (MyST-NB expects this to exist when it writes to it)
+        app.env.metadata.setdefault(docname, {})
+        app.env.metadata[docname]["orphan"] = True
+
+
+def apply_ipython3_lexer(app, docname, source):
+    """
+    Apply ipython3 lexer to True to notebooks matching ipython3_lexer_patterns.
+    
+    This prevents lexing warnings for notebooks containing IPython magic commands
+    like !shell_command, %magic, or %%cell_magic.
+    
+    If you want to preserve a notebook's existing lexer, add it to ipython3_lexer_exclude_patterns.
+    """
+    
+    # Skip non-.ipynb files
+    doc_source = app.env.doc2path(docname, base=False)
+    if not doc_source.endswith('.ipynb'):
+        return
+    
+    # exclude patterns takes priority
+    if any(matcher(doc_source) for matcher in app.ipython3_lexer_exclude_patterns):
+        return
+    if any(matcher(doc_source) for matcher in app.ipython3_lexer_patterns):
+        try:
+            notebook = json.loads(source[0])
+            # Set ipython3 lexer
+            notebook.setdefault('metadata', {}) \
+                    .setdefault('language_info', {})['pygments_lexer'] = 'ipython3'
+            source[0] = json.dumps(notebook)
+        except Exception as e:
+            logger.warning(f"Failed to add ipython3 lexer to {docname}: {e}")
+            # don't fail the build for this
