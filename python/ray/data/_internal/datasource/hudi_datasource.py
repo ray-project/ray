@@ -39,10 +39,7 @@ class HudiDatasource(Datasource):
         self._storage_options = storage_options or {}
 
     def get_read_tasks(
-        self,
-        parallelism: int,
-        per_task_row_limit: Optional[int] = None,
-        epoch_idx: int = 0,
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
     ) -> List["ReadTask"]:
         import numpy as np
         import pyarrow
