@@ -1881,61 +1881,15 @@ class ActorClass(Generic[T]):
             self.__ray_metadata__.modified_class, args, kwargs, self._default_options
         )
 
-
 @PublicAPI
 class ActorHandle(Generic[T]):
     """A handle to an actor.
 
-    The fields in this class are prefixed with _ray_ to hide them from the user
-    and to avoid collision with actor method names.
-
-    An ActorHandle can be created in three ways. First, by calling .remote() on
-    an ActorClass. Second, by passing an actor handle into a task (forking the
-    ActorHandle). Third, by directly serializing the ActorHandle (e.g., with
-    cloudpickle).
+    An ActorHandle is created by calling `.remote()` on an `ActorClass` and can be
+    passed to other remote tasks and actor methods.
 
     Attributes:
-        _ray_actor_language: The actor language.
         _ray_actor_id: Actor ID.
-        _ray_enable_task_events: The default value of whether task events is
-            enabled, i.e., task events from the actor should be reported.
-        _ray_method_is_generator: Map of method name -> if it is a generator
-            method.
-        _ray_method_decorators: Optional decorators for the function
-            invocation. This can be used to change the behavior on the
-            invocation side, whereas a regular decorator can be used to change
-            the behavior on the execution side.
-        _ray_method_signatures: The signatures of the actor methods.
-        _ray_method_max_task_retries: Max number of retries on method failure.
-        _ray_method_num_returns: The default number of return values for
-            each method.
-        _ray_method_retry_exceptions: The default value of boolean of whether you want
-            to retry all user-raised exceptions, or a list of allowlist exceptions to
-            retry.
-        _ray_method_generator_backpressure_num_objects: Generator-only
-            config. The max number of objects to generate before it
-            starts pausing a generator.
-        _ray_method_enable_task_events: The value of whether task
-            tracing is enabled for the actor methods. This overrides the
-            actor's default value (`_ray_enable_task_events`).
-        _ray_method_name_to_tensor_transport: A dictionary mapping method names to their tensor transport protocol settings.
-            The valid values are OBJECT_STORE (default), NCCL, or GLOO, and they are case-insensitive.
-        _ray_actor_method_cpus: The number of CPUs required by actor methods.
-        _ray_original_handle: True if this is the original actor handle for a
-            given actor. If this is true, then the actor will be destroyed when
-            this handle goes out of scope.
-        _ray_weak_ref: True means that this handle does not count towards the
-            distributed ref count for the actor, i.e. the actor may be GCed
-            while this handle is still in scope. This is set to True if the
-            handle was created by getting an actor by name or by getting the
-            self handle. It is set to False if this is the original handle or
-            if it was created by passing the original handle through task args
-            and returns.
-        _ray_is_cross_language: Whether this actor is cross language.
-        _ray_actor_creation_function_descriptor: The function descriptor
-            of the actor creation task.
-        _ray_allow_out_of_order_execution: Whether the actor can execute tasks out of order.
-        _ray_enable_tensor_transport: Whether tensor transport is enabled for this actor.
     """
 
     def __init__(
@@ -1961,7 +1915,9 @@ class ActorHandle(Generic[T]):
         weak_ref: bool = False,
         allow_out_of_order_execution: Optional[bool] = None,
     ):
-        """Initialize an ActorHandle.
+        """ActorHandles should *not* be initialized directly.
+
+        Instead, call `.remote()` on an `ActorClass`.
 
         Args:
             language: The actor language.
@@ -2278,18 +2234,14 @@ class ActorHandle(Generic[T]):
         return (
             "Actor("
             f"{self._ray_actor_creation_function_descriptor.class_name}, "
-            f"{self._actor_id.hex()})"
+            f"{self._ray_actor_id.hex()})"
         )
 
     def __hash__(self):
-        return hash(self._actor_id)
+        return hash(self._ray_actor_id)
 
     def __eq__(self, __value):
         return hash(self) == hash(__value)
-
-    @property
-    def _actor_id(self):
-        return self._ray_actor_id
 
     def _get_local_state(self):
         """Get the local actor state.
@@ -2398,7 +2350,34 @@ class ActorHandle(Generic[T]):
         (serialized, _, weak_ref) = self._serialization_helper()
         # There is no outer object ref when the actor handle is
         # deserialized out-of-band using pickle.
-        return ActorHandle._deserialization_helper, (serialized, weak_ref, None)
+        return self.__class__._deserialization_helper, (serialized, weak_ref, None)
+
+@PublicAPI
+class ActorHandle(_ActorHandle, Generic[T]):
+    """A handle to an actor.
+
+    An ActorHandle is created by calling `.remote()` on an `ActorClass` and can be
+    passed to other remote tasks and actor methods.
+
+    Attributes:
+        _actor_id: Actor ID of the actor. This is a public API; it is prefixed with
+            an underscore to avoid conflicting with user-defined method names.
+    """
+
+    def __init__(self, *args, **kwargs):
+        """ActorHandles should *not* be initialized directly.
+
+        Instead, call `.remote()` on an `ActorClass`.
+
+        Args:
+            args: internal arguments to create an actor handle.
+            kwargs: internal arguments to create an actor handle.
+        """
+        super().__init__(*args, **kwargs)
+
+    @property
+    def _actor_id(self) -> str:
+        return self._ray_actor_id
 
 
 def _modify_class(cls):
