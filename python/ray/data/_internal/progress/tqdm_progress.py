@@ -88,6 +88,7 @@ class TqdmExecutionProgressManager:
                 num_progress_bars += 1
                 state.progress_manager_uuid = uid
                 self._op_display[uid] = pg
+                self._sub_progress_bars.append(pg)
             if not isinstance(op, SubProgressBarMixin):
                 continue
             sub_pg_names = op.get_sub_progress_bar_names()
@@ -113,8 +114,6 @@ class TqdmExecutionProgressManager:
 
     def refresh(self):
         self._total.refresh()
-        for pg in self._op_display.values():
-            pg.refresh()
         for pg in self._sub_progress_bars:
             pg.refresh()
 
@@ -122,8 +121,6 @@ class TqdmExecutionProgressManager:
         del success  # unused
         self._total.set_description(desc)
         self._total.close()
-        for pg in self._op_display.values():
-            pg.close()
         for pg in self._sub_progress_bars:
             pg.close()
 
