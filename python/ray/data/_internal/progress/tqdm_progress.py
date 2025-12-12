@@ -76,12 +76,12 @@ class TqdmExecutionProgressManager:
             op = state.op
             if isinstance(op, InputDataBuffer):
                 continue
-            total = op.num_output_rows_total()
+            total = op.num_output_rows_total() or 1
             if self._show_op_progress:
                 uid = uuid.uuid4()
                 pg = TqdmSubProgressBar(
                     name=f"- {op.name}",
-                    total=total or 1,
+                    total=total,
                     unit="row",
                     position=num_progress_bars,
                     max_name_length=self.MAX_NAME_LENGTH,
@@ -98,7 +98,7 @@ class TqdmExecutionProgressManager:
             for name in sub_pg_names:
                 pg = TqdmSubProgressBar(
                     name=f"  *- {name}",
-                    total=total or 1,
+                    total=total,
                     unit="row",
                     position=num_progress_bars,
                     max_name_length=self.MAX_NAME_LENGTH,
