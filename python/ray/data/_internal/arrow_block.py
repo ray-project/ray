@@ -556,6 +556,11 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
     def unique(self) -> BlockColumn:
         import pyarrow.compute as pac
 
+        if self.is_composed_of_lists():
+            import polars
+
+            return polars.from_arrow(self._column).unique().to_arrow()
+
         return pac.unique(self._column)
 
     def value_counts(self) -> Optional[Dict[str, List]]:
@@ -586,9 +591,8 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
 
         return pac.drop_null(self._column)
 
-    def is_composed_of_lists(self, types: Optional[Tuple] = None) -> bool:
-        if not types:
-            types = (pyarrow.lib.ListType, pyarrow.lib.LargeListType)
+    def is_composed_of_lists(self) -> bool:
+        types = (pyarrow.lib.ListType, pyarrow.lib.LargeListType)
         return isinstance(self._column.type, types)
 
     def to_pylist(self) -> List[Any]:
