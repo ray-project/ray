@@ -1609,6 +1609,20 @@ py_test(
 )
 
 py_test(
+    name = "test_autoscaling_coordinator",
+    size = "medium",
+    srcs = ["tests/test_autoscaling_coordinator.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_clickhouse",
     size = "small",
     srcs = ["tests/test_clickhouse.py"],
@@ -1640,6 +1654,20 @@ py_test(
     name = "test_mcap",
     size = "medium",
     srcs = ["tests/test_mcap.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_default_cluster_autoscaler_v2",
+    size = "small",
+    srcs = ["tests/test_default_cluster_autoscaler_v2.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1806,7 +1834,7 @@ py_test(
 
 py_test(
     name = "test_preserve_hash_shuffle_blocks",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_preserve_hash_shuffle_blocks.py"],
     tags = [
         "exclusive",

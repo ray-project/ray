@@ -1,7 +1,6 @@
 group: serve tests
 depends_on:
   - forge
-  - oss-ci-base_build
   - oss-ci-base_build-multipy
   - ray-core-build
   - ray-dashboard-build
@@ -27,6 +26,7 @@ steps:
   - name: minbuild-serve
     label: "wanda: minbuild-{{matrix.extra}}-py{{matrix.python}}"
     wanda: ci/docker/min.build.wanda.yaml
+    depends_on: oss-ci-base_test-multipy
     matrix:
       setup:
         python: ["3.10"]

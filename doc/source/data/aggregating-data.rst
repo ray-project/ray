@@ -1,24 +1,40 @@
 .. _aggregations:
 
-Aggregations
-============
+Aggregating Data
+================
 
 Ray Data provides a flexible and performant API for performing aggregations on :class:`~ray.data.dataset.Dataset`. 
 
 Basic Aggregations
 ------------------
 
-Ray Data provides several built-in aggregation functions like:
+Ray Data provides several built-in aggregation functions like :class:`~ray.data.Dataset.max`,
+:class:`~ray.data.Dataset.min`, :class:`~ray.data.Dataset.sum`.
 
-* :class:`~ray.data.aggregate.Count`
-* :class:`~ray.data.aggregate.Sum`
-* :class:`~ray.data.aggregate.Mean`
-* :class:`~ray.data.aggregate.Min`
-* :class:`~ray.data.aggregate.Max`
-* :class:`~ray.data.aggregate.Std`
-* :class:`~ray.data.aggregate.Quantile`
- 
-These can be used directly with datasets like shown below:
+These can be used directly on a Dataset or a GroupedData object, as shown below:
+
+.. testcode::
+
+    import ray
+
+    # Create a sample dataset
+    ds = ray.data.range(100)
+    ds = ds.add_column("group_key", lambda x: x % 3)
+    # Schema: {'id': int64, 'group_key': int64}
+
+    # Find the max
+    result = ds.max("id")
+    # result: 99
+
+    # Find the minimum value per group
+    result = ds.groupby("group_key").min("id")
+    # result: [{'group_key': 0, 'min(id)': 0}, {'group_key': 1, 'min(id)': 1}, {'group_key': 2, 'min(id)': 2}]
+
+The full list of built-in aggregation functions is available in the :ref:`Dataset API reference <dataset-api>`.
+
+Each of the preceding methods also has a corresponding :ref:`AggregateFnV2 <aggregations_api_ref>` object. These objects can be used in :meth:`~ray.data.Dataset.aggregate()` or :meth:`Dataset.groupby().aggregate() <ray.data.grouped_data.GroupedData.aggregate>`.
+
+Aggregation objects can be used directly with a Dataset like shown below:
 
 .. testcode::
 
@@ -43,12 +59,7 @@ These can be used directly with datasets like shown below:
     result = ds.aggregate(Quantile(on="id", q=0.75))
     # result: {'quantile(id)': 75.0}
 
-
-Using Multiple Aggregations
----------------------------
-
-Each of the preceding methods also has a corresponding :ref:`AggregateFnV2 <aggregations_api_ref>` object. These objects can be used in
-:meth:`~ray.data.Dataset.aggregate()` or :meth:`Dataset.groupby().aggregate() <ray.data.grouped_data.GroupedData.aggregate>` to compute multiple aggregations at once.
+Multiple aggregations can also be computed at once:
 
 .. testcode::
 
@@ -74,7 +85,7 @@ Each of the preceding methods also has a corresponding :ref:`AggregateFnV2 <aggr
 Custom Aggregations
 --------------------
 
-For more complex aggregation needs, Ray Data allows you to create custom aggregations by implementing the :class:`~ray.data.aggregate.AggregateFnV2` interface. The AggregateFnV2 interface provides a framework for implementing distributed aggregations with three key methods:
+You can create custom aggregations by implementing the :class:`~ray.data.aggregate.AggregateFnV2` interface. The AggregateFnV2 interface has three key methods to implement:
 
 1. `aggregate_block`: Processes a single block of data and returns a partial aggregation result
 2. `combine`: Merges two partial aggregation results into a single result
