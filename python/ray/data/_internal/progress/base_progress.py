@@ -117,7 +117,7 @@ class BaseExecutionProgressManager(ABC):
     TOTAL_PROGRESS_REFRESH_EVERY_N_STEPS = 50
 
     @abstractmethod
-    def __init__(self, dataset_id: str, topology: "Topology", show_op_progress: bool):
+    def __init__(self, dataset_id: str, topology: "Topology"):
         """Initialize the progress manager, create all necessary progress bars
         and sub-progress bars for the given topology. Sub-progress bars are
         created for operators that implement the SubProgressBarMixin.
@@ -125,7 +125,6 @@ class BaseExecutionProgressManager(ABC):
         Args:
             dataset_id: id of Dataset
             topology: operation topology built via `build_streaming_topology`
-            show_op_progress: whether to show progress for individual operators
         """
         ...
 

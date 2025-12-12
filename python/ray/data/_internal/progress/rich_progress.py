@@ -8,9 +8,12 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, List, Optional
 
-from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.progress.base_progress import BaseProgressBar
+from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.progress.base_progress import (
+    BaseExecutionProgressManager,
+    BaseProgressBar,
+)
 from ray.data._internal.progress.utils import truncate_operator_name
 from ray.util.debug import log_once
 
@@ -174,7 +177,7 @@ class RichSubProgressBar(BaseProgressBar):
         self.enabled = False  # Progress bar is disabled on remote nodes.
 
 
-class RichExecutionProgressManager:
+class RichExecutionProgressManager(BaseExecutionProgressManager):
     """Execution progress display using rich."""
 
     # If the name/description of the progress bar exceeds this length,
@@ -190,7 +193,7 @@ class RichExecutionProgressManager:
             self._live = None
             # TODO (kyuds): for sub-progress, initialize no-op
             for state in topology.values():
-                if _has_sub_progress_bars(state.op):
+                if isinstance(state.op, SubProgressBarMixin):
                     self._setup_operator_sub_progress(state)
             return
 
@@ -255,12 +258,12 @@ class RichExecutionProgressManager:
                 state.progress_manager_uuid = uid
                 self._op_display[uid] = (tid, progress, stats)
 
-            if _has_sub_progress_bars(state.op):
+            if isinstance(state.op, SubProgressBarMixin):
                 self._setup_operator_sub_progress(state)
 
     def _setup_operator_sub_progress(self, state: "OpState"):
-        assert _has_sub_progress_bars(
-            state.op
+        assert isinstance(
+            state.op, SubProgressBarMixin
         ), f"Operator {state.op.name} doesn't support sub-progress bars."
         enabled = self._mode.show_op()
 
@@ -466,20 +469,6 @@ def _get_progress_metrics(
     return _ProgressMetrics(
         completed=completed, total=total, rate_str=rate_str, count_str=count_str
     )
-
-
-def _has_sub_progress_bars(op: PhysicalOperator) -> bool:
-    """Determines if operator implements sub-progress bars
-
-    Args:
-        op: Operator
-    Returns:
-        whether operator implements sub-progress bars
-    """
-    # function primarily used to avoid circular imports
-    from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
-
-    return isinstance(op, SubProgressBarMixin)
 
 
 def _update_with_conditional_rate(progress, tid, metrics):
