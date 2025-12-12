@@ -2,7 +2,7 @@ import logging
 from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
-from pydantic import Field, field_validator, root_validator
+from pydantic import Field, field_validator, model_validator
 
 import ray
 from ray.data import Dataset
@@ -182,7 +182,8 @@ class OfflineProcessorConfig(ProcessorConfig):
     )
     has_image: bool = Field(
         default=False,
-        description="[DEPRECATED] Prefer `prepare_image_stage`. Whether the input messages have images.",
+        description="[DEPRECATED] Prefer `prepare_multimodal_stage` for processing multimodal data. "
+        "Whether the input messages have images.",
     )
 
     # New nested stage configuration (bool | dict | typed config).
@@ -200,10 +201,14 @@ class OfflineProcessorConfig(ProcessorConfig):
     )
     prepare_image_stage: Any = Field(
         default=False,
-        description="Prepare image stage config (bool | dict | PrepareImageStageConfig).",
+        description="[DEPRECATED] Prefer `prepare_multimodal_stage` for processing multimodal data. Prepare image stage config (bool | dict | PrepareImageStageConfig).",
+    )
+    prepare_multimodal_stage: Any = Field(
+        default=False,
+        description="Prepare multimodal stage config (bool | dict | PrepareMultimodalStageConfig).",
     )
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
     def _coerce_legacy_to_stage_config(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         # Only set stage fields if not explicitly provided.
         # Emit deprecation warnings when legacy boolean flags are used.
@@ -248,6 +253,34 @@ class OfflineProcessorConfig(ProcessorConfig):
                 legacy_value = values.get(legacy_field)
                 enabled = default_enabled if legacy_value is None else legacy_value
                 values[stage_field] = {"enabled": enabled}
+
+        return values
+
+    @model_validator(mode="before")
+    def _warn_prepare_image_stage_deprecation(
+        cls, values: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Warn if prepare_image_stage is enabled, recommend prepare_multimodal_stage instead."""
+        if "prepare_image_stage" in values:
+            prepare_image_stage_value = values.get("prepare_image_stage")
+            if prepare_image_stage_value is None:
+                is_enabled = False
+            elif isinstance(prepare_image_stage_value, bool):
+                is_enabled = prepare_image_stage_value
+            elif isinstance(prepare_image_stage_value, dict):
+                is_enabled = True
+            else:
+                is_enabled = prepare_image_stage_value.enabled
+
+            if is_enabled:
+                logger.warning(
+                    "The stage `prepare_image_stage` is deprecated. "
+                    "Prefer `prepare_multimodal_stage` instead, which unifies image, audio, "
+                    "video, etc. processing with a single stage. For example: "
+                    "`prepare_multimodal_stage=PrepareMultimodalStageConfig(enabled=True)` "
+                    "or `prepare_multimodal_stage={'enabled': True}`. "
+                    "This will raise an error in a future version."
+                )
 
         return values
 

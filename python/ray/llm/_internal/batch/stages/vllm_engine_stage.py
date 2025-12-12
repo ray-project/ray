@@ -10,11 +10,16 @@ import uuid
 from collections import Counter
 from enum import Enum
 from functools import partial
-from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
 import numpy as np
 import torch
 from pydantic import BaseModel, Field, root_validator
+
+if TYPE_CHECKING:
+    from vllm.multimodal import MultiModalDataDict
+else:
+    MultiModalDataDict = Any
 
 import ray
 from ray.llm._internal.batch.stages.base import (
@@ -68,8 +73,14 @@ class vLLMEngineRequest(BaseModel):
     idx_in_batch: int
     # The full prompt string (with chat template applied if any).
     prompt: str
-    # The images inputs for the multimodal model. Use Any to avoid importing PIL.
+    # DEPRECATED: The images inputs for the multimodal model. Use Any to avoid importing PIL.
     images: List[Any]
+    # The multimodal data for the multimodal model.
+    multimodal_data: Optional[MultiModalDataDict]
+    # The kwargs for the multimodal processor.
+    mm_processor_kwargs: Optional[Dict[str, Any]]
+    # The uuids for the multimodal data.
+    multimodal_uuids: Optional[Dict[str, Any]]
     # The tokenized prompt IDs. If None, then the string prompt will be
     # tokenized by the LLM engine. This is not recommended for performance reasons.
     prompt_token_ids: Optional[List[int]]
@@ -339,6 +350,12 @@ class vLLMEngineWrapper:
         else:
             image = []
 
+        multimodal_data = row.pop("multimodal_data", None)
+        # TODO (jeffreywang): As we decouple the multimodal processor from the vLLM engine,
+        # these kwargs are not needed in the vLLM engine stage.
+        mm_processor_kwargs = row.pop("mm_processor_kwargs", None)
+        multimodal_uuids = row.pop("multimodal_uuids", None)
+
         lora_request = await self._maybe_get_lora_request(row)
 
         # Prepare sampling parameters.
@@ -369,6 +386,9 @@ class vLLMEngineWrapper:
             prompt=prompt,
             prompt_token_ids=tokenized_prompt,
             images=image,
+            multimodal_data=multimodal_data,
+            mm_processor_kwargs=mm_processor_kwargs,
+            multimodal_uuids=multimodal_uuids,
             params=params,
             lora_request=lora_request,
         )
@@ -407,18 +427,33 @@ class vLLMEngineWrapper:
             The output of the request.
         """
 
-        # NOTE: vLLM v1 tighly couples tokenizer and detokenizer to the engine.
-        # We should investigate whether decoupling them could lead to better
-        # performance. Given that v1 tokenizer and detokenizer are already
-        # in a separate process, the benefit of decoupling them in the Processor
-        # may be limited.
-        assert request.prompt
         import vllm
 
-        multi_modal_data = {"image": request.images} if request.images else None
-        llm_prompt = vllm.inputs.data.TextPrompt(
-            prompt=request.prompt, multi_modal_data=multi_modal_data
-        )
+        # TODO (jeffreywang): Consolidate to multimodal_data only
+        if request.images:
+            multi_modal_data = (
+                {**request.multimodal_data, "image": request.images}
+                if request.multimodal_data
+                else {"image": request.images}
+            )
+        else:
+            multi_modal_data = request.multimodal_data
+
+        if request.prompt_token_ids is not None:
+            llm_prompt = vllm.inputs.data.TokensPrompt(
+                prompt_token_ids=request.prompt_token_ids,
+                multi_modal_data=multi_modal_data,
+                mm_processor_kwargs=request.mm_processor_kwargs,
+                multi_modal_uuids=request.multimodal_uuids,
+            )
+        else:
+            assert request.prompt
+            llm_prompt = vllm.inputs.data.TextPrompt(
+                prompt=request.prompt,
+                multi_modal_data=multi_modal_data,
+                mm_processor_kwargs=request.mm_processor_kwargs,
+                multi_modal_uuids=request.multimodal_uuids,
+            )
 
         # Send the request to the LLM engine.
         # vLLM 0.12.0 uses encode() for pooling/embedding tasks, generate() for text generation
@@ -824,4 +859,7 @@ class vLLMEngineStage(StatefulStage):
             "image": "The image(s) for multimodal input. Accepts a single image or list of images.",
             "model": "The model to use for this request. If the model is different from the "
             "model set in the stage, then this is a LoRA request.",
+            "multimodal_data": "The multimodal data to pass to the model, if the model supports it.",
+            "mm_processor_kwargs": "The kwargs for the engine's multimodal processor.",
+            "multimodal_uuids": "User-specified UUIDs for multimodal items, mapped by modality.",
         }
