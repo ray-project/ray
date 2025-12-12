@@ -400,14 +400,15 @@ void RayletClient::IsLocalWorkerDead(
                   /*method_timeout_ms*/ -1);
 }
 
-void RayletClient::GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback) {
-  rpc::GlobalGCRequest request;
-  INVOKE_RPC_CALL(NodeManagerService,
-                  GlobalGC,
-                  request,
-                  callback,
-                  grpc_client_,
-                  /*method_timeout_ms*/ -1);
+void RayletClient::TriggerGC(const rpc::TriggerGCRequest &request,
+                             const rpc::ClientCallback<rpc::TriggerGCReply> &callback) {
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            TriggerGC,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
 }
 
 void RayletClient::GetResourceLoad(
