@@ -63,7 +63,7 @@ def test_actor_pool_scaling():
 
     op = MagicMock(
         spec=InternalQueueOperatorMixin,
-        completed=MagicMock(return_value=False),
+        has_completed=MagicMock(return_value=False),
         _inputs_complete=False,
         input_dependencies=[MagicMock()],
         internal_queue_num_blocks=MagicMock(return_value=1),
@@ -227,7 +227,7 @@ def autoscaler_max_upscaling_delta_setup():
 
     op = MagicMock(
         spec=InternalQueueOperatorMixin,
-        completed=MagicMock(return_value=False),
+        has_completed=MagicMock(return_value=False),
         _inputs_complete=False,
     )
     op_state = MagicMock(
