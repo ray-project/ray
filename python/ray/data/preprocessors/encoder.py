@@ -8,6 +8,7 @@ import pandas as pd
 import pandas.api.types
 
 from ray.air.util.data_batch_conversion import BatchFormat
+from ray.data._internal.util import is_null
 from ray.data.preprocessor import (
     Preprocessor,
     PreprocessorNotFittedException,
@@ -919,7 +920,7 @@ def unique_post_fn(drop_na_values: bool = False) -> Callable[[Set], Dict[str, in
     def gen_value_index(values: List) -> Dict[Any, int]:
         # NOTE: We special-case null here since it prevents provided
         #       values sequence from being sortable
-        if pd.isnull(values).any() and not drop_na_values:
+        if any(is_null(v) for v in values) and not drop_na_values:
             raise ValueError(
                 "Unable to fit column because it contains null"
                 " values. Consider imputing missing values first."
