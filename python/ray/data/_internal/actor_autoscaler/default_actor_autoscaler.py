@@ -67,8 +67,6 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             The utilization value, or None if utilization cannot be computed
             (e.g., no running actors).
         """
-        if actor_pool.num_running_actors() == 0:
-            return None
         return actor_pool.get_pool_util()
 
     def _compute_upscale_delta(
@@ -127,8 +125,6 @@ class DefaultActorAutoscaler(ActorAutoscaler):
 
         # Determine whether to scale up based on the actor pool utilization.
         util = self._compute_utilization(actor_pool)
-        if util is None:
-            return ActorPoolScalingRequest.no_op(reason="no running actors")
 
         if util >= self._actor_pool_scaling_up_threshold:
             average_num_inputs_per_task = op.metrics.average_num_inputs_per_task or 1

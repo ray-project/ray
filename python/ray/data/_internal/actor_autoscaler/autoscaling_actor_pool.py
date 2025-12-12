@@ -108,7 +108,7 @@ class AutoscalingActorPool(ABC):
     def get_pool_util(self) -> float:
         """Calculate the utilization of the given actor pool."""
         if self.num_running_actors() == 0:
-            return 0.0
+            return float("inf")
         else:
             # We compute utilization as a ration of
             #  - Number of submitted tasks over
