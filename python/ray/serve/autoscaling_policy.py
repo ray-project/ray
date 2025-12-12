@@ -292,9 +292,7 @@ def _apply_default_params_and_merge_state(
     return final_num_replicas, final_state
 
 
-PublicAPI(stability="alpha")
-
-
+@PublicAPI(stability="alpha")
 def apply_autoscaling_config(
     policy_func: Callable[[AutoscalingContext], Tuple[int, Dict[str, Any]]]
 ) -> Callable[[AutoscalingContext], Tuple[int, Dict[str, Any]]]:
