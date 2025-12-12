@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 import ray
@@ -107,3 +109,7 @@ async def test_dispatch_callable_args(mock_handle):
     assert len(msgs) == 2
     for msg in msgs:
         assert msg.startswith("msg-")
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
