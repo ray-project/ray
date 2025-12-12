@@ -142,22 +142,23 @@ class OrdinalEncoder(SerializablePreprocessorBase):
         )
         return self
 
+    def _encode_list_element(self, element: list, *, column_name: str):
+        ordinal_map = self.stats_[f"unique_values({column_name})"]
+        # If encoding lists, entire column is flattened, hence we map individual
+        # elements inside the list element (of the column)
+        if self.encode_lists:
+            return [ordinal_map.get(x) for x in element]
+
+        return ordinal_map.get(tuple(element))
+
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
 
-        def encode_list(element: list, *, name: str):
-            return [self.stats_[f"unique_values({name})"].get(x) for x in element]
-
         def column_ordinal_encoder(s: pd.Series):
             if _is_series_composed_of_lists(s):
-                if self.encode_lists:
-                    return s.map(partial(encode_list, name=s.name))
-
-                def list_as_category(element):
-                    key = tuple(element)
-                    return self.stats_[f"unique_values({s.name})"].get(key)
-
-                return s.apply(list_as_category)
+                return s.map(
+                    lambda elem: self._encode_list_element(elem, column_name=s.name)
+                )
 
             s_values = self.stats_[f"unique_values({s.name})"]
             return s.map(s_values)
@@ -915,16 +916,22 @@ def unique_post_fn(drop_na_values: bool = False) -> Callable[[Set], Dict[str, in
         mapping each value to a unique integer index.
     """
 
-    def gen_value_index(values: Set) -> Dict[str, int]:
-        if drop_na_values:
-            values = {k for k in values if not pd.isnull(k)}
-        else:
-            if any(pd.isnull(k) for k in values):
-                raise ValueError(
-                    "Unable to fit column because it contains null"
-                    " values. Consider imputing missing values first."
-                )
-        return {k: j for j, k in enumerate(sorted(values))}
+    def gen_value_index(values: List) -> Dict[Any, int]:
+        # NOTE: We special-case null here since it prevents provided
+        #       values sequence from being sortable
+        if pd.isnull(values).any() and not drop_na_values:
+            raise ValueError(
+                "Unable to fit column because it contains null"
+                " values. Consider imputing missing values first."
+            )
+
+        non_null_values = [v for v in values if v is not None]
+
+        return {
+            (v if not isinstance(v, list) else tuple(v)): i
+            # NOTE: Sorting applied to produce stable encoding
+            for i, v in enumerate(sorted(non_null_values))
+        }
 
     return gen_value_index
 
