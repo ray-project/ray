@@ -1,20 +1,20 @@
 group: cicd-cron
 steps:
   - name: manylinux-cibase
-    label: ":crescent_moon: wanda: manylinux-cibase"
+    label: ":magic_wand: wanda: manylinux-cibase"
     wanda: ci/docker/manylinux-cibase.wanda.yaml
     env:
       RAYCI_DISABLE_JAVA: "true"
       JDK_SUFFIX: ""
 
   - name: manylinux-cibase-jdk
-    label: ":crescent_moon: wanda: manylinux-cibase (with JDK)"
+    label: ":magic_wand: wanda: manylinux-cibase-jdk"
     wanda: ci/docker/manylinux-cibase.wanda.yaml
     env:
       RAYCI_DISABLE_JAVA: "false"
       JDK_SUFFIX: "-jdk"
 
-  - label: ":crescent_moon: push: Push manylinux to Docker Hub"
+  - label: ":docker: push: Push manylinux-cibase to Docker Hub"
     depends_on:
       - manylinux-cibase
       - forge
@@ -27,7 +27,7 @@ steps:
         --wanda-image-name manylinux-cibase
         --destination-registry rayproject/manylinux2014_cibase_x86_64
 
-  - label: ":crescent_moon: push: Push manylinux (with JDK) to Docker Hub"
+  - label: ":docker: push: Push manylinux-cibase-jdk to Docker Hub"
     depends_on:
       - manylinux-cibase-jdk
       - forge
