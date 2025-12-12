@@ -57,15 +57,14 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                     self._derive_target_scaling_config(actor_pool, op, state)
                 )
 
-    def _compute_utilization(self, actor_pool: AutoscalingActorPool) -> Optional[float]:
+    def _compute_utilization(self, actor_pool: AutoscalingActorPool) -> float:
         """Compute the utilization of the actor pool.
 
         Args:
             actor_pool: The actor pool to compute utilization for.
 
         Returns:
-            The utilization value, or None if utilization cannot be computed
-            (e.g., no running actors).
+            The utilization value. Can be infinite if the actor pool has no running actors.
         """
         return actor_pool.get_pool_util()
 
