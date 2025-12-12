@@ -449,7 +449,14 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         # NOTE(simon): we can't use `route.endpoint in inspect.getmembers(cls)`
         # because the FastAPI supports different routes for the methods with
         # same name. See #17559.
-        and (cls.__qualname__ in route.endpoint.__qualname__)
+        # NOTE: We check against all classes in the MRO to handle inherited
+        # methods. When a method is inherited, its __qualname__ still references
+        # the parent class (e.g., "ParentClass.method" not "ChildClass.method").
+        and any(
+            base.__qualname__ in route.endpoint.__qualname__
+            for base in cls.__mro__
+            if base is not object
+        )
     ]
 
     # Modify these routes and mount it to a new APIRouter.

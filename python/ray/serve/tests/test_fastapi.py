@@ -1110,6 +1110,87 @@ def test_ingress_with_starlette_builder_with_deployment_class(serve_instance):
     assert docs_path is None
 
 
+def test_ingress_inheritance(serve_instance):
+    """Test that class inheritance works correctly with serve.ingress.
+
+    This tests the fix in make_fastapi_class_based_view that properly handles
+    inherited methods by checking the MRO instead of just the immediate class.
+
+    Without the fix, inherited endpoints would fail with:
+    'Field required at ('query', 'self')'
+
+    Tests two cases:
+    1. Multi-level inheritance: Grandparent -> Parent -> Child -> ServedIngress
+    2. Direct inheritance: Parent -> DirectServedIngress
+    """
+    # --- Case 1: Multi-level inheritance ---
+    app1 = FastAPI()
+
+    class GrandparentIngress:
+        @app1.get("/grandparent")
+        def grandparent_endpoint(self):
+            return {"level": "grandparent"}
+
+    class ParentIngress(GrandparentIngress):
+        @app1.get("/parent")
+        def parent_endpoint(self):
+            return {"level": "parent"}
+
+    class ChildIngress(ParentIngress):
+        @app1.get("/child")
+        def child_endpoint(self):
+            return {"level": "child"}
+
+    @serve.deployment
+    @serve.ingress(app1)
+    class ServedIngress(ChildIngress):
+        pass
+
+    serve.run(ServedIngress.bind())
+
+    url = get_application_url("HTTP")
+
+    # Test all inherited endpoints
+    resp = httpx.get(f"{url}/grandparent")
+    assert resp.status_code == 200, f"Grandparent failed: {resp.text}"
+    assert resp.json() == {"level": "grandparent"}
+
+    resp = httpx.get(f"{url}/parent")
+    assert resp.status_code == 200, f"Parent failed: {resp.text}"
+    assert resp.json() == {"level": "parent"}
+
+    resp = httpx.get(f"{url}/child")
+    assert resp.status_code == 200, f"Child failed: {resp.text}"
+    assert resp.json() == {"level": "child"}
+
+    # --- Case 2: Direct inheritance (skip intermediate classes) ---
+    app2 = FastAPI()
+
+    class BaseIngress:
+        @app2.get("/base")
+        def base_endpoint(self):
+            return {"level": "base"}
+
+    # Directly inherit from BaseIngress and serve
+    @serve.deployment
+    @serve.ingress(app2)
+    class DirectServedIngress(BaseIngress):
+        @app2.get("/direct")
+        def direct_endpoint(self):
+            return {"level": "direct"}
+
+    serve.run(DirectServedIngress.bind())
+
+    # Test both inherited and own endpoints
+    resp = httpx.get(f"{url}/base")
+    assert resp.status_code == 200, f"Base failed: {resp.text}"
+    assert resp.json() == {"level": "base"}
+
+    resp = httpx.get(f"{url}/direct")
+    assert resp.status_code == 200, f"Direct failed: {resp.text}"
+    assert resp.json() == {"level": "direct"}
+
+
 if __name__ == "__main__":
     import sys
 
