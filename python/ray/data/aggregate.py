@@ -24,8 +24,9 @@ from ray.data._internal.util import is_null
 from ray.data.block import (
     Block,
     BlockAccessor,
+    BlockColumn,
     BlockColumnAccessor,
-    KeyType, BlockColumn,
+    KeyType,
 )
 from ray.util.annotations import Deprecated, PublicAPI
 
