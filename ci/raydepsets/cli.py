@@ -13,6 +13,7 @@ import click
 import runfiles
 from networkx import DiGraph, ancestors as networkx_ancestors, topological_sort
 
+from ci.raydepsets.parser import Dep, Parser
 from ci.raydepsets.workspace import Depset, Workspace
 
 DEFAULT_UV_FLAGS = """
@@ -388,6 +389,35 @@ class DependencySetManager:
             include_setuptools=include_setuptools,
         )
 
+    def relax(
+        self,
+        source_depset: str,
+        requirements: List[str],
+        constraints: List[str],
+        drop_package: str,
+        name: str,
+        output: str = None,
+        append_flags: Optional[List[str]] = None,
+        override_flags: Optional[List[str]] = None,
+        include_setuptools: Optional[bool] = False,
+    ):
+        """Relax a dependency set."""
+        depset = _get_depset(self.config.depsets, source_depset)
+        deps = Parser(depset.output).parse()
+        deps = [d for d in deps if d.name != drop_package]
+        relaxed_output_file = depset.output.replace(".lock", "_relaxed.lock")
+        _deps_to_lockfile(deps=deps, output_path=relaxed_output_file)
+        requirements.append(relaxed_output_file)
+        self.compile(
+            constraints=constraints,
+            requirements=requirements,
+            name=name,
+            output=output,
+            append_flags=append_flags,
+            override_flags=override_flags,
+            include_setuptools=include_setuptools,
+        )
+
     def read_lock_file(self, file_path: Path) -> List[str]:
         if not file_path.exists():
             raise RuntimeError(f"Lock file {file_path} does not exist")
@@ -465,6 +495,12 @@ def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
         new_args.append(arg)
 
     return new_args + _flatten_flags(flags)
+
+
+def _deps_to_lockfile(deps: List[Dep], output_path: str):
+    lockfile_content = "\n".join([f"{dep.name}=={dep.version}" for dep in deps]) + "\n"
+    with open(output_path, "w") as f:
+        f.write(lockfile_content)
 
 
 def _uv_binary():
