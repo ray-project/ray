@@ -136,6 +136,8 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
       (override));
 
   MOCK_METHOD(std::string, GetSessionName, (), (const, override));
+
+  MOCK_METHOD(NodeID, GetNodeID, (), (const, override));
 };
 
 class TaskManagerTest : public ::testing::Test {

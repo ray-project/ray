@@ -39,7 +39,8 @@ GcsNodeManager::GcsNodeManager(
     rpc::RayletClientPool *raylet_client_pool,
     const ClusterID &cluster_id,
     observability::RayEventRecorderInterface &ray_event_recorder,
-    const std::string &session_name)
+    const std::string &session_name,
+    const NodeID &gcs_node_id)
     : gcs_publisher_(gcs_publisher),
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
@@ -47,6 +48,7 @@ GcsNodeManager::GcsNodeManager(
       cluster_id_(cluster_id),
       ray_event_recorder_(ray_event_recorder),
       session_name_(session_name),
+      gcs_node_id_(gcs_node_id),
       export_event_write_enabled_(IsExportAPIEnabledNode()) {}
 
 void GcsNodeManager::WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info,
@@ -55,10 +57,10 @@ void GcsNodeManager::WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info,
     std::vector<std::unique_ptr<observability::RayEventInterface>> events;
     if (is_register_event) {
       events.push_back(std::make_unique<observability::RayNodeDefinitionEvent>(
-          node_info, session_name_));
+          node_info, session_name_, gcs_node_id_));
     }
-    events.push_back(
-        std::make_unique<observability::RayNodeLifecycleEvent>(node_info, session_name_));
+    events.push_back(std::make_unique<observability::RayNodeLifecycleEvent>(
+        node_info, session_name_, gcs_node_id_));
     ray_event_recorder_.AddEvents(std::move(events));
     return;
   }
@@ -119,6 +121,7 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     PublishNodeInfoToPubsub(node_id, node_info_copy);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
+
   if (node_info.is_head_node()) {
     // mark all old head nodes as dead if exists:
     // 1. should never happen when HA is not used

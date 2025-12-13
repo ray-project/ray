@@ -1146,6 +1146,7 @@ class Node:
             gcs_server_port=gcs_server_port,
             metrics_agent_port=self._ray_params.metrics_agent_port,
             node_ip_address=self._node_ip_address,
+            node_id=self._node_id,
         )
         assert ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [

@@ -139,6 +139,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           RayConfig::instance().ray_event_recorder_max_queued_events(),
           observability::kMetricSourceGCS,
           metrics_.event_recorder_dropped_events_counter)),
+      gcs_node_id_(config.node_id.empty() ? NodeID::Nil()
+                                          : NodeID::FromHex(config.node_id)),
       pubsub_periodical_runner_(PeriodicalRunner::Create(
           io_context_provider_.GetIOContext<pubsub::GcsPublisher>())),
       periodical_runner_(
@@ -148,6 +150,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   // Init GCS table storage. Note this is on the default io context, not the one with
   // GcsInternalKVManager, to avoid congestion on the latter.
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
+  RAY_LOG(INFO).WithField(gcs_node_id_) << "GCS node ID initialized from config";
+
   auto &io_context = io_context_provider_.GetDefaultIOContext();
   std::shared_ptr<StoreClient> store_client;
   switch (storage_type_) {
@@ -361,7 +365,8 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
       &raylet_client_pool_,
       rpc_server_.GetClusterId(),
       *ray_event_recorder_,
-      config_.session_name);
+      config_.session_name,
+      gcs_node_id_);
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::NodeInfoGrpcService>(
@@ -484,6 +489,7 @@ void GcsServer::InitGcsJobManager(
                                       worker_client_pool_,
                                       *ray_event_recorder_,
                                       config_.session_name,
+                                      gcs_node_id_,
                                       running_job_gauge,
                                       finished_job_counter,
                                       job_duration_in_seconds_gauge);
@@ -546,6 +552,7 @@ void GcsServer::InitGcsActorManager(
       worker_client_pool_,
       *ray_event_recorder_,
       config_.session_name,
+      gcs_node_id_,
       actor_by_state_gauge,
       gcs_actor_by_state_gauge);
 
