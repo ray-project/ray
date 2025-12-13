@@ -1,3 +1,5 @@
+import asyncio
+import concurrent.futures
 import http
 import json
 import os
@@ -1178,8 +1180,6 @@ def test_batching_metrics(metrics_start_shutdown):
         @serve.batch(max_batch_size=4, batch_wait_timeout_s=0.5)
         async def batch_handler(self, requests: List[str]) -> List[str]:
             # Simulate some processing time
-            import asyncio
-
             await asyncio.sleep(0.05)
             return [f"processed:{r}" for r in requests]
 
@@ -1193,8 +1193,6 @@ def test_batching_metrics(metrics_start_shutdown):
     http_url = "http://localhost:8000/batch"
 
     # Send multiple concurrent requests to trigger batching
-    import concurrent.futures
-
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         futures = [
             executor.submit(lambda i=i: httpx.post(http_url, content=f"req{i}"))
