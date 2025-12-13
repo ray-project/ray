@@ -416,6 +416,17 @@ class ApplicationState:
 
         self._target_state = target_state
 
+        # Log the resulting declarative + imperative version of the deployment config
+        # after each update to the application
+        if deployment_infos is not None and not deleting:
+            deployment_configs = {
+                name: info.to_dict() for name, info in deployment_infos.items()
+            }
+            logger.info(
+                f"Application '{self._name}' updated. Deployment configs (declarative + imperative): "
+                f"{json.dumps(deployment_configs, indent=2, default=str)}"
+            )
+
     def _set_target_state_deleting(self):
         """Set target state to deleting.
 
