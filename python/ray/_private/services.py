@@ -28,7 +28,7 @@ from ray._common.network_utils import (
     node_ip_address_from_perspective,
     parse_address,
 )
-from ray._private.ray_constants import RAY_NODE_IP_FILENAME
+from ray._private.ray_constants import RAY_NODE_ID_FILENAME, RAY_NODE_IP_FILENAME
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
@@ -737,6 +737,45 @@ def write_node_ip_address(session_dir: str, node_ip_address: Optional[str]) -> N
             cached_node_ip_address["node_ip_address"] = node_ip_address
             with file_path.open(mode="w") as f:
                 json.dump(cached_node_ip_address, f)
+
+
+def write_node_id(session_dir: str, node_id: str) -> None:
+    """Write the node id of the current session to RAY_NODE_ID_FILENAME.
+
+    This allows the history server's collector to easily retrieve the node id.
+
+    This API is process-safe, meaning the file access is protected by a file lock.
+
+    The file contains a JSON array of unique node IDs, allowing
+    multiple nodes sharing the same session directory to coexist. The format is:
+    ["node_id_1", "node_id_2", ...]
+
+    Args:
+        session_dir: The path to Ray session directory.
+        node_id: The node ID of the current node in hex format.
+    """
+    file_path = Path(os.path.join(session_dir, RAY_NODE_ID_FILENAME))
+    node_ids: List[str] = []
+
+    with FileLock(str(file_path.absolute()) + ".lock"):
+        if file_path.exists():
+            try:
+                with file_path.open() as f:
+                    node_ids = json.load(f)
+                # Ensure node_ids is a list, even if JSON is valid but not a list
+                if not isinstance(node_ids, list):
+                    node_ids = []
+            except (json.JSONDecodeError, TypeError):
+                # If file is corrupted, start fresh
+                node_ids = []
+
+        # Add the current node's ID if not already present
+        if node_id not in node_ids:
+            node_ids.append(node_id)
+
+        # Write back as a sorted list for consistent output
+        with file_path.open(mode="w") as f:
+            json.dump(sorted(node_ids), f)
 
 
 def get_node_instance_id():
