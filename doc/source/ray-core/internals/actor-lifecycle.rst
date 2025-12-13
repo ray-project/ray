@@ -536,7 +536,7 @@ Summary diagram
 See also
 --------
 
-- :ref:`actors-guide`: User guide for working with actors
+- :ref:`actor-guide`: User guide for working with actors
 - :ref:`actor-lifetimes`: Named and detached actors
 - :ref:`fault-tolerance-actors`: Actor fault tolerance and restarts
 - :ref:`task-lifecycle`: Task lifecycle internals
