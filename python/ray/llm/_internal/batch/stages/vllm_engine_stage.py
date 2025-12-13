@@ -363,11 +363,20 @@ class vLLMEngineWrapper:
 
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
+            # Handle legacy guided_decoding parameter for backward compatibility
             if "guided_decoding" in sampling_params:
+                guided_decoding_config = maybe_convert_ndarray_to_list(
+                    sampling_params.pop("guided_decoding")
+                )
+                # Log deprecation warning for the old guided_decoding parameter
+                logger.warning(
+                    "The 'guided_decoding' parameter is deprecated. "
+                    "Please use 'structured_output_config' in engine initialization "
+                    "and pass structured outputs through the new API."
+                )
+                # Convert old guided_decoding format to new API (supported in vLLM >= 0.9.0)
                 structured_outputs = vllm.sampling_params.StructuredOutputsParams(
-                    **maybe_convert_ndarray_to_list(
-                        sampling_params.pop("guided_decoding")
-                    )
+                    **guided_decoding_config
                 )
             else:
                 structured_outputs = None

@@ -75,6 +75,42 @@ More Information
 - `RLlib paper`_
 - `Tune paper`_
 
+vLLM Structured Outputs Migration
+---------------------------------
+
+If you use vLLM with Ray Serve LLM and rely on the old `guided_decoding` parameter,
+note that vLLM has migrated to a structured outputs API. Ray provides a
+backward-compatible mapping for `guided_decoding`, but you should migrate to the
+new `response_format`/structured outputs pattern. See the implementation notes:
+
+- `ISSUE_59321 implementation summary <./ISSUE_59321_IMPLEMENTATION_SUMMARY.md>`__
+
+Quick migration example (old -> recommended):
+
+Old::
+
+    sampling_params = {'guided_decoding': {'json': <json_schema>}}
+
+New (recommended)::
+
+    params = {
+      'response_format': {
+        'type': 'json_schema',
+        'json_schema': {'name': 'schema_name', 'schema': <json_schema>}
+      }
+    }
+
+If you run tests or CI locally, prefer a Python version with prebuilt Ray wheels
+(e.g., 3.10/3.11) or use the project CI to validate integration tests.
+
+Minimum supported vLLM
+----------------------
+
+Minimum recommended vLLM version: **v0.9.0**. For details on the new structured
+outputs API, see the vLLM docs:
+
+- `vLLM structured outputs docs <https://docs.vllm.ai/en/stable/features/structured_outputs/>`__
+
 *Older documents:*
 
 - `Ray paper`_

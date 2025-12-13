@@ -61,6 +61,9 @@ RAYLLM_ENABLE_REQUEST_PROMPT_LOGS = (
 RAYLLM_GUIDED_DECODING_BACKEND = os.environ.get(
     "RAYLLM_GUIDED_DECODING_BACKEND", "xgrammar"
 )
+# Legacy setting for the vLLM guided-decoding backend; kept for
+# backward compatibility with older vLLM versions. See vLLM structured
+# outputs docs: https://docs.vllm.ai/en/stable/features/structured_outputs/
 
 MAX_NUM_STOPPING_SEQUENCES = int(os.getenv("RAYLLM_MAX_NUM_STOPPING_SEQUENCES", "8"))
 ENV_VARS_TO_PROPAGATE = {

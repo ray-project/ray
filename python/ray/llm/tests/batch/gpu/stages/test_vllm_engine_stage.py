@@ -389,8 +389,11 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
 
 @pytest.mark.asyncio
 async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
-    """Test the JSON output with xgrammar backend. We have to use
-    a real checkpoint as we need to verify the outputs.
+    """Test the JSON output with xgrammar backend using legacy guided_decoding parameter.
+
+    This test verifies backward compatibility with the deprecated guided_decoding parameter.
+    For vLLM versions supporting the new API, we should use structured_outputs_config
+    and the new API format. This test ensures existing code continues to work.
     """
 
     class AnswerModel(BaseModel):
