@@ -211,9 +211,3 @@ Ray generators don't support these features:
 - Passing ``ObjectRefGenerator`` to another task or actor.
 - :ref:`Ray Client <ray-client-ref>`
 
-Deprecated Dynamic Generator
-----------------------------
-.. toctree::
-    :maxdepth: 1
-
-    tasks/dynamic_generators.rst
