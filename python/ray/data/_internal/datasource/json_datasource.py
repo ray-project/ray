@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import pandas as pd
 
-from ray.air.util.tensor_extensions.arrow import pyarrow_table_from_pydict
+from ray.data._internal.tensor_extensions.arrow import pyarrow_table_from_pydict
 from ray.data._internal.pandas_block import PandasBlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileBasedDatasource

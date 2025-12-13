@@ -7,7 +7,7 @@ import pyarrow as pa
 from pandas._libs import lib
 from pandas._typing import ArrayLike, Dtype, PositionalIndexer, TakeIndexer, npt
 
-import ray.air.util.object_extensions.arrow
+import ray.data._internal.object_extensions.arrow
 from ray.util.annotations import PublicAPI
 
 
@@ -76,7 +76,7 @@ class PythonObjectArray(pd.api.extensions.ExtensionArray):
         return self.values.nbytes
 
     def __arrow_array__(self, type=None):
-        return ray.air.util.object_extensions.arrow.ArrowPythonObjectArray.from_objects(
+        return ray.data._internal.object_extensions.arrow.ArrowPythonObjectArray.from_objects(
             self.values
         )
 

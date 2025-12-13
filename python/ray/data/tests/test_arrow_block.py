@@ -13,7 +13,7 @@ from pyarrow import ArrowInvalid
 
 import ray
 from ray._private.test_utils import run_string_as_driver
-from ray.air.util.tensor_extensions.arrow import (
+from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorArray,
 )
 from ray.data._internal.arrow_block import (

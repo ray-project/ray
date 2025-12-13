@@ -43,7 +43,7 @@ from pandas.compat import set_function_name
 from pandas.core.dtypes.generic import ABCDataFrame, ABCSeries
 from pandas.core.indexers import check_array_indexer, validate_indices
 
-from ray.air.util.tensor_extensions.utils import (
+from ray.data._internal.tensor_extensions.utils import (
     _create_possibly_ragged_ndarray,
     _is_ndarray_variable_shaped_tensor,
 )
@@ -1392,7 +1392,7 @@ class TensorArray(
         https://pandas.pydata.org/pandas-docs/stable/development/extending.html#compatibility-with-apache-arrow
         for more information.
         """
-        from ray.air.util.tensor_extensions.arrow import (
+        from ray.data._internal.tensor_extensions.arrow import (
             ArrowTensorArray,
             ArrowVariableShapedTensorArray,
         )

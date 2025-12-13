@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 import pandas as pd
 import pyarrow as pa
 
-from ray.air.util.tensor_extensions.arrow import convert_to_pyarrow_array
+from ray.data._internal.tensor_extensions.arrow import convert_to_pyarrow_array
 from ray.data.aggregate import (
     AggregateFnV2,
     ApproximateQuantile,

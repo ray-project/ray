@@ -1,24 +1,15 @@
-import os
 import pathlib
-import shutil
-import time
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Union
 
 import fsspec
-import numpy as np
-import pandas as pd
-import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.parquet as pq
-import pytest
 from packaging.version import parse as parse_version
 from pyarrow.fs import FSSpecHandler, PyFileSystem
 from pytest_lazy_fixtures import lf as lazy_fixture
 
-import ray
-from ray._private.arrow_utils import get_pyarrow_version
-from ray.air.util.tensor_extensions.arrow import (
+from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     get_arrow_extension_fixed_shape_tensor_types,
 )
@@ -31,7 +22,6 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 )
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
-from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa

@@ -20,7 +20,7 @@ from packaging.version import parse as parse_version
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.ray_constants import env_integer
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.util.tensor_extensions.arrow import (
+from ray.data._internal.tensor_extensions.arrow import (
     convert_to_pyarrow_array,
     pyarrow_table_from_pydict,
 )

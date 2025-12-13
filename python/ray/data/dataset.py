@@ -28,7 +28,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray._common.usage import usage_lib
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.air.util.tensor_extensions.arrow import (
+from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     get_arrow_extension_fixed_shape_tensor_types,
 )

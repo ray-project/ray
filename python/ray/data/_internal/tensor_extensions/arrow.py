@@ -17,12 +17,12 @@ from packaging.version import parse as parse_version
 import ray.cloudpickle as cloudpickle
 from ray._private.arrow_utils import _check_pyarrow_version, get_pyarrow_version
 from ray._private.ray_constants import env_integer
-from ray.air.util.object_extensions.arrow import (
+from ray.data._internal.object_extensions.arrow import (
     MIN_PYARROW_VERSION_SCALAR_SUBCLASS,
     ArrowPythonObjectArray,
     _object_extension_type_allowed,
 )
-from ray.air.util.tensor_extensions.utils import (
+from ray.data._internal.tensor_extensions.utils import (
     ArrayLike,
     _is_ndarray_variable_shaped_tensor,
     _should_convert_to_tensor,
@@ -562,7 +562,7 @@ class _BaseFixedShapeArrowTensorType(
         Returns:
             An instance of pd.api.extensions.ExtensionDtype.
         """
-        from ray.air.util.tensor_extensions.pandas import TensorDtype
+        from ray.data._internal.tensor_extensions.pandas import TensorDtype
 
         return TensorDtype(self._shape, self.scalar_type.to_pandas_dtype())
 
@@ -1025,7 +1025,7 @@ class ArrowVariableShapedTensorType(
         Returns:
             An instance of pd.api.extensions.ExtensionDtype.
         """
-        from ray.air.util.tensor_extensions.pandas import TensorDtype
+        from ray.data._internal.tensor_extensions.pandas import TensorDtype
 
         return TensorDtype(
             self.shape,
