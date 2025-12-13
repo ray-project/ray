@@ -14,8 +14,11 @@
 
 #include "ray/rpc/rpc_chaos.h"
 
+#include <algorithm>
+#include <array>
 #include <random>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -57,6 +60,17 @@ namespace testing {
 //     export
 //     RAY_testing_rpc_failure='{"*":{"num_failures":-1,"req_failure_prob":25,"resp_failure_prob":50,"in_flight_failure_prob":10,"num_lower_bound_req_failures":2,"num_lower_bound_resp_failures":3,"num_lower_bound_in_flight_failures":1}}'
 
+namespace {
+constexpr std::array<std::string_view, 7> kValidKeys = {
+    "num_failures",
+    "req_failure_prob",
+    "resp_failure_prob",
+    "in_flight_failure_prob",
+    "num_lower_bound_req_failures",
+    "num_lower_bound_resp_failures",
+    "num_lower_bound_in_flight_failures"};
+}  // namespace
+
 class RpcFailureManager {
  public:
   RpcFailureManager() { Init(); }
@@ -89,12 +103,8 @@ class RpcFailureManager {
           continue;
         }
         for (const auto &[config_key, _] : config.items()) {
-          if (config_key != "num_failures" && config_key != "req_failure_prob" &&
-              config_key != "resp_failure_prob" &&
-              config_key != "in_flight_failure_prob" &&
-              config_key != "num_lower_bound_req_failures" &&
-              config_key != "num_lower_bound_resp_failures" &&
-              config_key != "num_lower_bound_in_flight_failures") {
+          if (std::find(kValidKeys.begin(), kValidKeys.end(), config_key) ==
+              kValidKeys.end()) {
             RAY_LOG(FATAL) << "Unknown key specified in testing_rpc_failure config: "
                            << config_key;
           }
