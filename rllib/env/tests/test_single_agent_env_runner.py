@@ -11,6 +11,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.env_runner import StepFailedRecreateEnvError
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.examples.envs.classes.simple_corridor import SimpleCorridor
+from ray.rllib.examples.envs.classes.ten_step_error_env import TenStepErrorEnv
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 
@@ -199,49 +200,6 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
         self.assertTrue(any(e.t_started > 0 for e in episodes))
 
     def test_sample_with_env_error(self):
-        class TenStepErrorEnv(gym.Env):
-            """An environment that lets you sample 1 episode and raises an error during the next one.
-
-            The expectation to the env runner is that it will sample one episode and recreate the env
-            to sample the second one.
-            """
-
-            def __init__(self, config):
-                super().__init__()
-                self.step_count = 0
-                self.one_eps_done = False
-                self.observation_space = gym.spaces.Box(low=0, high=1, shape=(1,))
-                self.action_space = gym.spaces.Box(low=0, high=1, shape=(1,))
-
-            def reset(self, seed=None, options=None):
-                self.step_count = 0
-                return self.observation_space.sample(), {
-                    "one_eps_done": self.one_eps_done
-                }
-
-            def step(self, action):
-                self.step_count += 1
-                if self.step_count == 10:
-                    if not self.one_eps_done:
-                        self.one_eps_done = True
-                        return (
-                            self.observation_space.sample(),
-                            0.0,
-                            True,
-                            False,
-                            {"one_eps_done": False},
-                        )
-                    else:
-                        raise Exception("Test error")
-
-                return (
-                    self.observation_space.sample(),
-                    0.0,
-                    False,
-                    False,
-                    {"one_eps_done": self.one_eps_done},
-                )
-
         config = (
             AlgorithmConfig()
             .environment(TenStepErrorEnv)
@@ -257,7 +215,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
         self.assertEqual(len(episodes), 2)
         self.assertEqual(len(episodes[0]), 10)
         self.assertListEqual(
-            [info["one_eps_done"] for info in episodes[0].infos], [False] * 11
+            [info["last_eps_errored"] for info in episodes[0].infos], [False] * 11
         )
 
         # Sample second episode.
@@ -266,7 +224,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
         self.assertEqual(len(episodes), 2)
         self.assertEqual(len(episodes[0]), 10)
         self.assertListEqual(
-            [info["one_eps_done"] for info in episodes[0].infos], [False] * 11
+            [info["last_eps_errored"] for info in episodes[0].infos], [False] * 11
         )
 
         # Sample timesteps
@@ -274,9 +232,9 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
         self.assertEqual(len(episodes), 2)
         self.assertEqual(len(episodes[0]), 5)
         self.assertEqual(len(episodes[1]), 5)
-        # Because both envs have been reset, one_eps_done should be true
+        # Because both envs have been reset, last_eps_errored should be true
         self.assertListEqual(
-            [info["one_eps_done"] for info in episodes[0].infos], [True] * 6
+            [info["last_eps_errored"] for info in episodes[0].infos], [True] * 6
         )
 
         # Sample timesteps
@@ -285,7 +243,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
         self.assertEqual(len(episodes[0]), 5)
         self.assertEqual(len(episodes[1]), 5)
         self.assertListEqual(
-            [info["one_eps_done"] for info in episodes[0].infos], [False] * 6
+            [info["last_eps_errored"] for info in episodes[0].infos], [False] * 6
         )
 
     @patch(target="ray.rllib.env.env_runner.logger")

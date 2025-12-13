@@ -2113,18 +2113,6 @@ py_test(
 )
 
 py_test(
-    name = "test_env_runner_failures",
-    size = "large",
-    srcs = ["algorithms/tests/test_env_runner_failures.py"],
-    tags = [
-        "algorithms_dir",
-        "algorithms_dir_generic",
-        "exclusive",
-        "team:rllib",
-    ],
-)
-
-py_test(
     name = "test_node_failures",
     size = "large",
     srcs = ["algorithms/tests/test_node_failures.py"],
@@ -2456,6 +2444,18 @@ py_test(
 #
 # Tag: evaluation
 # --------------------------------------------------------------------
+
+py_test(
+    name = "test_env_runner_failures",
+    size = "large",
+    srcs = ["env/tests/test_env_runner_failures.py"],
+    tags = [
+        "evaluation",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
 py_test(
     name = "env/tests/test_env_runner_group",
     size = "small",

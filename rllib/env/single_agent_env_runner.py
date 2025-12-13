@@ -169,8 +169,12 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 The episodes returned will contain the total timesteps greater than or
                 equal to num_timesteps and less than num_timesteps + num_envs_per_env_runner.
                 Note that only one of `num_timesteps` or `num_episodes` may be provided.
+                Since we sample from envs in parallel, the number of returned timesteps
+                will be between num_timesteps and num_timesteps + num_envs_per_env_runner - 1.
             num_episodes: The minimum number of episodes to sample during this call.
                 Note that only one of `num_timesteps` or `num_episodes` may be provided.
+                Since we sample from envs in parallel, the number of returned episodes
+                will be between num_episodes and num_episodes + num_envs_per_env_runner - 1.
             explore: If True, will use the RLModule's `forward_exploration()`
                 method to compute actions. If False, will use the RLModule's
                 `forward_inference()` method. If None (default), will use the `explore`
@@ -281,24 +285,10 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         eps = 0
         done_episodes_to_return: List[SingleAgentEpisode] = []
 
-        def _reset_envs_and_episodes():
-            """Helper method to reset the envs, ongoing episodes and shared data.
-
-            This resets the global ts variable and deletes ongoing episodes.
-            The Done episodes are preserved.
-            """
-            nonlocal ts
-            ts = 0
-            self._ongoing_episodes = [None for _ in range(self.num_envs)]
-            self._shared_data = {}
-            self._reset_envs(self._ongoing_episodes, self._shared_data, explore)
-            # We just reset the env. Don't have to force this again in the next
-            # call to `self._sample_timesteps()`.
-            self._needs_initial_reset = False
-
         # Have to reset the env (on all vector sub_envs).
         if force_reset or num_episodes is not None or self._needs_initial_reset:
-            _reset_envs_and_episodes()
+            ts = 0
+            self._reset_envs_and_episodes(explore)
 
         if num_episodes is not None:
             self._needs_initial_reset = True
@@ -358,7 +348,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             results = self._try_env_step(actions_for_env)
             # If the env step fails, reset the envs and continue the loop.
             if results == ENV_STEP_FAILURE:
-                _reset_envs_and_episodes()
+                ts = 0
+                self._reset_envs_and_episodes(explore)
                 continue
 
             observations, rewards, terminateds, truncateds, infos = results
