@@ -1,0 +1,41 @@
+group: cicd-cron
+steps:
+  - name: manylinux-cibase
+    label: ":magic_wand: wanda: manylinux-cibase"
+    wanda: ci/docker/manylinux-cibase.wanda.yaml
+    env:
+      RAYCI_DISABLE_JAVA: "true"
+      RAYCI_WANDA_ALWAYS_REBUILD: "true"
+      JDK_SUFFIX: ""
+
+  - name: manylinux-cibase-jdk
+    label: ":magic_wand: wanda: manylinux-cibase-jdk"
+    wanda: ci/docker/manylinux-cibase.wanda.yaml
+    env:
+      RAYCI_DISABLE_JAVA: "false"
+      RAYCI_WANDA_ALWAYS_REBUILD: "true"
+      JDK_SUFFIX: "-jdk"
+
+  - label: ":docker: push: Push manylinux-cibase to Docker Hub"
+    depends_on:
+      - manylinux-cibase
+      - forge
+    job_env: forge
+    commands:
+      # NOTE(andrew-anyscale): Not running w/ --upload while we verify builds
+      # are scheduling and completing correctly.
+      - bazel run //ci/ray_ci/automation:copy_wanda_image --
+        --wanda-image-name manylinux-cibase
+        --destination-registry rayproject/manylinux2014_cibase_x86_64
+
+  - label: ":docker: push: Push manylinux-cibase-jdk to Docker Hub"
+    depends_on:
+      - manylinux-cibase-jdk
+      - forge
+    job_env: forge
+    commands:
+      # NOTE(andrew-anyscale): Not running w/ --upload while we verify builds
+      # are scheduling and completing correctly.
+      - bazel run //ci/ray_ci/automation:copy_wanda_image --
+        --wanda-image-name manylinux-cibase-jdk
+        --destination-registry rayproject/manylinux2014_cibase_jdk_x86_64

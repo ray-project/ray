@@ -9,11 +9,17 @@ Callers are responsible for checking return_code to detect failures rather than
 relying on exceptions.
 """
 
+import base64
+import os
 import platform
 import subprocess
+import time
 from typing import List, Tuple
 
+import boto3
+import requests
 import runfiles
+from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
 
 from ci.ray_ci.utils import logger
 
@@ -35,18 +41,29 @@ def _crane_binary() -> str:
     return r.Rlocation("crane_linux_x86_64/crane")
 
 
-def _run_crane_command(args: List[str]) -> Tuple[int, str]:
+def _run_crane_command(
+    args: List[str], stdin_input: str | None = None
+) -> Tuple[int, str]:
     """
     Run a crane command and return the exit code and output.
+
+    Args:
+        args: Command arguments to pass to crane.
+        stdin_input: Optional input to pass via stdin (e.g., for passwords).
     """
     command = [_crane_binary()] + args
     try:
         with subprocess.Popen(
             command,
+            stdin=subprocess.PIPE if stdin_input else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env=os.environ,
         ) as proc:
+            if stdin_input:
+                proc.stdin.write(stdin_input)
+                proc.stdin.close()
             output = ""
             if proc.stdout:
                 for line in proc.stdout:
@@ -67,6 +84,96 @@ def _run_crane_command(args: List[str]) -> Tuple[int, str]:
     except FileNotFoundError:
         logger.error(f"Crane binary not found at {command[0]}")
         return 1, f"Crane binary not found at {command[0]}"
+
+
+def crane_ecr_login(ecr_registry: str, region: str = "us-west-2") -> Tuple[int, str]:
+    """
+    Authenticate crane with AWS ECR using boto3.
+
+    Args:
+        ecr_registry: ECR registry URL (e.g., "029272617770.dkr.ecr.us-west-2.amazonaws.com").
+        region: AWS region for ECR. Defaults to "us-west-2".
+
+    Returns:
+        Tuple of (return_code, output). return_code is 0 on success.
+    """
+    logger.info(f"Authenticating crane with ECR: {ecr_registry}")
+    try:
+        token = boto3.client("ecr", region_name=region).get_authorization_token()
+        auth_data = token["authorizationData"][0]["authorizationToken"]
+        user, password = base64.b64decode(auth_data).decode("utf-8").split(":")
+    except Exception as e:
+        logger.error(f"Failed to get ECR authorization token: {e}")
+        return 1, f"Failed to get ECR authorization token: {e}"
+
+    return _run_crane_command(
+        ["auth", "login", "-u", user, "--password-stdin", ecr_registry],
+        stdin_input=password,
+    )
+
+
+def crane_docker_hub_login() -> Tuple[int, str]:
+    """
+    Authenticate crane with Docker Hub using Ray CI API Gateway.
+
+    Requires BUILDKITE_JOB_ID environment variable to be set.
+
+    Returns:
+        Tuple of (return_code, output). return_code is 0 on success.
+    """
+    logger.info("Authenticating crane with Docker Hub")
+    job_id = os.environ.get("BUILDKITE_JOB_ID")
+    if not job_id:
+        logger.error("BUILDKITE_JOB_ID environment variable is required")
+        return 1, "BUILDKITE_JOB_ID environment variable is required"
+
+    try:
+        auth = BotoAWSRequestsAuth(
+            aws_host="vop4ss7n22.execute-api.us-west-2.amazonaws.com",
+            aws_region="us-west-2",
+            aws_service="execute-api",
+        )
+
+        # Retry logic for API Gateway
+        resp = None
+        for attempt in range(5):
+            resp = requests.get(
+                "https://vop4ss7n22.execute-api.us-west-2.amazonaws.com/endpoint/",
+                auth=auth,
+                params={"job_id": job_id},
+            )
+            logger.info(
+                f"Getting Docker Hub credentials, status_code: {resp.status_code}"
+            )
+            if resp.status_code < 500:
+                break
+            logger.info(f"API Gateway error, retrying (attempt {attempt + 1}/5)...")
+            time.sleep(5)
+
+        if resp is None or resp.status_code >= 400:
+            error_msg = (
+                f"Failed to get Docker Hub credentials: "
+                f"{resp.text if resp else 'no response'}"
+            )
+            logger.error(error_msg)
+            return 1, error_msg
+
+        password = resp.json()["docker_password"]
+    except Exception as e:
+        logger.error(f"Failed to get Docker Hub credentials: {e}")
+        return 1, f"Failed to get Docker Hub credentials: {e}"
+
+    return _run_crane_command(
+        [
+            "auth",
+            "login",
+            "-u",
+            "raydockerreleaser",
+            "--password-stdin",
+            "index.docker.io",
+        ],
+        stdin_input=password,
+    )
 
 
 def call_crane_copy(source: str, destination: str) -> Tuple[int, str]:
