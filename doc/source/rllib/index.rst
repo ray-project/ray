@@ -300,7 +300,7 @@ Why chose RLlib?
     cloning (BC) workloads.
 
     See here for a basic `tuned example for the behavior cloning algo <https://github.com/ray-project/ray/blob/ray-2.52.1/rllib/tuned_examples/bc/cartpole_bc.py>`__
-    and here for how to `pre-train a policy with BC, then finetuning it with online PPO <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/train_w_bc_finetune_w_ppo.py>`__.
+    and here for how to `pre-train a policy with BC, then finetuning it with online PPO <https://github.com/ray-project/ray/blob/ray-2.52.1/rllib/examples/offline_rl/train_w_bc_finetune_w_ppo.py>`__.
 
 .. dropdown:: **Support for External Env Clients**
     :animate: fade-in-slide-down
