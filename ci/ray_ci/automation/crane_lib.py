@@ -148,7 +148,14 @@ def crane_docker_hub_login() -> Tuple[int, str]:
 
     password = resp.json()["docker_password"]
     return _run_crane_command(
-        ["auth", "login", "-u", "raydockerreleaser", "--password-stdin", "index.docker.io"],
+        [
+            "auth",
+            "login",
+            "-u",
+            "raydockerreleaser",
+            "--password-stdin",
+            "index.docker.io",
+        ],
         stdin_input=password,
     )
 
