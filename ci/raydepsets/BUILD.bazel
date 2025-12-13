@@ -10,6 +10,11 @@ py_library(
 )
 
 py_library(
+    name = "parser",
+    srcs = ["parser.py"],
+)
+
+py_library(
     name = "raydepsets_lib",
     srcs = [
         "cli.py",
@@ -81,5 +86,23 @@ py_test(
         ci_require("pytest"),
         ":utils",
         ":workspace",
+    ],
+)
+
+py_test(
+    name = "test_parser",
+    srcs = ["tests/test_parser.py"],
+    data = [
+        "tests/test_data/test_python_depset.lock",
+    ],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ":parser",
+        ":raydepsets_lib",
+        ":utils",
     ],
 )
