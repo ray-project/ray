@@ -5,6 +5,9 @@ from typing import TYPE_CHECKING, Dict
 
 from .backpressure_policy import BackpressurePolicy
 from ray._private.ray_constants import env_float
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+)
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
