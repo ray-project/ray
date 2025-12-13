@@ -5,6 +5,7 @@ steps:
     wanda: ci/docker/manylinux-cibase.wanda.yaml
     env:
       RAYCI_DISABLE_JAVA: "true"
+      RAYCI_WANDA_ALWAYS_REBUILD: "true"
       JDK_SUFFIX: ""
 
   - name: manylinux-cibase-jdk
@@ -12,6 +13,7 @@ steps:
     wanda: ci/docker/manylinux-cibase.wanda.yaml
     env:
       RAYCI_DISABLE_JAVA: "false"
+      RAYCI_WANDA_ALWAYS_REBUILD: "true"
       JDK_SUFFIX: "-jdk"
 
   - label: ":docker: push: Push manylinux-cibase to Docker Hub"
