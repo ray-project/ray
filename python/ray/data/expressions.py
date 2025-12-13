@@ -423,7 +423,8 @@ class Expr(ABC):
         """Access list operations for this expression.
 
         Returns:
-            A _ListNamespace that provides list-specific operations.
+            A _ListNamespace that provides list-specific operations for both
+            PyArrow ``List`` and ``FixedSizeList`` columns.
 
         Example:
             >>> from ray.data.expressions import col
