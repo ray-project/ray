@@ -479,8 +479,7 @@ class MARWIL(Algorithm):
                 key=NUM_ENV_STEPS_SAMPLED_LIFETIME,
                 value=self.config.train_batch_size_per_learner
                 * max(1, self.config.num_learners),
-                reduce="sum",
-                clear_on_reduce=False,
+                reduce="lifetime_sum",
             )
             if return_iterator:
                 training_data = TrainingData(data_iterators=batch_or_iterator)
