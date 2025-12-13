@@ -87,22 +87,18 @@ new `response_format`/structured outputs pattern. See the implementation notes:
 
 Quick migration example (old -> recommended):
 
-Old:
+Old::
 
-```
-sampling_params = {'guided_decoding': {'json': <json_schema>}}
-```
+    sampling_params = {'guided_decoding': {'json': <json_schema>}}
 
-New (recommended):
+New (recommended)::
 
-```
-params = {
-  'response_format': {
-    'type': 'json_schema',
-    'json_schema': {'name': 'schema_name', 'schema': <json_schema>}
-  }
-}
-```
+    params = {
+      'response_format': {
+        'type': 'json_schema',
+        'json_schema': {'name': 'schema_name', 'schema': <json_schema>}
+      }
+    }
 
 If you run tests or CI locally, prefer a Python version with prebuilt Ray wheels
 (e.g., 3.10/3.11) or use the project CI to validate integration tests.
