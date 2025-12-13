@@ -1,3 +1,5 @@
+common --noenable_bzlmod
+
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
 
