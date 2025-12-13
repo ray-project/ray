@@ -12,9 +12,6 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    ActorPoolMapOperator,
-)
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
