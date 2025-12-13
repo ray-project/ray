@@ -1,5 +1,6 @@
 import collections
 import logging
+import platform
 from dataclasses import dataclass
 from typing import Dict, Optional
 
@@ -324,3 +325,18 @@ class MixManagerCallback(RLlibCallback):
         That will tell Ray Tune, whether to stop training (once the 'target_mix_size' has been reached).
         """
         result["mix_size"] = len(self.modules_in_mix)
+
+
+def platform_for_binary_to_download(render: bool) -> str:
+    if platform.system() == "Darwin":
+        if render:
+            return "mac_windowed"
+        else:
+            return "mac_headless"
+    elif platform.system() == "Linux":
+        if render:
+            return "linux_windowed"
+        else:
+            return "linux_server"
+    else:
+        raise RuntimeError(f"Unsupported platform: {platform.system()}")
