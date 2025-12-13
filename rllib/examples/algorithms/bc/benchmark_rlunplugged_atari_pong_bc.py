@@ -26,6 +26,7 @@ from ray.rllib.core import ALL_MODULES
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
+from ray.rllib.examples.utils import add_rllib_example_script_args
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -34,7 +35,7 @@ from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
 )
-from ray.rllib.utils.test_utils import add_rllib_example_script_args, should_stop
+from ray.rllib.utils.test_utils import should_stop
 from ray.tune.logger.unified import UnifiedLogger
 
 

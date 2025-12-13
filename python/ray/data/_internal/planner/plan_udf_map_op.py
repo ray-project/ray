@@ -99,7 +99,7 @@ class _MapActorContext:
             asyncio.set_event_loop(loop)
             loop.run_forever()
 
-        thread = Thread(target=run_loop)
+        thread = Thread(target=run_loop, daemon=True)
         thread.start()
         self.udf_map_asyncio_loop = loop
         self.udf_map_asyncio_thread = thread

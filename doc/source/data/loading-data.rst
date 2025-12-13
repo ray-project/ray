@@ -663,10 +663,6 @@ performance and scalability than loading datasets into memory first.
 
 First, install the required dependencies
 
-.. warning::
-
-    If you encounter serialization errors when reading from Hugging Face filesystems, try upgrading ``huggingface_hub`` to version 1.1.6 or later. For more details, see this issue: https://github.com/ray-project/ray/issues/59029
-
 .. code-block:: console
 
     pip install huggingface_hub
@@ -708,6 +704,11 @@ read from the dataset path:
     title   string
     text    string
 
+.. tip::
+
+    If you encounter serialization errors when reading from Hugging Face filesystems, try upgrading ``huggingface_hub`` to version 1.1.6 or later. For more details, see this issue: https://github.com/ray-project/ray/issues/59029
+
+
 
 .. _loading_datasets_from_ml_libraries:
 
@@ -717,6 +718,29 @@ Loading data from ML libraries
 Ray Data interoperates with PyTorch and TensorFlow datasets.
 
 .. tab-set::
+
+    .. tab-item:: HuggingFace
+
+        To load a HuggingFace Dataset into Ray Data, use the HuggingFace Hub ``HfFileSystem``
+        with :func:`~ray.data.read_parquet`, :func:`~ray.data.read_csv`, or :func:`~ray.data.read_json`.
+        Since HuggingFace datasets are often backed by these file formats, this approach enables efficient distributed
+        reads directly from the Hub.
+
+        .. testcode::
+            :skipif: True
+
+            import ray.data
+            from huggingface_hub import HfFileSystem
+
+            path = "hf://datasets/Salesforce/wikitext/wikitext-2-raw-v1/"
+            fs = HfFileSystem()
+            ds = ray.data.read_parquet(path, filesystem=fs)
+            print(ds.take(5))
+
+        .. testoutput::
+            :options: +MOCK
+
+            [{'text': '...'}, {'text': '...'}]
 
     .. tab-item:: PyTorch
 

@@ -134,3 +134,9 @@ platform(
     parents = ["@local_config_platform//:host"],
     visibility = ["//visibility:private"],
 )
+
+alias(
+    name = "py3",
+    actual = ":py310",
+    visibility = ["//visibility:public"],
+)

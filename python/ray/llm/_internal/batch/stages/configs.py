@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, Type, TypeVar, Union
+from typing import Any, Dict, Literal, Optional, Tuple, Type, TypeVar, Union
 
 from pydantic import Field
 
@@ -49,6 +49,23 @@ class DetokenizeStageConfig(_StageConfigBase):
 
 class PrepareImageStageConfig(_StageConfigBase):
     pass
+
+
+class PrepareMultimodalStageConfig(_StageConfigBase):
+    model_source: Optional[str] = Field(
+        default=None,
+        description="Name or path of the Hugging Face model to use for the multimodal processor. "
+        "This is required to process multimodal data according to a specific model.",
+    )
+    chat_template_content_format: Optional[Literal["string", "openai"]] = Field(
+        default="string",
+        description="The content format to use for the chat template. "
+        "This is used to format the chat template content according to a specific model.",
+    )
+    apply_sys_msg_formatting: Optional[bool] = Field(
+        default=False,
+        description="Whether to apply formatting system messages.",
+    )
 
 
 def resolve_stage_config(

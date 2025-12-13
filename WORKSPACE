@@ -92,7 +92,7 @@ load("@py_deps_py310//:requirements.bzl", install_py_deps_py310 = "install_deps"
 install_py_deps_buildkite()
 install_py_deps_py310()
 
-register_toolchains("//bazel:py39_toolchain")
+register_toolchains("//bazel:py310_toolchain")
 
 register_execution_platforms(
     "@local_config_platform//:host",

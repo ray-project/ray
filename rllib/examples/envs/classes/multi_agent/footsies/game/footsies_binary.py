@@ -16,6 +16,7 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
     footsies_service_pb2 as footsies_pb2,
     footsies_service_pb2_grpc as footsies_pb2_grpc,
 )
+from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -92,11 +93,29 @@ class FootsiesBinary:
             self._add_executable_permission(game_binary_path)
         logger.info(f"Game binary path: {game_binary_path}")
 
+        # The underlying game can be quite spammy. So when we are not debugging it, we can suppress the output.
+        log_output = self.config.get("log_unity_output")
+        if log_output is None:
+            if log_once("log_unity_output_not_set"):
+                logger.warning(
+                    "`log_unity_output` not set in environment config, not logging output by default"
+                )
+            log_output = False
+
+        if not log_output:
+            stdout_dest = stderr_dest = subprocess.DEVNULL
+        else:
+            stdout_dest = stderr_dest = None  # Use parent's stdout/stderr
+
         if (
             self.binary_to_download == "linux_server"
             or self.binary_to_download == "linux_windowed"
         ):
-            process = subprocess.Popen([game_binary_path, "--port", str(self.port)])
+            process = subprocess.Popen(
+                [game_binary_path, "--port", str(self.port)],
+                stdout=stdout_dest,
+                stderr=stderr_dest,
+            )
         else:
             process = subprocess.Popen(
                 [
@@ -106,6 +125,8 @@ class FootsiesBinary:
                     "--port",
                     str(self.port),
                 ],
+                stdout=stdout_dest,
+                stderr=stderr_dest,
             )
 
         # check if the game server is running correctly

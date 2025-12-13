@@ -732,12 +732,8 @@ message ObjectReferenceCount {
 enum TensorTransport {
   // Use the default object store for tensor transport.
   OBJECT_STORE = 0;
-  // Use NCCL for tensor transport.
-  NCCL = 1;
-  // Use GLOO for tensor transport.
-  GLOO = 2;
-  // Use NIXL for tensor transport.
-  NIXL = 3;
+  // Use Ray Direct Transport to transfer tensors directly between workers.
+  DIRECT_TRANSPORT = 1;
 }
 
 // Argument in the task.

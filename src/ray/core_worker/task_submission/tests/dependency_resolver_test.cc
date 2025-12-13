@@ -465,7 +465,7 @@ TEST(LocalDependencyResolverTest, TestMixedTensorTransport) {
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [&](const ObjectID &object_id) {
         if (object_id == obj1) {
-          return rpc::TensorTransport::NCCL;
+          return rpc::TensorTransport::DIRECT_TRANSPORT;
         }
         return rpc::TensorTransport::OBJECT_STORE;
       });

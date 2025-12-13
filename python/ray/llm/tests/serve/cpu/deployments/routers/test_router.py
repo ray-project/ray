@@ -181,6 +181,78 @@ class TestOpenAiIngress:
 
         await router.check_health()
 
+    @pytest.mark.asyncio
+    async def test_raw_request_info_passed_to_deployment_handle(
+        self, llm_config: LLMConfig
+    ):
+        """Test that raw_request_info is passed to the deployment handle."""
+        from ray.llm._internal.serve.core.configs.openai_api_models import (
+            ChatCompletionRequest,
+            ChatCompletionResponse,
+        )
+        from ray.llm._internal.serve.core.protocol import RawRequestInfo
+
+        # Track if raw_request_info was received
+        captured_raw_request_infos = []
+
+        # Create a mock deployment handle that captures raw_request_info
+        async def mock_chat_generator(request, raw_request_info):
+            captured_raw_request_infos.append(raw_request_info)
+            # Return a valid response
+            yield ChatCompletionResponse(
+                id="test_id",
+                choices=[
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "Hello!"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                model="llm_model_id",
+                object="chat.completion",
+                usage={
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2,
+                },
+            )
+
+        mock_handle = MagicMock()
+        mock_handle.llm_config = MagicMock()
+        mock_handle.llm_config.remote = AsyncMock(return_value=llm_config)
+        mock_handle.chat = MagicMock()
+        mock_handle.chat.remote = mock_chat_generator
+        # Make options() return the same mock so chat.remote is preserved
+        mock_handle.options.return_value = mock_handle
+
+        # Create router with mock handle
+        router = OpenAiIngress(llm_deployments=[mock_handle])
+        await router._init_completed.wait()
+
+        # Create a mock FastAPI request
+        from starlette.datastructures import Headers
+
+        mock_request = MagicMock()
+        mock_headers = {
+            "content-type": "application/json",
+            "x-ray-serve-llm-test-header": "router-raw-request-info",
+        }
+        mock_request.headers = Headers(mock_headers)
+
+        # Make a request through the router
+        request_body = ChatCompletionRequest(
+            model="llm_model_id",
+            messages=[{"role": "user", "content": "Hello"}],
+            stream=False,
+        )
+
+        await router.chat(request_body, mock_request)
+
+        # Verify that raw_request_info was passed to the deployment handle
+        assert len(captured_raw_request_infos) == 1
+        assert isinstance(captured_raw_request_infos[0], RawRequestInfo)
+        assert captured_raw_request_infos[0].headers == mock_headers
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -13,7 +13,7 @@ from ray.serve._private import default_impl
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
-    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
 )
 from ray.serve._private.deployment_scheduler import (
     DeploymentDownscaleRequest,
@@ -868,9 +868,9 @@ def test_downscale_single_deployment():
 
 
 @pytest.mark.skipif(
-    not RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY, reason="Needs compact strategy."
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
 )
-class TestCompactScheduling:
+class TestPackScheduling:
     def test_basic(self):
         d_id1 = DeploymentID(name="deployment1")
         d_id2 = DeploymentID(name="deployment2")

@@ -1208,9 +1208,9 @@ class CoreWorker {
                         rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
-  void HandleCancelRemoteTask(rpc::CancelRemoteTaskRequest request,
-                              rpc::CancelRemoteTaskReply *reply,
-                              rpc::SendReplyCallback send_reply_callback);
+  void HandleRequestOwnerToCancelTask(rpc::RequestOwnerToCancelTaskRequest request,
+                                      rpc::RequestOwnerToCancelTaskReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,

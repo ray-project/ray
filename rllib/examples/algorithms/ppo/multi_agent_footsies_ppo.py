@@ -25,6 +25,7 @@ Evaluation:
 
 """
 import functools
+import platform
 from pathlib import Path
 
 from ray.rllib.algorithms.ppo import PPOConfig
@@ -46,10 +47,11 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.utils import (
 from ray.rllib.examples.rl_modules.classes.lstm_containing_rlm import (
     LSTMContainingRLModule,
 )
-from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
 )
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.tune.registry import register_env
 from ray.tune.result import TRAINING_ITERATION
 
@@ -89,17 +91,6 @@ parser.add_argument(
     help="Directory to extract Footsies binaries (default: /tmp/ray/binaries/footsies)",
 )
 parser.add_argument(
-    "--binary-to-download",
-    type=str,
-    choices=["linux_server", "linux_windowed", "mac_headless", "mac_windowed"],
-    default="linux_server",
-    help="Target binary for Footsies environment (default: linux_server). Linux and Mac machines are supported. "
-    "'linux_server' and 'mac_headless' choices are the default options for the training. Game will run in the batchmode, without initializing the graphics. "
-    "'linux_windowed' and 'mac_windowed' choices are for the local run only, because "
-    "game will be rendered in the OS window. To use this option effectively, set up: "
-    "--no-tune --num-env-runners 0 --evaluation-num-env-runners 0",
-)
-parser.add_argument(
     "--win-rate-threshold",
     type=float,
     default=0.8,
@@ -122,10 +113,37 @@ parser.add_argument(
     default=256,
     help="The length of each rollout fragment to be collected by the EnvRunners when sampling.",
 )
+parser.add_argument(
+    "--log-unity-output",
+    action="store_true",
+    help="Whether to log Unity output (from the game engine). Default is False.",
+    default=False,
+)
+parser.add_argument(
+    "--render",
+    action="store_true",
+    default=False,
+    help="Whether to render the Footsies environment. Default is False.",
+)
 
 main_policy = "lstm"
 args = parser.parse_args()
 register_env(name="FootsiesEnv", env_creator=env_creator)
+
+# Detect platform and choose appropriate binary
+if platform.system() == "Darwin":
+    if args.render:
+        binary_to_download = "mac_windowed"
+    else:
+        binary_to_download = "mac_headless"
+elif platform.system() == "Linux":
+    if args.render:
+        binary_to_download = "linux_windowed"
+    else:
+        binary_to_download = "linux_server"
+else:
+    raise RuntimeError(f"Unsupported platform: {platform.system()}")
+
 
 config = (
     PPOConfig()
@@ -143,7 +161,8 @@ config = (
             "host": "localhost",
             "binary_download_dir": args.binary_download_dir,
             "binary_extract_dir": args.binary_extract_dir,
-            "binary_to_download": args.binary_to_download,
+            "binary_to_download": binary_to_download,
+            "log_unity_output": args.log_unity_output,
         },
     )
     .learners(
@@ -247,8 +266,6 @@ stop = {
 }
 
 if __name__ == "__main__":
-    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
-
     results = run_rllib_example_script_experiment(
         base_config=config,
         args=args,

@@ -88,7 +88,7 @@ class ControllerCallback(RayTrainCallback):
         pass
 
     # TODO(matthewdeng): Revisit this callback interface for better extensibility.
-    # This hook was added for the specific use case of setting a `bundle_label_selector`
+    # This hook was added for the specific use case of setting a `label_selector`
     # for new worker groups (e.g., for TPU reservations). The current interface is
     # tightly coupled to this purpose and limits its reuse for other use-cases.
     def on_controller_start_worker_group(
@@ -104,7 +104,7 @@ class ControllerCallback(RayTrainCallback):
             num_workers: The number of workers to be started.
 
         Returns:
-            An optional dictionary defining a `bundle_label_selector`
+            An optional dictionary defining a `label_selector`
             to gang schedule the worker group on the reserved TPU slice.
         """
         return None

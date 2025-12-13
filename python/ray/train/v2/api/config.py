@@ -48,7 +48,7 @@ class ScalingConfig(ScalingConfigV1):
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
-        bundle_label_selector: A list of label selectors for Ray Train worker placement.
+        label_selector: A list of label selectors for Ray Train worker placement.
             If a single label selector is provided, it will be applied to all Ray Train workers.
             If a list is provided, it must be the same length as the max number of Ray Train workers.
         accelerator_type: [Experimental] If specified, Ray Train will launch the
@@ -72,7 +72,7 @@ class ScalingConfig(ScalingConfigV1):
     trainer_resources: Optional[dict] = None
     use_tpu: Union[bool] = False
     topology: Optional[str] = None
-    bundle_label_selector: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None
+    label_selector: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None
 
     def __post_init__(self):
         if self.trainer_resources is not None:
@@ -107,19 +107,19 @@ class ScalingConfig(ScalingConfigV1):
                     "`accelerator_type` must be specified in ScalingConfig when "
                     "`use_tpu=True` and `num_workers` > 1."
                 )
-            if self.bundle_label_selector:
+            if self.label_selector:
                 raise ValueError(
-                    "Cannot set `bundle_label_selector` when `use_tpu=True` because "
+                    "Cannot set `label_selector` when `use_tpu=True` because "
                     "Ray Train automatically reserves a TPU slice with a predefined label."
                 )
 
         if (
-            isinstance(self.bundle_label_selector, list)
+            isinstance(self.label_selector, list)
             and isinstance(self.num_workers, int)
-            and len(self.bundle_label_selector) != self.num_workers
+            and len(self.label_selector) != self.num_workers
         ):
             raise ValueError(
-                "If `bundle_label_selector` is a list, it must be the same length as `num_workers`."
+                "If `label_selector` is a list, it must be the same length as `num_workers`."
             )
 
         if self.num_workers == 0:

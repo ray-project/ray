@@ -224,14 +224,13 @@ class DQNTorchLearner(DQNLearner, TorchLearner):
                 * loss_fn(reduction="none")(q_selected, q_selected_target)
             )
 
-        # Log the TD-error with reduce=None, such that - in case we have n parallel
+        # Log the TD-error with reduce="item_series", such that - in case we have n parallel
         # Learners - we will re-concatenate the produced TD-error tensors to yield
         # a 1:1 representation of the original batch.
         self.metrics.log_value(
             key=(module_id, TD_ERROR_KEY),
             value=td_error,
-            reduce=None,
-            clear_on_reduce=True,
+            reduce="item_series",
         )
         # Log other important loss stats (reduce=mean (default), but with window=1
         # in order to keep them history free).
