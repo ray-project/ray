@@ -20,6 +20,7 @@ from ray.util.annotations import PublicAPI
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
 
 
+@PublicAPI(stability="alpha")
 @dataclass(frozen=True)
 class DeploymentID:
     name: str

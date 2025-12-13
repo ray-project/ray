@@ -88,6 +88,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.config.AutoscalingContext
    serve.config.AggregationFunction
    serve.config.RequestRouterConfig
+   serve.config.DeploymentID
 ```
 
 ### Schemas
