@@ -41,19 +41,29 @@ def _crane_binary() -> str:
     return r.Rlocation("crane_linux_x86_64/crane")
 
 
-def _run_crane_command(args: List[str]) -> Tuple[int, str]:
+def _run_crane_command(
+    args: List[str], stdin_input: str | None = None
+) -> Tuple[int, str]:
     """
     Run a crane command and return the exit code and output.
+
+    Args:
+        args: Command arguments to pass to crane.
+        stdin_input: Optional input to pass via stdin (e.g., for passwords).
     """
     command = [_crane_binary()] + args
     try:
         with subprocess.Popen(
             command,
+            stdin=subprocess.PIPE if stdin_input else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             env=os.environ,
         ) as proc:
+            if stdin_input:
+                proc.stdin.write(stdin_input)
+                proc.stdin.close()
             output = ""
             if proc.stdout:
                 for line in proc.stdout:
@@ -92,7 +102,8 @@ def crane_ecr_login(ecr_registry: str, region: str = "us-west-2") -> Tuple[int, 
     auth_data = token["authorizationData"][0]["authorizationToken"]
     user, password = base64.b64decode(auth_data).decode("utf-8").split(":")
     return _run_crane_command(
-        ["auth", "login", "-u", user, "-p", password, ecr_registry]
+        ["auth", "login", "-u", user, "--password-stdin", ecr_registry],
+        stdin_input=password,
     )
 
 
@@ -137,7 +148,8 @@ def crane_docker_hub_login() -> Tuple[int, str]:
 
     password = resp.json()["docker_password"]
     return _run_crane_command(
-        ["auth", "login", "-u", "raydockerreleaser", "-p", password, "index.docker.io"]
+        ["auth", "login", "-u", "raydockerreleaser", "--password-stdin", "index.docker.io"],
+        stdin_input=password,
     )
 
 
