@@ -17,11 +17,9 @@ def test_scaling_config_validation():
 
     with pytest.raises(
         ValueError,
-        match="If `bundle_label_selector` is a list, it must be the same length as `num_workers`",
+        match="If `label_selector` is a list, it must be the same length as `num_workers`",
     ):
-        ScalingConfig(
-            num_workers=2, bundle_label_selector=[{"subcluster": "my_subcluster"}]
-        )
+        ScalingConfig(num_workers=2, label_selector=[{"subcluster": "my_subcluster"}])
 
 
 def test_scaling_config_accelerator_type():

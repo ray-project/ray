@@ -9,33 +9,6 @@ from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="Skip due to incompatibility tensorflow with Python 3.12+",
-)
-def test_from_tf(ray_start_regular_shared_2_cpus):
-    import tensorflow as tf
-    import tensorflow_datasets as tfds
-
-    tf_dataset = tfds.load("mnist", split=["train"], as_supervised=True)[0]
-    tf_dataset = tf_dataset.take(8)  # Use subset to make test run faster.
-
-    ray_dataset = ray.data.from_tf(tf_dataset)
-
-    actual_data = extract_values("item", ray_dataset.take_all())
-    expected_data = list(tf_dataset)
-    assert len(actual_data) == len(expected_data)
-    for (expected_features, expected_label), (actual_features, actual_label) in zip(
-        expected_data, actual_data
-    ):
-        tf.debugging.assert_equal(expected_features, actual_features)
-        tf.debugging.assert_equal(expected_label, actual_label)
-
-
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="Skip due to incompatibility tensorflow with Python 3.12+",
-)
 def test_from_tf_e2e(ray_start_regular_shared_2_cpus):
     import tensorflow as tf
     import tensorflow_datasets as tfds

@@ -90,7 +90,7 @@ def test_infeasible_placement_strategy(
 
 
 @pytest.mark.parametrize(
-    "bundle_label_selector, expected_subcluster_counts",
+    "label_selector, expected_subcluster_counts",
     [
         ({"subcluster": "my_subcluster"}, {"my_subcluster": 2}),
         (
@@ -103,8 +103,8 @@ def test_infeasible_placement_strategy(
         ),
     ],
 )
-def test_bundle_label_selector(
-    multi_cpu_node_labeled_cluster, bundle_label_selector, expected_subcluster_counts
+def test_label_selector(
+    multi_cpu_node_labeled_cluster, label_selector, expected_subcluster_counts
 ):
     @ray.remote
     class Counter:
@@ -120,7 +120,7 @@ def test_bundle_label_selector(
     counter = Counter.remote()
     scaling_config = ScalingConfig(
         num_workers=2,
-        bundle_label_selector=bundle_label_selector,
+        label_selector=label_selector,
     )
 
     def train_fn():
