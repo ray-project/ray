@@ -379,6 +379,11 @@ DEFAULT_AUTOSCALING_POLICY_NAME = (
     "ray.serve.autoscaling_policy:default_autoscaling_policy"
 )
 
+# The default queue-based autoscaling policy to use for TaskConsumers if none is specified.
+DEFAULT_QUEUE_BASED_AUTOSCALING_POLICY = (
+    "ray.serve.autoscaling_policy:default_queue_based_autoscaling_policy"
+)
+
 # Feature flag to enable collecting all queued and ongoing request
 # metrics at handles instead of replicas. ON by default.
 RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = get_env_bool(

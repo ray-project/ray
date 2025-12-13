@@ -8,6 +8,7 @@ from ray.serve._private.constants import (
     DEFAULT_CONSUMER_CONCURRENCY,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.queue_monitor import QueueMonitorConfig
 from ray.serve._private.task_consumer import TaskConsumerWrapper
 from ray.serve._private.utils import copy_class_metadata
 from ray.serve.schema import (
@@ -160,6 +161,37 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
                     target_cls.__del__(self)
 
         copy_class_metadata(_TaskConsumerWrapper, target_cls)
+
+        # Attach metadata for TaskConsumer detection
+        _TaskConsumerWrapper._is_task_consumer = True
+        _TaskConsumerWrapper._task_processor_config = task_processor_config
+
+        @classmethod
+        def get_queue_monitor_config() -> Optional[QueueMonitorConfig]:
+            """
+            Returns the QueueMonitorConfig for this TaskConsumer.
+
+            This method is called by ApplicationState to create the internal
+            QueueMonitor deployment when deploying a TaskConsumer.
+
+            Returns:
+                QueueMonitorConfig for connecting to the broker.
+            """
+            # Extract broker_url from adapter_config
+            adapter_config = task_processor_config.adapter_config
+            broker_url = getattr(adapter_config, "broker_url", None)
+
+            if broker_url is None:
+                raise ValueError(
+                    "broker_url is required in adapter_config for queue monitoring"
+                )
+
+            return QueueMonitorConfig(
+                broker_url=broker_url,
+                queue_name=task_processor_config.queue_name,
+            )
+
+        _TaskConsumerWrapper.get_queue_monitor_config = get_queue_monitor_config
 
         return _TaskConsumerWrapper
 
