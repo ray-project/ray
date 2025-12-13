@@ -1,5 +1,7 @@
 import math
 
+import pytest
+
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data.block import BlockAccessor
 from ray.data.dataset import Schema

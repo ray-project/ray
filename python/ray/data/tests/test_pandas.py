@@ -1,5 +1,7 @@
 from typing import Iterator
 
+import pytest
+
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,

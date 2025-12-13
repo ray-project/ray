@@ -1,5 +1,7 @@
 from collections import UserDict
 
+import pytest
+
 from ray.data._internal.tensor_extensions.pandas import TensorDtype
 from ray.data.dataset import Schema
 from ray.data.tests.conftest import *  # noqa

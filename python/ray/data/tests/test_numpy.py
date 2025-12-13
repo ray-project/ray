@@ -1,3 +1,5 @@
+import pytest
+
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.data.dataset import Schema
 from ray.data.datasource import (

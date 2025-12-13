@@ -2,6 +2,7 @@ from typing import Dict
 
 from fsspec.implementations.local import LocalFileSystem
 from PIL import Image
+import pytest
 
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
