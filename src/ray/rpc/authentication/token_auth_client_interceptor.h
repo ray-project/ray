@@ -14,34 +14,53 @@
 
 #pragma once
 
-#include <grpcpp/support/client_interceptor.h>
+#include <grpcpp/grpcpp.h>
+#include <grpcpp/security/credentials.h>
 
+#include <map>
 #include <memory>
-#include <vector>
+#include <optional>
+#include <string>
+#include <utility>
+
+#include "ray/common/constants.h"
+#include "ray/rpc/authentication/authentication_token.h"
 
 namespace ray {
 namespace rpc {
 
-/// Client interceptor that automatically adds Ray authentication tokens to outgoing RPCs.
-/// The token is loaded from AuthenticationTokenLoader and added as a Bearer token
-/// in the "authorization" metadata key.
-class RayTokenAuthClientInterceptor : public grpc::experimental::Interceptor {
+/// gRPC MetadataCredentialsPlugin that adds Ray authentication tokens to outgoing RPCs.
+///
+/// The token is cached at plugin creation time and ToAuthorizationHeaderValue() is
+/// called on each RPC to generate the header.
+class RayTokenAuthPlugin : public grpc::MetadataCredentialsPlugin {
  public:
-  void Intercept(grpc::experimental::InterceptorBatchMethods *methods) override;
+  /// \param token The authentication token to use for all RPCs on this channel.
+  explicit RayTokenAuthPlugin(std::optional<AuthenticationToken> token)
+      : token_(std::move(token)) {}
+
+  grpc::Status GetMetadata(grpc::string_ref service_url,
+                           grpc::string_ref method_name,
+                           const grpc::AuthContext &channel_auth_context,
+                           std::multimap<grpc::string, grpc::string> *metadata) override {
+    if (token_.has_value() && !token_->empty()) {
+      metadata->insert(
+          std::make_pair(kAuthTokenKey, token_->ToAuthorizationHeaderValue()));
+    }
+    return grpc::Status::OK;
+  }
+
+  bool IsBlocking() const override { return false; }
+
+  grpc::string DebugString() override { return "RayTokenAuthPlugin"; }
+
+ private:
+  std::optional<AuthenticationToken> token_;
 };
 
-/// Factory for creating RayTokenAuthClientInterceptor instances
-class RayTokenAuthClientInterceptorFactory
-    : public grpc::experimental::ClientInterceptorFactoryInterface {
- public:
-  grpc::experimental::Interceptor *CreateClientInterceptor(
-      grpc::experimental::ClientRpcInfo *info) override;
-};
-
-/// Creates a vector of interceptor factories for token authentication.
-/// This should be used when creating gRPC channels with token auth enabled.
-std::vector<std::unique_ptr<grpc::experimental::ClientInterceptorFactoryInterface>>
-CreateTokenAuthInterceptorFactories();
+/// Creates call credentials with the Ray token auth plugin.
+/// Returns nullptr if token auth is not enabled.
+std::shared_ptr<grpc::CallCredentials> CreateTokenAuthCallCredentials();
 
 }  // namespace rpc
 }  // namespace ray

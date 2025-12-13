@@ -171,7 +171,8 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] io_service The event loop.
   /// \param[in] call_name The name of the RPC call.
   /// \param[in] cluster_id The cluster ID for authentication.
-  /// \param[in] auth_token The authentication token for token-based authentication.
+  /// \param[in] cached_expected_header Pointer to factory's cached "Bearer <token>"
+  /// string. \param[in] auth_token Pointer to auth token for K8S mode fallback.
   /// \param[in] record_metrics If true, it records and exports the gRPC server metrics.
   /// \param[in] preprocess_function If not nullptr, it will be called before handling
   /// request.
@@ -182,7 +183,8 @@ class ServerCallImpl : public ServerCall {
       instrumented_io_context &io_service,
       std::string call_name,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token,
+      const std::string *cached_expected_header,
+      const std::optional<AuthenticationToken> *auth_token,
       bool record_metrics,
       std::function<void()> preprocess_function = nullptr)
       : state_(ServerCallState::PENDING),
@@ -193,6 +195,7 @@ class ServerCallImpl : public ServerCall {
         io_service_(io_service),
         call_name_(std::move(call_name)),
         cluster_id_(cluster_id),
+        cached_expected_header_(cached_expected_header),
         auth_token_(auth_token),
         start_time_(0),
         record_metrics_(record_metrics) {
@@ -347,13 +350,13 @@ class ServerCallImpl : public ServerCall {
 
  private:
   /// Validates token-based authentication.
-  /// Returns true if authentication succeeds or is not required.
-  /// Returns false if authentication is required but fails.
+  /// Returns true always (non-enforcing mode) but logs warnings for missing/invalid
+  /// tokens.
   bool ValidateAuthenticationToken() {
-    // If auth token is empty, we assume auth is not required.
+    // Early exit if auth not required (check cached header instead of token).
     // The only exception is when auth mode is 'k8s' where the server
     // auth token can be empty.
-    if ((!auth_token_.has_value() || auth_token_->empty()) &&
+    if ((cached_expected_header_ == nullptr || cached_expected_header_->empty()) &&
         GetAuthenticationMode() != AuthenticationMode::K8S) {
       return true;
     }
@@ -361,14 +364,32 @@ class ServerCallImpl : public ServerCall {
     const auto &metadata = context_.client_metadata();
     auto it = metadata.find(kAuthTokenKey);
     if (it == metadata.end()) {
-      RAY_LOG(WARNING) << "Missing authorization header in request!";
-      return false;
+      RAY_LOG(WARNING) << "Missing authorization header in request to " << call_name_
+                       << ", allowing request to proceed (non-enforcing mode)";
+      return true;
     }
 
-    const std::string_view header(it->second.data(), it->second.length());
-    AuthenticationToken provided_token = AuthenticationToken::FromMetadata(header);
-    return ray::rpc::AuthenticationTokenValidator::instance().ValidateToken(
-        auth_token_, provided_token);
+    const std::string_view provided_header(it->second.data(), it->second.length());
+
+    // For TOKEN mode: direct string comparison (no allocations!)
+    if (GetAuthenticationMode() == AuthenticationMode::TOKEN) {
+      if (cached_expected_header_ != nullptr &&
+          provided_header != *cached_expected_header_) {
+        RAY_LOG(WARNING) << "Invalid authentication token in request to " << call_name_
+                         << ", allowing request to proceed (non-enforcing mode)";
+      }
+      return true;  // Non-enforcing mode
+    }
+
+    // K8S mode: still needs full validation (has its own caching)
+    AuthenticationToken provided_token =
+        AuthenticationToken::FromMetadata(provided_header);
+    if (!ray::rpc::AuthenticationTokenValidator::instance().ValidateToken(
+            *auth_token_, provided_token)) {
+      RAY_LOG(WARNING) << "Invalid authentication token in request to " << call_name_
+                       << ", allowing request to proceed (non-enforcing mode)";
+    }
+    return true;
   }
 
   /// Log the duration this query used
@@ -438,8 +459,11 @@ class ServerCallImpl : public ServerCall {
   /// Check skipped if empty.
   const ClusterID &cluster_id_;
 
-  /// Authentication token for token-based authentication.
-  std::optional<AuthenticationToken> auth_token_;
+  /// Pointer to factory's cached "Bearer <token>" string for fast validation.
+  const std::string *cached_expected_header_;
+
+  /// Pointer to auth token for K8S mode fallback.
+  const std::optional<AuthenticationToken> *auth_token_;
 
   /// The callback when sending reply successes.
   std::function<void()> send_reply_success_callback_ = nullptr;
@@ -535,7 +559,13 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         cluster_id_(cluster_id),
         auth_token_(auth_token),
         max_active_rpcs_(max_active_rpcs),
-        record_metrics_(record_metrics) {}
+        record_metrics_(record_metrics) {
+    // Cache the expected authorization header string once at factory creation
+    // to avoid per-RPC overhead of token copying and string allocation.
+    if (auth_token_.has_value() && !auth_token_->empty()) {
+      cached_expected_header_ = auth_token_->ToAuthorizationHeaderValue();
+    }
+  }
 
   void CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
@@ -547,7 +577,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         io_service_,
         call_name_,
         cluster_id_,
-        auth_token_,
+        &cached_expected_header_,
+        &auth_token_,
         record_metrics_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
@@ -589,6 +620,10 @@ class ServerCallFactoryImpl : public ServerCallFactory {
 
   /// Authentication token for token-based authentication.
   std::optional<AuthenticationToken> auth_token_;
+
+  /// Cached "Bearer <token>" string for fast server-side validation.
+  /// Pre-computed at factory creation to avoid per-RPC string allocation.
+  std::string cached_expected_header_;
 
   /// Maximum request number to handle at the same time.
   /// -1 means no limit.

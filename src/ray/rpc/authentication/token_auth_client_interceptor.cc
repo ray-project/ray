@@ -14,49 +14,26 @@
 
 #include "ray/rpc/authentication/token_auth_client_interceptor.h"
 
-#include <grpcpp/support/client_interceptor.h>
+#include <grpc/grpc_security_constants.h>
 
 #include <memory>
-#include <string>
 #include <utility>
-#include <vector>
 
-#include "ray/common/constants.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
 
 namespace ray {
 namespace rpc {
 
-void RayTokenAuthClientInterceptor::Intercept(
-    grpc::experimental::InterceptorBatchMethods *methods) {
-  if (methods->QueryInterceptionHookPoint(
-          grpc::experimental::InterceptionHookPoints::PRE_SEND_INITIAL_METADATA)) {
-    auto token = AuthenticationTokenLoader::instance().GetToken();
-
-    // If token is present and non-empty, add it to the metadata
-    if (token.has_value() && !token->empty()) {
-      // Get the metadata map and add the authorization header
-      auto *metadata = methods->GetSendInitialMetadata();
-      metadata->insert(
-          std::make_pair(kAuthTokenKey, token->ToAuthorizationHeaderValue()));
-    }
+std::shared_ptr<grpc::CallCredentials> CreateTokenAuthCallCredentials() {
+  auto token = AuthenticationTokenLoader::instance().GetToken();
+  if (!token.has_value() || token->empty()) {
+    return nullptr;
   }
-  methods->Proceed();
-}
-
-grpc::experimental::Interceptor *
-RayTokenAuthClientInterceptorFactory::CreateClientInterceptor(
-    grpc::experimental::ClientRpcInfo *info) {
-  return new RayTokenAuthClientInterceptor();
-}
-
-std::vector<std::unique_ptr<grpc::experimental::ClientInterceptorFactoryInterface>>
-CreateTokenAuthInterceptorFactories() {
-  std::vector<std::unique_ptr<grpc::experimental::ClientInterceptorFactoryInterface>>
-      interceptor_factories;
-  interceptor_factories.push_back(
-      std::make_unique<RayTokenAuthClientInterceptorFactory>());
-  return interceptor_factories;
+  // Use experimental API with GRPC_SECURITY_NONE to allow call credentials
+  // over insecure channels. The standard MetadataCredentialsFromPlugin uses
+  // GRPC_PRIVACY_AND_INTEGRITY which requires TLS.
+  return grpc::experimental::MetadataCredentialsFromPlugin(
+      std::make_unique<RayTokenAuthPlugin>(std::move(token)), GRPC_SECURITY_NONE);
 }
 
 }  // namespace rpc
