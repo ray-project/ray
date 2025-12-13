@@ -443,64 +443,6 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
     wrapper.shutdown()
 
 
-@pytest.mark.asyncio
-async def test_vllm_wrapper_json_new_api(model_llama_3_2_1B_instruct):
-    """Test the JSON output with new vLLM structured output API.
-    
-    This test verifies that the new vLLM API (v0.9+) for structured outputs works correctly.
-    The new API uses structured_outputs_config in engine initialization and passes
-    structured output parameters through StructuredOutputsParams.
-    """
-
-    class AnswerModel(BaseModel):
-        answer: int
-        explain: str
-
-    json_schema = AnswerModel.model_json_schema()
-
-    wrapper = vLLMEngineWrapper(
-        model=model_llama_3_2_1B_instruct,
-        model_source=model_llama_3_2_1B_instruct,
-        idx_in_batch_column="__idx_in_batch",
-        disable_log_stats=True,
-        max_pending_requests=10,
-        # Skip CUDA graph capturing to reduce the start time.
-        enforce_eager=True,
-        task=vLLMTaskType.GENERATE,
-        max_model_len=2048,
-        structured_outputs_config={"backend": "xgrammar"},
-        seed=42,
-    )
-
-    # Test with the new API format (using guided_decoding for backward compatibility)
-    # In production, this would be passed through response_format or other new mechanisms
-    batch = [
-        {
-            "__idx_in_batch": 0,
-            "prompt": "Answer 2 ** 3 + 5. Return the answer in JSON. Expected fields: 'answer', 'explain'.",
-            "sampling_params": {
-                "max_tokens": 100,
-                "temperature": 0.7,
-                "guided_decoding": {"json": json_schema},
-            },
-        },
-    ]
-
-    tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
-
-    for resp in asyncio.as_completed(tasks):
-        _, output, time_taken_llm = await resp
-        json_obj = json.loads(output["generated_text"])
-        assert "answer" in json_obj
-        assert isinstance(json_obj["answer"], int)
-        assert "explain" in json_obj
-        assert isinstance(json_obj["explain"], str)
-        assert time_taken_llm > 0
-
-    # Clean up GPU memory
-    wrapper.shutdown()
-
-
 def test_vllm_output_data_logprobs():
     """Test that logprobs and prompt_logprobs are correctly extracted."""
     from vllm.logprobs import Logprob

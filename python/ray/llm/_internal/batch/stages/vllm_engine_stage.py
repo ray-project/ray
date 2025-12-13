@@ -368,25 +368,16 @@ class vLLMEngineWrapper:
                 guided_decoding_config = maybe_convert_ndarray_to_list(
                     sampling_params.pop("guided_decoding")
                 )
-                # Convert old guided_decoding format to new API
-                # Old format: {"json": schema} or {"choice": [...]} or {"regex": "..."}
-                # New format: pass as structured_output_config to engine or use format parameter
-                try:
-                    # Try new API (vLLM >= 0.9.0)
-                    structured_outputs = vllm.sampling_params.StructuredOutputsParams(
-                        **guided_decoding_config
-                    )
-                except TypeError:
-                    # Fallback: old API or different format
-                    # For new vLLM versions, we might need to handle this differently
-                    logger.warning(
-                        "The 'guided_decoding' parameter is deprecated. "
-                        "Please use 'structured_output_config' in engine initialization "
-                        "and pass structured outputs through the new API."
-                    )
-                    structured_outputs = vllm.sampling_params.StructuredOutputsParams(
-                        **guided_decoding_config
-                    )
+                # Log deprecation warning for the old guided_decoding parameter
+                logger.warning(
+                    "The 'guided_decoding' parameter is deprecated. "
+                    "Please use 'structured_output_config' in engine initialization "
+                    "and pass structured outputs through the new API."
+                )
+                # Convert old guided_decoding format to new API (supported in vLLM >= 0.9.0)
+                structured_outputs = vllm.sampling_params.StructuredOutputsParams(
+                    **guided_decoding_config
+                )
             else:
                 structured_outputs = None
             params = vllm.SamplingParams(
