@@ -1,7 +1,9 @@
+import functools
 import logging
 import math
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     SERVE_AUTOSCALING_DECISION_COUNTERS_KEY,
@@ -85,49 +87,46 @@ def _calculate_desired_num_replicas(
     return desired_num_replicas
 
 
-@PublicAPI(stability="alpha")
-def replica_queue_length_autoscaling_policy(
-    ctx: AutoscalingContext,
-) -> Tuple[int, Dict[str, Any]]:
-    """The default autoscaling policy based on basic thresholds for scaling.
-    There is a minimum threshold for the average queue length in the cluster
-    to scale up and a maximum threshold to scale down. Each period, a 'scale
-    up' or 'scale down' decision is made. This decision must be made for a
-    specified number of periods in a row before the number of replicas is
-    actually scaled. See config options for more details.  Assumes
-    `get_decision_num_replicas` is called once every CONTROL_LOOP_PERIOD_S
-    seconds.
+def _apply_scaling_factors(
+    desired_num_replicas: int,
+    current_num_replicas: int,
+    autoscaling_config: AutoscalingConfig,
+) -> int:
+    """Apply scaling factors to the desired number of replicas.
+    Returns the scaled number of replicas depending on the scaling factor.
+    The computation uses the difference between desired and current to scale.
+
     """
-
-    curr_target_num_replicas: int = ctx.target_num_replicas
-    total_num_requests: int = ctx.total_num_requests
-    num_running_replicas: int = ctx.current_num_replicas
-    config: Optional[AutoscalingConfig] = ctx.config
-    capacity_adjusted_min_replicas: int = ctx.capacity_adjusted_min_replicas
-    capacity_adjusted_max_replicas: int = ctx.capacity_adjusted_max_replicas
-    policy_state: Dict[str, Any] = ctx.policy_state
-    decision_counter = policy_state.get(SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, 0)
-    if num_running_replicas == 0:
-        # When 0 replicas and queries are queued, scale up the replicas
-        if total_num_requests > 0:
-            return (
-                max(
-                    math.ceil(1 * config.get_upscaling_factor()),
-                    curr_target_num_replicas,
-                ),
-                policy_state,
-            )
-        return curr_target_num_replicas, policy_state
-
-    decision_num_replicas = curr_target_num_replicas
-
-    desired_num_replicas = _calculate_desired_num_replicas(
-        config,
-        total_num_requests,
-        num_running_replicas=num_running_replicas,
-        override_min_replicas=capacity_adjusted_min_replicas,
-        override_max_replicas=capacity_adjusted_max_replicas,
+    if current_num_replicas == desired_num_replicas:
+        return desired_num_replicas
+    replicas_delta = desired_num_replicas - current_num_replicas
+    scaling_factor = (
+        autoscaling_config.get_upscaling_factor()
+        if replicas_delta > 0
+        else autoscaling_config.get_downscaling_factor()
     )
+    scaled_num_replicas = math.ceil(
+        current_num_replicas + scaling_factor * replicas_delta
+    )
+    # If the scaled_replicas are stuck during downscaling because of scaling factor, decrement by 1.
+    if (
+        desired_num_replicas < current_num_replicas
+        and scaled_num_replicas == current_num_replicas
+    ):
+        scaled_num_replicas -= 1
+    return scaled_num_replicas
+
+
+def _apply_delay_logic(
+    desired_num_replicas: int,
+    curr_target_num_replicas: int,
+    config: AutoscalingConfig,
+    policy_state: Dict[str, Any],
+) -> Tuple[int, Dict[str, Any]]:
+
+    """Apply delay logic to the desired number of replicas."""
+    decision_num_replicas = curr_target_num_replicas
+    decision_counter = policy_state.get(SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, 0)
     # Scale up.
     if desired_num_replicas > curr_target_num_replicas:
         # If the previous decision was to scale down (the counter was
@@ -177,4 +176,188 @@ def replica_queue_length_autoscaling_policy(
     return decision_num_replicas, policy_state
 
 
+def _apply_bounds(
+    num_replicas: int,
+    capacity_adjusted_min_replicas: int,
+    capacity_adjusted_max_replicas: int,
+) -> int:
+    """Clip replica count to be within capacity-adjusted min/max bounds."""
+    return max(
+        capacity_adjusted_min_replicas,
+        min(capacity_adjusted_max_replicas, num_replicas),
+    )
+
+
+def apply_default_params(
+    desired_num_replicas: int, ctx: AutoscalingContext, policy_state: Dict[str, Any]
+) -> Tuple[int, Dict[str, Any]]:
+    """Apply the default parameters to the desired number of replicas."""
+
+    desired_num_replicas = _apply_scaling_factors(
+        desired_num_replicas, ctx.current_num_replicas, ctx.config
+    )
+
+    # Apply delay logic
+    # Only send the internal state here to avoid overwriting the custom policy state.
+    decision_num_replicas, updated_state = _apply_delay_logic(
+        desired_num_replicas, ctx.target_num_replicas, ctx.config, policy_state
+    )
+
+    # Apply bounds
+    final_num_replicas = _apply_bounds(
+        decision_num_replicas,
+        ctx.capacity_adjusted_min_replicas,
+        ctx.capacity_adjusted_max_replicas,
+    )
+    return final_num_replicas, updated_state
+
+
+@PublicAPI(stability="alpha")
+def replica_queue_length_autoscaling_policy(
+    ctx: AutoscalingContext,
+) -> Tuple[int, Dict[str, Any]]:
+    """The default autoscaling policy based on basic thresholds for scaling.
+    There is a minimum threshold for the average queue length in the cluster
+    to scale up and a maximum threshold to scale down. Each period, a 'scale
+    up' or 'scale down' decision is made. This decision must be made for a
+    specified number of periods in a row before the number of replicas is
+    actually scaled. See config options for more details.  Assumes
+    `get_decision_num_replicas` is called once every CONTROL_LOOP_PERIOD_S
+    seconds.
+    """
+
+    curr_target_num_replicas: int = ctx.target_num_replicas
+    total_num_requests: int = ctx.total_num_requests
+    num_running_replicas: int = ctx.current_num_replicas
+    config: Optional[AutoscalingConfig] = ctx.config
+    capacity_adjusted_min_replicas: int = ctx.capacity_adjusted_min_replicas
+    capacity_adjusted_max_replicas: int = ctx.capacity_adjusted_max_replicas
+    policy_state: Dict[str, Any] = ctx.policy_state
+    if num_running_replicas == 0:
+        # When 0 replicas and queries are queued, scale up the replicas
+        if total_num_requests > 0:
+            return (
+                max(
+                    math.ceil(1 * config.get_upscaling_factor()),
+                    curr_target_num_replicas,
+                ),
+                policy_state,
+            )
+        return curr_target_num_replicas, policy_state
+
+    desired_num_replicas = _calculate_desired_num_replicas(
+        config,
+        total_num_requests,
+        num_running_replicas=num_running_replicas,
+        override_min_replicas=capacity_adjusted_min_replicas,
+        override_max_replicas=capacity_adjusted_max_replicas,
+    )
+    decision_num_replicas, policy_state = _apply_delay_logic(
+        desired_num_replicas, curr_target_num_replicas, config, policy_state
+    )
+    return decision_num_replicas, policy_state
+
+
 default_autoscaling_policy = replica_queue_length_autoscaling_policy
+
+
+def _apply_default_params_and_merge_state(
+    policy_state: Dict[str, Any],
+    user_policy_state: Dict[str, Any],
+    desired_num_replicas: int,
+    ctx: AutoscalingContext,
+) -> Tuple[int, Dict[str, Any]]:
+
+    # Extract internal polciy state from policy_state
+    internal_policy_state = {
+        SERVE_AUTOSCALING_DECISION_COUNTERS_KEY: policy_state.get(
+            SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, 0
+        )
+    }
+    # Only pass the internal state used for delay counters so we don't
+    # overwrite any custom user state.
+    final_num_replicas, updated_state = apply_default_params(
+        desired_num_replicas, ctx, internal_policy_state
+    )
+    # Merge internal updated_state with the user's custom policy state.
+    final_state = user_policy_state.copy() or {}
+    final_state.pop(SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, None)
+    if updated_state:
+        final_state.update(updated_state)
+    return final_num_replicas, final_state
+
+
+@PublicAPI(stability="alpha")
+def apply_autoscaling_config(
+    policy_func: Callable[[AutoscalingContext], Tuple[int, Dict[str, Any]]]
+) -> Callable[[AutoscalingContext], Tuple[int, Dict[str, Any]]]:
+    """
+    Wraps a custom policy function to automatically apply:
+    - upscaling_factor / downscaling_factor
+    - min_replicas / max_replicas bounds
+    - upscale_delay_s / downscale_delay_s / downscale_to_zero_delay_s
+    """
+
+    @functools.wraps(policy_func)
+    def wrapped_policy(ctx: AutoscalingContext) -> Tuple[int, Dict[str, Any]]:
+
+        # NOTE: Currently custom policies do not get the default policy's 0 replica cold start fast path.
+        # upscale_delay_s applies even at 0 replicas.
+
+        policy_state = ctx.policy_state.copy()
+        desired_num_replicas, updated_custom_policy_state = policy_func(ctx)
+        final_num_replicas, final_state = _apply_default_params_and_merge_state(
+            policy_state, updated_custom_policy_state, desired_num_replicas, ctx
+        )
+
+        return final_num_replicas, final_state
+
+    return wrapped_policy
+
+
+@PublicAPI(stability="alpha")
+def apply_app_level_autoscaling_config(
+    policy_func: Callable[
+        [Dict[DeploymentID, AutoscalingContext]],
+        Tuple[Dict[DeploymentID, int], Dict[DeploymentID, Dict]],
+    ]
+) -> Callable[
+    [Dict[DeploymentID, AutoscalingContext]],
+    Tuple[Dict[DeploymentID, int], Dict[DeploymentID, Dict]],
+]:
+    """
+    Wraps an application-level custom policy function to automatically apply per-deployment:
+    - upscaling_factor / downscaling_factor
+    - min_replicas / max_replicas bounds
+    - upscale_delay_s / downscale_delay_s / downscale_to_zero_delay_s
+    """
+
+    @functools.wraps(policy_func)
+    def wrapped_policy(
+        contexts: Dict[DeploymentID, AutoscalingContext]
+    ) -> Tuple[Dict[DeploymentID, int], Dict[DeploymentID, Dict]]:
+
+        # Store the policy state per deployment
+        state_per_deployment = {}
+        for dep_id, ctx in contexts.items():
+            state_per_deployment[dep_id] = ctx.policy_state.copy()
+
+        # Send to the actual policy
+        desired_num_replicas, updated_custom_policy_state = policy_func(contexts)
+
+        # Build per-deployment replicas count and state dictionary
+        final_state = {}
+        for dep_id, ctx in contexts.items():
+            final_num_replicas, final_dep_state = _apply_default_params_and_merge_state(
+                state_per_deployment[dep_id],
+                updated_custom_policy_state.get(dep_id, {}),
+                desired_num_replicas[dep_id],
+                ctx,
+            )
+            desired_num_replicas[dep_id], final_state[dep_id] = (
+                final_num_replicas,
+                final_dep_state,
+            )
+        return desired_num_replicas, final_state
+
+    return wrapped_policy
