@@ -82,6 +82,7 @@ from ray.serve.schema import (
     HTTPOptionsSchema,
     LoggingConfig,
     ProxyDetails,
+    ReplicaRank,
     ServeActorDetails,
     ServeApplicationSchema,
     ServeDeploySchema,
@@ -278,6 +279,15 @@ class ServeController:
     ):
         latency = time.time() - replica_metric_report.timestamp
         latency_ms = latency * 1000
+        # Record the metrics delay for observability
+        self.replica_metrics_delay_gauge.set(
+            latency_ms,
+            tags={
+                "deployment": replica_metric_report.replica_id.deployment_id.name,
+                "application": replica_metric_report.replica_id.deployment_id.app_name,
+                "replica": replica_metric_report.replica_id.unique_id,
+            },
+        )
         if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
             logger.warning(
                 f"Received autoscaling metrics from replica {replica_metric_report.replica_id} with timestamp {replica_metric_report.timestamp} "
@@ -294,6 +304,15 @@ class ServeController:
     ):
         latency = time.time() - handle_metric_report.timestamp
         latency_ms = latency * 1000
+        # Record the metrics delay for observability
+        self.handle_metrics_delay_gauge.set(
+            latency_ms,
+            tags={
+                "deployment": handle_metric_report.deployment_id.name,
+                "application": handle_metric_report.deployment_id.app_name,
+                "handle": handle_metric_report.handle_id,
+            },
+        )
         if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
             logger.warning(
                 f"Received autoscaling metrics from handle {handle_metric_report.handle_id} for deployment {handle_metric_report.deployment_id} with timestamp {handle_metric_report.timestamp} "
@@ -544,6 +563,24 @@ class ServeController:
         )
         self.num_control_loops_gauge.set_default_tags(
             {"actor_id": ray.get_runtime_context().get_actor_id()}
+        )
+
+        # Autoscaling metrics delay gauges
+        self.replica_metrics_delay_gauge = metrics.Gauge(
+            "serve_autoscaling_replica_metrics_delay_ms",
+            description=(
+                "Time taken for the replica metrics to be reported to the controller. "
+                "High values may indicate a busy controller."
+            ),
+            tag_keys=("deployment", "application", "replica"),
+        )
+        self.handle_metrics_delay_gauge = metrics.Gauge(
+            "serve_autoscaling_handle_metrics_delay_ms",
+            description=(
+                "Time taken for the handle metrics to be reported to the controller. "
+                "High values may indicate a busy controller."
+            ),
+            tag_keys=("deployment", "application", "handle"),
         )
 
     def _recover_state_from_checkpoint(self):
@@ -1205,12 +1242,14 @@ class ServeController:
         """
         self.deployment_state_manager.record_request_routing_info(info)
 
-    def _get_replica_ranks_mapping(self, deployment_id: DeploymentID) -> Dict[str, int]:
+    def _get_replica_ranks_mapping(
+        self, deployment_id: DeploymentID
+    ) -> Dict[str, ReplicaRank]:
         """Get the current rank mapping for all replicas in a deployment.
         Args:
             deployment_id: The deployment ID to get ranks for.
         Returns:
-            Dictionary mapping replica_id to rank.
+            Dictionary mapping replica_id to ReplicaRank object (with rank, node_rank, local_rank).
         """
         return self.deployment_state_manager._get_replica_ranks_mapping(deployment_id)
 

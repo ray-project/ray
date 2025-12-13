@@ -321,7 +321,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         # Global env steps sampled are (roughly) this EnvRunner's lifetime
                         # count times the number of env runners in the algo.
                         global_env_steps_lifetime = (
-                            self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
+                            self.num_env_steps_sampled_lifetime
+                            // (self.config.num_env_runners or 1)
                             + env_ts
                         ) * (self.config.num_env_runners or 1)
                         with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
@@ -674,11 +675,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         **kwargs,
     ) -> StateDict:
         # Basic state dict.
-        state = {
-            NUM_ENV_STEPS_SAMPLED_LIFETIME: (
-                self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
-            ),
-        }
+        state = {NUM_ENV_STEPS_SAMPLED_LIFETIME: self.num_env_steps_sampled_lifetime}
 
         # RLModule (MultiRLModule) component.
         if self._check_component(COMPONENT_RL_MODULE, components, not_components):
@@ -731,12 +728,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
         # Update lifetime counters.
         if NUM_ENV_STEPS_SAMPLED_LIFETIME in state:
-            self.metrics.set_value(
-                key=NUM_ENV_STEPS_SAMPLED_LIFETIME,
-                value=state[NUM_ENV_STEPS_SAMPLED_LIFETIME],
-                reduce="sum",
-                with_throughput=True,
-            )
+            self.num_env_steps_sampled_lifetime = state[NUM_ENV_STEPS_SAMPLED_LIFETIME]
 
     @override(Checkpointable)
     def get_ctor_args_and_kwargs(self):
@@ -964,19 +956,17 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
     def _increase_sampled_metrics(self, num_steps, next_obs, episode):
         # Env steps.
-        self.metrics.log_value(
-            NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum", clear_on_reduce=True
-        )
+        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum")
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED_LIFETIME,
             num_steps,
-            reduce="sum",
+            reduce="lifetime_sum",
             with_throughput=True,
         )
         # Completed episodes.
         if episode.is_done:
-            self.metrics.log_value(NUM_EPISODES, 1, reduce="sum", clear_on_reduce=True)
-            self.metrics.log_value(NUM_EPISODES_LIFETIME, 1, reduce="sum")
+            self.metrics.log_value(NUM_EPISODES, 1, reduce="sum")
+            self.metrics.log_value(NUM_EPISODES_LIFETIME, 1, reduce="lifetime_sum")
 
         # Record agent and module metrics.
         for aid in next_obs:
@@ -984,23 +974,21 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 (NUM_AGENT_STEPS_SAMPLED, str(aid)),
                 1,
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (NUM_AGENT_STEPS_SAMPLED_LIFETIME, str(aid)),
                 1,
-                reduce="sum",
+                reduce="lifetime_sum",
             )
             self.metrics.log_value(
                 (NUM_MODULE_STEPS_SAMPLED, episode.module_for(aid)),
                 1,
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (NUM_MODULE_STEPS_SAMPLED_LIFETIME, episode.module_for(aid)),
                 1,
-                reduce="sum",
+                reduce="lifetime_sum",
             )
         return num_steps
 

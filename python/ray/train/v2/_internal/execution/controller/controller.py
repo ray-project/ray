@@ -302,15 +302,26 @@ class TrainController:
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
         scaling_config = self._train_run_context.scaling_config
 
-        # Check for `bundle_label_selector` to influence WorkerGroup scheduling.
-        bundle_label_selector = None
+        # Check for `label_selector` to influence WorkerGroup scheduling.
+        label_selector = None
+        if isinstance(scaling_config.label_selector, list):
+            label_selector = scaling_config.label_selector[:num_workers]
+        elif isinstance(scaling_config.label_selector, dict):
+            label_selector = [
+                scaling_config.label_selector.copy() for _ in range(num_workers)
+            ]
         try:
             for callback in self._controller_callbacks:
                 selector = callback.on_controller_start_worker_group(
                     scaling_config=scaling_config, num_workers=num_workers
                 )
                 if selector:
-                    bundle_label_selector = selector
+                    if label_selector:
+                        logger.warning(
+                            f"Overriding `ScalingConfig.label_selector` {label_selector} "
+                            f"with label_selector returned by user-specified callback {selector}"
+                        )
+                    label_selector = [selector.copy() for _ in range(num_workers)]
                     break
         except Exception as e:
             return ControllerError(e)
@@ -321,7 +332,7 @@ class TrainController:
             num_workers=num_workers,
             resources_per_worker=resources_per_worker,
             placement_strategy=placement_strategy,
-            bundle_label_selector=bundle_label_selector,
+            label_selector=label_selector,
         )
         try:
             self._worker_group = self.worker_group_cls.create(
