@@ -673,6 +673,8 @@ message PlacementGroupTableData {
   // The time that the last bundle of a placement group is committed at,
   // effectively when the placement group has been "scheduled".
   int64 placement_group_final_bundle_placement_timestamp_ms = 16;
+  // Fallback scheduling options for this placement group.
+  repeated PlacementGroupSchedulingOption fallback_strategy = 17;
 }
 
 message JobTableData {
