@@ -67,9 +67,6 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         # EWMA state for dev
         self._q_level_dev: Dict["PhysicalOperator", float] = defaultdict(float)
 
-        # Per-operator initial queue size in bytes (recorded on first update).
-        self._initial_queue_nbytes: Dict["PhysicalOperator", float] = {}
-
         # Per-operator cached threshold (bootstrapped from first sample).
         self._queue_level_thresholds: Dict["PhysicalOperator", int] = defaultdict(int)
 
@@ -134,10 +131,6 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         # Now update the level itself
         level = self._update_ewma_asymmetric(level_prev, q)
 
-        # Record initial queue size on first observation
-        if op not in self._initial_queue_nbytes:
-            self._initial_queue_nbytes[op] = q
-
         self._q_level_nbytes[op] = level
         self._q_level_dev[op] = dev
 
@@ -166,9 +159,6 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         op_usage = self._resource_manager.get_op_usage(op)
         op_budget = self._resource_manager.get_budget(op)
         if op_usage is not None and op_budget is not None:
-            # If budget is infinite, skip dynamic backpressure entirely.
-            if math.isinf(op_budget.object_store_memory):
-                return num_tasks_running < self._concurrency_caps[op]
             total_mem = op_usage.object_store_memory + op_budget.object_store_memory
             if total_mem == 0 or (
                 op_budget.object_store_memory / total_mem
@@ -210,7 +200,6 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         current_queue_size_bytes: int,
     ) -> int:
         """A simple controller around EWMA level.
-
         Args:
             op: The operator to compute the effective cap for.
             num_tasks_running: The number of tasks currently running.
