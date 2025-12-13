@@ -98,9 +98,14 @@ def crane_ecr_login(ecr_registry: str, region: str = "us-west-2") -> Tuple[int, 
         Tuple of (return_code, output). return_code is 0 on success.
     """
     logger.info(f"Authenticating crane with ECR: {ecr_registry}")
-    token = boto3.client("ecr", region_name=region).get_authorization_token()
-    auth_data = token["authorizationData"][0]["authorizationToken"]
-    user, password = base64.b64decode(auth_data).decode("utf-8").split(":")
+    try:
+        token = boto3.client("ecr", region_name=region).get_authorization_token()
+        auth_data = token["authorizationData"][0]["authorizationToken"]
+        user, password = base64.b64decode(auth_data).decode("utf-8").split(":")
+    except Exception as e:
+        logger.error(f"Failed to get ECR authorization token: {e}")
+        return 1, f"Failed to get ECR authorization token: {e}"
+
     return _run_crane_command(
         ["auth", "login", "-u", user, "--password-stdin", ecr_registry],
         stdin_input=password,
@@ -119,34 +124,45 @@ def crane_docker_hub_login() -> Tuple[int, str]:
     logger.info("Authenticating crane with Docker Hub")
     job_id = os.environ.get("BUILDKITE_JOB_ID")
     if not job_id:
-        raise ValueError("BUILDKITE_JOB_ID environment variable is required")
+        logger.error("BUILDKITE_JOB_ID environment variable is required")
+        return 1, "BUILDKITE_JOB_ID environment variable is required"
 
-    auth = BotoAWSRequestsAuth(
-        aws_host="vop4ss7n22.execute-api.us-west-2.amazonaws.com",
-        aws_region="us-west-2",
-        aws_service="execute-api",
-    )
-
-    # Retry logic for API Gateway
-    resp = None
-    for attempt in range(5):
-        resp = requests.get(
-            "https://vop4ss7n22.execute-api.us-west-2.amazonaws.com/endpoint/",
-            auth=auth,
-            params={"job_id": job_id},
-        )
-        logger.info(f"Getting Docker Hub credentials, status_code: {resp.status_code}")
-        if resp.status_code < 500:
-            break
-        logger.info(f"API Gateway error, retrying (attempt {attempt + 1}/5)...")
-        time.sleep(5)
-
-    if resp is None or resp.status_code >= 400:
-        raise RuntimeError(
-            f"Failed to get Docker Hub credentials: {resp.text if resp else 'no response'}"
+    try:
+        auth = BotoAWSRequestsAuth(
+            aws_host="vop4ss7n22.execute-api.us-west-2.amazonaws.com",
+            aws_region="us-west-2",
+            aws_service="execute-api",
         )
 
-    password = resp.json()["docker_password"]
+        # Retry logic for API Gateway
+        resp = None
+        for attempt in range(5):
+            resp = requests.get(
+                "https://vop4ss7n22.execute-api.us-west-2.amazonaws.com/endpoint/",
+                auth=auth,
+                params={"job_id": job_id},
+            )
+            logger.info(
+                f"Getting Docker Hub credentials, status_code: {resp.status_code}"
+            )
+            if resp.status_code < 500:
+                break
+            logger.info(f"API Gateway error, retrying (attempt {attempt + 1}/5)...")
+            time.sleep(5)
+
+        if resp is None or resp.status_code >= 400:
+            error_msg = (
+                f"Failed to get Docker Hub credentials: "
+                f"{resp.text if resp else 'no response'}"
+            )
+            logger.error(error_msg)
+            return 1, error_msg
+
+        password = resp.json()["docker_password"]
+    except Exception as e:
+        logger.error(f"Failed to get Docker Hub credentials: {e}")
+        return 1, f"Failed to get Docker Hub credentials: {e}"
+
     return _run_crane_command(
         [
             "auth",
