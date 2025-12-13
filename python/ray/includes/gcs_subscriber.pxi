@@ -1,4 +1,5 @@
 import random
+from typing import TypedDict
 
 from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string as c_string
@@ -13,6 +14,21 @@ from ray.includes.common cimport(
     RAY_ERROR_INFO_CHANNEL,
     RAY_LOG_CHANNEL,
 )
+
+class GcsErrorPollDict(TypedDict):
+    job_id: bytes
+    type: str
+    error_message: str
+    timestamp: float
+
+class GcsLogPollDict(TypedDict):
+    ip: str
+    pid: str
+    job: str
+    is_err: bool
+    lines: list[str]
+    actor_name: str
+    task_name: str
 
 cdef class _GcsSubscriber:
     """Cython wrapper class of C++ `ray::pubsub::PythonGcsSubscriber`."""
