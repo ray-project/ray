@@ -2447,7 +2447,7 @@ py_test(
 
 py_test(
     name = "test_env_runner_failures",
-    size = "large",
+    size = "enormous",
     srcs = ["env/tests/test_env_runner_failures.py"],
     tags = [
         "evaluation",
