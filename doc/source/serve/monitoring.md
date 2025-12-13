@@ -493,7 +493,15 @@ You can customize these buckets using environment variables:
   - `ray_serve_multiplexed_model_load_latency_ms`
   - `ray_serve_multiplexed_model_unload_latency_ms`
 
-Set these as comma-separated values, for example: `RAY_SERVE_REQUEST_LATENCY_BUCKETS_MS="10,50,100,500,1000,5000"`.
+- **`RAY_SERVE_BATCH_UTILIZATION_BUCKETS_PERCENT`**: Controls bucket boundaries for batch utilization histogram. Default: `[5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 99, 100]` (percentage).
+  - `ray_serve_batch_utilization_percent`
+
+- **`RAY_SERVE_BATCH_SIZE_BUCKETS`**: Controls bucket boundaries for batch size histogram. Default: `[1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]`.
+  - `ray_serve_actual_batch_size`
+
+Note: `ray_serve_batch_wait_time_ms` and `ray_serve_batch_execution_time_ms` use the same buckets as `RAY_SERVE_REQUEST_LATENCY_BUCKETS_MS`.
+
+Set these as comma-separated values, for example: `RAY_SERVE_REQUEST_LATENCY_BUCKETS_MS="10,50,100,500,1000,5000"` or `RAY_SERVE_BATCH_SIZE_BUCKETS="1,4,8,16,32,64"`.
 
 **Histogram accuracy considerations**
 
@@ -501,7 +509,7 @@ Prometheus histograms aggregate data into predefined buckets, which can affect t
 
 - **Values outside bucket range**: If your latencies exceed the largest bucket boundary (default: 600,000ms / 10 minutes), they all fall into the `+Inf` bucket and percentile estimates become inaccurate.
 - **Sparse bucket coverage**: If your actual latencies cluster between two widely-spaced buckets, the calculated percentiles are interpolated and may not reflect true values.
-- **Bucket boundaries are fixed at startup**: Changes to `RAY_SERVE_REQUEST_LATENCY_BUCKETS_MS` or `RAY_SERVE_MODEL_LOAD_LATENCY_BUCKETS_MS` require restarting Serve actors to take effect.
+- **Bucket boundaries are fixed at startup**: Changes to bucket environment variables (such as `RAY_SERVE_REQUEST_LATENCY_BUCKETS_MS`, `RAY_SERVE_BATCH_SIZE_BUCKETS`, etc.) require restarting Serve actors to take effect.
 
 For accurate percentile calculations, configure bucket boundaries that closely match your expected latency distribution. For example, if most requests complete in 10-100ms, use finer-grained buckets in that range.
 :::
@@ -598,6 +606,19 @@ These metrics track request throughput, errors, and latency at the replica level
 | `ray_serve_deployment_request_counter_total` **[D]** | Counter | `deployment`, `replica`, `route`, `application` | Total number of requests processed by the replica. |
 | `ray_serve_deployment_processing_latency_ms` **[D]** | Histogram | `deployment`, `replica`, `route`, `application` | Histogram of request processing time in milliseconds (excludes queue wait time). |
 | `ray_serve_deployment_error_counter_total` **[D]** | Counter | `deployment`, `replica`, `route`, `application` | Total number of exceptions raised while processing requests. |
+
+### Batching metrics
+
+These metrics track request batching behavior for deployments using `@serve.batch`. Use them to tune batching parameters and debug latency issues.
+
+| Metric | Type | Tags | Description |
+|--------|------|------|-------------|
+| `ray_serve_batch_wait_time_ms` | Histogram | `deployment`, `replica`, `application`, `function_name` | Time requests waited for the batch to fill in milliseconds. High values indicate batch timeout may be too long. |
+| `ray_serve_batch_execution_time_ms` | Histogram | `deployment`, `replica`, `application`, `function_name` | Time to execute the batch function in milliseconds. |
+| `ray_serve_batch_queue_length` | Gauge | `deployment`, `replica`, `application`, `function_name` | Current number of requests waiting in the batch queue. High values indicate a batching bottleneck. |
+| `ray_serve_batch_utilization_percent` | Histogram | `deployment`, `replica`, `application`, `function_name` | Batch utilization as percentage (`computed_batch_size / max_batch_size * 100`). Low utilization suggests `batch_wait_timeout_s` is too aggressive or traffic is too low. |
+| `ray_serve_actual_batch_size` | Histogram | `deployment`, `replica`, `application`, `function_name` | The computed size of each batch. When `batch_size_fn` is configured, this reports the custom computed size (such as total tokens). Otherwise, it reports the number of requests. |
+| `ray_serve_batches_processed_total` | Counter | `deployment`, `replica`, `application`, `function_name` | Total number of batches executed. Compare with request counter to measure batching efficiency. |
 
 ### Replica lifecycle metrics
 
