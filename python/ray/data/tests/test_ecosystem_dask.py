@@ -1,7 +1,11 @@
 import sys
 
+import numpy as np
 import pytest
+import pyarrow as pa
+import pandas as pd
 
+import ray
 from ray.data._internal.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
