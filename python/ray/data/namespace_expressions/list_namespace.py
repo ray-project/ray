@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Union
 
+import numpy as np
 import pyarrow
 import pyarrow.compute as pc
 
@@ -120,3 +121,185 @@ class _ListNamespace:
             )
 
         return _list_slice(self._expr)
+
+    def sort(
+        self, order: str = "ascending", null_placement: str = "at_end"
+    ) -> "UDFExpr":
+        """Sort the elements within each list.
+
+        Args:
+            order: Sorting order, must be ``\"ascending\"`` or ``\"descending\"``.
+            null_placement: Placement for null values, ``\"at_start\"`` or ``\"at_end\"``.
+
+        Returns:
+            UDFExpr providing the sorted lists.
+        """
+
+        if order not in {"ascending", "descending"}:
+            raise ValueError(
+                "order must be either 'ascending' or 'descending', got " f"{order!r}"
+            )
+        if null_placement not in {"at_start", "at_end"}:
+            raise ValueError(
+                "null_placement must be 'at_start' or 'at_end', got "
+                f"{null_placement!r}"
+            )
+
+        return_dtype = self._expr.data_type
+
+        if hasattr(pc, "list_sort"):
+
+            @pyarrow_udf(return_dtype=return_dtype)
+            def _list_sort(arr: pyarrow.Array) -> pyarrow.Array:
+                return pc.list_sort(arr, order=order, null_placement=null_placement)
+
+            return _list_sort(self._expr)
+
+        @pyarrow_udf(return_dtype=return_dtype)
+        def _list_sort_python(arr: pyarrow.Array) -> pyarrow.Array:
+            """Fallback implementation when PyArrow list_sort is unavailable."""
+
+            def _sort_single_list(values):
+                if values is None:
+                    return None
+                non_null = [value for value in values if value is not None]
+                non_null.sort(reverse=order == "descending")
+                null_count = len(values) - len(non_null)
+                nulls = [None] * null_count
+                if null_placement == "at_start":
+                    return nulls + non_null
+                else:
+                    return non_null + nulls
+
+            sorted_lists = [_sort_single_list(values) for values in arr.to_pylist()]
+            return pyarrow.array(sorted_lists, type=arr.type)
+
+        return _list_sort_python(self._expr)
+
+    def flatten(self) -> "UDFExpr":
+        """Flatten one level of nesting for each list value."""
+
+        return_dtype = DataType(object)
+        if self._expr.data_type.is_arrow_type():
+            arrow_type = self._expr.data_type.to_arrow_dtype()
+            if pyarrow.types.is_list(arrow_type) or pyarrow.types.is_large_list(
+                arrow_type
+            ):
+                child_type = arrow_type.value_type
+                list_factory = (
+                    pyarrow.large_list
+                    if pyarrow.types.is_large_list(arrow_type)
+                    else pyarrow.list_
+                )
+                if (
+                    pyarrow.types.is_list(child_type)
+                    or pyarrow.types.is_large_list(child_type)
+                    or pyarrow.types.is_fixed_size_list(child_type)
+                ):
+                    flattened_type = list_factory(child_type.value_type)
+                    return_dtype = DataType.from_arrow(flattened_type)
+            elif pyarrow.types.is_fixed_size_list(arrow_type):
+                child_type = arrow_type.value_type
+                if (
+                    pyarrow.types.is_list(child_type)
+                    or pyarrow.types.is_large_list(child_type)
+                    or pyarrow.types.is_fixed_size_list(child_type)
+                ):
+                    flattened_type = pyarrow.list_(child_type.value_type)
+                    return_dtype = DataType.from_arrow(flattened_type)
+
+        if hasattr(pc, "list_flatten"):
+
+            @pyarrow_udf(return_dtype=return_dtype)
+            def _list_flatten_arrow(arr: pyarrow.Array) -> pyarrow.Array:
+                if isinstance(arr, pyarrow.ChunkedArray):
+                    arr = arr.combine_chunks()
+
+                arr_type = arr.type
+                arr_is_list = pyarrow.types.is_list(
+                    arr_type
+                ) or pyarrow.types.is_large_list(arr_type)
+                arr_is_fixed_size = pyarrow.types.is_fixed_size_list(arr_type)
+                if not (arr_is_list or arr_is_fixed_size):
+                    raise TypeError(
+                        "list.flatten() requires a list column whose elements are also lists."
+                    )
+
+                child_type = arr_type.value_type
+                child_is_list = pyarrow.types.is_list(
+                    child_type
+                ) or pyarrow.types.is_large_list(child_type)
+                child_is_fixed_size = pyarrow.types.is_fixed_size_list(child_type)
+                if not (child_is_list or child_is_fixed_size):
+                    raise TypeError(
+                        "list.flatten() requires a list column whose elements are also lists."
+                    )
+
+                flattened_child_lists = pc.list_flatten(arr)
+                scalar_values = pc.list_flatten(flattened_child_lists)
+
+                child_to_parent = pc.list_parent_indices(arr)
+                scalar_to_child = pc.list_parent_indices(flattened_child_lists)
+
+                if len(scalar_values) == 0:
+                    counts = np.zeros(len(arr), dtype=np.int64)
+                else:
+                    parent_index_array = pc.take(child_to_parent, scalar_to_child)
+                    parent_indices = parent_index_array.to_numpy(zero_copy_only=False)
+                    counts = np.bincount(
+                        parent_indices,
+                        minlength=len(arr),
+                    ).astype(np.int64, copy=False)
+
+                offsets = np.zeros(len(arr) + 1, dtype=np.int64)
+                if counts.size > 0:
+                    np.cumsum(counts, out=offsets[1:])
+
+                arr_is_large = pyarrow.types.is_large_list(arr_type)
+                offsets_type = pyarrow.int64() if arr_is_large else pyarrow.int32()
+                offsets_array = pyarrow.array(offsets, type=offsets_type)
+                null_mask = arr.is_null() if arr.null_count else None
+
+                array_cls = (
+                    pyarrow.LargeListArray if arr_is_large else pyarrow.ListArray
+                )
+                return array_cls.from_arrays(
+                    offsets_array,
+                    scalar_values,
+                    mask=null_mask,
+                )
+
+            return _list_flatten_arrow(self._expr)
+
+        @pyarrow_udf(return_dtype=return_dtype)
+        def _list_flatten_python(arr: pyarrow.Array) -> pyarrow.Array:
+            """Fallback implementation when PyArrow list_flatten is unavailable."""
+            import itertools
+
+            flattened_lists = []
+            for list_of_lists in arr.to_pylist():
+                if list_of_lists is None:
+                    flattened_lists.append(None)
+                    continue
+
+                if not isinstance(list_of_lists, list):
+                    raise TypeError(
+                        "list.flatten() requires a list column whose elements are also lists."
+                    )
+
+                valid_sublists = [sub for sub in list_of_lists if sub is not None]
+                for sub in valid_sublists:
+                    if not isinstance(sub, list):
+                        raise TypeError(
+                            "list.flatten() requires a list column whose elements are also lists."
+                        )
+                flattened = list(itertools.chain.from_iterable(valid_sublists))
+                flattened_lists.append(flattened)
+
+            result_type = None
+            if return_dtype.is_arrow_type():
+                result_type = return_dtype.to_arrow_dtype()
+
+            return pyarrow.array(flattened_lists, type=result_type)
+
+        return _list_flatten_python(self._expr)

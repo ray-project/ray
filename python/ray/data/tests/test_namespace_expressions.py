@@ -15,6 +15,7 @@ from packaging import version
 import ray
 from ray.data._internal.util import rows_same
 from ray.data.expressions import col
+from ray.exceptions import RayTaskError
 
 pytestmark = pytest.mark.skipif(
     version.parse(pa.__version__) < version.parse("19.0.0"),
@@ -105,6 +106,84 @@ class TestListNamespace:
             }
         )
         assert rows_same(result, expected)
+
+    def test_list_sort(self, dataset_format):
+        """Test list.sort() sorts each list with custom options."""
+
+        data = [
+            {"items": [3, 1, 2]},
+            {"items": [None, 4, 2]},
+        ]
+        ds = _create_dataset(data, dataset_format)
+        method = col("items").list.sort(order="descending", null_placement="at_start")
+        result = ds.with_column("sorted", method).to_pandas()
+        expected = pd.DataFrame(
+            {
+                "items": [[3, 1, 2], [None, 4, 2]],
+                "sorted": [[3, 2, 1], [None, 4, 2]],
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_list_flatten(self, dataset_format):
+        """Test list.flatten() removes one nesting level."""
+
+        data = [
+            {"items": [[1, 2], [3]]},
+            {"items": [[], [4, 5]]},
+        ]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column("flattened", col("items").list.flatten()).to_pandas()
+        expected = pd.DataFrame(
+            {
+                "items": [[[1, 2], [3]], [[], [4, 5]]],
+                "flattened": [[1, 2, 3], [4, 5]],
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_list_flatten_requires_nested_lists(self, dataset_format):
+        """list.flatten() should raise if elements aren't lists."""
+
+        data = [{"items": [1, 2]}, {"items": [3, 4]}]
+        ds = _create_dataset(data, dataset_format)
+        with pytest.raises(RayTaskError):
+            ds.with_column("flattened", col("items").list.flatten()).materialize()
+
+    def test_list_flatten_large_list_type(self, dataset_format):
+        """Flatten should preserve LargeList type when present."""
+
+        if dataset_format != "arrow":
+            pytest.skip("LargeList type only available via Arrow tables.")
+
+        arrow_type = pa.large_list(pa.list_(pa.int64()))
+        table = pa.Table.from_arrays(
+            [
+                pa.array(
+                    [
+                        [[1, 2], [3]],
+                        [[], [4, 5]],
+                    ],
+                    type=arrow_type,
+                )
+            ],
+            names=["items"],
+        )
+        ds = _create_dataset(None, dataset_format, arrow_table=table)
+        result = ds.with_column("flattened", col("items").list.flatten())
+        arrow_refs = result.to_arrow_refs()
+        tables = ray.get(arrow_refs)
+        result_table = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
+
+        flattened_type = result_table.schema.field("flattened").type
+        assert flattened_type == pa.large_list(pa.int64())
+        expected = pa.Table.from_arrays(
+            [
+                pa.array([[1, 2, 3], [4, 5]], type=pa.large_list(pa.int64())),
+            ],
+            names=["flattened"],
+        )
+        assert result_table.select(["flattened"]).combine_chunks().equals(expected)
 
 
 # ──────────────────────────────────────
