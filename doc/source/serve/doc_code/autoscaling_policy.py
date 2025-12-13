@@ -51,10 +51,7 @@ def custom_metrics_autoscaling_policy(
 
 # __begin_application_level_autoscaling_policy__
 from typing import Dict, Tuple
-from ray.serve.config import AutoscalingContext
-
-from ray.serve._private.common import DeploymentID
-from ray.serve.config import AutoscalingContext
+from ray.serve.config import AutoscalingContext, DeploymentID
 
 
 def coordinated_scaling_policy(
@@ -95,8 +92,7 @@ def coordinated_scaling_policy(
 
 # __begin_stateful_application_level_policy__
 from typing import Dict, Tuple, Any
-from ray.serve.config import AutoscalingContext
-from ray.serve._private.common import DeploymentID
+from ray.serve.config import AutoscalingContext, DeploymentID
 
 def stateful_application_level_policy(
     contexts: Dict[DeploymentID, AutoscalingContext]
