@@ -243,7 +243,6 @@ if args.enable_10gb:
 
 if args.enable_nixl:
     TRANSPORTS_AND_DEVICE.append(("nixl", "cuda"))
-    TRANSPORTS_AND_DEVICE.append(("nixl", "cpu"))
 
 if args.enable_torch_bench:
     TEST_FUNCS.append(torch_latency)
