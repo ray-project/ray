@@ -2261,6 +2261,80 @@ def test_runtime_metrics_histogram_export_to():
     assert mock_metric.last_applied_bucket_counts_for_tags[tags_key] == [2, 2, 1]
 
 
+def test_data_context_with_custom_classes_serialization(ray_start_cluster):
+    """
+    Test that DataContext containing custom exception classes can be properly
+    serialized to StatsActor across different jobs.
+
+    This test reproduces the issue where StatsActor fails to deserialize
+    DataContext when it contains custom exception classes imported from modules
+    that are not available in StatsActor's runtime environment.
+
+    The fix uses DataContextMetadata to sanitize DataContext before serialization,
+    converting custom classes to dictionary representations.
+    """
+    import os
+    import tempfile
+
+    def create_driver_script_with_dependency(working_dir, ray_address):
+        """Create custom module and driver script that depends on it."""
+        custom_module_path = os.path.join(working_dir, "test_custom_module.py")
+        with open(custom_module_path, "w") as f:
+            f.write(
+                """class CustomRetryException(Exception):
+    def __init__(self):
+        pass
+"""
+            )
+
+        driver_script = f"""
+import sys
+import os
+os.chdir(r"{working_dir}")
+
+import ray
+import ray.data
+from ray.data.context import DataContext
+
+ray.init(
+    address="{ray_address}",
+    ignore_reinit_error=True,
+    runtime_env={{"working_dir": r"{working_dir}"}}
+)
+
+import test_custom_module
+
+data_context = DataContext.get_current()
+data_context.actor_task_retry_on_errors = [test_custom_module.CustomRetryException]
+
+ds = ray.data.range(10)
+ds.take(1)
+ray.shutdown()
+"""
+        return driver_script
+
+    # Job 1: Create dataset to trigger StatsActor creation
+    ds = ray.data.range(10)
+    ds.take(1)
+
+    # Job 2: Run job that imports custom exception from module
+    working_dir = os.path.abspath(tempfile.mkdtemp())
+    ray_address = ray.get_runtime_context().gcs_address
+    driver_script = create_driver_script_with_dependency(working_dir, ray_address)
+
+    # This should succeed without ModuleNotFoundError if the fix is applied
+    run_string_as_driver(driver_script)
+
+    # Verify StatsActor can retrieve datasets without errors
+    # Should have exactly 2 datasets: one from Job 1 and one from Job 2
+    stats_actor = get_or_create_stats_actor()
+    datasets = ray.get(stats_actor.get_datasets.remote())
+    assert len(datasets) == 2, (
+        f"Expected exactly 2 datasets (one from Job 1 and one from Job 2), "
+        f"but found {len(datasets)}"
+    )
+
+
 if __name__ == "__main__":
     import sys
 

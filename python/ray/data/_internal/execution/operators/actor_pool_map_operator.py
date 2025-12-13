@@ -5,7 +5,20 @@ import uuid
 import warnings
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 import ray
 from ray.actor import ActorHandle
@@ -83,6 +96,7 @@ class ActorPoolMapOperator(MapOperator):
         ray_remote_args: Optional[Dict[str, Any]] = None,
         ray_actor_task_remote_args: Optional[Dict[str, Any]] = None,
         target_max_block_size_override: Optional[int] = None,
+        on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
     ):
         """Create an ActorPoolMapOperator instance.
 
@@ -112,6 +126,8 @@ class ActorPoolMapOperator(MapOperator):
             ray_actor_task_remote_args: Ray Core options passed to map actor tasks.
             target_max_block_size_override: The target maximum number of bytes to
                 include in an output block.
+            on_start: Optional callback invoked with the schema from the first input
+                bundle before any tasks are submitted.
         """
         super().__init__(
             map_transformer,
@@ -125,6 +141,7 @@ class ActorPoolMapOperator(MapOperator):
             map_task_kwargs,
             ray_remote_args_fn,
             ray_remote_args,
+            on_start,
         )
 
         self._min_rows_per_bundle = min_rows_per_bundle
@@ -228,8 +245,11 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_locality_enabled = options.actor_locality_enabled
         super().start(options)
 
-        # Create the actor workers and add them to the pool.
         self._actor_cls = ray.remote(**self._ray_remote_args)(self._map_worker_cls)
+        # Trigger the large UDF warning check by accessing the property.
+        # This is needed because ActorPoolMapOperator passes _map_transformer
+        # directly to actors, never accessing the lazy _map_transformer_ref property.
+        _ = self._map_transformer_ref
         self._actor_pool.scale(
             ActorPoolScalingRequest(
                 delta=self._actor_pool.initial_size(), reason="scaling to initial size"
@@ -295,7 +315,7 @@ class ActorPoolMapOperator(MapOperator):
             if not has_actor:
                 # Actor has already been killed.
                 return
-            # A new actor has started, we try to dispatch queued tasks.
+            # Try to dispatch queued tasks.
             self._dispatch_tasks()
 
         self._submit_metadata_task(
@@ -305,6 +325,8 @@ class ActorPoolMapOperator(MapOperator):
         return actor, res_ref
 
     def _add_bundled_input(self, bundle: RefBundle):
+        # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
+        self._notify_first_input(bundle)
         self._bundle_queue.add(bundle)
         self._metrics.on_input_queued(bundle)
         # Try to dispatch all bundles in the queue, including this new bundle.
@@ -577,12 +599,35 @@ class _MapWorker:
         # Initialize the data context for this actor after setting the src_fn_name in order to not
         # break __repr__. It's possible that logging setup fails.
         DataContext._set_current(ctx)
-        # Initialize state for this actor.
-        self._map_transformer.init()
+        # Initialize state for this actor with retry logic for UDF init failures.
+        self._init_udf_with_retries(ctx)
         self._logical_actor_id = logical_actor_id
         actor_location_tracker.update_actor_location.remote(
             self._logical_actor_id, ray.get_runtime_context().get_node_id()
         )
+
+    def _init_udf_with_retries(self, ctx: DataContext) -> None:
+        """Initialize the UDF with retry logic for transient failures."""
+        max_retries = (
+            ctx.actor_init_max_retries if ctx.actor_init_retry_on_errors else 0
+        )
+        # -1 means infinite retries
+        last_exception = None
+        attempt = 0
+        while max_retries < 0 or attempt <= max_retries:
+            try:
+                self._map_transformer.init()
+                return  # Success
+            except Exception as e:
+                last_exception = e
+                logger.debug(
+                    f"Failed to initialize UDF on attempt {attempt + 1} "
+                    f"(max_retries={'infinite' if max_retries < 0 else max_retries}): {e}",
+                    exc_info=True,
+                )
+                attempt += 1
+        # All retries exhausted
+        raise last_exception
 
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()
@@ -1011,14 +1056,26 @@ class _ActorPool(AutoscalingActorPool):
         Returns:
             Whether the actor was still pending. This can return False if the actor had
             already been killed.
+
+        Raises:
+            RayError: If the actor initialization failed. The actor is cleaned up
+                from internal tracking before re-raising.
         """
         if ready_ref not in self._pending_actors:
             # The actor has been removed from the pool before becoming running.
             return False
         actor = self._pending_actors.pop(ready_ref)
+        try:
+            actor_location = ray.get(ready_ref)
+        except Exception:
+            # Actor init failed - clean up the actor from _actor_to_logical_id
+            # This must happen for all exceptions, not just RayError, to prevent
+            # memory leaks where dead actor handles remain in _actor_to_logical_id.
+            self._actor_to_logical_id.pop(actor, None)
+            raise
         self._running_actors[actor] = _ActorState(
             num_tasks_in_flight=0,
-            actor_location=ray.get(ready_ref),
+            actor_location=actor_location,
             is_restarting=False,
         )
         return True
