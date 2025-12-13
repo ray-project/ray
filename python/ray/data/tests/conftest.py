@@ -1,6 +1,7 @@
 import copy
 import os
 import posixpath
+import time
 from collections import defaultdict
 
 import numpy as np
@@ -9,6 +10,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.air.constants import TENSOR_COLUMN_NAME

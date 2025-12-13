@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -5,6 +7,7 @@ import pytest
 
 import ray
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorTypeV2
+from ray.data.context import DataContext
 from ray.data.dataset import Schema
 from ray.data.datasource import (
     BaseFileMetadataProvider,

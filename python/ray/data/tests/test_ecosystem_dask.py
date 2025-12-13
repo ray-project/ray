@@ -10,6 +10,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data.extensions.tensor_extension import (
+    ArrowTensorArray,
     TensorArray,
     TensorDtype,
 )
