@@ -95,7 +95,7 @@ class RpcFailureManager {
         return;
       }
 
-      for (auto &[method, config] : json.items()) {
+      for (const auto &[method, config] : json.items()) {
         if (!config.is_object()) {
           RAY_LOG(FATAL) << "Value for method '" << method
                          << "' in testing_rpc_failure config is not a JSON object: "
@@ -112,6 +112,8 @@ class RpcFailureManager {
         auto [iter, _] = failable_methods_.emplace(
             method,
             Failable{
+                // The value method either retrieves the value associated with the key or
+                // uses the specified default value instead.
                 config.value("num_failures", 0L),
                 config.value("req_failure_prob", 0UL),
                 config.value("resp_failure_prob", 0UL),
