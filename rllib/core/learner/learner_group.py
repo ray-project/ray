@@ -287,8 +287,8 @@ class LearnerGroup(Checkpointable):
             episodes_refs: A list of Ray ObjectRefs to the episodes. If there are more
                 than one Learner workers, the list of episode refs is split amongst these and
                 one list shard is sent to each Learner.
-            timesteps: A dictionary of timesteps to pass to the Learners. This is usually used
-                for learning rate scheduling.
+            timesteps: A dictionary of timesteps to pass to the Learners's update method.
+                This is usually used for learning rate scheduling but can be used for any other purpose.
             training_data: A TrainingData object to use for the update. If not provided,
                 a new TrainingData object will be created from the batch, batches, batch_refs,
                 episodes, and episodes_refs.

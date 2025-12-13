@@ -35,10 +35,6 @@ class TestBC(unittest.TestCase):
         config = (
             BCConfig()
             .environment(env="CartPole-v1")
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .learners(
                 num_learners=0,
             )
@@ -98,10 +94,6 @@ class TestBC(unittest.TestCase):
         config = (
             BCConfig()
             .environment(env="CartPole-v1")
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .learners(
                 num_learners=0,
             )
@@ -130,11 +122,11 @@ class TestBC(unittest.TestCase):
         done = False
         while not done:
             results = algo.train()
-            assert results[NUM_ENV_STEPS_SAMPLED_LIFETIME] > 0
+            ts = results[NUM_ENV_STEPS_SAMPLED_LIFETIME]
+            assert ts > 0
             lr = results[LEARNER_RESULTS][DEFAULT_POLICY_ID][
                 "default_optimizer_learning_rate"
             ]
-            ts = results[NUM_ENV_STEPS_SAMPLED_LIFETIME]
             if ts < 3000:
                 # The learning rate should be linearly interpolated.
                 expected_lr = 0.001 + (ts / 3000) * (0.01 - 0.001)
@@ -142,6 +134,8 @@ class TestBC(unittest.TestCase):
             else:
                 self.assertEqual(lr, 0.01)
                 done = True
+
+        algo.stop()
 
 
 if __name__ == "__main__":
