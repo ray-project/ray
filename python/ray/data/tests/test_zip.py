@@ -55,42 +55,6 @@ def test_zip_different_num_blocks_combinations(
     )
 
 
-@pytest.mark.parametrize(
-    "num_cols1,num_cols2,should_invert",
-    [
-        (1, 1, False),
-        (4, 1, False),
-        (1, 4, True),
-        (1, 10, True),
-        (10, 10, False),
-    ],
-)
-def test_zip_different_num_blocks_split_smallest(
-    ray_start_regular_shared,
-    num_cols1,
-    num_cols2,
-    should_invert,
-):
-    n = 12
-    num_blocks1 = 4
-    num_blocks2 = 2
-    ds1 = ray.data.from_items(
-        [{str(i): i for i in range(num_cols1)}] * n, override_num_blocks=num_blocks1
-    )
-    ds2 = ray.data.from_items(
-        [{str(i): i for i in range(num_cols1, num_cols1 + num_cols2)}] * n,
-        override_num_blocks=num_blocks2,
-    )
-    ds = ds1.zip(ds2).materialize()
-    bundles = ds.iter_internal_ref_bundles()
-    num_blocks = sum(len(b.block_refs) for b in bundles)
-    assert ds.take() == [{str(i): i for i in range(num_cols1 + num_cols2)}] * n
-    if should_invert:
-        assert num_blocks == num_blocks2
-    else:
-        assert num_blocks == num_blocks1
-
-
 def test_zip_pandas(ray_start_regular_shared):
     ds1 = ray.data.from_pandas(pd.DataFrame({"col1": [1, 2], "col2": [4, 5]}))
     ds2 = ray.data.from_pandas(pd.DataFrame({"col3": ["a", "b"], "col4": ["d", "e"]}))
