@@ -732,9 +732,10 @@ class TensorArray(
         ],
     ):
         """
-        Args:
-            values: A NumPy ndarray or sequence of NumPy ndarrays of equal
-                shape.
+            Initialize a TensorArray from a sequence of ndarrays.
+
+            :param values: A NumPy ndarray or sequence of NumPy ndarrays of equal shape.
+            :return: A TensorArray.
         """
         # Try to convert some well-known objects to ndarrays before handing off to
         # ndarray handling logic.
@@ -1018,25 +1019,23 @@ class TensorArray(
         extension array to object dtype. This uses the helper method
         :func:`pandas.api.extensions.take`.
 
-        .. code-block:: python
+        >>> def take(self, indices, allow_fill=False, fill_value=None):
+        >>>    from pandas.core.algorithms import take
 
-           def take(self, indices, allow_fill=False, fill_value=None):
-               from pandas.core.algorithms import take
+        >>>    # If the ExtensionArray is backed by an ndarray, then
+        >>>    # just pass that here instead of coercing to object.
+        >>>    data = self.astype(object)
 
-               # If the ExtensionArray is backed by an ndarray, then
-               # just pass that here instead of coercing to object.
-               data = self.astype(object)
+        >>>    if allow_fill and fill_value is None:
+        >>>        fill_value = self.dtype.na_value
 
-               if allow_fill and fill_value is None:
-                   fill_value = self.dtype.na_value
+        >>>    # fill value should always be translated from the scalar
+        >>>    # type for the array, to the physical storage type for
+        >>>    # the data, before passing to take.
 
-               # fill value should always be translated from the scalar
-               # type for the array, to the physical storage type for
-               # the data, before passing to take.
-
-               result = take(data, indices, fill_value=fill_value,
-                             allow_fill=allow_fill)
-               return self._from_sequence(result, dtype=self.dtype)
+        >>>    result = take(data, indices, fill_value=fill_value,
+        >>>                 allow_fill=allow_fill)
+        >>>    return self._from_sequence(result, dtype=self.dtype)
         """
         if allow_fill:
             # With allow_fill being True, negative values in `indices` indicate

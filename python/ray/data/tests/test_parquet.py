@@ -9,16 +9,16 @@ from packaging.version import parse as parse_version
 from pyarrow.fs import FSSpecHandler, PyFileSystem
 from pytest_lazy_fixtures import lf as lazy_fixture
 
-from ray.data._internal.tensor_extensions.arrow import (
-    ArrowTensorTypeV2,
-    get_arrow_extension_fixed_shape_tensor_types,
-)
 from ray.data import FileShuffleConfig, Schema
 from ray.data._internal.datasource.parquet_datasource import (
     ParquetDatasource,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
+)
+from ray.data._internal.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor

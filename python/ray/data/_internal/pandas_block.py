@@ -19,10 +19,10 @@ import pandas as pd
 from pandas.api.types import is_object_dtype, is_scalar, is_string_dtype
 
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.data._internal.tensor_extensions.utils import _should_convert_to_tensor
 from ray.data._internal.numpy_support import convert_to_numpy
 from ray.data._internal.row import row_repr, row_repr_pretty, row_str
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
+from ray.data._internal.tensor_extensions.utils import _should_convert_to_tensor
 from ray.data._internal.util import is_null
 from ray.data.block import (
     Block,

@@ -17,6 +17,10 @@ from packaging.version import parse as parse_version
 import ray.cloudpickle as cloudpickle
 from ray._private.arrow_utils import _check_pyarrow_version, get_pyarrow_version
 from ray._private.ray_constants import env_integer
+from ray.data._internal.numpy_support import (
+    _convert_datetime_to_np_datetime,
+    convert_to_numpy,
+)
 from ray.data._internal.object_extensions.arrow import (
     MIN_PYARROW_VERSION_SCALAR_SUBCLASS,
     ArrowPythonObjectArray,
@@ -27,10 +31,6 @@ from ray.data._internal.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     _should_convert_to_tensor,
     create_ragged_ndarray,
-)
-from ray.data._internal.numpy_support import (
-    _convert_datetime_to_np_datetime,
-    convert_to_numpy,
 )
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -196,6 +196,12 @@ def pyarrow_table_from_pydict(
 ) -> pa.Table:
     """
     Convert a Python dictionary to a pyarrow Table.
+
+        Args:
+            pydict: The Python dictionary to convert.
+
+    Returns:
+        The converted pyarrow Table.
 
     Raises:
         ArrowConversionError: if the conversion fails.

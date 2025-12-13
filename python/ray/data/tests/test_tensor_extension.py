@@ -9,6 +9,7 @@ import pytest
 from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version
+from ray.data import DataContext
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowConversionError,
     ArrowTensorArray,
@@ -26,7 +27,6 @@ from ray.data._internal.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.data._internal.tensor_extensions.utils import (
     create_ragged_ndarray,
 )
-from ray.data import DataContext
 
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
