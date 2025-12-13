@@ -19,10 +19,10 @@ import pandas as pd
 from pandas.api.types import is_object_dtype, is_scalar, is_string_dtype
 
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.util.tensor_extensions.utils import _should_convert_to_tensor
 from ray.data._internal.numpy_support import convert_to_numpy
 from ray.data._internal.row import row_repr, row_repr_pretty, row_str
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
+from ray.data._internal.tensor_extensions.utils import _should_convert_to_tensor
 from ray.data._internal.util import is_null
 from ray.data.block import (
     Block,
@@ -197,7 +197,7 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
 
     def hash(self) -> BlockColumn:
 
-        from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+        from ray.data._internal.tensor_extensions.pandas import TensorArrayElement
 
         first_non_null = next((x for x in self._column if x is not None), None)
         if isinstance(first_non_null, TensorArrayElement):
@@ -224,7 +224,7 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
                 raise
 
     def flatten(self) -> BlockColumn:
-        from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+        from ray.data._internal.tensor_extensions.pandas import TensorArrayElement
 
         first_non_null = next((x for x in self._column if x is not None), None)
         if isinstance(first_non_null, TensorArrayElement):
@@ -268,7 +268,7 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
         return not self._column.notna().any()
 
     def is_composed_of_lists(self, types: Optional[Tuple] = None) -> bool:
-        from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+        from ray.data._internal.tensor_extensions.pandas import TensorArrayElement
 
         if not types:
             types = (list, np.ndarray, TensorArrayElement)
@@ -465,7 +465,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow as pa
 
-        from ray.air.util.tensor_extensions.pandas import TensorDtype
+        from ray.data._internal.tensor_extensions.pandas import TensorDtype
 
         # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
         # column to the resulting table.
@@ -506,7 +506,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
-        from ray.air.util.tensor_extensions.pandas import TensorArray
+        from ray.data._internal.tensor_extensions.pandas import TensorArray
         from ray.data.extensions import TensorArrayElement, TensorDtype
 
         pd = lazy_import_pandas()

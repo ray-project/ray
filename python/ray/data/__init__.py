@@ -91,7 +91,7 @@ try:
     import pyarrow as pa
 
     # Import these arrow extension types to ensure that they are registered.
-    from ray.air.util.tensor_extensions.arrow import (  # noqa
+    from ray.data._internal.tensor_extensions.arrow import (  # noqa
         ArrowTensorType,
         ArrowVariableShapedTensorType,
     )

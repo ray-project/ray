@@ -43,7 +43,7 @@ from pandas.compat import set_function_name
 from pandas.core.dtypes.generic import ABCDataFrame, ABCSeries
 from pandas.core.indexers import check_array_indexer, validate_indices
 
-from ray.air.util.tensor_extensions.utils import (
+from ray.data._internal.tensor_extensions.utils import (
     _create_possibly_ragged_ndarray,
     _is_ndarray_variable_shaped_tensor,
 )
@@ -292,6 +292,13 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
     base = None
 
     def __init__(self, shape: Tuple[Optional[int], ...], dtype: np.dtype):
+        """
+        Create a new TensorDtype.
+
+        Args:
+            shape: The shape of the tensor elements.
+            dtype: The dtype of the tensor elements.
+        """
         self._shape = shape
         self._dtype = dtype
 
@@ -732,9 +739,10 @@ class TensorArray(
         ],
     ):
         """
-        Args:
-            values: A NumPy ndarray or sequence of NumPy ndarrays of equal
-                shape.
+            Initialize a TensorArray from a sequence of ndarrays.
+
+            :param values: A NumPy ndarray or sequence of NumPy ndarrays of equal shape.
+            :return: A TensorArray.
         """
         # Try to convert some well-known objects to ndarrays before handing off to
         # ndarray handling logic.
@@ -1018,25 +1026,23 @@ class TensorArray(
         extension array to object dtype. This uses the helper method
         :func:`pandas.api.extensions.take`.
 
-        .. code-block:: python
+        >>> def take(self, indices, allow_fill=False, fill_value=None):
+        >>>    from pandas.core.algorithms import take
 
-           def take(self, indices, allow_fill=False, fill_value=None):
-               from pandas.core.algorithms import take
+        >>>    # If the ExtensionArray is backed by an ndarray, then
+        >>>    # just pass that here instead of coercing to object.
+        >>>    data = self.astype(object)
 
-               # If the ExtensionArray is backed by an ndarray, then
-               # just pass that here instead of coercing to object.
-               data = self.astype(object)
+        >>>    if allow_fill and fill_value is None:
+        >>>        fill_value = self.dtype.na_value
 
-               if allow_fill and fill_value is None:
-                   fill_value = self.dtype.na_value
+        >>>    # fill value should always be translated from the scalar
+        >>>    # type for the array, to the physical storage type for
+        >>>    # the data, before passing to take.
 
-               # fill value should always be translated from the scalar
-               # type for the array, to the physical storage type for
-               # the data, before passing to take.
-
-               result = take(data, indices, fill_value=fill_value,
-                             allow_fill=allow_fill)
-               return self._from_sequence(result, dtype=self.dtype)
+        >>>    result = take(data, indices, fill_value=fill_value,
+        >>>                 allow_fill=allow_fill)
+        >>>    return self._from_sequence(result, dtype=self.dtype)
         """
         if allow_fill:
             # With allow_fill being True, negative values in `indices` indicate
@@ -1392,7 +1398,7 @@ class TensorArray(
         https://pandas.pydata.org/pandas-docs/stable/development/extending.html#compatibility-with-apache-arrow
         for more information.
         """
-        from ray.air.util.tensor_extensions.arrow import (
+        from ray.data._internal.tensor_extensions.arrow import (
             ArrowTensorArray,
             ArrowVariableShapedTensorArray,
         )

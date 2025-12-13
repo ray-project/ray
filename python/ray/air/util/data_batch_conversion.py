@@ -217,10 +217,10 @@ def _convert_batch_type_to_numpy(
                 )
         return data
     elif pyarrow is not None and isinstance(data, pyarrow.Table):
-        from ray.air.util.tensor_extensions.arrow import (
+        from ray.data._internal.arrow_ops import transform_pyarrow
+        from ray.data._internal.tensor_extensions.arrow import (
             get_arrow_extension_fixed_shape_tensor_types,
         )
-        from ray.data._internal.arrow_ops import transform_pyarrow
 
         column_values_ndarrays = []
 
@@ -292,7 +292,7 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
         # SettingWithCopyWarning was moved to pd.errors in Pandas 1.5.0.
         SettingWithCopyWarning = pd.errors.SettingWithCopyWarning
 
-    from ray.air.util.tensor_extensions.pandas import (
+    from ray.data._internal.tensor_extensions.pandas import (
         TensorArray,
         column_needs_tensor_extension,
     )
@@ -334,7 +334,7 @@ def _cast_tensor_columns_to_ndarrays(df: "pd.DataFrame") -> "pd.DataFrame":
     except AttributeError:
         # SettingWithCopyWarning was moved to pd.errors in Pandas 1.5.0.
         SettingWithCopyWarning = pd.errors.SettingWithCopyWarning
-    from ray.air.util.tensor_extensions.pandas import TensorDtype
+    from ray.data._internal.tensor_extensions.pandas import TensorDtype
 
     # Try to convert any tensor extension columns to ndarray columns.
     # TODO(Clark): Optimize this with propagated DataFrame metadata containing a list of

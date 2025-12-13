@@ -8,12 +8,12 @@ from fsspec.implementations.local import LocalFileSystem
 from PIL import Image
 
 import ray
-from ray.air.util.tensor_extensions.arrow import (
-    get_arrow_extension_fixed_shape_tensor_types,
-)
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
     ImageFileMetadataProvider,
+)
+from ray.data._internal.tensor_extensions.arrow import (
+    get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
 from ray.data.tests.conftest import *  # noqa
