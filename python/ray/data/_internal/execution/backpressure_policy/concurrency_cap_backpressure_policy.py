@@ -51,8 +51,8 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
     RAMPUP_FACTOR = env_float("RAY_DATA_CONCURRENCY_CAP_RAMPUP_FACTOR", 1)
     # Threshold for per-Op object store budget (available) vs total
     # (available / total) ratio to enable dynamic output queue size backpressure.
-    OBJECT_STORE_BUDGET_RATIO = env_float(
-        "RAY_DATA_CONCURRENCY_CAP_OBJECT_STORE_BUDGET_RATIO", 0.1
+    AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD = env_float(
+        "RAY_DATA_CONCURRENCY_CAP_AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD", 0.1
     )
 
     def __init__(self, *args, **kwargs):
@@ -96,7 +96,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
             dynamic_output_queue_size_backpressure_configs = (
                 f", EWMA_ALPHA={self.EWMA_ALPHA}, K_DEV={self.K_DEV}, "
                 f"BACKOFF_FACTOR={self.BACKOFF_FACTOR}, RAMPUP_FACTOR={self.RAMPUP_FACTOR}, "
-                f"OBJECT_STORE_BUDGET_RATIO={self.OBJECT_STORE_BUDGET_RATIO}"
+                f"AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD={self.AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD}"
             )
         logger.debug(
             f"ConcurrencyCapBackpressurePolicy caps: {self._concurrency_caps}, "
@@ -172,7 +172,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
             total_mem = op_usage.object_store_memory + op_budget.object_store_memory
             if total_mem == 0 or (
                 op_budget.object_store_memory / total_mem
-                > self.OBJECT_STORE_BUDGET_RATIO
+                > self.AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
             ):
                 # If the objectstore budget (available) to total
                 # ratio is above threshold (10%), skip dynamic output queue size
@@ -209,8 +209,7 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         num_tasks_running: int,
         current_queue_size_bytes: int,
     ) -> int:
-        """A simple controller around EWMA level, with a hard guardrail based on
-        the initial queue size and OBJECT_STORE_BUDGET_RATIO.
+        """A simple controller around EWMA level.
 
         Args:
             op: The operator to compute the effective cap for.
@@ -221,22 +220,6 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         """
         cap_cfg = self._concurrency_caps[op]
 
-        # --- Hard guardrail based on initial queue size ---
-        initial_q = self._initial_queue_nbytes.get(op, None)
-        if initial_q is not None and self.OBJECT_STORE_BUDGET_RATIO > 0.0:
-            # Here initial queue size was recorded when OBJECT_STORE_BUDGET_RATIO threshold was met.
-            # For max queue size, allow initial queue size to grow by OBJECT_STORE_BUDGET_RATIO/2.
-            # For example, if initial queue size is 100Bytes and OBJECT_STORE_BUDGET_RATIO is 0.1,
-            # then max queue size is 100Bytes * (1.0 + 0.1 / 2) = 105Bytes.
-            max_queue_bytes = initial_q * (1.0 + self.OBJECT_STORE_BUDGET_RATIO / 2)
-            if current_queue_size_bytes >= max_queue_bytes:
-                # We've exceeded the max queue size threshold, so limit concurrency to minimum.
-                target = 1
-                if not math.isinf(cap_cfg):
-                    target = min(target, int(cap_cfg))
-                return int(target)
-
-        # --- EWMA-based dynamic control (shape controller) ---
         level = float(self._q_level_nbytes[op])
         dev = max(1.0, float(self._q_level_dev[op]))
         upper = level + self.K_DEV * dev
