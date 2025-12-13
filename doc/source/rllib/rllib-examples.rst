@@ -363,7 +363,7 @@ Multi-agent RL
    Uses OpenSpiel to demonstrate league-based self-play, where agents play against various
    versions of themselves, frozen or in-training, to improve through competitive interaction.
 
-- `Self-play with Footsies and PPO algorithm <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/multi_agent_footsies_ppo.py>`__:
+- `Self-play with Footsies and PPO algorithm <https://github.com/ray-project/ray/blob/ray-2.52.1/rllib/tuned_examples/ppo/multi_agent_footsies_ppo.py>`__:
     Implements self-play with the Footsies environment (two player zero-sum game).
     This example highlights RLlib's capabilities in connecting to the external binaries running the game engine, as well as
     setting up a multi-agent self-play training scenario.
@@ -442,21 +442,26 @@ RLModules
 Tuned examples
 --------------
 
-The `tuned examples <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples>`__ folder
+The `tuned examples <https://github.com/ray-project/ray/tree/ray-2.52.1/rllib/tuned_examples>`__ folder
 contains python config files that you can execute analogously to all other example scripts described
 here to run tuned learning experiments for the different algorithms and environment types.
 
-For example, see this `tuned Atari example for PPO <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/atari_ppo.py>`__,
+.. note::
+    The ``rllib/tuned_examples`` directory is not present on the ``master`` branch.
+    These tuned examples are available in release tags such as ``ray-2.52.1``.
+
+For example, see this
+`tuned Atari example for PPO <https://github.com/ray-project/ray/blob/ray-2.52.1/rllib/tuned_examples/ppo/atari_ppo.py>`__,
 which learns to solve the Pong environment in roughly 5 minutes. You can run it as follows on a single
 g5.24xlarge or g6.24xlarge machine with 4 GPUs and 96 CPUs:
 
 .. code-block:: bash
 
-    $ cd ray/rllib/tuned_examples/ppo
-    $ python atari_ppo.py --env=ale_py:ALE/Pong-v5 --num-learners=4 --num-env-runners=95
+    git checkout ray-2.52.1
+    cd rllib/tuned_examples/ppo
+    python atari_ppo.py --env=ale_py:ALE/Pong-v5 --num-learners=4 --num-env-runners=95
 
 Note that RLlib's daily or weekly release tests use some of the files in this folder as well.
-
 
 Community examples
 ------------------
