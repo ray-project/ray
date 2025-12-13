@@ -1544,8 +1544,10 @@ plotly==5.23.0
     # via ax-platform
 pluggy==1.3.0
     # via pytest
-polars==1.32.3
+polars==1.36.1
     # via -r python/requirements/test-requirements.txt
+polars-runtime-32==1.36.1
+    # via polars
 portalocker==2.8.2
     # via
     #   azure-cli-telemetry
