@@ -197,8 +197,8 @@ def pyarrow_table_from_pydict(
     """
     Convert a Python dictionary to a pyarrow Table.
 
-        Args:
-            pydict: The Python dictionary to convert.
+    Args:
+        pydict: The Python dictionary to convert.
 
     Returns:
         The converted pyarrow Table.

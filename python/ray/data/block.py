@@ -470,7 +470,7 @@ class BlockAccessor:
 
         elif isinstance(batch, collections.abc.Mapping):
             if block_type is None or block_type == BlockType.ARROW:
-                from ray.data._internal.tensor_extensions.arrow import(
+                from ray.data._internal.tensor_extensions.arrow import (
                     ArrowConversionError,
                 )
 

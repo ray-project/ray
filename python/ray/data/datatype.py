@@ -500,7 +500,9 @@ class DataType:
             >>> DataType.variable_shaped_tensor(dtype=DataType.float32(), ndim=2)  # doctest: +ELLIPSIS
             DataType(arrow:ArrowVariableShapedTensorType(...))
         """
-        from ray.data._internal.tensor_extensions.arrow import ArrowVariableShapedTensorType
+        from ray.data._internal.tensor_extensions.arrow import (
+            ArrowVariableShapedTensorType,
+        )
 
         element_arrow_type = dtype.to_arrow_dtype()
         return cls.from_arrow(ArrowVariableShapedTensorType(element_arrow_type, ndim))

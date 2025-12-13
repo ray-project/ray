@@ -292,6 +292,13 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
     base = None
 
     def __init__(self, shape: Tuple[Optional[int], ...], dtype: np.dtype):
+        """
+        Create a new TensorDtype.
+
+        Args:
+            shape: The shape of the tensor elements.
+            dtype: The dtype of the tensor elements.
+        """
         self._shape = shape
         self._dtype = dtype
 
