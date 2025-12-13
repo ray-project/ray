@@ -1,4 +1,7 @@
+import ast
+import glob
 import json
+import os
 import time
 
 import pytest
@@ -13,6 +16,7 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.context import _get_global_client
 from ray.serve.generated.serve_pb2 import DeploymentRoute
@@ -291,6 +295,235 @@ def test_get_deployment_config(serve_instance):
     )
     # After the deployment is created, the config should be DeploymentConfig.
     assert isinstance(deployment_config, DeploymentConfig)
+
+
+def test_autoscaling_snapshot_log_emitted_and_well_formed(serve_instance):
+    """Validate controller emits well-formed autoscaling snapshot structured logs.
+
+    Tests deterministic autoscaling: 1 -> 2 replicas.
+    """
+
+    DEPLOY_NAME = f"snap_app_{int(time.time())}"
+
+    @serve.deployment(
+        name=DEPLOY_NAME,
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 2,
+            "initial_replicas": 1,
+            "metrics_interval_s": 0.2,
+            "look_back_period_s": 0.5,
+            "upscale_delay_s": 0.0,
+            "downscale_delay_s": 600.0,
+            "target_ongoing_requests": 1.0,
+        },
+    )
+    async def snap_app():
+        return "ok"
+
+    handle = serve.run(snap_app.bind())
+
+    serve_logs_dir = get_serve_logs_dir()
+
+    def get_snapshots():
+        """Read all snapshots for deployment."""
+        log_paths = glob.glob(
+            os.path.join(serve_logs_dir, "autoscaling_snapshot_*.log")
+        )
+        snaps = []
+        for path in log_paths:
+            if not os.path.exists(path):
+                continue
+            with open(path, "r", errors="ignore") as f:
+                for line in f:
+                    rec = json.loads(line)
+                    message = rec.get("message", "")
+                    try:
+                        snap = ast.literal_eval(message)
+                    except (ValueError, SyntaxError):
+                        continue
+                    if not isinstance(snap, dict):
+                        continue
+                    if (
+                        snap.get("snapshot_type") == "deployment"
+                        and snap.get("deployment") == DEPLOY_NAME
+                    ):
+                        snaps.append(snap)
+        return sorted(snaps, key=lambda s: s.get("timestamp_str", ""))
+
+    def wait_for_replicas(current, timeout=10):
+        """Wait for exact current replica count."""
+        wait_for_condition(
+            lambda: any(s.get("current_replicas") == current for s in get_snapshots()),
+            timeout=timeout,
+        )
+
+    # Wait for initial replica to be ready
+    wait_for_replicas(1, timeout=5)
+    initial = [s for s in get_snapshots() if s["current_replicas"] == 1][0]
+    assert initial["current_replicas"] == 1
+    assert initial["min_replicas"] == 1
+    assert initial["max_replicas"] == 2
+
+    reqs = [handle.remote() for _ in range(6)]
+    # Wait for scaling to 2 replicas.
+    wait_for_replicas(2, timeout=5)
+
+    all_snaps = get_snapshots()
+
+    snap_1 = next((s for s in all_snaps if s["current_replicas"] == 1), None)
+    snap_2 = next((s for s in all_snaps if s["current_replicas"] == 2), None)
+
+    assert snap_1 is not None
+    assert snap_2 is not None and snap_2["target_replicas"] == 2
+
+    seen_states = []
+    for snap in all_snaps:
+        current = snap["current_replicas"]
+        if current not in seen_states:
+            seen_states.append(current)
+
+    assert seen_states in [[0, 1, 2], [1, 2]]
+    assert 1 in seen_states and 2 in seen_states
+
+    for snap in [snap_1, snap_2]:
+        for key in [
+            "timestamp_str",
+            "app",
+            "deployment",
+            "current_replicas",
+            "target_replicas",
+            "min_replicas",
+            "max_replicas",
+            "policy_name",
+            "metrics_health",
+            "look_back_period_s",
+            "snapshot_type",
+        ]:
+            assert key in snap, f"Missing {key}"
+
+    for req in reqs:
+        assert req.result() == "ok"
+
+
+# Test that no autoscaling snapshot logs are emitted for deployments without autoscaling_config
+def test_autoscaling_snapshot_not_emitted_without_config(serve_instance):
+    """Ensure no deployment-type autoscaling snapshot logs are emitted without autoscaling_config."""
+
+    DEPLOY_NAME = f"snap_no_auto_{int(time.time())}"
+
+    @serve.deployment(name=DEPLOY_NAME)
+    def app():
+        return "no autoscale"
+
+    serve.run(app.bind())
+
+    serve_logs_dir = get_serve_logs_dir()
+    candidate_paths = sorted(
+        glob.glob(os.path.join(serve_logs_dir, "autoscaling_snapshot_*.log"))
+    )
+    assert (
+        candidate_paths
+    ), f"No autoscaling snapshot logs found; checked {serve_logs_dir}"
+
+    found = []
+    for path in candidate_paths:
+        if not os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                rec = json.loads(line)
+                message = rec.get("message", "")
+                try:
+                    snap = ast.literal_eval(message)
+                except (ValueError, SyntaxError):
+                    continue
+                if not isinstance(snap, dict):
+                    continue
+                if snap.get("snapshot_type") != "deployment":
+                    continue
+                if snap.get("deployment") == DEPLOY_NAME:
+                    found.append(snap)
+
+    assert not found, (
+        f"Found deployment-type autoscaling snapshot logs for deployment {DEPLOY_NAME} "
+        f"even though no autoscaling_config was set: {found}"
+    )
+
+
+def test_autoscaling_snapshot_not_emitted_every_iteration(serve_instance):
+    """Ensure identical autoscaling snapshots are not written repeatedly."""
+
+    DEPLOY_NAME = f"snap_dedupe_{int(time.time())}"
+
+    @serve.deployment(
+        name=DEPLOY_NAME,
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 1,
+            "initial_replicas": 1,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 0.2,
+            "upscale_delay_s": 0.0,
+            "downscale_delay_s": 600.0,
+            "target_ongoing_requests": 1.0,
+        },
+    )
+    def app():
+        return "ok"
+
+    serve.run(app.bind())
+
+    serve_logs_dir = get_serve_logs_dir()
+
+    def get_snapshots():
+        log_paths = glob.glob(
+            os.path.join(serve_logs_dir, "autoscaling_snapshot_*.log")
+        )
+        snaps = []
+        for p in log_paths:
+            if not os.path.exists(p):
+                continue
+            with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    rec = json.loads(line)
+                    message = rec.get("message", "")
+                    try:
+                        snap = ast.literal_eval(message)
+                    except (ValueError, SyntaxError):
+                        continue
+                    if not isinstance(snap, dict):
+                        continue
+                    if (
+                        snap.get("snapshot_type") == "deployment"
+                        and snap.get("deployment") == DEPLOY_NAME
+                    ):
+                        snaps.append(snap)
+        return sorted(snaps, key=lambda s: s["timestamp_str"])
+
+    # Wait until the first stable snapshot shows up
+    def has_initial_snapshot():
+        snaps = get_snapshots()
+        return bool(snaps) and snaps[-1]["current_replicas"] == 1
+
+    wait_for_condition(has_initial_snapshot, timeout=10)
+
+    controller = _get_global_client()._controller
+
+    # ensure deployment is in autoscaling cache
+    ray.get(controller._refresh_autoscaling_deployments_cache.remote())
+
+    # Count current snapshots
+    initial_count = len(get_snapshots())
+
+    # Force multiple emits
+    for _ in range(5):
+        ray.get(controller._emit_deployment_autoscaling_snapshots.remote())
+
+    final_count = len(get_snapshots())
+
+    # No new snapshots should be added after the first stable write
+    assert final_count == initial_count
 
 
 if __name__ == "__main__":
