@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -99,6 +100,8 @@ class _ExprVisitor(ABC, Generic[T]):
             return self.visit_download(expr)
         elif isinstance(expr, StarExpr):
             return self.visit_star(expr)
+        elif isinstance(expr, MonotonicallyIncreasingIdExpr):
+            return self.visit_monotonically_increasing_id(expr)
         else:
             raise TypeError(f"Unsupported expression type for conversion: {type(expr)}")
 
@@ -132,6 +135,12 @@ class _ExprVisitor(ABC, Generic[T]):
 
     @abstractmethod
     def visit_download(self, expr: "DownloadExpr") -> T:
+        pass
+
+    @abstractmethod
+    def visit_monotonically_increasing_id(
+        self, expr: "MonotonicallyIncreasingIdExpr"
+    ) -> T:
         pass
 
 
@@ -199,6 +208,13 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
 
     def visit_star(self, expr: "StarExpr") -> "pyarrow.compute.Expression":
         raise TypeError("Star expressions cannot be converted to PyArrow expressions")
+
+    def visit_monotonically_increasing_id(
+        self, expr: "MonotonicallyIncreasingIdExpr"
+    ) -> "pyarrow.compute.Expression":
+        raise TypeError(
+            "Monotonically Increasing ID expressions cannot be converted to PyArrow expressions"
+        )
 
 
 @DeveloperAPI(stability="alpha")
@@ -936,6 +952,21 @@ class StarExpr(Expr):
         return isinstance(other, StarExpr)
 
 
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False, repr=False)
+class MonotonicallyIncreasingIdExpr(Expr):
+    """Expression that represents a monotonically increasing ID column."""
+
+    # Unique identifier for each expression to isolate row count state
+    _instance_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+
+    data_type: DataType = field(default_factory=lambda: DataType.int64(), init=False)
+
+    def structurally_equals(self, other: Any) -> bool:
+        # Non-deterministic, never structurally equal to another expression
+        return False
+
+
 @PublicAPI(stability="beta")
 def col(name: str) -> ColumnExpr:
     """
@@ -1042,6 +1073,31 @@ def download(uri_column_name: str) -> DownloadExpr:
     return DownloadExpr(uri_column_name=uri_column_name)
 
 
+@PublicAPI(stability="alpha")
+def monotonically_increasing_id() -> MonotonicallyIncreasingIdExpr:
+    """
+    Create an expression that generates monotonically increasing IDs.
+
+    The generated IDs are guaranteed to be monotonically increasing and unique,
+    but not consecutive. The current implementation puts the block ID in the
+    upper 31 bits, and the lower 33 bits represent the record number within
+    each block. The assumption is that the dataset has less than 1 billion blocks,
+    and each block has less than 8 billion records.
+
+    The function is non-deterministic because its result depends on block IDs.
+
+    Returns:
+        A MonotonicallyIncreasingIdExpr that generates unique IDs.
+
+    Example:
+        >>> from ray.data.expressions import monotonically_increasing_id
+        >>> import ray
+        >>> ds = ray.data.range(10)
+        >>> ds = ds.with_column("uid", monotonically_increasing_id())
+    """
+    return MonotonicallyIncreasingIdExpr()
+
+
 # ──────────────────────────────────────
 # Public API for evaluation
 # ──────────────────────────────────────
@@ -1060,12 +1116,14 @@ __all__ = [
     "DownloadExpr",
     "AliasExpr",
     "StarExpr",
+    "MonotonicallyIncreasingIdExpr",
     "pyarrow_udf",
     "udf",
     "col",
     "lit",
     "download",
     "star",
+    "monotonically_increasing_id",
     "_ListNamespace",
     "_StringNamespace",
     "_StructNamespace",

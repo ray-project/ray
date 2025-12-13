@@ -11,6 +11,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.logical.rules.projection_pushdown import (
     _extract_input_columns_renaming_mapping,
 )
@@ -22,6 +23,7 @@ from ray.data.expressions import (
     DownloadExpr,
     Expr,
     LiteralExpr,
+    MonotonicallyIncreasingIdExpr,
     Operation,
     StarExpr,
     UDFExpr,
@@ -681,6 +683,45 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         raise TypeError(
             "DownloadExpr evaluation is not yet implemented in NativeExpressionEvaluator."
         )
+
+    def visit_monotonically_increasing_id(
+        self, expr: MonotonicallyIncreasingIdExpr
+    ) -> Union[BlockColumn, ScalarType]:
+        """Visit a monotonically_increasing_id expression.
+
+        Args:
+            expr: The monotonically_increasing_id expression.
+
+        Returns:
+            The result of the monotonically_increasing_id expression as a BlockColumn.
+        """
+        ctx = TaskContext.get_current()
+        if ctx is None:
+            raise RuntimeError(
+                "monotonically_increasing_id() must be evaluated within a Ray task"
+            )
+
+        # Key the counter by expression instance ID so that multiple expressions
+        # in the same projection will have isolated row count state
+        counter_key = f"_mono_id_{expr._instance_id}_counter"
+
+        start_idx = ctx.kwargs.get(counter_key, 0)
+        num_rows = self.block_accessor.num_rows()
+        ctx.kwargs[counter_key] = start_idx + num_rows
+
+        # Upper 31 bits = task/partition ID, lower 33 bits = row number
+        partition_mask = ctx.task_idx << 33
+        ids = partition_mask + np.arange(
+            start_idx, start_idx + num_rows, dtype=np.int64
+        )
+
+        block_type = self.block_accessor.block_type()
+        if block_type == BlockType.PANDAS:
+            return pd.Series(ids)
+        elif block_type == BlockType.ARROW:
+            return pa.array(ids)
+        else:
+            return ids
 
 
 def eval_expr(expr: Expr, block: Block) -> Union[BlockColumn, ScalarType]:
