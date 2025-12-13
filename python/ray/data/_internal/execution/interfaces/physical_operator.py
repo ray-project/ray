@@ -427,7 +427,7 @@ class PhysicalOperator(Operator):
             and internal_input_queue_num_blocks == 0
         )
 
-    def completed(self) -> bool:
+    def has_completed(self) -> bool:
         """Returns whether this operator has been fully completed.
 
         An operator is completed iff:
@@ -584,7 +584,7 @@ class PhysicalOperator(Operator):
         raise NotImplementedError
 
     def input_done(self, input_index: int) -> None:
-        """Called when the upstream operator at index `input_index` has completed().
+        """Called when the upstream operator at index `input_index` has_completed().
 
         After this is called, the executor guarantees that no more inputs will be added
         via `add_input` for the given input index.
@@ -592,7 +592,7 @@ class PhysicalOperator(Operator):
         pass
 
     def all_inputs_done(self) -> None:
-        """Called when all upstream operators have completed().
+        """Called when all upstream operators has_completed().
 
         After this is called, the executor guarantees that no more inputs will be added
         via `add_input` for any input index.

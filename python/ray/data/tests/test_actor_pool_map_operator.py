@@ -791,7 +791,7 @@ def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_s
 
     # ASSERT: Since the downstream operator has finished execution, the actor pool
     # operator should consider itself completed.
-    assert actor_pool_map_op.completed()
+    assert actor_pool_map_op.has_completed()
 
 
 def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):

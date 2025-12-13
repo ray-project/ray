@@ -197,7 +197,7 @@ def test_process_completed_tasks(sleep_task_ref, ray_start_regular_shared):
     o2.get_active_tasks = MagicMock(return_value=[done_task])
     o2.all_inputs_done = MagicMock()
     o1.mark_execution_finished = MagicMock()
-    o1.completed = MagicMock(return_value=True)
+    o1.has_completed = MagicMock(return_value=True)
     topo[o1].output_queue.clear()
     process_completed_tasks(topo, [], 0)
     update_operator_states(topo)
@@ -320,7 +320,7 @@ def test_get_eligible_operators_to_run(ray_start_regular_shared):
         assert _get_eligible_ops_to_run(ensure_liveness=False) == [o3]
 
     # Completed ops are not eligible
-    with patch.object(o3, "completed") as _mock:
+    with patch.object(o3, "has_completed") as _mock:
         _mock.return_value = True
         assert _get_eligible_ops_to_run(ensure_liveness=False) == [o2]
 
@@ -342,7 +342,7 @@ def test_get_eligible_operators_to_run(ray_start_regular_shared):
         assert _get_eligible_ops_to_run_with_policy(ensure_liveness=False) == [o3]
 
         # Complete `o3`
-        with patch.object(o3, "completed") as _mock:
+        with patch.object(o3, "has_completed") as _mock:
             _mock.return_value = True
             # Clear up input queue
             topo[o3].input_queues[0].clear()

@@ -1027,9 +1027,9 @@ class HashShufflingOperatorBase(PhysicalOperator, HashShuffleProgressBarMixin):
             gpu=0,
         )
 
-    def completed(self) -> bool:
+    def has_completed(self) -> bool:
         # TODO separate marking as completed from the check
-        return self._is_finalized() and super().completed()
+        return self._is_finalized() and super().has_completed()
 
     def implements_accurate_memory_accounting(self) -> bool:
         return True

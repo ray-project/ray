@@ -647,7 +647,7 @@ def update_operator_states(topology: Topology) -> None:
             continue
         all_inputs_done = True
         for idx, dep in enumerate(op.input_dependencies):
-            if dep.completed() and not topology[dep].output_queue:
+            if dep.has_completed() and not topology[dep].output_queue:
                 if not op_state.input_done_called[idx]:
                     op.input_done(idx)
                     op_state.input_done_called[idx] = True
@@ -664,7 +664,7 @@ def update_operator_states(topology: Topology) -> None:
     for op, op_state in reversed(list(topology.items())):
 
         dependents_completed = len(op.output_dependencies) > 0 and all(
-            dep.completed() for dep in op.output_dependencies
+            dep.has_completed() for dep in op.output_dependencies
         )
         if dependents_completed:
             op.mark_execution_finished()
@@ -713,7 +713,11 @@ def get_eligible_operators(
         #   - It's not completed
         #   - It can accept at least one input
         #   - Its input queue has a valid bundle
-        if not op.completed() and op.should_add_input() and state.has_pending_bundles():
+        if (
+            not op.has_completed()
+            and op.should_add_input()
+            and state.has_pending_bundles()
+        ):
             if not in_backpressure:
                 op_runnable = True
                 eligible_ops.append(op)
