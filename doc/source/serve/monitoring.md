@@ -616,8 +616,8 @@ These metrics track request batching behavior for deployments using `@serve.batc
 | `ray_serve_batch_wait_time_ms` | Histogram | `deployment`, `replica`, `application`, `function_name` | Time requests waited for the batch to fill in milliseconds. High values indicate batch timeout may be too long. |
 | `ray_serve_batch_execution_time_ms` | Histogram | `deployment`, `replica`, `application`, `function_name` | Time to execute the batch function in milliseconds. |
 | `ray_serve_batch_queue_length` | Gauge | `deployment`, `replica`, `application`, `function_name` | Current number of requests waiting in the batch queue. High values indicate a batching bottleneck. |
-| `ray_serve_batch_utilization_percent` | Histogram | `deployment`, `replica`, `application`, `function_name` | Batch utilization as percentage (`actual_batch_size / max_batch_size * 100`). Low utilization suggests `batch_wait_timeout_s` is too aggressive or traffic is too low. |
-| `ray_serve_actual_batch_size` | Histogram | `deployment`, `replica`, `application`, `function_name` | The actual number of requests in each batch. Use this to understand your batch size distribution. |
+| `ray_serve_batch_utilization_percent` | Histogram | `deployment`, `replica`, `application`, `function_name` | Batch utilization as percentage (`computed_batch_size / max_batch_size * 100`). Low utilization suggests `batch_wait_timeout_s` is too aggressive or traffic is too low. |
+| `ray_serve_actual_batch_size` | Histogram | `deployment`, `replica`, `application`, `function_name` | The computed size of each batch. When `batch_size_fn` is configured, this reports the custom computed size (such as total tokens). Otherwise, it reports the number of requests. |
 | `ray_serve_batches_processed_total` | Counter | `deployment`, `replica`, `application`, `function_name` | Total number of batches executed. Compare with request counter to measure batching efficiency. |
 
 ### Replica lifecycle metrics

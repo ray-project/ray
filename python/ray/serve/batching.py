@@ -192,7 +192,7 @@ class _BatchQueue:
         )
 
         self._function_name = (
-            handle_batch_func.__name__ if handle_batch_func is not None else None
+            handle_batch_func.__name__ if handle_batch_func is not None else "unknown"
         )
 
         self._handle_batch_task = None
@@ -246,12 +246,13 @@ class _BatchQueue:
 
         return self.batch_size_fn(items)
 
-    async def wait_for_batch(self) -> List[_SingleRequest]:
+    async def wait_for_batch(self) -> Tuple[List[_SingleRequest], int]:
         """Wait for batch respecting self.max_batch_size and self.timeout_s.
 
-        Returns a batch of up to self.max_batch_size items. Waits for up to
-        to self.timeout_s after receiving the first request that will be in
-        the next batch. After the timeout, returns as many items as are ready.
+        Returns a tuple of (batch, computed_batch_size) where batch contains
+        up to self.max_batch_size items. Waits for up to self.timeout_s after
+        receiving the first request that will be in the next batch. After the
+        timeout, returns as many items as are ready.
 
         Always returns a batch with at least one item - will block
         indefinitely until an item comes in.
@@ -275,7 +276,7 @@ class _BatchQueue:
                 )
                 # Set exception on the future so the caller receives it
                 first_item.future.set_exception(exc)
-                return []
+                return [], 0
 
         batch.append(first_item)
 
@@ -322,6 +323,9 @@ class _BatchQueue:
                     # so newer requests may be processed before it. Consider using
                     # asyncio.PriorityQueue if strict ordering is required.
                     self.queue.put_nowait(deferred_item)
+                    # Compute final batch size before breaking (batch is now valid
+                    # after popping the deferred item).
+                    current_batch_size = self._compute_batch_size(batch)
                     # break the loop early because the deferred item is too large to fit in the batch
                     break
             else:
@@ -351,7 +355,7 @@ class _BatchQueue:
             batch_wait_time_ms, tags={"function_name": self._function_name}
         )
 
-        return batch
+        return batch, current_batch_size
 
     def _validate_results(
         self, results: Iterable[Any], input_batch_length: int
@@ -437,36 +441,44 @@ class _BatchQueue:
         # So we unset the request context so the current context is not inherited by the task, _process_batch.
         serve.context._unset_request_context()
         while not self._loop.is_closed():
-            batch = await self.wait_for_batch()
-            promise = self._process_batch(func, batch)
+            batch, computed_batch_size = await self.wait_for_batch()
+            promise = self._process_batch(func, batch, computed_batch_size)
             task = asyncio.create_task(promise)
             self.tasks.add(task)
             self.curr_iteration_start_times[task] = time.time()
             task.add_done_callback(self._handle_completed_task)
 
-    async def _process_batch(self, func: Callable, batch: List[_SingleRequest]) -> None:
+    async def _process_batch(
+        self, func: Callable, batch: List[_SingleRequest], computed_batch_size: int
+    ) -> None:
         """Processes queued request batch."""
         # NOTE: this semaphore caps the number of concurrent batches specified by `max_concurrent_batches`
         async with self.semaphore:
             # Remove requests that have been cancelled from the batch. If
             # all requests have been cancelled, simply return and wait for
             # the next batch.
+            original_batch_len = len(batch)
             batch = [req for req in batch if not req.future.cancelled()]
             if len(batch) == 0:
                 return
 
             # Record batch utilization metric.
-            batch_size = len(batch)
+            # Use computed_batch_size from wait_for_batch for efficiency.
+            # If requests were cancelled, we need to recompute since the batch changed.
+            if len(batch) != original_batch_len:
+                computed_batch_size = self._compute_batch_size(batch)
 
             # Calculate and record batch utilization percentage.
-            batch_utilization_percent = (batch_size / self.max_batch_size) * 100
+            batch_utilization_percent = (
+                computed_batch_size / self.max_batch_size
+            ) * 100
             self._batch_utilization_histogram.observe(
                 batch_utilization_percent, tags={"function_name": self._function_name}
             )
 
-            # Record actual batch size.
+            # Record actual batch size (number of requests in the batch computed by the batch_size_fn).
             self._batch_size_histogram.observe(
-                batch_size, tags={"function_name": self._function_name}
+                computed_batch_size, tags={"function_name": self._function_name}
             )
 
             # Increment batches processed counter.
