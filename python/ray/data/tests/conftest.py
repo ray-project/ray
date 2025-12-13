@@ -1,9 +1,9 @@
 import copy
+import os
 import posixpath
 from collections import defaultdict
 
 import numpy as np
-import os
 import pandas as pd
 import pyarrow as pa
 import pytest

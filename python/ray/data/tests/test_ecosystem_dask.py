@@ -1,9 +1,9 @@
 import sys
 
 import numpy as np
-import pytest
-import pyarrow as pa
 import pandas as pd
+import pyarrow as pa
+import pytest
 
 import ray
 from ray.data._internal.tensor_extensions.arrow import (

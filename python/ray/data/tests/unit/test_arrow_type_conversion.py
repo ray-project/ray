@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 import numpy as np
 import pyarrow as pa
 import pytest
-
 from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version

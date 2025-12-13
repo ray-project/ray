@@ -5,9 +5,9 @@ from typing import Union
 import fsspec
 import pyarrow.dataset as pds
 import pyarrow.parquet as pq
+import pytest
 from packaging.version import parse as parse_version
 from pyarrow.fs import FSSpecHandler, PyFileSystem
-import pytest
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 from ray.data import FileShuffleConfig, Schema

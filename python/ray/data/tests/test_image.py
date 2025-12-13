@@ -1,13 +1,10 @@
+import os
 from typing import Dict
 
-from fsspec.implementations.local import LocalFileSystem
 import numpy as np
 import pytest
-import pyarrow as pa
-import pandas as pd
-import os
+from fsspec.implementations.local import LocalFileSystem
 from PIL import Image
-import pytest
 
 import ray
 from ray.data._internal.datasource.image_datasource import (
