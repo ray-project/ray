@@ -1806,6 +1806,9 @@ def start_raylet(
         # that requires additional dependencies to be downloaded.
         dashboard_agent_command.append("--minimal")
 
+    if is_head_node:
+        dashboard_agent_command.append("--head")
+
     runtime_env_agent_command = [
         *_build_python_executable_command_memory_profileable(
             ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, session_dir
