@@ -479,8 +479,9 @@ def get_node_to_connect_for_driver(
 ) -> GcsNodeInfo:
     """
     Get the node to connect to for the driver.
-    If node_ip_address is provided, it will be used to filter the nodes to connect to.
-    If node_ip_address is not provided, it will resolve the node based on the steps below:
+    If node_ip_address, node_name, and/or temp_dir are provided, they will be used to filter the nodes to connect to.
+    If node_ip_address, node_name, and/or temp_dir are not provided, or if multiple node matches the filters,
+    the following logic will be applied to resolve the node to connect to:
     1. If there are multiple nodes on the same host, this function will prioritize the head node if available.
     2. If there is no head node, it will return an arbitrary node it finds.
 

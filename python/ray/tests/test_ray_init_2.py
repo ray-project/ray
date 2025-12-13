@@ -321,6 +321,40 @@ def test_ray_init_from_workers(ray_start_cluster):
     assert node_info.node_manager_port == node2.node_manager_port
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="skip except linux")
+def test_get_node_to_connect_for_driver_filters_by_node_name(ray_start_cluster):
+    """
+    Test that get_node_to_connect_for_driver correctly filters nodes by node_name.
+    """
+    cluster = ray_start_cluster
+    # add first node with a specific node_name
+    node1 = cluster.add_node(node_name="node_one")
+    # add second node with a different node_name
+    node2 = cluster.add_node(node_name="node_two")
+    cluster.wait_for_nodes()
+
+    assert node1.node_ip_address == node2.node_ip_address
+    assert node1.node_manager_port != node2.node_manager_port
+
+    ray.init(address=cluster.address, _redis_password=cluster.redis_password)
+
+    gcs_client = ray._raylet.GcsClient(address=cluster.gcs_address)
+
+    # Test filtering by node_name for node_one
+    node_info = ray._private.services.get_node_to_connect_for_driver(
+        gcs_client, node_name="node_one"
+    )
+    assert node_info.node_manager_port == node1.node_manager_port
+    assert node_info.node_name == "node_one"
+
+    # Test filtering by node_name for node_two
+    node_info = ray._private.services.get_node_to_connect_for_driver(
+        gcs_client, node_name="node_two"
+    )
+    assert node_info.node_manager_port == node2.node_manager_port
+    assert node_info.node_name == "node_two"
+
+
 def test_default_resource_not_allowed_error(shutdown_only):
     """
     Make sure when the default resources are passed to `resources`

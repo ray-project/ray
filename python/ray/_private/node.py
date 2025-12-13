@@ -209,16 +209,13 @@ class Node:
 
         # Resolve node to connect to
         node_to_connect_info = None
-        if connect_only:
+        if connect_only and not self._default_worker:
             node_to_connect_info = ray._private.services.get_node_to_connect_for_driver(
                 self.get_gcs_client(),
                 node_ip_address=ray_params.node_ip_address,
                 node_name=ray_params.node_name,
                 temp_dir=ray_params.temp_dir,
             )
-
-        # It creates a session_dir.
-        self._init_temp()
 
         node_ip_address = ray_params.node_ip_address
         if node_ip_address is None:
@@ -233,6 +230,9 @@ class Node:
         assert node_ip_address is not None
         ray_params.update_if_absent(node_ip_address=node_ip_address)
         self._node_ip_address = node_ip_address
+
+        # It creates a session_dir.
+        self._init_temp()
 
         self._object_spilling_config = self._get_object_spilling_config()
         logger.debug(

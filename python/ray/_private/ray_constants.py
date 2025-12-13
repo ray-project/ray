@@ -411,8 +411,11 @@ DEFAULT_RUNTIME_ENV_DIR_NAME = "runtime_resources"
 # dafault timeout is 10 minutes
 DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS = 600
 
-# The timeout seconds for the GCS server request. Mirrors RayConfig::gcs_server_request_timeout_seconds.
-GCS_SERVER_REQUEST_TIMEOUT_SECONDS = 60
+# The timeout seconds for the GCS server request.
+# Try fetching from the cpp environment variable first.
+GCS_SERVER_REQUEST_TIMEOUT_SECONDS = os.environ.get(
+    "RAY_gcs_server_request_timeout_seconds", 60
+)
 
 # Used to separate lines when formatting the call stack where an ObjectRef was
 # created.
