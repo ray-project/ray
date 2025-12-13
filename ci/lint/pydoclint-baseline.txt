@@ -328,11 +328,6 @@ python/ray/actor.py
     DOC201: Method `ActorClass.options` does not have a return section in docstring
     DOC106: Method `ActorClass._remote`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Method `ActorClass._remote`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC107: Method `ActorHandle.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC107: Method `ActorHandle._deserialization_helper`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC104: Method `ActorHandle._deserialization_helper`: Arguments are the same in the docstring and the function signature, but are in a different order.
-    DOC105: Method `ActorHandle._deserialization_helper`: Argument names match, but type hints in these args do not match: weak_ref
-    DOC201: Method `ActorHandle._deserialization_helper` does not have a return section in docstring
 --------------------
 python/ray/air/_internal/mlflow.py
     DOC104: Method `_MLflowLoggerUtil.setup_mlflow`: Arguments are the same in the docstring and the function signature, but are in a different order.
