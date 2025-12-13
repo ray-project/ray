@@ -31,28 +31,32 @@ namespace stats {
 /// exporter after a main thread launched.
 class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::Handler {
  public:
-  OpenCensusProtoExporter(const int port,
-                          instrumented_io_context &io_service,
-                          const WorkerID &worker_id,
-                          size_t report_batch_size,
-                          size_t max_grpc_payload_size);
-
   // This constructor is only used for testing
   OpenCensusProtoExporter(std::shared_ptr<rpc::MetricsAgentClient> agent_client,
                           const WorkerID &worker_id,
                           size_t report_batch_size,
                           size_t max_grpc_payload_size);
 
+  // Creates exporter without connecting to metrics agent.
+  OpenCensusProtoExporter(instrumented_io_context &io_service,
+                          const WorkerID &worker_id,
+                          size_t report_batch_size,
+                          size_t max_grpc_payload_size);
+
   ~OpenCensusProtoExporter() override = default;
 
-  static void Register(const int port,
-                       instrumented_io_context &io_service,
-                       const WorkerID &worker_id,
-                       size_t report_batch_size,
-                       size_t max_grpc_payload_size) {
-    opencensus::stats::StatsExporter::RegisterPushHandler(
-        absl::make_unique<OpenCensusProtoExporter>(
-            port, io_service, worker_id, report_batch_size, max_grpc_payload_size));
+  // Connect to the metrics agent with the given port.
+  void Connect(int port);
+
+  static OpenCensusProtoExporter *Register(instrumented_io_context &io_service,
+                                           const WorkerID &worker_id,
+                                           size_t report_batch_size,
+                                           size_t max_grpc_payload_size) {
+    auto exporter = absl::make_unique<OpenCensusProtoExporter>(
+        io_service, worker_id, report_batch_size, max_grpc_payload_size);
+    auto *exporter_ptr = exporter.get();
+    opencensus::stats::StatsExporter::RegisterPushHandler(std::move(exporter));
+    return exporter_ptr;
   }
 
   void ExportViewData(
@@ -96,6 +100,8 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
  private:
   /// Lock to protect the client
   mutable absl::Mutex mu_;
+  /// IO service for async operations
+  instrumented_io_context *io_service_ = nullptr;
   /// Client to call a metrics agent gRPC server.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::shared_ptr<rpc::MetricsAgentClient> client_ ABSL_GUARDED_BY(&mu_);

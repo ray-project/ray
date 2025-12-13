@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from itertools import chain
 from threading import Event, Lock, RLock, Thread
 from typing import Callable, Dict, List, Optional, Tuple
+from urllib.parse import urlparse, urlunparse
 
 import grpc
 
@@ -18,7 +19,11 @@ import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
-from ray._common.network_utils import build_address, is_ipv6, is_localhost
+from ray._common.network_utils import (
+    build_address,
+    is_ipv6,
+    is_localhost,
+)
 from ray._private.authentication.http_token_authentication import (
     format_authentication_http_error,
     get_auth_headers_if_auth_enabled,
@@ -27,7 +32,11 @@ from ray._private.client_mode_hook import disable_client_hook
 from ray._private.grpc_utils import init_grpc_channel
 from ray._private.parameter import RayParams
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.services import ProcessInfo, start_ray_client_server
+from ray._private.services import (
+    ProcessInfo,
+    get_node_to_connect_for_driver,
+    start_ray_client_server,
+)
 from ray._private.tls_utils import add_port_to_grpc_server
 from ray._private.utils import detect_fate_sharing_support
 from ray._raylet import GcsClient
@@ -122,7 +131,6 @@ class ProxyManager:
         session_dir: Optional[str] = None,
         redis_username: Optional[str] = None,
         redis_password: Optional[str] = None,
-        runtime_env_agent_port: int = 0,
     ):
         self.servers: Dict[str, SpecificServer] = dict()
         self.server_lock = RLock()
@@ -132,6 +140,17 @@ class ProxyManager:
         self._free_ports: List[int] = list(
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT)
         )
+
+        if runtime_env_agent_address:
+            parsed = urlparse(runtime_env_agent_address)
+            # runtime env agent self-assigns a free port, fetch it from GCS
+            if parsed.port is None or parsed.port == 0:
+                node_info = get_node_to_connect_for_driver(address, parsed.hostname)
+                runtime_env_agent_address = urlunparse(
+                    parsed._replace(
+                        netloc=f"{parsed.hostname}:{node_info['runtime_env_agent_port']}"
+                    )
+                )
 
         self._runtime_env_agent_address = runtime_env_agent_address
 

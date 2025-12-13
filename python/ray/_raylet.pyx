@@ -81,6 +81,7 @@ from ray.includes.common cimport (
     CWorkerExitType,
     CRayObject,
     CRayStatus,
+    CStatusOr,
     CActorTableData,
     CErrorTableData,
     CFallbackOption,
@@ -138,6 +139,8 @@ from ray.includes.common cimport (
     kGcsPidKey,
     CTensorTransport,
     TENSOR_TRANSPORT_OBJECT_STORE,
+    PersistPort,
+    WaitForPersistedPort,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -383,6 +386,26 @@ def _get_actor_serialized_owner_address_or_none(actor_table_data: bytes):
 
 def compute_task_id(ObjectRef object_ref):
     return TaskID(object_ref.native().TaskId().Binary())
+
+
+def persist_port(dir: str, file_name: str, port: int) -> None:
+    cdef CRayStatus status = PersistPort(
+        dir.encode(), file_name.encode(), port)
+    if not status.ok():
+        raise RuntimeError(status.message().decode())
+
+
+def wait_for_persisted_port(
+    dir: str,
+    file_name: str,
+    timeout_ms: int = 30000,
+    poll_interval_ms: int = 100
+) -> int:
+    cdef optional[CStatusOr[int]] result = WaitForPersistedPort(
+        dir.encode(), file_name.encode(), timeout_ms, poll_interval_ms)
+    if not result.value().ok():
+        raise RuntimeError(result.value().status().message().decode())
+    return result.value().value()
 
 
 cdef increase_recursion_limit():

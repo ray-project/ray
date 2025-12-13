@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import socket
 import sys
 
 import ray._private.ray_constants as ray_constants
@@ -12,7 +13,7 @@ from ray._private.authentication.http_token_authentication import (
     get_token_auth_middleware,
 )
 from ray._private.process_watcher import create_check_raylet_task
-from ray._raylet import GcsClient
+from ray._raylet import GcsClient, persist_port
 from ray.core.generated import (
     runtime_env_agent_pb2,
 )
@@ -45,6 +46,13 @@ if __name__ == "__main__":
         type=int,
         default=None,
         help="The port on which the runtime env agent will receive HTTP requests.",
+    )
+    parser.add_argument(
+        "--session-dir",
+        required=True,
+        type=str,
+        default=None,
+        help="The path of this ray session directory.",
     )
 
     parser.add_argument(
@@ -222,13 +230,26 @@ if __name__ == "__main__":
         check_raylet_task = create_check_raylet_task(
             args.log_dir, gcs_client, parent_dead_callback, loop
         )
+
+    port = args.runtime_env_agent_port or 0
+    infos = socket.getaddrinfo(args.node_ip_address, port, type=socket.SOCK_STREAM)
+    family, socktype, proto, _, sockaddr = infos[0]
+    sock = socket.socket(family, socktype, proto)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(sockaddr)
+
+    bound_port = sock.getsockname()[1]
     try:
-        web.run_app(
-            app,
-            host=args.node_ip_address,
-            port=args.runtime_env_agent_port,
-            loop=loop,
+        persist_port(
+            args.session_dir,
+            ray_constants.RUNTIME_ENV_AGENT_PORT_FILENAME,
+            bound_port,
         )
+    except Exception as e:
+        logging.warning(f"Failed to write runtime env agent port to file: {e}")
+
+    try:
+        web.run_app(app, sock=sock, loop=loop)
     except SystemExit as e:
         agent._logger.info(f"SystemExit! {e}")
         # We have to poke the task exception, or there's an error message

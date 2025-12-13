@@ -25,6 +25,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -43,6 +44,7 @@
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/flatbuffers/node_manager_generated.h"
 #include "ray/raylet/local_object_manager_interface.h"
@@ -53,6 +55,7 @@
 #include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
+#include "ray/util/file_persistence.h"
 #include "ray/util/network_util.h"
 #include "ray/util/string_utils.h"
 #include "ray/util/time.h"
@@ -210,6 +213,7 @@ NodeManager::NodeManager(
                                                std::move(fn),
                                                std::chrono::milliseconds(delay_ms)));
                     }),
+      runtime_env_agent_port_(config.runtime_env_agent_port),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
                            config.node_manager_address == "127.0.0.1"),
@@ -269,10 +273,14 @@ NodeManager::NodeManager(
   dashboard_agent_manager_ = CreateDashboardAgentManager(self_node_id, config);
   runtime_env_agent_manager_ = CreateRuntimeEnvAgentManager(self_node_id, config);
 
+  std::tie(metrics_agent_port_, metrics_export_port_, dashboard_agent_listen_port_) =
+      WaitForDashboardAgentPorts(config);
+  runtime_env_agent_port_ = WaitForRuntimeEnvAgentPort(config);
+
   auto runtime_env_agent_client = RuntimeEnvAgentClient::Create(
       io_service_,
       config.node_manager_address,
-      config.runtime_env_agent_port, /*delay_executor=*/
+      runtime_env_agent_port_, /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
         return execute_after(
             io_service_, std::move(task), std::chrono::milliseconds(delay_ms));
@@ -3308,6 +3316,29 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
       add_process_to_system_cgroup_hook_);
 }
 
+std::tuple<int, int, int> NodeManager::WaitForDashboardAgentPorts(
+    const NodeManagerConfig &config) {
+  int metrics_agent_port = config.metrics_agent_port;
+  if (metrics_agent_port == 0) {
+    RAY_ASSIGN_OR_CHECK(
+        metrics_agent_port,
+        WaitForPersistedPort(config.session_dir, kMetricsAgentPortFilename));
+  }
+  int metrics_export_port = config.metrics_export_port;
+  if (metrics_export_port == 0 && RayConfig::instance().enable_metrics_collection()) {
+    RAY_ASSIGN_OR_CHECK(
+        metrics_export_port,
+        WaitForPersistedPort(config.session_dir, kMetricsExportPortFilename));
+  }
+  int dashboard_agent_listen_port = config.dashboard_agent_listen_port;
+  if (dashboard_agent_listen_port == 0) {
+    RAY_ASSIGN_OR_CHECK(
+        dashboard_agent_listen_port,
+        WaitForPersistedPort(config.session_dir, kDashboardAgentListenPortFilename));
+  }
+  return {metrics_agent_port, metrics_export_port, dashboard_agent_listen_port};
+}
+
 std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
     const NodeID &self_node_id, const NodeManagerConfig &config) {
   auto agent_command_line = ParseCommandLine(config.runtime_env_agent_command);
@@ -3341,6 +3372,15 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
       this->shutdown_raylet_gracefully_,
       true,
       add_process_to_system_cgroup_hook_);
+}
+
+int NodeManager::WaitForRuntimeEnvAgentPort(const NodeManagerConfig &config) {
+  if (config.runtime_env_agent_port != 0) {
+    return config.runtime_env_agent_port;
+  }
+  RAY_ASSIGN_OR_CHECK(
+      auto port, WaitForPersistedPort(config.session_dir, kRuntimeEnvAgentPortFilename));
+  return port;
 }
 
 void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,

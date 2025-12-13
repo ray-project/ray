@@ -503,16 +503,6 @@ SESSION_LATEST = "session_latest"
 NUM_PORT_RETRIES = 40
 NUM_REDIS_GET_RETRIES = int(os.environ.get("RAY_NUM_REDIS_GET_RETRIES", "20"))
 
-# The allowed cached ports in Ray. Refer to Port configuration for more details:
-# https://docs.ray.io/en/latest/ray-core/configure.html#ports-configurations
-RAY_ALLOWED_CACHED_PORTS = {
-    "metrics_agent_port",
-    "metrics_export_port",
-    "dashboard_agent_listen_port",
-    "runtime_env_agent_port",
-    "gcs_server_port",  # the `port` option for gcs port.
-}
-
 # Turn this on if actor task log's offsets are expected to be recorded.
 # With this enabled, actor tasks' log could be queried with task id.
 RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING = env_bool(
@@ -530,6 +520,11 @@ RAY_DEFAULT_LABEL_KEYS_PREFIX = "ray.io/"
 RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR = "RAY_TPU_MAX_CONCURRENT_ACTIVE_CONNECTIONS"
 
 RAY_NODE_IP_FILENAME = "node_ip_address.json"
+RUNTIME_ENV_AGENT_PORT_FILENAME = "runtime_env_agent_port.json"
+GCS_SERVER_PORT_FILENAME = "gcs_server_port.json"
+METRICS_AGENT_PORT_FILENAME = "metrics_agent_port.json"
+METRICS_EXPORT_PORT_FILENAME = "metrics_export_port.json"
+DASHBOARD_AGENT_LISTEN_PORT_FILENAME = "dashboard_agent_listen_port.json"
 
 RAY_LOGGING_CONFIG_ENCODING = os.environ.get("RAY_LOGGING_CONFIG_ENCODING")
 

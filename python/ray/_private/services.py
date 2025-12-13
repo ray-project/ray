@@ -1444,6 +1444,7 @@ def start_gcs_server(
     gcs_server_port: Optional[int] = None,
     metrics_agent_port: Optional[int] = None,
     node_ip_address: Optional[str] = None,
+    session_dir: Optional[str] = None,
 ):
     """Start a gcs server.
 
@@ -1462,11 +1463,12 @@ def start_gcs_server(
         gcs_server_port: Port number of the gcs server.
         metrics_agent_port: The port where metrics agent is bound to.
         node_ip_address: IP Address of a node where gcs server starts.
+        session_dir: Session directory path. Used to write the bound GCS port to a file.
 
     Returns:
         ProcessInfo for the process that was started.
     """
-    assert gcs_server_port > 0
+    assert gcs_server_port >= 0
 
     command = [
         GCS_SERVER_EXECUTABLE,
@@ -1477,6 +1479,7 @@ def start_gcs_server(
         f"--node-ip-address={node_ip_address}",
         f"--session-name={session_name}",
         f"--ray-commit={ray.__commit__}",
+        f"--session-dir={session_dir}",
     ]
 
     if stdout_filepath:
@@ -1806,6 +1809,9 @@ def start_raylet(
         # that requires additional dependencies to be downloaded.
         dashboard_agent_command.append("--minimal")
 
+    if is_head_node:
+        dashboard_agent_command.append("--head")
+
     runtime_env_agent_command = [
         *_build_python_executable_command_memory_profileable(
             ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, session_dir
@@ -1813,6 +1819,7 @@ def start_raylet(
         os.path.join(RAY_PATH, "_private", "runtime_env", "agent", "main.py"),
         f"--node-ip-address={node_ip_address}",
         f"--runtime-env-agent-port={runtime_env_agent_port}",
+        f"--session-dir={session_dir}",
         f"--gcs-address={gcs_address}",
         f"--cluster-id-hex={cluster_id}",
         f"--runtime-env-dir={resource_dir}",
