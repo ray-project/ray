@@ -277,7 +277,8 @@ AlgorithmConfig.env_runners()
 
     If you want to IDE-debug what's going on inside your `EnvRunners`, set `num_env_runners=0`
     and make sure you are running your experiment locally and not through Ray Tune.
-    In order to do this with any of RLlib's `example <https://github.com/ray-project/ray/tree/master/rllib/examples>`__
+    In order to do this with any of RLlib's
+    `example <https://github.com/ray-project/ray/tree/ray-2.52.1/rllib/examples>`__
     or `tuned_example <https://github.com/ray-project/ray/tree/ray-2.52.1/rllib/tuned_examples>`__ scripts,
     simply set the command line args: `--no-tune --num-env-runners=0`.
 
