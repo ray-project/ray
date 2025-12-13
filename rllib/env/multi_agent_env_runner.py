@@ -477,11 +477,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         {old_episode_id: self._ongoing_episodes[env_index].id_}
                     )
 
-                    # Also early-out if we reach the number of episodes within this
-                    # for-loop.
-                    if eps == num_episodes:
-                        break
-
             # Env-to-module connector pass (cache results as we will do the RLModule
             # forward pass only in the next `while`-iteration).
             # Note, running the pipeline here ensures that we are not executing a
