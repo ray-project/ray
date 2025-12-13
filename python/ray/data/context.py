@@ -635,6 +635,8 @@ class DataContext:
 
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
 
+    _checkpoint_config: Optional[CheckpointConfig] = None
+
     def __post_init__(self):
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
@@ -832,7 +834,7 @@ class DataContext:
     def checkpoint_config(
         self, value: Optional[Union[CheckpointConfig, Dict[str, Any]]]
     ) -> None:
-        """Set the checkpoint configuration."""
+        """Set the check point configuration."""
         if value is None:
             self._checkpoint_config = None
         elif isinstance(value, dict):
