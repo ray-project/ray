@@ -25,13 +25,6 @@ logger = logging.getLogger(__name__)
 BLOCKED_CLIENT_WARN_TIMEOUT = 30
 
 
-class _DatasetWrapper:
-    # A temporary workaround for https://github.com/ray-project/ray/issues/52549
-
-    def __init__(self, dataset: "Dataset") -> None:
-        self._dataset = dataset
-
-
 class StreamSplitDataIterator(DataIterator):
     """Implements a collection of iterators over a shared data stream."""
 
@@ -52,7 +45,7 @@ class StreamSplitDataIterator(DataIterator):
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             ),
-        ).remote(_DatasetWrapper(base_dataset), n, locality_hints)
+        ).remote(base_dataset, n, locality_hints)
 
         return [
             StreamSplitDataIterator(base_dataset, coord_actor, i, n) for i in range(n)
@@ -135,11 +128,10 @@ class SplitCoordinator:
 
     def __init__(
         self,
-        dataset_wrapper: _DatasetWrapper,
+        dataset: "Dataset",
         n: int,
         locality_hints: Optional[List[NodeIdStr]],
     ):
-        dataset = dataset_wrapper._dataset
 
         # Set current DataContext.
         # This needs to be a deep copy so that updates to the base dataset's

@@ -10,7 +10,6 @@ from ray.data._internal.execution.autoscaling_requester import (
 )
 from ray.data._internal.iterator.stream_split_iterator import (
     SplitCoordinator,
-    _DatasetWrapper,
 )
 from ray.train.v2._internal.callbacks.datasets import DatasetsSetupCallback
 from ray.train.v2._internal.execution.worker_group import (
@@ -120,7 +119,7 @@ def test_split_coordinator_shutdown_executor(ray_start_4_cpus):
     NUM_SPLITS = 1
     dataset = ray.data.range(100)
     coord = SplitCoordinator.options(name="test_split_coordinator").remote(
-        _DatasetWrapper(dataset), NUM_SPLITS, None
+        dataset, NUM_SPLITS, None
     )
     ray.get(coord.start_epoch.remote(0))
 
