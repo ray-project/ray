@@ -354,7 +354,7 @@ The following example shows how to download a batch of images from URLs listed i
     from ray.data.expressions import col, download
 
     # Read a Parquet file containing a column of image URLs
-    ds = ray.data.read_parquet("s3://anonymous@ray-example-data/imagenet/metadata_file")
+    ds = ray.data.read_parquet("s3://anonymous@ray-example-data/imagenet/metadata_file.parquet")
 
     # Use `with_column` and `download` to download the images in parallel.
     # This creates a new column 'bytes' with the downloaded file contents.
