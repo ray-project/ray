@@ -136,9 +136,9 @@ class SupportsDeque(Protocol):
 
 
 @runtime_checkable
-class SupportsIndexing(Protocol):
+class SupportsRemoval(Protocol):
     """Protocol for storing bundles AND supporting remove(bundle)
-    and contains(bundle) operations quickly."""
+    and contains(bundle) operations."""
 
     def __contains__(self, bundle: RefBundle) -> bool:
         """Return whether the key is in the queue."""

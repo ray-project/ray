@@ -3,8 +3,8 @@ from __future__ import annotations
 from .base import (
     BaseBundleQueue,
     SupportsDeque,
-    SupportsIndexing,
     SupportsRebundling,
+    SupportsRemoval,
 )
 from .bundler import BlockRefBundler
 from .bundler_exact import StreamingRepartitionRefBundler
@@ -13,7 +13,7 @@ from .hash_link import HashLinkedQueue
 from .ordered import OrderedBundleQueue
 
 
-class QueueWithIndexing(BaseBundleQueue, SupportsIndexing):
+class QueueWithRemoval(BaseBundleQueue, SupportsRemoval):
     pass
 
 
@@ -21,14 +21,14 @@ class QueueWithRebundling(BaseBundleQueue, SupportsRebundling):
     pass
 
 
-def create_bundle_queue() -> QueueWithIndexing:
+def create_bundle_queue() -> QueueWithRemoval:
     return HashLinkedQueue()
 
 
 __all__ = [
     "BaseBundleQueue",
     "create_bundle_queue",
-    "SupportsIndexing",
+    "SupportsRemoval",
     "HashLinkedQueue",
     "BlockRefBundler",
     "StreamingRepartitionRefBundler",
@@ -36,6 +36,6 @@ __all__ = [
     "FIFOBundleQueue",
     "SupportsDeque",
     "SupportsRebundling",
-    "QueueWithIndexing",
+    "QueueWithRemoval",
     "QueueWithRebundling",
 ]

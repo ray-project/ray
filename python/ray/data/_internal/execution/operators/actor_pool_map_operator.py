@@ -36,7 +36,7 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.bundle_queue import (
     BaseBundleQueue,
-    QueueWithIndexing,
+    QueueWithRemoval,
     QueueWithRebundling,
     create_bundle_queue,
 )
@@ -685,7 +685,7 @@ class _ActorTaskSelector(abc.ABC):
 
     @abstractmethod
     def select_actors(
-        self, input_queue: QueueWithIndexing, actor_locality_enabled: bool
+        self, input_queue: QueueWithRemoval, actor_locality_enabled: bool
     ) -> Iterator[Tuple[RefBundle, ActorHandle]]:
         """Select actors for bundles in the input queue.
 
@@ -705,7 +705,7 @@ class _ActorTaskSelectorImpl(_ActorTaskSelector):
         super().__init__(actor_pool)
 
     def select_actors(
-        self, input_queue: QueueWithIndexing, actor_locality_enabled: bool
+        self, input_queue: QueueWithRemoval, actor_locality_enabled: bool
     ) -> Iterator[Tuple[RefBundle, ActorHandle]]:
         """Picks actors for task submission based on busyness and locality."""
         if not self._actor_pool.running_actors():
