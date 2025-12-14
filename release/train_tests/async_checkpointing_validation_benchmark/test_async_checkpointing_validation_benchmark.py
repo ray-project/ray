@@ -15,7 +15,7 @@ from torchvision.transforms import ToTensor, Normalize
 import ray
 import ray.train
 import ray.train.torch
-from ray.train.v2.api.report_config import CheckpointUploadMode
+from ray.train.v2.api.report_config import CheckpointUploadMode, ValidationConfig
 from ray._private.test_utils import safe_write_to_results_json
 
 
@@ -153,7 +153,7 @@ def validate_and_report(
     validate_within_trainer = config["validate_within_trainer"]
     num_epochs = config["num_epochs"]
     checkpoint_upload_mode = config["checkpoint_upload_mode"]
-    validate_fn = config["validate_fn"]
+    should_async_validate = config["should_async_validate"]
     if validate_within_trainer:
         test_dataloader = ray.train.get_dataset_shard("test").iter_torch_batches(
             batch_size=128
@@ -187,21 +187,22 @@ def validate_and_report(
             os.path.join(iteration_checkpoint_dir, "model.pt"),
         )
         start_time = time.time()
-        if validate_fn:
-            validate_config = {
-                "dataset": config["test"],
-                "parent_run_name": ray.train.get_context().get_experiment_name(),
-                "epoch": epoch,
-                "batch_idx": batch_idx,
-            }
+        if should_async_validate:
+            validate_config = ValidationConfig(
+                func_kwargs={
+                    "dataset": config["test"],
+                    "parent_run_name": ray.train.get_context().get_experiment_name(),
+                    "epoch": epoch,
+                    "batch_idx": batch_idx,
+                }
+            )
         else:
             validate_config = None
         ray.train.report(
             metrics,
             checkpoint=ray.train.Checkpoint.from_directory(iteration_checkpoint_dir),
             checkpoint_upload_mode=checkpoint_upload_mode,
-            validate_fn=validate_fn,
-            validate_config=validate_config,
+            validation=validate_config,
         )
         blocked_times.append(time.time() - start_time)
     else:
@@ -271,8 +272,8 @@ def run_training_with_validation(
         "validate_within_trainer": validate_within_trainer,
         "num_epochs": num_epochs,
         "checkpoint_upload_mode": checkpoint_upload_mode,
-        "validate_fn": validate_fn,
         "rows_per_worker": training_rows / 2,
+        "should_async_validate": bool(validate_fn),
     }
     if validate_within_trainer:
         datasets["test"] = test_dataset
@@ -280,6 +281,7 @@ def run_training_with_validation(
         train_loop_config["test"] = test_dataset
     trainer = ray.train.torch.TorchTrainer(
         train_func,
+        validate_fn=validate_fn,
         train_loop_config=train_loop_config,
         scaling_config=scaling_config,
         datasets=datasets,
