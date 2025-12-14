@@ -648,6 +648,49 @@ def get_compute_strategy(
             return TaskPoolStrategy()
 
 
+def get_compute_strategy_for_read_api(
+    compute: Optional[ComputeStrategy] = None,
+    concurrency: Optional[int] = None,
+) -> "ComputeStrategy":
+    """Get `ComputeStrategy` for read APIs.
+
+    This function is used to support both TaskPoolStrategy and ActorPoolStrategy for read APIs.
+    The default behavior is to use TaskPoolStrategy. The original ``concurrency`` parameter
+    supports only an integer value, which is used as the (max) size of the task pool. To use
+    ActorPoolStrategy, pass an ActorPoolStrategy instance to the ``compute`` parameter. The
+    ``concurrency`` parameter takes precedence over the ``compute`` parameter.
+
+    Args:
+        compute: The compute strategy to use for reading. Pass an
+            :class:`~ray.data.ActorPoolStrategy` instance to use an actor pool,
+            or a :class:`~ray.data.TaskPoolStrategy` instance (default) to use Ray tasks.
+            If not specified, defaults to ``TaskPoolStrategy(concurrency)``.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This parameter takes precedence
+            over the ``compute`` parameter. If both are specified, the ``concurrency`` parameter
+            is used.
+
+    Returns:
+        The `ComputeStrategy` for reading.
+    """
+    from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
+
+    if compute is None:
+        return TaskPoolStrategy(concurrency)
+    elif concurrency is not None:
+        logger.warning(
+            "Both ``compute`` and ``concurrency`` are specified. The ``compute`` parameter will be ignored."
+        )
+        return TaskPoolStrategy(concurrency)
+    elif isinstance(compute, ComputeStrategy):
+        return compute
+    else:
+        raise ValueError(
+            f"compute must be a ComputeStrategy instance (e.g. ActorPoolStrategy or TaskPoolStrategy), but "
+            f"got {compute}"
+        )
+
+
 def capfirst(s: str):
     """Capitalize the first letter of a string
 

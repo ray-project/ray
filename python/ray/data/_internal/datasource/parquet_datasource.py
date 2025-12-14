@@ -302,7 +302,7 @@ class ParquetDatasource(Datasource):
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
         meta_provider: Optional[FileMetadataProvider] = None,
-        partition_filter: PathPartitionFilter = None,
+        partition_filter: Optional[PathPartitionFilter] = None,
         partitioning: Optional[Partitioning] = Partitioning("hive"),
         shuffle: Union[Literal["files"], None] = None,
         include_paths: bool = False,
