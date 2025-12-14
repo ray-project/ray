@@ -4,9 +4,10 @@ import os
 import torch
 
 import ray.train
+import ray.data
 
 
-def validate_fn(checkpoint: ray.train.Checkpoint, config: dict) -> dict:
+def validate_fn(checkpoint: ray.train.Checkpoint, dataset: ray.data.Dataset) -> dict:
     # Load the checkpoint
     model = ...
     with checkpoint.as_directory() as checkpoint_dir:
@@ -16,7 +17,6 @@ def validate_fn(checkpoint: ray.train.Checkpoint, config: dict) -> dict:
 
     # Perform validation on the data
     total_accuracy = 0
-    dataset = config["dataset"]
     with torch.no_grad():
         for batch in dataset.iter_torch_batches(batch_size=128):
             images, labels = batch["image"], batch["label"]
@@ -66,7 +66,7 @@ def eval_only_train_fn(config_dict: dict) -> None:
     )
 
 
-def validate_fn(checkpoint: ray.train.Checkpoint, config: dict) -> dict:
+def validate_fn(checkpoint: ray.train.Checkpoint, train_run_name: str, epoch: int, dataset: ray.data.Dataset) -> dict:
     trainer = ray.train.torch.TorchTrainer(
         eval_only_train_fn,
         train_loop_config={"checkpoint": checkpoint},
@@ -75,10 +75,10 @@ def validate_fn(checkpoint: ray.train.Checkpoint, config: dict) -> dict:
         ),
         # Name validation run to easily associate it with training run
         run_config=ray.train.RunConfig(
-            name=f"{config['train_run_name']}_validation_epoch_{config['epoch']}"
+            name=f"{train_run_name}_validation_epoch_{epoch}"
         ),
         # User weaker GPUs for validation
-        datasets={"validation": config["dataset"]},
+        datasets={"validation": dataset},
     )
     result = trainer.fit()
     return result.metrics
@@ -104,10 +104,10 @@ class Predictor:
         return {"res": (pred.argmax(1) == label).cpu().numpy()}
 
 
-def validate_fn(checkpoint: ray.train.Checkpoint, config: dict) -> dict:
+def validate_fn(checkpoint: ray.train.Checkpoint, dataset: ray.data.Dataset) -> dict:
     # Set name to avoid confusion; default name is "Dataset"
-    config["dataset"].set_name("validation")
-    eval_res = config["dataset"].map_batches(
+    dataset.set_name("validation")
+    eval_res = dataset.map_batches(
         Predictor,
         batch_size=128,
         num_gpus=1,
@@ -125,7 +125,7 @@ def validate_fn(checkpoint: ray.train.Checkpoint, config: dict) -> dict:
 # __validate_fn_report_start__
 import tempfile
 
-import ray.data
+from ray.train.v2.api.report_config import ValidationConfig
 
 
 def train_func(config: dict) -> None:
@@ -146,12 +146,11 @@ def train_func(config: dict) -> None:
                 training_metrics,
                 checkpoint=ray.train.Checkpoint.from_directory(local_checkpoint_dir),
                 checkpoint_upload_mode=ray.train.CheckpointUploadMode.ASYNC,
-                validate_fn=validate_fn,
-                validate_config={
+                validation=ValidationConfig(func_kwargs={
                     "dataset": config["validation_dataset"],
                     "train_run_name": ray.train.get_context().get_experiment_name(),
                     "epoch": epoch,
-                },
+                }),
             )
         else:
             ray.train.report({}, None)
@@ -162,6 +161,7 @@ def run_trainer() -> ray.train.Result:
     validation_dataset = ray.data.read_parquet(...)
     trainer = ray.train.torch.TorchTrainer(
         train_func,
+        validate_fn=validate_fn,
         # Pass training dataset in datasets arg to split it across training workers
         datasets={"train": train_dataset},
         # Pass validation dataset in train_loop_config so validate_fn can choose how to use it later
