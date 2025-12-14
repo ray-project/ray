@@ -2601,7 +2601,7 @@ virtualenv==20.29.1
     #   pytest-virtualenv
     # via vsphere-automation-sdk
     # via vsphere-automation-sdk
-vsphere-automation-sdk @ git+https://github.com/vmware/vsphere-automation-sdk-python.git@v8.0.1.0
+vsphere-automation-sdk @ git+https://github.com/vmware/vsphere-automation-sdk-python.git@v8.0.1.0 ; python_version < "3.14"
     # via -r python/requirements/test-requirements.txt
 wandb==0.17.0
     # via -r python/requirements/ml/core-requirements.txt
