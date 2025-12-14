@@ -1027,7 +1027,11 @@ linear-operator==0.4.0
     #   gpytorch
 linkify-it-py==2.0.3
     # via markdown-it-py
-llvmlite==0.42.0
+llvmlite==0.42.0 ; python_version < "3.14"
+    # via
+    #   -r python/requirements/test-requirements.txt
+    #   numba
+llvmlite==0.46.0 ; python_version >= "3.14"
     # via
     #   -r python/requirements/test-requirements.txt
     #   numba
@@ -1235,7 +1239,11 @@ notebook-shim==0.2.3
     # via vsphere-automation-sdk
     # via vsphere-automation-sdk
     # via vsphere-automation-sdk
-numba==0.59.1
+numba==0.59.1 ; python_version < "3.14"
+    # via
+    #   -r python/requirements/test-requirements.txt
+    #   statsforecast
+numba==0.63.1 ; python_version >= "3.14"
     # via
     #   -r python/requirements/test-requirements.txt
     #   statsforecast
