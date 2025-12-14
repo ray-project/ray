@@ -1445,6 +1445,7 @@ def start_gcs_server(
     metrics_agent_port: Optional[int] = None,
     node_ip_address: Optional[str] = None,
     session_dir: Optional[str] = None,
+    node_id: Optional[str] = None,
 ):
     """Start a gcs server.
 
@@ -1464,6 +1465,7 @@ def start_gcs_server(
         metrics_agent_port: The port where metrics agent is bound to.
         node_ip_address: IP Address of a node where gcs server starts.
         session_dir: Session directory path. Used to write the bound GCS port to a file.
+        node_id: The unique ID of this node.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1480,6 +1482,7 @@ def start_gcs_server(
         f"--session-name={session_name}",
         f"--ray-commit={ray.__commit__}",
         f"--session-dir={session_dir}",
+        f"--node-id={node_id}",
     ]
 
     if stdout_filepath:
@@ -1766,6 +1769,7 @@ def start_raylet(
             ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, session_dir
         ),
         os.path.join(RAY_PATH, "dashboard", "agent.py"),
+        f"--node-id={node_id}",
         f"--node-ip-address={node_ip_address}",
         f"--metrics-export-port={metrics_export_port}",
         f"--grpc-port={metrics_agent_port}",
@@ -1817,6 +1821,7 @@ def start_raylet(
             ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, session_dir
         ),
         os.path.join(RAY_PATH, "_private", "runtime_env", "agent", "main.py"),
+        f"--node-id={node_id}",
         f"--node-ip-address={node_ip_address}",
         f"--runtime-env-agent-port={runtime_env_agent_port}",
         f"--session-dir={session_dir}",

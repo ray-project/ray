@@ -36,7 +36,12 @@ from ray._private.utils import (
     try_to_symlink,
     validate_socket_filepath,
 )
-from ray._raylet import GcsClient, get_session_key_from_storage, wait_for_persisted_port
+from ray._raylet import (
+    GcsClient,
+    get_port_filename,
+    get_session_key_from_storage,
+    wait_for_persisted_port,
+)
 
 import psutil
 
@@ -304,12 +309,15 @@ class Node:
             # current session directory, this indicates a GCS restart scenario.
             # We reuse the existing port so that other components can reconnect
             # to GCS after it restarts.
-            gcs_port_file = os.path.join(
-                self._session_dir, ray_constants.GCS_SERVER_PORT_FILENAME
+            gcs_port_filename = get_port_filename(
+                self._node_id, ray_constants.GCS_SERVER_PORT_NAME
             )
+            gcs_port_file = os.path.join(self._session_dir, gcs_port_filename)
             if os.path.exists(gcs_port_file):
                 gcs_port = wait_for_persisted_port(
-                    self._session_dir, ray_constants.GCS_SERVER_PORT_FILENAME
+                    self._session_dir,
+                    self._node_id,
+                    ray_constants.GCS_SERVER_PORT_NAME,
                 )
                 ray_params.update_if_absent(gcs_server_port=gcs_port)
 
@@ -1092,6 +1100,7 @@ class Node:
             metrics_agent_port=self._ray_params.metrics_agent_port,
             node_ip_address=self._node_ip_address,
             session_dir=self._session_dir,
+            node_id=self._node_id,
         )
         assert ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
@@ -1100,7 +1109,9 @@ class Node:
 
         if self._ray_params.gcs_server_port == 0:
             self._ray_params.gcs_server_port = wait_for_persisted_port(
-                self._session_dir, ray_constants.GCS_SERVER_PORT_FILENAME
+                self._session_dir,
+                self._node_id,
+                ray_constants.GCS_SERVER_PORT_NAME,
             )
 
         # Connecting via non-localhost address may be blocked by firewall rule,

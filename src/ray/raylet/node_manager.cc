@@ -274,8 +274,8 @@ NodeManager::NodeManager(
   runtime_env_agent_manager_ = CreateRuntimeEnvAgentManager(self_node_id, config);
 
   std::tie(metrics_agent_port_, metrics_export_port_, dashboard_agent_listen_port_) =
-      WaitForDashboardAgentPorts(config);
-  runtime_env_agent_port_ = WaitForRuntimeEnvAgentPort(config);
+      WaitForDashboardAgentPorts(self_node_id, config);
+  runtime_env_agent_port_ = WaitForRuntimeEnvAgentPort(self_node_id, config);
 
   auto runtime_env_agent_client = RuntimeEnvAgentClient::Create(
       io_service_,
@@ -3317,24 +3317,25 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
 }
 
 std::tuple<int, int, int> NodeManager::WaitForDashboardAgentPorts(
-    const NodeManagerConfig &config) {
+    const NodeID &self_node_id, const NodeManagerConfig &config) {
   int metrics_agent_port = config.metrics_agent_port;
   if (metrics_agent_port == 0) {
     RAY_ASSIGN_OR_CHECK(
         metrics_agent_port,
-        WaitForPersistedPort(config.session_dir, kMetricsAgentPortFilename));
+        WaitForPersistedPort(config.session_dir, self_node_id, kMetricsAgentPortName));
   }
   int metrics_export_port = config.metrics_export_port;
   if (metrics_export_port == 0 && RayConfig::instance().enable_metrics_collection()) {
     RAY_ASSIGN_OR_CHECK(
         metrics_export_port,
-        WaitForPersistedPort(config.session_dir, kMetricsExportPortFilename));
+        WaitForPersistedPort(config.session_dir, self_node_id, kMetricsExportPortName));
   }
   int dashboard_agent_listen_port = config.dashboard_agent_listen_port;
   if (dashboard_agent_listen_port == 0) {
     RAY_ASSIGN_OR_CHECK(
         dashboard_agent_listen_port,
-        WaitForPersistedPort(config.session_dir, kDashboardAgentListenPortFilename));
+        WaitForPersistedPort(
+            config.session_dir, self_node_id, kDashboardAgentListenPortName));
   }
   return {metrics_agent_port, metrics_export_port, dashboard_agent_listen_port};
 }
@@ -3374,12 +3375,14 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
       add_process_to_system_cgroup_hook_);
 }
 
-int NodeManager::WaitForRuntimeEnvAgentPort(const NodeManagerConfig &config) {
+int NodeManager::WaitForRuntimeEnvAgentPort(const NodeID &self_node_id,
+                                            const NodeManagerConfig &config) {
   if (config.runtime_env_agent_port != 0) {
     return config.runtime_env_agent_port;
   }
   RAY_ASSIGN_OR_CHECK(
-      auto port, WaitForPersistedPort(config.session_dir, kRuntimeEnvAgentPortFilename));
+      auto port,
+      WaitForPersistedPort(config.session_dir, self_node_id, kRuntimeEnvAgentPortName));
   return port;
 }
 

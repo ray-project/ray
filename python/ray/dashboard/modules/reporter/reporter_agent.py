@@ -467,7 +467,8 @@ class ReporterAgent(
         # Metrics collection is disabled, write -1 to indicate the port is not in use.
         persist_port(
             dashboard_agent.session_dir,
-            ray_constants.METRICS_EXPORT_PORT_FILENAME,
+            self._dashboard_agent.node_id,
+            ray_constants.METRICS_EXPORT_PORT_NAME,
             dashboard_agent.metrics_export_port
             if not self._metrics_collection_disabled
             else -1,

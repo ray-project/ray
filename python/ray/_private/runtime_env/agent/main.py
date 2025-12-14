@@ -35,6 +35,12 @@ from runtime_env_agent import RuntimeEnvAgent  # noqa: E402
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Runtime env agent.")
     parser.add_argument(
+        "--node-id",
+        required=True,
+        type=str,
+        help="the unique ID of this node.",
+    )
+    parser.add_argument(
         "--node-ip-address",
         required=True,
         type=str,
@@ -242,7 +248,8 @@ if __name__ == "__main__":
     try:
         persist_port(
             args.session_dir,
-            ray_constants.RUNTIME_ENV_AGENT_PORT_FILENAME,
+            args.node_id,
+            ray_constants.RUNTIME_ENV_AGENT_PORT_NAME,
             bound_port,
         )
     except Exception as e:

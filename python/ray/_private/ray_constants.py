@@ -520,11 +520,13 @@ RAY_DEFAULT_LABEL_KEYS_PREFIX = "ray.io/"
 RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR = "RAY_TPU_MAX_CONCURRENT_ACTIVE_CONNECTIONS"
 
 RAY_NODE_IP_FILENAME = "node_ip_address.json"
-RUNTIME_ENV_AGENT_PORT_FILENAME = "runtime_env_agent_port.json"
-GCS_SERVER_PORT_FILENAME = "gcs_server_port.json"
-METRICS_AGENT_PORT_FILENAME = "metrics_agent_port.json"
-METRICS_EXPORT_PORT_FILENAME = "metrics_export_port.json"
-DASHBOARD_AGENT_LISTEN_PORT_FILENAME = "dashboard_agent_listen_port.json"
+
+RUNTIME_ENV_AGENT_PORT_NAME = "runtime_env_agent_port"
+METRICS_AGENT_PORT_NAME = "metrics_agent_port"
+METRICS_EXPORT_PORT_NAME = "metrics_export_port"
+DASHBOARD_AGENT_LISTEN_PORT_NAME = "dashboard_agent_listen_port"
+GCS_SERVER_PORT_NAME = "gcs_server_port"
+
 
 RAY_LOGGING_CONFIG_ENCODING = os.environ.get("RAY_LOGGING_CONFIG_ENCODING")
 

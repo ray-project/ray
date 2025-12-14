@@ -85,14 +85,16 @@ class DashboardAgent:
             # Write -1 to indicate the service is not in use.
             persist_port(
                 self.session_dir,
-                ray_constants.METRICS_AGENT_PORT_FILENAME,
+                self.node_id,
+                ray_constants.METRICS_AGENT_PORT_NAME,
                 -1,
             )
             # This metric export port is run by reporter module
             # which is not included in minimal mode.
             persist_port(
                 self.session_dir,
-                ray_constants.METRICS_EXPORT_PORT_FILENAME,
+                self.node_id,
+                ray_constants.METRICS_EXPORT_PORT_NAME,
                 -1,
             )
 
@@ -150,7 +152,8 @@ class DashboardAgent:
 
         persist_port(
             self.session_dir,
-            ray_constants.METRICS_AGENT_PORT_FILENAME,
+            self.node_id,
+            ray_constants.METRICS_AGENT_PORT_NAME,
             self.grpc_port,
         )
         logger.info(
@@ -219,7 +222,8 @@ class DashboardAgent:
         # persist -1 to indicate that the service is not available.
         persist_port(
             self.session_dir,
-            ray_constants.DASHBOARD_AGENT_LISTEN_PORT_FILENAME,
+            self.node_id,
+            ray_constants.DASHBOARD_AGENT_LISTEN_PORT_NAME,
             self.listen_port if self.http_server and launch_http_server else -1,
         )
 
@@ -277,6 +281,12 @@ class DashboardAgent:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dashboard agent.")
+    parser.add_argument(
+        "--node-id",
+        required=True,
+        type=str,
+        help="the unique ID of this node.",
+    )
     parser.add_argument(
         "--node-ip-address",
         required=True,
