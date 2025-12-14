@@ -67,10 +67,7 @@ class DeltaSharingDatasource(Datasource):
         return table, rest_client
 
     def get_read_tasks(
-        self,
-        parallelism: int,
-        per_task_row_limit: Optional[int] = None,
-        epoch_idx: int = 0,
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
     ) -> List[ReadTask]:
         assert parallelism > 0, f"Invalid parallelism {parallelism}"
         from delta_sharing.converter import to_converters

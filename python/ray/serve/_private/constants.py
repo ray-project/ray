@@ -1,3 +1,4 @@
+import os
 from typing import List
 
 from ray.serve._private.constants_utils import (
@@ -410,9 +411,15 @@ METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S = 10
 # Feature flag to set `enable_task_events=True` on Serve-managed actors.
 RAY_SERVE_ENABLE_TASK_EVENTS = get_env_bool("RAY_SERVE_ENABLE_TASK_EVENTS", "0")
 
-# Use compact instead of spread scheduling strategy
+# This is deprecated and will be removed in the future.
 RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = get_env_bool(
     "RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0"
+)
+
+# Use pack instead of spread scheduling strategy.
+RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY = get_env_bool(
+    "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY",
+    os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0"),
 )
 
 # Comma-separated list of custom resources prioritized in scheduling. Sorted from highest to lowest priority.

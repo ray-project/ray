@@ -56,10 +56,7 @@ class MongoDatasource(Datasource):
             )["avgObjSize"]
 
     def get_read_tasks(
-        self,
-        parallelism: int,
-        per_task_row_limit: Optional[int] = None,
-        epoch_idx: int = 0,
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
     ) -> List[ReadTask]:
         from bson.objectid import ObjectId
 

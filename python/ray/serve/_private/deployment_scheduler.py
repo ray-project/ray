@@ -1,6 +1,7 @@
 import copy
 import logging
 import sys
+import warnings
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
     RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     SERVE_LOGGER_NAME,
 )
 from ray.util.scheduling_strategies import (
@@ -669,7 +671,15 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             d.is_non_strict_pack_pg() for d in self._deployments.values()
         )
         # Schedule replicas using compact strategy.
-        if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY and not non_strict_pack_pgs_exist:
+        if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY:
+            warnings.warn(
+                "The environment variable 'RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY' "
+                "is deprecated and will be removed in a v2.55.0 release. "
+                "Please use 'RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        if RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY and not non_strict_pack_pgs_exist:
             # Flatten dict of deployment replicas into all replicas,
             # then sort by decreasing resource size
             all_scheduling_requests = sorted(

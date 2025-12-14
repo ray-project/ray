@@ -236,11 +236,11 @@ Tune includes a distributed implementation of `Population Based Bandits (PB2) <h
 This algorithm builds upon PBT, with the main difference being that instead of using random perturbations,
 PB2 selects new hyperparameter configurations using a Gaussian Process model.
 
-The Tune implementation of PB2 requires GPy and sklearn to be installed:
+The Tune implementation of PB2 requires scikit-learn to be installed:
 
 .. code-block:: bash
 
-    pip install GPy scikit-learn
+    pip install scikit-learn
 
 
 PB2 can be enabled by setting the ``scheduler`` parameter of ``tune.TuneConfig`` which is taken in by ``Tuner``, e.g.:
