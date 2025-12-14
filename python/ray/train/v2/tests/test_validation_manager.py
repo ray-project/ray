@@ -14,6 +14,7 @@ from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
 )
+from ray.train.v2._internal.execution.worker_group.worker import Worker
 from ray.train.v2.api.report_config import ValidationConfig
 from ray.train.v2.tests.util import create_dummy_training_results
 
@@ -55,6 +56,17 @@ def test_before_controller_shutdown(mock_wait, monkeypatch):
         unittest.mock.call({checkpoint1: {"score": 1}}),
         unittest.mock.call({checkpoint2: {"score": 1}, checkpoint3: {"score": 1}}),
     ]
+
+
+def test_before_init_train_context():
+    checkpoint_manager = create_autospec(CheckpointManager, instance=True)
+    vm = validation_manager.ValidationManager(
+        checkpoint_manager=checkpoint_manager, validate_fn=lambda x: None
+    )
+    workers = [create_autospec(Worker, instance=True) for _ in range(4)]
+    assert vm.before_init_train_context(workers) == {
+        "has_validation_fn": [True] * 4,
+    }
 
 
 def test_checkpoint_validation_management_reordering(tmp_path):

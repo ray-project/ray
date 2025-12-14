@@ -117,6 +117,7 @@ class TrainContext:
     controller_actor: ActorHandle
 
     dataset_shard_provider: "DatasetShardProvider"
+    has_validation_fn: Optional[bool] = None
 
     # TODO: consolidate into CheckpointContext
     checkpoint: Optional["Checkpoint"] = None
@@ -348,6 +349,11 @@ class TrainContext:
                     "to Python objects (ex: `.numpy()`, `.item()`, etc.) "
                     "or save tensors as part of the checkpoint files instead."
                 )
+
+        if validation and not self.has_validation_fn:
+            raise ValueError(
+                "`validate_fn` was not registered with the trainer, but a validation was reported."
+            )
 
         with invoke_context_managers(
             [

@@ -109,9 +109,6 @@ def report(
             checkpoint_upload_mode._default_delete_local_checkpoint_after_upload()
         )
 
-    # TODO: controller passes existence of validate_fn to train context
-    # If validation then validate that validate_fn exists
-
     get_train_fn_utils().report(
         metrics=metrics,
         checkpoint=checkpoint,

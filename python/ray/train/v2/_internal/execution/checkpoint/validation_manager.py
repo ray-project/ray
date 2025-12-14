@@ -5,7 +5,11 @@ from typing import TYPE_CHECKING, Any, Dict, List
 
 import ray
 from ray.train._checkpoint import Checkpoint
-from ray.train.v2._internal.execution.callback import ControllerCallback, ReportCallback
+from ray.train.v2._internal.execution.callback import (
+    ControllerCallback,
+    ReportCallback,
+    WorkerGroupCallback,
+)
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
@@ -16,6 +20,7 @@ from ray.train.v2.api.report_config import ValidateFn
 
 if TYPE_CHECKING:
     from ray.train.v2._internal.execution.controller import TrainControllerState
+    from ray.train.v2._internal.execution.worker_group.worker import Worker
     from ray.train.v2.api.report_config import ValidationConfig
 
 logger = logging.getLogger(__name__)
@@ -44,7 +49,7 @@ def run_validate_fn(
     return metrics_dict
 
 
-class ValidationManager(ControllerCallback, ReportCallback):
+class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback):
     def __init__(
         self,
         checkpoint_manager: CheckpointManager,
@@ -162,3 +167,10 @@ class ValidationManager(ControllerCallback, ReportCallback):
         # TODO: consider cleaning up validation tasks in before_controller_abort
         self._poll_validations()
         self._kick_off_validations()
+
+    def before_init_train_context(
+        self, workers: List["Worker"]
+    ) -> Dict[str, List[bool]]:
+        return {
+            "has_validation_fn": [True] * len(workers),
+        }

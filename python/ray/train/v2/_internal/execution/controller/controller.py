@@ -164,6 +164,7 @@ class TrainController:
         # train worker and the train context.
         self._worker_group_callbacks_to_propagate = (
             [report_handler]
+            + ([validation_manager] if validation_manager else [])
             + [
                 c
                 for c in self._callbacks

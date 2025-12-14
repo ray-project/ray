@@ -230,6 +230,21 @@ def test_report_checkpoint_upload_error(monkeypatch, tmp_path):
     assert isinstance(exc_info.value.worker_failures[0]._base_exc, ValueError)
 
 
+def test_report_validation_without_validate_fn():
+    def train_fn():
+        ray.train.report(
+            metrics={}, checkpoint=None, validation=ValidationConfig(func_kwargs={})
+        )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=1),
+    )
+    with pytest.raises(WorkerGroupError) as exc_info:
+        trainer.fit()
+    assert isinstance(exc_info.value.worker_failures[0]._base_exc, ValueError)
+
+
 def test_report_validate_fn_keeps_correct_checkpoints(tmp_path):
     def validate_fn(checkpoint, new_score=None):
         if new_score:
