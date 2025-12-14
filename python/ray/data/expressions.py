@@ -1534,12 +1534,15 @@ def monotonically_increasing_id() -> MonotonicallyIncreasingIdExpr:
     Create an expression that generates monotonically increasing IDs.
 
     The generated IDs are guaranteed to be monotonically increasing and unique,
-    but not consecutive. The current implementation puts the block ID in the
-    upper 31 bits, and the lower 33 bits represent the record number within
-    each block. The assumption is that the dataset has less than 1 billion blocks,
-    and each block has less than 8 billion records.
+    but not consecutive. The current implementation puts the task ID in the upper
+    31 bits, and the record number within each task in the lower 33 bits. Records
+    within the block(s) assigned to a task receive consecutive IDs. Note that IDs
+    are not globally ordered across tasks.
 
-    The function is non-deterministic because its result depends on block IDs.
+    The assumption is that the dataset schedules less than 1 billion tasks, and
+    each task processes less than 8 billion records.
+
+    The function is non-deterministic because its result depends on task IDs.
 
     Returns:
         A MonotonicallyIncreasingIdExpr that generates unique IDs.
@@ -1547,8 +1550,11 @@ def monotonically_increasing_id() -> MonotonicallyIncreasingIdExpr:
     Example:
         >>> from ray.data.expressions import monotonically_increasing_id
         >>> import ray
-        >>> ds = ray.data.range(10)
+        >>> ds = ray.data.range(4, override_num_blocks=2)
         >>> ds = ds.with_column("uid", monotonically_increasing_id())
+        >>> ds.take_all()  # doctest: +SKIP
+        [{'id': 0, 'uid': 0}, {'id': 1, 'uid': 1}, {'id': 2, 'uid': 8589934592}, {'id': 3, 'uid': 8589934593}]
+
     """
     return MonotonicallyIncreasingIdExpr()
 

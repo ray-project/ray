@@ -703,10 +703,9 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
             The result of the monotonically_increasing_id expression as a BlockColumn.
         """
         ctx = TaskContext.get_current()
-        if ctx is None:
-            raise RuntimeError(
-                "monotonically_increasing_id() must be evaluated within a Ray task"
-            )
+        assert (
+            ctx is not None
+        ), "TaskContext is required for monotonically_increasing_id()"
 
         # Key the counter by expression instance ID so that multiple expressions
         # in the same projection will have isolated row count state
