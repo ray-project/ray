@@ -1,7 +1,7 @@
 import pprint
 from typing import Optional
 
-from ..sglang_engine import SGLangServer
+from sglang_engine import SGLangServer
 from ray import serve
 from ray.llm._internal.common.dict_utils import deep_merge_dicts
 from ray.llm._internal.serve.constants import (
