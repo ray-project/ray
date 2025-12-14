@@ -727,7 +727,7 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         elif block_type == BlockType.ARROW:
             return pa.array(ids)
         else:
-            return ids
+            raise TypeError(f"Unsupported block type: {block_type}")
 
 
 def eval_expr(expr: Expr, block: Block) -> Union[BlockColumn, ScalarType]:
