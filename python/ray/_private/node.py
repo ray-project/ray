@@ -217,6 +217,32 @@ class Node:
                 temp_dir=ray_params.temp_dir,
             )
 
+        # Resolve node ID
+        if connect_only:
+            self._node_id = ray_params.node_id
+            if self._node_id is None:
+                self._node_id = node_to_connect_info.node_id.hex()
+        else:
+            if (
+                self._ray_params.env_vars is not None
+                and "RAY_OVERRIDE_NODE_ID_FOR_TESTING" in self._ray_params.env_vars
+            ):
+                node_id = self._ray_params.env_vars["RAY_OVERRIDE_NODE_ID_FOR_TESTING"]
+                logger.debug(
+                    f"Setting node ID to {node_id} "
+                    "based on ray_params.env_vars override"
+                )
+                self._node_id = node_id
+            elif os.environ.get("RAY_OVERRIDE_NODE_ID_FOR_TESTING"):
+                node_id = os.environ["RAY_OVERRIDE_NODE_ID_FOR_TESTING"]
+                logger.debug(f"Setting node ID to {node_id} based on env override")
+                self._node_id = node_id
+            else:
+                node_id = ray.NodeID.from_random().hex()
+                logger.debug(f"Setting node ID to {node_id}")
+                self._node_id = node_id
+
+        # Resolve node ip address
         node_ip_address = ray_params.node_ip_address
         if node_ip_address is None:
             if connect_only:
@@ -226,13 +252,43 @@ class Node:
                 )
             else:
                 node_ip_address = ray.util.get_node_ip_address()
-
         assert node_ip_address is not None
         ray_params.update_if_absent(node_ip_address=node_ip_address)
         self._node_ip_address = node_ip_address
 
         # It creates a session_dir.
         self._init_temp()
+
+        # Resolve socket and port names
+        if connect_only:
+            # Get socket names from the configuration.
+            self._plasma_store_socket_name = ray_params.plasma_store_socket_name
+            self._raylet_socket_name = ray_params.raylet_socket_name
+
+            # If user does not provide the socket name, get it from Redis.
+            if (
+                self._plasma_store_socket_name is None
+                or self._raylet_socket_name is None
+                or self._ray_params.node_manager_port is None
+            ):
+                # Get the address info of the processes to connect to
+                # from Redis or GCS.
+                assert node_to_connect_info is not None
+                self._plasma_store_socket_name = (
+                    node_to_connect_info.object_store_socket_name
+                )
+                self._raylet_socket_name = node_to_connect_info.raylet_socket_name
+                self._ray_params.node_manager_port = (
+                    node_to_connect_info.node_manager_port
+                )
+        else:
+            # If the user specified a socket name, use it.
+            self._plasma_store_socket_name = self._prepare_socket_file(
+                self._ray_params.plasma_store_socket_name, default_prefix="plasma_store"
+            )
+            self._raylet_socket_name = self._prepare_socket_file(
+                self._ray_params.raylet_socket_name, default_prefix="raylet"
+            )
 
         self._object_spilling_config = self._get_object_spilling_config()
         logger.debug(
@@ -255,57 +311,6 @@ class Node:
         # If it is a head node, try validating if external storage is configurable.
         if head:
             self.validate_external_storage()
-
-        if connect_only:
-            # Get socket names from the configuration.
-            self._plasma_store_socket_name = ray_params.plasma_store_socket_name
-            self._raylet_socket_name = ray_params.raylet_socket_name
-            self._node_id = ray_params.node_id
-
-            # If user does not provide the socket name, get it from Redis.
-            if (
-                self._plasma_store_socket_name is None
-                or self._raylet_socket_name is None
-                or self._ray_params.node_manager_port is None
-                or self._node_id is None
-            ):
-                # Get the address info of the processes to connect to
-                # from Redis or GCS.
-                assert node_to_connect_info is not None
-                self._plasma_store_socket_name = (
-                    node_to_connect_info.object_store_socket_name
-                )
-                self._raylet_socket_name = node_to_connect_info.raylet_socket_name
-                self._ray_params.node_manager_port = (
-                    node_to_connect_info.node_manager_port
-                )
-                self._node_id = node_to_connect_info.node_id.hex()
-        else:
-            # If the user specified a socket name, use it.
-            self._plasma_store_socket_name = self._prepare_socket_file(
-                self._ray_params.plasma_store_socket_name, default_prefix="plasma_store"
-            )
-            self._raylet_socket_name = self._prepare_socket_file(
-                self._ray_params.raylet_socket_name, default_prefix="raylet"
-            )
-            if (
-                self._ray_params.env_vars is not None
-                and "RAY_OVERRIDE_NODE_ID_FOR_TESTING" in self._ray_params.env_vars
-            ):
-                node_id = self._ray_params.env_vars["RAY_OVERRIDE_NODE_ID_FOR_TESTING"]
-                logger.debug(
-                    f"Setting node ID to {node_id} "
-                    "based on ray_params.env_vars override"
-                )
-                self._node_id = node_id
-            elif os.environ.get("RAY_OVERRIDE_NODE_ID_FOR_TESTING"):
-                node_id = os.environ["RAY_OVERRIDE_NODE_ID_FOR_TESTING"]
-                logger.debug(f"Setting node ID to {node_id} based on env override")
-                self._node_id = node_id
-            else:
-                node_id = ray.NodeID.from_random().hex()
-                logger.debug(f"Setting node ID to {node_id}")
-                self._node_id = node_id
 
         # The dashboard agent port is assigned first to avoid
         # other processes accidentally taking its default port

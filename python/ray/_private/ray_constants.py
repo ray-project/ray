@@ -413,8 +413,8 @@ DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS = 600
 
 # The timeout seconds for the GCS server request.
 # Try fetching from the cpp environment variable first.
-GCS_SERVER_REQUEST_TIMEOUT_SECONDS = os.environ.get(
-    "RAY_gcs_server_request_timeout_seconds", 60
+GCS_SERVER_REQUEST_TIMEOUT_SECONDS = int(
+    os.environ.get("RAY_gcs_server_request_timeout_seconds", "60")
 )
 
 # Used to separate lines when formatting the call stack where an ObjectRef was
