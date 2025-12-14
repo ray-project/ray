@@ -30,11 +30,13 @@ websockets==11.0.3
 joblib==1.2.0
 jsonpatch==1.32
 kubernetes==24.2.0
-llvmlite==0.42.0
+llvmlite==0.42.0 ; python_version < "3.14"
+llvmlite==0.46.0 ; python_version >= "3.14"
 lxml>=6.0.2
 moto[s3,server]==4.2.12
 mypy==1.7.0
-numba==0.59.1
+numba==0.59.1 ; python_version < "3.14"
+numba==0.63.1 ; python_version >= "3.14"
 openpyxl==3.0.10
 opentelemetry-api
 opentelemetry-sdk
