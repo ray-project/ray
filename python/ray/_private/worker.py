@@ -3283,7 +3283,7 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
     # We catch it here to provide a more helpful error message.
     try:
         worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
-    except Exception as e:
+    except ray.exceptions.RayError as e:
         # Check if this is likely an invalid actor handle from a previous session
         error_msg = str(e)
         if "Failed to find a corresponding actor handle" in error_msg:
