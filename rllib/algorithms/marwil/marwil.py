@@ -493,7 +493,7 @@ class MARWIL(Algorithm):
                 minibatch_size=self.config.train_batch_size_per_learner,
                 num_iters=self.config.dataset_num_iters_per_learner,
                 timesteps={
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.self.metrics.peek(
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
                         NUM_ENV_STEPS_SAMPLED_LIFETIME
                     )
                 },
