@@ -146,4 +146,4 @@ protobuf>=4,<5
 # TODO(aslonnie): remove this
 # this is required as some packages depends on ray and will pick up older version of
 # ray, which has overly strict version requirements.
-ray>=2.47.1
+ray>=2.47.1 ; python_version < "3.14"
