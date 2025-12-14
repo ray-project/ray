@@ -3,12 +3,15 @@ import logging
 from typing import (
     TYPE_CHECKING,
     Any,
+    Awaitable,
     Callable,
+    Concatenate,
     Dict,
     Generic,
     List,
     Literal,
     Optional,
+    ParamSpec,
     Tuple,
     TypeVar,
     Union,
@@ -78,6 +81,7 @@ ActorProxy = Union["ActorHandle[T]", type[T]]
 
 _Ret = TypeVar("_Ret")
 _P = ParamSpec("_P")
+
 _T0 = TypeVar("_T0")
 _T1 = TypeVar("_T1")
 _T2 = TypeVar("_T2")
@@ -300,6 +304,25 @@ class _RemoteMethod9(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, 
         ...
 
 
+class RemoteMethod(Generic[_P, _Ret]):
+    def remote(self, *args: _P.args, **kwargs: _P.kwargs) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(self, *args: _P.args, **kwargs: _P.kwargs) -> Any:
+        ...
+
+
+# async function should be first to match, otherwise LSP will consider the `_Ret` as `Coroutine`
+@overload
+def method(f: Callable[Concatenate[T, _P], Awaitable[_Ret]]) -> RemoteMethod[_P, _Ret]:
+    ...
+
+
+@overload
+def method(f: Callable[Concatenate[T, _P], _Ret]) -> RemoteMethod[_P, _Ret]:
+    ...
+
+
 @overload
 def method(
     __method: Callable[[Any, _T0], _Ret],
@@ -367,13 +390,6 @@ def method(
 def method(
     __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9], _Ret],
 ) -> _RemoteMethod9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
-    ...
-
-
-@overload
-def method(
-    __method: Callable[[Any], _Ret],
-) -> _RemoteMethodNoArgs[_Ret]:
     ...
 
 
