@@ -21,6 +21,7 @@
 #include <thread>
 
 #include "nlohmann/json.hpp"
+#include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 
@@ -91,19 +92,27 @@ inline StatusOr<std::string> WaitForKVFile(const std::string &file_path,
   }
 }
 
+inline std::string GetPortFileName(const NodeID &node_id, const std::string &port_name) {
+  return port_name + "_" + node_id.Hex() + ".json";
+}
+
 /// Persist a port to a file. The port is stored with key "port".
 inline Status PersistPort(const std::string &dir,
-                          const std::string &file_name,
+                          const NodeID &node_id,
+                          const std::string &port_name,
                           int port) {
+  std::string file_name = GetPortFileName(node_id, port_name);
   std::string file_path = (std::filesystem::path(dir) / file_name).string();
   return WriteKVFile(file_path, "port", std::to_string(port));
 }
 
 /// Wait for a persisted port file and return the port number.
 inline StatusOr<int> WaitForPersistedPort(const std::string &dir,
-                                          const std::string &file_name,
+                                          const NodeID &node_id,
+                                          const std::string &port_name,
                                           int timeout_ms = 30000,
                                           int poll_interval_ms = 100) {
+  std::string file_name = GetPortFileName(node_id, port_name);
   std::string file_path = (std::filesystem::path(dir) / file_name).string();
   auto result = WaitForKVFile(file_path, "port", timeout_ms, poll_interval_ms);
   if (!result.ok()) {

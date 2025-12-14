@@ -153,13 +153,18 @@ cdef extern from "ray/common/status_or.h" namespace "ray" nogil:
         T &value()
 
 cdef extern from "ray/util/file_persistence.h" namespace "ray" nogil:
+    c_string GetPortFileName "ray::GetPortFileName"(
+        const CNodeID &node_id,
+        const c_string &port_name)
     CRayStatus PersistPort "ray::PersistPort"(
         const c_string &dir,
-        const c_string &file_name,
+        const CNodeID &node_id,
+        const c_string &port_name,
         int port)
     CStatusOr[int] WaitForPersistedPort "ray::WaitForPersistedPort"(
         const c_string &dir,
-        const c_string &file_name,
+        const CNodeID &node_id,
+        const c_string &port_name,
         int timeout_ms,
         int poll_interval_ms)
 

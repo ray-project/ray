@@ -58,7 +58,6 @@ void OpenCensusProtoExporter::Connect(int port) {
       *io_service_, /*record_stats=*/true, /*local_address=*/"always local");
   client_ = std::make_shared<rpc::MetricsAgentClientImpl>(
       "127.0.0.1", port, *io_service_, *client_call_manager_);
-  RAY_LOG(INFO) << "OpenCensusProtoExporter connected to metrics agent on port " << port;
 }
 
 /// Hack. We want to add GlobalTags to all our metrics, but gRPC OpenCencus plugin is not

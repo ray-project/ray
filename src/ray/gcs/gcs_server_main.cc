@@ -52,6 +52,7 @@ DEFINE_string(redis_username, "", "The username of Redis.");
 DEFINE_string(redis_password, "", "The password of Redis.");
 DEFINE_bool(retry_redis, false, "Whether to retry to connect to Redis.");
 DEFINE_string(node_ip_address, "", "The IP address of the node.");
+DEFINE_string(node_id, "", "The unique ID of this node.");
 DEFINE_string(session_name, "", "session_name: The current Ray session name.");
 DEFINE_string(ray_commit, "", "The commit hash of Ray.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
@@ -249,9 +250,12 @@ int main(int argc, char *argv[]) {
 #endif
   signals.async_wait(handler);
 
-  gcs_server.SetPortReadyCallback([session_dir](int bound_port) {
+  std::string node_id_hex = FLAGS_node_id;
+  gcs_server.SetPortReadyCallback([session_dir, node_id_hex](int bound_port) {
     if (!session_dir.empty()) {
-      RAY_CHECK_OK(ray::PersistPort(session_dir, kGcsServerPortFilename, bound_port));
+      auto node_id = ray::NodeID::FromHex(node_id_hex);
+      RAY_CHECK_OK(
+          ray::PersistPort(session_dir, node_id, kGcsServerPortName, bound_port));
     }
   });
 

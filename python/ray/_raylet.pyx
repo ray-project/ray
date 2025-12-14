@@ -139,6 +139,7 @@ from ray.includes.common cimport (
     kGcsPidKey,
     CTensorTransport,
     TENSOR_TRANSPORT_OBJECT_STORE,
+    GetPortFileName,
     PersistPort,
     WaitForPersistedPort,
 )
@@ -388,21 +389,29 @@ def compute_task_id(ObjectRef object_ref):
     return TaskID(object_ref.native().TaskId().Binary())
 
 
-def persist_port(dir: str, file_name: str, port: int) -> None:
+def get_port_filename(node_id: str, port_name: str) -> str:
+    cdef CNodeID c_node_id = CNodeID.FromHex(node_id)
+    return GetPortFileName(c_node_id, port_name.encode()).decode()
+
+
+def persist_port(dir: str, node_id: str, port_name: str, port: int) -> None:
+    cdef CNodeID c_node_id = CNodeID.FromHex(node_id)
     cdef CRayStatus status = PersistPort(
-        dir.encode(), file_name.encode(), port)
+        dir.encode(), c_node_id, port_name.encode(), port)
     if not status.ok():
         raise RuntimeError(status.message().decode())
 
 
 def wait_for_persisted_port(
     dir: str,
-    file_name: str,
+    node_id: str,
+    port_name: str,
     timeout_ms: int = 30000,
     poll_interval_ms: int = 100
 ) -> int:
+    cdef CNodeID c_node_id = CNodeID.FromHex(node_id)
     cdef optional[CStatusOr[int]] result = WaitForPersistedPort(
-        dir.encode(), file_name.encode(), timeout_ms, poll_interval_ms)
+        dir.encode(), c_node_id, port_name.encode(), timeout_ms, poll_interval_ms)
     if not result.value().ok():
         raise RuntimeError(result.value().status().message().decode())
     return result.value().value()
