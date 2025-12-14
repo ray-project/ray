@@ -11,11 +11,12 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
 )
 from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
-    _ValidationSpec,
 )
+from ray.train.v2.api.report_config import ValidateFn
 
 if TYPE_CHECKING:
     from ray.train.v2._internal.execution.controller import TrainControllerState
+    from ray.train.v2.api.report_config import ValidationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +26,15 @@ MAX_IN_FLIGHT_VALIDATIONS = 1
 
 
 @ray.remote
-def run_validate_fn(validation_spec: _ValidationSpec, checkpoint: Checkpoint) -> Dict:
+def run_validate_fn(
+    validate_fn: ValidateFn,
+    validation: "ValidationConfig",
+    checkpoint: Checkpoint,
+) -> Dict:
     """Run the user-defined validation function."""
-    metrics_dict = validation_spec.validate_fn(
+    metrics_dict = validate_fn(
         checkpoint,
-        validation_spec.validate_config,
+        **validation.func_kwargs,
     )
     if not isinstance(metrics_dict, dict):
         raise ValueError(
@@ -43,8 +48,10 @@ class ValidationManager(ControllerCallback, ReportCallback):
     def __init__(
         self,
         checkpoint_manager: CheckpointManager,
+        validate_fn: ValidateFn,
     ):
         self._checkpoint_manager = checkpoint_manager
+        self._validate_fn = validate_fn
 
         # _TrainingReports that we will validate
         self._training_report_queue = deque()
@@ -63,10 +70,7 @@ class ValidationManager(ControllerCallback, ReportCallback):
         training_report: _TrainingReport,
         metrics: List[Dict[str, Any]],
     ):
-        if (
-            training_report.validation_spec
-            and training_report.validation_spec.validate_fn
-        ):
+        if training_report.validation:
             self._training_report_queue.append(training_report)
 
     def _poll_validations(self) -> int:
@@ -112,7 +116,9 @@ class ValidationManager(ControllerCallback, ReportCallback):
         for _ in range(num_validations_to_start):
             training_report = self._training_report_queue.popleft()
             validate_task = run_validate_fn.remote(
-                training_report.validation_spec, training_report.checkpoint
+                self._validate_fn,
+                training_report.validation,
+                training_report.checkpoint,
             )
             self._pending_validations[validate_task] = training_report.checkpoint
             logger.info(

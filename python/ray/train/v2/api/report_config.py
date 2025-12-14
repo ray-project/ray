@@ -1,6 +1,11 @@
+from dataclasses import dataclass
 from enum import Enum
+from typing import TYPE_CHECKING, Any, Dict, Protocol
 
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.train import Checkpoint
 
 
 @PublicAPI(stability="alpha")
@@ -34,3 +39,25 @@ class CheckpointConsistencyMode(Enum):
 
     COMMITTED = "COMMITTED"
     VALIDATED = "VALIDATED"
+
+
+@PublicAPI(stability="alpha")
+class ValidateFn(Protocol):
+    """Protocol for a function that validates a checkpoint."""
+
+    def __call__(self, checkpoint: "Checkpoint", **kwargs: Any) -> Dict:
+        ...
+
+
+@dataclass
+@PublicAPI(stability="alpha")
+class ValidationConfig:
+    """Configuration for validating your reported checkpoint.
+
+    Args:
+        func_kwargs: Keyword arguments to pass to the validation function.
+            Note that we always pass `checkpoint` as the first argument to the
+            validation function.
+    """
+
+    func_kwargs: Dict[str, Any]

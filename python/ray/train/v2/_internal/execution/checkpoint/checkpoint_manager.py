@@ -349,7 +349,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             _TrainingResult(
                 checkpoint=training_report.checkpoint, metrics=training_report.metrics
             ),
-            bool(training_report.validation_spec),
+            bool(training_report.validation),
         )
 
     # --------------------------

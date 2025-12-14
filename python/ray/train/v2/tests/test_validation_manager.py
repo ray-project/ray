@@ -13,8 +13,8 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
-    _ValidationSpec,
 )
+from ray.train.v2.api.report_config import ValidationConfig
 from ray.train.v2.tests.util import create_dummy_training_results
 
 
@@ -37,7 +37,9 @@ def test_before_controller_shutdown(mock_wait, monkeypatch):
     task1 = create_autospec(ray.ObjectRef, instance=True)
     task2 = create_autospec(ray.ObjectRef, instance=True)
     task3 = create_autospec(ray.ObjectRef, instance=True)
-    vm = validation_manager.ValidationManager(checkpoint_manager=checkpoint_manager)
+    vm = validation_manager.ValidationManager(
+        checkpoint_manager=checkpoint_manager, validate_fn=lambda x: None
+    )
     vm._pending_validations = {
         task1: checkpoint1,
         task2: checkpoint2,
@@ -57,7 +59,13 @@ def test_before_controller_shutdown(mock_wait, monkeypatch):
 
 def test_checkpoint_validation_management_reordering(tmp_path):
     checkpoint_manager = create_autospec(CheckpointManager, instance=True)
-    vm = validation_manager.ValidationManager(checkpoint_manager=checkpoint_manager)
+
+    def validate_fn(checkpoint, score):
+        return {"score": score}
+
+    vm = validation_manager.ValidationManager(
+        checkpoint_manager=checkpoint_manager, validate_fn=validate_fn
+    )
     (
         low_initial_high_final_training_result,
         high_initial_low_final_training_result,
@@ -74,10 +82,7 @@ def test_checkpoint_validation_management_reordering(tmp_path):
         training_report=_TrainingReport(
             metrics=low_initial_high_final_training_result.metrics,
             checkpoint=low_initial_high_final_training_result.checkpoint,
-            validation_spec=_ValidationSpec(
-                validate_fn=lambda checkpoint, config: {"score": 200},
-                validate_config={},
-            ),
+            validation=ValidationConfig(func_kwargs={"score": 200}),
         ),
         metrics={},
     )
@@ -85,10 +90,7 @@ def test_checkpoint_validation_management_reordering(tmp_path):
         training_report=_TrainingReport(
             metrics=high_initial_low_final_training_result.metrics,
             checkpoint=high_initial_low_final_training_result.checkpoint,
-            validation_spec=_ValidationSpec(
-                validate_fn=lambda checkpoint, config: config,
-                validate_config={"score": 100},
-            ),
+            validation=ValidationConfig(func_kwargs={"score": 100}),
         ),
         metrics={},
     )
@@ -118,7 +120,13 @@ def test_checkpoint_validation_management_reordering(tmp_path):
 
 def test_checkpoint_validation_management_failure(tmp_path):
     checkpoint_manager = create_autospec(CheckpointManager, instance=True)
-    vm = validation_manager.ValidationManager(checkpoint_manager=checkpoint_manager)
+
+    def failing_validate_fn(checkpoint, config):
+        return "invalid_return_type"
+
+    vm = validation_manager.ValidationManager(
+        checkpoint_manager=checkpoint_manager, validate_fn=failing_validate_fn
+    )
     failing_training_result = create_dummy_training_results(
         num_results=1,
         storage_context=StorageContext(
@@ -127,17 +135,11 @@ def test_checkpoint_validation_management_failure(tmp_path):
         ),
     )[0]
 
-    def failing_validate_fn(checkpoint, config):
-        return "invalid_return_type"
-
     vm.after_report(
         training_report=_TrainingReport(
             metrics=failing_training_result.metrics,
             checkpoint=failing_training_result.checkpoint,
-            validation_spec=_ValidationSpec(
-                validate_fn=failing_validate_fn,
-                validate_config={},
-            ),
+            validation=ValidationConfig(func_kwargs={}),
         ),
         metrics={},
     )
@@ -156,7 +158,14 @@ def test_checkpoint_validation_management_failure(tmp_path):
 
 def test_checkpoint_validation_management_slow_validate_fn(tmp_path):
     checkpoint_manager = create_autospec(CheckpointManager, instance=True)
-    vm = validation_manager.ValidationManager(checkpoint_manager=checkpoint_manager)
+
+    def infinite_waiting_validate_fn(checkpoint, config):
+        while True:
+            time.sleep(1)
+
+    vm = validation_manager.ValidationManager(
+        checkpoint_manager=checkpoint_manager, validate_fn=infinite_waiting_validate_fn
+    )
     timing_out_training_result = create_dummy_training_results(
         num_results=1,
         storage_context=StorageContext(
@@ -165,18 +174,11 @@ def test_checkpoint_validation_management_slow_validate_fn(tmp_path):
         ),
     )[0]
 
-    def infinite_waiting_validate_fn(checkpoint, config):
-        while True:
-            time.sleep(1)
-
     vm.after_report(
         training_report=_TrainingReport(
             metrics=timing_out_training_result.metrics,
             checkpoint=timing_out_training_result.checkpoint,
-            validation_spec=_ValidationSpec(
-                validate_fn=infinite_waiting_validate_fn,
-                validate_config={},
-            ),
+            validation=ValidationConfig(func_kwargs={}),
         ),
         metrics={},
     )

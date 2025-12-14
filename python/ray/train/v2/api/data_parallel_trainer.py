@@ -57,6 +57,7 @@ from ray.train.v2._internal.execution.local_mode.utils import LocalController
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import ObjectRefWrapper, construct_train_func
 from ray.train.v2.api.callback import UserCallback
+from ray.train.v2.api.report_config import ValidateFn
 from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -85,9 +86,11 @@ class DataParallelTrainer:
         # TODO: [Deprecated] Remove in future release
         resume_from_checkpoint: Optional[Checkpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        validate_fn: Optional[ValidateFn] = None,
     ):
         self.run_config = run_config or RunConfig()
         self.train_loop_per_worker = train_loop_per_worker
+        self.validate_fn = validate_fn
         self.train_loop_config = train_loop_config
         self.scaling_config = scaling_config or ScalingConfig()
         self.backend_config = backend_config or BackendConfig()
@@ -177,6 +180,7 @@ class DataParallelTrainer:
                 failure_policy=create_failure_policy(self.run_config.failure_config),
                 train_run_context=self.train_run_context,
                 callbacks=self._create_default_callbacks(),
+                validate_fn=self.validate_fn,
             )
 
             if result.error:

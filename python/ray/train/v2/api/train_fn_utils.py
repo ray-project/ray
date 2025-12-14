@@ -7,6 +7,7 @@ from ray.train.v2.api.context import TrainContext
 from ray.train.v2.api.report_config import (
     CheckpointConsistencyMode,
     CheckpointUploadMode,
+    ValidationConfig,
 )
 from ray.util.annotations import PublicAPI
 
@@ -25,8 +26,7 @@ def report(
     checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
     delete_local_checkpoint_after_upload: Optional[bool] = None,
     checkpoint_upload_fn: Optional[Callable[["Checkpoint", str], "Checkpoint"]] = None,
-    validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
-    validate_config: Optional[Dict] = None,
+    validation: Optional[ValidationConfig] = None,
 ):
     """Report metrics and optionally save a checkpoint.
 
@@ -101,9 +101,7 @@ def report(
         checkpoint_upload_fn: A user defined function that will be called with the
             checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
             utility for copying to the destination `storage_path`.
-        validate_fn: If provided, Ray Train will validate the checkpoint using
-            this function.
-        validate_config: Configuration passed to the validate_fn. Can contain info
+        validation: Configuration passed to the validate_fn. Can contain info
             like the validation dataset.
     """
     if delete_local_checkpoint_after_upload is None:
@@ -111,9 +109,8 @@ def report(
             checkpoint_upload_mode._default_delete_local_checkpoint_after_upload()
         )
 
-    # TODO: figure out how to validate validate_fn itself
-    if validate_config and not validate_fn:
-        raise ValueError("validate_fn must be provided together with validate_config")
+    # TODO: controller passes existence of validate_fn to train context
+    # If validation then validate that validate_fn exists
 
     get_train_fn_utils().report(
         metrics=metrics,
@@ -122,8 +119,7 @@ def report(
         checkpoint_upload_mode=checkpoint_upload_mode,
         delete_local_checkpoint_after_upload=delete_local_checkpoint_after_upload,
         checkpoint_upload_fn=checkpoint_upload_fn,
-        validate_fn=validate_fn,
-        validate_config=validate_config or {},
+        validation=validation,
     )
 
 

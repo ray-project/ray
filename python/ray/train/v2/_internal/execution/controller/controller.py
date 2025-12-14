@@ -68,7 +68,7 @@ from ray.train.v2.api.exceptions import (
     ControllerError,
     TrainingFailedError,
 )
-from ray.train.v2.api.report_config import CheckpointConsistencyMode
+from ray.train.v2.api.report_config import CheckpointConsistencyMode, ValidateFn
 from ray.train.v2.api.result import Result
 
 if TYPE_CHECKING:
@@ -118,6 +118,7 @@ class TrainController:
         scaling_policy: ScalingPolicy,
         failure_policy: FailurePolicy,
         callbacks: Optional[List[RayTrainCallback]] = None,
+        validate_fn: Optional[ValidateFn] = None,
     ):
         self._train_run_context = train_run_context
         if ray_constants.env_bool(
@@ -136,21 +137,29 @@ class TrainController:
             checkpoint_config=self._run_config.checkpoint_config,
             storage_context=self._storage_context,
         )
-        self._validation_manager = ValidationManager(
-            checkpoint_manager=self._checkpoint_manager,
-        )
+        if validate_fn:
+            validation_manager = ValidationManager(
+                checkpoint_manager=self._checkpoint_manager,
+                validate_fn=validate_fn,
+            )
+        else:
+            validation_manager = None
         report_handler = ReportCallbackHandler(
             report_callbacks=(
-                [self._checkpoint_manager, self._validation_manager]
+                [self._checkpoint_manager]
+                + ([validation_manager] if validation_manager else [])
                 + [c for c in self._callbacks if isinstance(c, ReportCallback)]
             )
         )
 
         # Group callbacks by the hooks they're subscribed to.
-        self._controller_callbacks = [
-            self._scaling_policy,
-            self._validation_manager,
-        ] + [c for c in self._callbacks if isinstance(c, ControllerCallback)]
+        self._controller_callbacks = (
+            [
+                self._scaling_policy,
+            ]
+            + ([validation_manager] if validation_manager else [])
+            + [c for c in self._callbacks if isinstance(c, ControllerCallback)]
+        )
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
         self._worker_group_callbacks_to_propagate = (
