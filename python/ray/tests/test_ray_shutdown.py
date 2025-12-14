@@ -475,5 +475,30 @@ def test_sigterm_while_ray_get_and_wait(shutdown_only, is_get):
     wait_for_condition(verify)
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
+def test_kill_actor_after_restart(short_gcs_publish_timeout, shutdown_only):
+    """Test that killing an actor from a previous session raises a helpful error."""
+    # Set include_dashboard=False to have faster startup.
+    ray.init(num_cpus=1, include_dashboard=False)
+
+    @ray.remote
+    class A:
+        pass
+
+    a = A.remote()
+
+    # Restart ray
+    ray.shutdown()
+    ray.init(num_cpus=1, include_dashboard=False)
+
+    # Attempting to kill an actor from the previous session should raise
+    # a helpful error message instead of crashing the interpreter.
+    with pytest.raises(ValueError, match="ActorHandle objects are not valid across Ray sessions"):
+        ray.kill(a)
+
+    ray.shutdown()
+    wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

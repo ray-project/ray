@@ -2562,7 +2562,11 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
       },
       "CoreWorker.KillActor");
   const auto &status = f.get();
-  actor_manager_->OnActorKilled(actor_id);
+  // Only call OnActorKilled if the kill was successful (status is OK).
+  // If the actor handle doesn't exist, OnActorKilled would crash.
+  if (status.ok()) {
+    actor_manager_->OnActorKilled(actor_id);
+  }
   return status;
 }
 
