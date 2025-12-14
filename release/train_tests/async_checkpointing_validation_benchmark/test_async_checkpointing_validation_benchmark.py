@@ -70,9 +70,9 @@ class Predictor:
         return {"res": (pred.argmax(1) == label).cpu().numpy()}
 
 
-def validate_with_map_batches(checkpoint, config):
+def validate_with_map_batches(checkpoint, dataset):
     start_time = time.time()
-    eval_res = config["dataset"].map_batches(
+    eval_res = dataset.map_batches(
         Predictor,
         batch_size=128,
         num_gpus=1,
@@ -121,15 +121,15 @@ def eval_only_train_func(config_dict):
     )
 
 
-def validate_with_torch_trainer(checkpoint, config):
+def validate_with_torch_trainer(checkpoint, dataset, parent_run_name, epoch, batch_idx):
     start_time = time.time()
     trainer = ray.train.torch.TorchTrainer(
         eval_only_train_func,
         train_loop_config={"checkpoint": checkpoint},
         scaling_config=ray.train.ScalingConfig(num_workers=2, use_gpu=True),
-        datasets={"test": config["dataset"]},
+        datasets={"test": dataset},
         run_config=ray.train.RunConfig(
-            name=f"{config['parent_run_name']}-validation_epoch={config['epoch']}_batch_idx={config['batch_idx']}"
+            name=f"{parent_run_name}-validation_epoch={epoch}_batch_idx={batch_idx}"
         ),
     )
     result = trainer.fit()
