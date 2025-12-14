@@ -7,7 +7,7 @@ import ray.train
 from ray.data import DataContext, ExecutionOptions, ExecutionResources
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data.tests.conftest import restore_data_context  # noqa: F401
-from ray.train.v2._internal.callbacks.datasets import DatasetsSetupCallback
+from ray.train.v2._internal.callbacks.datasets import DatasetsCallback
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
@@ -83,7 +83,7 @@ def test_data_config_validation():
 
 
 def test_datasets_callback(ray_start_4_cpus):
-    """Check that the `DatasetsSetupCallback` correctly configures the
+    """Check that the `DatasetsCallback` correctly configures the
     dataset shards and execution options."""
     NUM_WORKERS = 2
 
@@ -112,7 +112,7 @@ def test_datasets_callback(ray_start_4_cpus):
     )
     worker_group._start()
 
-    callback = DatasetsSetupCallback(train_run_context)
+    callback = DatasetsCallback(train_run_context)
     dataset_manager_for_each_worker = callback.before_init_train_context(
         worker_group.get_workers()
     )["dataset_shard_provider"]
