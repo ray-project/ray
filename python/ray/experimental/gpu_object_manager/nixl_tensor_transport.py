@@ -47,7 +47,7 @@ class NixlTensorTransport(TensorTransportManager):
 
     @property
     def tensor_transport_backend(self) -> str:
-        return "nixl"
+        return "NIXL"
 
     @staticmethod
     def is_one_sided() -> bool:
@@ -79,7 +79,6 @@ class NixlTensorTransport(TensorTransportManager):
 
     def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
         # TODO(dayshah): This is called on a .remote RDT call, so it's quite expensive.
-
         def __ray_actor_has_tensor_transport__(
             self: "ray.actor.ActorHandle",
         ) -> bool:
@@ -89,7 +88,7 @@ class NixlTensorTransport(TensorTransportManager):
                     get_tensor_transport_manager,
                 )
 
-                get_tensor_transport_manager("nixl").get_nixl_agent()
+                get_tensor_transport_manager("NIXL").get_nixl_agent()
                 return True
             except Exception:
                 return False

@@ -20,12 +20,14 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/stats/metric_defs.h"
+#include "ray/raylet/metrics.h"
 
 namespace ray {
 
 ClusterResourceManager::ClusterResourceManager(instrumented_io_context &io_service)
-    : timer_(PeriodicalRunner::Create(io_service)) {
+    : timer_(PeriodicalRunner::Create(io_service)),
+      local_resource_view_node_count_gauge_(
+          raylet::GetLocalResourceViewNodeCountGaugeMetric()) {
   timer_->RunFnPeriodically(
       [this]() {
         auto syncer_delay = absl::Milliseconds(
@@ -304,7 +306,7 @@ void ClusterResourceManager::SetNodeLabels(
 }
 
 void ClusterResourceManager::RecordMetrics() const {
-  ray::stats::STATS_local_resource_view_node_count.Record(nodes_.size());
+  local_resource_view_node_count_gauge_.Record(static_cast<double>(nodes_.size()));
 }
 
 }  // namespace ray

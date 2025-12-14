@@ -14,7 +14,13 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.logging import configure_logging
 from ray.data.context import DataContext, DatasetContext
-from ray.data.dataset import Dataset, Schema, SinkMode, ClickHouseTableSettings
+from ray.data.dataset import (
+    Dataset,
+    Schema,
+    SinkMode,
+    ClickHouseTableSettings,
+    SaveMode,
+)
 from ray.data.stats import DatasetSummary
 from ray.data.datasource import (
     BlockBasedFileDatasink,
@@ -136,6 +142,7 @@ __all__ = [
     "RowBasedFileDatasink",
     "Schema",
     "SinkMode",
+    "SaveMode",
     "TaskPoolStrategy",
     "from_daft",
     "from_dask",

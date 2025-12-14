@@ -5,7 +5,7 @@ from ray._private.ray_constants import RAY_METRIC_CARDINALITY_LEVEL
 
 # Keep in sync with the WorkerIdKey in src/ray/stats/tag_defs.cc
 WORKER_ID_TAG_KEY = "WorkerId"
-# Keep in sync with the NameKey in src/ray/stats/metric_defs.cc
+# Keep in sync with the NameKey in src/ray/stats/tag_defs.cc
 TASK_OR_ACTOR_NAME_TAG_KEY = "Name"
 HIGH_CARDINALITY_METRICS_TO_AGGREGATION: Dict[str, Callable[[List[float]], float]] = {
     "tasks": lambda values: sum(values),
