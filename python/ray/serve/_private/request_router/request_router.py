@@ -512,7 +512,7 @@ class RequestRouter(ABC):
         self.num_routing_tasks_gauge = metrics.Gauge(
             "serve_num_scheduling_tasks",
             description="The number of request routing tasks in the router.",
-            tag_keys=("app", "deployment", "actor_id", "application"),
+            tag_keys=("app", "deployment", "actor_id", "application", "handle_source"),
         ).set_default_tags(
             {
                 # TODO(abrar): Remove "app" in future.
@@ -520,6 +520,7 @@ class RequestRouter(ABC):
                 "application": self._deployment_id.app_name,
                 "deployment": self._deployment_id.name,
                 "actor_id": self_actor_id if self_actor_id else "",
+                "handle_source": self._handle_source.value,
             }
         )
         self.num_routing_tasks_gauge.set(0)
@@ -531,7 +532,7 @@ class RequestRouter(ABC):
                 "The number of request routing tasks in the router "
                 "that are undergoing backoff."
             ),
-            tag_keys=("app", "deployment", "actor_id", "application"),
+            tag_keys=("app", "deployment", "actor_id", "application", "handle_source"),
         ).set_default_tags(
             {
                 # TODO(abrar): Remove "app" in future.
@@ -539,6 +540,7 @@ class RequestRouter(ABC):
                 "application": self._deployment_id.app_name,
                 "deployment": self._deployment_id.name,
                 "actor_id": self_actor_id if self_actor_id else "",
+                "handle_source": self._handle_source.value,
             }
         )
         self.num_routing_tasks_in_backoff_gauge.set(self.num_routing_tasks_in_backoff)
@@ -552,13 +554,43 @@ class RequestRouter(ABC):
                 "queue before being assigned to a replica."
             ),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("deployment", "actor_id", "application"),
+            tag_keys=("deployment", "actor_id", "application", "handle_source"),
         ).set_default_tags(
             {
                 "application": self._deployment_id.app_name,
                 "deployment": self._deployment_id.name,
                 "actor_id": self_actor_id if self_actor_id else "",
+                "handle_source": self._handle_source.value,
             }
+        )
+
+        self.router_queue_len_gauge = metrics.Gauge(
+            "serve_router_queue_len",
+            description=(
+                "The number of requests currently running on a replica "
+                "as tracked by the router's queue length cache."
+            ),
+            tag_keys=(
+                "deployment",
+                "replica_id",
+                "actor_id",
+                "application",
+                "handle_source",
+            ),
+        ).set_default_tags(
+            {
+                "application": self._deployment_id.app_name,
+                "deployment": self._deployment_id.name,
+                "actor_id": self_actor_id if self_actor_id else "",
+                "handle_source": self._handle_source.value,
+            }
+        )
+
+    def _update_router_queue_len_gauge(self, replica_id: ReplicaID, queue_len: int):
+        """Update the router queue length gauge for a specific replica."""
+        self.router_queue_len_gauge.set(
+            queue_len,
+            tags={"replica_id": replica_id.unique_id},
         )
 
     def initialize_state(self, **kwargs):
@@ -648,12 +680,17 @@ class RequestRouter(ABC):
             self._replica_queue_len_cache.update(
                 replica_id, queue_len_info.num_ongoing_requests
             )
+            self._update_router_queue_len_gauge(
+                replica_id, queue_len_info.num_ongoing_requests
+            )
 
     def on_send_request(self, replica_id: ReplicaID):
         """Increment queue length cache when a request is sent to a replica."""
         if self._use_replica_queue_len_cache:
             num_ongoing_requests = self._replica_queue_len_cache.get(replica_id) or 0
-            self._replica_queue_len_cache.update(replica_id, num_ongoing_requests + 1)
+            new_queue_len = num_ongoing_requests + 1
+            self._replica_queue_len_cache.update(replica_id, new_queue_len)
+            self._update_router_queue_len_gauge(replica_id, new_queue_len)
 
     def update_replicas(self, replicas: List[RunningReplica]):
         """Update the set of available replicas to be considered for routing.
@@ -802,6 +839,7 @@ class RequestRouter(ABC):
                 queue_len = t.result()
                 result.append((replica, queue_len))
                 self._replica_queue_len_cache.update(replica.replica_id, queue_len)
+                self._update_router_queue_len_gauge(replica.replica_id, queue_len)
 
         assert len(result) == len(replicas)
         return result
@@ -889,6 +927,7 @@ class RequestRouter(ABC):
     def _record_queue_wait_time(self, pending_request: PendingRequest):
         """Records the time a request spent in the queue."""
         queue_wait_time_ms = (time.time() - pending_request.created_at) * 1000
+        logger.info(f"Queue wait time: {queue_wait_time_ms}ms")
         self.queue_wait_time_ms_histogram.observe(queue_wait_time_ms)
 
     def _fulfill_next_pending_request(

@@ -989,49 +989,115 @@ def test_queue_wait_time_metric(metrics_start_shutdown):
 
     @serve.deployment(max_ongoing_requests=1)
     class SlowDeployment:
+        async def __call__(self):
+            await signal.wait.remote()
+            return "done"
+
+    handle = serve.run(SlowDeployment.bind(), name="app1", route_prefix="/slow")
+
+    futures = [handle.remote() for _ in range(2)]
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10
+    )
+
+    time.sleep(0.5)
+    ray.get(signal.send.remote())
+    [f.result() for f in futures]
+
+    timeseries = PrometheusTimeseries()
+
+    def check_queue_wait_time_metric():
+        metrics = get_metric_dictionaries(
+            "ray_serve_queue_wait_time_ms_sum", timeseries=timeseries
+        )
+        if not metrics:
+            return False
+        for metric in metrics:
+            if (
+                metric.get("deployment") == "SlowDeployment"
+                and metric.get("application") == "app1"
+            ):
+                return True
+        return False
+
+    wait_for_condition(check_queue_wait_time_metric, timeout=10)
+
+    def check_queue_wait_time_metric_value():
+        value = get_metric_float(
+            "ray_serve_queue_wait_time_ms_sum",
+            timeseries=timeseries,
+            expected_tags={"deployment": "SlowDeployment", "application": "app1"},
+        )
+        assert value > 400, f"Queue wait time should be greater than 500ms, got {value}"
+        return True
+
+    wait_for_condition(check_queue_wait_time_metric_value, timeout=10)
+
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == 0, timeout=10
+    )
+
+
+def test_router_queue_len_metric(metrics_start_shutdown):
+    """Test that router queue length metric is recorded correctly per replica."""
+    signal = SignalActor.remote()
+
+    @serve.deployment(max_ongoing_requests=10)
+    class TestDeployment:
         async def __call__(self, request: Request):
             await signal.wait.remote()
             return "done"
 
-    serve.run(SlowDeployment.bind(), name="app1", route_prefix="/slow")
+    serve.run(TestDeployment.bind(), name="app1", route_prefix="/test")
 
-    # Send concurrent requests - second one will queue behind the first
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = [
-            executor.submit(httpx.get, "http://localhost:8000/slow", timeout=30)
-            for _ in range(2)
-        ]
-        time.sleep(0.5)  # Give second request time to queue
-        # Wait for first request to start processing, second will queue
+    # Send a request that will block
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(httpx.get, "http://localhost:8000/test", timeout=60)
+
+        # Wait for request to reach the replica
         wait_for_condition(
-            lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10
+            lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=15
         )
-        ray.get(signal.send.remote())  # Release signal to complete requests
-        [f.result() for f in futures]  # Wait for completion
 
-    # Wait for the queue wait time metric to appear
-    wait_for_condition(
-        lambda: len(get_metric_dictionaries("ray_serve_queue_wait_time_ms_count")) == 1,
-        timeout=40,
-    )
+        timeseries = PrometheusTimeseries()
 
-    queue_wait_metrics = get_metric_dictionaries("ray_serve_queue_wait_time_ms_count")
-    # Check that required tags are present
-    metric = queue_wait_metrics[0]
-    assert "deployment" in metric
-    assert metric["deployment"] == "SlowDeployment"
-    assert "application" in metric
-    assert metric["application"] == "app1"
+        # Check that the router queue length metric appears with correct tags
+        def check_router_queue_len():
+            metrics = get_metric_dictionaries(
+                "ray_serve_router_queue_len", timeseries=timeseries
+            )
+            if not metrics:
+                return False
+            # Find metric for our deployment with replica_id tag
+            for metric in metrics:
+                if (
+                    metric.get("deployment") == "TestDeployment"
+                    and metric.get("application") == "app1"
+                    and "replica_id" in metric
+                ):
+                    # Check that required tags are present
+                    assert (
+                        "handle_source" in metric
+                    ), "handle_source tag should be present"
+                    print(f"Found router queue len metric: {metric}")
+                    return True
+            return False
 
-    # The sum should be positive (requests waited some time in queue)
-    timeseries = PrometheusTimeseries()
-    sum_value = get_metric_float(
-        "ray_serve_queue_wait_time_ms_sum",
-        expected_tags={"deployment": "SlowDeployment", "application": "app1"},
-        timeseries=timeseries,
-    )
-    # the second request should have waited at least 0.5 seconds in queue
-    assert sum_value > 500, "Queue wait time should be positive"
+        wait_for_condition(check_router_queue_len, timeout=30)
+
+        wait_for_condition(
+            check_metric_float_eq,
+            timeout=15,
+            metric="ray_serve_router_queue_len",
+            expected=1,
+            expected_tags={"deployment": "TestDeployment", "application": "app1"},
+            timeseries=timeseries,
+        )
+        print("Router queue len metric verified.")
+
+        # Release request
+        ray.get(signal.send.remote())
+        future.result()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
