@@ -60,7 +60,7 @@ def construct_data_config_dict(data_config: DataConfig) -> Dict[str, Any]:
             ds_name: options.to_dict() for ds_name, options in exec_options.items()
         }
     else:
-        execution_options = exec_options.to_dict()
+        execution_options = exec_options.to_dict() if exec_options is not None else None
 
     return {
         "datasets_to_split": data_config._datasets_to_split,

@@ -55,7 +55,7 @@ class TrainStateManager:
         controller_actor_id: str,
         controller_log_file_path: str,
         run_config: RunConfig,
-        train_loop_config: Dict[str, Any],
+        train_loop_config: Optional[Dict[str, Any]],
         scaling_config: ScalingConfig,
         backend_config: BackendConfig,
         datasets: Dict[str, ray.data.Dataset],

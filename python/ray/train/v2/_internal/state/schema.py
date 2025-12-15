@@ -244,7 +244,7 @@ class TrainingExecutionConfiguration(BaseModel):
     """Configuration parameters for executing the training loop,
     including details about the training configs, scaling configs, and backend settings."""
 
-    train_loop_config: Dict[str, Any] = Field(
+    train_loop_config: Optional[Dict[str, Any]] = Field(
         description="The train loop config for a Train run."
     )
     backend_config: Dict[str, Any] = Field(
