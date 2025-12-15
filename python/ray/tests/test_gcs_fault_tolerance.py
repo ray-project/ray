@@ -136,11 +136,7 @@ def test_autoscaler_init(
     cluster.head_node.start_gcs_server()
 
     # Fetch the cluster status from the autoscaler and check that it works.
-    def check_cluster_status():
-        status = get_cluster_status(cluster.address)
-        return len(status.idle_nodes) == 2
-
-    wait_for_condition(check_cluster_status)
+    wait_for_condition(lambda: len(get_cluster_status(cluster.address).idle_nodes) == 2)
 
 
 @pytest.mark.parametrize(
