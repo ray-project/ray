@@ -424,12 +424,12 @@ class DependencySetManager:
     ):
         """Relax a dependency set."""
         depset = _get_depset(self.config.depsets, source_depset)
-        deps = Parser(depset.output).parse()
+        deps = Parser(self.get_path(depset.output)).parse()
         dependency_graph = DependencyGraph()
         dependency_graph.build_dependency_graph(deps)
         dependency_graph.remove_dropped_dependencies([drop_package])
         relaxed_output_file = depset.output.replace(".lock", "_relaxed.lock")
-        _graph_to_lockfile(dependency_graph.graph, relaxed_output_file)
+        _graph_to_lockfile(dependency_graph.graph, self.get_path(relaxed_output_file))
         requirements.append(relaxed_output_file)
         self.compile(
             constraints=constraints,

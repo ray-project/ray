@@ -17,9 +17,10 @@ def test_parser():
         assert parsed_deps[0].name == "aiohappyeyeballs"
         assert parsed_deps[0].version == "2.6.1"
         assert parsed_deps[0].required_by == ["aiohttp"]
+
         assert parsed_deps[1].name == "aiohttp"
         assert parsed_deps[1].version == "3.11.16"
-        assert parsed_deps[1].required_by == ["-r in.lock"]
+        assert parsed_deps[1].required_by == []
 
 
 if __name__ == "__main__":

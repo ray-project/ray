@@ -14,7 +14,7 @@ depsets:
   - name: relaxed_docbuild_depset_${PYTHON_SHORT}
     operation: relax
     source_depset: docbuild_depset_${PYTHON_SHORT}
-    drop_package: ipython
+    drop_package: myst-nb
     output: python/deplocks/docs/relaxed_docbuild_depset_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}

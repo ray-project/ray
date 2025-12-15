@@ -1,6 +1,6 @@
 from typing import List
 
-from networkx import DiGraph, isolates
+from networkx import DiGraph
 
 from ci.raydepsets.parser import Dep
 
@@ -29,14 +29,23 @@ class DependencyGraph:
         for dep in dropped_dependencies:
             if not self.graph.has_node(dep):
                 raise ValueError(f"Dependency {dep} not found in deps")
-            self.graph.remove_node(dep)
-            for dependency in self.graph.successors(dep):
-                if dependency not in dropped_dependencies:
-                    self.graph.remove_edge(dep, dependency)
-        self.remove_orphan_nodes()
 
-    def remove_orphan_nodes(self) -> List[str]:
-        """Remove nodes that have no incoming or outgoing edges."""
-        orphans = list(isolates(self.graph))
-        self.graph.remove_nodes_from(orphans)
-        return orphans
+        to_remove = set(dropped_dependencies)
+
+        # Cascade: find nodes that should be removed because nothing else requires them
+        # A node should be removed if ALL its successors (dependents) are being removed
+        changed = True
+        while changed:
+            changed = False
+            for node in list(self.graph.nodes()):
+                if node in to_remove:
+                    continue
+                # Get all packages that require this node
+                dependents = set(self.graph.successors(node))
+                # If this node has dependents and ALL of them are being removed,
+                # then this node is no longer needed
+                if dependents and dependents.issubset(to_remove):
+                    to_remove.add(node)
+                    changed = True
+
+        self.graph.remove_nodes_from(to_remove)
