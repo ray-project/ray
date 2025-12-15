@@ -258,12 +258,11 @@ def _get_most_frequent_values(
     for column in columns:
         counter = final_counters[column]
         max_count = max(counter.values())
-        # Get all values with the maximum count and pick lexicographically largest
+        # Get all values with the maximum count and lexicographically
         # This is to ensure that the order of the categories is consistent
         # across different runs when there is a tie in frequency.
         most_frequent = sorted(
             (value for value, count in counter.items() if count == max_count),
-            key=str,
         )[-1]
         result[key_gen(column)] = most_frequent
 
