@@ -172,7 +172,12 @@ class DeploymentAutoscalingState:
             replica_id not in self._replica_metrics
             or send_timestamp > self._replica_metrics[replica_id].timestamp
         ):
-            self._latest_metrics_timestamp = send_timestamp
+            if self._latest_metrics_timestamp is None:
+                self._latest_metrics_timestamp = send_timestamp
+            else:
+                self._latest_metrics_timestamp = max(
+                    self._latest_metrics_timestamp, send_timestamp
+                )
             self._replica_metrics[replica_id] = replica_metric_report
 
     def record_request_metrics_for_handle(
@@ -189,7 +194,12 @@ class DeploymentAutoscalingState:
             or send_timestamp > self._handle_requests[handle_id].timestamp
         ):
             self._handle_requests[handle_id] = handle_metric_report
-            self._latest_metrics_timestamp = send_timestamp
+            if self._latest_metrics_timestamp is None:
+                self._latest_metrics_timestamp = send_timestamp
+            else:
+                self._latest_metrics_timestamp = max(
+                    self._latest_metrics_timestamp, send_timestamp
+                )
 
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         """Drops handle metrics that are no longer valid.
