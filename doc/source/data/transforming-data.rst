@@ -479,7 +479,7 @@ Then, call :meth:`~ray.data.grouped_data.GroupedData.map_groups` to execute a tr
 Advanced: Distributed UDFs with Placement Groups
 ================================================
 
-While all transformations are automatically parallelized across your Ray cluster, often times these transformations themselves can themselves be distributed. For example, if you're using
+While all transformations are automatically parallelized across your Ray cluster, often times these transformations can be distributed themselves. For example, if you're using
 a large model, you may want to distribute the model across multiple nodes.
 You can do this by using :ref:`placement groups <ray-placement-group-doc-ref>` and ``ray_remote_args_fn``, which can dynamically create placement groups for each model replica.
 
@@ -576,6 +576,7 @@ To use a custom function with an expression, you can use :func:`udf`.
 .. testcode::
 
     from ray.data.expressions import col, udf
+    from ray.data.datatype import DataType
     import pyarrow as pa
     import pyarrow.compute as pc
     import ray
