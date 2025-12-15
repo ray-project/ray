@@ -687,10 +687,6 @@ def test_opentelemetry_metrics_with_token_auth(setup_cluster_with_token_auth):
     # and we wouldn't see any metrics
     wait_for_condition(verify_metrics_collected, retry_interval_ms=1000)
 
-    # Verify we have actual metric data
-    metric_names = list(timeseries.metric_descriptors.keys())
-    assert len(metric_names) > 0, "Expected metrics to be collected with token auth"
-
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))
