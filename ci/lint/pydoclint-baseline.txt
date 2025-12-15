@@ -1018,10 +1018,6 @@ python/ray/data/_internal/block_batching/util.py
     DOC402: Function `finalize_batches` has "yield" statements, but the docstring does not have a "Yields" section
     DOC404: Function `finalize_batches` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
 --------------------
-python/ray/data/_internal/datasource/iceberg_datasink.py
-    DOC102: Method `IcebergDatasink.__init__`: Docstring contains more arguments than in function signature.
-    DOC103: Method `IcebergDatasink.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the docstring but not in the function signature: [to an iceberg table, e.g. {"commit_time": ].
---------------------
 python/ray/data/_internal/datasource/lance_datasink.py
     DOC101: Method `LanceDatasink.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `LanceDatasink.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: , *args: , max_rows_per_file: int, min_rows_per_file: int, mode: Literal['create', 'append', 'overwrite'], schema: Optional[pa.Schema], storage_options: Optional[Dict[str, Any]], uri: str]. Arguments in the docstring but not in the function signature: [max_rows_per_file : , min_rows_per_file : , mode : , schema : , storage_options : , uri : ].

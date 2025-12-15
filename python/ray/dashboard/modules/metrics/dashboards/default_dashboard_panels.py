@@ -215,7 +215,7 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
     Panel(
         id=29,
         title="Object Store Memory by Location",
-        description="Object store memory usage by location. The dotted line indicates the object store memory capacity. This metric can go over the max capacity in case of spillage to disk.\n\nLocation: where the memory was allocated, which is MMAP_SHM or MMAP_DISK to indicate memory-mapped page, SPILLED to indicate spillage to disk, and WORKER_HEAP for objects small enough to be inlined in worker memory. Refer to metric_defs.cc for more information.",
+        description="Object store memory usage by location. The dotted line indicates the object store memory capacity. This metric can go over the max capacity in case of spillage to disk.\n\nLocation: where the memory was allocated, which is MMAP_SHM or MMAP_DISK to indicate memory-mapped page, SPILLED to indicate spillage to disk, and WORKER_HEAP for objects small enough to be inlined in worker memory.",
         unit="bytes",
         targets=[
             Target(
