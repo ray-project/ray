@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from pandas.api.types import is_categorical_dtype
 
-from ray.data.aggregate import Mean
+from ray.data.aggregate import Mean, ValueCounter
 from ray.data.preprocessor import SerializablePreprocessorBase
 from ray.data.preprocessors.version_support import (
     SerializablePreprocessor as Serializable,
@@ -239,17 +239,32 @@ def _get_most_frequent_values(
     columns: List[str],
     key_gen: Callable[[str], str],
 ) -> Dict[str, Union[str, Number]]:
-    def get_pd_value_counts(df: pd.DataFrame) -> Dict[str, List[Counter]]:
-        return {col: [Counter(df[col].value_counts().to_dict())] for col in columns}
+    # Use ValueCounter aggregator for all columns at once
+    aggregators = [ValueCounter(on=col) for col in columns]
+    value_counter_results = dataset.aggregate(*aggregators)
 
-    value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
-    final_counters = {col: Counter() for col in columns}
-    for batch in value_counts.iter_batches(batch_size=None):
-        for col, counters in batch.items():
-            for counter in counters:
-                final_counters[col] += counter
+    # Convert ValueCounter results to Counter objects
+    final_counters = {}
+    for col in columns:
+        value_counter_key = f"value_counter({col})"
+        value_counts = value_counter_results[value_counter_key]
+        # Create Counter from the values and counts lists
+        final_counters[col] = Counter(
+            dict(zip(value_counts["values"], value_counts["counts"]))
+        )
 
-    return {
-        key_gen(column): final_counters[column].most_common(1)[0][0]  # noqa
-        for column in columns
-    }
+    # Get the most frequent value for each column, with ties broken lexicographically
+    result = {}
+    for column in columns:
+        counter = final_counters[column]
+        if counter:
+            max_count = max(counter.values())
+            # Get all values with the maximum count and pick lexicographically largest
+            # This is to ensure that the order of the categories is consistent
+            # across different runs when there is a tie in frequency.
+            most_frequent = max(
+                [value for value, count in counter.items() if count == max_count]
+            )
+            result[key_gen(column)] = most_frequent
+
+    return result
