@@ -334,10 +334,10 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           // retry granting the lease once another lease finishes and releases
           // its arguments.
           RAY_LOG(INFO) << "Granting lease " << lease_id
-                         << " would put this node over the max memory allowed for "
-                            "arguments of granted leases ("
-                         << max_pinned_lease_arguments_bytes_
-                         << "). Waiting to grant lease until other leases are returned";
+                        << " would put this node over the max memory allowed for "
+                           "arguments of granted leases ("
+                        << max_pinned_lease_arguments_bytes_
+                        << "). Waiting to grant lease until other leases are returned";
           RAY_CHECK(!granted_lease_args_.empty() && !pinned_lease_arguments_.empty())
               << "Cannot grant lease " << lease_id
               << " until another lease is returned and releases its arguments, but no "
@@ -802,7 +802,7 @@ bool LocalLeaseManager::PinLeaseArgsIfMemoryAvailable(
     lease_arg_bytes += arg->GetSize();
   }
   RAY_LOG(INFO) << "RayLease " << lease_spec.LeaseId() << " has args of size "
-                 << lease_arg_bytes;
+                << lease_arg_bytes;
   PinLeaseArgs(lease_spec, std::move(args));
   RAY_LOG(INFO) << "Size of pinned task args is now " << pinned_lease_arguments_bytes_;
   if (max_pinned_lease_arguments_bytes_ == 0) {
@@ -819,8 +819,8 @@ bool LocalLeaseManager::PinLeaseArgsIfMemoryAvailable(
   } else if (pinned_lease_arguments_bytes_ > max_pinned_lease_arguments_bytes_) {
     ReleaseLeaseArgs(lease_spec.LeaseId());
     RAY_LOG(INFO) << "Cannot grant lease " << lease_spec.LeaseId()
-                   << " with arguments of size " << lease_arg_bytes
-                   << " current pinned bytes is " << pinned_lease_arguments_bytes_;
+                  << " with arguments of size " << lease_arg_bytes
+                  << " current pinned bytes is " << pinned_lease_arguments_bytes_;
     return false;
   }
 
