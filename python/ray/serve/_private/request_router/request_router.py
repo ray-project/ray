@@ -927,7 +927,6 @@ class RequestRouter(ABC):
     def _record_queue_wait_time(self, pending_request: PendingRequest):
         """Records the time a request spent in the queue."""
         queue_wait_time_ms = (time.time() - pending_request.created_at) * 1000
-        logger.info(f"Queue wait time: {queue_wait_time_ms}ms")
         self.queue_wait_time_ms_histogram.observe(queue_wait_time_ms)
 
     def _fulfill_next_pending_request(
