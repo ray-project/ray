@@ -22,7 +22,6 @@ steps:
       - forge
     job_env: forge
     commands:
-      - bazel run //.buildkite:copy_files -- --destination docker_login
       # NOTE(andrew-anyscale): Not running w/ --upload while we verify builds
       # are scheduling and completing correctly.
       - bazel run //ci/ray_ci/automation:copy_wanda_image --
@@ -36,7 +35,6 @@ steps:
       - forge
     job_env: forge
     commands:
-      - bazel run //.buildkite:copy_files -- --destination docker_login
       # NOTE(andrew-anyscale): Not running w/ --upload while we verify builds
       # are scheduling and completing correctly.
       - bazel run //ci/ray_ci/automation:copy_wanda_image --
