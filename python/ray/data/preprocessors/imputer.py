@@ -263,6 +263,7 @@ def _get_most_frequent_values(
         # across different runs when there is a tie in frequency.
         most_frequent = sorted(
             (value for value, count in counter.items() if count == max_count),
+            key=str,
         )[-1]
         result[key_gen(column)] = most_frequent
 
