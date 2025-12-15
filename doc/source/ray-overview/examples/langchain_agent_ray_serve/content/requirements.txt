@@ -7,5 +7,5 @@ langgraph==1.0.3
 openai==2.7.2
 uvicorn==0.38.0
 httpx==0.27.1
-mcp==1.22.0
+mcp==1.23.0
 
