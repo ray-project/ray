@@ -551,23 +551,23 @@ class VLLMEngine(LLMEngine):
         assert self._engine_client is not None, "engine_client is not initialized"
         await self._engine_client.stop_profile()
 
-    async def sleep(self, **kwargs) -> None:
+    async def sleep(self, **kwargs: Any) -> None:
         """Put the engine to sleep.
 
         Args:
             **kwargs: Engine-specific sleep options. See VLLMSleepConfig for
-            available options.
+                available options.
         """
         assert self._engine_client is not None, "engine_client is not initialized"
         config = VLLMSleepConfig(**kwargs)
         await self._engine_client.sleep(level=config.level)
 
-    async def wakeup(self, **kwargs) -> None:
+    async def wakeup(self, **kwargs: Any) -> None:
         """Wake up the engine from sleep mode.
 
         Args:
             **kwargs: Engine-specific wakeup options. See VLLMWakeupConfig for
-            available options.
+                available options.
         """
         assert self._engine_client is not None, "engine_client is not initialized"
         config = VLLMWakeupConfig(**kwargs)

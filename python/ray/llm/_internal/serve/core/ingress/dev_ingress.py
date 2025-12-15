@@ -15,6 +15,8 @@ Endpoints:
 import pprint
 from typing import Dict
 
+from starlette.responses import Response
+
 from ray import serve
 from ray.llm._internal.common.dict_utils import (
     maybe_apply_llm_deployment_config_defaults,
@@ -36,7 +38,6 @@ from ray.llm._internal.serve.core.server.builder import build_llm_deployment
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.utils.dispatch import dispatch
 from ray.serve.deployment import Application
-from starlette.responses import Response
 
 logger = get_logger(__name__)
 
@@ -88,7 +89,7 @@ class DevIngress(OpenAiIngress):
         Args:
             body: Request containing the model ID and engine-specific options.
                 For vLLM, options can include:
-                    level (int): Sleep level (1 or 2). Level 1 offloads weights
+                    level: Sleep level (1 or 2). Level 1 offloads weights
                         to CPU. Level 2 discards weights entirely.
 
         Returns:
@@ -96,7 +97,9 @@ class DevIngress(OpenAiIngress):
         """
         model_id = await self._get_model_id(body.model)
         handle = self._get_configured_serve_handle(model_id)
-        logger.info("Putting model %s to sleep with options: %s", model_id, body.options)
+        logger.info(
+            "Putting model %s to sleep with options: %s", model_id, body.options
+        )
         dispatch(handle, "sleep", kwargs=body.options)
         return Response(status_code=200)
 
@@ -177,4 +180,3 @@ def build_dev_openai_app(builder_config: Dict) -> Application:
     return serve.deployment(ingress_cls, **ingress_options).bind(
         llm_deployments=llm_deployments, **ingress_cls_config.ingress_extra_kwargs
     )
-

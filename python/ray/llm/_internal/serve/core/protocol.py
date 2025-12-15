@@ -125,14 +125,14 @@ class LLMServerProtocol(DeploymentProtocol):
     async def stop_profile(self) -> None:
         """Stop profiling"""
 
-    async def sleep(self, **kwargs) -> None:
+    async def sleep(self, **kwargs: Any) -> None:
         """Put the engine to sleep.
 
         Args:
             **kwargs: Engine-specific sleep options. Passed through to the engine.
         """
 
-    async def wakeup(self, **kwargs) -> None:
+    async def wakeup(self, **kwargs: Any) -> None:
         """Wake up the engine from sleep mode.
 
         Args:

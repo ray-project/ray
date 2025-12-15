@@ -499,7 +499,7 @@ class LLMServer(LLMServerProtocol):
             logger.error("Engine stop profile failed in LLMServer.stop_profile: %s", e)
             raise e
 
-    async def sleep(self, **kwargs) -> None:
+    async def sleep(self, **kwargs: Any) -> None:
         """Put the engine to sleep.
 
         Args:
@@ -513,7 +513,7 @@ class LLMServer(LLMServerProtocol):
             logger.error("Engine sleep failed in LLMServer.sleep: %s", e)
             raise e
 
-    async def wakeup(self, **kwargs) -> None:
+    async def wakeup(self, **kwargs: Any) -> None:
         """Wake up the engine from sleep mode.
 
         Args:

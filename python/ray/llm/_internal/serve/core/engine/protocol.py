@@ -1,5 +1,5 @@
 import abc
-from typing import TYPE_CHECKING, AsyncGenerator, Optional, Union
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Optional, Union
 
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
@@ -182,7 +182,7 @@ class LLMEngine(abc.ABC):
     # to sleep during training and wake up during rollouts.
     ##############################################################
 
-    async def sleep(self, **kwargs) -> None:
+    async def sleep(self, **kwargs: Any) -> None:
         """Put the engine to sleep.
 
         The caller should guarantee that no requests are being processed
@@ -194,7 +194,7 @@ class LLMEngine(abc.ABC):
         """
         pass
 
-    async def wakeup(self, **kwargs) -> None:
+    async def wakeup(self, **kwargs: Any) -> None:
         """Wake up the engine from sleep mode.
 
         Args:
