@@ -4,6 +4,7 @@ from ray.train import Checkpoint, DataConfig
 from ray.train.trainer import GenDataset
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.report_config import ValidateFn
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
@@ -156,6 +157,9 @@ class TensorflowTrainer(DataParallelTrainer):
             by calling ``ray.train.get_dataset_shard(name)``.
             Sharding and additional configuration can be done by
             passing in a ``dataset_config``.
+        validate_fn: If the user registers a ``validate_fn`` here and calls
+            ``ray.train.report`` with the ``validation`` argument, Ray Train will
+            validate the reported checkpoint using this function.
         resume_from_checkpoint: [Deprecated]
         metadata: [Deprecated]
     """
@@ -170,6 +174,7 @@ class TensorflowTrainer(DataParallelTrainer):
         dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
+        validate_fn: Optional[ValidateFn] = None,
         # TODO: [Deprecated]
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
@@ -186,4 +191,5 @@ class TensorflowTrainer(DataParallelTrainer):
             datasets=datasets,
             resume_from_checkpoint=resume_from_checkpoint,
             metadata=metadata,
+            validate_fn=validate_fn,
         )

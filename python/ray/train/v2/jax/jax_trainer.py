@@ -6,6 +6,7 @@ from ray.train import DataConfig
 from ray.train.trainer import GenDataset
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.report_config import ValidateFn
 from ray.train.v2.jax.config import JaxConfig
 from ray.util import PublicAPI
 
@@ -116,6 +117,9 @@ class JaxTrainer(DataParallelTrainer):
             by calling ``ray.train.get_dataset_shard(name)``.
             Sharding and additional configuration can be done by
             passing in a ``dataset_config``.
+        validate_fn: If the user registers a ``validate_fn`` here and calls
+            ``ray.train.report`` with the ``validation`` argument, Ray Train will
+            validate the reported checkpoint using this function.
     """
 
     def __init__(
@@ -128,6 +132,7 @@ class JaxTrainer(DataParallelTrainer):
         dataset_config: Optional[Dict[str, DataConfig]] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
+        validate_fn: Optional[ValidateFn] = None,
     ):
         if not jax_config:
             jax_config = JaxConfig(
@@ -142,6 +147,7 @@ class JaxTrainer(DataParallelTrainer):
             dataset_config=dataset_config,
             run_config=run_config,
             datasets=datasets,
+            validate_fn=validate_fn,
         )
 
     @classmethod
