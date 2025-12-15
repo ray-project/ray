@@ -121,7 +121,6 @@ steps:
     label: "wanda: core binary parts py{{matrix}} (aarch64)"
     wanda: ci/docker/ray-core.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
