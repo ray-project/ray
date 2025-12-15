@@ -125,6 +125,5 @@ steps:
       - ray-mlcudabaseextra-testdeps
     matrix:
       # This list should be kept in sync with the list of supported Python in
-      # release test suite. We don't have ray-ml release tests for Python 3.10 and 3.11
-      # yet.
+      # release test suite
       - "3.10"
