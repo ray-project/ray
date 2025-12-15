@@ -328,7 +328,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           cluster_resource_scheduler_.GetLocalResourceManager().MarkFootprintAsBusy(
               WorkFootprint::PULLING_TASK_ARGUMENTS);
           work_it = leases_to_grant_queue.erase(work_it);
-          RAY_LOG(INFO) << "Failed to pin args (some args missing)."
+          RAY_LOG(INFO) << "Failed to pin args (some args missing).";
         } else {
           // The lease's args cannot be pinned due to lack of memory. We should
           // retry granting the lease once another lease finishes and releases
