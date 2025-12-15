@@ -1,6 +1,6 @@
 from typing import List
 
-from networkx import DiGraph
+from networkx import DiGraph, isolates
 
 from ci.raydepsets.parser import Dep
 
@@ -9,33 +9,34 @@ class DependencyGraph:
     def __init__(self):
         self.graph = DiGraph()
 
-    # def add_node(self, dep: Dep):
-    #     # get root nodes (no deps in the list)
-    #     self.graph.add_node(dep.name, version=dep.version)
-    #     for dependency in dep.dependencies:
-    #         if not self.graph.has_node(dependency):
-    #             self.add_node(Dep(name=dependency, version="", dependencies=[]))
-    #         self.graph.add_edge(dep.name, dependency)
-
-    def build_dependency_graph(self, deps: List[Dep]):
+    def add_nodes(self, deps: List[Dep]):
         for dep in deps:
             if not self.graph.has_node(dep.name):
                 self.graph.add_node(dep.name, version=dep.version)
-            for dependency in dep.dependencies:
-                if not self.graph.has_node(dependency):
-                    self.graph.add_node(dependency, version="")
-                    self.graph.add_edge(dep.name, dependency)
 
-        # get root nodes (no deps in the list)
-        root_deps = [dep for dep in deps if not dep.dependencies]
-        for dep in root_deps:
-            self.graph.add_node(dep.name, version=dep.version)
-            # create child nodes
-            for dependency in dep.dependencies:
+    def add_edges(self, deps: List[Dep]):
+        for dep in deps:
+            for dependency in dep.required_by:
                 if not self.graph.has_node(dependency):
-                    # get child node from deps
-                    child_dep = next((d for d in deps if d.name == dependency), None)
-                    if not child_dep:
-                        raise ValueError(f"Dependency {dependency} not found in deps")
-                    self.graph.add_node(child_dep.name, version=child_dep.version)
-                    self.graph.add_edge(dep.name, child_dep.name)
+                    raise ValueError(f"Dependency {dependency} not found in deps")
+                self.graph.add_edge(dep.name, dependency)
+
+    def build_dependency_graph(self, deps: List[Dep]):
+        self.add_nodes(deps)
+        self.add_edges(deps)
+
+    def remove_dropped_dependencies(self, dropped_dependencies: List[str]):
+        for dep in dropped_dependencies:
+            if not self.graph.has_node(dep):
+                raise ValueError(f"Dependency {dep} not found in deps")
+            self.graph.remove_node(dep)
+            for dependency in self.graph.successors(dep):
+                if dependency not in dropped_dependencies:
+                    self.graph.remove_edge(dep, dependency)
+        self.remove_orphan_nodes()
+
+    def remove_orphan_nodes(self) -> List[str]:
+        """Remove nodes that have no incoming or outgoing edges."""
+        orphans = list(isolates(self.graph))
+        self.graph.remove_nodes_from(orphans)
+        return orphans

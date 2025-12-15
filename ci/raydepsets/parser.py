@@ -7,7 +7,7 @@ from typing import List
 class Dep:
     name: str
     version: str
-    dependencies: List[str]
+    required_by: List[str]
 
 
 class Parser:
@@ -25,7 +25,7 @@ class Parser:
                     r"([A-Za-z0-9_\-]+)==([A-Za-z0-9\.\-]+)", line
                 )
                 if len(deps_arr) > 0 and package_line_match:
-                    deps.append(Dep(name=name, version=version, dependencies=deps_arr))
+                    deps.append(Dep(name=name, version=version, required_by=deps_arr))
                     deps_arr = []
 
                 dependency_line_match = re.search(r"^\s*#\s+(.*)$", line)

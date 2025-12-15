@@ -26,6 +26,7 @@ class Depset:
     depsets: Optional[List[str]] = None
     pre_hooks: Optional[List[str]] = None
     include_setuptools: Optional[bool] = False
+    drop_package: Optional[str] = None
 
 
 def _substitute_build_args(obj: Any, build_arg_set: BuildArgSet):
@@ -57,6 +58,7 @@ def _dict_to_depset(depset: dict, config_name: str) -> Depset:
         packages=depset.get("packages", []),
         include_setuptools=depset.get("include_setuptools", False),
         config_name=config_name,
+        drop_package=depset.get("drop_package", None),
     )
 
 
