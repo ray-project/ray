@@ -621,13 +621,18 @@ class ActorPoolMapOperator(MapOperator):
 class _MapWorker:
     """An actor worker for MapOperator."""
 
+    # Label key for logical actor ID (shared with ActorPool and _ActorPool)
+    _LOGICAL_ACTOR_ID_LABEL_KEY = "__ray_data_logical_actor_id"
+
     def __init__(
         self,
         ctx: DataContext,
         src_fn_name: str,
         map_transformer: MapTransformer,
-        logical_actor_id: str,
-        actor_location_tracker: ray.actor.ActorHandle[ActorLocationTracker],
+        logical_actor_id: Optional[str] = None,
+        actor_location_tracker: Optional[
+            ray.actor.ActorHandle[ActorLocationTracker]
+        ] = None,
     ):
         self.src_fn_name: str = src_fn_name
         self._map_transformer = map_transformer
@@ -636,10 +641,19 @@ class _MapWorker:
         DataContext._set_current(ctx)
         # Initialize state for this actor with retry logic for UDF init failures.
         self._init_udf_with_retries(ctx)
+
+        # Support both callback-based (logical_actor_id passed) and class-based
+        # (logical_actor_id read from labels set by ActorPool) approaches
+        if logical_actor_id is None:
+            # Class-based path: read logical ID from labels (set by ActorPool)
+            labels = ray.get_runtime_context().get_labels()
+            logical_actor_id = labels.get(self._LOGICAL_ACTOR_ID_LABEL_KEY, "")
         self._logical_actor_id = logical_actor_id
-        actor_location_tracker.update_actor_location.remote(
-            self._logical_actor_id, ray.get_runtime_context().get_node_id()
-        )
+
+        if actor_location_tracker is not None:
+            actor_location_tracker.update_actor_location.remote(
+                self._logical_actor_id, ray.get_runtime_context().get_node_id()
+            )
 
     def _init_udf_with_retries(self, ctx: DataContext) -> None:
         """Initialize the UDF with retry logic for transient failures."""
