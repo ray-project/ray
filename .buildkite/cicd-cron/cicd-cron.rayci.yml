@@ -27,9 +27,9 @@ steps:
       # are scheduling and completing correctly.
       - bazel run //ci/ray_ci/automation:copy_wanda_image --
         --wanda-image-name manylinux-cibase
-        --destination-registry rayproject/manylinux2014
+        --destination-repository rayproject/manylinux2014
         --tag-suffix -x86_64
-
+        --upload
   - label: ":docker: push: Push manylinux-cibase-jdk to Docker Hub"
     depends_on:
       - manylinux-cibase-jdk
@@ -37,9 +37,8 @@ steps:
     job_env: forge
     commands:
       - bazel run //.buildkite:copy_files -- --destination docker_login
-      # NOTE(andrew-anyscale): Not running w/ --upload while we verify builds
-      # are scheduling and completing correctly.
       - bazel run //ci/ray_ci/automation:copy_wanda_image --
         --wanda-image-name manylinux-cibase-jdk
-        --destination-registry rayproject/manylinux2014
+        --destination-repository rayproject/manylinux2014
         --tag-suffix -jdk-x86_64
+        --upload

@@ -4,7 +4,7 @@ Copy Wanda-cached container images to a destination registry using crane.
 Example:
     bazel run //ci/ray_ci/automation:copy_wanda_image -- \\
         --wanda-image-name manylinux-cibase \\
-        --destination-registry rayproject/manylinux2014 \\
+        --destination-repository rayproject/manylinux2014 \\
         --tag-suffix -x86_64 \\
         --upload
 
@@ -95,10 +95,10 @@ def _copy_image(source: str, destination: str, dry_run: bool = False) -> None:
     help="Name of the Wanda-cached image (e.g., 'forge'). Defaults to WANDA_IMAGE_NAME env var.",
 )
 @click.option(
-    "--destination-registry",
+    "--destination-repository",
     type=str,
     default=None,
-    help="Destination registry to copy the image to. Defaults to DESTINATION_REGISTRY env var.",
+    help="Destination repository to copy the image to. Defaults to DESTINATION_REPOSITORY env var.",
 )
 @click.option(
     "--tag-suffix",
@@ -116,7 +116,7 @@ def main(
     rayci_work_repo: Optional[str],
     rayci_build_id: Optional[str],
     wanda_image_name: Optional[str],
-    destination_registry: Optional[str],
+    destination_repository: Optional[str],
     tag_suffix: Optional[str],
     upload: bool,
 ) -> None:
@@ -137,8 +137,8 @@ def main(
     rayci_work_repo = rayci_work_repo or os.environ.get("RAYCI_WORK_REPO")
     rayci_build_id = rayci_build_id or os.environ.get("RAYCI_BUILD_ID")
     wanda_image_name = wanda_image_name or os.environ.get("WANDA_IMAGE_NAME")
-    destination_registry = destination_registry or os.environ.get(
-        "DESTINATION_REGISTRY"
+    destination_repository = destination_repository or os.environ.get(
+        "DESTINATION_REPOSITORY"
     )
     tag_suffix = tag_suffix or os.environ.get("TAG_SUFFIX")
     commit = os.environ.get("BUILDKITE_COMMIT")
@@ -147,7 +147,7 @@ def main(
         "RAYCI_WORK_REPO": rayci_work_repo,
         "RAYCI_BUILD_ID": rayci_build_id,
         "WANDA_IMAGE_NAME": wanda_image_name,
-        "DESTINATION_REGISTRY": destination_registry,
+        "DESTINATION_REPOSITORY": destination_repository,
         "BUILDKITE_COMMIT": commit,
     }
     missing = [k for k, v in required.items() if not v]
@@ -156,7 +156,7 @@ def main(
 
     source_tag = f"{rayci_work_repo}:{rayci_build_id}-{wanda_image_name}"
     destination_tag = _generate_destination_tag(commit, tag_suffix)
-    full_destination = f"{destination_registry}:{destination_tag}"
+    full_destination = f"{destination_repository}:{destination_tag}"
 
     logger.info(f"Source tag (Wanda): {source_tag}")
     logger.info(f"Target tag: {full_destination}")
