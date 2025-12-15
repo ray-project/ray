@@ -51,7 +51,7 @@ To view the full list of supported file formats, see the
 
     .. tab-item:: Images from Dataset of URIs
 
-        To load images from a dataset of URIs, use the :func:`~ray.data.with_column` method together with the :func:`~ray.data.expressions.download` expression.
+        To load images from a dataset of URIs, use the :func:`~ray.data.Dataset.with_column` method together with the :func:`~ray.data.expressions.download` expression.
 
         .. testcode::
 
@@ -67,8 +67,8 @@ To view the full list of supported file formats, see the
 
             Column  Type
             ------  ----
-            bytes   binary
             image_url string
+            bytes   null
 
     .. tab-item:: NumPy
 

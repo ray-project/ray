@@ -344,7 +344,7 @@ Downloading files from URIs
 
 Sometimes you may have a metadata table with a column of URIs and you want to download the files referenced by the URIs.
 
-You can download data in bulk by leveraging the :func:`~ray.data.with_column` method together with the :func:`~ray.data.expressions.download` expression. This approach lets the system handle the parallel downloading of files referenced by URLs in your dataset, without needing to manage async code within your own transformations.
+You can download data in bulk by leveraging the :func:`~ray.data.Dataset.with_column` method together with the :func:`~ray.data.expressions.download` expression. This approach lets the system handle the parallel downloading of files referenced by URLs in your dataset, without needing to manage async code within your own transformations.
 
 The following example shows how to download a batch of images from URLs listed in a Parquet file:
 
