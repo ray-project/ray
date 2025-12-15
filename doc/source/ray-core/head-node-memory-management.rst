@@ -59,7 +59,7 @@ Head Pod Memory Settings
   
 When deploying on Kubernetes, configure appropriate memory requests and limits for the head pod.  
   
-**Important:** Set memory and GPU resource requests equal to their limits. KubeRay uses the container's resource **limits** to configure Ray's logical resource capacities and ignores memory and GPU **requests**.  
+**Important:** Set memory and CPU resource requests equal to their limits. KubeRay uses the container's resource **limits** to configure Ray's logical resource capacities and ignores memory and CPU **requests**.  
   
 Example configuration:  
   
