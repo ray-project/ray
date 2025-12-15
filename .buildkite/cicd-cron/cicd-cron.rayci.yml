@@ -1,44 +1,57 @@
 group: cicd-cron
 steps:
-  - name: manylinux-cibase
-    label: ":magic_wand: wanda: manylinux-cibase"
+  - name: manylinux-cibase-{{matrix}}
+    label: ":magic_wand: wanda: manylinux-cibase-{{matrix}}"
     wanda: ci/docker/manylinux-cibase.wanda.yaml
+    matrix:
+      - "x86_64"
+      - "aarch64"
     env:
       RAYCI_DISABLE_JAVA: "true"
       RAYCI_WANDA_ALWAYS_REBUILD: "true"
       JDK_SUFFIX: ""
+      ARCH_SUFFIX: ""
+      HOSTTYPE: "{{matrix}}"
 
-  - name: manylinux-cibase-jdk
-    label: ":magic_wand: wanda: manylinux-cibase-jdk"
+  - name: manylinux-cibase-jdk-{{matrix}}
+    label: ":magic_wand: wanda: manylinux-cibase-jdk-{{matrix}}"
     wanda: ci/docker/manylinux-cibase.wanda.yaml
+    matrix:
+      - "x86_64"
+      - "aarch64"
     env:
       RAYCI_DISABLE_JAVA: "false"
       RAYCI_WANDA_ALWAYS_REBUILD: "true"
       JDK_SUFFIX: "-jdk"
+      ARCH_SUFFIX: ""
+      HOSTTYPE: "{{matrix}}"
 
-  - label: ":docker: push: Push manylinux-cibase to Docker Hub"
+  - label: ":docker: push: Push manylinux-cibase-{{matrix}} to Docker Hub"
     depends_on:
-      - manylinux-cibase
+      - manylinux-cibase-{{matrix}}
       - forge
     job_env: forge
+    matrix:
+      - "x86_64"
+      - "aarch64"
     commands:
       - bazel run //.buildkite:copy_files -- --destination docker_login
-      # NOTE(andrew-anyscale): Not running w/ --upload while we verify builds
-      # are scheduling and completing correctly.
       - bazel run //ci/ray_ci/automation:copy_wanda_image --
         --wanda-image-name manylinux-cibase
         --destination-repository rayproject/manylinux2014
-        --tag-suffix -x86_64
-        --upload
+        --tag-suffix -{{matrix}}
+
   - label: ":docker: push: Push manylinux-cibase-jdk to Docker Hub"
     depends_on:
-      - manylinux-cibase-jdk
+      - manylinux-cibase-jdk-{{matrix}}
       - forge
     job_env: forge
+    matrix:
+      - "x86_64"
+      - "aarch64"
     commands:
       - bazel run //.buildkite:copy_files -- --destination docker_login
       - bazel run //ci/ray_ci/automation:copy_wanda_image --
         --wanda-image-name manylinux-cibase-jdk
         --destination-repository rayproject/manylinux2014
-        --tag-suffix -jdk-x86_64
-        --upload
+        --tag-suffix -jdk-{{matrix}}
