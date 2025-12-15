@@ -812,12 +812,6 @@ class AutoscalingStatus(str, Enum):
         return mapping.get(trigger, str(trigger).lower())
 
 
-class DecisionRecord(BaseModel):
-    timestamp_str: str
-    current_num_replicas: int
-    target_num_replicas: int
-
-
 class DeploymentSnapshot(BaseModel):
     snapshot_type: str = "deployment"
     timestamp_str: str

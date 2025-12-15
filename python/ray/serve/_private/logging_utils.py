@@ -413,7 +413,7 @@ def configure_component_logger(
 
 
 # Configure a dedicated rotating file logger for autoscaling snapshots.
-def configure_snapshot_logger(
+def configure_autoscaling_snapshot_logger(
     *, component_id: str, logging_config: LoggingConfig
 ) -> logging.Logger:
     """Configure a dedicated logger for autoscaling snapshots.

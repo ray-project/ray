@@ -53,9 +53,9 @@ from ray.serve._private.http_util import (
     configure_http_options_with_defaults,
 )
 from ray.serve._private.logging_utils import (
+    configure_autoscaling_snapshot_logger,
     configure_component_logger,
     configure_component_memory_profiler,
-    configure_snapshot_logger,
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
@@ -148,6 +148,9 @@ class ServeController:
 
         self.long_poll_host = LongPollHost()
         self.done_recovering_event = asyncio.Event()
+
+        # Autoscaling snapshot logger
+        self._autoscaling_logger: Optional[logging.Logger] = None
 
         # Try to read config from checkpoint
         # logging config from checkpoint take precedence over the one passed in
@@ -267,7 +270,7 @@ class ServeController:
             logging_config=global_logging_config,
         )
 
-        self._autoscaling_logger = configure_snapshot_logger(
+        self._autoscaling_logger = configure_autoscaling_snapshot_logger(
             component_id=str(os.getpid()),
             logging_config=global_logging_config,
         )
@@ -430,6 +433,8 @@ class ServeController:
 
     def _emit_deployment_autoscaling_snapshots(self) -> None:
         """Emit a structured snapshot log per autoscaling-enabled deployment."""
+        if self._autoscaling_logger is None:
+            return
         for (
             app_name,
             dep_name,
