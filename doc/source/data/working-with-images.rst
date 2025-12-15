@@ -65,10 +65,10 @@ To view the full list of supported file formats, see the
 
         .. testoutput::
 
-            Column  Type
-            ------  ----
+            Column    Type
+            ------    ----
             image_url string
-            bytes   null
+            bytes     null
 
     .. tab-item:: NumPy
 
