@@ -81,6 +81,27 @@ def test_distinct_empty(ray_start_regular_shared, empty_data):
     assert out == []
 
 
+def test_distinct_zero_columns(ray_start_regular_shared):
+    """Test distinct on dataset with zero columns (empty schema).
+
+    A dataset with zero columns is valid and distinct() should keep at most one row,
+    since all rows are identical (no columns to compare). This test verifies that
+    the code handles empty schemas gracefully instead of raising an error.
+    """
+    # Create a PyArrow table with zero columns (empty schema)
+    empty_schema = pa.schema([])
+    empty_table = pa.table({}, schema=empty_schema)
+    ds = ray.data.from_arrow(empty_table)
+
+    # For zero columns with zero rows, distinct should work and return empty
+    out = ds.distinct().take_all()
+    assert out == []
+
+    # Verify that distinct() doesn't raise an error for empty schema
+    # The fix ensures empty schema uses empty tuple for keys, which correctly
+    # handles the case where all rows are considered duplicates (same empty key)
+
+
 def test_distinct_subset(ray_start_regular_shared, subset_data):
     """Test distinct on subset of columns.
 

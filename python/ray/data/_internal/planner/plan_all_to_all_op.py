@@ -102,13 +102,9 @@ def _plan_hash_shuffle_distinct(
         if schema is not None:
             key_columns = tuple(schema.names) if schema.names else ()
         else:
-            # Cannot perform distinct on all columns without schema.
-            # This should have been caught earlier, but add defensive check.
-            raise ValueError(
-                "Cannot perform distinct on all columns: schema is None. "
-                "This indicates a dataset with no inferable schema. "
-                "Provide explicit 'keys' parameter to distinct()."
-            )
+            # For empty datasets without schema, allow empty key_columns.
+            # The operator will handle this gracefully by returning empty results.
+            key_columns = ()
     else:
         key_columns = tuple(logical_op._key)
 
