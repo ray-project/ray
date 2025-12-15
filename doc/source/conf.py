@@ -236,17 +236,20 @@ exclude_patterns = [
     "templates/*",
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
-    "ray-overview/examples/**/README.md",  # Exclude .md files in examples subfolders
-    "train/examples/**/README.md",
-    ## Exclude all .ipynb/.md published on anyscale console (templates) but not published on Ray docs
-    # notebooks in serve/tutorials/ because we use their markdown conversion instead
-    "serve/tutorials/**/content/**.ipynb",
-    # README.md in data/examples/ because we use their .ipynb notebook version instead
-    "data/examples/**/content/README.md",
-    # Other misc files (overviews, etc)
-    "serve/tutorials/deployment-serve-llm/content/README.*",
+    # Hide README.md used for display on the console (anyscale templates)
+    "serve/tutorials/**/content/**README.md",
+    "data/examples/**/content/**README.md",
+    "ray-overview/examples/**/content/**README.md",
+    "ray-core/examples/**/content/**README.md",
+    "train/examples/**/content/**README.md",
+    "tune/examples/**/content/**README.md",
+    # Other misc files (overviews, console-only examples, etc)
     "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
     "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
+    # Legacy (should refactor to follow the structure above (with content/ subfolder) at some point)
+    "ray-overview/examples/**/README.md",
+    "train/examples/**/README.md",
+    "serve/tutorials/deployment-serve-llm/README.*",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -776,24 +779,25 @@ os.environ["RAY_DOC_BUILD"] = "1"
 
 # apply orphan metadata to
 mark_orphan_patterns = [
-    "data/examples/**/content/**.ipynb",
+    "ray-core/examples/**/content/**.ipynb",
     "serve/tutorials/**/content/**.ipynb",
-    # should refactor to follow the content/ pattern above
-    "serve/tutorials/deployment-serve-llm/**.ipynb",
+    "train/examples/**/content/**.ipynb",
+    "tune/examples/**/content/**.ipynb",
 ]
 # Exclude patterns here
-mark_orphan_exclude_patterns = [
-    "serve/tutorials/deployment-serve-llm/gpt-oss/*.ipynb",
-]
+mark_orphan_exclude_patterns = []
 
 # apply ipython3 lexer to
 ipython3_lexer_patterns = [
-    "serve/tutorials/deployment-serve-llm/**.ipynb",
+    "ray-overview/examples/**/content/**.ipynb",
+    "ray-core/examples/**/content/**.ipynb",
+    "serve/tutorials/**/content/**.ipynb",
+    "data/examples/**/content/**.ipynb",
+    "train/examples/**/content/**.ipynb",
+    "tune/examples/**/content/**.ipynb",
 ]
 # Exclude patterns here
-ipython3_lexer_exclude_patterns = [
-    "serve/tutorials/deployment-serve-llm/gpt-oss/*.ipynb",
-]
+ipython3_lexer_exclude_patterns = []
 
 def _compile_pattern_matchers(app, config):
     """
