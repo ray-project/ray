@@ -231,7 +231,8 @@ def convert_to_pyarrow_array(
             # Convert to Numpy before creating instance of `ArrowTensorArray` to
             # align tensor shapes falling back to ragged ndarray only if necessary
             return ArrowTensorArray.from_numpy(
-                convert_to_numpy(column_values), column_name
+                convert_to_numpy(column_values),
+                column_name=column_name
             )
         else:
             return _convert_to_pyarrow_native_array(column_values, column_name)
@@ -717,6 +718,7 @@ class ArrowTensorArray(pa.ExtensionArray):
     def from_numpy(
         cls,
         arr: Union[np.ndarray, Iterable[np.ndarray]],
+        *,
         column_name: Optional[str] = None,
     ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
         """
@@ -761,7 +763,6 @@ class ArrowTensorArray(pa.ExtensionArray):
 
         try:
             timestamp_dtype = _try_infer_pa_timestamp_type(arr)
-
             if timestamp_dtype:
                 # NOTE: Quirky Arrow behavior will coerce unsupported Numpy `datetime64`
                 #       precisions that are nested inside a list type, but won't do it,
@@ -1162,7 +1163,8 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
 
     @classmethod
     def from_numpy(
-        cls, arr: Union[np.ndarray, List[np.ndarray], Tuple[np.ndarray]]
+        cls,
+        arr: Union[np.ndarray, List[np.ndarray], Tuple[np.ndarray]],
     ) -> "ArrowVariableShapedTensorArray":
         """
         Convert an ndarray or an iterable of heterogeneous-shaped ndarrays to an array
