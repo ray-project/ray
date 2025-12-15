@@ -12,7 +12,7 @@ class TicTacToe(MultiAgentEnv):
 
     The observation space is Box(0.0, 1.0, (9,)), where each index represents a distinct
     field on a 3x3 board and values of 0.0 mean the field is empty, -1.0 means
-    the opponend owns the field, and 1.0 means we occupy the field:
+    the opponent owns the field, and 1.0 means we occupy the field:
     ----------
     | 0| 1| 2|
     ----------
@@ -83,8 +83,6 @@ class TicTacToe(MultiAgentEnv):
     def step(self, action_dict):
         action = action_dict[self.current_player]
 
-        # Create a rewards-dict (containing the rewards of the agent that just acted).
-        rewards = {self.current_player: 0.0}
         # Create a terminateds-dict with the special `__all__` agent ID, indicating that
         # if True, the episode ends for all agents.
         terminateds = {"__all__": False}
@@ -93,7 +91,7 @@ class TicTacToe(MultiAgentEnv):
 
         # Penalize trying to place a piece on an already occupied field.
         if self.board[action] != 0:
-            rewards[self.current_player] -= 5.0
+            rewards = {self.current_player: -1.0}
         # Change the board according to the (valid) action taken.
         else:
             self.board[action] = 1 if self.current_player == "player1" else -1
@@ -114,12 +112,14 @@ class TicTacToe(MultiAgentEnv):
                 or self.board[1:8:3] == win_val
                 or self.board[2:9:3] == win_val
                 # Diagonal win.
-                or self.board[::3] == win_val
+                or self.board[::4] == win_val
                 or self.board[2:7:2] == win_val
             ):
-                # Final reward is +5 for victory and -5 for a loss.
-                rewards[self.current_player] += 5.0
-                rewards[opponent] = -5.0
+                # Final reward is +1 for victory and -1 for a loss.
+                rewards = {
+                    self.current_player: 1.0,
+                    opponent: -1.0,
+                }
 
                 # Episode is done and needs to be reset for a new game.
                 terminateds["__all__"] = True
@@ -141,6 +141,23 @@ class TicTacToe(MultiAgentEnv):
             {},
             {},
         )
+
+    def render(self) -> str:
+        """Render the current board state as an ASCII grid.
+
+        Returns:
+            A string representation of the board where:
+            - 'X' represents player1's pieces
+            - 'O' represents player2's pieces
+            - ' ' represents empty fields
+        """
+        symbols = {0: " ", 1: "X", -1: "O"}
+        rows = []
+        for i in range(3):
+            row_cells = [symbols[self.board[i * 3 + j]] for j in range(3)]
+            rows.append(" " + " | ".join(row_cells) + " ")
+        separator = "-----------"
+        return "\n" + f"\n{separator}\n".join(rows) + "\n"
 
 
 # __sphinx_doc_4_end__

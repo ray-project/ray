@@ -66,7 +66,7 @@ from ray.rllib.examples.utils import (
 )
 
 parser = add_rllib_example_script_args(
-    default_reward=30.0,
+    default_reward=50.0,
     default_timesteps=2_000_000,
 )
 parser.set_defaults(

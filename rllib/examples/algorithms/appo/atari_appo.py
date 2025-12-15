@@ -63,7 +63,7 @@ from ray.rllib.examples.utils import (
 )
 
 parser = add_rllib_example_script_args(
-    default_reward=18.0,
+    default_reward=1.0,
     default_timesteps=10_000_000,  # 40 million frames
 )
 parser.set_defaults(
@@ -127,14 +127,15 @@ config = (
     .rl_module(
         model_config=DefaultModelConfig(
             vf_share_layers=True,
+            # atari nature default filter configs
             conv_filters=[
-                (16, 4, 2),
-                (32, 4, 2),
+                (32, 8, 4),
                 (64, 4, 2),
-                (128, 4, 2),
+                (64, 3, 1),
             ],
             conv_activation="relu",
-            head_fcnet_hiddens=[256],
+            head_fcnet_hiddens=[512],
+            head_fcnet_activation="relu",
         )
     )
 )
