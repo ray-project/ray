@@ -21,6 +21,7 @@ from ray.llm._internal.batch.processor.base import (
 from ray.llm._internal.batch.processor.utils import (
     build_cpu_stage_map_kwargs,
     get_value_or_fallback,
+    update_kwargs_with_defaults,
 )
 from ray.llm._internal.batch.stages import (
     ChatTemplateStage,
@@ -186,7 +187,10 @@ def build_vllm_engine_processor(
         stages.append(
             PrepareMultimodalStage(
                 fn_constructor_kwargs=dict(
-                    model=prepare_multimodal_stage_cfg.model_source,
+                    model_config_kwargs=update_kwargs_with_defaults(
+                        prepare_multimodal_stage_cfg.model_config_kwargs,
+                        {"model": processor_defaults.get("model_source")},
+                    ),
                     chat_template_content_format=prepare_multimodal_stage_cfg.chat_template_content_format,
                     apply_sys_msg_formatting=prepare_multimodal_stage_cfg.apply_sys_msg_formatting,
                 ),

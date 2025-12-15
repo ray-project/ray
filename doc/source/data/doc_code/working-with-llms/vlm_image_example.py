@@ -1,9 +1,9 @@
 """
-This file serves as a documentation example and CI test for VLM batch inference.
+This file serves as a documentation example and CI test for VLM batch inference with images.
 
 Structure:
 1. Infrastructure setup: Dataset compatibility patches, dependency handling
-2. Docs example (between __vlm_example_start/end__): Embedded in Sphinx docs via literalinclude
+2. Docs example (between __vlm_image_example_start/end__): Embedded in Sphinx docs via literalinclude
 3. Test validation and cleanup
 """
 
@@ -18,11 +18,40 @@ subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "ray
 subprocess.check_call([sys.executable, "-m", "pip", "install", "numpy==1.26.4"])
 
 
-# __vlm_example_start__
+'''
+# __image_message_format_example_start__
+"""Supported image input formats: image URL, PIL Image object"""
+{
+    "messages": [
+        {
+            "role": "system",
+            "content": "Provide a detailed description of the image."
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Describe what happens in this image."},
+                # Option 1: Provide image URL
+                {"type": "image_url", "image_url": {"url": "https://example.com/image.jpg"}},
+                # Option 2: Provide PIL Image object
+                {"type": "image_pil", "image_pil": PIL.Image.open("path/to/image.jpg")}
+            ]
+        },
+    ]
+}
+# __image_message_format_example_end__
+'''
+
+
+# __vlm_image_example_start__
 import ray
 from PIL import Image
 from io import BytesIO
-from ray.data.llm import vLLMEngineProcessorConfig, build_processor
+from ray.data.llm import (
+    vLLMEngineProcessorConfig,
+    build_processor,
+    PrepareMultimodalStageConfig,
+)
 from huggingface_hub import HfFileSystem
 
 # Load "LMMs-Eval-Lite" dataset from Hugging Face using HfFileSystem
@@ -52,7 +81,9 @@ vision_processor_config = vLLMEngineProcessorConfig(
     batch_size=16,
     accelerator_type="L4",
     concurrency=1,
-    has_image=True,
+    prepare_multimodal_stage=PrepareMultimodalStageConfig(
+        enabled=True,
+    ),
 )
 # __vlm_config_example_end__
 
@@ -88,9 +119,8 @@ def vision_preprocess(row: dict) -> dict:
                 "content": [
                     {"type": "text", "text": row["question"] + "\n\n"},
                     {
-                        "type": "image",
-                        # Ray Data accepts PIL Image or image URL
-                        "image": Image.open(BytesIO(row["image"]["bytes"])),
+                        "type": "image_pil",
+                        "image_pil": Image.open(BytesIO(row["image"]["bytes"])),
                     },
                     {
                         "type": "text",
@@ -179,7 +209,9 @@ def create_vlm_config():
         batch_size=1,
         accelerator_type="L4",
         concurrency=1,
-        has_image=True,
+        prepare_multimodal_stage=PrepareMultimodalStageConfig(
+            enabled=True,
+        ),
     )
 
 
@@ -196,14 +228,14 @@ def run_vlm_example():
 
         print("VLM processor configured successfully")
         print(f"Model: {config.model_source}")
-        print(f"Has image support: {config.has_image}")
+        print(f"Has multimodal support: {config.prepare_multimodal_stage.enabled}")
         result = processor(vision_dataset).take_all()
         return config, processor, result
     # __vlm_run_example_end__
     return None, None, None
 
 
-# __vlm_example_end__
+# __vlm_image_example_end__
 
 if __name__ == "__main__":
     # Run the example VLM workflow only if GPU is available

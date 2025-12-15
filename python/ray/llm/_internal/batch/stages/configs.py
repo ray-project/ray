@@ -52,10 +52,9 @@ class PrepareImageStageConfig(_StageConfigBase):
 
 
 class PrepareMultimodalStageConfig(_StageConfigBase):
-    model_source: Optional[str] = Field(
+    model_config_kwargs: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Name or path of the Hugging Face model to use for the multimodal processor. "
-        "This is required to process multimodal data according to a specific model.",
+        description="Optional kwargs to pass to the model config.",
     )
     chat_template_content_format: Optional[Literal["string", "openai"]] = Field(
         default="string",
