@@ -351,8 +351,8 @@ int main(int argc, char *argv[]) {
       spill_manager_objects_bytes_gauge,
       spill_manager_request_total_gauge,
       spill_manager_throughput_mb_gauge};
-  ray::stats::Gauge memory_manager_worker_eviction_total_gauge =
-      ray::raylet::GetMemoryManagerWorkerEvictionTotalGaugeMetric();
+  ray::stats::Count memory_manager_worker_eviction_total_count =
+      ray::raylet::GetMemoryManagerWorkerEvictionTotalCountMetric();
   ray::stats::Gauge scheduler_tasks_gauge = ray::raylet::GetSchedulerTasksGaugeMetric();
   ray::stats::Gauge scheduler_unscheduleable_tasks_gauge =
       ray::raylet::GetSchedulerUnscheduleableTasksGaugeMetric();
@@ -1018,7 +1018,7 @@ int main(int argc, char *argv[]) {
         *placement_group_resource_manager,
         std::move(acceptor),
         std::move(socket),
-        memory_manager_worker_eviction_total_gauge);
+        memory_manager_worker_eviction_total_count);
 
     // Initializing stats should be done after the node manager is initialized because
     // <explain why>. Metrics exported before this call will be buffered until `Init` is

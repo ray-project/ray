@@ -175,7 +175,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       PlacementGroupResourceManager &placement_group_resource_manager,
       boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor,
       local_stream_socket socket,
-      ray::observability::MetricInterface &memory_manager_worker_eviction_total_gauge);
+      ray::observability::MetricInterface &memory_manager_worker_eviction_total_count);
 
   void Start(rpc::GcsNodeInfo &&self_node_info);
 
@@ -897,7 +897,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Target being evicted or null if no target
   std::shared_ptr<WorkerInterface> high_memory_eviction_target_;
 
-  ray::observability::MetricInterface &memory_manager_worker_eviction_total_gauge_;
+  ray::observability::MetricInterface &memory_manager_worker_eviction_total_count_;
 
   /// These classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource

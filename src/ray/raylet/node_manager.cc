@@ -184,7 +184,7 @@ NodeManager::NodeManager(
     PlacementGroupResourceManager &placement_group_resource_manager,
     boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor,
     local_stream_socket socket,
-    ray::observability::MetricInterface &memory_manager_worker_eviction_total_gauge)
+    ray::observability::MetricInterface &memory_manager_worker_eviction_total_count)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -224,8 +224,8 @@ NodeManager::NodeManager(
           RayConfig::instance().plasma_store_usage_trigger_gc_threshold()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
-      memory_manager_worker_eviction_total_gauge_(
-          memory_manager_worker_eviction_total_gauge),
+      memory_manager_worker_eviction_total_count_(
+          memory_manager_worker_eviction_total_count),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       local_lease_manager_(local_lease_manager),
       cluster_lease_manager_(cluster_lease_manager),
@@ -3133,17 +3133,17 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
 
           if (worker_to_kill->GetWorkerType() == rpc::WorkerType::DRIVER) {
             // TODO(sang): Add the job entrypoint to the name.
-            memory_manager_worker_eviction_total_gauge_.Record(
+            memory_manager_worker_eviction_total_count_.Record(
                 1, {{"Type", "MemoryManager.DriverEviction.Total"}, {"Name", ""}});
           } else if (worker_to_kill->GetActorId().IsNil()) {
             const auto &ray_lease = worker_to_kill->GetGrantedLease();
-            memory_manager_worker_eviction_total_gauge_.Record(
+            memory_manager_worker_eviction_total_count_.Record(
                 1,
                 {{"Type", "MemoryManager.TaskEviction.Total"},
                  {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
           } else {
             const auto &ray_lease = worker_to_kill->GetGrantedLease();
-            memory_manager_worker_eviction_total_gauge_.Record(
+            memory_manager_worker_eviction_total_count_.Record(
                 1,
                 {{"Type", "MemoryManager.ActorEviction.Total"},
                  {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
