@@ -33,7 +33,7 @@ Transforming rows with map
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If your transformation returns exactly one row for each input row, call
-:meth:`~ray.data.Dataset.map`. This transformation will automatically be parallelized across your Ray cluster.
+:meth:`~ray.data.Dataset.map`. This transformation is automatically parallelized across your Ray cluster.
 
 .. testcode::
 
@@ -72,7 +72,7 @@ Transforming rows with flat map
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If your transformation returns multiple rows for each input row, call
-:meth:`~ray.data.Dataset.flat_map`. This transformation will automatically be parallelized across your Ray cluster.
+:meth:`~ray.data.Dataset.flat_map`. This transformation is automatically parallelized across your Ray cluster.
 
 .. testcode::
 
@@ -122,7 +122,7 @@ Transforming batches
 If your transformation can be vectorized using NumPy, PyArrow or Pandas operations, transforming
 batches is considerably more performant than transforming individual rows.
 
-This transformation will automatically be parallelized across your Ray cluster.
+This transformation is automatically parallelized across your Ray cluster.
 
 .. testcode::
 
@@ -153,9 +153,9 @@ When applying transformations to batches of rows, Ray Data could represent these
 Pandas ``DataFrame`` or PyArrow ``Table``.
 
 When using
-    * ``batch_format=numpy``, the input to the function will be a dictionary where keys correspond to column names and values to column values represented as ``ndarrays``.
-    * ``batch_format=pyarrow``, the input to the function will be a Pyarrow ``Table``.
-    * ``batch_format=pandas``, the input to the function will be a Pandas ``DataFrame``.
+    * ``batch_format=numpy``, the input to the function is a dictionary where keys correspond to column names and values to column values represented as ``ndarrays``.
+    * ``batch_format=pyarrow``, the input to the function is a Pyarrow ``Table``.
+    * ``batch_format=pandas``, the input to the function is a Pandas ``DataFrame``.
 
 .. tab-set::
 
@@ -358,14 +358,14 @@ Specifying CPUs, GPUs, and Memory
 
 You can optionally specify logical resources per transformation by using one of the following parameters: ``num_cpus``, ``num_gpus``, ``memory``, ``resources``.
 
-* ``num_cpus``: The number of CPUs to use for the transformation. Ray will automatically configure ``OMP_NUM_THREADS`` to the number of CPUs specified.
-* ``num_gpus``: The number of GPUs to use for the transformation. Ray will automatically configure the proper CUDA_VISIBLE_DEVICES environment variable so that GPUs are isolated from other tasks/actors.
+* ``num_cpus``: The number of CPUs to use for the transformation. Ray automatically configures ``OMP_NUM_THREADS`` to the number of CPUs specified.
+* ``num_gpus``: The number of GPUs to use for the transformation. Ray automatically configures the proper CUDA_VISIBLE_DEVICES environment variable so that GPUs are isolated from other tasks/actors.
 * ``memory``: The amount of memory to use for the transformation. This is useful for avoiding out-of-memory errors by telling Ray how much memory your function uses, and preventing Ray from scheduling too many tasks on a node.
 * ``resources``: A dictionary of resources to use for the transformation. This is useful for specifying custom resources.
 
-Note that these are logical resources and do not impose limits on actual physical resource usage.
+Note that these are logical resources and don't impose limits on actual physical resource usage.
 
-Also, both ``num_cpus`` and ``num_gpus`` support fractional values less than 1. For example, specifying ``num_cpus=0.5`` on a cluster with 4 CPUs will allow for 8 concurrent tasks/actors to run.
+Also, both ``num_cpus`` and ``num_gpus`` support fractional values less than 1. For example, specifying ``num_cpus=0.5`` on a cluster with 4 CPUs allows 8 concurrent tasks/actors to run.
 You can read more about resources in Ray here: :ref:`resource-requirements`.
 
 .. testcode::
@@ -388,7 +388,7 @@ Specifying Concurrency
 
 You can specify the concurrency of the transformation by using the ``compute`` parameter.
 
-For functions, use ``compute=ray.data.TaskPoolStrategy(size=n)`` to cap the number of concurrent tasks. By default, Ray Data will automatically determine the number of concurrent tasks.
+For functions, use ``compute=ray.data.TaskPoolStrategy(size=n)`` to cap the number of concurrent tasks. By default, Ray Data automatically determines the number of concurrent tasks.
 For classes, use ``compute=ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers. Currently, this is required to be specified.
 
 .. testcode::
@@ -396,13 +396,13 @@ For classes, use ``compute=ray.data.ActorPoolStrategy(size=n)`` to use a fixed s
 
     import ray
 
-    ds = ray.data.range(10).map_batches(lambda x: x * 2, compute=ray.data.TaskPoolStrategy(size=2))
+    ds = ray.data.range(10).map_batches(lambda batch: {"id": batch["id"] * 2}, compute=ray.data.TaskPoolStrategy(size=2))
     ds.take_all()
 
 .. testoutput::
     :options: +MOCK
 
-    [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}, {'id': 5}, {'id': 6}, {'id': 7}, {'id': 8}, {'id': 9}]
+    [{'id': 0}, {'id': 2}, {'id': 4}, {'id': 6}, {'id': 8}, {'id': 10}, {'id': 12}, {'id': 14}, {'id': 16}, {'id': 18}]
 
 .. _ordering_of_rows:
 
@@ -515,8 +515,8 @@ You can do this by using :ref:`placement groups <ray-placement-group-doc-ref>` a
     ds = ray.data.range(10).map_batches(DistributedModel, ray_remote_args_fn=ray_remote_args_fn)
     ds.take_all()
 
-Advanced: Async Transforms
-==========================
+Advanced: Asynchronous Transforms
+=================================
 
 Ray Data supports asynchronous functions by using the ``async`` keyword. This is useful for performing asynchronous operations such as fetching data from a database or making HTTP requests.
 Note that this only works when using a class-based transform function and currently requires ``uvloop==0.21.0``.
