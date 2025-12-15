@@ -4263,10 +4263,10 @@ class AlgorithmConfig(_Config):
                     rollout_fragment_length
                 ) * self.num_envs_per_env_runner * (self.num_env_runners or 1)
                 if ((worker_index - 1) * self.num_envs_per_env_runner) >= diff:
-                    return int(rollout_fragment_length)
+                    return int(rollout_fragment_length) or 1
                 else:
                     return int(rollout_fragment_length) + 1
-            return int(rollout_fragment_length)
+            return int(rollout_fragment_length) or 1
         else:
             return self.rollout_fragment_length
 
