@@ -110,7 +110,6 @@ py_library(
         "//ci/ray_ci/base_images:__subpackages__",
     ],
     deps = [
-        ci_require("boto3"),
         "//ci/ray_ci:ray_ci_lib",
     ],
 )
@@ -301,7 +300,8 @@ py_binary(
     srcs = ["copy_wanda_image.py"],
     exec_compatible_with = ["//bazel:py3"],
     deps = [
-        ci_require("click"),
         ":crane_lib",
+        "//ci/ray_ci:ray_ci_lib",
+        ci_require("click"),
     ],
 )

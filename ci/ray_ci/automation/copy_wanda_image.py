@@ -25,8 +25,8 @@ import click
 from ci.ray_ci.automation.crane_lib import (
     call_crane_copy,
     call_crane_manifest,
-    crane_ecr_login,
 )
+from ci.ray_ci.utils import ecr_docker_login
 
 # Configure logging
 logging.basicConfig(
@@ -161,12 +161,10 @@ def main(
     logger.info(f"Source tag (Wanda): {source_tag}")
     logger.info(f"Target tag: {full_destination}")
 
-    # Authenticate crane with ECR (source registry). Docker Hub authentication is
+    # Authenticate with ECR (source registry). Docker Hub authentication is
     # handled by copy_files.py.
     ecr_registry = rayci_work_repo.split("/")[0]
-    return_code, output = crane_ecr_login(ecr_registry)
-    if return_code != 0:
-        raise CopyWandaImageError(f"ECR authentication failed: {output}")
+    ecr_docker_login(ecr_registry)
 
     logger.info("Verifying source image in Wanda cache...")
     if not _image_exists(source_tag):

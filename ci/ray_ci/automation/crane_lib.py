@@ -9,13 +9,11 @@ Callers are responsible for checking return_code to detect failures rather than
 relying on exceptions.
 """
 
-import base64
 import os
 import platform
 import subprocess
 from typing import List, Tuple
 
-import boto3
 import runfiles
 
 from ci.ray_ci.utils import logger
@@ -81,32 +79,6 @@ def _run_crane_command(
     except FileNotFoundError:
         logger.error(f"Crane binary not found at {command[0]}")
         return 1, f"Crane binary not found at {command[0]}"
-
-
-def crane_ecr_login(ecr_registry: str, region: str = "us-west-2") -> Tuple[int, str]:
-    """
-    Authenticate crane with AWS ECR using boto3.
-
-    Args:
-        ecr_registry: ECR registry URL (e.g., "029272617770.dkr.ecr.us-west-2.amazonaws.com").
-        region: AWS region for ECR. Defaults to "us-west-2".
-
-    Returns:
-        Tuple of (return_code, output). return_code is 0 on success.
-    """
-    logger.info(f"Authenticating crane with ECR: {ecr_registry}")
-    try:
-        token = boto3.client("ecr", region_name=region).get_authorization_token()
-        auth_data = token["authorizationData"][0]["authorizationToken"]
-        user, password = base64.b64decode(auth_data).decode("utf-8").split(":")
-    except Exception as e:
-        logger.error(f"Failed to get ECR authorization token: {e}")
-        return 1, f"Failed to get ECR authorization token: {e}"
-
-    return _run_crane_command(
-        ["auth", "login", "-u", user, "--password-stdin", ecr_registry],
-        stdin_input=password,
-    )
 
 
 def call_crane_copy(source: str, destination: str) -> Tuple[int, str]:
