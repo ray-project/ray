@@ -361,6 +361,10 @@ RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S = get_env_float(
     "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S", 0.5
 )
 
+PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
+RECORD_METRICS_TASK_NAME = "record_metrics"
+SET_REPLICA_REQUEST_METRIC_GAUGE_TASK_NAME = "set_replica_request_metric_gauge"
+
 # Handle autoscaling metrics push interval. (This interval will affect the cold start time period)
 RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S",

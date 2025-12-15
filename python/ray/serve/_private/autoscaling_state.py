@@ -15,6 +15,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
+    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
@@ -30,6 +31,15 @@ from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+# We set the timeout to be 2.5x the metric push interval instead of just 2x
+# to account for some jitter in the metric push timing.
+# If it's been 2.5x the interval since the last update, then we can
+# be pretty confident that we've missed two updates in a row.
+STALE_AUTOSCALING_METRICS_TIMEOUT = max(
+    2.5 * RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
+    RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
+)
+
 
 class DeploymentAutoscalingState:
     """Manages autoscaling for a single deployment."""
@@ -40,11 +50,11 @@ class DeploymentAutoscalingState:
         # Map from handle ID to handle request metric report. Metrics
         # are removed from this dict either when the actor on which the
         # handle lived dies, or after a period of no updates.
-        self._handle_requests: Dict[str, HandleMetricReport] = dict()
+        self._handle_requests: Dict[str, HandleMetricReport] = {}
         # Map from replica ID to replica request metric report. Metrics
         # are removed from this dict when a replica is stopped.
         # Prometheus + Custom metrics from each replica are also included
-        self._replica_metrics: Dict[ReplicaID, ReplicaMetricReport] = dict()
+        self._replica_metrics: Dict[ReplicaID, ReplicaMetricReport] = {}
 
         self._deployment_info = None
         self._config = None
@@ -190,27 +200,19 @@ class DeploymentAutoscalingState:
         """Records average number of ongoing requests at a replica."""
         replica_id = replica_metric_report.replica_id
         send_timestamp = replica_metric_report.timestamp
+        previous_report = self._replica_metrics.get(replica_id)
 
-        if (
-            replica_id not in self._replica_metrics
-            or send_timestamp > self._replica_metrics[replica_id].timestamp
-        ):
+        if previous_report is None or send_timestamp > previous_report.timestamp:
             self._replica_metrics[replica_id] = replica_metric_report
 
-    def record_request_metrics_for_handle(
-        self,
-        handle_metric_report: HandleMetricReport,
-    ) -> None:
+    def record_request_metrics_for_handle(self, report: HandleMetricReport) -> None:
         """Records average number of queued and running requests at a handle for this
         deployment.
         """
-        handle_id = handle_metric_report.handle_id
-        send_timestamp = handle_metric_report.timestamp
-        if (
-            handle_id not in self._handle_requests
-            or send_timestamp > self._handle_requests[handle_id].timestamp
-        ):
-            self._handle_requests[handle_id] = handle_metric_report
+        previous_report = self._handle_requests.get(report.handle_id)
+
+        if previous_report is None or report.timestamp > previous_report.timestamp:
+            self._handle_requests[report.handle_id] = report
 
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         """Drops handle metrics that are no longer valid.
@@ -220,10 +222,6 @@ class DeploymentAutoscalingState:
         received an update for too long.
         """
 
-        timeout_s = max(
-            2 * self._config.metrics_interval_s,
-            RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
-        )
         for handle_id, handle_metric in list(self._handle_requests.items()):
             # Drop metrics for handles that are on Serve proxy/replica
             # actors that have died
@@ -242,14 +240,17 @@ class DeploymentAutoscalingState:
             # Drop metrics for handles that haven't sent an update in a while.
             # This is expected behavior for handles that were on replicas or
             # proxies that have been shut down.
-            elif time.time() - handle_metric.timestamp >= timeout_s:
+            elif (
+                time.time() - handle_metric.timestamp
+                >= STALE_AUTOSCALING_METRICS_TIMEOUT
+            ):
                 del self._handle_requests[handle_id]
                 if handle_metric.total_requests > 0:
                     actor_id = handle_metric.actor_id
                     actor_info = f"on actor '{actor_id}' " if actor_id else ""
                     logger.info(
                         f"Dropping stale metrics for handle '{handle_id}' {actor_info}"
-                        f"because no update was received for {timeout_s:.1f}s. "
+                        f"because no update was received for {STALE_AUTOSCALING_METRICS_TIMEOUT:.1f}s. "
                         f"Ongoing requests was: {handle_metric.total_requests}."
                     )
 

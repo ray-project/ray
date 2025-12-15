@@ -301,7 +301,7 @@ class ServeController:
 
     def record_autoscaling_metrics_from_handle(
         self, handle_metric_report: HandleMetricReport
-    ):
+    ) -> None:
         latency = time.time() - handle_metric_report.timestamp
         latency_ms = latency * 1000
         # Record the metrics delay for observability
@@ -323,6 +323,13 @@ class ServeController:
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             handle_metric_report
         )
+
+    def record_autoscaling_metrics_from_handles(
+        self, reports: List[HandleMetricReport]
+    ) -> None:
+        logger.debug(f"Received {len(reports)} bulk handle metrics reports")
+        for report in reports:
+            self.record_autoscaling_metrics_from_handle(report)
 
     def _get_total_num_requests_for_deployment_for_testing(
         self, deployment_id: DeploymentID

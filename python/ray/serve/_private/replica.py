@@ -56,15 +56,18 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
+    PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
+    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
     RECONFIGURE_METHOD,
+    RECORD_METRICS_TASK_NAME,
     REQUEST_LATENCY_BUCKETS_MS,
     REQUEST_ROUTING_STATS_METHOD,
     SERVE_CONTROLLER_NAME,
@@ -163,10 +166,6 @@ class ReplicaMetricsManager:
         - Autoscaling statistics are periodically pushed to the controller.
         - Queue length metrics are periodically recorded as user-facing gauges.
     """
-
-    PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
-    RECORD_METRICS_TASK_NAME = "record_metrics"
-    SET_REPLICA_REQUEST_METRIC_GAUGE_TASK_NAME = "set_replica_request_metric_gauge"
 
     def __init__(
         self,
@@ -306,18 +305,15 @@ class ReplicaMetricsManager:
 
         # Push autoscaling metrics to the controller periodically.
         self._metrics_pusher.register_or_update_task(
-            self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
+            PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
             self._push_autoscaling_metrics,
-            self._autoscaling_config.metrics_interval_s,
+            RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S,
         )
         # Collect autoscaling metrics locally periodically.
         self._metrics_pusher.register_or_update_task(
-            self.RECORD_METRICS_TASK_NAME,
+            RECORD_METRICS_TASK_NAME,
             self._add_autoscaling_metrics_point_async,
-            min(
-                RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
-                self._autoscaling_config.metrics_interval_s,
-            ),
+            RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
         )
 
     def should_collect_ongoing_requests(self) -> bool:
@@ -409,7 +405,8 @@ class ReplicaMetricsManager:
 
     def _push_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
-        self._metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
+        now = time.time()
+        self._metrics_store.prune_keys_and_compact_data(now - look_back_period)
 
         new_aggregated_metrics = {}
         new_metrics = {**self._metrics_store.data}
@@ -420,10 +417,9 @@ class ReplicaMetricsManager:
                 self._metrics_store.aggregate_avg([RUNNING_REQUESTS_KEY])[0] or 0.0
             )
             new_aggregated_metrics.update({RUNNING_REQUESTS_KEY: window_avg})
-
         replica_metric_report = ReplicaMetricReport(
             replica_id=self._replica_id,
-            timestamp=time.time(),
+            timestamp=now,
             aggregated_metrics=new_aggregated_metrics,
             metrics=new_metrics,
         )
