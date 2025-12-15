@@ -10,6 +10,11 @@ build_arg_sets:
     - --unsafe-package ray
     - --python-platform=x86_64-manylinux_2_28
     - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+    # TODO: Remove --no-build-isolation-package when vLLM is back on PyPI.
+    # vLLM's build-system.requires specifies torch==2.9.0, but the CPU index
+    # only has torch==2.9.0+cpu. Disable build isolation so uv doesn't try
+    # to resolve vLLM's build deps from the CPU index.
+    - --no-build-isolation-package vllm
   build_arg_sets:
     - cu128
 
