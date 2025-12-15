@@ -66,6 +66,8 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Sort,
 )
 from ray.data._internal.logical.operators.count_operator import Count
+from ray.data._internal.logical.operators.dropna_operator import DropNa
+from ray.data._internal.logical.operators.fillna_operator import FillNa
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.join_operator import Join
 from ray.data._internal.logical.operators.map_operator import (
@@ -803,6 +805,90 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(map_batches_op, self.context)
+        return Dataset(plan, logical_plan)
+
+    @PublicAPI(api_group=BT_API_GROUP)
+    def fillna(
+        self,
+        value: Union[Any, Dict[str, Any]] = None,
+        *,
+        method: str = "value",
+        subset: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+        inplace: bool = False,
+        compute: Union[str, ComputeStrategy] = None,
+        **ray_remote_args,
+    ) -> "Dataset":
+        """Fill missing values in the dataset.
+
+        Args:
+            value: Scalar or dict mapping column names to fill values. Required if method="value".
+            method: Fill method: "value" (default), "forward", "backward", or "interpolate".
+            subset: Column names to fill. If None, all columns are considered.
+            limit: Maximum consecutive missing values to fill. If None, fill all.
+            inplace: Ignored (Ray Data datasets are immutable).
+            compute: Deprecated. Use ray_remote_args instead.
+            ray_remote_args: Additional Ray remote arguments.
+
+        Returns:
+            A new dataset with missing values filled.
+
+        Note:
+            Backward fill requires loading all batches into memory. For large datasets,
+            consider using forward fill or value-based filling instead.
+        """
+        plan = self._plan.copy()
+        fillna_op = FillNa(
+            self._logical_plan.dag,
+            value=value,
+            method=method,
+            subset=subset,
+            limit=limit,
+            inplace=inplace,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(fillna_op, self.context)
+        return Dataset(plan, logical_plan)
+
+    @PublicAPI(api_group=BT_API_GROUP)
+    def dropna(
+        self,
+        *,
+        how: str = "any",
+        subset: Optional[List[str]] = None,
+        thresh: Optional[int] = None,
+        ignore_values: Optional[List[Any]] = None,
+        inplace: bool = False,
+        compute: Union[str, ComputeStrategy] = None,
+        **ray_remote_args,
+    ) -> "Dataset":
+        """Drop rows with missing values from the dataset.
+
+        Args:
+            how: "any" (default) drops rows with any missing value, "all" drops rows where all values are missing.
+            subset: Column names to consider. If None, all columns are considered.
+            thresh: Minimum non-null values required to keep a row. Overrides 'how' if specified.
+            ignore_values: Additional values to treat as missing (e.g., empty strings, zeros).
+            inplace: Ignored (Ray Data datasets are immutable).
+            compute: Deprecated. Use ray_remote_args instead.
+            ray_remote_args: Additional Ray remote arguments.
+
+        Returns:
+            A new dataset with rows containing missing values removed.
+        """
+        plan = self._plan.copy()
+        dropna_op = DropNa(
+            self._logical_plan.dag,
+            how=how,
+            subset=subset,
+            thresh=thresh,
+            ignore_values=ignore_values,
+            inplace=inplace,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(dropna_op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
@@ -6175,9 +6261,9 @@ class Dataset:
         import pyarrow as pa
 
         ref_bundle: RefBundle = self._plan.execute()
-        block_refs: List[
-            ObjectRef["pyarrow.Table"]
-        ] = _ref_bundles_iterator_to_block_refs_list([ref_bundle])
+        block_refs: List[ObjectRef["pyarrow.Table"]] = (
+            _ref_bundles_iterator_to_block_refs_list([ref_bundle])
+        )
         # Schema is safe to call since we have already triggered execution with
         # self._plan.execute(), which will cache the schema
         schema = self.schema(fetch_if_missing=True)
@@ -6842,7 +6928,7 @@ class Schema:
         from ray.data.extensions import ArrowTensorType, TensorDtype
 
         def _convert_to_pa_type(
-            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype]
+            dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype],
         ) -> pa.DataType:
             if isinstance(dtype, pd.ArrowDtype):
                 return dtype.pyarrow_dtype

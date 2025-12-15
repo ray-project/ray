@@ -21,6 +21,8 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     AbstractAllToAll,
 )
 from ray.data._internal.logical.operators.count_operator import Count
+from ray.data._internal.logical.operators.dropna_operator import DropNa
+from ray.data._internal.logical.operators.fillna_operator import FillNa
 from ray.data._internal.logical.operators.from_operators import AbstractFrom
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.join_operator import Join
@@ -37,6 +39,8 @@ from ray.data._internal.logical.operators.streaming_split_operator import Stream
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
 from ray.data._internal.planner.plan_download_op import plan_download_op
+from ray.data._internal.planner.plan_dropna_op import plan_dropna_op
+from ray.data._internal.planner.plan_fillna_op import plan_fillna_op
 from ray.data._internal.planner.plan_read_op import plan_read_op
 from ray.data._internal.planner.plan_udf_map_op import (
     plan_filter_op,
@@ -60,7 +64,6 @@ def plan_input_data_op(
 ) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for InputData."""
     assert len(physical_children) == 0
-
     return InputDataBuffer(
         data_context,
         input_data=logical_op.input_data,
@@ -153,6 +156,8 @@ class Planner:
         Zip: plan_zip_op,
         Limit: plan_limit_op,
         Count: plan_count_op,
+        DropNa: plan_dropna_op,
+        FillNa: plan_fillna_op,
         Project: plan_project_op,
         StreamingRepartition: plan_streaming_repartition_op,
         Join: plan_join_op,
