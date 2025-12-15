@@ -97,10 +97,6 @@ def test_distinct_zero_columns(ray_start_regular_shared):
     out = ds.distinct().take_all()
     assert out == []
 
-    # Verify that distinct() doesn't raise an error for empty schema
-    # The fix ensures empty schema uses empty tuple for keys, which correctly
-    # handles the case where all rows are considered duplicates (same empty key)
-
 
 def test_distinct_subset(ray_start_regular_shared, subset_data):
     """Test distinct on subset of columns.
@@ -140,10 +136,10 @@ def test_distinct_invalid_keys(ray_start_regular_shared, subset_data):
     """Test that invalid keys raise an error."""
     ds = ray.data.from_arrow(subset_data)
 
-    with pytest.raises(ValueError, match="Keys .* not found in dataset columns"):
+    with pytest.raises(ValueError, match="no such column in the dataset"):
         ds.distinct(keys=["c", "d"])
 
-    with pytest.raises(ValueError, match="Keys .* not found in dataset columns"):
+    with pytest.raises(ValueError, match="no such column in the dataset"):
         ds.distinct(keys=["a", "c"])
 
 

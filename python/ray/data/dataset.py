@@ -61,7 +61,6 @@ from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import (
-    Distinct,
     RandomizeBlocks,
     RandomShuffle,
     Repartition,
@@ -985,6 +984,15 @@ class Dataset:
             ``distinct`` is an expensive operation that requires shuffling data across the cluster.
             Large datasets may incur significant computation and memory cost.
 
+        .. note::
+            Internally, this method reuses Ray Data's groupby-based execution paths. As a result,
+            the logical plan may show a groupby/aggregate step.
+
+        .. warning::
+            If you specify ``keys``, this implementation uses :meth:`~ray.data.grouped_data.GroupedData.map_groups`
+            to keep one arbitrary row per group. This requires that each group fits in memory on a
+            single node.
+
         Examples:
 
             Remove duplicate rows across all columns:
@@ -1017,8 +1025,8 @@ class Dataset:
 
                 ds3 = ray.data.from_arrow(pa.table({
                     "id": [1, 1, 1, 2, 2],
-                    "timestamp": [100, 200, 300, 150, 250],
-                    "value": ["a", "b", "c", "d", "e"]
+                    "timestamp": [100, 100, 100, 150, 150],
+                    "value": ["a", "a", "a", "d", "d"]
                 }))
 
                 # Get one record per id
@@ -1044,39 +1052,68 @@ class Dataset:
 
             # Check for duplicate keys.
             if len(keys) != len(set(keys)):
-                duplicates = [key for key in set(keys) if keys.count(key) > 1]
+                duplicates = []
+                seen = set()
+                for key in keys:
+                    if key in seen:
+                        continue
+                    if keys.count(key) > 1:
+                        duplicates.append(key)
+                        seen.add(key)
                 raise ValueError(
                     f"Duplicate keys found: {duplicates}. Keys must be unique."
                 )
 
             # Check that all specified keys exist in the dataset.
-            # Fetching the schema can trigger execution, so only do it when validating keys.
-            all_cols = self.columns()
-            if all_cols is not None:
-                invalid_keys = set(keys) - set(all_cols)
-                if invalid_keys:
-                    raise ValueError(
-                        f"Keys {list(invalid_keys)} not found in dataset columns {all_cols}"
-                    )
+            # Avoid triggering execution to fetch schema; only validate if schema is already known.
+            SortKey(keys).validate_schema(self.schema(fetch_if_missing=False))
         else:
             # When keys is None, we need schema to determine columns for distinct.
-            # Check early to provide a clear error message.
-            all_cols = self.columns()
-            if all_cols is None:
+            schema = self.schema(fetch_if_missing=False)
+            if schema is None:
                 raise ValueError(
                     "Cannot perform distinct operation on all columns: unable to determine dataset schema. "
                     "Provide explicit 'keys' parameter or ensure dataset has an inferable schema."
                 )
+            all_cols = list(schema.names)
 
-        # Create the Distinct logical operator.
-        plan = self._plan.copy()
-        op = Distinct(
-            self._logical_plan.dag,
-            key=keys,
-            num_partitions=None,
+        # NOTE: Keep this implementation intentionally simple by reusing existing,
+        # heavily exercised groupby paths.
+        #
+        # - For distinct across all columns, group on all columns and aggregate a
+        #   row count, then drop the count column. The remaining columns are the
+        #   distinct rows.
+        # - For distinct on a subset of columns, return one arbitrary row per key
+        #   group by taking the first row in each group.
+        from ray.data.aggregate import Count as CountAgg
+
+        if keys is None:
+            keys_to_use: List[str] = all_cols
+        else:
+            keys_to_use = keys
+
+        # Handle datasets with a known, empty schema (zero columns). In this case,
+        # all rows are identical, so we keep at most one arbitrary row.
+        if keys_to_use == []:
+            return self.limit(1)
+
+        # If the caller requested "all columns" semantics, use the groupby+aggregate path that
+        # doesn't materialize full groups.
+        if keys is None:
+            return (
+                self.groupby(keys_to_use)
+                .aggregate(CountAgg())
+                .drop_columns(["count()"])
+            )
+
+        def take_first_row(group):  # type: ignore[no-untyped-def]
+            return group.slice(0, 1)
+
+        # For subset keys, preserve all columns by taking an arbitrary row per key.
+        return self.groupby(keys_to_use).map_groups(
+            take_first_row,
+            batch_format="pyarrow",
         )
-        logical_plan = LogicalPlan(op, self.context)
-        return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def drop_columns(

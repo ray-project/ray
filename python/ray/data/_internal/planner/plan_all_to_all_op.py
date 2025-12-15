@@ -7,7 +7,6 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.logical.operators.all_to_all_operator import (
     AbstractAllToAll,
     Aggregate,
-    Distinct,
     RandomizeBlocks,
     RandomShuffle,
     Repartition,
@@ -66,54 +65,6 @@ def _plan_hash_shuffle_aggregate(
         #       default min parallelism configured
         num_partitions=logical_op._num_partitions,
         # TODO wire in aggregator args overrides
-    )
-
-
-def _plan_hash_shuffle_distinct(
-    data_context: DataContext,
-    logical_op: Distinct,
-    input_physical_op: PhysicalOperator,
-) -> PhysicalOperator:
-    """Plan hash-based shuffle distinct operation.
-
-    This function creates a physical operator that performs distributed deduplication
-    using hash partitioning. Rows with the same key values are routed to the same
-    partition where local deduplication occurs using an efficient dict-based approach.
-
-    Args:
-        data_context: The data context configuration.
-        logical_op: The Distinct logical operator to plan.
-        input_physical_op: The input physical operator.
-
-    Returns:
-        A HashDistinctOperator configured for the distinct operation.
-    """
-    from ray.data._internal.execution.operators.distinct_aggregation import (
-        HashDistinctOperator,
-    )
-
-    # Infer the schema from the logical operator's input.
-    # This works even when the physical operator is an InputDataBuffer.
-    assert len(logical_op._input_dependencies) == 1
-    schema = logical_op._input_dependencies[0].infer_schema()
-
-    # Determine key columns - use all columns if none specified.
-    if logical_op._key is None:
-        if schema is not None:
-            key_columns = tuple(schema.names) if schema.names else ()
-        else:
-            # For empty datasets without schema, allow empty key_columns.
-            # The operator will handle this gracefully by returning empty results.
-            key_columns = ()
-    else:
-        key_columns = tuple(logical_op._key)
-
-    return HashDistinctOperator(
-        input_physical_op,
-        data_context,
-        key_columns=key_columns,
-        num_partitions=logical_op._num_partitions,
-        # TODO: wire in aggregator args overrides
     )
 
 
@@ -198,17 +149,6 @@ def plan_all_to_all_op(
             op._batch_format,
             data_context,
             debug_limit_shuffle_execution_to_num_blocks,
-        )
-    elif isinstance(op, Distinct):
-        # Use hash-based distinct for HASH_SHUFFLE strategy
-        if data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
-            return _plan_hash_shuffle_distinct(data_context, op, input_physical_dag)
-
-        # For other strategies, would use sort-based distinct
-        # TODO: Implement sort-based distinct as fallback
-        raise NotImplementedError(
-            "Distinct operation only supports HASH_SHUFFLE strategy. "
-            f"Got {data_context.shuffle_strategy}"
         )
     else:
         raise ValueError(f"Found unknown logical operator during planning: {op}")
