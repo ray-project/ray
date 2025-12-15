@@ -2,7 +2,10 @@
 # constraining to a maximum version (i.e. <=) to temporarily work around a bug.
 # Those pins for the sake of workarounds should not be advertised as constraints
 # on future releases in setup.py.
-vllm[audio] @ git+https://github.com/vllm-project/vllm.git@v0.13.0rc1
+# TODO: Switch back to PyPI version (vllm[audio]>=0.13.0) when 0.13.0 is released.
+# Using nightly wheels via extra-index-url in rayllm.depsets.yaml to avoid
+# building from source (which fails due to torch version mismatch on CPU index).
+vllm[audio]>=0.13.0.dev0
 nixl>=0.6.1
 # TODO(llm): remove after next vLLM version bump
 transformers>=4.57.3
