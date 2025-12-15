@@ -9,7 +9,13 @@ from typing import Optional
 import pytest
 
 import ray
-from ray._private.test_utils import client_test_enabled, wait_for_condition
+from ray._common.network_utils import build_address
+from ray._private.test_utils import (
+    PrometheusTimeseries,
+    client_test_enabled,
+    fetch_prometheus_timeseries,
+    wait_for_condition,
+)
 
 try:
     from ray._raylet import AuthenticationTokenLoader
@@ -631,6 +637,59 @@ def test_no_token_with_auth_enabled_returns_false():
         # has_token(ignore_auth_mode=True) should return False, not raise an exception
         result = token_loader.has_token(ignore_auth_mode=True)
         assert result is False
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="no benefit testing this in client mode",
+)
+def test_opentelemetry_metrics_with_token_auth(setup_cluster_with_token_auth):
+    """Test that OpenTelemetry metrics are exported with token authentication.
+
+    This test verifies that the C++ OpenTelemetryMetricRecorder correctly includes
+    the authentication token in its gRPC metadata when exporting metrics to the
+    metrics agent. If the auth headers are missing or incorrect, the metrics agent
+    would reject the requests and metrics wouldn't be collected.
+    """
+
+    cluster_info = setup_cluster_with_token_auth
+    cluster = cluster_info["cluster"]
+
+    # Get the metrics export address from the head node
+    head_node = cluster.head_node
+    prom_addresses = [
+        build_address(head_node.node_ip_address, head_node.metrics_export_port)
+    ]
+
+    timeseries = PrometheusTimeseries()
+
+    def verify_metrics_collected():
+        """Verify that metrics are being exported successfully."""
+        fetch_prometheus_timeseries(prom_addresses, timeseries)
+        metric_names = list(timeseries.metric_descriptors.keys())
+
+        # Check for core Ray metrics that are always exported
+        # These metrics are exported via the C++ OpenTelemetry recorder
+        expected_metrics = [
+            "ray_node_cpu_utilization",
+            "ray_node_mem_used",
+            "ray_node_disk_usage",
+        ]
+
+        # At least some metrics should be present
+        return len(metric_names) > 0 and any(
+            any(expected in name for name in metric_names)
+            for expected in expected_metrics
+        )
+
+    # Wait for metrics to be collected
+    # If auth wasn't working, the metrics agent would reject the exports
+    # and we wouldn't see any metrics
+    wait_for_condition(verify_metrics_collected, retry_interval_ms=1000)
+
+    # Verify we have actual metric data
+    metric_names = list(timeseries.metric_descriptors.keys())
+    assert len(metric_names) > 0, "Expected metrics to be collected with token auth"
 
 
 if __name__ == "__main__":
