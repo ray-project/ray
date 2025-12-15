@@ -69,6 +69,7 @@ ray_cc_library(
     name = "file_persistence",
     hdrs = ["file_persistence.h"],
     deps = [
+        "//src/ray/common:id",
         "//src/ray/common:status",
         "//src/ray/common:status_or",
         "@nlohmann_json",
