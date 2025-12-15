@@ -1,14 +1,19 @@
 """Adapter to integrate ray.experimental.actor_pool.ActorPool with Ray Data.
 
-This module provides CoreActorPoolAdapter, which implements the AutoscalingActorPool
-interface expected by Ray Data's ActorPoolMapOperator, backed by the new C++ ActorPool.
+This module provides ClassBasedActorPoolAdapter, which implements the
+AutoscalingActorPool interface expected by Ray Data's ActorPoolMapOperator,
+using the C++-backed ActorPool with actor_cls directly.
+
+The class-based adapter enables Ray Data to benefit from:
+- C++-backed pool management
+- Cross-actor retry on failures
+- Unified ActorPool API across Ray
 """
 
 import logging
 import time
-import uuid
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Type
 
 import ray
 from ray.actor import ActorHandle
@@ -32,17 +37,18 @@ class _ActorState:
     is_restarting: bool
 
 
-class CoreActorPoolAdapter(AutoscalingActorPool):
-    """Adapter that makes ray.experimental.actor_pool.ActorPool work with Ray Data.
+class ClassBasedActorPoolAdapter(AutoscalingActorPool):
+    """Class-based adapter using ray.experimental.actor_pool.ActorPool.
 
     This adapter implements the AutoscalingActorPool interface expected by
-    ActorPoolMapOperator, while delegating to the C++-backed ActorPool for
-    actual pool management and cross-actor retry.
+    ActorPoolMapOperator, using the new C++-backed ActorPool with actor_cls
+    directly (no callback).
 
-    The adapter maintains Python-side state tracking for Ray Data compatibility:
-    - Pending actors (actors being created)
-    - Running actors with per-actor state (tasks in flight, location, health)
-    - Task submission/completion hooks
+    Key features:
+    - Takes actor_cls instead of create_actor_fn callback
+    - Creates ActorPool internally which handles actor lifecycle
+    - ActorPool generates logical IDs and sets labels automatically
+    - Maintains Python-side state tracking for Ray Data compatibility
     """
 
     _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S = 10
@@ -51,9 +57,7 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
 
     def __init__(
         self,
-        create_actor_fn: Callable[
-            [Dict[str, str], str], Tuple[ActorHandle, ObjectRef[Any]]
-        ],
+        actor_cls: Type,
         per_actor_resource_usage: ExecutionResources,
         *,
         min_size: int,
@@ -61,27 +65,33 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
         initial_size: int,
         max_actor_concurrency: int,
         max_tasks_in_flight_per_actor: int,
+        actor_kwargs: Optional[Dict[str, Any]] = None,
+        actor_options: Optional[Dict[str, Any]] = None,
+        operator_id: Optional[str] = None,
         _enable_actor_pool_on_exit_hook: bool = False,
     ):
-        """Initialize the adapter.
+        """Initialize the class-based adapter.
 
         Args:
-            create_actor_fn: Function to create actors. Takes (labels, logical_id)
-                and returns (actor_handle, ready_ref).
+            actor_cls: The actor class (e.g., _MapWorker) to instantiate.
             per_actor_resource_usage: Resource usage per actor.
             min_size: Minimum pool size.
             max_size: Maximum pool size.
             initial_size: Initial pool size.
-            max_actor_concurrency: Max concurrent tasks per actor (from ray.remote).
+            max_actor_concurrency: Max concurrent tasks per actor.
             max_tasks_in_flight_per_actor: Max tasks that can be queued per actor.
+            actor_kwargs: Keyword arguments for actor constructor.
+            actor_options: Options for ray.remote() (num_cpus, num_gpus, etc.).
+            operator_id: Operator ID for labeling actors.
             _enable_actor_pool_on_exit_hook: Enable actor cleanup hook.
         """
+        from ray.experimental.actor_pool import ActorPool
+
         self._min_size = min_size
         self._max_size = max_size
         self._initial_size = initial_size
         self._max_actor_concurrency = max_actor_concurrency
         self._max_tasks_in_flight = max_tasks_in_flight_per_actor
-        self._create_actor_fn = create_actor_fn
         self._per_actor_resource_usage = per_actor_resource_usage
         self._enable_actor_pool_on_exit_hook = _enable_actor_pool_on_exit_hook
 
@@ -91,14 +101,34 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
         assert self._initial_size >= self._min_size
         assert self._max_tasks_in_flight >= 1
 
+        # Build static labels for operator tracking
+        static_labels = {}
+        if operator_id:
+            static_labels["__ray_data_operator_id"] = operator_id
+
+        # Create the ActorPool (this creates initial_size=0 actors initially)
+        # We set initial_size=0 because Ray Data's ActorPoolMapOperator calls
+        # scale() explicitly after start() to create actors
+        self._pool = ActorPool(
+            actor_cls=actor_cls,
+            min_size=min_size,
+            max_size=max_size,
+            initial_size=0,  # Don't create actors yet
+            actor_kwargs=actor_kwargs or {},
+            actor_options=actor_options or {},
+            logical_id_label_key=self._LOGICAL_ACTOR_ID_LABEL_KEY,
+            static_labels=static_labels,
+        )
+
         # Scale down debouncing
         self._last_upscaled_at: Optional[float] = None
         self._last_downscaling_debounce_warning_ts: Optional[float] = None
 
         # Actor tracking (Python-side for Ray Data compatibility)
+        # Maps actor handle -> state
         self._running_actors: Dict[ActorHandle, _ActorState] = {}
+        # Maps ready_ref -> actor handle (for pending actors)
         self._pending_actors: Dict[ObjectRef, ActorHandle] = {}
-        self._actor_to_logical_id: Dict[ActorHandle, str] = {}
 
         # Cached counts
         self._num_restarting_actors: int = 0
@@ -155,6 +185,14 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
             self._max_actor_concurrency * self.num_running_actors()
         )
 
+    def num_free_task_slots(self) -> int:
+        """Number of free task slots across all running actors."""
+        return max(
+            0,
+            self._max_tasks_in_flight * self.num_running_actors()
+            - self._total_num_tasks_in_flight,
+        )
+
     def scale(self, req: ActorPoolScalingRequest) -> Optional[int]:
         """Apply scaling request."""
         if not self._can_apply(req):
@@ -167,9 +205,15 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
                 f"(reason={req.reason}, {self.get_actor_info()})"
             )
 
-            for _ in range(target_num_actors):
-                actor, ready_ref = self._create_actor()
-                self.add_pending_actor(actor, ready_ref)
+            # Scale the underlying ActorPool
+            self._pool.scale(target_num_actors)
+
+            # Get the newly created actors and track them as pending
+            # ActorPool creates actors synchronously, but we need to track
+            # their readiness via get_location.remote()
+            for actor in self._pool.actors[-target_num_actors:]:
+                ready_ref = actor.get_location.remote()
+                self._pending_actors[ready_ref] = actor
 
             self._last_upscaled_at = time.time()
             return target_num_actors
@@ -217,18 +261,6 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
     # Actor Lifecycle Management
     # =========================================================================
 
-    def _create_actor(self) -> Tuple[ActorHandle, ObjectRef]:
-        """Create a new actor."""
-        logical_actor_id = str(uuid.uuid4())
-        labels = {self.get_logical_id_label_key(): logical_actor_id}
-        actor, ready_ref = self._create_actor_fn(labels, logical_actor_id)
-        self._actor_to_logical_id[actor] = logical_actor_id
-        return actor, ready_ref
-
-    def add_pending_actor(self, actor: ActorHandle, ready_ref: ObjectRef):
-        """Add a pending actor to the pool."""
-        self._pending_actors[ready_ref] = actor
-
     def pending_to_running(self, ready_ref: ObjectRef) -> bool:
         """Move actor from pending to running state.
 
@@ -245,7 +277,7 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
         try:
             actor_location = ray.get(ready_ref)
         except Exception:
-            self._actor_to_logical_id.pop(actor, None)
+            # Actor init failed - will be handled by Ray Data's error handling
             raise
 
         self._running_actors[actor] = _ActorState(
@@ -269,7 +301,7 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
 
     def get_logical_ids(self) -> List[str]:
         """Get logical IDs for all actors."""
-        return list(self._actor_to_logical_id.values())
+        return self._pool.get_logical_ids()
 
     def get_logical_id_label_key(self) -> str:
         """Get the label key for logical actor ID."""
@@ -329,14 +361,15 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
         """Try to remove a pending actor."""
         if self._pending_actors:
             ready_ref = next(iter(self._pending_actors.keys()))
-            actor = self._pending_actors.pop(ready_ref)
-            del self._actor_to_logical_id[actor]
+            self._pending_actors.pop(ready_ref)
+            # Scale down the underlying pool
+            self._pool.scale(-1)
             return True
         return False
 
     def _try_remove_idle_actor(self) -> bool:
         """Try to remove an idle running actor."""
-        for actor, state in self._running_actors.items():
+        for actor, state in list(self._running_actors.items()):
             if state.num_tasks_in_flight == 0:
                 self._release_running_actor(actor)
                 return True
@@ -346,15 +379,13 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
         """Shutdown the pool."""
         self._release_pending_actors(force=force)
         self._release_running_actors(force=force)
+        # Shutdown the underlying ActorPool
+        self._pool.shutdown(force=force)
 
     def _release_pending_actors(self, force: bool):
         """Release all pending actors."""
-        pending = dict(self._pending_actors)
         self._pending_actors.clear()
-
-        if force:
-            for _, actor in pending.items():
-                ray.kill(actor)
+        # ActorPool.shutdown() will handle killing the actors
 
     def _release_running_actors(self, force: bool):
         """Release all running actors."""
@@ -366,14 +397,9 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
             if ref:
                 on_exit_refs.append(ref)
 
-        ray.wait(on_exit_refs, timeout=self._ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S)
-
-        if force:
-            for actor in running:
-                try:
-                    ray.kill(actor)
-                except Exception:
-                    pass
+        if on_exit_refs:
+            ray.wait(on_exit_refs, timeout=self._ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S)
+        # ActorPool.shutdown() will handle killing the actors
 
     def _release_running_actor(self, actor: ActorHandle) -> Optional[ObjectRef]:
         """Release a single running actor."""
@@ -397,7 +423,6 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
                 pass
 
         del self._running_actors[actor]
-        del self._actor_to_logical_id[actor]
         return ref
 
     def get_actor_info(self) -> _ActorPoolInfo:

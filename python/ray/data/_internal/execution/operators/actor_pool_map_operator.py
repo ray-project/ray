@@ -63,21 +63,21 @@ from ray.types import ObjectRef
 from ray.util.common import INT32_MAX
 
 # Lazy import to avoid circular dependencies
-_CoreActorPoolAdapter = None
+_ClassBasedActorPoolAdapter = None
 
 logger = logging.getLogger(__name__)
 
 
-def _get_core_actor_pool_adapter():
-    """Lazy import of CoreActorPoolAdapter to avoid circular imports."""
-    global _CoreActorPoolAdapter
-    if _CoreActorPoolAdapter is None:
+def _get_class_based_actor_pool_adapter():
+    """Lazy import of ClassBasedActorPoolAdapter to avoid circular imports."""
+    global _ClassBasedActorPoolAdapter
+    if _ClassBasedActorPoolAdapter is None:
         from ray.data._internal.execution.operators.core_actor_pool_adapter import (
-            CoreActorPoolAdapter,
+            ClassBasedActorPoolAdapter,
         )
 
-        _CoreActorPoolAdapter = CoreActorPoolAdapter
-    return _CoreActorPoolAdapter
+        _ClassBasedActorPoolAdapter = ClassBasedActorPoolAdapter
+    return _ClassBasedActorPoolAdapter
 
 
 class ActorPoolMapOperator(MapOperator):
@@ -187,21 +187,35 @@ class ActorPoolMapOperator(MapOperator):
             * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
         )
 
+        # HACK: Without this, all actors show up as `_MapWorker` in Grafana, so we can't
+        # tell which operator they belong to. To fix that, we dynamically create a new
+        # class per operator with a unique name.
+        # NOTE: This must be created before the pool for class-based adapter.
+        self._map_worker_cls = type(f"MapWorker({self.name})", (_MapWorker,), {})
+
         # Use new C++-backed Core Actor Pool if feature flag is enabled
         if data_context.use_core_actor_pool:
-            CoreActorPoolAdapter = _get_core_actor_pool_adapter()
-            self._actor_pool = CoreActorPoolAdapter(
-                self._start_actor,
-                per_actor_resource_usage,
+            Adapter = _get_class_based_actor_pool_adapter()
+            self._actor_pool = Adapter(
+                actor_cls=self._map_worker_cls,
+                per_actor_resource_usage=per_actor_resource_usage,
                 min_size=compute_strategy.min_size,
                 max_size=compute_strategy.max_size,
                 initial_size=compute_strategy.initial_size,
                 max_actor_concurrency=max_actor_concurrency,
                 max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
+                actor_kwargs={
+                    "ctx": data_context,
+                    "src_fn_name": name,
+                    "map_transformer": map_transformer,
+                    "actor_location_tracker": get_or_create_actor_location_tracker(),
+                },
+                actor_options=self._ray_remote_args,
+                operator_id=self.id,
                 _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
             )
             logger.debug(
-                f"Using CoreActorPoolAdapter for operator {name} "
+                f"Using ClassBasedActorPoolAdapter for operator {name} "
                 f"(min={compute_strategy.min_size}, max={compute_strategy.max_size})"
             )
         else:
@@ -218,10 +232,6 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
-        # HACK: Without this, all actors show up as `_MapWorker` in Grafana, so we can’t
-        # tell which operator they belong to. To fix that, we dynamically create a new
-        # class per operator with a unique name.
-        self._map_worker_cls = type(f"MapWorker({self.name})", (_MapWorker,), {})
         # Cached actor class.
         self._actor_cls = None
         # Whether no more submittable bundles will be added.
