@@ -7,6 +7,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Collection,
     Dict,
     Generic,
     List,
@@ -1010,22 +1011,25 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
     @staticmethod
     def _to_set(x):
         if isinstance(x, set):
-            return x
+            return Unique._normalize_nans(x)
+
         elif isinstance(x, list):
             if len(x) > 0 and isinstance(x[0], list):
                 # necessary because pyarrow converts all tuples to
                 # list internally.
                 x = map(lambda v: None if v is None else tuple(v), x)
 
-            # NOTE: Pandas when converting to Python objects instantiates
-            #       new `float('nan')` objects which are incomparable b/w each
-            #       other. Here we canonicalize any nan instances replacing them
-            #       w/ `np.nan`
-            return {
-                v if not (isinstance(v, float) and np.isnan(v)) else np.nan for v in x
-            }
+            return Unique._normalize_nans(x)
         else:
             return {x}
+
+    @staticmethod
+    def _normalize_nans(x: Collection) -> Set:
+        # NOTE: Pandas when converting to Python objects instantiates
+        #       new `float('nan')` objects which are incomparable b/w each
+        #       other. Here we canonicalize any nan instances replacing them
+        #       w/ `np.nan`
+        return {v if not (isinstance(v, float) and np.isnan(v)) else np.nan for v in x}
 
 
 @PublicAPI
