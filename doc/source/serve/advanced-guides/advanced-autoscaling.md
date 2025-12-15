@@ -278,7 +278,7 @@ The timing parameters interact in important ways:
 
 **Push interval vs upscale/downscale delays:**
 - Delays control when Ray Serve applies a scale up or scale down.
-- The metrics push interval controls how quickly Ray Serve sees traffic changes.
+- The metrics push interval controls how quickly Ray Serve receives fresh metrics.
 - If the push interval < delay, Ray Serve can use multiple metric updates before it scales.
 - Example: push every 10s with `upscale_delay_s = 20` means up to 2 new metric updates before scaling
 
