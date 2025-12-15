@@ -50,10 +50,10 @@ def _generate_destination_tag(commit: str, tag_suffix: Optional[str] = None) -> 
         251215.abc1234-x86_64
         251215.abc1234-jdk-x86_64
     """
-    date_str = datetime.utcnow().strftime("%y%m%d")
+    date_str = datetime.now(datetime.timezone.utc).strftime("%y%m%d")
     commit_prefix = commit[:7]
     if tag_suffix:
-        return f"{date_str}.{commit_prefix}.{tag_suffix}"
+        return f"{date_str}.{commit_prefix}{tag_suffix}"
     return f"{date_str}.{commit_prefix}"
 
 
