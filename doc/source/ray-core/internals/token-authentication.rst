@@ -8,13 +8,13 @@ single, statically generated token in the authorization header for all requests 
 Dashboard, GCS server, and other control-plane services.
 
 This document covers the design and architecture of token authentication in Ray, including
-configuration, token loading, propagation, and verification across C++, Python, and the dashboard.
+configuration, token loading, propagation, and verification across C++, Python, and the Ray dashboard.
 
 Authentication Modes
 --------------------
 
 Ray's authentication behavior is controlled by the **RAY_AUTH_MODE** environment variable.
-as of now, Ray supports two modes:
+As of now, Ray supports two modes:
 
 - ``disabled`` - Default; no authentication.
 - ``token`` - Static bearer token authentication. When combined with **RAY_ENABLE_K8S_TOKEN_AUTH**,
@@ -22,7 +22,7 @@ as of now, Ray supports two modes:
 
 **RAY_AUTH_MODE** must be set via the environment and should be configured consistently on every
 node in the Ray cluster. When ``RAY_AUTH_MODE=token``, token authentication is enabled and all
-supported RPC and HTTP entry points enforce an authentication token.
+supported RPC and HTTP entry points enforce token based authentication.
 
 Token Sources and Precedence
 ----------------------------
@@ -255,14 +255,14 @@ authorization via ``SubjectAccessReview``:
    spec:
      user: my-user@example.com
      resourceAttributes:
-       verb: ray:write-user
+       verb: ray-user
        group: ray.io
        resource: rayclusters
        name: ray-cluster
        namespace: my-team
 
 The ``SubjectAccessReview`` ensures that only authenticated users who are granted RBAC access to
-the RayCluster with custom verb ``ray:write`` are allowed. Access is granted using standard
+the RayCluster with custom verb ``ray-user`` are allowed. Access is granted using standard
 Kubernetes RBAC APIs (``ClusterRole``, ``Role``, ``RoleBinding``, etc.). The name and namespace
 of the Ray cluster used in the ``SubjectAccessReview`` request are stored in environment
 variables **RAY_CLUSTER_NAME** and **RAY_CLUSTER_NAMESPACE** configured by KubeRay.
@@ -283,7 +283,7 @@ with a token audience dedicated for Ray:
        - name: ray-head
          volumeMounts:
            - name: ray-token
-             mountPath: "/var/run/ray.io/service-account"
+             mountPath: "/var/run/ray.io/serviceaccount"
              readOnly: true
          serviceAccountName: default
      volumes:
