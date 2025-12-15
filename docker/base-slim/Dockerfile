@@ -7,8 +7,6 @@ ARG BASE_IMAGE
 FROM ${BASE_IMAGE} AS main-build
 ARG PYTHON_VERSION
 ARG PYTHON_DEPSET
-COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
-
 
 RUN <<EOF
 #!/bin/bash
@@ -102,6 +100,7 @@ ENV HOME=/home/ray
 WORKDIR /home/ray
 
 COPY python/requirements_compiled.txt /home/ray/requirements_compiled.txt
+COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 RUN <<EOF
 #!/bin/bash
