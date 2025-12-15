@@ -1,14 +1,13 @@
 build_arg_sets:
-  cpu:
-    PYTHON_VERSION: py311
-    CUDA_CODE: cpu
-    # vLLM nightly uses "cpu" for CPU builds
-    VLLM_VARIANT: cpu
+  # TODO: Re-enable CPU when vLLM 0.13.0 is on PyPI.
+  # CPU depset is disabled because building vLLM from git requires torch==2.9.0
+  # in build-system.requires, but the CPU PyTorch index only has torch==2.9.0+cpu.
+  # cpu:
+  #   PYTHON_VERSION: py311
+  #   CUDA_CODE: cpu
   cu128:
     PYTHON_VERSION: py311
     CUDA_CODE: cu128
-    # vLLM nightly only has cu129/cu130, use cu129 (compatible at runtime)
-    VLLM_VARIANT: cu129
 
 
 .common_settings: &common_settings
@@ -17,12 +16,7 @@ build_arg_sets:
     - --unsafe-package ray
     - --python-platform=x86_64-manylinux_2_28
     - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
-    # TODO: Remove vLLM nightly index when vLLM 0.13.0 is on PyPI.
-    # Using nightly wheels to avoid building vLLM from source (which fails
-    # because build-system.requires needs torch==2.9.0 but CPU index has 2.9.0+cpu).
-    - --extra-index-url https://wheels.vllm.ai/nightly/${VLLM_VARIANT}/
   build_arg_sets:
-    - cpu
     - cu128
 
 depsets:

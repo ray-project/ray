@@ -1,5 +1,6 @@
 --index-url https://pypi.org/simple
 --extra-index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://wheels.vllm.ai/nightly/cpu/
 
 adlfs==2023.8.0 \
     --hash=sha256:07e804f6df4593acfcaf01025b162e30ac13e523d3570279c98b2d91a18026d9 \
