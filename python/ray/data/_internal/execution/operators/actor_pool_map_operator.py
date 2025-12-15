@@ -5,7 +5,20 @@ import uuid
 import warnings
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 import ray
 from ray.actor import ActorHandle
@@ -83,6 +96,7 @@ class ActorPoolMapOperator(MapOperator):
         ray_remote_args: Optional[Dict[str, Any]] = None,
         ray_actor_task_remote_args: Optional[Dict[str, Any]] = None,
         target_max_block_size_override: Optional[int] = None,
+        on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
     ):
         """Create an ActorPoolMapOperator instance.
 
@@ -112,6 +126,8 @@ class ActorPoolMapOperator(MapOperator):
             ray_actor_task_remote_args: Ray Core options passed to map actor tasks.
             target_max_block_size_override: The target maximum number of bytes to
                 include in an output block.
+            on_start: Optional callback invoked with the schema from the first input
+                bundle before any tasks are submitted.
         """
         super().__init__(
             map_transformer,
@@ -125,6 +141,7 @@ class ActorPoolMapOperator(MapOperator):
             map_task_kwargs,
             ray_remote_args_fn,
             ray_remote_args,
+            on_start,
         )
 
         self._min_rows_per_bundle = min_rows_per_bundle
@@ -228,8 +245,11 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_locality_enabled = options.actor_locality_enabled
         super().start(options)
 
-        # Create the actor workers and add them to the pool.
         self._actor_cls = ray.remote(**self._ray_remote_args)(self._map_worker_cls)
+        # Trigger the large UDF warning check by accessing the property.
+        # This is needed because ActorPoolMapOperator passes _map_transformer
+        # directly to actors, never accessing the lazy _map_transformer_ref property.
+        _ = self._map_transformer_ref
         self._actor_pool.scale(
             ActorPoolScalingRequest(
                 delta=self._actor_pool.initial_size(), reason="scaling to initial size"
@@ -305,6 +325,8 @@ class ActorPoolMapOperator(MapOperator):
         return actor, res_ref
 
     def _add_bundled_input(self, bundle: RefBundle):
+        # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
+        self._notify_first_input(bundle)
         self._bundle_queue.add(bundle)
         self._metrics.on_input_queued(bundle)
         # Try to dispatch all bundles in the queue, including this new bundle.

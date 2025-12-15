@@ -1,3 +1,5 @@
+"""Tests for make_fastapi_ingress function."""
+
 import inspect
 import sys
 
@@ -12,14 +14,8 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 )
 
 
-class TestMakeFastapiIngressInheritance:
-    """Test suite for make_fastapi_ingress with inherited classes.
-
-    These tests verify that when subclassing OpenAiIngress, make_fastapi_ingress
-    correctly creates a new class with all routes properly registered.
-    The actual fix for inherited methods is in Ray Serve's make_fastapi_class_based_view
-    which uses MRO to identify inherited methods.
-    """
+class TestMakeFastapiIngress:
+    """Test suite for make_fastapi_ingress."""
 
     def test_subclass_inherits_endpoints(self):
         """Test that subclassing OpenAiIngress works with make_fastapi_ingress."""
@@ -114,7 +110,7 @@ class TestMakeFastapiIngressInheritance:
         assert "/v1/models" not in route_paths
 
     def test_deeply_nested_inheritance(self):
-        """Test that deeply nested inheritance also works correctly."""
+        """Test that deeply nested inheritance works correctly."""
 
         class IntermediateIngress(OpenAiIngress):
             """Intermediate class in inheritance chain."""

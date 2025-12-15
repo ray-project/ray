@@ -6,6 +6,7 @@ CHAOS_FAULT="${1:-no_fault}"
 CHAOS_WORKLOAD="${2:-test_potato_passer}"
 
 bazel run //ci/ray_ci:build_in_docker -- docker \
+    --python-version 3.10 \
     --platform cpu --canonical-tag kuberay-test
 docker tag rayproject/ray:kuberay-test ray-ci:kuberay-test
 
