@@ -81,6 +81,30 @@ class UnityCatalogConnector:
                 env_vars["AWS_DEFAULT_REGION"] = self.region
         elif "azuresasuri" in creds:
             env_vars["AZURE_STORAGE_SAS_TOKEN"] = creds["azuresasuri"]
+        # Azure UC returns a user delegation SAS; see
+        # https://docs.databricks.com/en/data-governance/unity-catalog/credential-vending.html
+        elif "azure_user_delegation_sas" in creds:
+            azure = creds["azure_user_delegation_sas"] or {}
+            sas_token = (
+                azure.get("sas_token")
+                or azure.get("sas")
+                or azure.get("token")
+                or azure.get("sasToken")
+            )
+            if sas_token and sas_token.startswith("?"):
+                sas_token = sas_token[1:]
+            if sas_token:
+                env_vars["AZURE_STORAGE_SAS_TOKEN"] = sas_token
+            else:
+                known_keys = ", ".join(azure.keys())
+                raise ValueError(
+                    "Azure UC credentials missing SAS token in azure_user_delegation_sas. "
+                    f"Available keys: {known_keys}"
+                )
+            storage_account = azure.get("storage_account")
+            if storage_account:
+                env_vars["AZURE_STORAGE_ACCOUNT"] = storage_account
+                env_vars["AZURE_STORAGE_ACCOUNT_NAME"] = storage_account
         elif "gcp_service_account" in creds:
             gcp_json = creds["gcp_service_account"]
             temp_file = tempfile.NamedTemporaryFile(
@@ -95,8 +119,10 @@ class UnityCatalogConnector:
             self._gcp_temp_file = temp_file.name
             atexit.register(self._cleanup_gcp_temp_file, temp_file.name)
         else:
+            known_keys = ", ".join(creds.keys())
             raise ValueError(
-                "No known credential type found in Databricks UC response."
+                "No known credential type found in Databricks UC response. "
+                f"Available keys: {known_keys}"
             )
 
         for k, v in env_vars.items():
