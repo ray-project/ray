@@ -1,5 +1,7 @@
 --index-url https://pypi.org/simple
 --extra-index-url https://download.pytorch.org/whl/cu128
+--find-links https://wheels.vllm.ai/7d80c73d4277187d0468f15a22bba959ce853261/cu129/vllm/
+--find-links https://wheels.vllm.ai/7d80c73d4277187d0468f15a22bba959ce853261/cu129/vllm/
 
 adlfs==2023.8.0 \
     --hash=sha256:07e804f6df4593acfcaf01025b162e30ac13e523d3570279c98b2d91a18026d9 \
@@ -5551,7 +5553,8 @@ virtualenv==20.29.1 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cu128.lock
     #   -r python/requirements.txt
-vllm @ git+https://github.com/vllm-project/vllm.git@7d80c73d4277187d0468f15a22bba959ce853261
+vllm==0.11.2.dev720+g7d80c73d4 \
+    --hash=sha256:c6f67c29592ad2daf55a1dd323978c0a5ab14ba341aeda8733055ced50241a52
     # via -r python/requirements/llm/llm-requirements.txt
 watchfiles==0.19.0 \
     --hash=sha256:0089c6dc24d436b373c3c57657bf4f9a453b13767150d17284fc6162b2791911 \

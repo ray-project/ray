@@ -1,5 +1,7 @@
 --index-url https://pypi.org/simple
 --extra-index-url https://download.pytorch.org/whl/cu128
+--find-links https://wheels.vllm.ai/7d80c73d4277187d0468f15a22bba959ce853261/cu129/vllm/
+--find-links https://wheels.vllm.ai/7d80c73d4277187d0468f15a22bba959ce853261/cu129/vllm/
 
 aiohappyeyeballs==2.6.1 \
     --hash=sha256:c3f9d0113123803ccadfdf3f0faa505bc78e6a72d1cc4806cbd719826e943558 \
