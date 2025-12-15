@@ -282,10 +282,8 @@ class VLLMEngineConfig(BaseModelExtended):
     def use_gpu(self) -> bool:
         """Returns True if vLLM is configured to use GPU resources."""
         # Explicit use_cpu setting takes precedence over all other configurations
-        if self.use_cpu is True:
-            return False
-        if self.use_cpu is False:
-            return True
+        if isinstance(self.use_cpu, bool):
+            return not self.use_cpu
 
         # Check placement_group_config bundles for explicit GPU specification
         if self.placement_group_config:
