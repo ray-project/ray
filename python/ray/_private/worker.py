@@ -801,7 +801,7 @@ class Worker:
         value: Any,
         owner_address: Optional[str] = None,
         _is_experimental_channel: bool = False,
-        _tensor_transport: str = "object_store",
+        _tensor_transport: str = TensorTransportEnum.OBJECT_STORE.name,
     ):
         """Put value in the local object store.
 
@@ -835,18 +835,15 @@ class Worker:
                 "ray.ObjectRef in a list and call 'put' on it."
             )
         tensors = None
-        tensor_transport: TensorTransportEnum = TensorTransportEnum.from_str(
-            _tensor_transport
+        from ray.experimental.gpu_object_manager.util import (
+            normalize_and_validate_tensor_transport,
+            validate_one_sided,
         )
-        if tensor_transport not in [
-            TensorTransportEnum.OBJECT_STORE,
-            TensorTransportEnum.NIXL,
-        ]:
-            raise ValueError(
-                "Currently, Ray Direct Transport only supports 'object_store' and 'nixl' for tensor transport in ray.put()."
-            )
+
+        tensor_transport = normalize_and_validate_tensor_transport(_tensor_transport)
+        validate_one_sided(tensor_transport, "ray.put")
         try:
-            if tensor_transport != TensorTransportEnum.OBJECT_STORE:
+            if tensor_transport != TensorTransportEnum.OBJECT_STORE.name:
                 (
                     serialized_value,
                     tensors,
@@ -867,19 +864,24 @@ class Worker:
         # object. Instead, clients will keep the object pinned.
         pin_object = not _is_experimental_channel
 
+        tensor_transport_enum = TensorTransportEnum.OBJECT_STORE
+        if tensor_transport != TensorTransportEnum.OBJECT_STORE.name:
+            tensor_transport_enum = TensorTransportEnum.DIRECT_TRANSPORT
+
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
         # the object is Put() in the core worker, expecting that this python
         # reference will be created. If another reference is created and
         # removed before this one, it will corrupt the state in the
         # reference counter.
+
         ret = self.core_worker.put_object(
             serialized_value,
             pin_object=pin_object,
             owner_address=owner_address,
             inline_small_object=True,
             _is_experimental_channel=_is_experimental_channel,
-            tensor_transport_val=tensor_transport.value,
+            tensor_transport_val=tensor_transport_enum.value,
         )
         if tensors:
             self.gpu_object_manager.put_object(ret, tensor_transport, tensors)
@@ -896,43 +898,26 @@ class Worker:
         self,
         serialized_objects,
         object_refs,
-        tensor_transport_hint: Optional[TensorTransportEnum] = None,
+        tensor_transport_hint: Optional[str] = None,
     ):
         gpu_objects: Dict[str, List["torch.Tensor"]] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
-            # TODO: Here tensor_transport_hint is set by the user in ray.get(), tensor_transport is set
-            # in serialize_objects by ray.method(tensor_transport="xxx"), and obj_ref.tensor_transport()
-            # is set by ray.put(). We may clean up this logic in the future.
             if (
                 tensor_transport is None
                 or tensor_transport == TensorTransportEnum.OBJECT_STORE
-            ) and (
-                obj_ref is None
-                or obj_ref.tensor_transport() == TensorTransportEnum.OBJECT_STORE.value
             ):
                 # The object is not a gpu object, so we cannot use other external transport to
                 # fetch it.
                 continue
 
-            # If the object is a gpu object, we can choose to use the object store or other external
-            # transport to fetch it. The `tensor_transport_hint` has the highest priority, then the
-            # tensor_transport in obj_ref.tensor_transport(), then the tensor_transport in serialize_objects,
-            # then the default value `OBJECT_STORE`.
-            chosen_tensor_transport = (
-                tensor_transport_hint
-                or (
-                    TensorTransportEnum(obj_ref.tensor_transport()) if obj_ref else None
-                )
-                or tensor_transport
-                or TensorTransportEnum.OBJECT_STORE
-            )
-
             object_id = obj_ref.hex()
             if object_id not in gpu_objects:
                 # If using a non-object store transport, then tensors will be sent
                 # out-of-band. Get them before deserializing the object store data.
+                # The user can choose OBJECT_STORE as the hint to fetch the RDT object
+                # through the object store.
                 gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
-                    object_id, tensor_transport=chosen_tensor_transport
+                    object_id, tensor_transport=tensor_transport_hint
                 )
 
         # Function actor manager or the import thread may call pickle.loads
@@ -983,16 +968,6 @@ class Worker:
                     f"Attempting to call `get` on the value {object_ref}, "
                     "which is not an ray.ObjectRef."
                 )
-        tensor_transport: TensorTransportEnum = (
-            TensorTransportEnum.from_str(_tensor_transport)
-            if _tensor_transport is not None
-            else None
-        )
-        assert tensor_transport in [
-            TensorTransportEnum.OBJECT_STORE,
-            TensorTransportEnum.NIXL,
-            None,
-        ], "Currently, RDT only supports 'object_store' and 'nixl' for tensor transport in ray.get()."
         timeout_ms = (
             int(timeout * 1000) if timeout is not None and timeout != -1 else -1
         )
@@ -1004,7 +979,7 @@ class Worker:
         )
 
         debugger_breakpoint = b""
-        for data, metadata, _ in serialized_objects:
+        for _, metadata, _ in serialized_objects:
             if metadata:
                 metadata_fields = metadata.split(b",")
                 if len(metadata_fields) >= 2 and metadata_fields[1].startswith(
@@ -1016,8 +991,17 @@ class Worker:
         if skip_deserialization:
             return None, debugger_breakpoint
 
+        if _tensor_transport is not None:
+            from ray.experimental.gpu_object_manager.util import (
+                normalize_and_validate_tensor_transport,
+            )
+
+            _tensor_transport = normalize_and_validate_tensor_transport(
+                _tensor_transport
+            )
+
         values = self.deserialize_objects(
-            serialized_objects, object_refs, tensor_transport_hint=tensor_transport
+            serialized_objects, object_refs, tensor_transport_hint=_tensor_transport
         )
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.
@@ -2840,15 +2824,15 @@ blocking_get_inside_async_warned = False
 
 @overload
 def get(
-    object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
-) -> List[Any]:
+    object_refs: "Sequence[ObjectRef[R]]", *, timeout: Optional[float] = None
+) -> List[R]:
     ...
 
 
 @overload
 def get(
-    object_refs: "Sequence[ObjectRef[R]]", *, timeout: Optional[float] = None
-) -> List[R]:
+    object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
+) -> List[Any]:
     ...
 
 
