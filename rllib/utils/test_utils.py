@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
     error=False,
 )
 def add_rllib_example_script_args(*args, **kwargs):
-    from ray.rllib.utils.test_utils import add_rllib_example_script_args
+    from ray.rllib.examples.utils import add_rllib_example_script_args
 
     return add_rllib_example_script_args(*args, **kwargs)
 
