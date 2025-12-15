@@ -31,6 +31,7 @@ from ray.llm._internal.common.utils.lora_utils import (
 from ray.llm._internal.serve.constants import (
     DEFAULT_LLM_ROUTER_HTTP_TIMEOUT,
     DEFAULT_MAX_ONGOING_REQUESTS,
+    DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
 )
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -87,6 +88,9 @@ T = TypeVar("T")
 
 DEFAULT_INGRESS_OPTIONS = {
     "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
+    "autoscaling_config": {
+        "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
+    },
 }
 
 # These methods correspond to functions defined in the LLMEngine class in python/ray/llm/_internal/serve/deployments/llm/llm_engine.py
@@ -237,9 +241,8 @@ def make_fastapi_ingress(
         class_dict[method_name] = decorated_method
 
     # Create new class with the decorated methods in its __dict__.
-    # IMPORTANT: We keep the same __name__ and __qualname__ as the original
-    # class so that make_fastapi_class_based_view can properly identify the routes
-    # (it checks if cls.__qualname__ is in route.endpoint.__qualname__).
+    # We keep the same __name__ and __qualname__ as the original class
+    # so that the new class properly represents the input class.
     new_cls = type(cls.__name__, (cls,), class_dict)
     new_cls.__qualname__ = cls.__qualname__
 
