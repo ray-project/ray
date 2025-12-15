@@ -31,7 +31,7 @@ steps:
       RAYCI_DISABLE_JAVA: "false"
       RAYCI_WANDA_ALWAYS_REBUILD: "true"
       JDK_SUFFIX: "-jdk"
-      HOSTTYPE: "{{matrix}}"
+      HOSTTYPE: "x86_64"
 
   - name: manylinux-cibase-jdk-aarch64
     label: ":magic_wand: wanda: manylinux-cibase-jdk-aarch64"
@@ -44,7 +44,7 @@ steps:
       ARCH_SUFFIX: "aarch64"
       HOSTTYPE: "aarch64"
 
-  - label: ":docker: push: Push manylinux-cibase to Docker Hub"
+  - label: ":docker: push: Push manylinux-cibase-{{matrix}} to Docker Hub"
     depends_on:
       - manylinux-cibase-x86_64
       - manylinux-cibase-aarch64
@@ -60,7 +60,7 @@ steps:
         --destination-repository rayproject/manylinux2014
         --tag-suffix -{{matrix}}
 
-  - label: ":docker: push: Push manylinux-cibase-jdk to Docker Hub"
+  - label: ":docker: push: Push manylinux-cibase-jdk-{{matrix}} to Docker Hub"
     depends_on:
       - manylinux-cibase-jdk-x86_64
       - manylinux-cibase-jdk-aarch64
