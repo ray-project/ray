@@ -30,6 +30,7 @@ from ray._private.utils import (
 )
 from ray._raylet import (
     WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS,
+    CppFunctionDescriptor,
     JobID,
     PythonFunctionDescriptor,
 )
@@ -570,14 +571,34 @@ class FunctionActorManager:
                 executor = self._make_actor_method_executor(
                     actor_method_name, actor_method
                 )
-                self._function_execution_info[method_id] = FunctionExecutionInfo(
+                function_execution_info = FunctionExecutionInfo(
                     function=executor,
                     function_name=actor_method_name,
                     max_calls=0,
                 )
+                self._function_execution_info[method_id] = function_execution_info
+                self._register_cpp_function_alias_for_actor_method(
+                    actor_method_name, actor_class_name, function_execution_info
+                )
                 self._num_task_executions[method_id] = 0
             self._num_task_executions[function_id] = 0
         return actor_class
+
+    def _register_cpp_function_alias_for_actor_method(
+        self, actor_method_name, actor_class_name, function_execution_info
+    ):
+        """Expose actor methods to C++ callers via a matching descriptor."""
+        try:
+            cpp_descriptor = CppFunctionDescriptor(
+                actor_method_name, "PYTHON", actor_class_name
+            )
+        except Exception:
+            return
+        cpp_method_id = cpp_descriptor.function_id
+        if cpp_method_id in self._function_execution_info:
+            return
+        self._function_execution_info[cpp_method_id] = function_execution_info
+        self._num_task_executions[cpp_method_id] = 0
 
     def _load_actor_class_from_local(self, actor_creation_function_descriptor):
         """Load actor class from local code."""
