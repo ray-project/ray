@@ -328,11 +328,12 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           cluster_resource_scheduler_.GetLocalResourceManager().MarkFootprintAsBusy(
               WorkFootprint::PULLING_TASK_ARGUMENTS);
           work_it = leases_to_grant_queue.erase(work_it);
+          RAY_LOG(INFO) << "Failed to pin args (some args missing)."
         } else {
           // The lease's args cannot be pinned due to lack of memory. We should
           // retry granting the lease once another lease finishes and releases
           // its arguments.
-          RAY_LOG(DEBUG) << "Granting lease " << lease_id
+          RAY_LOG(INFO) << "Granting lease " << lease_id
                          << " would put this node over the max memory allowed for "
                             "arguments of granted leases ("
                          << max_pinned_lease_arguments_bytes_
@@ -800,10 +801,10 @@ bool LocalLeaseManager::PinLeaseArgsIfMemoryAvailable(
   for (auto &arg : args) {
     lease_arg_bytes += arg->GetSize();
   }
-  RAY_LOG(DEBUG) << "RayLease " << lease_spec.LeaseId() << " has args of size "
+  RAY_LOG(INFO) << "RayLease " << lease_spec.LeaseId() << " has args of size "
                  << lease_arg_bytes;
   PinLeaseArgs(lease_spec, std::move(args));
-  RAY_LOG(DEBUG) << "Size of pinned task args is now " << pinned_lease_arguments_bytes_;
+  RAY_LOG(INFO) << "Size of pinned task args is now " << pinned_lease_arguments_bytes_;
   if (max_pinned_lease_arguments_bytes_ == 0) {
     // Max threshold for pinned args is not set.
     return true;
@@ -817,7 +818,7 @@ bool LocalLeaseManager::PinLeaseArgsIfMemoryAvailable(
         << max_pinned_lease_arguments_bytes_;
   } else if (pinned_lease_arguments_bytes_ > max_pinned_lease_arguments_bytes_) {
     ReleaseLeaseArgs(lease_spec.LeaseId());
-    RAY_LOG(DEBUG) << "Cannot grant lease " << lease_spec.LeaseId()
+    RAY_LOG(INFO) << "Cannot grant lease " << lease_spec.LeaseId()
                    << " with arguments of size " << lease_arg_bytes
                    << " current pinned bytes is " << pinned_lease_arguments_bytes_;
     return false;
@@ -1214,6 +1215,8 @@ void LocalLeaseManager::DebugStr(std::stringstream &buffer) const {
   buffer << "Waiting leases size: " << waiting_leases_index_.size() << "\n";
   buffer << "Number of granted lease arguments: " << granted_lease_args_.size() << "\n";
   buffer << "Number of pinned lease arguments: " << pinned_lease_arguments_.size()
+         << "\n";
+  buffer << "Total size of pinned lease arguments: " << pinned_lease_arguments_bytes_
          << "\n";
   buffer << "Number of total spilled leases: " << num_lease_spilled_ << "\n";
   buffer << "Number of spilled waiting leases: " << num_waiting_lease_spilled_ << "\n";
