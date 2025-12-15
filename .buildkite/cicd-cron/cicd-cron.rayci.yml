@@ -3,6 +3,7 @@ steps:
   # NOTE(andrew-anyscale): 'name' is used for both naming the wanda image, as
   # well as for generating step names. Step name cannot contain a {{}} placeholder,
   # so we cannot use a matrix here.
+  # See: https://github.com/ray-project/rayci/blob/74cdca5848d8ff0c9dcad464d74fc2e5cd61fa13/raycicmd/wanda.go#L53
   - name: manylinux-cibase-x86_64
     label: ":magic_wand: wanda: manylinux-cibase-x86_64"
     wanda: ci/docker/manylinux-cibase.wanda.yaml
@@ -44,35 +45,25 @@ steps:
       ARCH_SUFFIX: "aarch64"
       HOSTTYPE: "aarch64"
 
-  - label: ":docker: push: Push manylinux-cibase-{{matrix}} to Docker Hub"
+  - label: ":docker: push: Push manylinux-cibase{{matrix.jdk_suffix}}{{matrix.host_suffix}} to Docker Hub"
     depends_on:
       - manylinux-cibase-x86_64
       - manylinux-cibase-aarch64
-      - forge
-    job_env: forge
-    matrix:
-      - "x86_64"
-      - "aarch64"
-    commands:
-      - bazel run //.buildkite:copy_files -- --destination docker_login
-      - bazel run //ci/ray_ci/automation:copy_wanda_image --
-        --wanda-image-name manylinux-cibase-{{matrix}}
-        --destination-repository rayproject/manylinux2014
-        --tag-suffix -{{matrix}}
-
-  - label: ":docker: push: Push manylinux-cibase-jdk-{{matrix}} to Docker Hub"
-    depends_on:
       - manylinux-cibase-jdk-x86_64
       - manylinux-cibase-jdk-aarch64
       - forge
     job_env: forge
     matrix:
-      - "x86_64"
-      - "aarch64"
+      setup:
+        host_suffix:
+          - "-x86_64"
+          - "-aarch64"
+        jdk_suffix:
+          - ""
+          - "-jdk"
     commands:
       - bazel run //.buildkite:copy_files -- --destination docker_login
       - bazel run //ci/ray_ci/automation:copy_wanda_image --
-        --wanda-image-name manylinux-cibase-jdk-{{matrix}}
+        --wanda-image-name manylinux-cibase{{matrix.jdk_suffix}}{{matrix.host_suffix}}
         --destination-repository rayproject/manylinux2014
-        --tag-suffix -jdk-{{matrix}}
-  
+        --tag-suffix {{matrix.jdk_suffix}}{{matrix.host_suffix}}
