@@ -15,6 +15,8 @@
 #include "ray/core_worker/actor_pool_work_queue.h"
 
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -24,8 +26,7 @@ namespace core {
 namespace {
 
 /// Helper to create a simple PoolWorkItem for testing.
-PoolWorkItem CreateTestWorkItem(const std::string &key = "",
-                                int32_t attempt_number = 0) {
+PoolWorkItem CreateTestWorkItem(const std::string &key = "", int32_t attempt_number = 0) {
   PoolWorkItem item;
   item.work_item_id = TaskID::FromRandom(JobID());
   item.function = RayFunction();
@@ -39,25 +40,25 @@ PoolWorkItem CreateTestWorkItem(const std::string &key = "",
 
 TEST(UnorderedPoolWorkQueueTest, BasicPushPop) {
   UnorderedPoolWorkQueue queue;
-  
+
   // Initially empty
   EXPECT_FALSE(queue.HasWork());
   EXPECT_EQ(queue.Size(), 0);
   EXPECT_FALSE(queue.Pop().has_value());
-  
+
   // Push one item
   auto item1 = CreateTestWorkItem();
   auto item1_id = item1.work_item_id;
   queue.Push(std::move(item1));
-  
+
   EXPECT_TRUE(queue.HasWork());
   EXPECT_EQ(queue.Size(), 1);
-  
+
   // Pop the item
   auto popped = queue.Pop();
   ASSERT_TRUE(popped.has_value());
   EXPECT_EQ(popped->work_item_id, item1_id);
-  
+
   // Empty again
   EXPECT_FALSE(queue.HasWork());
   EXPECT_EQ(queue.Size(), 0);
@@ -66,7 +67,7 @@ TEST(UnorderedPoolWorkQueueTest, BasicPushPop) {
 
 TEST(UnorderedPoolWorkQueueTest, FIFOOrdering) {
   UnorderedPoolWorkQueue queue;
-  
+
   // Push multiple items
   std::vector<TaskID> task_ids;
   for (int i = 0; i < 5; i++) {
@@ -74,37 +75,37 @@ TEST(UnorderedPoolWorkQueueTest, FIFOOrdering) {
     task_ids.push_back(item.work_item_id);
     queue.Push(std::move(item));
   }
-  
+
   EXPECT_EQ(queue.Size(), 5);
-  
+
   // Pop in FIFO order
   for (int i = 0; i < 5; i++) {
     auto popped = queue.Pop();
     ASSERT_TRUE(popped.has_value());
     EXPECT_EQ(popped->work_item_id, task_ids[i]);
   }
-  
+
   EXPECT_EQ(queue.Size(), 0);
   EXPECT_FALSE(queue.Pop().has_value());
 }
 
 TEST(UnorderedPoolWorkQueueTest, RetryWithIncrementedAttempt) {
   UnorderedPoolWorkQueue queue;
-  
+
   // Push item with attempt_number = 0
   auto item = CreateTestWorkItem("", 0);
   auto item_id = item.work_item_id;
   queue.Push(std::move(item));
-  
+
   // Pop and increment attempt number (simulating retry)
   auto popped = queue.Pop();
   ASSERT_TRUE(popped.has_value());
   EXPECT_EQ(popped->attempt_number, 0);
-  
+
   // Re-enqueue with incremented attempt
   popped->attempt_number++;
   queue.Push(std::move(*popped));
-  
+
   // Pop again and verify attempt number increased
   auto retry_popped = queue.Pop();
   ASSERT_TRUE(retry_popped.has_value());
@@ -114,18 +115,18 @@ TEST(UnorderedPoolWorkQueueTest, RetryWithIncrementedAttempt) {
 
 TEST(UnorderedPoolWorkQueueTest, Clear) {
   UnorderedPoolWorkQueue queue;
-  
+
   // Push multiple items
   for (int i = 0; i < 10; i++) {
     queue.Push(CreateTestWorkItem());
   }
-  
+
   EXPECT_EQ(queue.Size(), 10);
   EXPECT_TRUE(queue.HasWork());
-  
+
   // Clear all
   queue.Clear();
-  
+
   EXPECT_EQ(queue.Size(), 0);
   EXPECT_FALSE(queue.HasWork());
   EXPECT_FALSE(queue.Pop().has_value());
@@ -133,19 +134,19 @@ TEST(UnorderedPoolWorkQueueTest, Clear) {
 
 TEST(UnorderedPoolWorkQueueTest, ManyItems) {
   UnorderedPoolWorkQueue queue;
-  
+
   const int num_items = 1000;
   std::vector<TaskID> task_ids;
-  
+
   // Push many items
   for (int i = 0; i < num_items; i++) {
     auto item = CreateTestWorkItem();
     task_ids.push_back(item.work_item_id);
     queue.Push(std::move(item));
   }
-  
+
   EXPECT_EQ(queue.Size(), num_items);
-  
+
   // Pop all and verify order
   for (int i = 0; i < num_items; i++) {
     ASSERT_TRUE(queue.HasWork());
@@ -153,68 +154,68 @@ TEST(UnorderedPoolWorkQueueTest, ManyItems) {
     ASSERT_TRUE(popped.has_value());
     EXPECT_EQ(popped->work_item_id, task_ids[i]);
   }
-  
+
   EXPECT_EQ(queue.Size(), 0);
   EXPECT_FALSE(queue.HasWork());
 }
 
 TEST(UnorderedPoolWorkQueueTest, InterleavedPushPop) {
   UnorderedPoolWorkQueue queue;
-  
+
   // Interleave pushes and pops
   auto item1 = CreateTestWorkItem();
   auto id1 = item1.work_item_id;
   queue.Push(std::move(item1));
-  
+
   auto item2 = CreateTestWorkItem();
   auto id2 = item2.work_item_id;
   queue.Push(std::move(item2));
-  
+
   EXPECT_EQ(queue.Size(), 2);
-  
+
   // Pop first
   auto popped1 = queue.Pop();
   ASSERT_TRUE(popped1.has_value());
   EXPECT_EQ(popped1->work_item_id, id1);
   EXPECT_EQ(queue.Size(), 1);
-  
+
   // Push another
   auto item3 = CreateTestWorkItem();
   auto id3 = item3.work_item_id;
   queue.Push(std::move(item3));
   EXPECT_EQ(queue.Size(), 2);
-  
+
   // Pop remaining two
   auto popped2 = queue.Pop();
   ASSERT_TRUE(popped2.has_value());
   EXPECT_EQ(popped2->work_item_id, id2);
-  
+
   auto popped3 = queue.Pop();
   ASSERT_TRUE(popped3.has_value());
   EXPECT_EQ(popped3->work_item_id, id3);
-  
+
   EXPECT_EQ(queue.Size(), 0);
 }
 
 TEST(UnorderedPoolWorkQueueTest, WorkItemPreservesKey) {
   UnorderedPoolWorkQueue queue;
-  
+
   // Push items with keys
   queue.Push(CreateTestWorkItem("user_123"));
   queue.Push(CreateTestWorkItem("user_456"));
   queue.Push(CreateTestWorkItem(""));  // No key
-  
+
   EXPECT_EQ(queue.Size(), 3);
-  
+
   // Pop and verify keys preserved
   auto item1 = queue.Pop();
   ASSERT_TRUE(item1.has_value());
   EXPECT_EQ(item1->key, "user_123");
-  
+
   auto item2 = queue.Pop();
   ASSERT_TRUE(item2.has_value());
   EXPECT_EQ(item2->key, "user_456");
-  
+
   auto item3 = queue.Pop();
   ASSERT_TRUE(item3.has_value());
   EXPECT_EQ(item3->key, "");

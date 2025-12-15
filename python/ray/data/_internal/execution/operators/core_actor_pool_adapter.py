@@ -18,7 +18,6 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
 )
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
-from ray.experimental.actor_pool import ActorPool, OrderingMode, RetryPolicy
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
@@ -233,6 +232,9 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
     def pending_to_running(self, ready_ref: ObjectRef) -> bool:
         """Move actor from pending to running state.
 
+        Args:
+            ready_ref: The ObjectRef that signals the actor is ready.
+
         Returns:
             True if actor was moved, False if it was already removed.
         """
@@ -405,4 +407,3 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
             pending=self.num_pending_actors(),
             restarting=self.num_restarting_actors(),
         )
-

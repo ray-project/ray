@@ -18,6 +18,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ray/common/id.h"
@@ -32,27 +33,27 @@ namespace core {
 struct PoolWorkItem {
   /// Unique ID for this work item.
   TaskID work_item_id;
-  
+
   /// The function to execute.
   RayFunction function;
-  
+
   /// Task arguments.
   std::vector<std::unique_ptr<TaskArg>> args;
-  
+
   /// Task options (num_returns, resources, etc).
   TaskOptions options;
-  
+
   /// Key for per-key ordering (empty for unordered).
   std::string key;
-  
+
   /// Number of times this work item has been attempted.
   int32_t attempt_number = 0;
-  
+
   /// Timestamp when this work item was enqueued (in milliseconds).
   int64_t enqueued_at_ms = 0;
-  
+
   PoolWorkItem() = default;
-  
+
   /// Move constructor.
   PoolWorkItem(PoolWorkItem &&other) noexcept
       : work_item_id(std::move(other.work_item_id)),
@@ -62,7 +63,7 @@ struct PoolWorkItem {
         key(std::move(other.key)),
         attempt_number(other.attempt_number),
         enqueued_at_ms(other.enqueued_at_ms) {}
-  
+
   /// Move assignment.
   PoolWorkItem &operator=(PoolWorkItem &&other) noexcept {
     if (this != &other) {
@@ -76,7 +77,7 @@ struct PoolWorkItem {
     }
     return *this;
   }
-  
+
   // Delete copy constructor and assignment
   PoolWorkItem(const PoolWorkItem &) = delete;
   PoolWorkItem &operator=(const PoolWorkItem &) = delete;
@@ -88,27 +89,27 @@ struct PoolWorkItem {
 class PoolWorkQueue {
  public:
   virtual ~PoolWorkQueue() = default;
-  
+
   /// Enqueue a work item.
   ///
   /// \param item The work item to enqueue.
   virtual void Push(PoolWorkItem item) = 0;
-  
+
   /// Dequeue a work item.
   ///
   /// \return The work item, or nullopt if no work is available.
   virtual std::optional<PoolWorkItem> Pop() = 0;
-  
+
   /// Check if any work is available.
   ///
   /// \return True if there is work to process.
   virtual bool HasWork() const = 0;
-  
+
   /// Get the total number of items in the queue.
   ///
   /// \return The queue depth.
   virtual size_t Size() const = 0;
-  
+
   /// Clear all work items from the queue.
   virtual void Clear() = 0;
 };
@@ -120,17 +121,17 @@ class UnorderedPoolWorkQueue : public PoolWorkQueue {
  public:
   UnorderedPoolWorkQueue() = default;
   ~UnorderedPoolWorkQueue() override = default;
-  
+
   void Push(PoolWorkItem item) override;
-  
+
   std::optional<PoolWorkItem> Pop() override;
-  
+
   bool HasWork() const override;
-  
+
   size_t Size() const override;
-  
+
   void Clear() override;
-  
+
  private:
   std::deque<PoolWorkItem> queue_;
 };

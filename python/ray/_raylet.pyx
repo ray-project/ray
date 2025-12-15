@@ -152,7 +152,6 @@ from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,
     CActorCreationOptions,
     CActorPoolConfig,
-    CActorPoolManager,
     CPlacementGroupCreationOptions,
     CCoreWorkerOptions,
     CCoreWorkerProcess,

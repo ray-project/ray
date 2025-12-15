@@ -14,6 +14,8 @@
 
 #include "ray/core_worker/actor_pool_work_queue.h"
 
+#include <utility>
+
 namespace ray {
 namespace core {
 
@@ -25,23 +27,17 @@ std::optional<PoolWorkItem> UnorderedPoolWorkQueue::Pop() {
   if (queue_.empty()) {
     return std::nullopt;
   }
-  
+
   PoolWorkItem item = std::move(queue_.front());
   queue_.pop_front();
   return std::move(item);
 }
 
-bool UnorderedPoolWorkQueue::HasWork() const {
-  return !queue_.empty();
-}
+bool UnorderedPoolWorkQueue::HasWork() const { return !queue_.empty(); }
 
-size_t UnorderedPoolWorkQueue::Size() const {
-  return queue_.size();
-}
+size_t UnorderedPoolWorkQueue::Size() const { return queue_.size(); }
 
-void UnorderedPoolWorkQueue::Clear() {
-  queue_.clear();
-}
+void UnorderedPoolWorkQueue::Clear() { queue_.clear(); }
 
 }  // namespace core
 }  // namespace ray

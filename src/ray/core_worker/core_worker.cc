@@ -2768,9 +2768,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
     TaskCompletionCallback on_complete) {
   // This method is called by ActorPoolManager to submit tasks.
   // We set max_retries=0 because the pool handles cross-actor retries.
-  
+
   absl::ReleasableMutexLock lock(&actor_task_mutex_);
-  
+
   if (!actor_task_submitter_->CheckActorExists(actor_id)) {
     RAY_LOG(WARNING) << "Actor " << actor_id << " not found for pool task submission";
     if (on_complete) {
@@ -2781,9 +2781,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
     }
     return {};
   }
-  
+
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
-  
+
   // Build TaskSpec
   TaskSpecBuilder builder;
   const auto next_task_index = worker_context_->GetNextTaskIndex();
@@ -2792,14 +2792,14 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
                            worker_context_->GetCurrentInternalTaskId(),
                            next_task_index,
                            actor_handle->GetActorID());
-  
+
   const std::unordered_map<std::string, double> required_resources;
   const auto task_name = task_options.name.empty()
                              ? function.GetFunctionDescriptor()->DefaultTaskName()
                              : task_options.name;
-  
+
   int64_t depth = worker_context_->GetTaskDepth() + 1;
-  
+
   BuildCommonTaskSpec(builder,
                       actor_handle->CreationJobID(),
                       actor_task_id,
@@ -2826,21 +2826,21 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
                       /*label_selector=*/{},
                       /*fallback_strategy=*/{},
                       task_options.tensor_transport);
-  
+
   // Set actor task spec with max_retries=0 (pool handles retries)
   actor_handle->SetActorTaskSpec(builder,
                                  ObjectID::Nil(),
                                  /*max_retries=*/0,
                                  /*retry_exceptions=*/false,
                                  /*serialized_retry_exception_allowlist=*/"");
-  
+
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting pool actor task " << task_spec.DebugString();
-  
+
   // Add pending task and get return refs
   auto returned_refs = task_manager_->AddPendingTask(
       rpc_address_, task_spec, CurrentCallSite(), /*max_retries=*/0);
-  
+
   // Note: The on_complete callback passed here is NOT directly invoked by TaskManager
   // because TaskManager doesn't support completion callbacks. Instead, task completion
   // is wired through ActorTaskSubmitter::HandlePushTaskReply(), which detects pool
@@ -2854,7 +2854,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
 
   // Submit the task
   actor_task_submitter_->SubmitTask(task_spec);
-  
+
   return returned_refs;
 }
 

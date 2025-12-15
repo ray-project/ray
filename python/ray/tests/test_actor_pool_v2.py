@@ -19,8 +19,9 @@ not the existing ray.util.ActorPool (tested in test_actor_pool.py).
 """
 
 import pytest
+
 import ray
-from ray.experimental.actor_pool import ActorPool, RetryPolicy, OrderingMode
+from ray.experimental.actor_pool import ActorPool, OrderingMode, RetryPolicy
 
 
 @ray.remote
@@ -261,4 +262,3 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main([__file__, "-v"]))
-

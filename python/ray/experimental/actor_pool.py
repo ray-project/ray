@@ -25,14 +25,14 @@ Example usage:
 """
 
 import logging
+import uuid
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
-
-from ray.actor import ActorClass
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
 import ray
 from ray._raylet import ActorPoolID
+from ray.actor import ActorClass
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +88,8 @@ class ActorPool:
         actor_options: Options to pass to ray.remote() for actor creation.
         retry: Retry policy for failed tasks.
         ordering: Task ordering mode.
+        logical_id_label_key: Label key for logical actor IDs (Ray Data integration).
+        static_labels: Static labels to apply to all actors in the pool.
 
     Example:
         >>> pool = ActorPool(
@@ -113,6 +115,9 @@ class ActorPool:
         actor_options: Optional[Dict[str, Any]] = None,
         retry: Optional[RetryPolicy] = None,
         ordering: OrderingMode = OrderingMode.UNORDERED,
+        # Label support for Ray Data integration
+        logical_id_label_key: Optional[str] = None,
+        static_labels: Optional[Dict[str, str]] = None,
     ):
         if actor_kwargs is None:
             actor_kwargs = {}
@@ -124,9 +129,7 @@ class ActorPool:
         # Validate size arguments
         if size is not None:
             if min_size is not None or max_size is not None:
-                raise ValueError(
-                    "Cannot specify both 'size' and 'min_size'/'max_size'"
-                )
+                raise ValueError("Cannot specify both 'size' and 'min_size'/'max_size'")
             min_size = size
             max_size = size
             initial_size = size
@@ -144,6 +147,11 @@ class ActorPool:
         self._min_size = min_size
         self._max_size = max_size
         self._initial_size = initial_size
+
+        # Label support for Ray Data integration
+        self._logical_id_label_key = logical_id_label_key
+        self._static_labels = static_labels or {}
+        self._actor_to_logical_id: Dict[ray.actor.ActorHandle, str] = {}
 
         # Handle both already-decorated and non-decorated classes
         if isinstance(actor_cls, ActorClass):
@@ -190,8 +198,29 @@ class ActorPool:
 
     def _create_and_add_actor(self) -> ray.actor.ActorHandle:
         """Create a new actor and add it to the pool."""
-        actor = self._remote_cls.remote(*self._actor_args, **self._actor_kwargs)
+        # Generate logical ID if configured
+        logical_id = None
+        if self._logical_id_label_key:
+            logical_id = str(uuid.uuid4())
+
+        # Build labels
+        labels = dict(self._static_labels)
+        if logical_id:
+            labels[self._logical_id_label_key] = logical_id
+
+        # Create actor with labels (if any)
+        if labels:
+            actor = self._remote_cls.options(_labels=labels).remote(
+                *self._actor_args, **self._actor_kwargs
+            )
+        else:
+            actor = self._remote_cls.remote(*self._actor_args, **self._actor_kwargs)
+
         self._actor_handles.append(actor)
+
+        # Track logical ID mapping
+        if logical_id:
+            self._actor_to_logical_id[actor] = logical_id
 
         actor_id = actor._actor_id
         # TODO: Get actual node location for locality-aware scheduling
@@ -213,6 +242,36 @@ class ActorPool:
     def size(self) -> int:
         """Get current pool size."""
         return len(self._actor_handles)
+
+    @property
+    def min_size(self) -> int:
+        """Get minimum pool size."""
+        return self._min_size
+
+    @property
+    def max_size(self) -> int:
+        """Get maximum pool size."""
+        return self._max_size
+
+    @property
+    def initial_size(self) -> int:
+        """Get initial pool size."""
+        return self._initial_size
+
+    def get_logical_ids(self) -> List[str]:
+        """Get logical IDs for all actors in the pool.
+
+        Only returns IDs if logical_id_label_key was configured.
+        """
+        return list(self._actor_to_logical_id.values())
+
+    def get_logical_id(self, actor: ray.actor.ActorHandle) -> Optional[str]:
+        """Get logical ID for a specific actor."""
+        return self._actor_to_logical_id.get(actor)
+
+    def get_logical_id_label_key(self) -> Optional[str]:
+        """Get the label key used for logical actor IDs."""
+        return self._logical_id_label_key
 
     def submit(
         self,
@@ -298,27 +357,35 @@ class ActorPool:
         stats["total_tasks_submitted"] = self._tasks_submitted
         return stats
 
-    def scale(self, delta: int) -> None:
+    def scale(self, delta: int) -> int:
         """Scale the pool by delta actors.
 
         Args:
             delta: Number of actors to add (positive) or remove (negative).
+
+        Returns:
+            Actual number of actors added (positive) or removed (negative).
         """
         if delta > 0:
             for _ in range(delta):
                 self._create_and_add_actor()
             logger.info(f"Scaled pool {self._pool_id.hex()} up by {delta} actors")
+            return delta
         elif delta < 0:
             # Remove actors from the end
             num_to_remove = min(abs(delta), len(self._actor_handles))
             for _ in range(num_to_remove):
                 actor = self._actor_handles.pop()
+                # Clean up logical ID mapping
+                self._actor_to_logical_id.pop(actor, None)
                 actor_id = actor._actor_id
                 self._core_worker.remove_actor_from_pool(self._pool_id, actor_id)
                 ray.kill(actor)
             logger.info(
                 f"Scaled pool {self._pool_id.hex()} down by {num_to_remove} actors"
             )
+            return -num_to_remove
+        return 0
 
     def shutdown(self, force: bool = False, grace_period_s: float = 30.0) -> None:
         """Shutdown the pool and kill all actors.
@@ -337,6 +404,7 @@ class ActorPool:
                 logger.warning(f"Error killing actor: {e}")
 
         self._actor_handles.clear()
+        self._actor_to_logical_id.clear()
 
         # Unregister the pool
         self._core_worker.unregister_actor_pool(self._pool_id)

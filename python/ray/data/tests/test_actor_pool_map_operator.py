@@ -1078,7 +1078,7 @@ def test_adapter_pending_to_running(ray_start_regular_shared):
     """Test actor transition from pending to running."""
     helper = _AdapterTestHelper()
     pool = helper.create_adapter_pool()
-    actor = helper.add_ready_actor(pool)
+    helper.add_ready_actor(pool)
 
     assert pool.current_size() == 1
     assert pool.num_pending_actors() == 0
@@ -1129,17 +1129,13 @@ def test_adapter_restarting_state(ray_start_regular_shared):
     pool.update_running_actor_state(actor, True)
     assert pool.num_restarting_actors() == 1
     assert pool.num_alive_actors() == 0
-    assert pool.get_actor_info() == _ActorPoolInfo(
-        running=0, pending=0, restarting=1
-    )
+    assert pool.get_actor_info() == _ActorPoolInfo(running=0, pending=0, restarting=1)
 
     # Mark as alive
     pool.update_running_actor_state(actor, False)
     assert pool.num_restarting_actors() == 0
     assert pool.num_alive_actors() == 1
-    assert pool.get_actor_info() == _ActorPoolInfo(
-        running=1, pending=0, restarting=0
-    )
+    assert pool.get_actor_info() == _ActorPoolInfo(running=1, pending=0, restarting=0)
 
 
 def test_adapter_scale_up(ray_start_regular_shared):

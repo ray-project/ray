@@ -15,6 +15,7 @@
 #include "ray/core_worker/actor_pool_manager.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "gmock/gmock.h"

@@ -82,19 +82,19 @@ struct ActorPoolConfig {
   float retry_backoff_multiplier = 2.0f;
   int32_t max_retry_backoff_ms = 60000;
   bool retry_on_system_errors = true;
-  
+
   /// Ordering mode
   PoolOrderingMode ordering_mode = PoolOrderingMode::UNORDERED;
-  
+
   /// Autoscaling configuration
   int32_t min_size = 1;
   int32_t max_size = -1;  // -1 = unbounded
   int32_t initial_size = 1;
-  
+
   /// Topology (Phase 2 - not used in Phase 1)
   std::vector<int32_t> shape;
   std::vector<std::string> shape_names;
-  
+
   /// Placement group (Phase 2 - not used in Phase 1)
   PlacementGroupID placement_group_id;
 };
@@ -103,13 +103,13 @@ struct ActorPoolConfig {
 struct ActorPoolActorState {
   /// Number of tasks currently in flight for this actor.
   int32_t num_tasks_in_flight = 0;
-  
+
   /// Location of the actor (for locality-aware scheduling).
   NodeID location;
-  
+
   /// Whether this actor is alive and can accept work.
   bool is_alive = true;
-  
+
   /// Number of consecutive failures for circuit breaking.
   int32_t consecutive_failures = 0;
 };
@@ -118,19 +118,19 @@ struct ActorPoolActorState {
 struct ActorPoolInfo {
   /// Pool configuration.
   ActorPoolConfig config;
-  
+
   /// List of actor IDs in this pool.
   std::vector<ActorID> actor_ids;
-  
+
   /// State for each actor in the pool.
   absl::flat_hash_map<ActorID, ActorPoolActorState> actor_states;
-  
+
   /// Total number of tasks submitted to this pool.
   int64_t total_tasks_submitted = 0;
-  
+
   /// Total number of tasks that failed.
   int64_t total_tasks_failed = 0;
-  
+
   /// Total number of tasks that were retried.
   int64_t total_tasks_retried = 0;
 };
@@ -139,19 +139,19 @@ struct ActorPoolInfo {
 struct PoolStats {
   /// Total tasks submitted to the pool.
   int64_t total_tasks_submitted = 0;
-  
+
   /// Total tasks that failed.
   int64_t total_tasks_failed = 0;
-  
+
   /// Total tasks that were retried.
   int64_t total_tasks_retried = 0;
-  
+
   /// Current number of actors in the pool.
   int32_t num_actors = 0;
-  
+
   /// Current backlog size (queued work items).
   size_t backlog_size = 0;
-  
+
   /// Total in-flight tasks across all actors.
   int32_t total_in_flight = 0;
 };
@@ -182,7 +182,7 @@ class ActorPoolManager {
   ActorPoolManager(ActorManager &actor_manager,
                    ActorTaskSubmitterInterface &task_submitter,
                    TaskManagerInterface &task_manager);
-  
+
   /// Constructor with full CoreWorker integration.
   ///
   /// \param actor_manager Reference to the ActorManager.
@@ -195,9 +195,9 @@ class ActorPoolManager {
                    TaskManagerInterface &task_manager,
                    instrumented_io_context &io_service,
                    SubmitActorTaskCallback submit_actor_task_fn);
-  
+
   ~ActorPoolManager() = default;
-  
+
   /// Register a new actor pool.
   ///
   /// \param config Pool configuration (retry, ordering, autoscaling).
@@ -205,12 +205,12 @@ class ActorPoolManager {
   /// \return The ID of the newly created pool.
   ActorPoolID RegisterPool(const ActorPoolConfig &config,
                            const std::vector<ActorID> &initial_actors = {});
-  
+
   /// Unregister an actor pool and clean up resources.
   ///
   /// \param pool_id The ID of the pool to unregister.
   void UnregisterPool(const ActorPoolID &pool_id);
-  
+
   /// Add an actor to a pool.
   ///
   /// \param pool_id The ID of the pool.
@@ -219,13 +219,13 @@ class ActorPoolManager {
   void AddActorToPool(const ActorPoolID &pool_id,
                       const ActorID &actor_id,
                       const NodeID &location);
-  
+
   /// Remove an actor from a pool.
   ///
   /// \param pool_id The ID of the pool.
   /// \param actor_id The ID of the actor to remove.
   void RemoveActorFromPool(const ActorPoolID &pool_id, const ActorID &actor_id);
-  
+
   /// Submit a task to an actor pool.
   /// The pool will select an appropriate actor based on load and locality.
   ///
@@ -241,19 +241,19 @@ class ActorPoolManager {
       std::vector<std::unique_ptr<TaskArg>> args,
       const TaskOptions &task_options,
       const std::string &key = "");
-  
+
   /// Get all actor IDs in a pool.
   ///
   /// \param pool_id The ID of the pool.
   /// \return Vector of actor IDs in the pool.
   std::vector<ActorID> GetPoolActors(const ActorPoolID &pool_id) const;
-  
+
   /// Get statistics for a pool.
   ///
   /// \param pool_id The ID of the pool.
   /// \return Pool statistics.
   PoolStats GetPoolStats(const ActorPoolID &pool_id) const;
-  
+
   /// Check if a pool exists.
   ///
   /// \param pool_id The ID of the pool to check.
@@ -282,16 +282,16 @@ class ActorPoolManager {
   FRIEND_TEST(ActorPoolManagerTest, AddRemoveActors);
   FRIEND_TEST(ActorPoolManagerTest, SelectLeastLoadedActor);
   FRIEND_TEST(ActorPoolManagerTest, CrossActorRetry);
-  
+
   /// Select the best actor from a pool based on load and locality.
   ///
   /// \param pool_id The ID of the pool.
   /// \param arg_ids Object IDs of task arguments (for locality).
   /// \return The selected actor ID, or Nil if no actors are available.
   ActorID SelectActorFromPool(const ActorPoolID &pool_id,
-                               const std::vector<ObjectID> &arg_ids)
+                              const std::vector<ObjectID> &arg_ids)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  
+
   /// Rank an actor for scheduling (lower is better).
   ///
   /// \param actor_id The actor to rank.
@@ -301,7 +301,7 @@ class ActorPoolManager {
   int32_t RankActor(const ActorID &actor_id,
                     const std::vector<ObjectID> &arg_ids,
                     const ActorPoolInfo &pool_info) const;
-  
+
   /// Submit a work item to a specific actor.
   ///
   /// \param pool_id The pool ID.
@@ -309,10 +309,10 @@ class ActorPoolManager {
   /// \param work_item The work item to submit.
   /// \return Object references for the task's return values.
   std::vector<rpc::ObjectReference> SubmitToActor(const ActorPoolID &pool_id,
-                                                   const ActorID &actor_id,
-                                                   PoolWorkItem work_item)
+                                                  const ActorID &actor_id,
+                                                  PoolWorkItem work_item)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  
+
   /// Handle a task failure and potentially retry on a different actor.
   ///
   /// \param pool_id The pool ID.
@@ -324,14 +324,14 @@ class ActorPoolManager {
                     const ActorID &failed_actor_id,
                     const rpc::RayErrorInfo &error_info)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  
+
   /// Handle a task success.
   ///
   /// \param pool_id The pool ID.
   /// \param actor_id The actor that succeeded.
   void OnTaskSucceeded(const ActorPoolID &pool_id, const ActorID &actor_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  
+
   /// Schedule a retry for a work item with backoff.
   ///
   /// \param pool_id The pool ID.
@@ -340,14 +340,14 @@ class ActorPoolManager {
   void ScheduleRetry(const ActorPoolID &pool_id,
                      PoolWorkItem work_item,
                      int64_t backoff_ms) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  
+
   /// Retry a work item (select actor and submit).
   ///
   /// \param pool_id The pool ID.
   /// \param work_item The work item to retry.
   void RetryWorkItem(const ActorPoolID &pool_id, PoolWorkItem work_item)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  
+
   /// Determine if a task should be retried based on error type.
   ///
   /// \param config Pool configuration.
@@ -355,7 +355,7 @@ class ActorPoolManager {
   /// \return True if the task should be retried.
   bool ShouldRetryTask(const ActorPoolConfig &config,
                        const rpc::RayErrorInfo &error_info) const;
-  
+
   /// Calculate backoff time for a retry attempt.
   ///
   /// \param attempt_number The attempt number (1-indexed).
@@ -367,48 +367,48 @@ class ActorPoolManager {
                            int32_t base_backoff_ms,
                            float multiplier,
                            int32_t max_backoff_ms) const;
-  
+
   /// Fail a work item permanently.
   ///
   /// \param work_item_id The work item ID.
   /// \param error_info Error information.
   void FailWorkItem(const TaskID &work_item_id, const rpc::RayErrorInfo &error_info)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  
+
   /// Clone task arguments for retry (since we need to keep a copy).
   std::vector<std::unique_ptr<TaskArg>> CloneArgs(
       const std::vector<std::unique_ptr<TaskArg>> &args) const;
-  
+
   /// Reference to the actor manager.
   ActorManager &actor_manager_;
-  
+
   /// Reference to the actor task submitter.
   ActorTaskSubmitterInterface &task_submitter_;
-  
+
   /// Reference to the task manager.
   TaskManagerInterface &task_manager_;
-  
+
   /// Reference to the IO service for delayed retry scheduling.
   /// May be nullptr if using the minimal constructor.
   instrumented_io_context *io_service_ = nullptr;
-  
+
   /// Callback to submit actor tasks via CoreWorker.
   /// May be nullptr if using the minimal constructor.
   SubmitActorTaskCallback submit_actor_task_fn_;
-  
+
   /// Mutex protecting all pool state.
   mutable absl::Mutex mu_;
-  
+
   /// Registry of all actor pools.
   absl::flat_hash_map<ActorPoolID, ActorPoolInfo> pools_ ABSL_GUARDED_BY(mu_);
-  
+
   /// Map from actor ID to pool ID (for reverse lookup).
   absl::flat_hash_map<ActorID, ActorPoolID> actor_to_pool_ ABSL_GUARDED_BY(mu_);
-  
+
   /// Work queues for each pool.
   absl::flat_hash_map<ActorPoolID, std::unique_ptr<PoolWorkQueue>> work_queues_
       ABSL_GUARDED_BY(mu_);
-  
+
   /// Map from work item ID to work item (for retry tracking).
   absl::flat_hash_map<TaskID, PoolWorkItem> work_items_ ABSL_GUARDED_BY(mu_);
 };
