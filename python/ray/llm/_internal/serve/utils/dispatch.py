@@ -32,9 +32,9 @@ def dispatch(
         kwargs: The keyword arguments to pass to the method. Can be a dict,
                 or a callable that takes the replica object and returns kwargs.
         combine: An optional callable that takes the list of results from all
-            replicas and the method name and returns an aggregated result.
-            If not provided, returns the list of results. The default combine
-            function is to return the list of results.
+            replicas and returns an aggregated result. If not provided, returns
+            the list of results. The default combine function is to return the
+            list of results.
 
     Returns:
         The result of the method call to all replicas. If combine is provided,
@@ -103,7 +103,7 @@ def dispatch(
             call_kwargs = kwargs(replica)
 
         if not isinstance(call_args, (list, tuple)):
-            call_args = (call_args,)
+            raise ValueError(f"args must be a list or tuple, got {type(call_args)}")
 
         if not isinstance(call_kwargs, dict):
             # Fallback if callable returned something else or initial was not dict
