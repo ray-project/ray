@@ -5,9 +5,6 @@ from typing import TYPE_CHECKING, Dict
 
 from .backpressure_policy import BackpressurePolicy
 from ray._private.ray_constants import env_float
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    ActorPoolMapOperator,
-)
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
@@ -76,22 +73,15 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
         # Last effective cap for change logs.
         self._last_effective_caps: Dict["PhysicalOperator", int] = {}
 
-        # Initialize concurrency caps from operators (infinite if unset)
-        for op in self._topology:
-            concurrency_cap: float = float("inf")
-            if isinstance(op, ActorPoolMapOperator):
-                concurrency_cap = float(
-                    sum(
-                        actor_pool.max_size()
-                        * actor_pool.max_tasks_in_flight_per_actor()
-                        for actor_pool in op.get_autoscaling_actor_pools()
-                    )
-                )
-            elif isinstance(op, TaskPoolMapOperator):
-                limit = op.get_max_concurrency_limit()
-                if limit is not None:
-                    concurrency_cap = float(limit)
-            self._concurrency_caps[op] = concurrency_cap
+        # Initialize caps from operators (infinite if unset)
+        for op, _ in self._topology.items():
+            if (
+                isinstance(op, TaskPoolMapOperator)
+                and op.get_max_concurrency_limit() is not None
+            ):
+                self._concurrency_caps[op] = op.get_max_concurrency_limit()
+            else:
+                self._concurrency_caps[op] = float("inf")
 
         # Whether to cap the concurrency of an operator based on its and downstream's queue size.
         self.enable_dynamic_output_queue_size_backpressure = (
