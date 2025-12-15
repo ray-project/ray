@@ -841,6 +841,7 @@ class ApplicationAutoscalingState:
         """
         if self.has_policy():
             # Using app-level policy
+            # TODO(nadongjun): App-level autoscaling bypasses per-deployment snapshot creation; add snapshot support here.
             autoscaling_contexts = {
                 deployment_id: state.get_autoscaling_context(
                     deployment_to_target_num_replicas[deployment_id]
