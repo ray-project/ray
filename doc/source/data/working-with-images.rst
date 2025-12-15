@@ -56,7 +56,7 @@ To view the full list of supported file formats, see the
         .. testcode::
 
             import ray
-            from ray.data.expressions import col, download
+            from ray.data.expressions import download
 
             ds = ray.data.read_parquet("s3://anonymous@ray-example-data/imagenet/metadata_file.parquet")
             ds = ds.with_column("bytes", download("image_url"))
