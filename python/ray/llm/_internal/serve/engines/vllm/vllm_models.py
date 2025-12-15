@@ -135,7 +135,6 @@ class VLLMEngineConfig(BaseModelExtended):
         if not self.use_gpu:
             # For CPU mode, always use "mp" backend
             engine_kwargs["distributed_executor_backend"] = "mp"
-            logger.warning("install vllm package for cpu to ensure seamless execution")
         elif (
             "distributed_executor_backend" in engine_kwargs
             and engine_kwargs["distributed_executor_backend"] != "ray"
