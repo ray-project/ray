@@ -10,8 +10,6 @@ Structure:
 import subprocess
 import sys
 import os
-import tarfile
-from pathlib import Path
 
 # Dependency setup
 subprocess.check_call(
@@ -53,44 +51,7 @@ from ray.data.llm import (
     TokenizerStageConfig,
     DetokenizeStageConfig,
 )
-from huggingface_hub import hf_hub_download
 
-
-# Download and extract video files from ShareGPTVideo dataset
-def download_and_extract_videos():
-    """Download ShareGPTVideo dataset and extract MP4 files"""
-    dataset_name = "ShareGPTVideo/train_raw_video"
-    tar_path = hf_hub_download(
-        repo_id=dataset_name, filename="activitynet/chunk_0.tar.gz", repo_type="dataset"
-    )
-
-    extract_dir = "/tmp/sharegpt_videos"
-    os.makedirs(extract_dir, exist_ok=True)
-
-    if not any(Path(extract_dir).glob("*.mp4")):
-        with tarfile.open(tar_path, "r:gz") as tar:
-            tar.extractall(extract_dir)
-
-    video_files = list(Path(extract_dir).rglob("*.mp4"))
-
-    return video_files
-
-
-video_files = download_and_extract_videos()
-
-# Limit to first 10 videos for the example
-video_files = video_files[:10]
-
-video_dataset = ray.data.from_items(
-    [
-        {
-            "video_path": str(video_file),
-            "video_url": f"file://{video_file}",
-            "text": "Describe what happens in this video.",
-        }
-        for video_file in video_files
-    ]
-)
 
 # __vlm_video_config_example_start__
 video_processor_config = vLLMEngineProcessorConfig(

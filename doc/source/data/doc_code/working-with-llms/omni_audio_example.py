@@ -53,46 +53,6 @@ from ray.data.llm import (
     TokenizerStageConfig,
     DetokenizeStageConfig,
 )
-from datasets import load_dataset
-from huggingface_hub import hf_hub_download
-
-
-# Download and extract WAV files from MRSAudio dataset
-def download_and_extract_audio_files():
-    """Download MRSAudio dataset and extract WAV files."""
-    dataset_name = "MRSAudio/MRSAudio"
-    dataset = load_dataset(dataset_name, split="train")
-
-    audio_items = []
-
-    # Limit to first 10 samples for the example
-    num_samples = min(10, len(dataset))
-    for i in range(num_samples):
-        item = dataset[i]
-
-        audio_path = hf_hub_download(
-            repo_id=dataset_name, filename=item["path"], repo_type="dataset"
-        )
-
-        with open(audio_path, "rb") as f:
-            audio_bytes = f.read()
-
-        audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
-        audio_items.append(
-            {
-                "audio_data": audio_base64,
-                "text": "Describe this audio.",
-            }
-        )
-
-    return audio_items
-
-
-audio_items = download_and_extract_audio_files()
-
-audio_dataset = (
-    ray.data.from_items(audio_items) if audio_items else ray.data.from_items([])
-)
 
 # __omni_audio_config_example_start__
 audio_processor_config = vLLMEngineProcessorConfig(

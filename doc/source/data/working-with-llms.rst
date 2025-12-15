@@ -76,10 +76,10 @@ Here's a simple configuration example:
 
 The configuration includes detailed comments explaining:
 
-- **`concurrency`**: Number of vLLM engine replicas (typically 1 per node)
-- **`batch_size`**: Number of samples processed per batch (reduce if GPU memory is limited)
-- **`max_num_batched_tokens`**: Maximum tokens processed simultaneously (reduce if CUDA OOM occurs)
-- **`accelerator_type`**: Specify GPU type for optimal resource allocation
+- **concurrency**: Number of vLLM engine replicas (typically 1 per node)
+- **batch_size**: Number of samples processed per batch (reduce if GPU memory is limited)
+- **max_num_batched_tokens**: Maximum tokens processed simultaneously (reduce if CUDA OOM occurs)
+- **accelerator_type**: Specify GPU type for optimal resource allocation
 
 The vLLM processor expects input in OpenAI chat format with a 'messages' column and outputs a 'generated_text' column containing model responses.
 
