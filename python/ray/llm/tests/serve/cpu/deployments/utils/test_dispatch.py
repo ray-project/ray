@@ -133,36 +133,30 @@ async def test_dispatch_handles_dead_replica(serve_instance, request):
         MockLLMDeployment.bind(), name=app_name, route_prefix=route_prefix
     )
 
+    # First, verify dispatch works with all replicas alive
+    results_before = dispatch(handle, "get_reset_count")
+    assert len(results_before) == 2, "Should have 2 results from 2 replicas"
+
+    # Kill one replica by calling self_destruct through the handle.
+    # This sends an RPC to one replica which will kill itself.
+    # We use options to not wait for response since the actor will die.
     try:
-        # First, verify dispatch works with all replicas alive
-        results_before = dispatch(handle, "get_reset_count")
-        assert len(results_before) == 2, "Should have 2 results from 2 replicas"
+        handle.self_destruct.remote()
+    except Exception:
+        # The call may raise if the actor dies mid-request
+        pass
 
-        # Kill one replica by calling self_destruct through the handle.
-        # This sends an RPC to one replica which will kill itself.
-        # We use options to not wait for response since the actor will die.
-        try:
-            handle.self_destruct.remote()
-        except Exception:
-            # The call may raise if the actor dies mid-request
-            pass
+    # Give Serve a moment to detect the dead replica
+    time.sleep(2)
 
-        # Give Serve a moment to detect the dead replica
-        time.sleep(2)
+    # Dispatch should still work with the remaining replica(s)
+    # The dead replica will be skipped (ValueError caught in dispatch)
+    results_after = dispatch(handle, "get_reset_count")
 
-        # Dispatch should still work with the remaining replica(s)
-        # The dead replica will be skipped (ValueError caught in dispatch)
-        results_after = dispatch(handle, "get_reset_count")
-
-        # Should get at least 1 result from the surviving replica
-        # (The killed replica may or may not be in the replica set depending
-        # on timing of Serve's failure detection)
-        assert (
-            len(results_after) >= 1
-        ), "Should have at least 1 result from live replica"
-
-    finally:
-        serve.shutdown()
+    # Should get at least 1 result from the surviving replica
+    # (The killed replica may or may not be in the replica set depending
+    # on timing of Serve's failure detection)
+    assert len(results_after) >= 1, "Should have at least 1 result from live replica"
 
 
 if __name__ == "__main__":
