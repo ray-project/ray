@@ -1,35 +1,53 @@
 group: cicd-cron
 steps:
-  - name: manylinux-cibase-{{matrix}}
-    label: ":magic_wand: wanda: manylinux-cibase-{{matrix}}"
+  # NOTE(andrew-anyscale): 'name' is used for both naming the wanda image, as
+  # well as for generating step names. Step name cannot contain a {{}} placeholder,
+  # so we cannot use a matrix here.
+  - name: manylinux-cibase-x86_64
+    label: ":magic_wand: wanda: manylinux-cibase-x86_64"
     wanda: ci/docker/manylinux-cibase.wanda.yaml
-    matrix:
-      - "x86_64"
-      - "aarch64"
-    instance_type: builder-{{matrix}}
+    instance_type: builder-x86_64
     env:
       RAYCI_DISABLE_JAVA: "true"
       RAYCI_WANDA_ALWAYS_REBUILD: "true"
       JDK_SUFFIX: ""
-      ARCH_SUFFIX: ""
-      HOSTTYPE: "{{matrix}}"
-
-  - name: manylinux-cibase-jdk-{{matrix}}
-    label: ":magic_wand: wanda: manylinux-cibase-jdk-{{matrix}}"
+      HOSTTYPE: "x86_64"
+  
+  - name: manylinux-cibase-aarch64
+    label: ":magic_wand: wanda: manylinux-cibase-aarch64"
     wanda: ci/docker/manylinux-cibase.wanda.yaml
-    matrix:
-      - "x86_64"
-      - "aarch64"
+    instance_type: builder-aarch64
+    env:
+      RAYCI_DISABLE_JAVA: "true"
+      RAYCI_WANDA_ALWAYS_REBUILD: "true"
+      JDK_SUFFIX: ""
+      HOSTTYPE: "aarch64"
+
+  - name: manylinux-cibase-jdk-x86_64
+    label: ":magic_wand: wanda: manylinux-cibase-jdk-x86_64"
+    wanda: ci/docker/manylinux-cibase.wanda.yaml
+    instance_type: builder-x86_64
     env:
       RAYCI_DISABLE_JAVA: "false"
       RAYCI_WANDA_ALWAYS_REBUILD: "true"
       JDK_SUFFIX: "-jdk"
-      ARCH_SUFFIX: ""
       HOSTTYPE: "{{matrix}}"
 
-  - label: ":docker: push: Push manylinux-cibase-{{matrix}} to Docker Hub"
+  - name: manylinux-cibase-jdk-aarch64
+    label: ":magic_wand: wanda: manylinux-cibase-jdk-aarch64"
+    wanda: ci/docker/manylinux-cibase.wanda.yaml
+    instance_type: builder-aarch64
+    env:
+      RAYCI_DISABLE_JAVA: "false"
+      RAYCI_WANDA_ALWAYS_REBUILD: "true"
+      JDK_SUFFIX: "-jdk"
+      ARCH_SUFFIX: "aarch64"
+      HOSTTYPE: "aarch64"
+
+  - label: ":docker: push: Push manylinux-cibase to Docker Hub"
     depends_on:
-      - manylinux-cibase-{{matrix}}
+      - manylinux-cibase-x86_64
+      - manylinux-cibase-aarch64
       - forge
     job_env: forge
     matrix:
@@ -38,13 +56,14 @@ steps:
     commands:
       - bazel run //.buildkite:copy_files -- --destination docker_login
       - bazel run //ci/ray_ci/automation:copy_wanda_image --
-        --wanda-image-name manylinux-cibase
+        --wanda-image-name manylinux-cibase-{{matrix}}
         --destination-repository rayproject/manylinux2014
         --tag-suffix -{{matrix}}
 
   - label: ":docker: push: Push manylinux-cibase-jdk to Docker Hub"
     depends_on:
-      - manylinux-cibase-jdk-{{matrix}}
+      - manylinux-cibase-jdk-x86_64
+      - manylinux-cibase-jdk-aarch64
       - forge
     job_env: forge
     matrix:
@@ -53,6 +72,7 @@ steps:
     commands:
       - bazel run //.buildkite:copy_files -- --destination docker_login
       - bazel run //ci/ray_ci/automation:copy_wanda_image --
-        --wanda-image-name manylinux-cibase-jdk
+        --wanda-image-name manylinux-cibase-jdk-{{matrix}}
         --destination-repository rayproject/manylinux2014
         --tag-suffix -jdk-{{matrix}}
+  

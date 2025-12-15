@@ -1,4 +1,4 @@
-name: "manylinux-cibase$JDK_SUFFIX$ARCH_SUFFIX"
+name: "manylinux-cibase$JDK_SUFFIX$HOSTTYPE"
 froms:
   - quay.io/pypa/manylinux2014_$HOSTTYPE:2024-07-02-9ac04ee
 srcs:
