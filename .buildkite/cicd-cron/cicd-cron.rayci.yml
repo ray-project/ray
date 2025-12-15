@@ -6,6 +6,7 @@ steps:
     matrix:
       - "x86_64"
       - "aarch64"
+    instance_type: builder-{{matrix}}
     env:
       RAYCI_DISABLE_JAVA: "true"
       RAYCI_WANDA_ALWAYS_REBUILD: "true"
