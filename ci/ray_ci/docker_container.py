@@ -22,7 +22,7 @@ PLATFORMS_RAY_ML = [
     "cpu",
     "cu12.1.1-cudnn8",
 ]
-PLATFORMS_RAY_LLM = ["cu12.8.1-cudnn"]
+PLATFORMS_RAY_LLM = ["cu12.9.1-cudnn"]
 GPU_PLATFORM = "cu12.1.1-cudnn8"
 
 PYTHON_VERSIONS_RAY = ["3.9", "3.10", "3.11", "3.12"]
