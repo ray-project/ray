@@ -24,6 +24,11 @@ def dispatch(
     This is useful for dispatching a control plane message such as kv-cache
     reset or weight update to all replicas of the given handle.
 
+    NOTE: This API is experimental and may later be promoted to a public API in
+    Ray Serve directly. For now, it is only available in Ray LLM and is
+    intended to enable control plane operations during RL training which is
+    required when orchestrating trianing and inference loops.
+
     Args:
         handle: The DeploymentHandle to dispatch to.
         method_name: The name of the method to call on the deployment.
