@@ -432,9 +432,12 @@ class ServeController:
         }
 
     def _emit_deployment_autoscaling_snapshots(self) -> None:
-        """Emit a structured snapshot log per autoscaling-enabled deployment."""
+        """Emit structured autoscaling snapshot logs in a single batch per loop."""
         if self._autoscaling_logger is None:
             return
+
+        snapshots_to_log: List[Dict[str, Any]] = []
+
         for (
             app_name,
             dep_name,
@@ -448,14 +451,16 @@ class ServeController:
             if deployment_snapshot is None:
                 continue
 
-            key = dep_id
-            last = self._last_autoscaling_snapshots.get(key)
+            last = self._last_autoscaling_snapshots.get(dep_id)
             if last is not None and last.is_scaling_equivalent(deployment_snapshot):
                 continue
 
-            payload = deployment_snapshot.dict(exclude_none=True)
-            self._autoscaling_logger.info(payload)
-            self._last_autoscaling_snapshots[key] = deployment_snapshot
+            snapshots_to_log.append(deployment_snapshot.dict(exclude_none=True))
+            self._last_autoscaling_snapshots[dep_id] = deployment_snapshot
+
+        if snapshots_to_log:
+            # Single write per control-loop iteration
+            self._autoscaling_logger.info({"snapshots": snapshots_to_log})
 
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
