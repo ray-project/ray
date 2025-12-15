@@ -174,12 +174,6 @@ def video_postprocess(row: dict) -> dict:
 
 # __vlm_video_preprocess_example_end__
 
-video_processor = build_processor(
-    video_processor_config,
-    preprocess=video_preprocess,
-    postprocess=video_postprocess,
-)
-
 
 def load_video_dataset():
     """

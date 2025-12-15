@@ -184,14 +184,6 @@ Image object are supported.
     :start-after: __vlm_preprocess_example_start__
     :end-before: __vlm_preprocess_example_end__
 
-For a more comprehensive VLM configuration with advanced options:
-
-.. literalinclude:: doc_code/working-with-llms/vlm_image_example.py
-    :language: python
-    :start-after: def create_vlm_config():
-    :end-before: def run_vlm_example():
-    :dedent: 0
-
 Finally, run the VLM inference:
 
 .. literalinclude:: doc_code/working-with-llms/vlm_image_example.py
@@ -267,14 +259,6 @@ binary data are supported.
     :language: python
     :start-after: __omni_audio_preprocess_example_start__
     :end-before: __omni_audio_preprocess_example_end__
-
-For a more comprehensive Omni configuration with advanced options:
-
-.. literalinclude:: doc_code/working-with-llms/omni_audio_example.py
-    :language: python
-    :start-after: def create_omni_audio_config():
-    :end-before: def run_omni_audio_example():
-    :dedent: 0
 
 Finally, run the Omni inference:
 

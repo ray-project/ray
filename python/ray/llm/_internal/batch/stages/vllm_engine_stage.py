@@ -357,22 +357,13 @@ class vLLMEngineWrapper:
 
         # Extract image data from preprocessing output
         # Note: Field name is 'image' (singular) not 'images' (plural).
-        # When multimodal_data is present (from PrepareMultimodalStage), images are
-        # handled through multimodal_data, so we should set image to an empty list.
         if multimodal_data is not None:
-            # Images are handled through multimodal_data, so ignore the image field
+            # When multimodal_data is present, images are handled through multimodal_data,
+            # so we should set image to an empty list.
             row.pop("image", None)
             image = []
         elif "image" in row:
             image = row.pop("image")
-            # Ensure image is a list (vLLMEngineRequest expects List[Any])
-            if not isinstance(image, list):
-                # If it's a single image, wrap it in a list
-                # If it's a dict (from original dataset), ignore it
-                if isinstance(image, dict):
-                    image = []
-                else:
-                    image = [image]
         else:
             image = []
         # TODO (jeffreywang): As we decouple the multimodal processor from the vLLM engine,

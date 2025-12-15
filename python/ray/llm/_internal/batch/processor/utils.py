@@ -52,17 +52,3 @@ def build_cpu_stage_map_kwargs(
             stage_cfg.memory,
         ),
     )
-
-def update_kwargs_with_defaults(
-    kwargs: Optional[Dict[str, Any]],
-    defaults: Optional[Dict[str, Any]],
-) -> Dict[str, Any]:
-    """Update kwargs with defaults.
-    
-    If a key from defaults is present in kwargs, the value from defaults
-    will override the value in kwargs. Otherwise, keys from defaults will
-    be added to the result.
-    """
-    kwargs = kwargs or {}
-    defaults = defaults or {}
-    return {**kwargs, **defaults}

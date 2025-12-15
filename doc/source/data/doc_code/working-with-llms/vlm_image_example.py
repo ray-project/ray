@@ -70,6 +70,8 @@ vision_processor_config = vLLMEngineProcessorConfig(
         max_model_len=4096,
         enable_chunked_prefill=True,
         max_num_batched_tokens=2048,
+        trust_remote_code=True,
+        limit_mm_per_prompt={"image": 1},
     ),
     # Override Ray's runtime env to include the Hugging Face token. Ray Data uses Ray under the hood to orchestrate the inference pipeline.
     runtime_env=dict(
@@ -156,12 +158,6 @@ def vision_postprocess(row: dict) -> dict:
 
 
 # __vlm_preprocess_example_end__
-
-vision_processor = build_processor(
-    vision_processor_config,
-    preprocess=vision_preprocess,
-    postprocess=vision_postprocess,
-)
 
 
 def load_vision_dataset():

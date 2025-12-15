@@ -165,12 +165,6 @@ def audio_postprocess(row: dict) -> dict:
 
 # __omni_audio_preprocess_example_end__
 
-audio_processor = build_processor(
-    audio_processor_config,
-    preprocess=audio_preprocess,
-    postprocess=audio_postprocess,
-)
-
 
 def load_audio_dataset():
     """

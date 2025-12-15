@@ -54,7 +54,8 @@ class PrepareImageStageConfig(_StageConfigBase):
 class PrepareMultimodalStageConfig(_StageConfigBase):
     model_config_kwargs: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Optional kwargs to pass to the model config.",
+        description="Optional kwargs to pass to the model config. See available model config "
+        "kwargs at https://docs.vllm.ai/en/latest/api/vllm/config/#vllm.config.ModelConfig",
     )
     chat_template_content_format: Optional[Literal["string", "openai"]] = Field(
         default="string",
