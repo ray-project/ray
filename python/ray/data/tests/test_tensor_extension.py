@@ -59,6 +59,21 @@ def test_tensor_array_validation():
         TensorArray([object(), object()])
 
 
+@pytest.mark.parametrize("tensor_type", ["fixed_shape", "var_shape"])
+def test_pandas_to_arrow_tensor_conversion(tensor_type):
+    array = pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype).to_numpy()
+    tensor = np.stack([array, array])
+
+    if tensor_type == "fixed_shape":
+        fixed_shape = ArrowTensorArray.from_numpy(tensor)
+        print(fixed_shape)
+    elif tensor_type == "var_shape":
+        var_shape = ArrowVariableShapedTensorArray.from_numpy(tensor)
+        print(var_shape)
+    else:
+        pytest.fail(f"Invalid tensor type: {tensor_type}")
+
+
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
 def test_arrow_scalar_tensor_array_roundtrip(restore_data_context, tensor_format):
     DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
