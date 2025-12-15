@@ -39,7 +39,6 @@ class EventAggregatorClient {
   virtual void AddEvents(const rpc::events::AddEventsRequest &request,
                          const ClientCallback<rpc::events::AddEventsReply> &callback) = 0;
 
-  /// Connect to the event aggregator server.
   virtual void Connect(const int port) {}
 };
 
@@ -61,11 +60,7 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
     Connect(port);
   };
 
-  /// Connect to the event aggregator server.
-  /// \param[in] port Port of the event aggregator server.
   void Connect(const int port) override {
-    RAY_LOG(INFO) << "Connecting to the local event aggregator client with port: "
-                  << port;
     grpc_client_ = std::make_unique<GrpcClient<rpc::events::EventAggregatorService>>(
         "127.0.0.1", port, *client_call_manager_);
   }

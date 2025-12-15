@@ -329,7 +329,7 @@ class PrometheusStatsExporter(base_exporter.StatsExporter):
         t = threading.Thread(target=httpd.serve_forever)
         t.daemon = True
         t.start()
-        # Return actual port (important when port=0 was specified)
+        # Return the actual port (in case port=0 was specified)
         return httpd.server_address[1]
 
 

@@ -31,7 +31,6 @@ namespace stats {
 /// exporter after a main thread launched.
 class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::Handler {
  public:
-  // This constructor is only used for testing
   OpenCensusProtoExporter(std::shared_ptr<rpc::MetricsAgentClient> agent_client,
                           const WorkerID &worker_id,
                           size_t report_batch_size,

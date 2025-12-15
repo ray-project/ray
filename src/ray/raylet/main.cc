@@ -236,6 +236,8 @@ int main(int argc, char *argv[]) {
   const int node_manager_port = static_cast<int>(FLAGS_node_manager_port);
   const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
   const int runtime_env_agent_port = static_cast<int>(FLAGS_runtime_env_agent_port);
+  const int dashboard_agent_listen_port =
+      static_cast<int>(FLAGS_dashboard_agent_listen_port);
   RAY_CHECK_NE(FLAGS_node_id, "") << "Expected node ID.";
   const std::string node_id = FLAGS_node_id;
   const std::string node_ip_address = FLAGS_node_ip_address;
@@ -570,8 +572,7 @@ int main(int argc, char *argv[]) {
     node_manager_config.runtime_env_agent_port = runtime_env_agent_port;
     node_manager_config.metrics_agent_port = metrics_agent_port;
     node_manager_config.metrics_export_port = metrics_export_port;
-    node_manager_config.dashboard_agent_listen_port =
-        static_cast<int>(FLAGS_dashboard_agent_listen_port);
+    node_manager_config.dashboard_agent_listen_port = dashboard_agent_listen_port;
     node_manager_config.min_worker_port = min_worker_port;
     node_manager_config.max_worker_port = max_worker_port;
     node_manager_config.worker_ports = worker_ports;

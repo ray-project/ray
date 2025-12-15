@@ -66,7 +66,7 @@ static inline bool should_enable_open_census() {
 /// We recommend you to use this only once inside a main script and add Shutdown() method
 /// to any signal handler.
 /// \param global_tags[in] Tags that will be appended to all metrics in this process.
-/// \param worker_id[in] The worker ID of the current component (for OpenCensus exporter).
+/// \param worker_id[in] The worker ID of the current component.
 static inline void Init(
     const TagsType &global_tags,
     const WorkerID &worker_id = WorkerID::Nil(),
@@ -129,8 +129,6 @@ static inline void InitOpenTelemetryExporter(const int metrics_agent_port) {
           absl::ToInt64Milliseconds(0.5 * StatsConfig::instance().GetReportInterval())));
 }
 
-/// Connect the OpenCensus exporter to the metrics agent.
-/// \param metrics_agent_port[in] The port to export metrics at each node.
 static inline void ConnectOpenCensusExporter(const int metrics_agent_port) {
   absl::MutexLock lock(&stats_mutex);
   if (GetOpenCensusExporter() != nullptr) {
