@@ -1,18 +1,14 @@
----
-orphan: true
----
-
 <!--
 Do not modify this README. This file is a copy of the notebook and is not used to display the content.
 Modify notebook.ipynb instead, then regenerate this file with:
-jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
+jupyter nbconvert "README.ipynb" --to markdown --output "README.md"
 -->
 
 # Deploy gpt-oss
 
 <div align="left">
-<a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Fgpt-oss"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
-<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/gpt-oss" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+<a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Fcontent%252Fgpt-oss"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/content/gpt-oss" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
 *gpt-oss* is a family of open-source models designed for general-purpose language understanding and generation. The 20&nbsp;B parameter variant (`gpt-oss-20b`) offers strong reasoning capabilities with lower latency. This makes it well-suited for local or specialized use cases. The larger 120&nbsp;B parameter variant (`gpt-oss-120b`) is designed for production-scale, high-reasoning workloads.
@@ -120,7 +116,7 @@ In a terminal, run:
 
 
 ```python
-serve run serve_gpt_oss:app --non-blocking
+!serve run serve_gpt_oss:app --non-blocking
 ```
 
 Deployment typically takes a few minutes as Ray provisions the cluster, the vLLM server starts, and Ray Serve downloads the model.
@@ -134,7 +130,8 @@ Your endpoint is available locally at `http://localhost:8000`. You can use a pla
 #### Example curl
 
 
-```python
+```bash
+%%bash
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer FAKE_KEY" \
   -H "Content-Type: application/json" \
@@ -186,7 +183,7 @@ To shutdown your LLM service:
 
 
 ```python
-serve shutdown -y
+!serve shutdown -y
 ```
 
 
@@ -234,7 +231,7 @@ Deploy your service:
 
 
 ```python
-anyscale service deploy -f service.yaml
+!anyscale service deploy -f service.yaml
 ```
 
 
@@ -268,7 +265,7 @@ To shutdown your Anyscale Service:
 
 
 ```python
-anyscale service terminate -n deploy-gpt-oss
+!anyscale service terminate -n deploy-gpt-oss
 ```
 
 

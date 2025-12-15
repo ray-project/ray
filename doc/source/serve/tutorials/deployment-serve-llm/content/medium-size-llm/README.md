@@ -1,57 +1,60 @@
----
-orphan: true
----
-
 <!--
 Do not modify this README. This file is a copy of the notebook and is not used to display the content.
 Modify notebook.ipynb instead, then regenerate this file with:
-jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
+jupyter nbconvert "README.ipynb" --to markdown --output "README.md"
 -->
 
-# Deploy a small-sized LLM
+# Deploy a medium-sized LLM
 
 <div align="left">
-<a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Fsmall-size-llm"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
-<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/small-size-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+<a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Fcontent%252Fmedium-size-llm"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/content/medium-size-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
-This tutorial shows you how to deploy and serve a small language model in production with Ray Serve LLM. A small LLM runs on a single node with 1–2 GPUs, making it fast, inexpensive, and simple to use. This tutorial deploys Llama-3.1-8&nbsp;B, a small-sized LLM with 8&nbsp;B parameters. It's ideal for prototyping, lightweight applications, latency-critical use cases, cost-sensitive deployments, and environments with limited resources where efficiency matters more than peak accuracy.
+This tutorial shows you how to deploy and serve a medium language model in production with Ray Serve LLM. A medium LLM typically runs on a single node with 4-8 GPUs. It offers a balance between performance and efficiency. This tutorial deploys Llama-3.1-70&nbsp;B, a medium-sized LLM with 70&nbsp;B parameters. These models provide stronger accuracy and reasoning than small models while remaining more affordable and resource-friendly than very large ones. This makes them a solid choice for production workloads that need good quality at lower cost.
 
-For larger models, see [Deploy a medium-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html) or [Deploy a large-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
+For smaller models, see [Deploy a small-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html). For larger models, see [Deploy a large-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
 
 ---
 
 ## Configure Ray Serve LLM
 
+You can deploy a medium-sized LLM on a single node with multiple GPUs. To leverage all available GPUs, set `tensor_parallel_size` to the number of GPUs on the node, which distributes the model’s weights evenly across them.
+
 Ray Serve LLM provides multiple [Python APIs](https://docs.ray.io/en/latest/serve/api/index.html#llm-api) for defining your application. Use [`build_openai_app`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.build_openai_app.html#ray.serve.llm.build_openai_app) to build a full application from your [`LLMConfig`](https://docs.ray.io/en/latest/serve/api/doc/ray.serve.llm.LLMConfig.html#ray.serve.llm.LLMConfig) object.
 
-Set your Hugging Face token in the config file to access gated models such as `Llama-3.1`.
+Set your Hugging Face token in the config file to access gated models like `Llama-3.1`.
 
 
 ```python
-# serve_llama_3_1_8b.py
+# serve_llama_3_1_70b.py
 from ray.serve.llm import LLMConfig, build_openai_app
 import os
 
 llm_config = LLMConfig(
     model_loading_config=dict(
-        model_id="my-llama-3.1-8b",
-        # Or unsloth/Meta-Llama-3.1-8B-Instruct for an ungated model
-        model_source="meta-llama/Llama-3.1-8B-Instruct",
+        model_id="my-llama-3.1-70b",
+        # Or unsloth/Meta-Llama-3.1-70B-Instruct for an ungated model
+        model_source="meta-llama/Llama-3.1-70B-Instruct",
     ),
-    accelerator_type="L4",
+    accelerator_type="L40S", # Or "A100-40G"
     deployment_config=dict(
         autoscaling_config=dict(
             min_replicas=1,
-            max_replicas=2,
+            max_replicas=4,
         )
     ),
-    ### If your model isn't gated, you can skip `HF_TOKEN`
-    # Share your Hugging Face token with the vllm engine so it can access the gated Llama 3
+    ### If your model is not gated, you can skip `HF_TOKEN`
+    # Share your Hugging Face token with the vllm engine so it can access the gated Llama 3.
     # Type `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>` in a terminal
     runtime_env=dict(env_vars={"HF_TOKEN": os.environ.get("HF_TOKEN")}),
-    engine_kwargs=dict(max_model_len=8192),
+    engine_kwargs=dict(
+        max_model_len=32768,
+        # Split weights among 8 GPUs in the node
+        tensor_parallel_size=8,
+    ),
 )
+
 app = build_openai_app({"llm_configs": [llm_config]})
 
 ```
@@ -62,13 +65,12 @@ app = build_openai_app({"llm_configs": [llm_config]})
 
 ## Deploy locally
 
-
 **Prerequisites**
 
 * Access to GPU compute.
 * (Optional) A **Hugging Face token** if using gated models like Meta’s Llama. Store it in `export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>`.
 
-**Note:** Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama models approval can take anywhere from a few hours to several weeks.
+**Note: **Depending on the organization, you can usually request access on the model's Hugging Face page. For example, Meta’s Llama model approval can take anywhere from a few hours to several weeks.
 
 **Dependencies:**  
 ```bash
@@ -79,14 +81,18 @@ pip install "ray[serve,llm]"
 
 ### Launch
 
-Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) to define your app in a Python module `serve_llama_3_1_8b.py`.  
+Follow the instructions at [Configure Ray Serve LLM](#configure-ray-serve-llm) to define your app in a Python module `serve_llama_3_1_70b.py`.  
 
 In a terminal, run:  
 
 
 ```python
-export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
-serve run serve_llama_3_1_8b:app --non-blocking
+!export HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
+```
+
+
+```python
+!serve run serve_llama_3_1_70b:app --non-blocking
 ```
 
 Deployment typically takes a few minutes as the cluster is provisioned, the vLLM server starts, and the model is downloaded. 
@@ -95,16 +101,17 @@ Deployment typically takes a few minutes as the cluster is provisioned, the vLLM
 
 ### Send requests
 
-Your endpoint is available locally at `http://localhost:8000`. You can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`.
+Your endpoint is available locally at `http://localhost:8000` and you can use a placeholder authentication token for the OpenAI client, for example `"FAKE_KEY"`.
 
 Example curl:
 
 
-```python
+```bash
+%%bash
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer FAKE_KEY" \
   -H "Content-Type: application/json" \
-  -d '{ "model": "my-llama-3.1-8b", "messages": [{"role": "user", "content": "What is 2 + 2?"}] }'
+  -d '{ "model": "my-llama-3.1-70b", "messages": [{"role": "user", "content": "What is 2 + 2?"}] }'
 ```
 
 Example Python:
@@ -121,7 +128,7 @@ BASE_URL = "http://localhost:8000"
 client = OpenAI(base_url=urljoin(BASE_URL, "v1"), api_key=API_KEY)
 
 response = client.chat.completions.create(
-    model="my-llama-3.1-8b",
+    model="my-llama-3.1-70b",
     messages=[{"role": "user", "content": "Tell me a joke"}],
     stream=True
 )
@@ -141,27 +148,26 @@ Shutdown your LLM service:
 
 
 ```python
-serve shutdown -y
+!serve shutdown -y
 ```
 
 
 ---
 
-## Deploy to production with Anyscale Services
+## Deploy to production with Anyscale services
 
-For production deployment, use Anyscale Services to deploy the Ray Serve app to a dedicated cluster without modifying the code. Anyscale ensures scalability, fault tolerance, and load balancing, keeping the service resilient against node failures, high traffic, and rolling updates.
+For production deployment, use Anyscale services to deploy the Ray Serve app to a dedicated cluster without modifying the code. Anyscale ensures scalability, fault tolerance, and load balancing, keeping the service resilient against node failures, high traffic, and rolling updates.
 
 ---
 
 ### Launch the service
 
-Anyscale provides out-of-the-box images (`anyscale/ray-llm`) which come pre-loaded with Ray Serve LLM, vLLM, and all required GPU/runtime dependencies. This makes it easy to get started without building a custom image.
+Anyscale provides out-of-the-box images (`anyscale/ray-llm`), which come pre-loaded with Ray Serve LLM, vLLM, and all required GPU/runtime dependencies. This makes it easy to get started without building a custom image.
 
-Create your Anyscale Service configuration in a new `service.yaml` file:
-
+Create your Anyscale service configuration in a new `service.yaml` file:
 ```yaml
 # service.yaml
-name: deploy-llama-3-8b
+name: deploy-llama-3-70b
 image_uri: anyscale/ray-llm:2.49.0-py311-cu128 # Anyscale Ray Serve LLM image. Use `containerfile: ./Dockerfile` to use a custom Dockerfile.
 compute_config:
   auto_select_worker_config: true 
@@ -169,15 +175,14 @@ working_dir: .
 cloud:
 applications:
   # Point to your app in your Python module
-  - import_path: serve_llama_3_1_8b:app
+  - import_path: serve_llama_3_1_70b:app
 ```
 
-
-Deploy your service with the following command. Make sure to forward your Hugging Face token:
+Deploy your service. Make sure you forward your Hugging Face token to the command.
 
 
 ```python
-anyscale service deploy -f service.yaml --env HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
+!anyscale service deploy -f service.yaml --env HF_TOKEN=<YOUR-HUGGINGFACE-TOKEN>
 ```
 
 **Custom Dockerfile**  
@@ -202,26 +207,26 @@ The `anyscale service deploy` command output shows both the endpoint and authent
 ```console
 (anyscale +3.9s) curl -H "Authorization: Bearer <YOUR-TOKEN>" <YOUR-ENDPOINT>
 ```
-You can also retrieve both from the service page in the Anyscale Console. Click the **Query** button at the top. See [Send requests](#send-requests) for example requests, but make sure to use the correct endpoint and authentication token.  
+You can also retrieve both from the service page in the Anyscale console. Click the **Query** button at the top. See [Send requests](#send-requests) for example requests, but make sure to use the correct endpoint and authentication token.  
 
 ---
 
 ### Access the Serve LLM dashboard
 
-See [Monitor your deployment](#monitor-your-deployment) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM Dashboard from an Anyscale Service:
-1. In the Anyscale console, go to your **Service** or **Workspace**.
-2. Navigate to the **Metrics** tab.
-3. Expand **View in Grafana** and click **Serve LLM Dashboard**.
+See [Monitor your deployment](#monitor-your-deployment) for instructions on enabling LLM-specific logging. To open the Ray Serve LLM dashboard from an Anyscale service:
+1. In the Anyscale console, go to your **Service** or **Workspace**
+2. Navigate to the **Metrics** tab
+3. Click **View in Grafana** and click **Serve LLM Dashboard**
 
 ---
 
-### Shutdown
-
-Shutdown your Anyscale Service:
+### Shutdown 
+ 
+Shutdown your Anyscale service:
 
 
 ```python
-anyscale service terminate -n deploy-llama-3-8b
+!anyscale service terminate -n deploy-llama-3-70b
 ```
 
 
@@ -264,34 +269,32 @@ For comprehensive monitoring strategies and best practices, see the [Observabili
 
 ## Improve concurrency
 
-Ray Serve LLM uses [vLLM](https://docs.vllm.ai/en/stable/) as its backend engine, which logs the *maximum concurrency* it can support based on your configuration.
+Ray Serve LLM uses [vLLM](https://docs.vllm.ai/en/latest/) as its backend engine, which logs the *maximum concurrency* it can support based on your configuration.  
 
-Example log:
+Example log for 8xL40S:
 ```console
-INFO 08-06 20:15:53 [executor_base.py:118] Maximum concurrency for 8192 tokens per request: 3.53x
+INFO 08-19 20:57:37 [kv_cache_utils.py:837] Maximum concurrency for 32,768 tokens per request: 17.79x
 ```
 
-You can improve concurrency depending on your model and hardware in several ways:  
+The following are a few ways to improve concurrency depending on your model and hardware:  
 
 **Reduce `max_model_len`**  
 Lowering `max_model_len` reduces the memory needed for KV cache.
 
-**Example:** Running *llama-3.1-8&nbsp;B* on an A10G or L4 GPU:
-- `max_model_len = 8192` → concurrency ≈ 3.5
-- `max_model_len = 4096` → concurrency ≈ 7
+**Example:** Running Llama-3.1-70&nbsp;B on 8xL40S:
+* `max_model_len = 32,768` → concurrency ≈ 18
+* `max_model_len = 16,384` → concurrency ≈ 36
 
-**Use Quantized Models**  
+**Use Quantized models**  
 Quantizing your model (for example, to FP8) reduces the model's memory footprint, freeing up memory for more KV cache and enabling more concurrent requests.
 
-**Use Tensor Parallelism**  
-Distribute the model across multiple GPUs with `tensor_parallel_size > 1`.
-
-**Note:** Latency may rise if GPUs don't have strong GPU interconnect such as NVLink.
+**Use pipeline parallelism**  
+If a single node isn't enough to handle your workload, consider distributing the model's layers across multiple nodes with `pipeline_parallel_size > 1`.
 
 **Upgrade to GPUs with more memory**  
 Some GPUs provide significantly more room for KV cache and allow for higher concurrency out of the box.
 
-**Scale with more Replicas**  
+**Scale with more replicas**  
 In addition to tuning per-replica concurrency, you can scale *horizontally* by increasing the number of replicas in your config.  
 Raising the replica count increases the total number of concurrent requests your service can handle, especially under sustained or bursty traffic.
 ```yaml
@@ -303,7 +306,6 @@ deployment_config:
 
 *For more details on tuning strategies, hardware guidance, and serving configurations, see [Choose a GPU for LLM serving](https://docs.anyscale.com/llm/serving/gpu-guidance) and [Tune parameters for LLMs on Anyscale services](https://docs.anyscale.com/llm/serving/parameter-tuning).*
 
-
 ---
 
 ## Troubleshooting
@@ -314,6 +316,6 @@ If you encounter issues when deploying your LLM, such as out-of-memory errors, a
 
 ## Summary
 
-In this tutorial, you deployed a small-sized LLM with Ray Serve LLM, from development to production. You learned how to configure and deploy your service, send requests, monitor performance metrics, and optimize concurrency.
+In this tutorial, you deployed a medium-sized LLM with Ray Serve LLM, from development to production. You learned how to configure and deploy your service, send requests, monitor performance metrics, and optimize concurrency.
 
-To learn more, take the [LLM Serving Foundations](https://courses.anyscale.com/courses/llm-serving-foundations) course or explore [LLM batch inference](https://docs.anyscale.com/llm/batch-inference) for offline workloads. For larger models, see [Deploy a medium-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html) or [Deploy a large-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
+To learn more, take the [LLM Serving Foundations](https://courses.anyscale.com/courses/llm-serving-foundations) course or explore [LLM batch inference](https://docs.anyscale.com/llm/batch-inference) for offline workloads. For smaller models, see [Deploy a small-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/small-size-llm/README.html) or for larger models, see [Deploy a large-sized LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/large-size-llm/README.html).
