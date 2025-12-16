@@ -726,3 +726,19 @@
       env: aws
       cluster:
         cluster_compute: dataset/cross_az_250_350_compute_aws.yaml
+
+###################
+# Autoscaling tests
+###################
+
+- name: does_not_over_provision
+  group: data-autoscaling
+  frequency: manual
+
+  cluster:
+    byod: {}
+    cluster_compute: autoscaling/does_not_over_provision_cluster_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python autoscaling/does_not_over_provision.py
