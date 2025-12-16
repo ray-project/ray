@@ -18,6 +18,7 @@ class LinuxContainer(Container):
     def __init__(
         self,
         docker_tag: str,
+        docker_repo: Optional[str] = None,
         volumes: Optional[List[str]] = None,
         envs: Optional[List[str]] = None,
         python_version: Optional[str] = None,
@@ -25,7 +26,7 @@ class LinuxContainer(Container):
         architecture: Optional[str] = None,
         privileged: bool = False,
     ) -> None:
-        super().__init__(docker_tag, volumes, envs)
+        super().__init__(docker_tag, docker_repo, volumes, envs)
 
         if tmp_filesystem is not None:
             if tmp_filesystem != "tmpfs":
