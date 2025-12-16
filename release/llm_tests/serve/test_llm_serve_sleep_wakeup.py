@@ -5,6 +5,10 @@ This test verifies that the DevIngress sleep/wakeup endpoints work correctly:
 2. Sleep command puts engine to sleep (is_sleeping=True) and frees GPU memory
 3. Wakeup command restores engine (is_sleeping=False) and restores GPU memory
 4. Model can still serve requests after wakeup
+
+NOTE (Kourosh): This is part of a design in progress for integrating Ray Serve
+LLM with RL workloads. The API is not public and won't be documented until the
+end-to-end story is finalized. Class names and endpoint names may change.
 """
 
 import subprocess
