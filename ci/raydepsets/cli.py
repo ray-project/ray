@@ -428,9 +428,10 @@ class DependencySetManager:
         dependency_graph = DependencyGraph()
         dependency_graph.build_dependency_graph(deps)
         dependency_graph.remove_dropped_dependencies(drop_packages)
-        relaxed_output_file = f"{depset.output}.relaxed"
-        _graph_to_lockfile(dependency_graph.graph, self.get_path(relaxed_output_file))
-        requirements.append(relaxed_output_file)
+        temp_dir = tempfile.mkdtemp()
+        relaxed_output_file = Path(temp_dir) / f"{Path(depset.output).name}.relaxed"
+        _graph_to_lockfile(dependency_graph.graph, relaxed_output_file)
+        requirements.append(relaxed_output_file.as_posix())
         self.compile(
             constraints=constraints,
             requirements=requirements,
@@ -440,6 +441,7 @@ class DependencySetManager:
             override_flags=override_flags,
             include_setuptools=include_setuptools,
         )
+        shutil.rmtree(temp_dir)
 
     def read_lock_file(self, file_path: Path) -> List[str]:
         if not file_path.exists():
@@ -520,13 +522,14 @@ def _override_uv_flags(flags: List[str], args: List[str]) -> List[str]:
     return new_args + _flatten_flags(flags)
 
 
-def _graph_to_lockfile(graph: DiGraph, output_path: str):
+def _graph_to_lockfile(graph: DiGraph, output_path: Path):
     lockfile_content = (
         "\n".join(
             [f"{node}=={data['version']}" for node, data in graph.nodes(data=True)]
         )
         + "\n"
     )
+    print(f"Writing lockfile to {output_path}")
     with open(output_path, "w") as f:
         f.write(lockfile_content)
 
