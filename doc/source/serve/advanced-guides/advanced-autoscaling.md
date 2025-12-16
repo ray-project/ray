@@ -611,6 +611,7 @@ Custom policies let you implement scaling logic based on any metrics or rules yo
 
 A custom autoscaling policy is a user-provided Python function that takes an [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst) and returns a tuple `(target_replicas, policy_state)` for a single Deployment.
 
+An `AutoscalingContext` object provides the following information to the custom autoscaling policy:
 * **Current state:** Current replica count and deployment metadata.
 * **Built-in metrics:** Total requests, queued requests, per-replica counts.
 * **Custom metrics:** Values your deployment reports via `record_autoscaling_stats()`. (See below.)
