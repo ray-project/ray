@@ -145,7 +145,7 @@ assert (
 )
 
 # Correct example of ray.get(), explicitly setting the tensor transport to use the Ray object store.
-print(ray.get(tensor, _tensor_transport="object_store"))
+print(ray.get(tensor, _fetch_through_object_store=True))
 # torch.Tensor(...)
 # __gloo_get_end__
 

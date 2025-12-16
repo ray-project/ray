@@ -2992,7 +2992,7 @@ def put(
     value: Any,
     *,
     _owner: Optional["ray.actor.ActorHandle"] = None,
-    _tensor_transport: str = "object_store",
+    _tensor_transport: Optional[str] = None,
 ) -> "ray.ObjectRef":
     """Store an object in the object store.
 
