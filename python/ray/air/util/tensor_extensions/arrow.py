@@ -796,11 +796,11 @@ class ArrowTensorArray(pa.ExtensionArray):
             # NOTE: In case of conversion from a Pandas extension types supporting
             #       nullable numeric values (like `pd.Int64Dtype`) we have to explicitly
             #       ravel tensors
-            _, raveled, shapes, sizes = ArrowVariableShapedTensorArray._ravel_tensors(
-                arr
-            )
+            _, raveled, shapes, _ = _ravel_tensors(arr)
 
-            # TODO assert shapes, sizes
+            assert (
+                len({tuple(s) for s in shapes}) == 1
+            ), f"Expected fixed-shape tensor, instead got: {shapes}"
 
             # An optimized zero-copy path if raveled tensor elements are already
             # contiguous in memory, e.g. if this tensor array has already done a
@@ -1198,7 +1198,7 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
             raise ValueError("Creating empty ragged tensor arrays is not supported.")
 
         # Pre-allocate lists for better performance
-        ndim, raveled, shapes, sizes = cls._ravel_tensors(arr)
+        ndim, raveled, shapes, sizes = _ravel_tensors(arr)
 
         # Get size offsets and total size.
         size_offsets = np.cumsum(sizes)
@@ -1253,40 +1253,6 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
 
         type_ = ArrowVariableShapedTensorType(pa_scalar_type, ndim)
         return type_.wrap_array(storage)
-
-    @classmethod
-    def _ravel_tensors(
-        cls, arr: Union[np.ndarray, List[np.ndarray], Tuple[np.ndarray]]
-    ) -> Tuple[int, np.ndarray, np.ndarray, np.ndarray,]:
-        raveled = np.empty(len(arr), dtype=np.object_)
-        shapes = np.empty(len(arr), dtype=np.object_)
-
-        sizes = np.arange(len(arr), dtype=np.int64)
-
-        ndim = None
-
-        for i, a in enumerate(arr):
-            a = np.asarray(a)
-
-            if ndim is not None and a.ndim != ndim:
-                raise ValueError(
-                    "ArrowVariableShapedTensorArray only supports tensor elements that "
-                    "all have the same number of dimensions, but got tensor elements "
-                    f"with dimensions: {ndim}, {a.ndim}"
-                )
-
-            ndim = a.ndim
-            shapes[i] = a.shape
-            sizes[i] = a.size
-
-            a = _ensure_scalar_ndarray(a)
-
-            # Convert to 1D array view; this should be zero-copy in the common case.
-            # NOTE: If array is not in C-contiguous order, this will convert it to
-            # C-contiguous order, incurring a copy.
-            raveled[i] = np.ravel(a, order="C")
-
-        return ndim, raveled, shapes, sizes
 
     def to_numpy(self, zero_copy_only: bool = True):
         """
@@ -1351,6 +1317,41 @@ def _pad_shape_with_singleton_axes(
     assert ndim >= len(shape)
 
     return (1,) * (ndim - len(shape)) + shape
+
+
+def _ravel_tensors(
+    arr: Union[np.ndarray, List[np.ndarray], Tuple[np.ndarray]],
+) -> Tuple[int, np.ndarray, np.ndarray, np.ndarray,]:
+    raveled = np.empty(len(arr), dtype=np.object_)
+
+    shapes = np.empty(len(arr), dtype=np.object_)
+    sizes = np.arange(len(arr), dtype=np.int64)
+
+    ndim = None
+
+    for i, a in enumerate(arr):
+        a = np.asarray(a)
+
+        if ndim is None:
+            ndim = a.ndim
+        elif a.ndim != ndim:
+            raise ValueError(
+                "ArrowVariableShapedTensorArray only supports tensor elements that "
+                "all have the same number of dimensions, but got tensor elements "
+                f"with dimensions: {ndim}, {a.ndim}"
+            )
+
+        shapes[i] = a.shape
+        sizes[i] = a.size
+
+        a = _ensure_scalar_ndarray(a)
+
+        # Convert to 1D array view; this should be zero-copy in the common case.
+        # NOTE: If array is not in C-contiguous order, this will convert it to
+        # C-contiguous order, incurring a copy.
+        raveled[i] = np.ravel(a, order="C")
+
+    return ndim, raveled, shapes, sizes
 
 
 def _ensure_scalar_ndarray(a: np.ndarray) -> np.ndarray:
