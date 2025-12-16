@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1.3-labs
 ARG ARCH_SUFFIX=
+ARG HOSTTYPE=x86_64
 FROM rayproject/manylinux2014:251216.3835fc5-jdk-$HOSTTYPE AS builder
 
 ARG PYTHON_VERSION=3.9
