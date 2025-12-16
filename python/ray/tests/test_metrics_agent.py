@@ -55,7 +55,7 @@ try:
 except ImportError:
     prometheus_client = None
 
-# This list of metrics should be kept in sync with src/ray/stats/metric_defs.h
+# This list of metrics should be kept in sync with metric definitions across the codebase
 # NOTE: Commented out metrics are not available in this test.
 # TODO(Clark): Find ways to trigger commented out metrics in cluster setup.
 _METRICS = [

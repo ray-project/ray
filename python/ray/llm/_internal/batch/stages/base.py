@@ -40,13 +40,20 @@ def wrap_preprocess(
 def wrap_postprocess(
     fn: UserDefinedFunction,
     processor_data_column: str,
+    include_error_column: bool = False,
 ) -> Callable:
     """Wrap the postprocess function to remove the processor_data_column.
     Note that we fully rely on users to determine which columns to carry over.
 
+    Error rows (with __inference_error__ set) bypass the user's postprocess
+    function and return directly with the error information preserved.
+
     Args:
         fn: The function to be applied.
         processor_data_column: The internal data column name of the processor.
+        include_error_column: If True, always include __inference_error__ in output
+            (None for success rows, error message for failures). This ensures
+            consistent schema across all output rows.
 
     Returns:
         The wrapped function.
@@ -58,7 +65,18 @@ def wrap_postprocess(
                 f"[Internal] {processor_data_column} not found in row {row}"
             )
 
-        return fn(row[processor_data_column])
+        data = row[processor_data_column]
+
+        # Error rows bypass user postprocess to avoid crashes when
+        # expected output fields are missing. Return entire data dict
+        # to preserve debugging info (e.g., prompt).
+        if data.get("__inference_error__") is not None:
+            return data
+
+        result = fn(data)
+        if include_error_column:
+            result["__inference_error__"] = None
+        return result
 
     return _postprocess
 
@@ -153,36 +171,52 @@ class StatefulStageUDF:
         self.validate_inputs(inputs)
 
         # Assign the index of the row in the batch to the idx_in_batch_column.
-        # This is beacuse the UDF output may be out-of-order (if asyncio.as_completed
-        # is used interanlly for example), and we need to carry over unused input
+        # This is because the UDF output may be out-of-order (if asyncio.as_completed
+        # is used internally for example), and we need to carry over unused input
         # columns to the next stage. Thus, we use the row index in batch to match
         # the output of the UDF with the input.
         for idx, row in enumerate(inputs):
             row[self.IDX_IN_BATCH_COLUMN] = idx
 
+        # Separate error rows from normal rows. Error rows (those with
+        # __inference_error__ set) bypass the UDF to avoid crashes when
+        # expected fields are missing (e.g., generated_tokens for DetokenizeUDF).
+        normal_rows = []
+        error_row_indices = set()
+        for idx, row in enumerate(inputs):
+            if row.get("__inference_error__") is not None:
+                error_row_indices.add(idx)
+            else:
+                normal_rows.append(row)
+
         # Collect all outputs first, then return them in the original order
         # This is a requirement set by https://github.com/ray-project/ray/pull/54190/
-        not_outputed_rows = set(range(len(inputs)))
-        async for output in self.udf(inputs):
-            if self.IDX_IN_BATCH_COLUMN not in output:
-                raise ValueError(
-                    "The output of the UDF must contain the column "
-                    f"{self.IDX_IN_BATCH_COLUMN}."
-                )
-            idx_in_batch = output.pop(self.IDX_IN_BATCH_COLUMN)
-            if idx_in_batch not in not_outputed_rows:
-                raise ValueError(
-                    f"The row {idx_in_batch} is outputed twice. "
-                    "This is likely due to the UDF is not one-to-one."
-                )
-            not_outputed_rows.remove(idx_in_batch)
+        not_outputed_rows = set(range(len(inputs))) - error_row_indices
+        if normal_rows:
+            async for output in self.udf(normal_rows):
+                if self.IDX_IN_BATCH_COLUMN not in output:
+                    raise ValueError(
+                        "The output of the UDF must contain the column "
+                        f"{self.IDX_IN_BATCH_COLUMN}."
+                    )
+                idx_in_batch = output.pop(self.IDX_IN_BATCH_COLUMN)
+                if idx_in_batch not in not_outputed_rows:
+                    raise ValueError(
+                        f"The row {idx_in_batch} is outputed twice. "
+                        "This is likely due to the UDF is not one-to-one."
+                    )
+                not_outputed_rows.remove(idx_in_batch)
 
-            # Add stage outputs to the data column of the row.
-            inputs[idx_in_batch].pop(self.IDX_IN_BATCH_COLUMN)
-            inputs[idx_in_batch].update(output)
+                # Add stage outputs to the data column of the row.
+                inputs[idx_in_batch].pop(self.IDX_IN_BATCH_COLUMN)
+                inputs[idx_in_batch].update(output)
 
         if not_outputed_rows:
             raise ValueError(f"The rows {not_outputed_rows} are not outputed.")
+
+        # Clean up idx column from error rows (normal rows already cleaned above)
+        for idx in error_row_indices:
+            inputs[idx].pop(self.IDX_IN_BATCH_COLUMN, None)
 
         # Return all updated inputs in the original order
         yield {self.data_column: inputs}
