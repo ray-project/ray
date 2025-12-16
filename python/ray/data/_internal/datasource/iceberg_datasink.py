@@ -29,12 +29,12 @@ class IcebergWriteResult:
 
     Attributes:
         data_files: List of DataFile objects containing metadata about written Parquet files.
-        upsert_keys: Dictionary mapping column names to lists of key values for upsert operations.
+        upsert_keys: Dictionary mapping column names to PyArrow arrays for upsert operations.
         schemas: List of PyArrow schemas from all non-empty blocks.
     """
 
     data_files: List["DataFile"] = field(default_factory=list)
-    upsert_keys: Optional[Dict[str, List[Any]]] = None
+    upsert_keys: Optional[Dict[str, List["pa.Array"]]] = None
     schemas: List["pa.Schema"] = field(default_factory=list)
 
 
@@ -185,7 +185,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         self,
         txn: "Table.transaction",
         data_files: List["DataFile"],
-        upsert_keys_dicts: List[Dict[str, List[Any]]],
+        upsert_keys_dicts: List[Dict[str, List["pa.Array"]]],
     ) -> None:
         """
         Commit upsert transaction with copy-on-write strategy.
@@ -193,7 +193,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         Args:
             txn: PyIceberg transaction object
             data_files: List of DataFile objects to commit
-            upsert_keys_dicts: List of dictionaries mapping column names to lists of key values
+            upsert_keys_dicts: List of dictionaries mapping column names to PyArrow arrays
         """
         import functools
         from collections import defaultdict
@@ -202,15 +202,20 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         from pyiceberg.table.upsert_util import create_match_filter
 
         # Merge all join keys dictionaries
-        merged_keys_dict = defaultdict(list)
+        merged_keys_dict: Dict[str, List[pa.Array]] = defaultdict(list)
         for upsert_keys_dict in upsert_keys_dicts:
-            for col, values in upsert_keys_dict.items():
-                merged_keys_dict[col].extend(values)
+            for col, arrays in upsert_keys_dict.items():
+                merged_keys_dict[col].extend(arrays)
 
         # Create delete filter if we have join keys
         if merged_keys_dict:
-            # Create PyArrow table from join keys
-            keys_table = pa.table(dict(merged_keys_dict))
+            # Concatenate all arrays for each column and create PyArrow table
+            keys_table = pa.table(
+                {
+                    col: pa.concat_arrays(arrays)
+                    for col, arrays in merged_keys_dict.items()
+                }
+            )
 
             # Filter out rows with any NULL values in join columns
             # (NULL != NULL in SQL semantics)
@@ -372,7 +377,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                 if use_copy_on_write_upsert:
                     upsert_cols = self._get_upsert_cols()
                     for col in upsert_cols:
-                        upsert_keys_dict[col].extend(pa_table[col].to_pylist())
+                        upsert_keys_dict[col].extend(pa_table[col].chunks)
 
                 # Write data files to storage
                 data_files = list(
@@ -386,7 +391,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
 
         return IcebergWriteResult(
             data_files=all_data_files,
-            upsert_keys=upsert_keys_dict or None,
+            upsert_keys=dict(upsert_keys_dict) if upsert_keys_dict else None,
             schemas=block_schemas,
         )
 
@@ -394,6 +399,9 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         self, txn: "Table.transaction", data_files: List["DataFile"]
     ) -> None:
         """Commit data files using OVERWRITE mode."""
+        from pyiceberg.expressions import AlwaysTrue
+
+        pyi_filter = AlwaysTrue()
         # Delete matching data if filter provided
         if self._overwrite_filter is not None:
             from ray.data._internal.datasource.iceberg_datasource import (
@@ -403,20 +411,11 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             visitor = _IcebergExpressionVisitor()
             pyi_filter = visitor.visit(self._overwrite_filter)
 
-            txn.delete(
-                delete_filter=pyi_filter,
-                snapshot_properties=self._snapshot_properties,
-                **self._overwrite_kwargs,
-            )
-        else:
-            # Full overwrite - delete all
-            from pyiceberg.expressions import AlwaysTrue
-
-            txn.delete(
-                delete_filter=AlwaysTrue(),
-                snapshot_properties=self._snapshot_properties,
-                **self._overwrite_kwargs,
-            )
+        txn.delete(
+            delete_filter=pyi_filter,
+            snapshot_properties=self._snapshot_properties,
+            **self._overwrite_kwargs,
+        )
 
         # Append new data files and commit
         self._append_and_commit(txn, data_files)
@@ -433,7 +432,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         # Collect all data files and schemas from all workers
         all_data_files: List["DataFile"] = []
         all_schemas: List["pa.Schema"] = []
-        upsert_keys_dicts: List[Dict[str, List[Any]]] = []
+        upsert_keys_dicts: List[Dict[str, List["pa.Array"]]] = []
 
         for write_return in write_result.write_returns:
             if not write_return:
