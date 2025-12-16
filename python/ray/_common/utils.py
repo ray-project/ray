@@ -16,7 +16,7 @@ from types import ModuleType
 from typing import Any, Coroutine, Dict, Optional, Tuple
 
 import ray
-from ray._raylet import GcsClient, NodeID as RayNodeID
+from ray._raylet import GcsClient, NodeID
 from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 
@@ -249,14 +249,11 @@ def resolve_user_ray_temp_dir(gcs_client: GcsClient, node_id: str):
     try:
         # Create node selector for node_id filter
         node_selector = GetAllNodeInfoRequest.NodeSelector()
-        node_selector.node_id = RayNodeID.from_hex(node_id).binary()
-
-        # Get ALIVE state enum value
-        state_filter = GcsNodeInfo.GcsNodeState.Value("ALIVE")
+        node_selector.node_id = NodeID.from_hex(node_id).binary()
 
         node_infos = gcs_client.get_all_node_info(
             node_selectors=[node_selector],
-            state_filter=state_filter,
+            state_filter=GcsNodeInfo.GcsNodeState.ALIVE,
         ).values()
     except Exception as e:
         raise Exception(

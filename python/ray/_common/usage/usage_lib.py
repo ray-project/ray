@@ -565,12 +565,9 @@ def get_total_num_running_jobs_to_report(gcs_client) -> Optional[int]:
 def get_total_num_alive_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
     """Return the total number of alive nodes in the cluster"""
     try:
-        # Get ALIVE state enum value
-        state_filter = GcsNodeInfo.GcsNodeState.Value("ALIVE")
-
         result = gcs_client.get_all_node_info(
             timeout=timeout,
-            state_filter=state_filter,
+            state_filter=GcsNodeInfo.GcsNodeState.ALIVE,
         )
         return len(result.items())
     except Exception as e:

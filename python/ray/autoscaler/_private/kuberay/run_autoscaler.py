@@ -26,8 +26,6 @@ BACKOFF_S = 5
 
 
 def _get_log_dir(gcs_client: GcsClient) -> str:
-
-    # Get head node id using is_head_node filter
     head_node_selector = GetAllNodeInfoRequest.NodeSelector()
     head_node_selector.is_head_node = True
 
