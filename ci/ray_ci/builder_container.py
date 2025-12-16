@@ -4,6 +4,9 @@ from ci.ray_ci.configs import BUILD_TYPES, PYTHON_VERSIONS
 from ci.ray_ci.linux_container import LinuxContainer
 
 
+_DEFAULT_MANYLINUX_VERSION = "251216.3835fc5"
+
+
 class BuilderContainer(LinuxContainer):
     def __init__(
         self,
@@ -12,6 +15,11 @@ class BuilderContainer(LinuxContainer):
         architecture: str,
         upload: bool = False,
     ) -> None:
+        manylinux_version = os.environ.get(
+            "MANYLINUX_VERSION", _DEFAULT_MANYLINUX_VERSION
+        )
+        docker_repo = "rayproject/manylinux2014"
+        docker_tag = f"{manylinux_version}-jdk-{architecture}"
         super().__init__(
             f"manylinux-{architecture}",
             volumes=[f"{os.environ.get('RAYCI_CHECKOUT_DIR')}:/rayci"],

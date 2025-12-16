@@ -147,7 +147,6 @@ steps:
       - "3.12"
       - "3.13"
     depends_on:
-      - manylinux-aarch64
       - forge-aarch64
     job_env: forge-aarch64
 
@@ -168,7 +167,6 @@ steps:
         --platform cpu
         --image-type ray-extra --architecture aarch64 --upload
     depends_on:
-      - manylinux-aarch64
       - forge-aarch64
       - raycudabaseextra-aarch64
       - raycpubaseextra-aarch64
@@ -195,7 +193,6 @@ steps:
         --platform cpu
         --image-type ray --architecture aarch64 --upload
     depends_on:
-      - manylinux-aarch64
       - forge-aarch64
       - raycudabase-aarch64
       - raycpubase-aarch64
@@ -217,7 +214,6 @@ steps:
         --test-env=RAY_CI_POST_WHEEL_TESTS=True
         --python-version 3.10
     depends_on:
-      - manylinux-aarch64
       - oss-ci-base_build-aarch64
       - forge-aarch64
     job_env: forge-aarch64
@@ -234,7 +230,6 @@ steps:
         --test-env=RAY_CI_POST_WHEEL_TESTS=True
         --python-version 3.10
     depends_on:
-      - manylinux-aarch64
       - oss-ci-base_build-aarch64
       - forge-aarch64
     job_env: forge-aarch64

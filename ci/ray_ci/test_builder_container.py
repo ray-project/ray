@@ -1,15 +1,18 @@
+import os
 import sys
 from typing import List
 from unittest import mock
 
 import pytest
 
-from ci.ray_ci.builder_container import BuilderContainer
+from ci.ray_ci.builder_container import BuilderContainer, _DEFAULT_MANYLINUX_VERSION
 
 
 def test_init() -> None:
     builder = BuilderContainer("3.10", "optimized", "aarch64")
-    assert builder.docker_tag == "manylinux-aarch64"
+    assert builder.docker_tag == f"{_DEFAULT_MANYLINUX_VERSION}-jdk-aarch64"
+    assert builder.docker_repo == "rayproject/manylinux2014"
+
     builder = BuilderContainer("3.10", "optimized", "x86_64")
     assert builder.docker_tag == "manylinux-x86_64"
 

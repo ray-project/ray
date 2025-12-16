@@ -49,13 +49,29 @@ _DOCKER_ENV = [
 _RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "")
 
 
-def get_docker_image(docker_tag: str, build_id: Optional[str] = None) -> str:
-    """Get rayci image for a particular tag."""
+def get_docker_image(
+    docker_tag: str,
+    build_id: Optional[str] = None,
+    docker_repo: Optional[str] = None,
+) -> str:
+    """Get rayci image for a particular tag.
+
+    Args:
+        docker_tag: The tag for the docker image.
+        build_id: The build ID to prepend to the tag (for CI-built images).
+        docker_repo: The docker repository. Defaults to RAYCI_WORK_REPO.
+            If a non-default repo is provided, the image is treated as external
+            and the build_id prefix is not added.
+    """
+    if docker_repo is not None and docker_repo != _DOCKER_ECR_REPO:
+        return f"{docker_repo}:{docker_tag}"
+
+    docker_repo = _DOCKER_ECR_REPO
     if not build_id:
         build_id = _RAYCI_BUILD_ID
     if build_id:
-        return f"{_DOCKER_ECR_REPO}:{build_id}-{docker_tag}"
-    return f"{_DOCKER_ECR_REPO}:{docker_tag}"
+        return f"{docker_repo}:{build_id}-{docker_tag}"
+    return f"{docker_repo}:{docker_tag}"
 
 
 class Container(abc.ABC):
@@ -66,10 +82,12 @@ class Container(abc.ABC):
     def __init__(
         self,
         docker_tag: str,
+        docker_repo: Optional[str] = None,
         volumes: Optional[List[str]] = None,
         envs: Optional[List[str]] = None,
     ) -> None:
         self.docker_tag = docker_tag
+        self.docker_repo = docker_repo
         self.volumes = volumes or []
         self.envs = envs or []
         self.envs += _DOCKER_ENV
@@ -95,7 +113,7 @@ class Container(abc.ABC):
 
     def _get_docker_image(self) -> str:
         """Get docker image for a particular commit."""
-        return get_docker_image(self.docker_tag)
+        return get_docker_image(self.docker_tag, docker_repo=self.docker_repo)
 
     @abc.abstractmethod
     def install_ray(
