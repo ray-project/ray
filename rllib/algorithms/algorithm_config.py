@@ -4239,6 +4239,7 @@ class AlgorithmConfig(_Config):
         If result is a fraction AND `worker_index` is provided, makes
         those workers add additional timesteps, such that the overall batch size (across
         the workers) adds up to exactly the `total_train_batch_size`.
+        Fractions < 1 calculated this way are rounded up to a rollout_fragment_length of 1.
 
         Returns:
             The user-provided `rollout_fragment_length` or a computed one (if user
