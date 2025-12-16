@@ -61,3 +61,15 @@ depsets:
       - requirement_constraints_expand.txt
     output: requirements_compiled_nested_expand.txt
     include_setuptools: true
+  - name: large_test_depset
+    operation: compile
+    requirements:
+      - test_python_depset.lock
+    constraints:
+      - requirement_constraints_test.txt
+    output: test_python_depset.lock
+  - name: relax_test_depset
+    operation: relax
+    source_depset: large_test_depset
+    drop_package: aiohttp
+    output: test_python_depset_relaxed.lock

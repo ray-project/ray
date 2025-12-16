@@ -433,8 +433,8 @@ class TestCli(unittest.TestCase):
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             assert manager.build_graph is not None
-            assert len(manager.build_graph.nodes()) == 7
-            assert len(manager.build_graph.edges()) == 4
+            assert len(manager.build_graph.nodes()) == 9
+            assert len(manager.build_graph.edges()) == 5
             # assert that the compile depsets are first
             assert (
                 manager.build_graph.nodes["general_depset__py311_cpu"]["operation"]
@@ -603,6 +603,32 @@ class TestCli(unittest.TestCase):
             output_file_valid = Path(tmpdir) / "requirements_compiled_test_expand.txt"
             output_text_valid = output_file_valid.read_text()
             assert output_text == output_text_valid
+
+    def test_relax(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=[],
+                requirements=["test_python_depset.lock"],
+                name="large_test_depset",
+                output="test_python_depset.lock",
+            )
+            manager.relax(
+                source_depset="large_test_depset",
+                drop_package="aiohttp",
+                requirements=[],
+                constraints=[],
+                name="relax_test_depset",
+                output="test_python_depset_relaxed.lock",
+            )
+            output_file = Path(tmpdir) / "test_python_depset_relaxed.lock"
+            output_text = output_file.read_text()
+            assert "async-timeout" in output_text
+            assert "aiohttp" not in output_text
+            assert "yarl" not in output_text
+            assert "idna" not in output_text
+            assert "attrs" not in output_text
 
     def test_get_depset_with_build_arg_set(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -882,9 +908,9 @@ class TestCli(unittest.TestCase):
                 tmpdir, config_path="*.depsets.yaml", build_all_configs=True
             )
             assert manager.build_graph is not None
-            assert len(manager.build_graph.nodes) == 12
-            assert len(manager.build_graph.edges) == 8
+            assert len(manager.build_graph.nodes) == 14
+            assert len(manager.build_graph.edges) == 9
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-vvv", __file__]))
+    sys.exit(pytest.main(["-vv", __file__]))

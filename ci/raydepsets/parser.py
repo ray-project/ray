@@ -41,5 +41,6 @@ class Parser:
                     and not constraint_line_match
                 ):
                     deps_arr.append(dependency_line_match.group(1).replace("via ", ""))
-
+            # handle last dependency
+            deps.append(Dep(name=name, version=version, required_by=deps_arr))
         return deps
