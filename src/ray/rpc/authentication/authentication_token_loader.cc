@@ -15,6 +15,7 @@
 #include "ray/rpc/authentication/authentication_token_loader.h"
 
 #include <fstream>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -47,19 +48,20 @@ AuthenticationTokenLoader &AuthenticationTokenLoader::instance() {
   return instance;
 }
 
-std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken(
+std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
     bool ignore_auth_mode) {
   absl::MutexLock lock(&token_mutex_);
 
   // If already loaded, return cached value
-  if (cached_token_.has_value()) {
+  if (cache_initialized_) {
     return cached_token_;
   }
 
-  // If token or k8s auth is not enabled, return std::nullopt (unless ignoring auth mode)
+  // If token or k8s auth is not enabled, return nullptr (unless ignoring auth mode)
   if (!ignore_auth_mode && !RequiresTokenAuthentication()) {
-    cached_token_ = std::nullopt;
-    return std::nullopt;
+    cached_token_ = nullptr;
+    cache_initialized_ = true;
+    return nullptr;
   }
 
   // Token auth is enabled (or we're ignoring auth mode), try to load from sources
@@ -74,10 +76,12 @@ std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken(
 
   // Cache and return the loaded token
   if (has_token) {
-    cached_token_ = std::move(result.token);
-    return *cached_token_;
+    cached_token_ = std::make_shared<const AuthenticationToken>(std::move(*result.token));
+  } else {
+    cached_token_ = nullptr;
   }
-  return std::nullopt;
+  cache_initialized_ = true;
+  return cached_token_;
 }
 
 TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
@@ -85,14 +89,19 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
   TokenLoadResult result;
 
   // If already loaded, return cached value
-  if (cached_token_.has_value()) {
-    result.token = cached_token_;
+  if (cache_initialized_) {
+    if (cached_token_) {
+      result.token = *cached_token_;  // Copy from shared_ptr
+    } else {
+      result.token = std::nullopt;
+    }
     return result;
   }
 
   // If auth is disabled, return nullopt (no token needed)
   if (!ignore_auth_mode && !RequiresTokenAuthentication()) {
-    cached_token_ = std::nullopt;
+    cached_token_ = nullptr;
+    cache_initialized_ = true;
     result.token = std::nullopt;
     return result;
   }
@@ -106,13 +115,16 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
   bool no_token = !result.token.has_value() || result.token->empty();
   if (no_token && ignore_auth_mode) {
     result.token = std::nullopt;
+    cache_initialized_ = true;
     return result;
   } else if (no_token) {
     result.error_message = kNoTokenErrorMessage;
     return result;
   }
   // Cache and return success
-  cached_token_ = result.token;
+  cached_token_ = std::make_shared<const AuthenticationToken>(std::move(*result.token));
+  result.token = *cached_token_;  // Copy back for return
+  cache_initialized_ = true;
   return result;
 }
 

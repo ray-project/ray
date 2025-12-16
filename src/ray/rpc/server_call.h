@@ -182,7 +182,7 @@ class ServerCallImpl : public ServerCall {
       instrumented_io_context &io_service,
       std::string call_name,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token,
+      std::shared_ptr<const AuthenticationToken> auth_token,
       bool record_metrics,
       std::function<void()> preprocess_function = nullptr)
       : state_(ServerCallState::PENDING),
@@ -353,7 +353,7 @@ class ServerCallImpl : public ServerCall {
     // If auth token is empty, we assume auth is not required.
     // The only exception is when auth mode is 'k8s' where the server
     // auth token can be empty.
-    if ((!auth_token_.has_value() || auth_token_->empty()) &&
+    if ((!auth_token_ || auth_token_->empty()) &&
         GetAuthenticationMode() != AuthenticationMode::K8S) {
       return true;
     }
@@ -367,13 +367,16 @@ class ServerCallImpl : public ServerCall {
     }
 
     const std::string_view header(it->second.data(), it->second.length());
-    AuthenticationToken provided_token = AuthenticationToken::FromMetadata(header);
-    if (!ray::rpc::AuthenticationTokenValidator::instance().ValidateToken(
-            auth_token_, provided_token)) {
+
+    // ValidateToken handles both TOKEN and K8S modes:
+    // - TOKEN mode uses CompareWithMetadata for efficient constant-time comparison
+    // - K8S mode parses metadata and validates against Kubernetes API
+    if (!ray::rpc::AuthenticationTokenValidator::instance().ValidateToken(auth_token_,
+                                                                          header)) {
       RAY_LOG(WARNING) << "Invalid authentication token in request to " << call_name_
                        << ", allowing request to proceed (non-enforcing mode)";
     }
-    return true;
+    return true;  // Non-enforcing
   }
 
   /// Log the duration this query used
@@ -443,8 +446,8 @@ class ServerCallImpl : public ServerCall {
   /// Check skipped if empty.
   const ClusterID &cluster_id_;
 
-  /// Authentication token for token-based authentication.
-  std::optional<AuthenticationToken> auth_token_;
+  /// Authentication token for token-based authentication (shared, not copied per call).
+  std::shared_ptr<const AuthenticationToken> auth_token_;
 
   /// The callback when sending reply successes.
   std::function<void()> send_reply_success_callback_ = nullptr;
@@ -527,7 +530,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       instrumented_io_context &io_service,
       std::string call_name,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token,
+      std::shared_ptr<const AuthenticationToken> auth_token,
       int64_t max_active_rpcs,
       bool record_metrics)
       : service_(service),
@@ -592,8 +595,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   /// Check skipped if empty.
   const ClusterID cluster_id_;
 
-  /// Authentication token for token-based authentication.
-  std::optional<AuthenticationToken> auth_token_;
+  /// Authentication token for token-based authentication (shared, not copied per call).
+  std::shared_ptr<const AuthenticationToken> auth_token_;
 
   /// Maximum request number to handle at the same time.
   /// -1 means no limit.

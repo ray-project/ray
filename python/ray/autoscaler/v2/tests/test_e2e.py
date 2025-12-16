@@ -317,7 +317,6 @@ def test_placement_group_removal_idle_node(autoscaler_v2):
 
         def verify():
             cluster_state = get_cluster_status(gcs_address)
-
             # Verify that nodes are idle.
             assert len((cluster_state.idle_nodes)) == 3
             for node in cluster_state.idle_nodes:
