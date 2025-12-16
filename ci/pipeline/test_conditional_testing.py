@@ -122,11 +122,26 @@ def test_conditional_testing_pull_request():
             f.write("# README\n")
         subprocess.check_call(["git", "add", "README.md"], cwd=workdir)
         subprocess.check_call(["git", "commit", "-m", "init with readme"], cwd=workdir)
+
+        merge_base = (
+            subprocess.check_output(
+                ["git", "show", "HEAD", "-q", "--format=%H"], cwd=workdir
+            )
+            .decode()
+            .strip()
+        )
+
+        # add an unknown file, which should not trigger any change.
+        with open(os.path.join(workdir, "unknown.txt"), "w") as f:
+            f.write("unknown\n")
+
+        subprocess.check_call(["git", "add", "unknown.txt"], cwd=workdir)
+        subprocess.check_call(["git", "commit", "-m", "add unknown file"], cwd=workdir)
         subprocess.check_call(["git", "push", "origin", "master"], cwd=workdir)
 
         for test_case in test_cases:
             subprocess.check_call(
-                ["git", "checkout", "-B", "pr01", "master"], cwd=workdir
+                ["git", "checkout", "-B", "pr01", merge_base], cwd=workdir
             )
 
             add_files = [test_case.file]
