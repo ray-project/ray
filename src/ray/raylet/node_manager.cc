@@ -51,7 +51,6 @@
 #include "ray/raylet/worker_pool.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/network_util.h"
@@ -181,7 +180,8 @@ NodeManager::NodeManager(
     std::atomic_bool &shutting_down,
     PlacementGroupResourceManager &placement_group_resource_manager,
     boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor,
-    local_stream_socket socket)
+    local_stream_socket socket,
+    ray::observability::MetricInterface &memory_manager_worker_eviction_total_count)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -220,12 +220,14 @@ NodeManager::NodeManager(
           RayConfig::instance().plasma_store_usage_trigger_gc_threshold()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
+      memory_manager_worker_eviction_total_count_(
+          memory_manager_worker_eviction_total_count),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       local_lease_manager_(local_lease_manager),
       cluster_lease_manager_(cluster_lease_manager),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       placement_group_resource_manager_(placement_group_resource_manager),
-      ray_syncer_(io_service_, self_node_id_.Binary()),
+      ray_syncer_(io_service_, self_node_id_.Binary(), 1, 0),
       worker_killing_policy_(std::make_shared<GroupByOwnerIdWorkerKillingPolicy>()),
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,
@@ -2568,7 +2570,7 @@ std::string NodeManager::DebugString() const {
   }
 
   // Event stats.
-  result << "\nEvent stats:" << io_service_.stats().StatsString();
+  result << "\nEvent stats:" << io_service_.stats()->StatsString();
 
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
   return result.str();
@@ -3022,8 +3024,6 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
   std::string serialized_commands_sync_msg;
   syncer::CommandsSyncMessage commands_sync_message;
   commands_sync_message.set_should_global_gc(true);
-  commands_sync_message.set_cluster_full_of_actors_detected(resource_deadlock_warned_ >=
-                                                            1);
   RAY_CHECK(commands_sync_message.SerializeToString(&serialized_commands_sync_msg));
 
   // Populate the sync message.
@@ -3125,17 +3125,17 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
 
           if (worker_to_kill->GetWorkerType() == rpc::WorkerType::DRIVER) {
             // TODO(sang): Add the job entrypoint to the name.
-            ray::stats::STATS_memory_manager_worker_eviction_total.Record(
+            memory_manager_worker_eviction_total_count_.Record(
                 1, {{"Type", "MemoryManager.DriverEviction.Total"}, {"Name", ""}});
           } else if (worker_to_kill->GetActorId().IsNil()) {
             const auto &ray_lease = worker_to_kill->GetGrantedLease();
-            ray::stats::STATS_memory_manager_worker_eviction_total.Record(
+            memory_manager_worker_eviction_total_count_.Record(
                 1,
                 {{"Type", "MemoryManager.TaskEviction.Total"},
                  {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
           } else {
             const auto &ray_lease = worker_to_kill->GetGrantedLease();
-            ray::stats::STATS_memory_manager_worker_eviction_total.Record(
+            memory_manager_worker_eviction_total_count_.Record(
                 1,
                 {{"Type", "MemoryManager.ActorEviction.Total"},
                  {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
@@ -3365,6 +3365,9 @@ void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
   auto timer = execute_after(
       io_service_,
       [this, send_reply_callback, worker_id, replied]() {
+        if (*replied) {
+          return;
+        }
         auto current_worker = worker_pool_.GetRegisteredWorker(worker_id);
         if (current_worker) {
           // If the worker is still alive, force kill it
@@ -3390,18 +3393,109 @@ void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
        timer,
        send_reply_callback,
        replied](const ray::Status &status, const rpc::KillActorReply &) {
-        if (!status.ok() && !*replied) {
+        if (*replied) {
+          return;
+        }
+        if (!status.ok()) {
           std::ostringstream stream;
           stream << "KillActor RPC failed for actor " << actor_id << ": "
                  << status.ToString();
           const auto &msg = stream.str();
           RAY_LOG(DEBUG) << msg;
+          *replied = true;
           timer->cancel();
           send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
         }
         // NOTE: on a successful kill, we don't expect a reply back from the dead actor.
         // The only case where we receive a reply is if the mismatched actor ID check is
         // triggered.
+      });
+}
+
+void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
+                                        rpc::CancelLocalTaskReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
+  auto executor_worker_id = WorkerID::FromBinary(request.executor_worker_id());
+
+  auto worker = worker_pool_.GetRegisteredWorker(executor_worker_id);
+  // If the worker is not registered, then it must have already been killed
+  if (!worker || worker->IsDead()) {
+    reply->set_attempt_succeeded(true);
+    reply->set_requested_task_running(false);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
+  WorkerID worker_id = worker->WorkerId();
+
+  rpc::CancelTaskRequest cancel_task_request;
+  cancel_task_request.set_intended_task_id(request.intended_task_id());
+  cancel_task_request.set_force_kill(request.force_kill());
+  cancel_task_request.set_recursive(request.recursive());
+  cancel_task_request.set_caller_worker_id(request.caller_worker_id());
+
+  // The timer and RPC response can come back in any order since they can be queued on the
+  // io service before either is executed.
+  std::shared_ptr<bool> replied = std::make_shared<bool>(false);
+  std::shared_ptr<boost::asio::deadline_timer> timer;
+
+  if (request.force_kill()) {
+    timer = execute_after(
+        io_service_,
+        [this, reply, send_reply_callback, worker_id, replied]() {
+          if (*replied) {
+            return;
+          }
+          auto current_worker = worker_pool_.GetRegisteredWorker(worker_id);
+          if (current_worker) {
+            // If the worker is still alive, force kill it
+            RAY_LOG(INFO) << "Worker with PID=" << current_worker->GetProcess().GetId()
+                          << " did not exit after "
+                          << RayConfig::instance().kill_worker_timeout_milliseconds()
+                          << "ms, force killing with SIGKILL.";
+            DestroyWorker(current_worker,
+                          rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+                          "Force-killed by ray.cancel(force=True)",
+                          /*force=*/true);
+          }
+          *replied = true;
+          reply->set_attempt_succeeded(true);
+          reply->set_requested_task_running(false);
+          send_reply_callback(Status::OK(), nullptr, nullptr);
+        },
+        std::chrono::milliseconds(
+            RayConfig::instance().kill_worker_timeout_milliseconds()));
+  }
+
+  worker->rpc_client()->CancelTask(
+      cancel_task_request,
+      [task_id = request.intended_task_id(),
+       executor_worker_id,
+       timer,
+       reply,
+       send_reply_callback,
+       replied](const ray::Status &status,
+                const rpc::CancelTaskReply &cancel_task_reply) {
+        // Check if timer already fired (only relevant for force_kill case)
+        if (*replied) {
+          return;
+        }
+        if (!status.ok()) {
+          RAY_LOG(WARNING) << "CancelTask RPC failed for task "
+                           << TaskID::FromBinary(task_id) << ": " << status.ToString()
+                           << "with Worker ID: " << executor_worker_id;
+          if (timer) {
+            RAY_LOG(INFO) << "Escalating graceful shutdown to SIGKILL instead.";
+            return;
+          }
+        }
+        *replied = true;
+        reply->set_attempt_succeeded(cancel_task_reply.attempt_succeeded());
+        reply->set_requested_task_running(cancel_task_reply.requested_task_running());
+        send_reply_callback(status, nullptr, nullptr);
+        if (timer) {
+          timer->cancel();
+        }
       });
 }
 

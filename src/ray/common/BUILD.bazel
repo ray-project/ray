@@ -1,11 +1,6 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
 ray_cc_library(
-    name = "compat",
-    hdrs = ["compat.h"],
-)
-
-ray_cc_library(
     name = "constants",
     hdrs = ["constants.h"],
 )
@@ -16,6 +11,7 @@ ray_cc_library(
     hdrs = ["test_utils.h"],
     deps = [
         ":asio",
+        ":function_descriptor",
         ":id",
         ":placement_group",
         ":ray_object",
@@ -281,6 +277,7 @@ ray_cc_library(
     ],
     deps = [
         ":event_stats",
+        ":metrics",
         ":ray_config",
         "//src/ray/util:array",
         "@boost//:asio",
@@ -310,6 +307,7 @@ ray_cc_library(
         "event_stats.h",
     ],
     deps = [
+        ":metrics",
         ":ray_config",
         "//src/ray/stats:stats_metric",
         "//src/ray/util:time",
