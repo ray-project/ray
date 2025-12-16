@@ -3,7 +3,6 @@ import os
 from ci.ray_ci.configs import BUILD_TYPES, PYTHON_VERSIONS
 from ci.ray_ci.linux_container import LinuxContainer
 
-
 _DEFAULT_MANYLINUX_VERSION = "251216.3835fc5"
 
 
