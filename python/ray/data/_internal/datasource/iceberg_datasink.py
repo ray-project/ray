@@ -29,12 +29,12 @@ class IcebergWriteResult:
 
     Attributes:
         data_files: List of DataFile objects containing metadata about written Parquet files.
-        upsert_keys: Dictionary mapping column names to PyArrow arrays for upsert operations.
+        upsert_keys: PyArrow table containing key columns for upsert operations.
         schemas: List of PyArrow schemas from all non-empty blocks.
     """
 
     data_files: List["DataFile"] = field(default_factory=list)
-    upsert_keys: Optional[Dict[str, List["pa.Array"]]] = None
+    upsert_keys: Optional["pa.Table"] = None
     schemas: List["pa.Schema"] = field(default_factory=list)
 
 
@@ -185,7 +185,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         self,
         txn: "Table.transaction",
         data_files: List["DataFile"],
-        upsert_keys_dicts: List[Dict[str, List["pa.Array"]]],
+        upsert_keys_tables: List["pa.Table"],
     ) -> None:
         """
         Commit upsert transaction with copy-on-write strategy.
@@ -193,29 +193,19 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         Args:
             txn: PyIceberg transaction object
             data_files: List of DataFile objects to commit
-            upsert_keys_dicts: List of dictionaries mapping column names to PyArrow arrays
+            upsert_keys_tables: List of PyArrow tables containing upsert key columns
         """
         import functools
-        from collections import defaultdict
 
         import pyarrow as pa
         from pyiceberg.table.upsert_util import create_match_filter
 
-        # Merge all join keys dictionaries
-        merged_keys_dict: Dict[str, List[pa.Array]] = defaultdict(list)
-        for upsert_keys_dict in upsert_keys_dicts:
-            for col, arrays in upsert_keys_dict.items():
-                merged_keys_dict[col].extend(arrays)
+        from ray.data._internal.arrow_ops.transform_pyarrow import concat
 
         # Create delete filter if we have join keys
-        if merged_keys_dict:
-            # Concatenate all arrays for each column and create PyArrow table
-            keys_table = pa.table(
-                {
-                    col: pa.concat_arrays(arrays)
-                    for col, arrays in merged_keys_dict.items()
-                }
-            )
+        if upsert_keys_tables:
+            # Concatenate all key tables
+            keys_table = concat(upsert_keys_tables)
 
             # Filter out rows with any NULL values in join columns
             # (NULL != NULL in SQL semantics)
@@ -354,8 +344,6 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         Returns:
             IcebergWriteResult containing DataFile objects, upsert keys, and schemas.
         """
-        from collections import defaultdict
-
         from pyiceberg.io.pyarrow import _dataframe_to_data_files
 
         # Workers receive a pickled datasink with _table=None (excluded during
@@ -364,7 +352,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             self._reload_table()
 
         all_data_files = []
-        upsert_keys_dict = defaultdict(list)
+        upsert_keys_tables = []
         block_schemas = []
         use_copy_on_write_upsert = self._mode == SaveMode.UPSERT
 
@@ -376,8 +364,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                 # Extract join key values for copy-on-write upsert
                 if use_copy_on_write_upsert:
                     upsert_cols = self._get_upsert_cols()
-                    for col in upsert_cols:
-                        upsert_keys_dict[col].extend(pa_table[col].chunks)
+                    upsert_keys_tables.append(pa_table.select(upsert_cols))
 
                 # Write data files to storage
                 data_files = list(
@@ -389,9 +376,14 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                 )
                 all_data_files.extend(data_files)
 
+        # Combine all upsert key tables into one
+        from ray.data._internal.arrow_ops.transform_pyarrow import concat
+
+        upsert_keys = concat(upsert_keys_tables) if upsert_keys_tables else None
+
         return IcebergWriteResult(
             data_files=all_data_files,
-            upsert_keys=upsert_keys_dict or None,
+            upsert_keys=upsert_keys,
             schemas=block_schemas,
         )
 
@@ -434,7 +426,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         # Collect all data files and schemas from all workers
         all_data_files: List["DataFile"] = []
         all_schemas: List["pa.Schema"] = []
-        upsert_keys_dicts: List[Dict[str, List["pa.Array"]]] = []
+        upsert_keys_tables: List["pa.Table"] = []
 
         for write_return in write_result.write_returns:
             if not write_return:
@@ -443,8 +435,8 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             if write_return.data_files:  # Only add schema if we have data files
                 all_data_files.extend(write_return.data_files)
                 all_schemas.extend(write_return.schemas)
-                if write_return.upsert_keys:
-                    upsert_keys_dicts.append(write_return.upsert_keys)
+                if write_return.upsert_keys is not None:
+                    upsert_keys_tables.append(write_return.upsert_keys)
 
         if not all_data_files:
             return
@@ -477,6 +469,6 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         elif self._mode == SaveMode.OVERWRITE:
             self._commit_overwrite(txn, all_data_files)
         elif self._mode == SaveMode.UPSERT:
-            self._commit_upsert(txn, all_data_files, upsert_keys_dicts)
+            self._commit_upsert(txn, all_data_files, upsert_keys_tables)
         else:
             raise ValueError(f"Unsupported mode: {self._mode}")
