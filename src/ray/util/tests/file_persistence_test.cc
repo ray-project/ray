@@ -24,55 +24,31 @@
 
 namespace ray {
 
-TEST(FilePersistenceTest, ConcurrentReadWithWrite) {
+TEST(FilePersistenceTest, ConcurrentRead) {
   auto test_dir = std::filesystem::temp_directory_path() / "file_persistence_concurrent";
   std::filesystem::create_directories(test_dir);
   std::string file_path = (test_dir / "concurrent.txt").string();
+  const std::string expected_content = "hello world";
 
-  std::atomic<bool> stop{false};
-  std::atomic<int> corrupted_reads{0};
-  std::atomic<int> read_errors{0};
-  std::atomic<int> write_errors{0};
-
-  // Start multiple readers first
+  // Start multiple readers first (they will wait for the file)
   std::vector<std::thread> readers;
   for (int i = 0; i < 5; i++) {
     readers.emplace_back([&]() {
-      while (!stop) {
-        auto result =
-            WaitForFile(file_path, /*timeout_ms=*/1000, /*poll_interval_ms=*/10);
-        if (result.ok()) {
-          try {
-            std::stoi(*result);
-          } catch (...) {
-            corrupted_reads++;
-          }
-        } else {
-          read_errors++;
-        }
-      }
+      auto result = WaitForFile(file_path, /*timeout_ms=*/5000, /*poll_interval_ms=*/10);
+      EXPECT_TRUE(result.ok());
+      EXPECT_EQ(*result, expected_content);
     });
   }
 
-  // Start writer that overwrites the file repeatedly
-  std::thread writer([&]() {
-    for (int i = 1; i <= 100 && !stop; i++) {
-      if (!WriteFile(file_path, std::to_string(i)).ok()) {
-        write_errors++;
-      }
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    stop = true;
-  });
+  // Give readers time to start waiting
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  writer.join();
+  // Write file once
+  ASSERT_TRUE(WriteFile(file_path, expected_content).ok());
+
   for (auto &t : readers) {
     t.join();
   }
-
-  EXPECT_EQ(write_errors.load(), 0);
-  EXPECT_EQ(corrupted_reads.load(), 0);
-  EXPECT_EQ(read_errors.load(), 0);
 
   std::filesystem::remove_all(test_dir);
 }

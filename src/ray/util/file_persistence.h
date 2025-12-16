@@ -25,7 +25,8 @@ namespace ray {
   Write a string value to a file atomically.
 
   Uses temp file + rename pattern for cross-platform (Linux/Windows) and
-  cross-language (C++/Python) safe file sharing.
+  cross-language (C++/Python) safe file sharing. This guarantees readers
+  will not read partial content.
 
   @param file_path The absolute path to the target file.
   @param value The string value to write.
