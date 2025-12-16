@@ -92,12 +92,13 @@ class FuseOperators(Rule):
         We also ensure the output rows is `batch_size`.
 
         Why don't we fuse `StreamingRepartition -> MapBatches`?
-        |                      | Number of `map_batches` tasks                                                                                            |
-        |----------------------|--------------------------------------------------------------------------------------------------------------------------|
-        | Fused                | total_rows / (n * batch_size), because the fused operator receives RefBundles of `n * target_num_rows` rows (n >= 1).    |
-        | Not fused            | total_rows / batch_size                                                                                                  |
+        |                      | Number of `map_batches` tasks                                       |
+        |----------------------|---------------------------------------------------------------------|
+        | Fused                | total_rows / (n * batch_size),                                      |
+        |                      | because fused op receives RefBundles of `n * target_num_rows` rows. |
+        | Not fused            | total_rows / batch_size                                             |
 
-        Fusing would reduce parallelism, so we don't fuse.
+        Fusing would reduce parallelism (n >= 1), so we don't fuse.
 
         Why do we fuse `MapBatches -> StreamingRepartition` (when `batch_size % target_num_rows == 0`)?
         |                      | Number of `map_batches` tasks  |
