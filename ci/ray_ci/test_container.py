@@ -18,7 +18,9 @@ def test_get_docker_image() -> None:
     )
     # Test that external repo ignores build_id
     assert (
-        get_docker_image("1.0.0-jdk-x86_64", "a1b2c3", docker_repo="rayproject/manylinux2014")
+        get_docker_image(
+            "1.0.0-jdk-x86_64", "a1b2c3", docker_repo="rayproject/manylinux2014"
+        )
         == "rayproject/manylinux2014:1.0.0-jdk-x86_64"
     )
 
