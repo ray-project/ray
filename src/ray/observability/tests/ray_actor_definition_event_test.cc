@@ -36,17 +36,16 @@ TEST_F(RayActorDefinitionEventTest, TestSerialize) {
   (*data.mutable_label_selector())["team"] = "core";
   (*data.mutable_label_selector())["tier"] = "prod";
 
-  NodeID test_node_id = NodeID::FromRandom();
   auto event =
-      std::make_unique<RayActorDefinitionEvent>(data, "test_session_name", test_node_id);
+      std::make_unique<RayActorDefinitionEvent>(data, "test_session_name");
   auto serialized_event = std::move(*event).Serialize();
 
   ASSERT_EQ(serialized_event.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(serialized_event.session_name(), "test_session_name");
   ASSERT_EQ(serialized_event.event_type(), rpc::events::RayEvent::ACTOR_DEFINITION_EVENT);
   ASSERT_EQ(serialized_event.severity(), rpc::events::RayEvent::INFO);
-  ASSERT_FALSE(serialized_event.node_id().empty());
-  ASSERT_EQ(serialized_event.node_id(), test_node_id.Binary());
+  // node_id is now set by RayEventRecorder, not by the event itself
+  ASSERT_TRUE(serialized_event.node_id().empty());
   ASSERT_TRUE(serialized_event.has_actor_definition_event());
 
   const auto &actor_def = serialized_event.actor_definition_event();
