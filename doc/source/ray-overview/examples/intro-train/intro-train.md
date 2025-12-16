@@ -54,7 +54,7 @@ First, let's look at a standard PyTorch training setup for the MNIST dataset on 
 ### Model and Data
 
 ```python
-def build_model():
+def build_model() -> nn.Module:
     model = resnet18(num_classes=10)
     # Adjust first layer for grayscale MNIST (1 channel)
     model.conv1 = nn.Conv2d(
@@ -67,21 +67,32 @@ def build_model():
     )
     return model
 
-def get_data_loader(batch_size=128):
+def get_data_loader(batch_size: int = 128) -> DataLoader:
     transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
-    dataset = MNIST(root="./data", train=True, download=True, transform=transform)
+    dataset = MNIST(root="/mnt/cluster_storage/data", train=True, download=True, transform=transform)
     return DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+
+# Download and preview the dataset
+dataset = MNIST(root="/mnt/cluster_storage/data", train=True, download=True)
+
+fig, axs = plt.subplots(1, 10, figsize=(20, 2))
+for i in range(10):
+    img, label = dataset[i]
+    axs[i].imshow(img, cmap="gray")
+    axs[i].axis("off")
+    axs[i].set_title(label)
+plt.show()
 ```
 
 ### Standard Training Loop
 
 ```python
-def report_metrics_torch(loss: torch.Tensor, epoch: int):
+def report_metrics_torch(loss: torch.Tensor, epoch: int) -> dict:
     metrics = {"loss": loss.item(), "epoch": epoch}
     print(metrics)
     return metrics
 
-def save_checkpoint_and_metrics_torch(metrics, model, local_path):
+def save_checkpoint_and_metrics_torch(metrics: dict, model: nn.Module, local_path: str) -> None:
     os.makedirs(local_path, exist_ok=True)
     
     # Save metrics to CSV
@@ -92,7 +103,7 @@ def save_checkpoint_and_metrics_torch(metrics, model, local_path):
     # Save model checkpoint
     torch.save(model.state_dict(), os.path.join(local_path, "model.pt"))
 
-def train_func_single_gpu(num_epochs=2, local_path="/mnt/cluster_storage/single_gpu_mnist"):
+def train_func_single_gpu(num_epochs: int = 2, local_path: str = "/mnt/cluster_storage/single_gpu_mnist") -> None:
     # Setup
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = build_model().to(device)
@@ -120,11 +131,56 @@ def train_func_single_gpu(num_epochs=2, local_path="/mnt/cluster_storage/single_
 # To run this training function on a worker node, we can use a Ray task.
 # To request a specific GPU (e.g. T4), use resources={"accelerator_type:T4": 0.0001}
 @ray.remote(num_gpus=1, resources={"accelerator_type:T4": 0.0001})
-def run_single_gpu_job():
+def run_single_gpu_job() -> None:
     train_func_single_gpu()
 
 ray.init() # Ensure Ray is initialized
 ray.get(run_single_gpu_job.remote())
+```
+
+### Inspecting Single GPU Results
+
+After the training job finishes, we can inspect the metrics and verify the model's performance.
+
+```python
+# List the output files
+output_dir = "/mnt/cluster_storage/single_gpu_mnist"
+if os.path.exists(output_dir):
+    print(f"Training output contents: {os.listdir(output_dir)}")
+
+# Read and display metrics
+metrics_path = os.path.join(output_dir, "metrics.csv")
+if os.path.exists(metrics_path):
+    metrics_df = pd.read_csv(metrics_path, names=["loss", "epoch"])
+    print(metrics_df.head())
+
+# Load model and run inference
+model_path = os.path.join(output_dir, "model.pt")
+if os.path.exists(model_path):
+    # Load the trained model
+    loaded_model = build_model()
+    # Load to CPU for inspection
+    loaded_model.load_state_dict(torch.load(model_path, map_location="cpu"))
+    loaded_model.eval()
+
+    # Prepare test data
+    test_dataset = MNIST(root="/mnt/cluster_storage/data", train=False, download=True)
+    transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
+
+    # Visualize predictions
+    fig, axs = plt.subplots(1, 10, figsize=(20, 2))
+    for i in range(10):
+        img, label = test_dataset[i]
+        axs[i].imshow(img, cmap="gray")
+        axs[i].axis("off")
+        
+        with torch.no_grad():
+            # Apply transform and add batch dimension
+            img_tensor = transform(img).unsqueeze(0)
+            pred = loaded_model(img_tensor).argmax().item()
+            
+        axs[i].set_title(f"Pred: {pred}\nTrue: {label}")
+    plt.show()
 ```
 
 ## 2. Migrating to Ray Train
@@ -150,7 +206,7 @@ At a high level, Ray Train uses a controller (trainer) process to coordinate a g
 Use [`ray.train.torch.prepare_model`](https://docs.ray.io/en/latest/train/api/doc/ray.train.torch.prepare_model.html) to automatically wrap your model in `DistributedDataParallel` and move it to the correct device.
 
 ```python
-def train_loop_per_worker(config):
+def train_loop_per_worker(config: dict) -> None:
     # 1. Prepare Model
     model = build_model()
     model = ray.train.torch.prepare_model(model) # Instead of model = model.to("cuda")
@@ -178,7 +234,7 @@ First, we download the MNIST dataset and save the raw data to a local Parquet fi
 
 ```python
 # Download MNIST
-dataset = MNIST(root="./data", train=True, download=True)
+dataset = MNIST(root="/mnt/cluster_storage/data", train=True, download=True)
 df = pd.DataFrame({
     "image": dataset.data.numpy().tolist(),
     "label": dataset.targets.numpy()
@@ -194,10 +250,10 @@ ds.write_parquet(mnist_path)
 We create a Ray Dataset and define preprocessing using standard torchvision transforms.
 
 ```python
-def get_ray_dataset(path):
+def get_ray_dataset(path: str) -> ray.data.Dataset:
     ds = ray.data.read_parquet(path)
     
-    def transform_images(row: dict):
+    def transform_images(row: dict) -> dict:
         # Define the torchvision transform.
         transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
         image_arr = np.array(row["image"], dtype=np.uint8)
@@ -214,7 +270,7 @@ For more details and performance tips, see the [Data loading and preprocessing](
 
 Ray Train uses `ray.train.report()` to log metrics and report checkpoints to the Ray Train driver.
 
-*   **Metrics**: Dictionaries of values (e.g., loss, accuracy) passed to `report()` are aggregated and logged.
+*   **Metrics**: Dictionaries of values (e.g., loss, accuracy) passed to `report()` are logged. By default, Ray Train only reports metrics from the rank 0 worker.
 *   **Checkpoints**: Model states saved to a directory and passed as a `ray.train.Checkpoint`.
 
 **Key Behaviors**:
@@ -226,17 +282,25 @@ The following diagram shows this checkpoint lifecycle:
 <img src="https://docs.ray.io/en/latest/_images/checkpoint_lifecycle.png" width="800" loading="lazy">
 
 ```python
-def save_checkpoint_and_report_metrics(model, metrics):
-    checkpoint = None
-    # Only the rank 0 worker saves the checkpoint to storage
-    if ray.train.get_context().get_world_rank() == 0:
-        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+def save_checkpoint_and_report_metrics(
+    model: torch.nn.Module, metrics: dict[str, float]
+) -> None:
+    with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+        checkpoint = None
+
+        # checkpoint only from rank 0 worker
+        if ray.train.get_context().get_world_rank() == 0:
             # Access the original model via `model.module` when wrapped in DistributedDataParallel
-            torch.save(model.module.state_dict(), os.path.join(temp_checkpoint_dir, "model.pt"))
-            checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
-    
-    # All workers must call report to synchronize
-    ray.train.report(metrics, checkpoint=checkpoint)
+            torch.save(
+                model.module.state_dict(), os.path.join(temp_checkpoint_dir, "model.pt")
+            )
+            checkpoint = ray.train.Checkpoint.from_directory(temp_checkpoint_dir)
+
+        # All workers must call report to synchronize
+        ray.train.report(
+            metrics,
+            checkpoint=checkpoint,
+        )
 ```
 
 For an in-depth guide on saving checkpoints and metrics, see the [Saving and Loading Checkpoints guide](https://docs.ray.io/en/latest/train/user-guides/checkpoints.html).
@@ -248,7 +312,7 @@ In the training loop, `ray.train.get_dataset_shard("train")` automatically retri
 This pattern is also shown in the [Data loading and preprocessing](https://docs.ray.io/en/latest/train/user-guides/data-loading-preprocessing.html) guide.
 
 ```python
-def train_loop_per_worker(config):
+def train_loop_per_worker(config: dict) -> None:
     # 1. Setup Model
     model = build_model()
     model = ray.train.torch.prepare_model(model) # Instead of model = model.to("cuda")
@@ -257,8 +321,13 @@ def train_loop_per_worker(config):
     optimizer = optim.Adam(model.parameters(), lr=config["lr"])
 
     # 2. Setup Data (Ray Data)
-    # Get the data shard for this worker
+    # Get the data shard for this worker and create an iterator
     dataset_shard = ray.train.get_dataset_shard("train")
+    dataloader = dataset_shard.iter_torch_batches(
+        batch_size=per_worker_batch_size,
+        dtypes={"image": torch.float32, "label": torch.long},
+        device=ray.train.torch.get_device() # Auto-move to GPU
+    )
     
     # 3. Calculate Batch Size
     global_batch_size = config["batch_size"]
@@ -266,12 +335,6 @@ def train_loop_per_worker(config):
     per_worker_batch_size = global_batch_size // world_size
 
     for epoch in range(config["epochs"]):
-        # Create an iterator for this epoch
-        dataloader = dataset_shard.iter_torch_batches(
-            batch_size=per_worker_batch_size,
-            dtypes={"image": torch.float32, "label": torch.long},
-            device=ray.train.torch.get_device() # Auto-move to GPU
-        )
 
         # No longer need to ensure data is on the correct device
         # dataloader.sampler.set_epoch(epoch)
@@ -312,8 +375,8 @@ train_ds = get_ray_dataset(mnist_path)
 # Configure Scale (2 Workers)
 scaling_config = ScalingConfig(
     num_workers=2,
-    use_gpu=True, # Implicitly requests 1 GPU per worker
-    resources_per_worker={"CPU": 1, "accelerator_type:T4": 0.0001} # Explicitly requests 1 CPU per worker and a specific GPU type
+    use_gpu=True,
+    resources_per_worker={"accelerator_type:T4": 0.0001} # Explicitly requests a specific GPU type
 )
 
 # Configure Run (Storage path)
@@ -356,7 +419,7 @@ if result.checkpoint:
 
 # Generate predictions
 
-dataset = MNIST(root="./data", train=False, download=True)
+dataset = MNIST(root="/mnt/cluster_storage/data", train=False, download=True)
 transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
 
 fig, axs = plt.subplots(1, 10, figsize=(20, 2))
