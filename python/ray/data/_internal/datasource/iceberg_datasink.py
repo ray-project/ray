@@ -401,7 +401,9 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         """Commit data files using OVERWRITE mode."""
         from pyiceberg.expressions import AlwaysTrue
 
+        # Default - Full overwrite - delete all
         pyi_filter = AlwaysTrue()
+
         # Delete matching data if filter provided
         if self._overwrite_filter is not None:
             from ray.data._internal.datasource.iceberg_datasource import (
