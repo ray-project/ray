@@ -17,8 +17,7 @@ Ray's authentication behavior is controlled by the **RAY_AUTH_MODE** environment
 As of now, Ray supports two modes:
 
 - ``disabled`` - Default; no authentication.
-- ``token`` - Static bearer token authentication. When combined with **RAY_ENABLE_K8S_TOKEN_AUTH**,
-  enables Kubernetes token authentication.
+- ``token`` - Static bearer token authentication.
 
 **RAY_AUTH_MODE** must be set via the environment and should be configured consistently on every
 node in the Ray cluster. When ``RAY_AUTH_MODE=token``, token authentication is enabled and all
@@ -41,7 +40,6 @@ precedence):
 
    - ``~/.ray/auth_token`` on POSIX systems
    - ``%USERPROFILE%\.ray\auth_token`` on Windows
-   - ``/var/run/kubernetes.io/serviceaccount/token`` (only when **RAY_ENABLE_K8S_TOKEN_AUTH** is set)
 
 For local clusters started with ``ray.init()`` and auth enabled, Ray automatically generates a
 new token and persists it at the default path if no token exists.
