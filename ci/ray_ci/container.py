@@ -63,15 +63,17 @@ def get_docker_image(
             If a non-default repo is provided, the image is treated as external
             and the build_id prefix is not added.
     """
-    if docker_repo is not None and docker_repo != _DOCKER_ECR_REPO:
+    # If a docker_repo is provided and it's not the default ECR repo,
+    # treat it as an external image and don't prepend the build_id.
+    if docker_repo and docker_repo != _DOCKER_ECR_REPO:
         return f"{docker_repo}:{docker_tag}"
 
-    docker_repo = _DOCKER_ECR_REPO
-    if not build_id:
-        build_id = _RAYCI_BUILD_ID
-    if build_id:
-        return f"{docker_repo}:{build_id}-{docker_tag}"
-    return f"{docker_repo}:{docker_tag}"
+    # Otherwise, use the default ECR repo and prepend the build_id if it exists.
+    repo = _DOCKER_ECR_REPO
+    final_build_id = build_id or _RAYCI_BUILD_ID
+    if final_build_id:
+        return f"{repo}:{final_build_id}-{docker_tag}"
+    return f"{repo}:{docker_tag}"
 
 
 class Container(abc.ABC):
