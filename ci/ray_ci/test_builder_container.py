@@ -5,7 +5,7 @@ from unittest import mock
 
 import pytest
 
-from ci.ray_ci.builder_container import BuilderContainer, _DEFAULT_MANYLINUX_VERSION
+from ci.ray_ci.builder_container import _DEFAULT_MANYLINUX_VERSION, BuilderContainer
 
 
 def test_init() -> None:
