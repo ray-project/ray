@@ -150,6 +150,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       rpc::CoreWorkerClientPool &worker_rpc_pool,
       rpc::RayletClientPool &raylet_client_pool,
       pubsub::SubscriberInterface &core_worker_subscriber,
+      VirtualClusterManager &virtual_cluster_manager,
       ClusterResourceScheduler &cluster_resource_scheduler,
       LocalLeaseManagerInterface &local_lease_manager,
       ClusterLeaseManagerInterface &cluster_lease_manager,
@@ -304,6 +305,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleDrainRaylet(rpc::DrainRayletRequest request,
                          rpc::DrainRayletReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Clean up the local (pending and running) tasks that have mismatched
+  /// virtual cluster id against the one to which the local node currently belongs.
+  ///
+  /// \param local_virtual_cluster_id The ID of the virtual cluster to which the local
+  /// node currently belongs. \return void
+  void CancelMismatchedLocalTasks(const std::string &local_virtual_cluster_id);
 
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
@@ -747,13 +755,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
 
-  /// Clean up the local (pending and running) tasks that have mismatched
-  /// virtual cluster id against the one to which the local node currently belongs.
-  ///
-  /// \param local_virtual_cluster_id The ID of the virtual cluster to which the local
-  /// node currently belongs. \return void
-  void CancelMismatchedLocalTasks(const std::string &local_virtual_cluster_id);
-
   /// ID of this node.
   NodeID self_node_id_;
   /// The user-given identifier or name of this node.
@@ -858,6 +859,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Seconds to initialize a local gc
   const uint64_t local_gc_interval_ns_;
 
+  /// The virtual cluster manager.
+  VirtualClusterManager &virtual_cluster_manager_;
+
   /// These classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterLeaseManager is responsible for queuing, spilling back, and
@@ -924,9 +928,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// The socket to listen on for new clients.
   local_stream_socket socket_;
-
-  /// The virtual cluster manager.
-  std::shared_ptr<VirtualClusterManager> virtual_cluster_manager_;
 };
 
 }  // namespace ray::raylet

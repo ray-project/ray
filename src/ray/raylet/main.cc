@@ -43,6 +43,8 @@
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/node_manager.h"
+#include "ray/raylet/scheduling/policy/scheduling_context.h"
+#include "ray/raylet/virtual_cluster_manager.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
@@ -332,6 +334,7 @@ int main(int argc, char *argv[]) {
   std::shared_ptr<plasma::PlasmaClient> plasma_client;
   std::unique_ptr<ray::raylet::PlacementGroupResourceManager>
       placement_group_resource_manager;
+  std::unique_ptr<ray::raylet::VirtualClusterManager> virtual_cluster_manager;
   std::unique_ptr<ray::raylet::NodeManager> node_manager;
   std::unique_ptr<ray::rpc::ClientCallManager> client_call_manager;
   std::unique_ptr<ray::rpc::CoreWorkerClientPool> worker_rpc_pool;
@@ -802,6 +805,18 @@ int main(int argc, char *argv[]) {
     lease_dependency_manager = std::make_unique<ray::raylet::LeaseDependencyManager>(
         *object_manager, task_by_state_counter);
 
+    virtual_cluster_manager = std::make_unique<ray::raylet::VirtualClusterManager>(
+        raylet_node_id, /*local_node_cleanup_fn=*/[&]() {
+          auto timer = std::make_shared<boost::asio::deadline_timer>(
+              main_service,
+              boost::posix_time::milliseconds(
+                  RayConfig::instance().local_node_cleanup_delay_interval_ms()));
+          timer->async_wait([&, timer](const boost::system::error_code e) mutable {
+            node_manager->CancelMismatchedLocalTasks(
+                virtual_cluster_manager->GetLocalVirtualClusterID());
+          });
+        });
+
     cluster_resource_scheduler = std::make_unique<ray::ClusterResourceScheduler>(
         main_service,
         ray::scheduling::NodeID(raylet_node_id.Binary()),
@@ -830,7 +845,20 @@ int main(int argc, char *argv[]) {
         [&]() { return object_manager->PullManagerHasPullsQueued(); },
         shutdown_raylet_gracefully,
         /*labels*/
-        node_manager_config.labels);
+        node_manager_config.labels,
+        /*is_node_schedulable_fn=*/
+        [&](ray::scheduling::NodeID schedule_node_id,
+            const ray::raylet_scheduling_policy::SchedulingContext *context) {
+          if (virtual_cluster_manager == nullptr) {
+            return true;
+          }
+          if (context->virtual_cluster_id.empty()) {
+            return true;
+          }
+          auto node_instance_id = ray::NodeID::FromBinary(schedule_node_id.Binary());
+          return virtual_cluster_manager->ContainsNodeInstance(
+              context->virtual_cluster_id, node_instance_id);
+        });
 
     auto get_node_info_func =
         [&](const ray::NodeID &id) -> std::optional<ray::rpc::GcsNodeAddressAndLiveness> {
@@ -933,6 +961,7 @@ int main(int argc, char *argv[]) {
         *worker_rpc_pool,
         *raylet_client_pool,
         *core_worker_subscriber,
+        *virtual_cluster_manager,
         *cluster_resource_scheduler,
         *local_lease_manager,
         *cluster_lease_manager,

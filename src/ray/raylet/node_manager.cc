@@ -162,6 +162,7 @@ NodeManager::NodeManager(
     rpc::CoreWorkerClientPool &worker_rpc_pool,
     rpc::RayletClientPool &raylet_client_pool,
     pubsub::SubscriberInterface &core_worker_subscriber,
+    VirtualClusterManager &virtual_cluster_manager,
     ClusterResourceScheduler &cluster_resource_scheduler,
     LocalLeaseManagerInterface &local_lease_manager,
     ClusterLeaseManagerInterface &cluster_lease_manager,
@@ -219,6 +220,7 @@ NodeManager::NodeManager(
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
+      virtual_cluster_manager_(virtual_cluster_manager),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       local_lease_manager_(local_lease_manager),
       cluster_lease_manager_(cluster_lease_manager),
@@ -281,18 +283,6 @@ NodeManager::NodeManager(
   periodical_runner_->RunFnPeriodically([this]() { GCWorkerFailureReason(); },
                                         RayConfig::instance().task_failure_entry_ttl_ms(),
                                         "NodeManager.GCTaskFailureReason");
-
-  virtual_cluster_manager_ = std::make_shared<VirtualClusterManager>(
-      self_node_id_, /*local_node_cleanup_fn=*/[this]() {
-        auto timer = std::make_shared<boost::asio::deadline_timer>(
-            io_service_,
-            boost::posix_time::milliseconds(
-                RayConfig::instance().local_node_cleanup_delay_interval_ms()));
-        timer->async_wait([this, timer](const boost::system::error_code e) mutable {
-          CancelMismatchedLocalTasks(
-              virtual_cluster_manager_->GetLocalVirtualClusterID());
-        });
-      });
 }
 
 void NodeManager::Start(rpc::GcsNodeInfo &&self_node_info) {
@@ -402,7 +392,7 @@ void NodeManager::RegisterGcs() {
   const auto virtual_cluster_update_notification_handler =
       [this](const VirtualClusterID &virtual_cluster_id,
              rpc::VirtualClusterTableData &&virtual_cluster_data) {
-        virtual_cluster_manager_->UpdateVirtualCluster(std::move(virtual_cluster_data));
+        virtual_cluster_manager_.UpdateVirtualCluster(std::move(virtual_cluster_data));
       };
   RAY_CHECK_OK(gcs_client_.VirtualCluster().AsyncSubscribeAll(
       virtual_cluster_update_notification_handler, [](const ray::Status &status) {

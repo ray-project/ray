@@ -1,6 +1,5 @@
 syntax = "proto3";
 
-
 service FootsiesGameService {
   rpc StartGame(Empty) returns (Empty) {}
   rpc ResetGame(Empty) returns (Empty) {}
@@ -9,7 +8,6 @@ service FootsiesGameService {
   rpc GetEncodedState(Empty) returns (EncodedGameState) {}
   rpc IsReady(Empty) returns (BoolValue) {}
 }
-
 
 message StepInput {
   int64 p1_action = 1;
@@ -56,8 +54,5 @@ message EncodedGameState {
 message BoolValue {
   bool value = 1;
 }
-
-
-
 
 message Empty {}

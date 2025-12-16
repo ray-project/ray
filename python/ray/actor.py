@@ -682,7 +682,7 @@ class ActorMethod:
         this is needed for the insight monitor to record the call
         """
         callee_func = self._method_name
-        actor = self._actor_ref()
+        actor = self._actor
         callee_class = None
         if actor is not None:
             actor_name = ray.state.actors(actor_id=actor._ray_actor_id.hex()).get(
