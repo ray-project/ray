@@ -39,7 +39,8 @@ class RayEventRecorder : public RayEventRecorderInterface {
                    instrumented_io_context &io_service,
                    size_t max_buffer_size,
                    std::string_view metric_source,
-                   ray::observability::MetricInterface &dropped_events_counter);
+                   ray::observability::MetricInterface &dropped_events_counter,
+                   const NodeID &node_id);
 
   // Start exporting events to the event aggregator by periodically sending events to
   // the event aggregator. This should be called only once. Subsequent calls will be
@@ -68,6 +69,8 @@ class RayEventRecorder : public RayEventRecorderInterface {
   ray::observability::MetricInterface &dropped_events_counter_;
   // Flag to track if exporting has been started
   bool exporting_started_ ABSL_GUARDED_BY(mutex_) = false;
+  // Node ID to be set on all events
+  const NodeID node_id_;
   // Export events to the event aggregator. This is called periodically by the
   // PeriodicalRunner.
   void ExportEvents();

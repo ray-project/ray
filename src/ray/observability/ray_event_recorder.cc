@@ -26,13 +26,15 @@ RayEventRecorder::RayEventRecorder(
     instrumented_io_context &io_service,
     size_t max_buffer_size,
     std::string_view metric_source,
-    ray::observability::MetricInterface &dropped_events_counter)
+    ray::observability::MetricInterface &dropped_events_counter,
+    const NodeID &node_id)
     : event_aggregator_client_(event_aggregator_client),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
       max_buffer_size_(max_buffer_size),
       metric_source_(metric_source),
       buffer_(max_buffer_size),
-      dropped_events_counter_(dropped_events_counter) {}
+      dropped_events_counter_(dropped_events_counter),
+      node_id_(node_id) {}
 
 void RayEventRecorder::StartExportingEvents() {
   absl::MutexLock lock(&mutex_);
@@ -74,6 +76,8 @@ void RayEventRecorder::ExportEvents() {
   }
   for (auto &event : grouped_events) {
     rpc::events::RayEvent ray_event = std::move(*event).Serialize();
+    // Set node_id centrally for all events
+    ray_event.set_node_id(node_id_.Binary());
     *ray_event_data.mutable_events()->Add() = std::move(ray_event);
   }
   *request.mutable_events_data() = std::move(ray_event_data);
