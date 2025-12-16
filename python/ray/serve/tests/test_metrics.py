@@ -1,8 +1,12 @@
+import asyncio
+import concurrent.futures
 import http
 import json
 import os
 import sys
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
 import grpc
@@ -981,6 +985,123 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     } == expected_output
 
 
+def test_queue_wait_time_metric(metrics_start_shutdown):
+    """Test that queue wait time metric is recorded correctly."""
+    signal = SignalActor.remote()
+
+    @serve.deployment(max_ongoing_requests=1)
+    class SlowDeployment:
+        async def __call__(self):
+            await signal.wait.remote()
+            return "done"
+
+    handle = serve.run(SlowDeployment.bind(), name="app1", route_prefix="/slow")
+
+    futures = [handle.remote() for _ in range(2)]
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10
+    )
+
+    time.sleep(0.5)
+    ray.get(signal.send.remote())
+    [f.result() for f in futures]
+
+    timeseries = PrometheusTimeseries()
+
+    def check_queue_wait_time_metric():
+        metrics = get_metric_dictionaries(
+            "ray_serve_request_router_fulfillment_time_ms_sum", timeseries=timeseries
+        )
+        if not metrics:
+            return False
+        for metric in metrics:
+            if (
+                metric.get("deployment") == "SlowDeployment"
+                and metric.get("application") == "app1"
+            ):
+                return True
+        return False
+
+    wait_for_condition(check_queue_wait_time_metric, timeout=10)
+
+    def check_queue_wait_time_metric_value():
+        value = get_metric_float(
+            "ray_serve_request_router_fulfillment_time_ms_sum",
+            timeseries=timeseries,
+            expected_tags={"deployment": "SlowDeployment", "application": "app1"},
+        )
+        assert value > 400, f"Queue wait time should be greater than 500ms, got {value}"
+        return True
+
+    wait_for_condition(check_queue_wait_time_metric_value, timeout=10)
+
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == 0, timeout=10
+    )
+
+
+def test_router_queue_len_metric(metrics_start_shutdown):
+    """Test that router queue length metric is recorded correctly per replica."""
+    signal = SignalActor.remote()
+
+    @serve.deployment(max_ongoing_requests=10)
+    class TestDeployment:
+        async def __call__(self, request: Request):
+            await signal.wait.remote()
+            return "done"
+
+    serve.run(TestDeployment.bind(), name="app1", route_prefix="/test")
+
+    # Send a request that will block
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(httpx.get, "http://localhost:8000/test", timeout=60)
+
+        # Wait for request to reach the replica
+        wait_for_condition(
+            lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=15
+        )
+
+        timeseries = PrometheusTimeseries()
+
+        # Check that the router queue length metric appears with correct tags
+        def check_router_queue_len():
+            metrics = get_metric_dictionaries(
+                "ray_serve_request_router_queue_len", timeseries=timeseries
+            )
+            if not metrics:
+                return False
+            # Find metric for our deployment with replica_id tag
+            for metric in metrics:
+                if (
+                    metric.get("deployment") == "TestDeployment"
+                    and metric.get("application") == "app1"
+                    and "replica_id" in metric
+                ):
+                    # Check that required tags are present
+                    assert (
+                        "handle_source" in metric
+                    ), "handle_source tag should be present"
+                    print(f"Found router queue len metric: {metric}")
+                    return True
+            return False
+
+        wait_for_condition(check_router_queue_len, timeout=30)
+
+        wait_for_condition(
+            check_metric_float_eq,
+            timeout=15,
+            metric="ray_serve_request_router_queue_len",
+            expected=1,
+            expected_tags={"deployment": "TestDeployment", "application": "app1"},
+            timeseries=timeseries,
+        )
+        print("Router queue len metric verified.")
+
+        # Release request
+        ray.get(signal.send.remote())
+        future.result()
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
 def test_multiplexed_metrics(metrics_start_shutdown):
     """Tests multiplexed API corresponding metrics."""
@@ -1170,6 +1291,110 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
     assert (
         "/api/users/{user_id}" in latency_routes or "/api/" in latency_routes
     ), f"Latency metrics should use route patterns. Found: {latency_routes}"
+
+
+def test_batching_metrics(metrics_start_shutdown):
+    @serve.deployment
+    class BatchedDeployment:
+        @serve.batch(max_batch_size=4, batch_wait_timeout_s=0.5)
+        async def batch_handler(self, requests: List[str]) -> List[str]:
+            # Simulate some processing time
+            await asyncio.sleep(0.05)
+            return [f"processed:{r}" for r in requests]
+
+        async def __call__(self, request: Request):
+            data = await request.body()
+            return await self.batch_handler(data.decode())
+
+    app_name = "batched_app"
+    serve.run(BatchedDeployment.bind(), name=app_name, route_prefix="/batch")
+
+    http_url = "http://localhost:8000/batch"
+
+    # Send multiple concurrent requests to trigger batching
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [
+            executor.submit(lambda i=i: httpx.post(http_url, content=f"req{i}"))
+            for i in range(8)
+        ]
+        results = [f.result() for f in futures]
+
+    # Verify all requests succeeded
+    assert all(r.status_code == 200 for r in results)
+
+    # Verify specific metric values and tags
+    timeseries = PrometheusTimeseries()
+    expected_tags = {
+        "deployment": "BatchedDeployment",
+        "application": app_name,
+        "function_name": "batch_handler",
+    }
+
+    # Check batches_processed_total counter exists and has correct tags
+    wait_for_condition(
+        lambda: check_metric_float_eq(
+            "ray_serve_batches_processed_total",
+            expected=2,
+            expected_tags=expected_tags,
+            timeseries=timeseries,
+        ),
+        timeout=10,
+    )
+
+    # Check batch_wait_time_ms histogram was recorded for 2 batches
+    wait_for_condition(
+        lambda: check_metric_float_eq(
+            "ray_serve_batch_wait_time_ms_count",
+            expected=2,
+            expected_tags=expected_tags,
+            timeseries=timeseries,
+        ),
+        timeout=10,
+    )
+
+    # Check batch_execution_time_ms histogram was recorded for 2 batches
+    wait_for_condition(
+        lambda: check_metric_float_eq(
+            "ray_serve_batch_execution_time_ms_count",
+            expected=2,
+            expected_tags=expected_tags,
+            timeseries=timeseries,
+        ),
+        timeout=10,
+    )
+
+    # Check batch_utilization_percent histogram: 2 batches at 100% each = 200 sum
+    wait_for_condition(
+        lambda: check_metric_float_eq(
+            "ray_serve_batch_utilization_percent_count",
+            expected=2,
+            expected_tags=expected_tags,
+            timeseries=timeseries,
+        ),
+        timeout=10,
+    )
+
+    # Check actual_batch_size histogram: 2 batches of 4 requests each = 8 sum
+    wait_for_condition(
+        lambda: check_metric_float_eq(
+            "ray_serve_actual_batch_size_count",
+            expected=2,
+            expected_tags=expected_tags,
+            timeseries=timeseries,
+        ),
+        timeout=10,
+    )
+
+    # Check batch_queue_length gauge exists (should be 0 after processing)
+    wait_for_condition(
+        lambda: check_metric_float_eq(
+            "ray_serve_batch_queue_length",
+            expected=0,
+            expected_tags=expected_tags,
+            timeseries=timeseries,
+        ),
+        timeout=10,
+    )
 
 
 def test_autoscaling_metrics(metrics_start_shutdown):

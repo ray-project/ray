@@ -508,17 +508,15 @@ class TestUnique:
         ds = ray.data.from_items(data)
         result = ds.aggregate(Unique(on="id", ignore_nulls=False))
 
-        answer = ["a", "b", None]
-
-        assert Counter(result["unique(id)"]) == Counter(answer)
+        assert Counter(result["unique(id)"]) == Counter(["a", "b", None])
 
     def test_unique_ignores_nulls(self, ray_start_regular_shared_2_cpus):
         """Test Unique properly ignores nulls."""
         data = [{"id": "a"}, {"id": None}, {"id": "b"}, {"id": "b"}, {"id": None}]
         ds = ray.data.from_items(data)
-        result = ds.aggregate(Unique(on="id"))
+        result = ds.aggregate(Unique(on="id", ignore_nulls=True))
 
-        assert sorted(result["unique(id)"]) == ["a", "b"]
+        assert Counter(result["unique(id)"]) == Counter(["a", "b"])
 
     def test_unique_custom_alias(self, ray_start_regular_shared_2_cpus):
         """Test Unique with custom alias."""
@@ -554,7 +552,7 @@ class TestUnique:
         """Test Unique will drop null values when encode_lists is True."""
         data = [{"id": ["a", "b", "c"]}, {"id": ["a", "a", "a", "b", None]}]
         ds = ray.data.from_items(data)
-        result = ds.aggregate(Unique(on="id", encode_lists=True))
+        result = ds.aggregate(Unique(on="id", encode_lists=True, ignore_nulls=True))
 
         answer = ["a", "b", "c"]
 

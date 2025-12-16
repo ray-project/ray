@@ -2948,7 +2948,7 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
-    def unique(self, column: str) -> List[Any]:
+    def unique(self, column: str, ignore_nulls: bool = False) -> List[Any]:
         """List the unique elements in a given column.
 
         Examples:
@@ -2982,11 +2982,12 @@ class Dataset:
 
         Args:
             column: The column to collect unique elements over.
+            ignore_nulls: If ``True``, ignore null values in the column.
 
         Returns:
             A list with unique elements in the given column.
         """  # noqa: E501
-        ret = self._aggregate_on(Unique, column, ignore_nulls=False)
+        ret = self._aggregate_on(Unique, column, ignore_nulls=ignore_nulls)
         return self._aggregate_result(ret)
 
     @AllToAllAPI
