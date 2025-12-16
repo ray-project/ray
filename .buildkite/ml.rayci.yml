@@ -16,15 +16,6 @@ steps:
       EXTRA_DEPENDENCY: ml
     tags: cibase
 
-  - name: mlbuild
-    wanda: ci/docker/ml.build.wanda.yaml
-    depends_on: oss-ci-base_ml
-    env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml
-      IMAGE_TO: mlbuild
-      RAYCI_IS_GPU_BUILD: "false"
-    tags: cibase
-
   - name: mlbuild-multipy
     label: "wanda: mlbuild-py{{matrix}}"
     wanda: ci/docker/ml.build.wanda.yaml
