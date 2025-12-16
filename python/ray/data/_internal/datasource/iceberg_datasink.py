@@ -391,7 +391,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
 
         return IcebergWriteResult(
             data_files=all_data_files,
-            upsert_keys=dict(upsert_keys_dict) if upsert_keys_dict else None,
+            upsert_keys=upsert_keys_dict or None,
             schemas=block_schemas,
         )
 
