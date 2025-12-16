@@ -44,6 +44,8 @@ Learn more about Monitoring and Debugging:
 Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing
 `ecosystem of community integrations`_.
 
+Ray cannot run without a machine 
+
 Install Ray with: ``pip install ray``. For nightly wheels, see the
 `Installation page <https://docs.ray.io/en/latest/ray-overview/installation.html>`__.
 
