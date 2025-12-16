@@ -65,6 +65,24 @@ class DevIngress(OpenAiIngress):
     environments. Consider access control in production deployments.
     """
 
+    async def _dispatch_to_replicas(
+        self, model: str, method: str, kwargs: dict | None = None
+    ) -> Response:
+        """Helper to dispatch a command to all replicas and return a 200 response.
+
+        Args:
+            model: The model ID or None to use default.
+            method: The method name to call on each replica.
+            kwargs: Optional kwargs to pass to the method.
+
+        Returns:
+            200 OK response.
+        """
+        model_id = await self._get_model_id(model)
+        handle = self._get_configured_serve_handle(model_id)
+        dispatch(handle, method, kwargs=kwargs)
+        return Response(status_code=200)
+
     async def reset_prefix_cache(self, body: ResetPrefixCacheRequest) -> Response:
         """Reset the KV prefix cache on all replicas for the specified model.
 
@@ -74,11 +92,8 @@ class DevIngress(OpenAiIngress):
         Returns:
             200 OK on success.
         """
-        model_id = await self._get_model_id(body.model)
-        handle = self._get_configured_serve_handle(model_id)
-        logger.info("Resetting prefix cache for model: %s", model_id)
-        dispatch(handle, "reset_prefix_cache")
-        return Response(status_code=200)
+        logger.info("Resetting prefix cache for model: %s", body.model)
+        return await self._dispatch_to_replicas(body.model, "reset_prefix_cache")
 
     async def sleep(self, body: SleepRequest) -> Response:
         """Put the engine to sleep on all replicas for the specified model.
@@ -92,13 +107,12 @@ class DevIngress(OpenAiIngress):
         Returns:
             200 OK on success.
         """
-        model_id = await self._get_model_id(body.model)
-        handle = self._get_configured_serve_handle(model_id)
         logger.info(
-            "Putting model %s to sleep with options: %s", model_id, body.options
+            "Putting model %s to sleep with options: %s", body.model, body.options
         )
-        dispatch(handle, "sleep", kwargs=body.options)
-        return Response(status_code=200)
+        return await self._dispatch_to_replicas(
+            body.model, "sleep", kwargs=body.options
+        )
 
     async def wakeup(self, body: WakeupRequest) -> Response:
         """Wake up the engine from sleep on all replicas for the specified model.
@@ -109,11 +123,10 @@ class DevIngress(OpenAiIngress):
         Returns:
             200 OK on success.
         """
-        model_id = await self._get_model_id(body.model)
-        handle = self._get_configured_serve_handle(model_id)
-        logger.info("Waking up model %s with options: %s", model_id, body.options)
-        dispatch(handle, "wakeup", kwargs=body.options)
-        return Response(status_code=200)
+        logger.info("Waking up model %s with options: %s", body.model, body.options)
+        return await self._dispatch_to_replicas(
+            body.model, "wakeup", kwargs=body.options
+        )
 
     async def is_sleeping(self, body: IsSleepingRequest) -> IsSleepingResponse:
         """Check if the engine is sleeping for the specified model.
