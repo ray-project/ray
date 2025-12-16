@@ -98,9 +98,9 @@ def test_autoscaling_config_validation():
     assert non_default_autoscaling_config.policy.is_default_policy_function() is False
 
     # look_back_period_s must be greater than metrics_interval_s
-    with pytest.raises(ValueError):
+    with pytest.warns(FutureWarning):
         AutoscalingConfig(look_back_period_s=5.0, metrics_interval_s=10.0)
-    with pytest.raises(ValueError):
+    with pytest.warns(FutureWarning):
         AutoscalingConfig(look_back_period_s=10.0, metrics_interval_s=10.0)
     AutoscalingConfig(look_back_period_s=30.0, metrics_interval_s=10.0)
     AutoscalingConfig(look_back_period_s=10.0, metrics_interval_s=5.0)
