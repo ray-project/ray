@@ -315,7 +315,7 @@ identities. For example, on GKE you can set **RAY_AUTH_TOKEN** to a token from `
 Token Caching
 ~~~~~~~~~~~~~
 
-Ray caches authenticated tokens with a default TTL of **5 minutes** to avoid calls to the
+Ray caches authenticated tokens with a TTL of **5 minutes** to avoid calls to the
 Kubernetes API for every request.
 
 KubeRay Configuration
