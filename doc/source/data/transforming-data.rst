@@ -10,14 +10,7 @@ to express a chain of computations.
 .. note::
     Transformations are lazy by default. They aren't executed until you trigger consumption of the data by :ref:`iterating over the Dataset <iterating-over-data>`, :ref:`saving the Dataset <saving-data>`, or :ref:`inspecting properties of the Dataset <inspecting-data>`.
 
-This guide shows you how to:
-
-* :ref:`Transform rows <transforming_rows>`
-* :ref:`Transform batches <transforming_batches>`
-* :ref:`Order rows <ordering_of_rows>`
-* :ref:`Perform stateful transformations <stateful_transforms>`
-* :ref:`Perform Aggregations <aggregations>`
-* :ref:`Transform groups <transforming_groupby>`
+This guide shows you how to scale transformations (or user-defined functions (UDFs)) on your Ray Data dataset.
 
 .. _transforming_rows:
 
