@@ -26,6 +26,7 @@ from ray.serve._private.metrics_utils import (
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import get_capacity_adjusted_num_replicas
 from ray.serve.config import AutoscalingContext, AutoscalingPolicy
+from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -59,6 +60,33 @@ class DeploymentAutoscalingState:
         # Track timestamps of last scale up and scale down events
         self._last_scale_up_time: Optional[float] = None
         self._last_scale_down_time: Optional[float] = None
+
+        self.autoscaling_decision_gauge = metrics.Gauge(
+            "serve_autoscaling_desired_replicas",
+            description=(
+                "The raw autoscaling decision (number of replicas) from the autoscaling "
+                "policy before applying min/max bounds."
+            ),
+            tag_keys=("deployment", "application"),
+        )
+
+        self.autoscaling_total_requests_gauge = metrics.Gauge(
+            "serve_autoscaling_total_requests",
+            description=(
+                "Total number of requests as seen by the autoscaler. This is the input "
+                "to the autoscaling decision."
+            ),
+            tag_keys=("deployment", "application"),
+        )
+
+        self.autoscaling_policy_execution_time_gauge = metrics.Gauge(
+            "serve_autoscaling_policy_execution_time_ms",
+            description=(
+                "Time taken to execute the autoscaling policy in milliseconds. "
+                "High values may indicate a slow or complex policy."
+            ),
+            tag_keys=("deployment", "application", "policy_scope"),
+        )
 
     def register(self, info: DeploymentInfo, curr_target_num_replicas: int) -> int:
         """Registers an autoscaling deployment's info.
@@ -225,6 +253,23 @@ class DeploymentAutoscalingState:
                         f"Ongoing requests was: {handle_metric.total_requests}."
                     )
 
+    def record_autoscaling_metrics(
+        self,
+        decision_num_replicas: int,
+        total_num_requests: float,
+        policy_execution_time_ms: float,
+        policy_scope: str,
+    ):
+        tags = {
+            "deployment": self._deployment_id.name,
+            "application": self._deployment_id.app_name,
+        }
+        self.autoscaling_decision_gauge.set(decision_num_replicas, tags=tags)
+        self.autoscaling_total_requests_gauge.set(total_num_requests, tags=tags)
+        self.autoscaling_policy_execution_time_gauge.set(
+            policy_execution_time_ms, tags={**tags, "policy_scope": policy_scope}
+        )
+
     def get_decision_num_replicas(
         self, curr_target_num_replicas: int, _skip_bound_check: bool = False
     ) -> int:
@@ -239,7 +284,19 @@ class DeploymentAutoscalingState:
         if self._policy is None:
             raise ValueError(f"Policy is not set for deployment {self._deployment_id}.")
         autoscaling_context = self.get_autoscaling_context(curr_target_num_replicas)
+
+        # Time the policy execution
+        start_time = time.time()
         decision_num_replicas, self._policy_state = self._policy(autoscaling_context)
+        policy_execution_time_ms = (time.time() - start_time) * 1000
+
+        self.record_autoscaling_metrics(
+            decision_num_replicas,
+            autoscaling_context.total_num_requests,
+            policy_execution_time_ms,
+            "deployment",
+        )
+
         if _skip_bound_check:
             return decision_num_replicas
 
@@ -789,10 +846,12 @@ class ApplicationAutoscalingState:
                 )
                 for deployment_id, state in self._deployment_autoscaling_states.items()
             }
+            # Time the policy execution
+            start_time = time.time()
             # Policy returns decisions: {deployment_id -> decision} and
             # policy state: {deployment_id -> Dict}
             decisions, returned_policy_state = self._policy(autoscaling_contexts)
-
+            policy_execution_time_ms = (time.time() - start_time) * 1000
             # Validate returned policy_state
             self._validate_policy_state(returned_policy_state)
             self._policy_state = returned_policy_state
@@ -811,16 +870,25 @@ class ApplicationAutoscalingState:
                     deployment_id in deployment_to_target_num_replicas
                 ), f"Deployment {deployment_id} is invalid"
 
-            return {
-                deployment_id: (
+            results = {}
+            for deployment_id, num_replicas in decisions.items():
+                deployment_autoscaling_state = self._deployment_autoscaling_states[
+                    deployment_id
+                ]
+                deployment_autoscaling_state.record_autoscaling_metrics(
+                    num_replicas,
+                    autoscaling_contexts[deployment_id].total_num_requests,
+                    policy_execution_time_ms,
+                    "application",
+                )
+                results[deployment_id] = (
                     self._deployment_autoscaling_states[deployment_id].apply_bounds(
                         num_replicas
                     )
                     if not _skip_bound_check
                     else num_replicas
                 )
-                for deployment_id, num_replicas in decisions.items()
-            }
+            return results
         else:
             # Using deployment-level policy
             return {
