@@ -620,6 +620,15 @@ These metrics track request batching behavior for deployments using `@serve.batc
 | `ray_serve_actual_batch_size` | Histogram | `deployment`, `replica`, `application`, `function_name` | The computed size of each batch. When `batch_size_fn` is configured, this reports the custom computed size (such as total tokens). Otherwise, it reports the number of requests. |
 | `ray_serve_batches_processed_total` | Counter | `deployment`, `replica`, `application`, `function_name` | Total number of batches executed. Compare with request counter to measure batching efficiency. |
 
+### Proxy health metrics
+
+These metrics track proxy health and lifecycle.
+
+| Metric | Type | Tags | Description |
+|--------|------|------|-------------|
+| `ray_serve_proxy_healthy` | Gauge | `node_id`, `node_ip_address` | Health status of the proxy: `1` = healthy, `0` = unhealthy. |
+| `ray_serve_proxy_shutdown_duration_ms` | Histogram | `node_id`, `node_ip_address` | Histogram of time taken for a proxy to shut down in milliseconds. |
+
 ### Replica lifecycle metrics
 
 These metrics track replica health and restarts.
@@ -666,6 +675,7 @@ These metrics track the Serve controller's performance. Useful for debugging con
 |--------|------|------|-------------|
 | `ray_serve_controller_control_loop_duration_s` | Gauge | — | Duration of the last control loop iteration in seconds. |
 | `ray_serve_controller_num_control_loops` | Gauge | `actor_id` | Total number of control loop iterations. Increases monotonically. |
+| `ray_serve_routing_stats_delay_ms` | Histogram | `deployment`, `application`, `handle` | Histogram of time taken for routing stats to propagate from handle to controller in milliseconds. |
 | `ray_serve_long_poll_host_transmission_counter_total` **[†]** | Counter | `namespace_or_state` | Total number of long poll updates transmitted to clients. |
 
 To see this in action, first run the following command to start Ray and set up the metrics export port:

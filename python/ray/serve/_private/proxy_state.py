@@ -360,6 +360,17 @@ class ProxyState:
         # Initially set to 0 since proxy starts in STARTING state
         self._healthy_gauge.set(0)
 
+        # Metric to track proxy shutdown duration
+        self._shutdown_duration_histogram = metrics.Histogram(
+            "serve_proxy_shutdown_duration_ms",
+            description=(
+                "The time it takes for the proxy to shut down in milliseconds."
+            ),
+            boundaries=[10, 50, 100, 200, 500, 1000, 2000, 5000, 10000],
+            tag_keys=("node_id", "node_ip_address"),
+        ).set_default_tags({"node_id": node_id, "node_ip_address": node_ip})
+        self._shutdown_start_time: Optional[float] = None
+
     @property
     def actor_handle(self) -> ActorHandle:
         return self._actor_proxy_wrapper.actor_handle
@@ -542,6 +553,7 @@ class ProxyState:
 
     def shutdown(self):
         self._shutting_down = True
+        self._shutdown_start_time = self._timer.time()
         self._actor_proxy_wrapper.kill()
 
     def is_ready_for_shutdown(self) -> bool:
@@ -553,7 +565,14 @@ class ProxyState:
         if not self._shutting_down:
             return False
 
-        return self._actor_proxy_wrapper.is_shutdown()
+        is_shutdown = self._actor_proxy_wrapper.is_shutdown()
+        if is_shutdown and self._shutdown_start_time is not None:
+            shutdown_duration_ms = (
+                self._timer.time() - self._shutdown_start_time
+            ) * 1000
+            self._shutdown_duration_histogram.observe(shutdown_duration_ms)
+            self._shutdown_start_time = None  # Prevent recording multiple times
+        return is_shutdown
 
 
 class ProxyStateManager:
