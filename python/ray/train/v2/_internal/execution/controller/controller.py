@@ -432,9 +432,9 @@ class TrainController:
         elif isinstance(controller_state, RunningState):
             try:
                 worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
+            except AsyncioActorExit:
+                raise
             except Exception as e:
-                if isinstance(e, AsyncioActorExit):
-                    raise e
                 training_failed_error = ControllerError(e)
                 failure_decision = self._failure_policy.make_decision(
                     training_failed_error=training_failed_error,
