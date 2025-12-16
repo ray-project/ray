@@ -222,6 +222,8 @@ If you encounter CUDA out of memory errors, try these strategies:
 Model loading at scale
 ~~~~~~~~~~~~~~~~~~~~~~
 
+.. _model_cache:
+
 For large clusters, HuggingFace downloads may be rate-limited. Cache models to S3 or GCS:
 
 .. code-block:: bash
