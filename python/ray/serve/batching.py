@@ -463,11 +463,6 @@ class _BatchQueue:
                 model_id_to_requests[model_id] = []
             model_id_to_requests[model_id].append(request)
 
-        # If all requests have the same model_id (including empty string),
-        # return the original batch as-is
-        if len(model_id_to_requests) == 1:
-            return [batch]
-
         # Return sub-batches for each model_id
         return list(model_id_to_requests.values())
 
