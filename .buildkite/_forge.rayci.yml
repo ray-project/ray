@@ -6,3 +6,6 @@ steps:
 
   - name: manylinux
     wanda: ci/docker/manylinux.wanda.yaml
+    env:
+      MANYLINUX_VERSION: "251216.3835fc5"
+      HOSTTYPE: "x86_64"

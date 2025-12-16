@@ -11,6 +11,9 @@ steps:
 
   - name: manylinux-aarch64
     wanda: ci/docker/manylinux.aarch64.wanda.yaml
+    env:
+      MANYLINUX_VERSION: "251216.3835fc5"
+      HOSTTYPE: "aarch64"
     instance_type: builder-arm64
 
   - name: ray-java-build-aarch64
