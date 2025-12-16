@@ -85,7 +85,6 @@ async def test_vllm_multimodal_utils():
             trust_remote_code=True,
             limit_mm_per_prompt={"image": 2},
         ),
-        None,  # Tokenizer is not used in vLLM's parse_chat_messages_futures
         content_format="string",
     )
 
