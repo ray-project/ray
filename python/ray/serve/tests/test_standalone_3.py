@@ -516,6 +516,8 @@ def test_job_runtime_env_not_leaked(shutdown_ray):  # noqa: F811
     h = serve.run(app)
     assert h.remote().result() == "VAL2"
 
+    serve.shutdown()
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
