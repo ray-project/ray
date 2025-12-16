@@ -1,4 +1,5 @@
 name: asynchronous-inference-service
+image_uri: anyscale/ray:2.52.0-py311
 applications:
   - name: async-inference
     route_prefix: /

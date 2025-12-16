@@ -33,9 +33,11 @@ AUTH_TOKEN=$(echo "$SERVICE_JSON" | jq -r '.query_auth_token // .[0].query_auth_
 
 python client.py -H "Bearer $AUTH_TOKEN" "$SERVICE_URL"
 
-anyscale service delete --name "$SERVICE_NAME"
+anyscale service terminate --name "$SERVICE_NAME"
 
 anyscale service wait --name "$SERVICE_NAME" --state TERMINATED --timeout-s 600
+
+anyscale service delete --name "$SERVICE_NAME"
 
 rm server.py client.py requirements.txt service.yaml
 
