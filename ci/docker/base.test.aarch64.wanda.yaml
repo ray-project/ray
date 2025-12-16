@@ -8,5 +8,6 @@ srcs:
   - .bazelversion
 build_args:
   - BUILDKITE_BAZEL_CACHE_URL
+  - PYTHON=3.10
 tags:
   - cr.ray.io/rayproject/oss-ci-base_test-aarch64
