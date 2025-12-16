@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 
 from ci.raydepsets.parser import Parser
-from ci.raydepsets.tests.utils import copy_data_to_tmpdir, replace_in_file
+from ci.raydepsets.tests.utils import (
+    copy_data_to_tmpdir,
+    replace_in_file,
+    write_to_file,
+)
 
 
 def test_parser():
@@ -41,6 +45,14 @@ def test_parser_w_annotations():
         assert parsed_deps[1].required_by == []
         assert parsed_deps[5].name == "frozenlist"
         assert parsed_deps[5].version == "1.8.0"
+
+
+def test_parser_empty_file():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        write_to_file(Path(tmpdir) / "empty.lock", "")
+        parser = Parser(Path(tmpdir) / "empty.lock")
+        parsed_deps = parser.parse()
+        assert len(parsed_deps) == 0
 
 
 if __name__ == "__main__":

@@ -56,6 +56,11 @@ def get_depset_by_name(depsets, name):
             return depset
 
 
+def write_to_file(filepath, contents):
+    with open(filepath, "w") as f:
+        f.write(contents)
+
+
 def write_to_config_file(
     tmpdir: str,
     depsets: List[Depset],
