@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.3-labs
 
-ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build
+ARG PYTHON_VERSION=3.10
+ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_test-py$PYTHON_VERSION
 FROM $DOCKER_IMAGE_BASE_BUILD
 
 ARG PYTHON_VERSION
@@ -16,7 +17,7 @@ RUN <<EOF
 set -euo pipefail
 
 # minimal dependencies
-MINIMAL_INSTALL=1 PYTHON=${PYTHON_VERSION} ci/env/install-dependencies.sh
+BUILD=1 MINIMAL_INSTALL=1 PYTHON=${PYTHON_VERSION} ./ci/ci.sh init
 rm -rf python/ray/thirdparty_files
 
 # install test requirements

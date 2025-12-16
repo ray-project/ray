@@ -1931,6 +1931,7 @@
     script: python torch_local_mode_launcher.py
 
 - name: torch_lightning
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/pytorch_lightning
 
@@ -2217,7 +2218,7 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: experimental/compute_gpu_2_aws.yaml
+    cluster_compute: experimental/compute_t4_gpu.yaml
 
   run:
     timeout: 1800
@@ -2239,7 +2240,7 @@
     timeout: 1800
     script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
 
-- name: gpu_object_GPU
+- name: rdt_single_node_T4_microbenchmark
   python: "3.10"
   group: core-daily-test
   team: core
@@ -2249,27 +2250,48 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: experimental/compute_gpu_2_aws.yaml
+    cluster_compute: experimental/compute_t4_gpu.yaml
 
   run:
     timeout: 1800
-    script: python experimental/gpu_object_microbenchmark.py
+    # NIXL currently only works on T4's for <100mb tensors so not enabling.
+    script: python experimental/rdt_single_node_microbenchmark.py
 
-- name: gpu_object_GPU_multinode
-  python: "3.10"
+- name: rdt_single_node_A100_microbenchmark
+  python: "3.11"
   group: core-daily-test
   team: core
-  frequency: nightly
+  frequency: weekly
   working_dir: microbenchmark
 
   cluster:
     byod:
-      type: gpu
-    cluster_compute: experimental/compute_gpu_2x1_aws.yaml
+      type: llm-cu128 # llm image already has nixl
+      runtime_env: # env vars for nixl
+        - UCX_TLS=all
+        - UCX_NET_DEVICES=all
+    cluster_compute: experimental/compute_a100_gpu.yaml
 
   run:
     timeout: 1800
-    script: python experimental/gpu_object_microbenchmark.py --distributed
+    script: python experimental/rdt_single_node_microbenchmark.py --enable_10gb --enable_nixl
+
+# TODO(dayshah): Add multi-node benchmarks with actual hardware RDMA support
+# - name: gpu_object_GPU_multinode
+#   python: "3.10"
+#   group: core-daily-test
+#   team: core
+#   frequency: nightly
+#   working_dir: microbenchmark
+
+#   cluster:
+#     byod:
+#       type: gpu
+#     cluster_compute: experimental/compute_gpu_2x1_aws.yaml
+
+#   run:
+#     timeout: 1800
+#     script: python experimental/gpu_object_microbenchmark.py --distributed
 
 - name: benchmark_worker_startup
   python: "3.10"
@@ -3608,7 +3630,9 @@
   python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
-  frequency: nightly
+  # TODO: the test seems to be leaking resources, and will
+  # start failing over time; needs more investigation.
+  frequency: manual
   team: clusters
   cluster:
     byod:
@@ -3996,29 +4020,14 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1 # For test_llm_serve_prefill_decode_with_data_parallelism
     cluster_compute: llm_2x_4xl4.yaml
 
   run:
     timeout: 3600
     script: >
       pytest -sv test_llm_serve_multi_node_integration.py
-
-- name: llm_serve_disaggregated_wide_ep
-  frequency: nightly
-  python: "3.11"
-  group: llm-serve
-  team: llm
-  working_dir: llm_tests/serve
-
-  cluster:
-    byod:
-      type: llm-cu128
-    cluster_compute: llm_2x_4xl4_custom_resource.yaml
-
-  run:
-    timeout: 3600
-    script: >
-      pytest -sv test_llm_serve_disaggregated_wide_ep.py
 
 - name: llm_serve_llama_3dot2_1B_no_accelerator
   frequency: nightly
@@ -4223,7 +4232,8 @@
       pytest -sv test_batch_sglang.py
 
 - name: llm_batch_vllm_multi_node
-  frequency: nightly
+  # TODO(ray-llm): https://github.com/anyscale/ray/issues/572
+  frequency: manual
   python: "3.11"
   group: llm-batch
   team: llm
@@ -4317,7 +4327,8 @@
 
 
 - name: e2e_xgboost  # do not use dashes (regex sensitive)
-  frequency: weekly
+  # TODO: https://github.com/anyscale/ray/issues/573
+  frequency: manual
   python: "3.11"
   group: ray-examples
   team: ml
@@ -4379,6 +4390,31 @@
     byod:
       type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
       post_build_script: byod_mcp-ray-serve.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+- name: langchain_agent_ray_serve  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: serve
+  working_dir: //doc/source/ray-overview/examples/langchain_agent_ray_serve  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_langchain_agent_ray_serve.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
@@ -4650,7 +4686,7 @@
   python: "3.11"
   group: ray-examples
   team: data
-  working_dir: //doc/source/data/examples/unstructured-data-ingestion  # use // to access from repo's root
+  working_dir: //doc/source/data/examples/unstructured_data_ingestion  # use // to access from repo's root
 
   cluster:
     byod:
