@@ -1,5 +1,6 @@
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.examples.envs.classes.multi_agent.tic_tac_toe import TicTacToe
 from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -13,7 +14,7 @@ args = parser.parse_args()
 
 config = (
     DQNConfig()
-    .environment(env="CartPole-v1")
+    .environment(TicTacToe)
     .training(
         lr=0.0005 * (args.num_learners or 1) ** 0.5,
         train_batch_size_per_learner=32,
@@ -27,6 +28,9 @@ config = (
         double_q=True,
         dueling=True,
         epsilon=[(0, 1.0), (10_000, 0.02)],
+    )
+    .multi_agent(
+
     )
     .rl_module(
         model_config=DefaultModelConfig(
