@@ -249,8 +249,7 @@ class GPUObjectStore:
             self._object_present_cv.notify_all()
 
     def add_object_primary(self, obj_id: str, tensors: List["torch.Tensor"]):
-        with self._lock:
-            self.add_object(obj_id, tensors, is_primary=True)
+        self.add_object(obj_id, tensors, is_primary=True)
 
     def is_primary_copy(self, obj_id: str) -> bool:
         with self._lock:
