@@ -115,6 +115,50 @@ class RuntimeContext(object):
         node_id = self.worker.current_node_id
         return node_id.hex()
 
+    def get_session_name(self) -> str:
+        """Get the session name for the Ray cluster this process is connected to.
+
+        The session name uniquely identifies a Ray cluster instance. This is the
+        same value that appears as the ``SessionName`` label in Prometheus metrics,
+        making it useful for filtering metrics when multiple clusters run the same
+        application name.
+
+        This can be called from within a driver, task, or actor.
+
+        Example:
+
+            .. testcode::
+
+                import ray
+
+                ray.init()
+                session_name = ray.get_runtime_context().get_session_name()
+                print(f"Session Name: {session_name}")
+
+                @ray.remote
+                def get_session_name():
+                    return ray.get_runtime_context().get_session_name()
+
+                # Session name is the same across all processes in the cluster
+                assert ray.get(get_session_name.remote()) == session_name
+
+                # Use in Prometheus query to filter metrics by cluster
+                # promql: ray_serve_http_request_latency_ms_bucket{SessionName="%s"}
+                # % session_name
+
+        Returns:
+            A session name string for the Ray cluster (e.g.,
+            "session_2025-01-01_00-00-00_000000_1234").
+
+        Raises:
+            AssertionError: If not called in a driver or worker. Generally,
+                this means that ray.init() was not called.
+        """
+        assert (
+            ray.is_initialized()
+        ), "Session name is not available because Ray has not been initialized."
+        return self.worker.node.session_name
+
     def get_worker_id(self) -> str:
         """Get current worker ID for this worker or driver process.
 
@@ -570,6 +614,8 @@ def get_runtime_context() -> RuntimeContext:
             import ray
             # Get the job id.
             ray.get_runtime_context().get_job_id()
+            # Get the session name (used in Prometheus SessionName label).
+            ray.get_runtime_context().get_session_name()
             # Get the actor id.
             ray.get_runtime_context().get_actor_id()
             # Get the task id.
