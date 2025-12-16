@@ -201,6 +201,10 @@ class NodeManagerServiceHandler {
   virtual void HandleKillLocalActor(KillLocalActorRequest request,
                                     KillLocalActorReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleCancelLocalTask(CancelLocalTaskRequest request,
+                                     CancelLocalTaskReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.
