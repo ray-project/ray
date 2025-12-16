@@ -382,11 +382,13 @@ def test_placement_group_reschedule_node_dead(autoscaler_v2):
 
         def kill_node(node_id):
             cmd = f"ps aux | grep {node_id} | grep -v grep | awk '{{print $2}}'"
-            pid = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
-            print(f"Killing pid {pid}")
-            # kill the pid
-            cmd = f"kill -9 {pid}"
-            subprocess.check_output(cmd, shell=True)
+            pids = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
+            print(f"Killing pids {pids}")
+            # kill the pids (handle multiple PIDs separated by newlines)
+            for pid in pids.split("\n"):
+                if pid:
+                    cmd = f"kill -9 {pid}"
+                    subprocess.run(cmd, shell=True)
 
         # Kill a worker node with 'R1' in resources
         for n in ray.nodes():

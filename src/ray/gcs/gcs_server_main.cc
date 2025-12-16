@@ -33,7 +33,7 @@
 #include "ray/raylet/metrics.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
-#include "ray/util/file_persistence.h"
+#include "ray/util/port_persistence.h"
 #include "ray/util/raii.h"
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"

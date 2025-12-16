@@ -301,6 +301,7 @@ def test_report_stats(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
     raylet_client = MagicMock()
     agent = ReporterAgent(dashboard_agent, raylet_client)
     # Assume it is a head node.
@@ -378,6 +379,7 @@ def test_report_stats_gpu(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
     raylet_client = MagicMock()
     agent = ReporterAgent(dashboard_agent, raylet_client)
     # Assume it is a head node.
@@ -490,6 +492,7 @@ def test_get_tpu_usage(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
     raylet_client = MagicMock()
     agent = ReporterAgent(dashboard_agent, raylet_client)
 
@@ -549,6 +552,7 @@ def test_report_stats_tpu(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
     raylet_client = MagicMock()
     agent = ReporterAgent(dashboard_agent, raylet_client)
 
@@ -630,6 +634,7 @@ def test_report_per_component_stats(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
     dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
     raylet_client = MagicMock()
     agent = ReporterAgent(dashboard_agent, raylet_client)
     # Assume it is a head node.
@@ -1198,6 +1203,7 @@ async def test_reporter_raylet_agent(ray_start_with_dashboard):
     dashboard_agent.session_dir = (
         ray._private.worker.global_worker.node.get_session_dir_path()
     )
+    dashboard_agent.node_id = ray._private.worker.global_worker.node.unique_id
     agent = ReporterAgent(dashboard_agent)
     pids = await agent._async_get_worker_pids_from_raylet()
     assert len(pids) == 2

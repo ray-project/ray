@@ -152,7 +152,7 @@ cdef extern from "ray/common/status_or.h" namespace "ray" nogil:
         const CRayStatus &status() const
         T &value()
 
-cdef extern from "ray/util/file_persistence.h" namespace "ray" nogil:
+cdef extern from "ray/util/port_persistence.h" namespace "ray" nogil:
     c_string GetPortFileName "ray::GetPortFileName"(
         const CNodeID &node_id,
         const c_string &port_name)

@@ -31,12 +31,33 @@ namespace stats {
 /// exporter after a main thread launched.
 class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::Handler {
  public:
+  /// Constructs an exporter with an already-connected metrics agent client.
+  ///
+  /// Use this constructor when the metrics agent port is known at initialization time.
+  /// The exporter is immediately ready to send metrics.
+  ///
+  /// @param agent_client A connected MetricsAgentClient instance.
+  /// @param worker_id The worker ID to include in metric reports.
+  /// @param report_batch_size Maximum number of time-series per gRPC request.
+  /// @param max_grpc_payload_size Maximum gRPC payload size in bytes.
   OpenCensusProtoExporter(std::shared_ptr<rpc::MetricsAgentClient> agent_client,
                           const WorkerID &worker_id,
                           size_t report_batch_size,
                           size_t max_grpc_payload_size);
 
-  // Creates exporter without connecting to metrics agent.
+  /// Constructs an exporter without connecting to the metrics agent.
+  ///
+  /// Use this constructor when the metrics agent port is not yet known (e.g., when
+  /// using dynamic port allocation). The exporter will be registered with OpenCensus
+  /// but will drop metrics until Connect() is called with the actual port.
+  ///
+  /// @param io_service The IO service for async gRPC operations. Must outlive this
+  ///                   exporter.
+  /// @param worker_id The worker ID to include in metric reports.
+  /// @param report_batch_size Maximum number of time-series per gRPC request.
+  /// @param max_grpc_payload_size Maximum gRPC payload size in bytes.
+  ///
+  /// @see Connect() to establish the connection once the port is known.
   OpenCensusProtoExporter(instrumented_io_context &io_service,
                           const WorkerID &worker_id,
                           size_t report_batch_size,
@@ -44,7 +65,9 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
 
   ~OpenCensusProtoExporter() override = default;
 
-  // Connect to the metrics agent with the given port.
+  /// Connects to the metrics agent at the specified port.
+  ///
+  /// @param port The port number where the metrics agent is listening.
   void Connect(int port);
 
   static OpenCensusProtoExporter *Register(instrumented_io_context &io_service,

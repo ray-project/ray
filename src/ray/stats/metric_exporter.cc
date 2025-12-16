@@ -112,6 +112,11 @@ void OpenCensusProtoExporter::SendData(const rpc::ReportOCMetricsRequest &reques
   RAY_LOG(DEBUG) << "Exporting metrics, metrics: " << request.metrics_size()
                  << ", payload size: " << request.ByteSizeLong();
   absl::MutexLock l(&mu_);
+  if (client_ == nullptr) {
+    RAY_LOG_EVERY_N(WARNING, 10000)
+        << "Metrics agent client is not connected yet. Dropping metrics.";
+    return;
+  }
   client_->ReportOCMetrics(
       request, [](const Status &status, const rpc::ReportOCMetricsReply &reply) {
         RAY_UNUSED(reply);

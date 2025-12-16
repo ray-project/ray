@@ -55,8 +55,8 @@
 #include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
-#include "ray/util/file_persistence.h"
 #include "ray/util/network_util.h"
+#include "ray/util/port_persistence.h"
 #include "ray/util/string_utils.h"
 #include "ray/util/time.h"
 
@@ -3325,7 +3325,7 @@ std::tuple<int, int, int> NodeManager::WaitForDashboardAgentPorts(
         WaitForPersistedPort(config.session_dir, self_node_id, kMetricsAgentPortName));
   }
   int metrics_export_port = config.metrics_export_port;
-  if (metrics_export_port == 0 && RayConfig::instance().enable_metrics_collection()) {
+  if (metrics_export_port == 0) {
     RAY_ASSIGN_OR_CHECK(
         metrics_export_port,
         WaitForPersistedPort(config.session_dir, self_node_id, kMetricsExportPortName));
