@@ -2557,7 +2557,7 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
         } else {
           std::stringstream stream;
           stream << "Failed to find a corresponding actor handle for " << actor_id;
-          cb(Status::Invalid(stream.str()));
+          cb(Status::NotFound(stream.str()));
         }
       },
       "CoreWorker.KillActor");
