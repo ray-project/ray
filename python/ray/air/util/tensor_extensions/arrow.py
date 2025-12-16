@@ -231,8 +231,7 @@ def convert_to_pyarrow_array(
             # Convert to Numpy before creating instance of `ArrowTensorArray` to
             # align tensor shapes falling back to ragged ndarray only if necessary
             return ArrowTensorArray.from_numpy(
-                convert_to_numpy(column_values),
-                column_name=column_name
+                convert_to_numpy(column_values), column_name=column_name
             )
         else:
             return _convert_to_pyarrow_native_array(column_values, column_name)
@@ -797,7 +796,9 @@ class ArrowTensorArray(pa.ExtensionArray):
             # NOTE: In case of conversion from a Pandas extension types supporting
             #       nullable numeric values (like `pd.Int64Dtype`) we have to explicitly
             #       ravel tensors
-            _, raveled, shapes, sizes = ArrowVariableShapedTensorArray._ravel_tensors(arr)
+            _, raveled, shapes, sizes = ArrowVariableShapedTensorArray._ravel_tensors(
+                arr
+            )
 
             # TODO assert shapes, sizes
 
@@ -1254,12 +1255,9 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         return type_.wrap_array(storage)
 
     @classmethod
-    def _ravel_tensors(cls, arr: Union[np.ndarray, List[np.ndarray], Tuple[np.ndarray]]) -> Tuple[
-        int,
-        np.ndarray,
-        np.ndarray,
-        np.ndarray,
-    ]:
+    def _ravel_tensors(
+        cls, arr: Union[np.ndarray, List[np.ndarray], Tuple[np.ndarray]]
+    ) -> Tuple[int, np.ndarray, np.ndarray, np.ndarray,]:
         raveled = np.empty(len(arr), dtype=np.object_)
         shapes = np.empty(len(arr), dtype=np.object_)
 
