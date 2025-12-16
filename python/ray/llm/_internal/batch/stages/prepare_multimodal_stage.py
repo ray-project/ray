@@ -1,9 +1,51 @@
 """Prepare Multimodal Stage"""
 
 import asyncio
+import copyreg
 from typing import Any, AsyncIterator, Dict, List
 
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
+
+
+def _reconstruct_media_with_bytes(cls, media, original_bytes):
+    """Reconstruct MediaWithBytes by setting __dict__ directly.
+
+    This avoids triggering __getattr__ during unpickling, which would cause
+    infinite recursion since vLLM's MediaWithBytes.__getattr__ accesses
+    self.media unconditionally.
+    """
+    obj = object.__new__(cls)
+    obj.__dict__["media"] = media
+    obj.__dict__["original_bytes"] = original_bytes
+    return obj
+
+
+def _register_vllm_pickle_reducers():
+    """Register pickle reducer for vLLM's MediaWithBytes to fix unpickling.
+
+    vLLM's MediaWithBytes has a __getattr__ that delegates to self.media,
+    but this causes infinite recursion during pickle.load() because pickle
+    creates objects via __new__ (not __init__), so self.media isn't set
+    when __getattr__ is first called.
+
+    TODO(seiji): remove when https://github.com/vllm-project/vllm/issues/30818
+    is fixed
+    """
+    try:
+        from vllm.multimodal.base import MediaWithBytes
+    except ImportError:
+        return
+
+    def _reduce(obj):
+        return (
+            _reconstruct_media_with_bytes,
+            (type(obj), obj.media, obj.original_bytes),
+        )
+
+    copyreg.pickle(MediaWithBytes, _reduce)
+
+
+_register_vllm_pickle_reducers()
 
 
 class PrepareMultimodalUDF(StatefulStageUDF):
