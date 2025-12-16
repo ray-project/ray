@@ -722,9 +722,7 @@ filegroup(
         "//doc/source/data/examples:data_examples_ci_configs",
         "//doc/source/tune/examples:tune_examples_ci_configs",
         "//doc/source/ray-core/examples:core_examples_ci_configs",
-        "//doc/source/train/examples/pytorch:pytorch_examples_ci_configs",
-        "//doc/source/train/examples/transformers:transformers_examples_ci_configs",
-        "//doc/source/train/examples/lightning:lightning_examples_ci_configs",
+        "//doc/source/train/examples:train_examples_ci_configs",
     ],
     visibility = ["//release:__pkg__"],
 )

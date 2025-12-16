@@ -12,7 +12,7 @@ filegroup(
         "**/ci/aws.yaml",
         "**/ci/gce.yaml",
     ]),
-    visibility = ["//doc:__pkg__"],
+    visibility = ["//doc/source/train/examples:__pkg__"],
 )
 
 # GPU Tests
