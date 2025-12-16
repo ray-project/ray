@@ -20,15 +20,13 @@ namespace ray {
 namespace observability {
 
 RayActorDefinitionEvent::RayActorDefinitionEvent(const rpc::ActorTableData &data,
-                                                 const std::string &session_name,
-                                                 const NodeID &node_id)
+                                                 const std::string &session_name)
     : RayEvent<rpc::events::ActorDefinitionEvent>(
           rpc::events::RayEvent::GCS,
           rpc::events::RayEvent::ACTOR_DEFINITION_EVENT,
           rpc::events::RayEvent::INFO,
           "",
-          session_name,
-          node_id) {
+          session_name) {
   data_.set_actor_id(data.actor_id());
   data_.set_job_id(data.job_id());
   data_.set_is_detached(data.is_detached());

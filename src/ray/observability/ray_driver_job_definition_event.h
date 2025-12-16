@@ -25,8 +25,7 @@ class RayDriverJobDefinitionEvent
     : public RayEvent<rpc::events::DriverJobDefinitionEvent> {
  public:
   RayDriverJobDefinitionEvent(const rpc::JobTableData &data,
-                              const std::string &session_name,
-                              const NodeID &node_id);
+                              const std::string &session_name);
 
   std::string GetEntityId() const override;
 

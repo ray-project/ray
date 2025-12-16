@@ -42,7 +42,6 @@ class RayEvent : public RayEventInterface {
     event.set_severity(severity_);
     event.set_message(message_);
     event.set_session_name(session_name_);
-    event.set_node_id(node_id_.Binary());
     event.mutable_timestamp()->CopyFrom(AbslTimeNanosToProtoTimestamp(
         absl::ToInt64Nanoseconds(event_timestamp_ - absl::UnixEpoch())));
 
@@ -58,14 +57,12 @@ class RayEvent : public RayEventInterface {
            ray::rpc::events::RayEvent::EventType event_type,
            ray::rpc::events::RayEvent::Severity severity,
            const std::string &message,
-           const std::string &session_name,
-           const NodeID &node_id)
+           const std::string &session_name)
       : source_type_(source_type),
         event_type_(event_type),
         severity_(severity),
         message_(message),
-        session_name_(session_name),
-        node_id_(node_id) {
+        session_name_(session_name) {
     event_timestamp_ = absl::Now();
   }
 
@@ -76,7 +73,6 @@ class RayEvent : public RayEventInterface {
   ray::rpc::events::RayEvent::Severity severity_;
   std::string message_;
   std::string session_name_;
-  const NodeID node_id_;
   virtual void MergeData(RayEvent<T> &&other) = 0;
   virtual ray::rpc::events::RayEvent SerializeData() && = 0;
 };

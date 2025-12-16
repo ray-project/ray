@@ -18,15 +18,13 @@ namespace ray {
 namespace observability {
 
 RayDriverJobDefinitionEvent::RayDriverJobDefinitionEvent(const rpc::JobTableData &data,
-                                                         const std::string &session_name,
-                                                         const NodeID &node_id)
+                                                         const std::string &session_name)
     : RayEvent<rpc::events::DriverJobDefinitionEvent>(
           rpc::events::RayEvent::GCS,
           rpc::events::RayEvent::DRIVER_JOB_DEFINITION_EVENT,
           rpc::events::RayEvent::INFO,
           "",
-          session_name,
-          node_id) {
+          session_name) {
   data_.set_job_id(data.job_id());
   data_.set_driver_pid(data.driver_pid());
   data_.set_driver_node_id(data.driver_address().node_id());

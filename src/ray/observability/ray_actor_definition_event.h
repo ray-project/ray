@@ -26,8 +26,7 @@ template class RayEvent<rpc::events::ActorDefinitionEvent>;
 class RayActorDefinitionEvent : public RayEvent<rpc::events::ActorDefinitionEvent> {
  public:
   RayActorDefinitionEvent(const rpc::ActorTableData &data,
-                          const std::string &session_name,
-                          const NodeID &node_id);
+                          const std::string &session_name);
 
   std::string GetEntityId() const override;
   void MergeData(RayEvent<rpc::events::ActorDefinitionEvent> &&other) override;

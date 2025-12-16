@@ -59,10 +59,10 @@ void GcsJobManager::WriteDriverJobExportEvent(
     if (state == rpc::events::DriverJobLifecycleEvent::CREATED) {
       // Job definition event is emitted once when the job is created.
       events.push_back(std::make_unique<observability::RayDriverJobDefinitionEvent>(
-          job_data, session_name_, gcs_node_id_));
+          job_data, session_name_));
     }
     events.push_back(std::make_unique<observability::RayDriverJobLifecycleEvent>(
-        job_data, state, session_name_, gcs_node_id_));
+        job_data, state, session_name_));
     ray_event_recorder_.AddEvents(std::move(events));
     return;
   }
