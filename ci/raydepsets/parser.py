@@ -27,6 +27,7 @@ class Parser:
                 if name and version and package_line_match:
                     deps.append(Dep(name=name, version=version, required_by=deps_arr))
                     deps_arr = []
+                # match either "# via <package>" or "#   <package>"
                 dependency_line_match = re.search(
                     r"^\s{4}#\s{3}(.*)$|^\s{4}#\svia\s(.*)$", line
                 )
@@ -39,14 +40,16 @@ class Parser:
                     dependency_line_match
                     and not req_line_match
                     and not constraint_line_match
-                    and dependency_line_match.group(1) != ""
-                    and dependency_line_match.group(2) != ""
+                    and (
+                        dependency_line_match.group(1) or dependency_line_match.group(2)
+                    )
                 ):
-                    # match either "# via <package>" or "#   <package>"
+                    # group 1: "# via <package>" or group 2: "#   <package>"
                     dep = dependency_line_match.group(1) or dependency_line_match.group(
                         2
                     )
-                    deps_arr.append(dep)
+                    if dep != "":
+                        deps_arr.append(dep)
             # handle last dependency
             deps.append(Dep(name=name, version=version, required_by=deps_arr))
         return deps
