@@ -782,6 +782,7 @@ os.environ["RAY_DOC_BUILD"] = "1"
 mark_orphan_patterns = [
     "ray-core/examples/**/content/**.ipynb",
     "serve/tutorials/**/content/**.ipynb",
+    "data/examples/**/content/**.ipynb",
     "train/examples/**/content/**.ipynb",
     "tune/examples/**/content/**.ipynb",
 ]
