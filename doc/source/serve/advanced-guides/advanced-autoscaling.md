@@ -621,12 +621,14 @@ An `AutoscalingContext` object provides the following information to the custom 
 
 The following example showcases a policy that scales up during business hours and evening batch processing, and scales down during off-peak hours:
 
+`autoscaling_policy.py` file:
 ```{literalinclude} ../doc_code/autoscaling_policy.py
 :language: python
 :start-after: __begin_scheduled_batch_processing_policy__
 :end-before: __end_scheduled_batch_processing_policy__
 ```
 
+`main.py` file:
 ```{literalinclude} ../doc_code/scheduled_batch_processing.py
 :language: python
 :start-after: __serve_example_begin__
@@ -648,12 +650,14 @@ You can make richer decisions by emitting your own metrics from the deployment. 
 
 This example demonstrates how deployments can provide their own metrics (CPU usage, memory usage) and how autoscaling policies can use these metrics to make scaling decisions:
 
+`autoscaling_policy.py` file:
 ```{literalinclude} ../doc_code/autoscaling_policy.py
 :language: python
 :start-after: __begin_custom_metrics_autoscaling_policy__
 :end-before: __end_custom_metrics_autoscaling_policy__
 ```
 
+`main.py` file:
 ```{literalinclude} ../doc_code/custom_metrics_autoscaling.py
 :language: python
 :start-after: __serve_example_begin__
@@ -684,6 +688,7 @@ The `policy_state` returned from an application-level policy must be a `dict[Dep
 Serve itself does not interpret the contents of `policy_state`. All the keys in each deployment's state dictionary are user-controlled.
 The following example shows a policy that scales deployments based on their relative load, ensuring that downstream deployments have enough capacity for upstream traffic:
 
+`autoscaling_policy.py` file:
 ```{literalinclude} ../doc_code/autoscaling_policy.py
 :language: python
 :start-after: __begin_application_level_autoscaling_policy__
@@ -691,6 +696,7 @@ The following example shows a policy that scales deployments based on their rela
 ```
 The following example shows a stateful application-level policy that persists state between control-loop iterations:
 
+`autoscaling_policy.py` file:
 ```{literalinclude} ../doc_code/autoscaling_policy.py
 :language: python
 :start-after: __begin_stateful_application_level_policy__
@@ -701,6 +707,7 @@ The following example shows a stateful application-level policy that persists st
 
 To use an application-level policy, you need to define your deployments:
 
+`main.py` file:
 ```{literalinclude} ../doc_code/application_level_autoscaling.py
 :language: python
 :start-after: __serve_example_begin__
@@ -709,6 +716,7 @@ To use an application-level policy, you need to define your deployments:
 
 Then specify the application-level policy in your application config:
 
+`serve.yaml` file:
 ```{literalinclude} ../doc_code/application_level_autoscaling.yaml
 :language: yaml
 :emphasize-lines: 4-5
