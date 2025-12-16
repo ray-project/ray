@@ -780,11 +780,9 @@ os.environ["RAY_DOC_BUILD"] = "1"
 
 # apply orphan metadata to
 mark_orphan_patterns = [
-    "ray-core/examples/**/content/**.ipynb",
     "serve/tutorials/**/content/**.ipynb",
     "data/examples/**/content/**.ipynb",
     "train/examples/**/content/**.ipynb",
-    "tune/examples/**/content/**.ipynb",
 ]
 # Exclude patterns here
 mark_orphan_exclude_patterns = []
