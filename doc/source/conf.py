@@ -246,12 +246,12 @@ exclude_patterns = [
     # Other misc files (overviews, console-only examples, etc)
     "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
     "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
-    "serve/tutorials/deployment-serve-llm/content/README.ipynb",
     # Legacy (should refactor to follow the structure above (with content/ subfolder) at some point)
     "ray-overview/examples/**/README.md",
     "train/examples/**/README.md",
-
+    "serve/tutorials/deployment-serve-llm/README.*",
 ] + autogen_files
+
 # If "DOC_LIB" is found, only build that top-level navigation item.
 build_one_lib = os.getenv("DOC_LIB")
 

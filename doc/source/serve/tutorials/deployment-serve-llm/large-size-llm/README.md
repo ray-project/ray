@@ -1,14 +1,18 @@
+---
+orphan: true
+---
+
 <!--
 Do not modify this README. This file is a copy of the notebook and is not used to display the content.
 Modify notebook.ipynb instead, then regenerate this file with:
-jupyter nbconvert "README.ipynb" --to markdown --output "README.md"
+jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 -->
 
 # Deploy a large-sized LLM
 
 <div align="left">
-<a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Fcontent%252Flarge-size-llm"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
-<a href="https://github.com/ray-proj    ect/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/content/large-size-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+<a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Flarge-size-llm"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a href="https://github.com/ray-proj    ect/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/large-size-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
 This tutorial shows you how to deploy and serve a large language model in production with Ray Serve LLM. A large LLM typically runs on multiple nodes with multiple GPUs, prioritizing peak quality and capability: stronger reasoning, broader knowledge, longer context windows, more robust generalization. This tutorial deploys DeepSeek-R1, a large-sized LLM with 685&nbsp;B parameters. When higher latency, complexity, and cost are acceptable trade-offs because you require state-of-the-art results.
@@ -95,7 +99,7 @@ In a terminal, run:
 
 
 ```python
-!serve run serve_deepseek_r1:app --non-blocking
+serve run serve_deepseek_r1:app --non-blocking
 ```
 
 Deployment typically takes a few minutes as the cluster is provisioned, the vLLM server starts, and the model is downloaded. 
@@ -109,8 +113,7 @@ Your endpoint is available locally at `http://localhost:8000` and you can use a 
 Example curl:
 
 
-```bash
-%%bash
+```python
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer FAKE_KEY" \
   -H "Content-Type: application/json" \
@@ -159,7 +162,7 @@ Shutdown your LLM service:
 
 
 ```python
-!serve shutdown -y
+serve shutdown -y
 ```
 
 
@@ -220,7 +223,7 @@ Deploy your service
 
 
 ```python
-!anyscale service deploy -f service.yaml
+anyscale service deploy -f service.yaml
 ```
 
 **Note:** If your model is gated, make sure to pass your Hugging Face token to the service with `--env HF_TOKEN=<YOUR_HUGGINGFACE_TOKEN>`
@@ -266,7 +269,7 @@ Shutdown your Anyscale service:
 
 
 ```python
-!anyscale service terminate -n deploy-deepseek-r1
+anyscale service terminate -n deploy-deepseek-r1
 ```
 
 

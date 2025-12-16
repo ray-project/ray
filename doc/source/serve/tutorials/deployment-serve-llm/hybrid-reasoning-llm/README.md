@@ -1,14 +1,18 @@
+---
+orphan: true
+---
+
 <!--
 Do not modify this README. This file is a copy of the notebook and is not used to display the content.
 Modify notebook.ipynb instead, then regenerate this file with:
-jupyter nbconvert "README.ipynb" --to markdown --output "README.md"
+jupyter nbconvert "$notebook.ipynb" --to markdown --output "README.md"
 -->
 
 # Deploy a hybrid reasoning LLM
 
 <div align="left">
-<a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Fcontent%252Fhybrid-reasoning-llm"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
-<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/content/hybrid-reasoning-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
+<a target="_blank" href="https://console.anyscale.com/template-preview/deployment-serve-llm?file=%252Ffiles%252Fhybrid-reasoning-llm"><img src="https://img.shields.io/badge/🚀 Run_on-Anyscale-9hf"></a>&nbsp;
+<a href="https://github.com/ray-project/ray/tree/master/doc/source/serve/tutorials/deployment-serve-llm/hybrid-reasoning-llm" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
 </div>
 
 A hybrid reasoning model provides flexibility by allowing you to enable or disable reasoning as needed. You can use structured, step-by-step thinking for complex queries while skipping it for simpler ones, balancing accuracy with efficiency depending on the task.
@@ -178,7 +182,7 @@ In a terminal, run:
 
 
 ```python
-!serve run serve_qwen_3_32b:app --non-blocking
+serve run serve_qwen_3_32b:app --non-blocking
 ```
 
 Deployment typically takes a few minutes as the cluster is provisioned, the vLLM server starts, and the model is downloaded. 
@@ -196,8 +200,7 @@ You can disable thinking in Qwen-3 by either adding a `/no_think` tag in the pro
 Example curl with `/no_think`:
 
 
-```bash
-%%bash
+```python
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer FAKE_KEY" \
@@ -242,8 +245,7 @@ You can enable thinking in Qwen-3 by either adding a `/think` tag in the prompt 
 Example curl with `/think`:
 
 
-```bash
-%%bash
+```python
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer FAKE_KEY" \
@@ -286,7 +288,7 @@ Shutdown your LLM service:
 
 
 ```python
-!serve shutdown -y
+serve shutdown -y
 ```
 
 
