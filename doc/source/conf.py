@@ -246,10 +246,11 @@ exclude_patterns = [
     # Other misc files (overviews, console-only examples, etc)
     "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
     "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
-    # Legacy (should refactor to follow the structure above (with content/ subfolder) at some point)
+    # Legacy/backward compatibility
     "ray-overview/examples/**/README.md",
     "train/examples/**/README.md",
     "serve/tutorials/deployment-serve-llm/README.*",
+    "serve/tutorials/deployment-serve-llm/**.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
