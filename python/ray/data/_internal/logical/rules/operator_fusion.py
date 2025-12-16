@@ -254,6 +254,7 @@ class FuseOperators(Rule):
                 isinstance(up_logical_op, MapBatches)
                 and up_logical_op._batch_size is not None
                 and down_logical_op.target_num_rows_per_block is not None
+                and down_logical_op.target_num_rows_per_block > 0
                 and up_logical_op._batch_size
                 % down_logical_op.target_num_rows_per_block
                 == 0

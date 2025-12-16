@@ -246,7 +246,7 @@ def test_streaming_repartition_write_with_operator_fusion(
     This test verifies:
     * StreamingRepartition and MapBatches operators are fused, with both orders
     """
-    target_num_rows = 20  # base batch size
+    target_num_rows = 20
 
     def fn(batch):
         # Get number of rows from the first column (batch is a dict of column_name -> array)
