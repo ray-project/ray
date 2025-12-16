@@ -15,6 +15,14 @@ class Parser:
         self.depset_path = depset_path
 
     def parse(self) -> List[Dep]:
+        """Parse a depset lock file into a list of dependencies.
+
+        Args:
+            depset_path: The path to the depset lock file.
+
+        Returns:
+            A list of Dep objects. Each Dep object contains the name, version, and required_by dependencies.
+        """
         deps = []
         with open(self.depset_path, "r") as f:
             deps_arr = []
