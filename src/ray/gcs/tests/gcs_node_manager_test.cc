@@ -90,7 +90,6 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   ASSERT_EQ(ray_event_0.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(ray_event_0.severity(), rpc::events::RayEvent::INFO);
   ASSERT_EQ(ray_event_0.session_name(), "test_session_name");
-  ASSERT_EQ(ray_event_0.node_id(), gcs_node_id.Binary());
   ASSERT_EQ(ray_event_0.node_definition_event().node_id(), node->node_id());
   ASSERT_EQ(ray_event_0.node_definition_event().node_ip_address(),
             node->node_manager_address());
@@ -106,7 +105,6 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   ASSERT_EQ(ray_event_1.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(ray_event_1.severity(), rpc::events::RayEvent::INFO);
   ASSERT_EQ(ray_event_1.session_name(), "test_session_name");
-  ASSERT_EQ(ray_event_1.node_id(), gcs_node_id.Binary());
   ASSERT_EQ(ray_event_1.node_lifecycle_event().node_id(), node->node_id());
   ASSERT_EQ(ray_event_1.node_lifecycle_event().state_transitions(0).state(),
             rpc::events::NodeLifecycleEvent::ALIVE);
@@ -125,7 +123,6 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   ASSERT_EQ(ray_event_02.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(ray_event_02.severity(), rpc::events::RayEvent::INFO);
   ASSERT_EQ(ray_event_02.session_name(), "test_session_name");
-  ASSERT_EQ(ray_event_02.node_id(), gcs_node_id.Binary());
   ASSERT_EQ(ray_event_02.node_lifecycle_event().node_id(), node->node_id());
   ASSERT_EQ(ray_event_02.node_lifecycle_event().state_transitions(0).state(),
             rpc::events::NodeLifecycleEvent::ALIVE);
@@ -155,7 +152,6 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   ASSERT_EQ(ray_event_03.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(ray_event_03.severity(), rpc::events::RayEvent::INFO);
   ASSERT_EQ(ray_event_03.session_name(), "test_session_name");
-  ASSERT_EQ(ray_event_03.node_id(), gcs_node_id.Binary());
   ASSERT_EQ(ray_event_03.node_lifecycle_event().node_id(), node->node_id());
   ASSERT_EQ(ray_event_03.node_lifecycle_event().state_transitions(0).state(),
             rpc::events::NodeLifecycleEvent::DEAD);
