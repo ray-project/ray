@@ -117,9 +117,13 @@ def test_sleep_wakeup_lifecycle():
             json={"model": MODEL_ID},
             timeout=10,
         )
-        assert response.status_code == 200, f"is_sleeping returned {response.status_code}"
+        assert (
+            response.status_code == 200
+        ), f"is_sleeping returned {response.status_code}"
         initial_sleep_state = response.json().get("is_sleeping", None)
-        assert initial_sleep_state is False, f"Expected is_sleeping=False, got {initial_sleep_state}"
+        assert (
+            initial_sleep_state is False
+        ), f"Expected is_sleeping=False, got {initial_sleep_state}"
         print(f"✓ Initial sleeping state: {initial_sleep_state}")
 
         # Step 2: Record baseline GPU memory
@@ -135,7 +139,9 @@ def test_sleep_wakeup_lifecycle():
             json={"model": MODEL_ID, "options": {"level": 1}},
             timeout=60,
         )
-        assert sleep_response.status_code == 200, f"sleep returned {sleep_response.status_code}"
+        assert (
+            sleep_response.status_code == 200
+        ), f"sleep returned {sleep_response.status_code}"
         print("✓ Sleep command executed successfully")
 
         # Wait a bit for sleep to complete
@@ -150,7 +156,9 @@ def test_sleep_wakeup_lifecycle():
         )
         assert response.status_code == 200
         sleep_state = response.json().get("is_sleeping", None)
-        assert sleep_state is True, f"Expected is_sleeping=True after sleep, got {sleep_state}"
+        assert (
+            sleep_state is True
+        ), f"Expected is_sleeping=True after sleep, got {sleep_state}"
         print(f"✓ Sleeping state: {sleep_state}")
 
         # Step 5: Verify GPU memory reduction
@@ -159,7 +167,9 @@ def test_sleep_wakeup_lifecycle():
         memory_reduction_mb = baseline_memory_mb - sleep_memory_mb
         memory_reduction_pct = (memory_reduction_mb / baseline_memory_mb) * 100
         print(f"GPU memory after sleep: {sleep_memory_mb:.2f} MB")
-        print(f"Memory reduction: {memory_reduction_mb:.2f} MB ({memory_reduction_pct:.1f}%)")
+        print(
+            f"Memory reduction: {memory_reduction_mb:.2f} MB ({memory_reduction_pct:.1f}%)"
+        )
         assert (
             memory_reduction_pct > 50
         ), f"Expected >50% memory reduction, got {memory_reduction_pct:.1f}%"
@@ -172,7 +182,9 @@ def test_sleep_wakeup_lifecycle():
             json={"model": MODEL_ID, "options": {"tags": ["weights", "kv_cache"]}},
             timeout=60,
         )
-        assert wakeup_response.status_code == 200, f"wakeup returned {wakeup_response.status_code}"
+        assert (
+            wakeup_response.status_code == 200
+        ), f"wakeup returned {wakeup_response.status_code}"
         print("✓ Wakeup command executed successfully")
 
         # Wait a bit for wakeup to complete
@@ -187,7 +199,9 @@ def test_sleep_wakeup_lifecycle():
         )
         assert response.status_code == 200
         wake_state = response.json().get("is_sleeping", None)
-        assert wake_state is False, f"Expected is_sleeping=False after wakeup, got {wake_state}"
+        assert (
+            wake_state is False
+        ), f"Expected is_sleeping=False after wakeup, got {wake_state}"
         print(f"✓ Sleeping state: {wake_state}")
 
         # Step 8: Verify GPU memory restoration
@@ -213,7 +227,9 @@ def test_sleep_wakeup_lifecycle():
             temperature=0,
         )
         assert chat_response.choices[0].message.content is not None
-        print(f"✓ Model successfully generated response: {chat_response.choices[0].message.content[:50]}...")
+        print(
+            f"✓ Model successfully generated response: {chat_response.choices[0].message.content[:50]}..."
+        )
 
         print("\n=== All tests passed! ===")
 
@@ -225,4 +241,3 @@ def test_sleep_wakeup_lifecycle():
 
 if __name__ == "__main__":
     pytest.main(["-xvs", __file__])
-
