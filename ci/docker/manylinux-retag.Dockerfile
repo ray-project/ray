@@ -8,6 +8,7 @@
 
 ARG MANYLINUX_VERSION
 ARG HOSTTYPE
+ARG BUILDKITE_BAZEL_CACHE_URL
 FROM rayproject/manylinux2014:${MANYLINUX_VERSION}-jdk-${HOSTTYPE}
 
 # Still keep bazelrc updates to allow BUILDKITE_BAZEL_CACHE_URL to be used.
