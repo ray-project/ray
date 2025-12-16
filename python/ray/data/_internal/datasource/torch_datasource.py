@@ -24,10 +24,7 @@ class TorchDatasource(Datasource):
         self._dataset = dataset
 
     def get_read_tasks(
-        self,
-        parallelism: int,
-        per_task_row_limit: Optional[int] = None,
-        epoch_idx: int = 0,
+        self, parallelism: int, per_task_row_limit: Optional[int] = None
     ):
         assert parallelism == 1
 
