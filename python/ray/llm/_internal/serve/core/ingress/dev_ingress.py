@@ -88,9 +88,6 @@ class DevIngress(OpenAiIngress):
 
         Args:
             body: Request containing the model ID and engine-specific options.
-                For vLLM, options can include:
-                    level: Sleep level (1 or 2). Level 1 offloads weights
-                        to CPU. Level 2 discards weights entirely.
 
         Returns:
             200 OK on success.
