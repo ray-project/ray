@@ -9,13 +9,6 @@ steps:
     wanda: ci/docker/forge.aarch64.wanda.yaml
     instance_type: builder-arm64
 
-  - name: manylinux-aarch64
-    wanda: ci/docker/manylinux.aarch64.wanda.yaml
-    env:
-      MANYLINUX_VERSION: "251216.3835fc5"
-      HOSTTYPE: "aarch64"
-    instance_type: builder-arm64
-
   - name: ray-java-build-aarch64
     label: "wanda: java build (aarch64)"
     wanda: ci/docker/ray-java.wanda.yaml
@@ -147,7 +140,6 @@ steps:
       - "3.12"
       - "3.13"
     depends_on:
-      - manylinux-aarch64
       - forge-aarch64
     job_env: forge-aarch64
 
@@ -168,7 +160,6 @@ steps:
         --platform cpu
         --image-type ray-extra --architecture aarch64 --upload
     depends_on:
-      - manylinux-aarch64
       - forge-aarch64
       - raycudabaseextra-aarch64
       - raycpubaseextra-aarch64
@@ -195,7 +186,6 @@ steps:
         --platform cpu
         --image-type ray --architecture aarch64 --upload
     depends_on:
-      - manylinux-aarch64
       - forge-aarch64
       - raycudabase-aarch64
       - raycpubase-aarch64
@@ -217,7 +207,6 @@ steps:
         --test-env=RAY_CI_POST_WHEEL_TESTS=True
         --python-version 3.10
     depends_on:
-      - manylinux-aarch64
       - oss-ci-base_build-aarch64
       - forge-aarch64
     job_env: forge-aarch64
@@ -234,7 +223,6 @@ steps:
         --test-env=RAY_CI_POST_WHEEL_TESTS=True
         --python-version 3.10
     depends_on:
-      - manylinux-aarch64
       - oss-ci-base_build-aarch64
       - forge-aarch64
     job_env: forge-aarch64
