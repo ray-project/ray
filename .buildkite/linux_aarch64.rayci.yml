@@ -22,8 +22,8 @@ steps:
       - oss
     env:
       ARCH_SUFFIX: "-aarch64"
+      HOSTTYPE: "aarch64"
     instance_type: builder-arm64
-    depends_on: manylinux-aarch64
 
   - name: raycpubase-aarch64
     label: "wanda: ray.py{{matrix}}.cpu.base (aarch64)"
@@ -124,9 +124,9 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: "-aarch64"
+      HOSTTYPE: "aarch64"
     tags: release_wheels
     instance_type: builder-arm64
-    depends_on: manylinux-aarch64
 
   - label: ":tapioca: build: wheel {{matrix}} (aarch64)"
     tags:

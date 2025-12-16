@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.3-labs
 ARG ARCH_SUFFIX
-FROM cr.ray.io/rayproject/manylinux$ARCH_SUFFIX AS builder
+FROM rayproject/manylinux2014:251216.3835fc5-jdk-$HOSTTYPE AS builder
 
 ARG BUILDKITE_BAZEL_CACHE_URL
 ARG BUILDKITE_CACHE_READONLY

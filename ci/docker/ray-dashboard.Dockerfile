@@ -1,4 +1,4 @@
-FROM cr.ray.io/rayproject/manylinux AS builder
+FROM rayproject/manylinux2014:251216.3835fc5-jdk-$HOSTTYPE AS builder
 
 WORKDIR /home/forge/ray
 
