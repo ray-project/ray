@@ -554,7 +554,7 @@ Expressions (Alpha)
 ===================
 
 Ray Data expressions provide a way to specify column-based operations on datasets.
-Use :func:`col` to reference columns and :func:`lit` to create literal values.
+Use :func:`~ray.data.expressions.col` to reference columns and :func:`~ray.data.expressions.lit` to create literal values.
 You can combine these with operators to create complex expressions for filtering,
 transformations, and computations.
 
@@ -571,7 +571,7 @@ See :ref:`expressions-api` for more details.
     ds = ray.data.range(10).with_column("id_2", col("id") * 2)
     ds.show()
 
-To use a custom function with an expression, you can use :func:`udf`.
+To use a custom function with an expression, you can use :func:`~ray.data.expressions.udf`.
 
 .. testcode::
 
