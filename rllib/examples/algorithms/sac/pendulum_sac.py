@@ -11,8 +11,6 @@ parser = add_rllib_example_script_args(
     default_timesteps=20000,
     default_reward=-250.0,
 )
-# Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 config = (
@@ -24,7 +22,6 @@ config = (
         actor_lr=2e-4 * (args.num_learners or 1) ** 0.5,
         critic_lr=8e-4 * (args.num_learners or 1) ** 0.5,
         alpha_lr=9e-4 * (args.num_learners or 1) ** 0.5,
-        # TODO (sven): Maybe go back to making this a dict of the sub-learning rates?
         lr=None,
         target_entropy="auto",
         n_step=(2, 5),
@@ -49,9 +46,6 @@ config = (
             head_fcnet_kernel_initializer="orthogonal_",
             head_fcnet_kernel_initializer_kwargs={"gain": 0.01},
         ),
-    )
-    .reporting(
-        metrics_num_episodes_for_smoothing=5,
     )
 )
 

@@ -8,12 +8,10 @@ from ray.rllib.examples.utils import (
 )
 
 parser = add_rllib_example_script_args(
-    default_timesteps=1000000,
-    default_reward=12000.0,
-    default_iters=2000,
+    default_timesteps=1_000_000,
+    default_reward=12_000.0,
+    default_iters=2_000,
 )
-# Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 config = (
@@ -46,7 +44,6 @@ config = (
             fcnet_activation="relu",
             fcnet_kernel_initializer=nn.init.xavier_uniform_,
             head_fcnet_hiddens=[],
-            head_fcnet_activation=None,
             head_fcnet_kernel_initializer="orthogonal_",
             head_fcnet_kernel_initializer_kwargs={"gain": 0.01},
         ),
