@@ -53,31 +53,43 @@ Getting started
 
 If you're new to Ray, start with these labels:
 
-- `good-first-issue <https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3A%22good-first-issue%22>`__: Great for newcomers to the Ray codebase.
-- `contribution-welcome <https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3A%22contribution-welcome%22>`__: Issues where community contributions are especially appreciated and prioritized for review.
+- `good-first-issue`_: Great for newcomers to the Ray codebase.
+- `contribution-welcome`_: Issues where community contributions are especially appreciated and prioritized for review.
 
 By component
 ~~~~~~~~~~~~
 
 Find issues in the area you're most interested in:
 
-- `core <https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Acore>`__: Ray Core (tasks, actors, objects, scheduling).
-- `data <https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Adata>`__: Ray Data for distributed data processing.
-- `train <https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Atrain>`__: Ray Train for distributed training.
-- `tune <https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Atune>`__: Ray Tune for hyperparameter tuning.
-- `serve <https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Aserve>`__: Ray Serve for model serving.
-- `rllib <https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Arllib>`__: RLlib for reinforcement learning.
+- `core`_: Ray Core (tasks, actors, objects, scheduling).
+- `data`_: Ray Data for distributed data processing.
+- `train`_: Ray Train for distributed training.
+- `tune`_: Ray Tune for hyperparameter tuning.
+- `serve`_: Ray Serve for model serving.
+- `rllib`_: RLlib for reinforcement learning.
 
 By type
 ~~~~~~~
 
 Choose the kind of contribution you'd like to make:
 
-- `bug <https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Abug>`__: Bug fixes.
-- `enhancement <https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement>`__: New features or improvements.
-- `docs <https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Adocs>`__: Documentation improvements.
+- `bug`_: Bug fixes.
+- `enhancement`_: New features or improvements.
+- `docs`_: Documentation improvements.
 
 You can combine labels in GitHub's search to find issues that match multiple criteria.
+
+.. _`good-first-issue`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3A%22good-first-issue%22
+.. _`contribution-welcome`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3A%22contribution-welcome%22
+.. _`core`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Acore
+.. _`data`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Adata
+.. _`train`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Atrain
+.. _`tune`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Atune
+.. _`serve`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Aserve
+.. _`rllib`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Arllib
+.. _`bug`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Abug
+.. _`enhancement`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement
+.. _`docs`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Adocs
 
 Setting up your development environment
 ---------------------------------------
