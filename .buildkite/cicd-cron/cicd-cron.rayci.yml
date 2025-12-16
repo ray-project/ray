@@ -50,6 +50,7 @@ steps:
       - manylinux-cibase-x86_64
       - manylinux-cibase-aarch64
       - manylinux-cibase-jdk-x86_64
+      - manylinux-cibase-jdk-aarch64
       - forge
     job_env: forge
     matrix:
@@ -66,3 +67,4 @@ steps:
         --wanda-image-name manylinux-cibase{{matrix.jdk_suffix}}{{matrix.host_suffix}}
         --destination-repository rayproject/manylinux2014
         --tag-suffix {{matrix.jdk_suffix}}{{matrix.host_suffix}}
+        --upload
