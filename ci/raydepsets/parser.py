@@ -51,5 +51,6 @@ class Parser:
                     if dep != "":
                         deps_arr.append(dep)
             # handle last dependency
-            deps.append(Dep(name=name, version=version, required_by=deps_arr))
+            if name and version:
+                deps.append(Dep(name=name, version=version, required_by=deps_arr))
         return deps
