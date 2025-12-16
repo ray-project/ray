@@ -59,8 +59,8 @@ void GcsNodeManager::WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info,
       events.push_back(std::make_unique<observability::RayNodeDefinitionEvent>(
           node_info, session_name_));
     }
-    events.push_back(std::make_unique<observability::RayNodeLifecycleEvent>(
-        node_info, session_name_));
+    events.push_back(
+        std::make_unique<observability::RayNodeLifecycleEvent>(node_info, session_name_));
     ray_event_recorder_.AddEvents(std::move(events));
     return;
   }

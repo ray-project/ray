@@ -32,9 +32,7 @@ TEST_F(RayActorLifecycleEventTest, TestMergeAndSerialize) {
   data.mutable_address()->set_worker_id("worker-123");
 
   auto event1 = std::make_unique<RayActorLifecycleEvent>(
-      data,
-      rpc::events::ActorLifecycleEvent::DEPENDENCIES_UNREADY,
-      "sess1");
+      data, rpc::events::ActorLifecycleEvent::DEPENDENCIES_UNREADY, "sess1");
   auto event2 = std::make_unique<RayActorLifecycleEvent>(
       data, rpc::events::ActorLifecycleEvent::ALIVE, "sess1");
 
