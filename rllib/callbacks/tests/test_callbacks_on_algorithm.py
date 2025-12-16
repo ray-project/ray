@@ -22,7 +22,7 @@ def on_env_runners_recreated(
     for id_ in env_runner_indices:
         key = f"{'eval_' if is_evaluation else ''}worker_{id_}_recreated"
         # Increase the counter.
-        algorithm.metrics.log_value(key, 1, reduce="sum")
+        algorithm.metrics.log_value(key, 1, reduce="lifetime_sum")
         print(f"changed {key} to {algorithm._counters[key]}")
 
     # Execute some dummy code on each of the recreated workers.
