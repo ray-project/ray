@@ -94,7 +94,7 @@ class HPUAcceleratorManager(AcceleratorManager):
             import habana_frameworks.torch.hpu as torch_hpu
 
             if torch_hpu.is_available():
-                return f"Intel-GAUDI"
+                return "Intel-GAUDI"
 
         logging.info("HPU type cannot be detected")
         return None
