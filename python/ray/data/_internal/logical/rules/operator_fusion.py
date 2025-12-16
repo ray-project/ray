@@ -252,8 +252,11 @@ class FuseOperators(Rule):
         if isinstance(down_logical_op, StreamingRepartition):
             return (
                 isinstance(up_logical_op, MapBatches)
+                and up_logical_op._batch_size is not None
+                and down_logical_op.target_num_rows_per_block is not None
                 and up_logical_op._batch_size
-                == down_logical_op.target_num_rows_per_block
+                % down_logical_op.target_num_rows_per_block
+                == 0
             )
         # Other operators cannot fuse with StreamingRepartition.
         if isinstance(up_logical_op, StreamingRepartition):
@@ -276,7 +279,9 @@ class FuseOperators(Rule):
         up_logical_op = self._op_map.pop(up_op)
         assert isinstance(up_logical_op, MapBatches)
         assert isinstance(down_logical_op, StreamingRepartition)
-        assert up_logical_op._batch_size == down_logical_op.target_num_rows_per_block
+        assert (
+            up_logical_op._batch_size % down_logical_op.target_num_rows_per_block == 0
+        )
         batch_size = up_logical_op._batch_size
 
         compute = self._fuse_compute_strategy(
