@@ -1,4 +1,3 @@
-import traceback
 import warnings
 from typing import (
     TYPE_CHECKING,
@@ -17,18 +16,6 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from pandas.core.dtypes.generic import ABCSeries
-
-
-_pandas = None
-
-
-def lazy_import_pandas():
-    global _pandas
-    if _pandas is None:
-        import pandas
-
-        _pandas = pandas
-    return _pandas
 
 
 @DeveloperAPI(stability="beta")
@@ -59,11 +46,6 @@ def _is_arrow_array(value: ArrayLike) -> bool:
     return isinstance(value, (pa.Array, pa.ChunkedArray))
 
 
-def _is_pd_series(value: ArrayLike) -> bool:
-    pd = lazy_import_pandas()
-    return pd is not None and isinstance(value, pd.Series)
-
-
 def _should_convert_to_tensor(
     column_values: Union[List[Any], np.ndarray, ArrayLike], column_name: str
 ) -> bool:
@@ -71,7 +53,7 @@ def _should_convert_to_tensor(
 
     # We convert passed in column values into a tensor representation (involving
     # Arrow/Pandas extension types) in either of the following cases:
-    res = (
+    return (
         # - Column name is `TENSOR_COLUMN_NAME` (for compatibility)
         column_name == TENSOR_COLUMN_NAME
         # - Provided column values are already represented by a Numpy tensor (ie
@@ -80,31 +62,18 @@ def _should_convert_to_tensor(
         # - Provided collection is already implementing Ndarray protocol like
         #   `torch.Tensor`, `pd.Series`, etc (but *excluding* `pyarrow.Array`,
         #   `pyarrow.ChunkedArray`)
-        or _is_ndarray_like_not_pyarrow_array_or_pd_series(column_values)
+        or _is_ndarray_like_not_pyarrow_array(column_values)
         # - Provided column values is a list of a) ndarrays or b) ndarray-like objects
         #   (excluding Pyarrow arrays). This is done for compatibility with previous
         #   existing behavior where all column values were blindly converted to Numpy
         #   leading to list of ndarrays being converted a tensor):
         or isinstance(column_values[0], np.ndarray)
-        or _is_ndarray_like_not_pyarrow_array_or_pd_series(column_values[0])
+        or _is_ndarray_like_not_pyarrow_array(column_values[0])
     )
 
-    if res:
-        print(
-            f">>> [DBG] _should_convert_to_tensor(column_values): {column_values=}, {type(column_values[0])=}, {_is_ndarray_tensor(column_values)=}, {_is_ndarray_like_not_pyarrow_array_or_pd_series(column_values)=}, {_is_ndarray_like_not_pyarrow_array_or_pd_series(column_values[0])=} {res=}"
-        )
 
-        traceback.print_stack()
-
-    return res
-
-
-def _is_ndarray_like_not_pyarrow_array_or_pd_series(column_values):
-    return (
-        is_ndarray_like(column_values)
-        and not _is_arrow_array(column_values)
-        # and not _is_pd_series(column_values)
-    )
+def _is_ndarray_like_not_pyarrow_array(column_values):
+    return is_ndarray_like(column_values) and not _is_arrow_array(column_values)
 
 
 def _is_ndarray_tensor(t: Any) -> bool:
