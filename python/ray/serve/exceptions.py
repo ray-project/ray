@@ -1,7 +1,7 @@
 from typing import Optional
 
 from ray.exceptions import TaskCancelledError
-from ray.serve._private.common import DeploymentID
+from ray.serve.common import DeploymentID
 from ray.util.annotations import PublicAPI
 
 

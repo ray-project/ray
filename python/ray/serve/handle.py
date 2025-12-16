@@ -11,7 +11,6 @@ from ray._raylet import ObjectRefGenerator
 from ray.serve._private.common import (
     OBJ_REF_NOT_SUPPORTED_ERROR,
     DeploymentHandleSource,
-    DeploymentID,
     RequestMetadata,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -35,6 +34,7 @@ from ray.serve._private.utils import (
     inside_ray_client_context,
     is_running_in_asyncio_loop,
 )
+from ray.serve.common import DeploymentID
 from ray.serve.exceptions import RayServeException, RequestCancelledError
 from ray.util import metrics
 from ray.util.annotations import DeveloperAPI, PublicAPI

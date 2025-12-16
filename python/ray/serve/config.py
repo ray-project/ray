@@ -19,7 +19,7 @@ from ray._common.pydantic_compat import (
 from ray._common.utils import import_attr, import_module_and_attr
 
 # Import types needed for AutoscalingContext
-from ray.serve._private.common import DeploymentID, ReplicaID, TimeSeries
+from ray.serve._private.common import ReplicaID, TimeSeries
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
@@ -33,6 +33,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.utils import validate_ssl_config
+from ray.serve.common import DeploymentID
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)

@@ -7,8 +7,9 @@ from starlette.types import Scope
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.thirdparty.get_asgi_route_name import RoutePattern
+from ray.serve.common import DeploymentID
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatus as DeploymentStatusProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
@@ -18,22 +19,6 @@ from ray.serve.grpc_util import RayServegRPCContext
 from ray.util.annotations import PublicAPI
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
-
-
-@PublicAPI(stability="alpha")
-@dataclass(frozen=True)
-class DeploymentID:
-    name: str
-    app_name: str = SERVE_DEFAULT_APP_NAME
-
-    def to_replica_actor_class_name(self):
-        return f"ServeReplica:{self.app_name}:{self.name}"
-
-    def __str__(self):
-        return f"Deployment(name='{self.name}', app='{self.app_name}')"
-
-    def __repr__(self):
-        return str(self)
 
 
 @PublicAPI(stability="alpha")
