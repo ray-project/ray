@@ -35,7 +35,6 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
-    DEFAULT_LATENCY_BUCKET_MS,
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_PER_REPLICA_RETRY_COUNT,
     RAY_SERVE_ENABLE_TASK_EVENTS,
@@ -44,6 +43,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
+    REQUEST_LATENCY_BUCKETS_MS,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
@@ -2110,7 +2110,7 @@ class DeploymentState:
         self.replica_reconfigure_latency_histogram = metrics.Histogram(
             "serve_replica_reconfigure_latency_ms",
             description=("Time for replica to complete reconfigure in milliseconds."),
-            boundaries=REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
+            boundaries=REQUEST_LATENCY_BUCKETS_MS,
             tag_keys=("deployment", "replica", "application"),
         )
 
@@ -2118,7 +2118,7 @@ class DeploymentState:
         self.health_check_latency_histogram = metrics.Histogram(
             "serve_health_check_latency_ms",
             description=("Duration of health check calls in milliseconds."),
-            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            boundaries=REQUEST_LATENCY_BUCKETS_MS,
             tag_keys=("deployment", "replica", "application"),
         )
 
