@@ -54,7 +54,7 @@
 # Our .buildkite/pipeline.yml and .buildkite/pipeline.gpu.yml files execute all
 # these tests in n different jobs.
 
-load("@rules_python//python:defs.bzl", "py_test")
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("//bazel:python.bzl", "doctest", "py_test_module_list")
 
 filegroup(
@@ -72,74 +72,18 @@ doctest(
             "**/examples/**",
             "**/tests/**",
             "**/test_*.py",
-            # Deprecated modules
-            "utils/memory.py",
+            # Deprecated stub files that raise ValueError on import.
             "offline/off_policy_estimator.py",
             "offline/estimators/feature_importance.py",
-            # Missing imports
-            "algorithms/dreamerv3/**",
-            # FIXME: These modules contain broken examples that weren't previously
-            # tested.
-            "algorithms/algorithm_config.py",
-            "core/distribution/torch/torch_distribution.py",
-            "core/models/base.py",
-            "core/models/specs/specs_base.py",
-            "core/models/specs/specs_dict.py",
-            "env/wrappers/pettingzoo_env.py",
-            "evaluation/collectors/sample_collector.py",
-            "evaluation/metrics.py",
-            "evaluation/observation_function.py",
-            "evaluation/postprocessing.py",
-            "execution/buffers/mixin_replay_buffer.py",
-            "models/catalog.py",
-            "models/preprocessors.py",
-            "models/repeated_values.py",
-            "policy/rnn_sequencing.py",
-            "utils/actor_manager.py",
-            "utils/filter.py",
-            "utils/from_config.py",
-            "utils/metrics/window_stat.py",
-            "utils/pre_checks/env.py",
-            "utils/replay_buffers/multi_agent_mixin_replay_buffer.py",
-            "utils/spaces/space_utils.py",
+            "utils/memory.py",
         ],
     ),
     tags = ["team:rllib"],
 )
 
-# --------------------------------------------------------------------
-# Benchmarks
-#
-# Tag: benchmark
-#
-# This is smoke-testing the benchmark scripts.
-# --------------------------------------------------------------------
-py_test(
-    name = "torch_compile_inference_bm",
-    size = "medium",
-    srcs = ["benchmarks/torch_compile/run_inference_bm.py"],
-    args = ["--smoke-test"],
-    main = "benchmarks/torch_compile/run_inference_bm.py",
-    tags = [
-        "benchmark",
-        "exclusive",
-        "team:rllib",
-        "torch_2.x_only_benchmark",
-    ],
-)
-
-py_test(
-    name = "torch_compile_ppo_with_inference",
-    size = "medium",
-    srcs = ["benchmarks/torch_compile/run_ppo_with_inference_bm.py"],
-    args = ["--smoke-test"],
-    main = "benchmarks/torch_compile/run_ppo_with_inference_bm.py",
-    tags = [
-        "benchmark",
-        "exclusive",
-        "team:rllib",
-        "torch_2.x_only_benchmark",
-    ],
+py_library(
+    name = "conftest",
+    srcs = ["conftest.py"],
 )
 
 # --------------------------------------------------------------------
@@ -746,6 +690,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_dqn_multi_gpu",
     size = "large",
+    timeout = "eternal",
     srcs = ["examples/algorithms/dqn/multi_agent_cartpole_dqn.py"],
     args = [
         "--as-test",
@@ -912,6 +857,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_impala_multi_gpu",
     size = "large",
+    timeout = "eternal",
     srcs = ["examples/algorithms/impala/multi_agent_cartpole_impala.py"],
     args = [
         "--as-test",
@@ -1736,6 +1682,7 @@ py_test(
 py_test(
     name = "learning_tests_mountaincar_sac_multi_gpu",
     size = "large",
+    timeout = "eternal",
     srcs = ["examples/algorithms/sac/mountaincar_sac.py"],
     args = [
         "--as-test",
@@ -1892,6 +1839,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_pendulum_sac_multi_gpu",
     size = "large",
+    timeout = "eternal",
     srcs = ["examples/algorithms/sac/multi_agent_pendulum_sac.py"],
     args = [
         "--num-agents=2",
@@ -1928,6 +1876,7 @@ py_test(
         "algorithms_dir_generic",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -1939,6 +1888,7 @@ py_test(
         "algorithms_dir_generic",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -1950,6 +1900,7 @@ py_test(
         "algorithms_dir_generic",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -1961,6 +1912,7 @@ py_test(
         "algorithms_dir_generic",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -1972,6 +1924,7 @@ py_test(
         "algorithms_dir_generic",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -1983,6 +1936,7 @@ py_test(
         "algorithms_dir_generic",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -1994,6 +1948,7 @@ py_test(
         "algorithms_dir_generic",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2005,6 +1960,7 @@ py_test(
         "algorithms_dir_generic",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2017,6 +1973,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2028,6 +1985,7 @@ py_test(
         "team:rllib",
         "tests_dir",
     ],
+    deps = [":conftest"],
 )
 
 # Specific Algorithms
@@ -2042,6 +2000,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2052,6 +2011,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # BC
@@ -2065,6 +2025,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # CQL
@@ -2078,6 +2039,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # DQN
@@ -2089,6 +2051,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # DreamerV3
@@ -2100,6 +2063,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # IMPALA
@@ -2111,6 +2075,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2121,6 +2086,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # @OldAPIStack
@@ -2132,6 +2098,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # MARWIL
@@ -2148,6 +2115,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2162,6 +2130,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # PPO
@@ -2173,6 +2142,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2183,6 +2153,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2193,6 +2164,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # SAC
@@ -2204,6 +2176,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # Generic testing
@@ -2215,6 +2188,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2225,6 +2199,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2235,6 +2210,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2245,6 +2221,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2255,6 +2232,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2265,6 +2243,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2275,6 +2254,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2285,6 +2265,7 @@ py_test(
         "algorithms_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # --------------------------------------------------------------------
@@ -2301,6 +2282,7 @@ py_test(
         "callbacks_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2311,6 +2293,7 @@ py_test(
         "callbacks_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # @OldAPIStack
@@ -2322,6 +2305,7 @@ py_test(
         "callbacks_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2332,6 +2316,7 @@ py_test(
         "callbacks_dir",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # --------------------------------------------------------------------
@@ -2349,6 +2334,7 @@ py_test(
         "env",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2359,6 +2345,7 @@ py_test(
         "team:rllib",
         "tests_dir",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2369,6 +2356,7 @@ py_test(
         "env",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2379,6 +2367,7 @@ py_test(
         "env",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2389,6 +2378,7 @@ py_test(
         "env",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2399,6 +2389,7 @@ py_test(
         "env",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2409,6 +2400,7 @@ py_test(
         "env",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2419,6 +2411,7 @@ py_test(
         "env",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # --------------------------------------------------------------------
@@ -2436,6 +2429,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # @OldAPIStack
@@ -2447,6 +2441,7 @@ py_test(
         "evaluation",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # @OldAPIStack
@@ -2458,6 +2453,7 @@ py_test(
         "evaluation",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # @OldAPIStack
@@ -2469,6 +2465,7 @@ py_test(
         "evaluation",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # @OldAPIStack
@@ -2480,6 +2477,7 @@ py_test(
         "evaluation",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # @OldAPIStack
@@ -2492,6 +2490,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # --------------------------------------------------------------------
@@ -2511,6 +2510,7 @@ py_test(
         "models",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # Default Models
@@ -2523,6 +2523,7 @@ py_test(
         "models",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2534,6 +2535,7 @@ py_test(
         "models",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2545,6 +2547,7 @@ py_test(
         "models",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2556,6 +2559,7 @@ py_test(
         "models",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2567,6 +2571,7 @@ py_test(
         "models",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2578,6 +2583,7 @@ py_test(
         "models",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # RLModule
@@ -2590,6 +2596,7 @@ py_test(
         "core",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # TODO(Artur): Comment this back in as soon as we can test with GPU
@@ -2610,6 +2617,7 @@ py_test(
         "core",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2620,6 +2628,7 @@ py_test(
         "core",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # LearnerGroup
@@ -2636,6 +2645,7 @@ py_test(
         "multi_gpu",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2649,6 +2659,7 @@ py_test(
         "multi_gpu",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2662,6 +2673,7 @@ py_test(
         "multi_gpu",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2675,6 +2687,7 @@ py_test(
         "multi_gpu",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # Learner
@@ -2688,6 +2701,7 @@ py_test(
         "ray_data",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2700,6 +2714,7 @@ py_test(
         "ray_data",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # --------------------------------------------------------------------
@@ -2717,6 +2732,7 @@ py_test(
         "models",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2727,6 +2743,7 @@ py_test(
         "models",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2737,6 +2754,7 @@ py_test(
         "models",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # --------------------------------------------------------------------
@@ -2758,6 +2776,7 @@ py_test(
         "offline",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2769,6 +2788,7 @@ py_test(
         "team:rllib",
         "torch_only",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2780,6 +2800,7 @@ py_test(
         "offline",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2792,6 +2813,7 @@ py_test(
         "ray_data",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2802,6 +2824,7 @@ py_test(
         "offline",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2812,6 +2835,7 @@ py_test(
         "offline",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2822,6 +2846,7 @@ py_test(
         "offline",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2832,6 +2857,7 @@ py_test(
         "offline",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2847,6 +2873,7 @@ py_test(
         "offline",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2861,6 +2888,7 @@ py_test(
         "offline",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2875,6 +2903,7 @@ py_test(
         "offline",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # TODO (sven, simon): This runs fine locally, but fails in the CI
@@ -2892,6 +2921,7 @@ py_test(
         "offline",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # --------------------------------------------------------------------
@@ -2909,6 +2939,7 @@ py_test(
         "policy",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2919,6 +2950,7 @@ py_test(
         "policy",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2929,6 +2961,7 @@ py_test(
         "policy",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2939,6 +2972,7 @@ py_test(
         "policy",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2949,6 +2983,7 @@ py_test(
         "policy",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2960,6 +2995,7 @@ py_test(
         "policy",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2970,6 +3006,7 @@ py_test(
         "policy",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2981,6 +3018,7 @@ py_test(
         "policy",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -2991,6 +3029,7 @@ py_test(
         "policy",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3002,6 +3041,7 @@ py_test(
         "policy",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3012,6 +3052,7 @@ py_test(
         "policy",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3022,6 +3063,7 @@ py_test(
         "policy",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # --------------------------------------------------------------------
@@ -3041,6 +3083,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 # Errors
@@ -3052,6 +3095,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 # @OldAPIStack
@@ -3063,6 +3107,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3073,6 +3118,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 # @OldAPIStack
@@ -3084,9 +3130,21 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 # Test metrics (metrics logger, stats)
+py_test(
+    name = "test_legacy_stats",
+    size = "small",
+    srcs = ["utils/metrics/tests/test_legacy_stats.py"],
+    tags = [
+        "team:rllib",
+        "utils",
+    ],
+    deps = [":conftest"],
+)
+
 py_test(
     name = "test_metrics_logger",
     size = "small",
@@ -3095,6 +3153,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3102,9 +3161,11 @@ py_test(
     size = "small",
     srcs = ["utils/metrics/tests/test_stats.py"],
     tags = [
+        "gpu",
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 # @OldAPIStack
@@ -3116,6 +3177,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3126,6 +3188,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3137,6 +3200,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 # Schedules
@@ -3148,6 +3212,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 # @OldAPIStack
@@ -3160,6 +3225,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 # Spaces/Space utils.
@@ -3171,6 +3237,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 # TaskPool
@@ -3182,6 +3249,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 # ReplayBuffers
@@ -3193,6 +3261,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3203,6 +3272,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3213,6 +3283,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3223,6 +3294,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3233,6 +3305,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3243,6 +3316,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3253,6 +3327,7 @@ py_test(
         "team::rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3263,6 +3338,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3273,6 +3349,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3283,6 +3360,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3293,6 +3371,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3303,6 +3382,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3313,6 +3393,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3325,6 +3406,7 @@ py_test(
         "team:rllib",
         "utils",
     ],
+    deps = [":conftest"],
 )
 
 # --------------------------------------------------------------------
@@ -3347,6 +3429,7 @@ py_test(
         "no_main",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # ----------------------
@@ -3364,6 +3447,7 @@ py_test(
         "old_api_stack",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3378,6 +3462,7 @@ py_test(
         "old_api_stack",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # ----------------------
@@ -3397,6 +3482,7 @@ py_test(
         "examples",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3411,6 +3497,7 @@ py_test(
         "examples",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3429,6 +3516,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3448,6 +3536,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # subdirectory: algorithms/
@@ -3464,6 +3553,7 @@ py_test(
         "examples",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3486,6 +3576,7 @@ py_test(
         "examples",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3500,6 +3591,7 @@ py_test(
         "examples",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # subdirectory: catalogs/
@@ -3514,18 +3606,20 @@ py_test(
         "no_main",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
-    name = "examples/catalogs/mobilenet_v2_encoder",
+    name = "examples/_old_api_stack/catalogs/mobilenet_v2_encoder",
     size = "small",
-    srcs = ["examples/catalogs/mobilenet_v2_encoder.py"],
-    main = "examples/catalogs/mobilenet_v2_encoder.py",
+    srcs = ["examples/_old_api_stack/catalogs/mobilenet_v2_encoder.py"],
+    main = "examples/_old_api_stack/catalogs/mobilenet_v2_encoder.py",
     tags = [
         "examples",
         "no_main",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # subdirectory: checkpoints/
@@ -3546,6 +3640,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3563,6 +3658,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3578,6 +3674,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3596,6 +3693,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 #@OldAPIStack
@@ -3610,18 +3708,20 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
-    name = "examples/checkpoints/cartpole_dqn_export",
+    name = "examples/_old_api_stack/checkpoints/cartpole_dqn_export",
     size = "small",
-    srcs = ["examples/checkpoints/cartpole_dqn_export.py"],
-    main = "examples/checkpoints/cartpole_dqn_export.py",
+    srcs = ["examples/_old_api_stack/checkpoints/cartpole_dqn_export.py"],
+    main = "examples/_old_api_stack/checkpoints/cartpole_dqn_export.py",
     tags = [
         "examples",
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # subdirectory: connectors/
@@ -3643,6 +3743,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3663,6 +3764,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # IMPALA
@@ -3681,6 +3783,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3701,6 +3804,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # Nested observation spaces (flattening).
@@ -3721,6 +3825,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3740,6 +3845,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # IMPALA
@@ -3760,6 +3866,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3782,6 +3889,7 @@ py_test(
         # Test is failing: https://github.com/ray-project/ray/issues/47717
         "manual",
     ],
+    deps = [":conftest"],
 )
 
 # Prev-r/prev actions + LSTM example.
@@ -3803,6 +3911,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3825,6 +3934,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # MeanStd filtering example.
@@ -3849,6 +3959,7 @@ py_test(
         # Disabled: https://github.com/ray-project/ray/issues/47435
         "manual",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3871,6 +3982,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3887,6 +3999,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3902,6 +4015,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # subdirectory: curiosity/
@@ -3919,6 +4033,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3934,6 +4049,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3950,6 +4066,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # TODO (sven): Learns, but very slowly. Needs further tuning.
@@ -3978,6 +4095,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -3998,6 +4116,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # subdirectory: debugging/
@@ -4017,6 +4136,7 @@ py_test(
         "multi_gpu",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4035,6 +4155,7 @@ py_test(
         "multi_gpu",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # subdirectory: envs/
@@ -4053,6 +4174,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4069,6 +4191,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4085,6 +4208,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4100,6 +4224,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4115,6 +4240,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4130,6 +4256,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4147,6 +4274,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4162,6 +4290,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4177,19 +4306,32 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 #@OldAPIStack
 py_test(
-    name = "examples/envs/greyscale_env",
+    name = "examples/_old_api_stack/envs/greyscale_env",
     size = "medium",
-    srcs = ["examples/envs/greyscale_env.py"],
+    srcs = ["examples/_old_api_stack/envs/greyscale_env.py"],
     args = ["--stop-iters=1 --as-test --framework torch"],
     tags = [
         "examples",
         "no_main",
         "team:rllib",
     ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "footsies_suppress_unity_logs",
+    size = "large",
+    srcs = ["examples/envs/classes/multi_agent/footsies/test/footsies_suppress_unity_logs.py"],
+    tags = [
+        "examples",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
 )
 
 # subdirectory: evaluation/
@@ -4210,6 +4352,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4230,6 +4373,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4249,6 +4393,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4271,6 +4416,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4292,6 +4438,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4313,6 +4460,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4333,6 +4481,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4354,6 +4503,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # @OldAPIStack
@@ -4376,6 +4526,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # @OldAPIStack
@@ -4400,6 +4551,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # subdirectory: fault_tolerance/
@@ -4419,6 +4571,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4437,6 +4590,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4456,6 +4610,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4475,6 +4630,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # subdirectory: gpus/
@@ -4494,6 +4650,7 @@ py_test(
         "gpu",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4513,6 +4670,7 @@ py_test(
         "gpu",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4529,6 +4687,7 @@ py_test(
         "gpu",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4548,6 +4707,7 @@ py_test(
         "multi_gpu",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4567,6 +4727,7 @@ py_test(
         "gpu",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # subdirectory: hierarchical/
@@ -4589,6 +4750,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # subdirectory: inference/
@@ -4606,6 +4768,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4622,6 +4785,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4637,6 +4801,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4653,40 +4818,43 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 #@OldAPIStack
 py_test(
-    name = "examples/inference/policy_inference_after_training_with_lstm_tf",
+    name = "examples/_old_api_stack/inference/policy_inference_after_training_with_lstm_tf",
     size = "medium",
-    srcs = ["examples/inference/policy_inference_after_training_with_lstm.py"],
+    srcs = ["examples/_old_api_stack/inference/policy_inference_after_training_with_lstm.py"],
     args = [
         "--stop-iters=1",
         "--framework=tf",
     ],
-    main = "examples/inference/policy_inference_after_training_with_lstm.py",
+    main = "examples/_old_api_stack/inference/policy_inference_after_training_with_lstm.py",
     tags = [
         "examples",
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 #@OldAPIStack
 py_test(
-    name = "examples/inference/policy_inference_after_training_with_lstm_torch",
+    name = "examples/_old_api_stack/inference/policy_inference_after_training_with_lstm_torch",
     size = "medium",
-    srcs = ["examples/inference/policy_inference_after_training_with_lstm.py"],
+    srcs = ["examples/_old_api_stack/inference/policy_inference_after_training_with_lstm.py"],
     args = [
         "--stop-iters=1",
         "--framework=torch",
     ],
-    main = "examples/inference/policy_inference_after_training_with_lstm.py",
+    main = "examples/_old_api_stack/inference/policy_inference_after_training_with_lstm.py",
     tags = [
         "examples",
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # subdirectory: learners/
@@ -4703,6 +4871,7 @@ py_test(
         "examples",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4717,6 +4886,7 @@ py_test(
         "examples",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4731,6 +4901,7 @@ py_test(
         "examples",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # subdirectory: metrics/
@@ -4746,6 +4917,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4761,6 +4933,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # subdirectory: multi_agent/
@@ -4782,6 +4955,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4799,6 +4973,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4819,6 +4994,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4841,6 +5017,7 @@ py_test(
         "multi_gpu",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4859,6 +5036,7 @@ py_test(
         "examples",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4878,6 +5056,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # TODO (sven): Activate this test once this script is ready.
@@ -4911,6 +5090,7 @@ py_test(
         "no_main",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4929,6 +5109,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4950,6 +5131,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4967,6 +5149,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -4984,6 +5167,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -5003,6 +5187,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # @OldAPIStack
@@ -5024,6 +5209,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # @OldAPIStack
@@ -5045,6 +5231,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -5064,6 +5251,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -5079,6 +5267,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -5097,6 +5286,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # subdirectory: offline_rl/
@@ -5129,6 +5319,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # @HybridAPIStack
@@ -5144,20 +5335,21 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/offline_rl/offline_rl_torch_old_api_stack",
+    name = "examples/_old_api_stack/offline_rl/offline_rl_torch_old_api_stack",
     size = "medium",
-    srcs = ["examples/offline_rl/offline_rl.py"],
+    srcs = ["examples/_old_api_stack/offline_rl/offline_rl.py"],
     args = [
         "--as-test",
         "--stop-reward=-300",
         "--stop-iters=1",
     ],
-    main = "examples/offline_rl/offline_rl.py",
+    main = "examples/_old_api_stack/offline_rl/offline_rl.py",
     tags = [
         "examples",
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # subdirectory: ray_serve/
@@ -5179,6 +5371,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # subdirectory: ray_tune/
@@ -5193,6 +5386,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -5205,6 +5399,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -5217,6 +5412,7 @@ py_test(
         "exclusive",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # subdirectory: rl_modules/
@@ -5233,6 +5429,7 @@ py_test(
         "examples",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -5247,6 +5444,7 @@ py_test(
         "examples",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -5261,6 +5459,7 @@ py_test(
         "examples",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -5273,6 +5472,7 @@ py_test(
         "no_main",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -5284,6 +5484,7 @@ py_test(
         "examples",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -5295,6 +5496,7 @@ py_test(
         "examples",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
@@ -5313,16 +5515,18 @@ py_test(
         "examples",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 py_test(
-    name = "examples/replay_buffer_api",
+    name = "examples/_old_api_stack/replay_buffer_api",
     size = "large",
-    srcs = ["examples/replay_buffer_api.py"],
+    srcs = ["examples/_old_api_stack/replay_buffer_api.py"],
     tags = [
         "examples",
         "team:rllib",
     ],
+    deps = [":conftest"],
 )
 
 # --------------------------------------------------------------------
