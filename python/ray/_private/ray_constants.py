@@ -613,3 +613,6 @@ FETCH_FAIL_TIMEOUT_SECONDS = (
 )
 
 RAY_GC_MIN_COLLECT_INTERVAL = env_float("RAY_GC_MIN_COLLECT_INTERVAL_S", 5)
+
+# Custom directory for ray logs of current node.
+RAY_NODE_LOGS_DIR = os.environ.get("RAY_NODE_LOGS_DIR", None)
