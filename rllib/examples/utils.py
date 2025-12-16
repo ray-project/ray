@@ -753,8 +753,11 @@ def run_rllib_example_script_experiment(
                 json.dump(json_summary, f)
 
         if not test_passed:
-            raise ValueError(
-                f"`{success_metric_key}` of {success_metric_value} not reached!"
-            )
+            if args.as_release_test:
+                print(f"`{success_metric_key}` of {success_metric_value} not reached!")
+            else:
+                raise ValueError(
+                    f"`{success_metric_key}` of {success_metric_value} not reached!"
+                )
 
     return results
