@@ -5,7 +5,7 @@ import pydantic
 import pytest
 
 import ray
-from ray.data.llm import build_llm_processor
+from ray.data.llm import build_processor
 from ray.llm._internal.batch.processor import vLLMEngineProcessorConfig
 from ray.llm._internal.batch.processor.base import (
     Processor,
@@ -232,7 +232,7 @@ class TestBuilderKwargsValidation:
         ProcessorBuilder.register(DummyProcessorConfig, build_processor_with_kwargs)
 
         config = DummyProcessorConfig(batch_size=64)
-        processor = build_llm_processor(
+        processor = build_processor(
             config,
             preprocess=lambda row: {"val": row["id"]},
             postprocess=lambda row: {"result": row["val"]},
@@ -262,7 +262,7 @@ class TestBuilderKwargsValidation:
 
         config = DummyProcessorConfig(batch_size=64)
         with pytest.raises(TypeError, match="unsupported_kwarg"):
-            build_llm_processor(
+            build_processor(
                 config,
                 builder_kwargs=dict(unsupported_kwarg="value"),
             )
@@ -275,7 +275,7 @@ class TestBuilderKwargsValidation:
 
         config = DummyProcessorConfig(batch_size=64)
         with pytest.raises(ValueError, match="builder_kwargs cannot contain"):
-            build_llm_processor(
+            build_processor(
                 config,
                 preprocess=lambda row: {"val": row["id"]},
                 builder_kwargs={conflicting_key: lambda row: {"other": row["id"]}},
@@ -419,7 +419,7 @@ class TestMapKwargs:
         ProcessorBuilder.register(DummyProcessorConfig, build_processor_simple)
 
         config = DummyProcessorConfig(batch_size=64)
-        # Test through ProcessorBuilder which is called by build_llm_processor
+        # Test through ProcessorBuilder which is called by build_processor
         processor = ProcessorBuilder.build(
             config,
             preprocess=lambda row: {"val": row["id"]},
@@ -433,7 +433,7 @@ class TestMapKwargs:
 
     def test_builder_kwargs_conflict_with_map_kwargs(self):
         """Test that builder_kwargs validation rejects map kwargs."""
-        # Test the validation that build_llm_processor calls
+        # Test the validation that build_processor calls
         with pytest.raises(ValueError, match="builder_kwargs cannot contain"):
             ProcessorBuilder.validate_builder_kwargs(
                 {"preprocess_map_kwargs": {"num_cpus": 0.5}}
