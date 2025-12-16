@@ -79,7 +79,17 @@ TEST(RpcChaosTest, LowerBoundWithWildcard) {
   //         3 guaranteed req failures, 5 guaranteed resp failures, 2 guaranteed resp
   //         in-flight failures
   RayConfig::instance().testing_rpc_failure() =
-      R"({"*":{"num_failures":-1,"req_failure_prob":100,"resp_failure_prob":0,"in_flight_failure_prob":0,"num_lower_bound_req_failures":3,"num_lower_bound_resp_failures":5,"num_lower_bound_in_flight_failures":2}})";
+      R"({
+        "*": {
+          "num_failures": -1,
+          "req_failure_prob": 100,
+          "resp_failure_prob": 0,
+          "in_flight_failure_prob": 0,
+          "num_lower_bound_req_failures": 3,
+          "num_lower_bound_resp_failures": 5,
+          "num_lower_bound_in_flight_failures": 2
+        }
+      })";
   Init();
 
   // First 3 calls should be guaranteed Request failures (lower bound)
