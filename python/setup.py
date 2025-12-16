@@ -175,8 +175,6 @@ generated_python_directories = [
     "ray/serve/generated",
 ]
 
-ray_files.append("ray/nightly-wheels.yaml")
-
 # Autoscaler files.
 ray_files += [
     "ray/autoscaler/aws/defaults.yaml",

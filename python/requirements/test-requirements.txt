@@ -87,7 +87,7 @@ pytest-forked==1.4.0
 opentelemetry-instrumentation-fastapi==0.55b1
 
 # For dataset tests
-polars>=1.32.3,<2.0.0
+polars>=1.36.0,<2.0.0
 
 importlib-metadata==6.11.0
 
@@ -135,6 +135,7 @@ cffi>=1.17.1,<2
 # cupy-cuda12x requires fastrlock
 fastrlock>=0.8.3; sys_platform != 'darwin'
 lz4>=4.4.5
+pyyaml>=6.0.3
 
 # TODO(aslonnie): remove this
 # this is required as some packages depends on ray and will pick up older version of
