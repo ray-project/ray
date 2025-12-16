@@ -586,7 +586,7 @@ These metrics track request routing and queueing behavior.
 | `ray_serve_deployment_queued_queries` **[H]** | Gauge | `deployment`, `application`, `handle`, `actor_id` | Current number of requests waiting to be assigned to a replica. High values indicate backpressure. |
 | `ray_serve_num_ongoing_requests_at_replicas` **[H]** | Gauge | `deployment`, `application`, `handle`, `actor_id` | Current number of requests assigned and sent to replicas but not yet completed. |
 | `ray_serve_request_router_fulfillment_time_ms` **[H][D]** | Histogram | `deployment`, `actor_id`, `application`, `handle_source` | Histogram of time in milliseconds that a request spent waiting in the router queue before being assigned to a replica. This includes the time to resolve the pending request's arguments. |
-| `ray_serve_router_queue_len` **[H][D]** | Gauge | `deployment`, `replica_id`, `actor_id`, `application`, `handle_source` | Current number of requests running on a replica as tracked by the router's queue length cache. |
+| `ray_serve_request_router_queue_len` **[H][D]** | Gauge | `deployment`, `replica_id`, `actor_id`, `application`, `handle_source` | Current number of requests running on a replica as tracked by the router's queue length cache. |
 | `ray_serve_num_scheduling_tasks` **[H][†]** | Gauge | `deployment`, `actor_id` | Current number of request scheduling tasks in the router. |
 | `ray_serve_num_scheduling_tasks_in_backoff` **[H][†]** | Gauge | `deployment`, `actor_id` | Current number of scheduling tasks in exponential backoff (waiting before retry). |
 

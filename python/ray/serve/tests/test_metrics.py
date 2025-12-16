@@ -1064,7 +1064,7 @@ def test_router_queue_len_metric(metrics_start_shutdown):
         # Check that the router queue length metric appears with correct tags
         def check_router_queue_len():
             metrics = get_metric_dictionaries(
-                "ray_serve_router_queue_len", timeseries=timeseries
+                "ray_serve_request_router_queue_len", timeseries=timeseries
             )
             if not metrics:
                 return False
@@ -1088,7 +1088,7 @@ def test_router_queue_len_metric(metrics_start_shutdown):
         wait_for_condition(
             check_metric_float_eq,
             timeout=15,
-            metric="ray_serve_router_queue_len",
+            metric="ray_serve_request_router_queue_len",
             expected=1,
             expected_tags={"deployment": "TestDeployment", "application": "app1"},
             timeseries=timeseries,

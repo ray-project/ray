@@ -565,7 +565,7 @@ class RequestRouter(ABC):
         )
 
         self.router_queue_len_gauge = metrics.Gauge(
-            "serve_router_queue_len",
+            "serve_request_router_queue_len",
             description=(
                 "The number of requests currently running on a replica "
                 "as tracked by the router's queue length cache."
