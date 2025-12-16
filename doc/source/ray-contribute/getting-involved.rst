@@ -53,8 +53,8 @@ Getting started
 
 If you're new to Ray, start with these labels:
 
-- `good-first-issue`_: Great for newcomers to the Ray codebase.
-- `contribution-welcome`_: Issues where community contributions are especially appreciated and prioritized for review.
+- `good-first-issue`_: Small issues that are good for new contributors to onboard to the codebase.
+- `contribution-welcome`_: Impactful issues that are good candidates for community contributions. Reviews for these issues will be prioritized.
 
 By component
 ~~~~~~~~~~~~
