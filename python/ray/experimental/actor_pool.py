@@ -88,7 +88,8 @@ class ActorPool:
         actor_options: Options to pass to ray.remote() for actor creation.
         retry: Retry policy for failed tasks.
         ordering: Task ordering mode.
-        logical_id_label_key: Label key for logical actor IDs (Ray Data integration).
+        logical_id_label_key: Label key for logical actor IDs.
+        logical_id_kwarg_name: Kwarg name to inject logical_id into actor constructor.
         static_labels: Static labels to apply to all actors in the pool.
 
     Example:
@@ -117,6 +118,7 @@ class ActorPool:
         ordering: OrderingMode = OrderingMode.UNORDERED,
         # Label support for Ray Data integration
         logical_id_label_key: Optional[str] = None,
+        logical_id_kwarg_name: Optional[str] = None,
         static_labels: Optional[Dict[str, str]] = None,
     ):
         if actor_kwargs is None:
@@ -150,6 +152,7 @@ class ActorPool:
 
         # Label support for Ray Data integration
         self._logical_id_label_key = logical_id_label_key
+        self._logical_id_kwarg_name = logical_id_kwarg_name
         self._static_labels = static_labels or {}
         self._actor_to_logical_id: Dict[ray.actor.ActorHandle, str] = {}
 
@@ -200,21 +203,26 @@ class ActorPool:
         """Create a new actor and add it to the pool."""
         # Generate logical ID if configured
         logical_id = None
-        if self._logical_id_label_key:
+        if self._logical_id_label_key or self._logical_id_kwarg_name:
             logical_id = str(uuid.uuid4())
 
         # Build labels
         labels = dict(self._static_labels)
-        if logical_id:
+        if logical_id and self._logical_id_label_key:
             labels[self._logical_id_label_key] = logical_id
+
+        # Build actor kwargs (may include logical_id injection)
+        actor_kwargs = dict(self._actor_kwargs)
+        if logical_id and self._logical_id_kwarg_name:
+            actor_kwargs[self._logical_id_kwarg_name] = logical_id
 
         # Create actor with labels (if any)
         if labels:
             actor = self._remote_cls.options(_labels=labels).remote(
-                *self._actor_args, **self._actor_kwargs
+                *self._actor_args, **actor_kwargs
             )
         else:
-            actor = self._remote_cls.remote(*self._actor_args, **self._actor_kwargs)
+            actor = self._remote_cls.remote(*self._actor_args, **actor_kwargs)
 
         self._actor_handles.append(actor)
 
@@ -376,7 +384,6 @@ class ActorPool:
             num_to_remove = min(abs(delta), len(self._actor_handles))
             for _ in range(num_to_remove):
                 actor = self._actor_handles.pop()
-                # Clean up logical ID mapping
                 self._actor_to_logical_id.pop(actor, None)
                 actor_id = actor._actor_id
                 self._core_worker.remove_actor_from_pool(self._pool_id, actor_id)

@@ -301,6 +301,11 @@ class ActorPoolMapOperator(MapOperator):
             )
         )
 
+        # For ClassBasedActorPoolAdapter, register callbacks for pending refs
+        # to transition actors from pending to running when ready
+        if self.data_context.use_core_actor_pool:
+            self._register_pending_actor_callbacks()
+
         # If `wait_for_min_actors_s` is specified and is positive, then
         # Actor Pool will block until min number of actors is provisioned.
         #
@@ -368,6 +373,28 @@ class ActorPoolMapOperator(MapOperator):
             lambda: _task_done_callback(res_ref),
         )
         return actor, res_ref
+
+    def _register_pending_actor_callbacks(self):
+        """Register callbacks for pending actors in ClassBasedActorPoolAdapter.
+
+        When using the class-based adapter, actors are created by the adapter's
+        internal ActorPool. We need to register callbacks so that when actors
+        become ready (get_location returns), we transition them from pending
+        to running state.
+        """
+        pending_refs = self._actor_pool.get_pending_actor_refs()
+        for res_ref in pending_refs:
+
+            def _task_done_callback(ref):
+                has_actor = self._actor_pool.pending_to_running(ref)
+                if not has_actor:
+                    return
+                self._dispatch_tasks()
+
+            self._submit_metadata_task(
+                res_ref,
+                lambda ref=res_ref: _task_done_callback(ref),
+            )
 
     def _add_bundled_input(self, bundle: RefBundle):
         # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
@@ -652,13 +679,10 @@ class _MapWorker:
         # Initialize state for this actor with retry logic for UDF init failures.
         self._init_udf_with_retries(ctx)
 
-        # Support both callback-based (logical_actor_id passed) and class-based
-        # (logical_actor_id read from labels set by ActorPool) approaches
-        if logical_actor_id is None:
-            # Class-based path: read logical ID from labels (set by ActorPool)
-            labels = ray.get_runtime_context().get_labels()
-            logical_actor_id = labels.get(self._LOGICAL_ACTOR_ID_LABEL_KEY, "")
-        self._logical_actor_id = logical_actor_id
+        # Logical actor ID is either passed explicitly (callback-based path)
+        # or injected via actor_kwargs by ActorPool (class-based path)
+        # If neither, use empty string as a fallback
+        self._logical_actor_id = logical_actor_id or ""
 
         if actor_location_tracker is not None:
             actor_location_tracker.update_actor_location.remote(

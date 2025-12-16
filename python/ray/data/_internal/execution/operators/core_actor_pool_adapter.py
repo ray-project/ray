@@ -45,7 +45,6 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
     directly (no callback).
 
     Key features:
-    - Takes actor_cls instead of create_actor_fn callback
     - Creates ActorPool internally which handles actor lifecycle
     - ActorPool generates logical IDs and sets labels automatically
     - Maintains Python-side state tracking for Ray Data compatibility
@@ -70,7 +69,7 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
         operator_id: Optional[str] = None,
         _enable_actor_pool_on_exit_hook: bool = False,
     ):
-        """Initialize the class-based adapter.
+        """Initialize the adapter.
 
         Args:
             actor_cls: The actor class (e.g., _MapWorker) to instantiate.
@@ -117,6 +116,8 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
             actor_kwargs=actor_kwargs or {},
             actor_options=actor_options or {},
             logical_id_label_key=self._LOGICAL_ACTOR_ID_LABEL_KEY,
+            # Inject logical_actor_id into actor kwargs for _MapWorker
+            logical_id_kwarg_name="logical_actor_id",
             static_labels=static_labels,
         )
 
@@ -125,9 +126,7 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
         self._last_downscaling_debounce_warning_ts: Optional[float] = None
 
         # Actor tracking (Python-side for Ray Data compatibility)
-        # Maps actor handle -> state
         self._running_actors: Dict[ActorHandle, _ActorState] = {}
-        # Maps ready_ref -> actor handle (for pending actors)
         self._pending_actors: Dict[ObjectRef, ActorHandle] = {}
 
         # Cached counts
@@ -205,7 +204,6 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
                 f"(reason={req.reason}, {self.get_actor_info()})"
             )
 
-            # Scale the underlying ActorPool
             self._pool.scale(target_num_actors)
 
             # Get the newly created actors and track them as pending
@@ -385,7 +383,6 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
     def _release_pending_actors(self, force: bool):
         """Release all pending actors."""
         self._pending_actors.clear()
-        # ActorPool.shutdown() will handle killing the actors
 
     def _release_running_actors(self, force: bool):
         """Release all running actors."""
@@ -399,7 +396,6 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
 
         if on_exit_refs:
             ray.wait(on_exit_refs, timeout=self._ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S)
-        # ActorPool.shutdown() will handle killing the actors
 
     def _release_running_actor(self, actor: ActorHandle) -> Optional[ObjectRef]:
         """Release a single running actor."""
