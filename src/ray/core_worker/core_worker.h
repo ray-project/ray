@@ -265,6 +265,20 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   Language GetLanguage() const { return options_.language; }
 
+  std::function<void()> GetActorShutdownCallback() {
+    absl::MutexLock lock(&mutex_);
+    if (options_.worker_type == WorkerType::WORKER &&
+        !worker_context_->GetCurrentActorID().IsNil()) {
+      return actor_shutdown_callback_;
+    }
+    return {};
+  }
+
+  void SetExitingDetail(std::string_view detail) {
+    absl::MutexLock lock(&mutex_);
+    exiting_detail_ = std::string(detail);
+  }
+
   WorkerContext &GetWorkerContext() { return *worker_context_; }
 
   const TaskID &GetCurrentTaskId() const { return worker_context_->GetCurrentTaskID(); }

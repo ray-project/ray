@@ -63,15 +63,7 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
     return;
   }
 
-  std::function<void()> actor_callback;
-  {
-    absl::MutexLock lock(&core_worker->mutex_);
-    if (core_worker->options_.worker_type == WorkerType::WORKER &&
-        !core_worker->worker_context_->GetCurrentActorID().IsNil()) {
-      actor_callback = core_worker->actor_shutdown_callback_;
-    }
-  }
-
+  auto actor_callback = core_worker->GetActorShutdownCallback();
   if (actor_callback) {
     RAY_LOG(DEBUG) << "Calling actor shutdown callback";
     actor_callback();
@@ -138,11 +130,8 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
     return;
   }
 
-  {
-    absl::MutexLock lock(&core_worker->mutex_);
-    RAY_CHECK_NE(detail, "");
-    core_worker->exiting_detail_ = std::optional<std::string>{detail};
-  }
+  RAY_CHECK_NE(detail, "");
+  core_worker->SetExitingDetail(detail);
 
   std::weak_ptr<CoreWorker> weak_core_worker = core_worker_;
 
@@ -222,11 +211,7 @@ void CoreWorkerShutdownExecutor::ExecuteExit(
                 << "the connection was lost.";
           }
 
-          bool not_actor_task = false;
-          {
-            absl::MutexLock lock(&worker_inner->mutex_);
-            not_actor_task = worker_inner->actor_id_.IsNil();
-          }
+          bool not_actor_task = worker_inner->GetActorId().IsNil();
           if (not_actor_task) {
             // Normal tasks should not hold any object references in the heap after
             // executing, but they could in the case that one was stored as a glob
