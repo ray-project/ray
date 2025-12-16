@@ -54,7 +54,7 @@ class ObjectRefGenerator:
             print("Got:", ray.get(obj_ref))
     """
 
-    def __init__(self, generator_ref: "ray.ObjectRef", worker: "Worker"):
+    def __init__(self, generator_ref: "ray.ObjectRef", worker: "Worker", add_gpu_object_ref = None):
         # The reference to a generator task.
         self._generator_ref = generator_ref
         # True if an exception has been raised from the generator task.
@@ -62,6 +62,7 @@ class ObjectRefGenerator:
         # Ray's worker class. ray._private.worker.global_worker
         self.worker = worker
         self.worker.check_connected()
+        self.add_gpu_object_ref = add_gpu_object_ref
         assert hasattr(worker, "core_worker")
 
     # Public APIs
@@ -227,7 +228,6 @@ class ObjectRefGenerator:
             if self._generator_task_raised:
                 # Exception has been returned.
                 raise StopIteration from None
-
             try:
                 # The generator ref contains an exception
                 # if there's any failure. It contains nothing otherwise.
@@ -239,6 +239,8 @@ class ObjectRefGenerator:
             else:
                 # The task finished without an exception.
                 raise StopIteration from None
+
+        self.add_gpu_object_ref(ref)
         return ref
 
     async def _suppress_exceptions(self, ref: "ray.ObjectRef") -> None:
@@ -275,7 +277,7 @@ class ObjectRefGenerator:
             try:
                 # The generator ref contains an exception
                 # if there's any failure. It contains nothing otherwise.
-                # In that case, it should raise StopSyncIteration.
+                # In that case, it should raise StopAsyncIteration.
                 await self._generator_ref
             except Exception:
                 self._generator_task_raised = True
@@ -284,6 +286,7 @@ class ObjectRefGenerator:
                 # Meaning the task succeed without failure raise StopAsyncIteration.
                 raise StopAsyncIteration from None
 
+        self.add_gpu_object_ref(ref)
         return ref
 
     def __del__(self):
