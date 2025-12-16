@@ -35,7 +35,7 @@ def test_cpp_descriptor_resolves_python_actor_method(shutdown_only):
             worker = ray._private.worker.global_worker
             fm = worker.function_actor_manager
             fd = ray._raylet.CppFunctionDescriptor(
-                "check_descriptor", "PYTHON", self.__class__.__name__
+                "check_descriptor", "PYTHON", self.__class__.__qualname__
             )
             info = fm.get_execution_info(worker.current_job_id, fd)
             return info.function_name
