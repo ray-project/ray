@@ -464,10 +464,11 @@ TEST(LocalDependencyResolverTest, TestMixedTensorTransport) {
 
   LocalDependencyResolver resolver(
       *store, *task_manager, actor_creator, [&](const ObjectID &object_id) {
+        std::optional<std::string> transport;
         if (object_id == obj1) {
-          return "some direct transport";
+          transport.emplace("some direct transport");
         }
-        return std::nullopt;
+        return transport;
       });
 
   auto data = GenerateRandomObject();
