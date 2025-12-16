@@ -432,10 +432,8 @@ def method(*args, **kwargs):
             single-threaded and runs all actor tasks on the same thread.
             See :ref:`Defining Concurrency Groups <defining-concurrency-groups>`.
         tensor_transport: [Alpha] The tensor transport protocol to
-            use for the actor method. The valid values are "OBJECT_STORE"
-            (default), "NCCL", "GLOO", or "NIXL" (case-insensitive). If a
-            non-object store transport is specified, Ray will store a
-            *reference* instead of a copy of any torch.Tensors found inside
+            use for the actor method. If a tensor transport is specified,
+            Ray will store a *reference* instead of a copy of any torch.Tensors found inside
             values returned by this task, and the tensors will be sent directly
             to other tasks using the specified transport. NCCL and GLOO
             transports require first creating a collective with the involved
@@ -1908,8 +1906,8 @@ class ActorHandle(Generic[T]):
         _ray_method_enable_task_events: The value of whether task
             tracing is enabled for the actor methods. This overrides the
             actor's default value (`_ray_enable_task_events`).
-        _ray_method_name_to_tensor_transport: A dictionary mapping method names to their tensor transport protocol settings.
-            The valid values are OBJECT_STORE (default), NCCL, or GLOO, and they are case-insensitive.
+        _ray_method_name_to_tensor_transport: A dictionary mapping method names to their
+            tensor transport protocol.
         _ray_actor_method_cpus: The number of CPUs required by actor methods.
         _ray_original_handle: True if this is the original actor handle for a
             given actor. If this is true, then the actor will be destroyed when
