@@ -15,7 +15,13 @@ from ray._private import logging_utils
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
 from ray._private.ray_logging import setup_component_logger
-from ray._raylet import GcsClient, persist_port
+from ray._raylet import (
+    DASHBOARD_AGENT_LISTEN_PORT_NAME,
+    METRICS_AGENT_PORT_NAME,
+    METRICS_EXPORT_PORT_NAME,
+    GcsClient,
+    persist_port,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +92,7 @@ class DashboardAgent:
             persist_port(
                 self.session_dir,
                 self.node_id,
-                ray_constants.METRICS_AGENT_PORT_NAME,
+                METRICS_AGENT_PORT_NAME,
                 -1,
             )
             # This metric export port is run by reporter module
@@ -94,7 +100,7 @@ class DashboardAgent:
             persist_port(
                 self.session_dir,
                 self.node_id,
-                ray_constants.METRICS_EXPORT_PORT_NAME,
+                METRICS_EXPORT_PORT_NAME,
                 -1,
             )
 
@@ -153,7 +159,7 @@ class DashboardAgent:
         persist_port(
             self.session_dir,
             self.node_id,
-            ray_constants.METRICS_AGENT_PORT_NAME,
+            METRICS_AGENT_PORT_NAME,
             self.grpc_port,
         )
         logger.info(
@@ -223,7 +229,7 @@ class DashboardAgent:
         persist_port(
             self.session_dir,
             self.node_id,
-            ray_constants.DASHBOARD_AGENT_LISTEN_PORT_NAME,
+            DASHBOARD_AGENT_LISTEN_PORT_NAME,
             self.listen_port if self.http_server and launch_http_server else -1,
         )
 

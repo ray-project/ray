@@ -14,6 +14,15 @@
 
 #pragma once
 
+/// Local port discovery utilities for inter-component communication.
+///
+/// These functions enable components to discover each other's dynamically
+/// bound ports via the local filesystem. Typical usage pattern:
+///   - A component (e.g., dashboard agent) binds to port 0 and calls
+///     PersistPort() to write its actual port to a file.
+///   - Other components (e.g., raylet) call WaitForPersistedPort() to
+///     read the port.
+
 #include <string>
 
 #include "ray/common/id.h"

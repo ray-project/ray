@@ -13,7 +13,7 @@ from ray._private.authentication.http_token_authentication import (
     get_token_auth_middleware,
 )
 from ray._private.process_watcher import create_check_raylet_task
-from ray._raylet import GcsClient, persist_port
+from ray._raylet import RUNTIME_ENV_AGENT_PORT_NAME, GcsClient, persist_port
 from ray.core.generated import (
     runtime_env_agent_pb2,
 )
@@ -245,15 +245,12 @@ if __name__ == "__main__":
     sock.bind(sockaddr)
 
     bound_port = sock.getsockname()[1]
-    try:
-        persist_port(
-            args.session_dir,
-            args.node_id,
-            ray_constants.RUNTIME_ENV_AGENT_PORT_NAME,
-            bound_port,
-        )
-    except Exception as e:
-        logging.warning(f"Failed to write runtime env agent port to file: {e}")
+    persist_port(
+        args.session_dir,
+        args.node_id,
+        RUNTIME_ENV_AGENT_PORT_NAME,
+        bound_port,
+    )
 
     try:
         web.run_app(app, sock=sock, loop=loop)

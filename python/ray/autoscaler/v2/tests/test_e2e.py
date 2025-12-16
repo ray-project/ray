@@ -514,7 +514,7 @@ while True:
             assert len(cluster_state.idle_nodes) == num_worker_nodes + 1
             return True
 
-        wait_for_condition(nodes_up)
+        wait_for_condition(nodes_up, timeout=20)
 
         # Schedule tasks
         run_string_as_driver_nonblocking(driver_script)

@@ -46,7 +46,11 @@ StatusOr<int> WaitForPersistedPort(const std::string &dir,
     return result.status();
   }
 
-  return std::stoi(*result);
+  try {
+    return std::stoi(*result);
+  } catch (const std::exception &e) {
+    return Status::Invalid("Invalid port value in file " + file_path + ": " + *result);
+  }
 }
 
 }  // namespace ray

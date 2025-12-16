@@ -22,7 +22,7 @@
 namespace ray {
 
 /**
-  Write a string value to a file atomically.
+  Write a string value to a file atomically. Overwrites if the file exists.
 
   Uses temp file + rename pattern for cross-platform (Linux/Windows) and
   cross-language (C++/Python) safe file sharing. This guarantees readers
@@ -39,6 +39,9 @@ Status WriteFile(const std::string &file_path, const std::string &value);
 
 /**
   Wait for a file to appear and return its content as a string.
+
+  Best suited for write-once, read-many scenarios. No protection against
+  concurrent writes or content changes during/after read.
 
   @param file_path The absolute path to the file to wait for.
   @param timeout_ms Maximum time to wait in milliseconds. Defaults to 30000.

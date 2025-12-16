@@ -23,7 +23,6 @@ from prometheus_client.parser import text_string_to_metric_families
 
 import ray
 import ray._private.prometheus_exporter as prometheus_exporter
-import ray._private.ray_constants as ray_constants
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import (
@@ -41,7 +40,13 @@ from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
 from ray._private.utils import get_system_memory
-from ray._raylet import GCS_PID_KEY, RayletClient, WorkerID, persist_port
+from ray._raylet import (
+    GCS_PID_KEY,
+    METRICS_EXPORT_PORT_NAME,
+    RayletClient,
+    WorkerID,
+    persist_port,
+)
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
@@ -468,7 +473,7 @@ class ReporterAgent(
         persist_port(
             dashboard_agent.session_dir,
             self._dashboard_agent.node_id,
-            ray_constants.METRICS_EXPORT_PORT_NAME,
+            METRICS_EXPORT_PORT_NAME,
             dashboard_agent.metrics_export_port
             if not self._metrics_collection_disabled
             else -1,

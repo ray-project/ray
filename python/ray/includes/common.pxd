@@ -825,6 +825,12 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kLabelKeyNodeZone
     cdef const char[] kLabelKeyNodeGroup
     cdef const char[] kLabelKeyTpuTopology
+    # Port names for local port discovery
+    cdef const char[] kRuntimeEnvAgentPortName
+    cdef const char[] kMetricsAgentPortName
+    cdef const char[] kMetricsExportPortName
+    cdef const char[] kDashboardAgentListenPortName
+    cdef const char[] kGcsServerPortName
     cdef const char[] kLabelKeyTpuSliceName
     cdef const char[] kLabelKeyTpuWorkerId
     cdef const char[] kLabelKeyTpuPodType
