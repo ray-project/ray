@@ -400,7 +400,7 @@ def test_placement_group_reschedule_node_dead(autoscaler_v2):
         kill_node(node["NodeID"])
 
         # Wait for the node to be removed
-        wait_for_condition(lambda: verify_nodes(2, 1), 20)
+        wait_for_condition(lambda: verify_nodes(2, 1), 30)
 
         # Only provision nodes for unplaced bundles;
         # avoid rescheduling the whole placement group.

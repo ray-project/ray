@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Optional
 
 from ray._private import ray_constants
@@ -22,6 +23,7 @@ from ray.core.generated.gcs_pb2 import (
     TotalResources,
     WorkerTableData,
 )
+from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 
 logger = logging.getLogger(__name__)
 
@@ -153,3 +155,58 @@ def cleanup_redis_storage(
     return del_key_prefix_from_storage(
         host, port, username, password, use_ssl, storage_namespace
     )
+
+
+def get_node_info_with_retry(
+    gcs_client,
+    node_ip_address: str,
+    timeout_s: float = 30,
+    retry_interval_s: float = 1,
+) -> GcsNodeInfo:
+    """Get node info from GCS with retry logic.
+
+    Keeps retrying until the node is found or timeout is reached.
+
+    Some Ray processes (e.g., ray_client_server) start in parallel
+    with the raylet. When they query GCS for node info, the raylet may not have
+    registered yet. This function retries until the node info is available.
+
+    Args:
+        gcs_client: A connected GcsClient instance.
+        node_ip_address: The IP address of the node to find.
+        timeout_s: Total timeout in seconds. Default 30s.
+        retry_interval_s: Interval between retries in seconds. Default 1s.
+
+    Returns:
+        GcsNodeInfo proto for the matching node. If multiple nodes match,
+        the head node is prioritized.
+
+    Raises:
+        RuntimeError: If no matching node is found within the timeout.
+    """
+    end_time = time.time() + timeout_s
+    node_selector = GetAllNodeInfoRequest.NodeSelector(node_ip_address=node_ip_address)
+
+    while True:
+        try:
+            node_infos = gcs_client.get_all_node_info(
+                timeout=retry_interval_s,
+                node_selectors=[node_selector],
+                state_filter=GcsNodeInfo.GcsNodeState.ALIVE,
+            )
+            if node_infos:
+                # Prioritize head node if multiple nodes match
+                for node_info in node_infos.values():
+                    if node_info.is_head_node:
+                        return node_info
+                # Otherwise return the first one
+                return next(iter(node_infos.values()))
+        except Exception:
+            pass
+
+        if time.time() >= end_time:
+            raise RuntimeError(
+                f"Timed out waiting for node info for {node_ip_address}."
+            )
+
+        time.sleep(retry_interval_s)
