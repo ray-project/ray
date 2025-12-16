@@ -77,6 +77,35 @@ class AuthenticationToken {
     return !(*this == other);
   }
 
+  /// Compare this token against a metadata value (e.g., "Bearer <token>").
+  /// Uses constant-time comparison to prevent timing attacks.
+  /// @param metadata_value The raw authorization header (should be "Bearer <token>")
+  /// @return true if tokens match, false otherwise
+  bool CompareWithMetadata(std::string_view metadata_value) const noexcept {
+    // Use sizeof for compile-time constant size (kBearerPrefix is constexpr char[])
+    constexpr size_t prefix_len = sizeof(kBearerPrefix) - 1;  // -1 for null terminator
+
+    // Check for valid "Bearer " prefix
+    if (metadata_value.size() < prefix_len ||
+        metadata_value.substr(0, prefix_len) != kBearerPrefix) {
+      return false;
+    }
+
+    std::string_view provided_token = metadata_value.substr(prefix_len);
+
+    // Size check (fast path)
+    if (provided_token.size() != secret_.size()) {
+      return false;
+    }
+
+    // Constant-time comparison directly on bytes (avoids vector allocation)
+    unsigned char diff = 0;
+    for (size_t i = 0; i < secret_.size(); ++i) {
+      diff |= secret_[i] ^ static_cast<uint8_t>(provided_token[i]);
+    }
+    return diff == 0;
+  }
+
   /// Set authentication metadata on a gRPC client context
   /// Only call this from client-side code
   void SetMetadata(grpc::ClientContext &context) const {
