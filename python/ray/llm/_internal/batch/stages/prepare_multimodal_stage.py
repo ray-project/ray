@@ -116,7 +116,6 @@ class PrepareMultimodalUDF(StatefulStageUDF):
             conversation, mm_data_future, mm_uuids = parse_chat_messages_futures(
                 messages_to_parse,
                 self.model_config,
-                None,  # Tokenizer is not used in vLLM's parse_chat_messages_futures
                 content_format=self.chat_template_content_format,
             )
 
