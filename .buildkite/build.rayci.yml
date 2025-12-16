@@ -12,6 +12,7 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: ""
       HOSTTYPE: "x86_64"
+      MANYLINUX_VERSION: "251216.3835fc5"
     tags: release_wheels
 
   - name: ray-dashboard-build
@@ -19,6 +20,7 @@ steps:
     wanda: ci/docker/ray-dashboard.wanda.yaml
     env:
       HOSTTYPE: "x86_64"
+      MANYLINUX_VERSION: "251216.3835fc5"
     tags: release_wheels
 
   - name: ray-java-build
@@ -31,6 +33,7 @@ steps:
     env:
       ARCH_SUFFIX: ""
       HOSTTYPE: "x86_64"
+      MANYLINUX_VERSION: "251216.3835fc5"
 
   - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
     key: linux_wheels

@@ -1,5 +1,6 @@
 ARG HOSTTYPE=x86_64
-FROM rayproject/manylinux2014:251216.3835fc5-jdk-$HOSTTYPE AS builder
+ARG MANYLINUX_VERSION=251216.3835fc5
+FROM rayproject/manylinux2014:${MANYLINUX_VERSION}-jdk-${HOSTTYPE} AS builder
 
 WORKDIR /home/forge/ray
 
