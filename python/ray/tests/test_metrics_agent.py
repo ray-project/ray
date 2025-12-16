@@ -260,6 +260,19 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     prom_addresses = []
     for node_info in node_info_list:
         metrics_export_port = node_info["MetricsExportPort"]
+        if enable_metrics_collection:
+            # When metrics are enabled, all nodes should have valid ports
+            assert metrics_export_port > 0, (
+                f"Expected MetricsExportPort > 0 when metrics enabled, "
+                f"but got {metrics_export_port} for node {node_info['NodeID']}"
+            )
+        else:
+            # When metrics are disabled, all nodes should have port == -1
+            assert metrics_export_port == -1, (
+                f"Expected MetricsExportPort == -1 when metrics disabled, "
+                f"but got {metrics_export_port} for node {node_info['NodeID']}"
+            )
+            continue
         addr = node_info["NodeManagerAddress"]
         prom_addresses.append(build_address(addr, metrics_export_port))
     autoscaler_export_addr = build_address(
@@ -1131,38 +1144,12 @@ def test_custom_metrics_validation(shutdown_only):
 @pytest.mark.parametrize("_setup_cluster_for_test", [False], indirect=True)
 def test_metrics_disablement(_setup_cluster_for_test):
     """Make sure the metrics are not exported when it is disabled."""
-    prom_addresses, autoscaler_export_addr, _ = _setup_cluster_for_test
-    timeseries = PrometheusTimeseries()
-
-    def verify_metrics_not_collected():
-        fetch_prometheus_timeseries(prom_addresses, timeseries)
-        components_dict = timeseries.components_dict
-        metric_descriptors = timeseries.metric_descriptors
-        metric_names = metric_descriptors.keys()
-        # Make sure no component is reported.
-        for _, comp in components_dict.items():
-            if len(comp) > 0:
-                print(f"metrics from a component {comp} exists although it should not.")
-                return False
-
-        # Make sure metrics are not there.
-        for metric in (
-            _METRICS
-            + _AUTOSCALER_METRICS
-            + _DASHBOARD_METRICS
-            + _EVENT_AGGREGATOR_METRICS
-        ):
-            if metric in metric_names:
-                print("f{metric} exists although it should not.")
-                return False
-        return True
-
-    # Make sure metrics are not collected for more than 10 seconds.
-    for _ in range(10):
-        assert verify_metrics_not_collected()
-        import time
-
-        time.sleep(1)
+    prom_addresses, _, _ = _setup_cluster_for_test
+    # When metrics are disabled, prom_addresses should be empty
+    assert len(prom_addresses) == 0, (
+        f"Expected no prometheus addresses when metrics disabled, "
+        f"but got {prom_addresses}"
+    )
 
 
 _FAULTY_METRIC_REGEX = re.compile(".*Invalid metric name.*")
