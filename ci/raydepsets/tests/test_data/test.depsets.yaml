@@ -64,12 +64,20 @@ depsets:
   - name: large_test_depset
     operation: compile
     requirements:
-      - test_python_depset.lock
+      - test_relax_output.lock
     constraints:
       - requirement_constraints_test.txt
-    output: test_python_depset.lock
+    output: large_depset_output.txt
   - name: relax_test_depset
     operation: relax
     source_depset: large_test_depset
-    drop_package: aiohttp
-    output: test_python_depset_relaxed.lock
+    drop_packages:
+      - yarl
+    output: test_python_depset_relaxed.txt
+  - name: relax_test_depset_2
+    operation: relax
+    source_depset: large_test_depset
+    drop_packages:
+      - yarl
+      - aiohttp
+    output: test_python_depset_relaxed_2.txt

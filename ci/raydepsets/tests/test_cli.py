@@ -433,8 +433,8 @@ class TestCli(unittest.TestCase):
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
             assert manager.build_graph is not None
-            assert len(manager.build_graph.nodes()) == 9
-            assert len(manager.build_graph.edges()) == 5
+            assert len(manager.build_graph.nodes()) == 10
+            assert len(manager.build_graph.edges()) == 6
             # assert that the compile depsets are first
             assert (
                 manager.build_graph.nodes["general_depset__py311_cpu"]["operation"]
@@ -608,27 +608,85 @@ class TestCli(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
+            save_packages_to_file(
+                Path(tmpdir) / "test_relax_output.txt",
+                [
+                    "aiohttp==3.11.16",
+                    "tensorflow==2.15.0",
+                    "gymnasium==1.1.1",
+                ],
+            )
             manager.compile(
                 constraints=[],
-                requirements=["test_python_depset.lock"],
+                requirements=["test_relax_output.txt"],
                 name="large_test_depset",
-                output="test_python_depset.lock",
+                output="large_depset_output.txt",
+                append_flags=["--python-version=3.10"],
             )
             manager.relax(
                 source_depset="large_test_depset",
-                drop_package="aiohttp",
+                drop_packages=["aiohttp"],
                 requirements=[],
                 constraints=[],
                 name="relax_test_depset",
-                output="test_python_depset_relaxed.lock",
+                output="test_python_depset_relaxed.txt",
+                append_flags=["--python-version=3.10"],
             )
-            output_file = Path(tmpdir) / "test_python_depset_relaxed.lock"
+            output_file = Path(tmpdir) / "test_python_depset_relaxed.txt"
             output_text = output_file.read_text()
-            assert "async-timeout" in output_text
+            # the following packages are required by aiohttp, so they should be in the output
             assert "aiohttp" not in output_text
+            assert "propcache" not in output_text
+            assert "aiosignal" not in output_text
+            assert "multidict" not in output_text
             assert "yarl" not in output_text
-            assert "idna" not in output_text
-            assert "attrs" not in output_text
+            # the following packages are not required by aiohttp, so they should not be in the output
+            assert "tensorflow" in output_text
+            assert "gymnasium" in output_text
+            assert "keras" in output_text
+            assert "tensorboard" in output_text
+
+    def test_relax_drop_2_packages(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            save_packages_to_file(
+                Path(tmpdir) / "test_relax_output.txt",
+                [
+                    "aiohttp==3.11.16",
+                    "tensorflow==2.15.0",
+                    "gymnasium==1.1.1",
+                ],
+            )
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=[],
+                requirements=["test_relax_output.txt"],
+                name="large_test_depset",
+                output="large_depset_output.txt",
+                append_flags=["--python-version=3.10"],
+            )
+            manager.relax(
+                source_depset="large_test_depset",
+                drop_packages=["tensorflow", "gymnasium"],
+                requirements=[],
+                constraints=[],
+                name="relax_test_depset_2",
+                output="test_python_depset_relaxed_2.txt",
+                append_flags=["--python-version=3.10"],
+            )
+            output_file = Path(tmpdir) / "test_python_depset_relaxed_2.txt"
+            output_text = output_file.read_text()
+            # the following packages are required by tensorflow and gymnasium, so they should not be in the output
+            assert "tensorflow" not in output_text
+            assert "gymnasium" not in output_text
+            assert "keras" not in output_text
+            assert "tensorboard" not in output_text
+            # the following packages are not required by tensorflow and gymnasium, so they should be in the output
+            assert "aiohttp" in output_text
+            assert "propcache" in output_text
+            assert "aiosignal" in output_text
+            assert "multidict" in output_text
+            assert "yarl" in output_text
 
     def test_get_depset_with_build_arg_set(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -908,8 +966,8 @@ class TestCli(unittest.TestCase):
                 tmpdir, config_path="*.depsets.yaml", build_all_configs=True
             )
             assert manager.build_graph is not None
-            assert len(manager.build_graph.nodes) == 14
-            assert len(manager.build_graph.edges) == 9
+            assert len(manager.build_graph.nodes) == 15
+            assert len(manager.build_graph.edges) == 10
 
 
 if __name__ == "__main__":

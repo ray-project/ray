@@ -311,7 +311,7 @@ class DependencySetManager:
         elif depset.operation == "relax":
             self.relax(
                 source_depset=depset.source_depset,
-                drop_package=depset.drop_package,
+                drop_packages=depset.drop_packages,
                 requirements=depset.requirements,
                 constraints=depset.constraints,
                 name=depset.name,
@@ -415,7 +415,7 @@ class DependencySetManager:
         source_depset: str,
         requirements: List[str],
         constraints: List[str],
-        drop_package: str,
+        drop_packages: List[str],
         name: str,
         output: str = None,
         append_flags: Optional[List[str]] = None,
@@ -427,8 +427,8 @@ class DependencySetManager:
         deps = Parser(self.get_path(depset.output)).parse()
         dependency_graph = DependencyGraph()
         dependency_graph.build_dependency_graph(deps)
-        dependency_graph.remove_dropped_dependencies([drop_package])
-        relaxed_output_file = depset.output.replace(".lock", "_relaxed.lock")
+        dependency_graph.remove_dropped_dependencies(drop_packages)
+        relaxed_output_file = f"{depset.output}.relaxed"
         _graph_to_lockfile(dependency_graph.graph, self.get_path(relaxed_output_file))
         requirements.append(relaxed_output_file)
         self.compile(
