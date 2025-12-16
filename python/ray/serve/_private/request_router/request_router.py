@@ -548,7 +548,7 @@ class RequestRouter(ABC):
         # Queue wait time histogram: time request spent waiting in queue
         # before being assigned to a replica.
         self.queue_wait_time_ms_histogram = metrics.Histogram(
-            "serve_queue_wait_time_ms",
+            "serve_request_router_fulfillment_time_ms",
             description=(
                 "Time in milliseconds that a request spent waiting in the "
                 "queue before being assigned to a replica."

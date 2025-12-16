@@ -1008,7 +1008,7 @@ def test_queue_wait_time_metric(metrics_start_shutdown):
 
     def check_queue_wait_time_metric():
         metrics = get_metric_dictionaries(
-            "ray_serve_queue_wait_time_ms_sum", timeseries=timeseries
+            "ray_serve_request_router_fulfillment_time_ms_sum", timeseries=timeseries
         )
         if not metrics:
             return False
@@ -1024,7 +1024,7 @@ def test_queue_wait_time_metric(metrics_start_shutdown):
 
     def check_queue_wait_time_metric_value():
         value = get_metric_float(
-            "ray_serve_queue_wait_time_ms_sum",
+            "ray_serve_request_router_fulfillment_time_ms_sum",
             timeseries=timeseries,
             expected_tags={"deployment": "SlowDeployment", "application": "app1"},
         )
