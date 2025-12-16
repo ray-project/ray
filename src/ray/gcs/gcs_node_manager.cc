@@ -754,6 +754,7 @@ std::string GcsNodeManager::DebugString() const {
 }
 
 void GcsNodeManager::EvictExpiredNodes() {
+  absl::MutexLock lock(&mutex_);
   RAY_LOG(INFO) << "Try evicting expired nodes, there are "
                 << sorted_dead_node_list_.size() << " dead nodes in the cache.";
   int evicted_node_number = 0;

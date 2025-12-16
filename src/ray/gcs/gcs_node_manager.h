@@ -257,7 +257,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
 
   /// Evict one dead node from sorted_dead_node_list_ as well as
   /// dead_nodes_.
-  void EvictOneDeadNode();
+  void EvictOneDeadNode() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Remove a node from alive nodes cache. The node's death information will also be set.
   ///

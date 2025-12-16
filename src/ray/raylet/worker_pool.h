@@ -562,7 +562,7 @@ class WorkerPool : public WorkerPoolInterface {
   // Note: NONE of these methods guarantee that pop_worker_request.callback will be called
   // with the started worker. It may be called with any fitting workers.
   void StartNewWorker(const std::shared_ptr<PopWorkerRequest> &pop_worker_request,
-                      const std::string &serialized_allocated_instances = "{}");
+                      const std::string &serialized_allocated_instances = "{}") override;
 
  protected:
   void update_worker_startup_token_counter();
