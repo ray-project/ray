@@ -13,7 +13,7 @@ steps:
       RAYCI_WANDA_ALWAYS_REBUILD: "true"
       JDK_SUFFIX: ""
       HOSTTYPE: "x86_64"
-  
+
   - name: manylinux-cibase-aarch64
     label: ":magic_wand: wanda: manylinux-cibase-aarch64"
     wanda: ci/docker/manylinux-cibase.wanda.yaml
@@ -48,7 +48,6 @@ steps:
   - label: ":docker: push: Push manylinux-cibase{{matrix.jdk_suffix}}{{matrix.host_suffix}} to Docker Hub"
     depends_on:
       - manylinux-cibase-x86_64
-      - manylinux-cibase-aarch64
       - manylinux-cibase-jdk-x86_64
       - manylinux-cibase-jdk-aarch64
       - forge
