@@ -307,7 +307,7 @@ class TestUseCpuLogic:
         engine_config = llm_config_cpu.get_engine_config()
         assert engine_config.use_gpu is False
 
-        # Test use_cpu=False 
+        # Test use_cpu=False
         llm_config_gpu = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test_model"),
             use_cpu=False,
