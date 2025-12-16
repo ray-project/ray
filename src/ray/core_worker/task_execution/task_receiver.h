@@ -30,14 +30,13 @@
 #include "ray/core_worker/task_execution/normal_scheduling_queue.h"
 #include "ray/core_worker/task_execution/out_of_order_actor_scheduling_queue.h"
 #include "ray/core_worker/task_execution/thread_pool.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 namespace core {
 
-using ResourceMappingType =
-    std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 using RepeatedObjectRefCount =
     ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
 

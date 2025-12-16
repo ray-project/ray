@@ -66,7 +66,6 @@ from ray._private.authentication.authentication_token_setup import (
     ensure_token_if_auth_enabled,
 )
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.custom_types import TensorTransportEnum
 from ray._private.function_manager import FunctionActorManager
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
@@ -801,7 +800,7 @@ class Worker:
         value: Any,
         owner_address: Optional[str] = None,
         _is_experimental_channel: bool = False,
-        _tensor_transport: str = TensorTransportEnum.OBJECT_STORE.name,
+        _tensor_transport: Optional[str] = None,
     ):
         """Put value in the local object store.
 
@@ -818,7 +817,7 @@ class Worker:
                 objects. If True, then the returned object will not have a
                 valid value. The object must be written to using the
                 ray.experimental.channel API before readers can read.
-            _tensor_transport: [Alpha] The tensor transport backend to use. Currently, this supports "object_store" and "nixl".
+            _tensor_transport: [Alpha] The tensor transport backend to use. Currently, this only supports one-sided transports like "nixl".
         Returns:
             ObjectRef: The object ref the object was put under.
 
@@ -840,10 +839,14 @@ class Worker:
             validate_one_sided,
         )
 
-        tensor_transport = normalize_and_validate_tensor_transport(_tensor_transport)
-        validate_one_sided(tensor_transport, "ray.put")
+        tensor_transport = None
+        if _tensor_transport is not None:
+            tensor_transport = normalize_and_validate_tensor_transport(
+                _tensor_transport
+            )
+            validate_one_sided(tensor_transport, "ray.put")
         try:
-            if tensor_transport != TensorTransportEnum.OBJECT_STORE.name:
+            if tensor_transport is not None:
                 (
                     serialized_value,
                     tensors,
@@ -864,24 +867,19 @@ class Worker:
         # object. Instead, clients will keep the object pinned.
         pin_object = not _is_experimental_channel
 
-        tensor_transport_enum = TensorTransportEnum.OBJECT_STORE
-        if tensor_transport != TensorTransportEnum.OBJECT_STORE.name:
-            tensor_transport_enum = TensorTransportEnum.DIRECT_TRANSPORT
-
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
         # the object is Put() in the core worker, expecting that this python
         # reference will be created. If another reference is created and
         # removed before this one, it will corrupt the state in the
         # reference counter.
-
         ret = self.core_worker.put_object(
             serialized_value,
             pin_object=pin_object,
             owner_address=owner_address,
             inline_small_object=True,
             _is_experimental_channel=_is_experimental_channel,
-            tensor_transport_val=tensor_transport_enum.value,
+            tensor_transport=tensor_transport,
         )
         if tensors:
             self.gpu_object_manager.put_object(ret, tensor_transport, tensors)
@@ -898,14 +896,11 @@ class Worker:
         self,
         serialized_objects,
         object_refs,
-        tensor_transport_hint: Optional[str] = None,
+        fetch_through_object_store: bool = False,
     ):
         gpu_objects: Dict[str, List["torch.Tensor"]] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
-            if (
-                tensor_transport is None
-                or tensor_transport == TensorTransportEnum.OBJECT_STORE
-            ):
+            if tensor_transport is None:
                 # The object is not a gpu object, so we cannot use other external transport to
                 # fetch it.
                 continue
@@ -914,10 +909,10 @@ class Worker:
             if object_id not in gpu_objects:
                 # If using a non-object store transport, then tensors will be sent
                 # out-of-band. Get them before deserializing the object store data.
-                # The user can choose OBJECT_STORE as the hint to fetch the RDT object
+                # The user can set fetch_through_object_store to fetch the RDT object
                 # through the object store.
                 gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
-                    object_id, tensor_transport=tensor_transport_hint
+                    object_id, fetch_through_object_store
                 )
 
         # Function actor manager or the import thread may call pickle.loads
@@ -936,7 +931,7 @@ class Worker:
         timeout: Optional[float] = None,
         return_exceptions: bool = False,
         skip_deserialization: bool = False,
-        _tensor_transport: Optional[str] = None,
+        fetch_through_object_store: bool = False,
     ) -> Tuple[List[serialization.SerializedRayObject], bytes]:
         """Get the values in the object store associated with the IDs.
 
@@ -955,7 +950,7 @@ class Worker:
                 raised.
             skip_deserialization: If true, only the buffer will be released and
                 the object associated with the buffer will not be deserialized.
-            _tensor_transport: [Alpha] The tensor transport to use to fetch `torch.Tensors` found in the Ray Direct Transport object. Currently, this supports "object_store" and "nixl".
+            fetch_through_object_store: [Alpha] To fetch an RDT object through the object store.
         Returns:
             list: List of deserialized objects or None if skip_deserialization is True.
             bytes: UUID of the debugger breakpoint we should drop
@@ -991,21 +986,12 @@ class Worker:
         if skip_deserialization:
             return None, debugger_breakpoint
 
-        if _tensor_transport is not None:
-            from ray.experimental.gpu_object_manager.util import (
-                normalize_and_validate_tensor_transport,
-            )
-
-            _tensor_transport = normalize_and_validate_tensor_transport(
-                _tensor_transport
-            )
-
         values = self.deserialize_objects(
-            serialized_objects, object_refs, tensor_transport_hint=_tensor_transport
+            serialized_objects, object_refs, fetch_through_object_store
         )
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.
-            for i, value in enumerate(values):
+            for value in values:
                 if isinstance(value, RayError):
                     if isinstance(
                         value, ray.exceptions.ObjectLostError
@@ -2864,7 +2850,7 @@ def get(
     ],
     *,
     timeout: Optional[float] = None,
-    _tensor_transport: Optional[str] = None,
+    _fetch_through_object_store: bool = False,
 ) -> Union[Any, List[Any]]:
     """Get a remote object or a list of remote objects from the object store.
 
@@ -2900,7 +2886,7 @@ def get(
             corresponding object becomes available. Setting ``timeout=0`` will
             return the object immediately if it's available, else raise
             GetTimeoutError in accordance with the above docstring.
-        _tensor_transport: [Alpha] The tensor transport to use to fetch `torch.Tensors` found in the Ray Direct Transport object. Currently, this supports "object_store" and "nixl".
+        _fetch_through_object_store: [Alpha] To fetch an RDT object through the object store instead of using its designated tensor transport. You may want to do this in situations where you want the value on driver but maybe the driver is not part of the tensor transport's collective.
 
     Returns:
         A Python object or a list of Python objects.
@@ -2965,7 +2951,7 @@ def get(
             )
 
         values, debugger_breakpoint = worker.get_objects(
-            object_refs, timeout=timeout, _tensor_transport=_tensor_transport
+            object_refs, timeout, fetch_through_object_store=_fetch_through_object_store
         )
         for i, value in enumerate(values):
             if isinstance(value, RayError):

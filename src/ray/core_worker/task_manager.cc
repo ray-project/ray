@@ -271,6 +271,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   returned_refs.reserve(num_returns);
   std::vector<ObjectID> return_ids;
   return_ids.reserve(num_returns);
+  auto tensor_transport = spec.TensorTransport();
   for (size_t i = 0; i < num_returns; i++) {
     auto return_id = spec.ReturnId(i);
     if (!spec.IsActorCreationTask()) {
@@ -292,7 +293,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
                                         is_reconstructable,
                                         /*add_local_ref=*/true,
                                         /*pinned_at_node_id=*/std::optional<NodeID>(),
-                                        /*tensor_transport=*/spec.TensorTransport());
+                                        tensor_transport);
     }
 
     return_ids.push_back(return_id);
@@ -301,12 +302,9 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     ref.set_object_id(return_object_id.Binary());
     ref.mutable_owner_address()->CopyFrom(caller_address);
     ref.set_call_site(call_site);
-    ref.set_tensor_transport(spec.TensorTransport());
-
-    // Register the callback to free the GPU object when it is out of scope.
-    auto tensor_transport = reference_counter_.GetTensorTransport(return_object_id);
-    if (tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE) !=
-        rpc::TensorTransport::OBJECT_STORE) {
+    if (tensor_transport.has_value()) {
+      ref.set_tensor_transport(*tensor_transport);
+      // Register the callback to free the GPU object when it is out of scope.
       reference_counter_.AddObjectOutOfScopeOrFreedCallback(return_object_id,
                                                             free_actor_object_callback_);
     }
@@ -585,12 +583,11 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
           return_object.metadata().size());
     }
 
-    auto tensor_transport = reference_counter_.GetTensorTransport(object_id);
     RayObject object(data_buffer,
                      metadata_buffer,
                      nested_refs,
                      /*copy_data=*/false,
-                     tensor_transport.value_or(rpc::TensorTransport::OBJECT_STORE));
+                     reference_counter_.GetTensorTransport(object_id));
     if (store_in_plasma) {
       Status s = put_in_local_plasma_callback_(object, object_id);
       if (!s.ok()) {
@@ -1813,8 +1810,8 @@ std::vector<ObjectID> ExtractPlasmaDependencies(const TaskSpecification &spec) {
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
       plasma_dependencies.push_back(spec.ArgObjectId(i));
-    } else if (spec.ArgTensorTransport(i) != rpc::TensorTransport::OBJECT_STORE) {
-      // GPU objects are inlined but the actual data lives on the remote actor.
+    } else if (spec.ArgTensorTransport(i).has_value()) {
+      // RDT objects are inlined but the actual data lives on the remote actor.
       // Therefore, we apply the reference counting protocol used for plasma objects
       // instead of decrementing the ref count upon inlining.
       plasma_dependencies.push_back(spec.ArgObjectId(i));

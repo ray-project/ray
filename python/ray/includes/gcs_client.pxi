@@ -19,6 +19,7 @@ from asyncio import Future
 from typing import List, Sequence
 from libcpp.utility cimport move
 import concurrent.futures
+from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray.includes.common cimport (
     CGcsClient,
     CGetAllResourceUsageReply,

@@ -529,7 +529,7 @@ class CoreWorker {
       std::shared_ptr<Buffer> *data,
       const std::unique_ptr<rpc::Address> &owner_address = nullptr,
       bool inline_small_object = true,
-      rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE);
+      const std::optional<std::string> &tensor_transport = std::nullopt);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
@@ -1393,8 +1393,8 @@ class CoreWorker {
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
       const LabelSelector &label_selector = {},
-      const std::vector<FallbackOption> &fallback_strategy = {},
-      const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::OBJECT_STORE);
+      const std::vector<FallbackOption> &fallback_strategy = {});
+
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);
@@ -1459,25 +1459,21 @@ class CoreWorker {
 
   /// Execute a task.
   ///
-  /// \param spec[in] task_spec Task specification.
-  /// \param spec[in] resource_ids Resource IDs of resources assigned to this
-  ///                 worker. If nullopt, reuse the previously assigned
-  ///                 resources.
-  /// \param results[out] return_objects Result objects that should be returned
+  /// \param task_spec[in] Task specification.
+  /// \param resource_ids[in] Resource IDs of resources assigned to this
+  /// worker. If nullopt, reuse the previously assigned resources.
+  /// \param return_objects[out] Result objects that should be returned
   /// to the caller.
-  /// \param results[out] dynamic_return_objects Result objects whose
-  /// ObjectRefs were dynamically allocated during task execution by using a
-  /// generator. The language-level ObjectRefs should be returned inside the
-  /// statically allocated return_objects.
-  /// \param results[out] borrowed_refs Refs that this task (or a nested task)
-  ///                     was or is still borrowing. This includes all
-  ///                     objects whose IDs we passed to the task in its
-  ///                     arguments and recursively, any object IDs that were
-  ///                     contained in those objects.
-  /// \param results[out] is_retryable_error Whether the task failed with a retryable
-  ///                     error.
-  /// \param results[out] application_error The error message if the
-  ///                     task failed during execution or cancelled.
+  /// \param dynamic_return_objects[out]  Result objects whose ObjectRefs were dynamically
+  /// allocated during task execution by using a generator. The language-level ObjectRefs
+  /// should be returned inside the statically allocated return_objects.
+  /// \param borrowed_refs[out]  Refs that this task (or a nested task) was or is still
+  /// borrowing. This includes all objects whose IDs we passed to the task in its
+  /// arguments and recursively, any object IDs that were contained in those objects.
+  /// \param is_retryable_error[out] Whether the task failed with a retryable
+  /// error.
+  /// \param application_error[out] The error message if the task failed during
+  /// execution or cancelled.
   /// \return Status.
   Status ExecuteTask(
       const TaskSpecification &task_spec,
