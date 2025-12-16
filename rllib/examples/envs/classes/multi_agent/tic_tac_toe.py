@@ -83,15 +83,13 @@ class TicTacToe(MultiAgentEnv):
     def step(self, action_dict):
         action = action_dict[self.current_player]
 
-        # Create a terminateds-dict with the special `__all__` agent ID, indicating that
-        # if True, the episode ends for all agents.
-        terminateds = {"__all__": False}
-
         opponent = "player1" if self.current_player == "player2" else "player2"
 
         # Penalize trying to place a piece on an already occupied field.
         if self.board[action] != 0:
             rewards = {self.current_player: -1.0}
+            terminateds = {"__all__": False}
+
         # Change the board according to the (valid) action taken.
         else:
             self.board[action] = 1 if self.current_player == "player1" else -1
@@ -102,6 +100,7 @@ class TicTacToe(MultiAgentEnv):
                 win_val = [1, 1, 1]
             else:
                 win_val = [-1, -1, -1]
+
             if (
                 # Horizontal win.
                 self.board[:3] == win_val
@@ -122,13 +121,20 @@ class TicTacToe(MultiAgentEnv):
                 }
 
                 # Episode is done and needs to be reset for a new game.
-                terminateds["__all__"] = True
+                terminateds = {"__all__": True}
 
             # The board might also be full w/o any player having won/lost.
             # In this case, we simply end the episode and none of the players receives
             # +1 or -1 reward.
             elif 0 not in self.board:
-                terminateds["__all__"] = True
+                rewards = {
+                    self.current_player: 0.0,
+                    opponent: 0.0,
+                }
+                terminateds = {"__all__": True}
+            else:
+                rewards = {self.current_player: 0.0}
+                terminateds = {"__all__": False}
 
         # Flip players and return an observations dict with only the next player to
         # make a move in it.
