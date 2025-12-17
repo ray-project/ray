@@ -1119,7 +1119,7 @@ more-itertools==10.7.0
     # via configspace
 mosaicml==0.3.1 ; python_version < "3.12"
     # via -r python/requirements/ml/train-test-requirements.txt
-moto==4.2.12
+moto==5.1.18
     # via -r python/requirements/test-requirements.txt
 moviepy==0.2.3.1
     # via -r python/requirements/ml/rllib-test-requirements.txt
