@@ -7,6 +7,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
@@ -23,6 +24,7 @@ steps:
           - "3.10"
           - "3.11"
           - "3.12"
+          - "3.13"
         cuda:
           - "12.3.2-cudnn9"
     env:
@@ -90,6 +92,7 @@ steps:
           - "3.10"
           - "3.11"
           - "3.12"
+          - "3.13"
         platform:
           - cu12.3.2-cudnn9
           - cpu
