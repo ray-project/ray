@@ -133,9 +133,10 @@ class ParquetDatasink(_FileDatasink):
         self.partition_cols = partition_cols
 
         if self.min_rows_per_file is not None and self.max_rows_per_file is not None:
-            assert (
-                self.min_rows_per_file <= self.max_rows_per_file
-            ), "min_rows_per_file must be less than or equal to max_rows_per_file"
+            if self.min_rows_per_file > self.max_rows_per_file:
+                raise ValueError(
+                    "min_rows_per_file must be less than or equal to max_rows_per_file"
+                )
 
         if open_stream_args is not None:
             intersecting_keys = UNSUPPORTED_OPEN_STREAM_ARGS.intersection(
@@ -155,9 +156,10 @@ class ParquetDatasink(_FileDatasink):
             self.arrow_parquet_args_fn is not None
             and "partitioning_flavor" in self.arrow_parquet_args_fn()
         ):
-            assert (
-                self.partition_cols is not None
-            ), "partition_cols must be provided when partitioning_flavor is set."
+            if self.partition_cols is None:
+                raise ValueError(
+                    "partition_cols must be provided when partitioning_flavor is set."
+                )
 
         super().__init__(
             path,
@@ -193,7 +195,7 @@ class ParquetDatasink(_FileDatasink):
             self.arrow_parquet_args_fn, **self.arrow_parquet_args
         )
         user_schema = write_kwargs.pop("schema", None)
-        # Extract partitioning_flavor before the closure to preserve it across retries
+
         # For partitioning_flavor, if it's not provided, the default is "hive"
         # Otherwise, it follows pyarrow's behavior: None for directory,
         # "hive" for hive, and "filename" for FilenamePartitioning.

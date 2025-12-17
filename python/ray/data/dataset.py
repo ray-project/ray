@@ -4029,10 +4029,10 @@ class Dataset:
             options to pyarrow, there are some special cases:
 
             - `partitioning_flavor`: if it's not provided, default is "hive" in Ray Data.
-              Otherwise, it follows pyarrow's behavior: None for pyarrow's DirectoryPartitioning,
+              Otherwise, it follows pyarrow's behavior: `None` for pyarrow's DirectoryPartitioning,
               "hive" for HivePartitioning, and "filename" for FilenamePartitioning.
               See `pyarrow.dataset.partitioning` <https://arrow.apache.org/docs/python/generated/pyarrow.dataset.partitioning.html>_.
-            - `row_group_size`: if it's provided, it will be passed to
+            - `row_group_size`: if provided, it's passed to
               `pyarrow.parquet.ParquetWriter.write_table() <https:/\
                   /arrow.apache.org/docs/python/generated/pyarrow\
                       .parquet.ParquetWriter.html\
