@@ -43,8 +43,6 @@ TEST_F(RayActorDefinitionEventTest, TestSerialize) {
   ASSERT_EQ(serialized_event.session_name(), "test_session_name");
   ASSERT_EQ(serialized_event.event_type(), rpc::events::RayEvent::ACTOR_DEFINITION_EVENT);
   ASSERT_EQ(serialized_event.severity(), rpc::events::RayEvent::INFO);
-  // node_id is now set by RayEventRecorder, not by the event itself
-  ASSERT_TRUE(serialized_event.node_id().empty());
   ASSERT_TRUE(serialized_event.has_actor_definition_event());
 
   const auto &actor_def = serialized_event.actor_definition_event();

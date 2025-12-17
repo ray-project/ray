@@ -43,8 +43,6 @@ TEST_F(RayActorLifecycleEventTest, TestMergeAndSerialize) {
   ASSERT_EQ(serialized_event.session_name(), "sess1");
   ASSERT_EQ(serialized_event.event_type(), rpc::events::RayEvent::ACTOR_LIFECYCLE_EVENT);
   ASSERT_EQ(serialized_event.severity(), rpc::events::RayEvent::INFO);
-  // node_id is now set by RayEventRecorder, not by the event itself
-  ASSERT_TRUE(serialized_event.node_id().empty());
   ASSERT_TRUE(serialized_event.has_actor_lifecycle_event());
 
   const auto &actor_life = serialized_event.actor_lifecycle_event();

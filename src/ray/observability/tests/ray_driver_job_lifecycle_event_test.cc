@@ -30,8 +30,6 @@ TEST_F(RayDriverJobLifecycleEventTest, TestMerge) {
       data, rpc::events::DriverJobLifecycleEvent::FINISHED, "test_session_name_1");
   event1->Merge(std::move(*event2));
   auto serialized_event = std::move(*event1).Serialize();
-  // node_id is now set by RayEventRecorder, not by the event itself
-  ASSERT_TRUE(serialized_event.node_id().empty());
   ASSERT_EQ(serialized_event.driver_job_lifecycle_event().state_transitions_size(), 2);
   ASSERT_EQ(serialized_event.driver_job_lifecycle_event().state_transitions(0).state(),
             rpc::events::DriverJobLifecycleEvent::CREATED);

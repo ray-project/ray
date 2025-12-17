@@ -286,7 +286,6 @@ class GcsActorManagerTest : public ::testing::Test {
   observability::FakeRayEventRecorder fake_ray_event_recorder_;
   ray::observability::FakeGauge actor_by_state_gauge_;
   ray::observability::FakeGauge gcs_actor_by_state_gauge_;
-  NodeID gcs_node_id_;
 };
 
 TEST_F(GcsActorManagerTest, TestBasic) {

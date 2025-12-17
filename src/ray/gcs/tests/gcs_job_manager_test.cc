@@ -93,7 +93,6 @@ class GcsJobManagerTest : public ::testing::Test {
   const std::chrono::milliseconds timeout_ms_{5000};
   std::unique_ptr<gcs::GcsJobManager> gcs_job_manager_;
   std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
-  NodeID gcs_node_id_;
 
   // Fake metrics for testing
   ray::observability::FakeGauge fake_running_job_gauge_;
