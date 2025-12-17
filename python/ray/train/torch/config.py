@@ -129,15 +129,26 @@ def _setup_torch_process_group(
 
 
 def _shutdown_torch(destroy_process_group=False):
+    destroy_process_group = False
+    import logging
+
+    logger = logging.getLogger("ray.train")
+    logger.info(f"Torch Shutdown: {destroy_process_group}")
+
     from ray.air._internal.torch_utils import get_devices
 
     devices = get_devices()
     if destroy_process_group:
         dist.destroy_process_group()
+        destroy_process_group = True
+        logger.info("Torch Shutdown: destroy process group")
     if torch.cuda.is_available():
         for device in devices:
             with torch.cuda.device(device):
                 torch.cuda.empty_cache()
+        logger.info("Torch Shutdown: CUDA empty cache")
+
+    return destroy_process_group
 
 
 def _set_torch_distributed_env_vars():
@@ -212,6 +223,10 @@ class _TorchBackend(Backend):
             raise RuntimeError("Distributed torch is not available.")
 
     def on_shutdown(self, worker_group: BaseWorkerGroup, backend_config):
+        print("Torch Shutdown")
+        import time
+
+        start = time.time()
         futures = worker_group.execute_async(
             _shutdown_torch,
             destroy_process_group=len(worker_group) > 1,
@@ -221,7 +236,9 @@ class _TorchBackend(Backend):
             DEFAULT_TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
         )
         try:
-            ray.get(futures, timeout=timeout_s)
+            values = ray.get(futures, timeout=timeout_s)
+            print(f"Torch Shutdown values: {values}")
+            print(f"Torch Shutdown time: {time.time() - start}")
         except GetTimeoutError:
             logger.warning(
                 f"Torch process group shutdown timed out after {timeout_s} seconds"
