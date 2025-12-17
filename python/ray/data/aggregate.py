@@ -1070,7 +1070,7 @@ class CountDistinct(Unique):
         ignore_nulls: Whether to ignore null values when counting distinct items.
                       Default is True (nulls are excluded from the count).
         alias_name: Optional name for the resulting column. If not provided,
-            defaults to "distinct({column_name})".
+            defaults to "count_distinct({on})".
     """
 
     def __init__(

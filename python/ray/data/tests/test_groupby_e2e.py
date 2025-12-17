@@ -641,7 +641,9 @@ def test_groupby_multi_agg_with_nans(
         .groupby("A")
         .aggregate(
             Count("B", alias_name="count_b", ignore_nulls=ignore_nulls),
-            CountDistinct("B", alias_name="count_distinct_b"),
+            CountDistinct(
+                "B", alias_name="count_distinct_b", ignore_nulls=ignore_nulls
+            ),
             Sum("B", alias_name="sum_b", ignore_nulls=ignore_nulls),
             Min("B", alias_name="min_b", ignore_nulls=ignore_nulls),
             Max("B", alias_name="max_b", ignore_nulls=ignore_nulls),
@@ -659,7 +661,7 @@ def test_groupby_multi_agg_with_nans(
         {
             "B": [
                 ("count_b", lambda s: s.count() if ignore_nulls else len(s)),
-                ("count_distinct_b", lambda s: s.nunique(dropna=False)),
+                ("count_distinct_b", lambda s: s.nunique(dropna=ignore_nulls)),
                 ("sum_b", lambda s: s.sum(skipna=ignore_nulls)),
                 ("min_b", lambda s: s.min(skipna=ignore_nulls)),
                 ("max_b", lambda s: s.max(skipna=ignore_nulls)),
@@ -751,7 +753,7 @@ def test_groupby_aggregations_are_associative(
 
     aggs = [
         Count("B", alias_name="count_b", ignore_nulls=ignore_nulls),
-        CountDistinct("B", alias_name="count_distinct_b"),
+        CountDistinct("B", alias_name="count_distinct_b", ignore_nulls=ignore_nulls),
         Sum("B", alias_name="sum_b", ignore_nulls=ignore_nulls),
         Min("B", alias_name="min_b", ignore_nulls=ignore_nulls),
         Max("B", alias_name="max_b", ignore_nulls=ignore_nulls),
@@ -767,7 +769,7 @@ def test_groupby_aggregations_are_associative(
         {
             "B": [
                 ("count", lambda s: s.count() if ignore_nulls else len(s)),
-                ("count_distinct", lambda s: s.nunique(dropna=False)),
+                ("count_distinct", lambda s: s.nunique(dropna=ignore_nulls)),
                 ("sum", lambda s: s.sum(skipna=ignore_nulls, min_count=1)),
                 ("min", lambda s: s.min(skipna=ignore_nulls)),
                 ("max", lambda s: s.max(skipna=ignore_nulls)),
