@@ -88,7 +88,8 @@ class AbstractUDFMap(AbstractMap):
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
-        """
+        """Initialize AbstractUDFMap.
+
         Args:
             name: Name for this operator. This is the name that will appear when
                 inspecting the logical plan of a Dataset.
