@@ -263,7 +263,7 @@ class vLLMEngineWrapper:
         # Construct PoolerConfig if override_pooler_config is specified.
         if (
             self.task_type
-            in (vLLMTaskType.EMBED, vLLMTaskType.CLASSIFY, vLLMTaskType.SCORE)
+            in {vLLMTaskType.EMBED, vLLMTaskType.CLASSIFY, vLLMTaskType.SCORE}
             and "override_pooler_config" in kwargs
         ):
             kwargs["override_pooler_config"] = vllm.config.PoolerConfig(
