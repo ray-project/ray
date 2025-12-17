@@ -1360,7 +1360,12 @@ def _ensure_scalar_ndarray(a: np.ndarray) -> np.ndarray:
     #       would have to be copied. We cycle these t/h Pyarrow
     #       to appropriately handle type conversions
     if a.dtype == np.object_:
-        a = pa.array(a).to_numpy(zero_copy_only=False)
+        shape = a.shape
+        a = (
+            pa.array(np.ravel(a))
+                .to_numpy(zero_copy_only=False)
+                .reshape(shape)
+        )
 
     return a
 
