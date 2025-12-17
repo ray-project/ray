@@ -95,7 +95,8 @@ class AbstractUDFMap(AbstractMap):
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
             fn: User-defined function to be called.
-            # TODO(Justin): Add a docstring
+            udf_modifying_row_count: Whether the UDF can change the row count. True if
+                # of input rows = # of output rows. False otherwise.
             fn_args: Arguments to `fn`.
             fn_kwargs: Keyword arguments to `fn`.
             fn_constructor_args: Arguments to provide to the initializor of `fn` if
