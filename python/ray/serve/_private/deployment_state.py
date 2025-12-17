@@ -2474,6 +2474,12 @@ class DeploymentState:
             bool: Whether the target state has changed.
         """
 
+        logger.info(f"Deploying deployment '{self._id}': {deployment_info.to_dict()}")
+        logger.info(
+            f"Current target state for deployment '{self._id}': "
+            f"{self._target_state.info.to_dict() if self._target_state.info is not None else None}"
+        )
+
         curr_deployment_info = self._target_state.info
         if curr_deployment_info is not None:
             # Redeploying should not reset the deployment's start time.
