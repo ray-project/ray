@@ -129,7 +129,7 @@ def _setup_torch_process_group(
 
 
 def _shutdown_torch(destroy_process_group=False):
-    destroy_process_group = False
+    destroy = False
     import logging
 
     logger = logging.getLogger("ray.train")
@@ -140,7 +140,7 @@ def _shutdown_torch(destroy_process_group=False):
     devices = get_devices()
     if destroy_process_group:
         dist.destroy_process_group()
-        destroy_process_group = True
+        destroy = True
         logger.info("Torch Shutdown: destroy process group")
     if torch.cuda.is_available():
         for device in devices:
@@ -148,7 +148,7 @@ def _shutdown_torch(destroy_process_group=False):
                 torch.cuda.empty_cache()
         logger.info("Torch Shutdown: CUDA empty cache")
 
-    return destroy_process_group
+    return destroy
 
 
 def _set_torch_distributed_env_vars():
