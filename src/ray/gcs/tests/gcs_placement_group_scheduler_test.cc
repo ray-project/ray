@@ -73,8 +73,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
                                          raylet_client_pool_.get(),
                                          ClusterID::Nil(),
                                          /*ray_event_recorder=*/fake_ray_event_recorder_,
-                                         /*session_name=*/"",
-                                         /*gcs_node_id=*/NodeID::Nil());
+                                         /*session_name=*/"");
     gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
         io_service_,
         cluster_resource_scheduler_->GetClusterResourceManager(),

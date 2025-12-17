@@ -231,7 +231,6 @@ GcsActorManager::GcsActorManager(
     rpc::CoreWorkerClientPool &worker_client_pool,
     observability::RayEventRecorderInterface &ray_event_recorder,
     const std::string &session_name,
-    const NodeID &gcs_node_id,
     ray::observability::MetricInterface &actor_by_state_gauge,
     ray::observability::MetricInterface &gcs_actor_by_state_gauge)
     : gcs_actor_scheduler_(std::move(scheduler)),
@@ -242,7 +241,6 @@ GcsActorManager::GcsActorManager(
       worker_client_pool_(worker_client_pool),
       ray_event_recorder_(ray_event_recorder),
       session_name_(session_name),
-      gcs_node_id_(gcs_node_id),
       destroy_owned_placement_group_if_needed_(
           std::move(destroy_owned_placement_group_if_needed)),
       runtime_env_manager_(runtime_env_manager),
@@ -698,8 +696,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
                                           ray_namespace,
                                           actor_state_counter_,
                                           ray_event_recorder_,
-                                          session_name_,
-                                          gcs_node_id_);
+                                          session_name_);
   if (!actor->GetName().empty()) {
     auto &actors_in_namespace = named_actors_[actor->GetRayNamespace()];
     auto it = actors_in_namespace.find(actor->GetName());
@@ -857,8 +854,7 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
                                           actor_namespace,
                                           actor_state_counter_,
                                           ray_event_recorder_,
-                                          session_name_,
-                                          gcs_node_id_);
+                                          session_name_);
   actor->UpdateState(rpc::ActorTableData::PENDING_CREATION);
   const auto &actor_table_data = actor->GetActorTableData();
   actor->GetMutableTaskSpec()->set_dependency_resolution_timestamp_ms(
@@ -1706,8 +1702,7 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
                                               actor_task_spec,
                                               actor_state_counter_,
                                               ray_event_recorder_,
-                                              session_name_,
-                                              gcs_node_id_);
+                                              session_name_);
       registered_actors_.emplace(actor_id, actor);
       function_manager_.AddJobReference(actor->GetActorID().JobId());
       if (!actor->GetName().empty()) {
@@ -1738,11 +1733,8 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       }
     } else {
       dead_actors.push_back(actor_id);
-      auto actor = std::make_shared<GcsActor>(actor_table_data,
-                                              actor_state_counter_,
-                                              ray_event_recorder_,
-                                              session_name_,
-                                              gcs_node_id_);
+      auto actor = std::make_shared<GcsActor>(
+          actor_table_data, actor_state_counter_, ray_event_recorder_, session_name_);
       destroyed_actors_.emplace(actor_id, actor);
       sorted_destroyed_actor_list_.emplace_back(
           actor_id, static_cast<int64_t>(actor_table_data.timestamp()));

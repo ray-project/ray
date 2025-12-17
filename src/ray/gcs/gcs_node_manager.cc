@@ -39,8 +39,7 @@ GcsNodeManager::GcsNodeManager(
     rpc::RayletClientPool *raylet_client_pool,
     const ClusterID &cluster_id,
     observability::RayEventRecorderInterface &ray_event_recorder,
-    const std::string &session_name,
-    const NodeID &gcs_node_id)
+    const std::string &session_name)
     : gcs_publisher_(gcs_publisher),
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
@@ -48,7 +47,6 @@ GcsNodeManager::GcsNodeManager(
       cluster_id_(cluster_id),
       ray_event_recorder_(ray_event_recorder),
       session_name_(session_name),
-      gcs_node_id_(gcs_node_id),
       export_event_write_enabled_(IsExportAPIEnabledNode()) {}
 
 void GcsNodeManager::WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info,

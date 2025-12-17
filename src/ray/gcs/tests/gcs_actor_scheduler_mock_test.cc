@@ -56,8 +56,7 @@ class GcsActorSchedulerMockTest : public Test {
                                          client_pool.get(),
                                          ClusterID::Nil(),
                                          /*ray_event_recorder=*/fake_ray_event_recorder_,
-                                         /*session_name=*/"",
-                                         /*gcs_node_id=*/NodeID::Nil());
+                                         /*session_name=*/"");
     local_node_id = NodeID::FromRandom();
     auto cluster_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
         io_context,
@@ -130,7 +129,7 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak1) {
   actor_data.set_state(rpc::ActorTableData::PENDING_CREATION);
   actor_data.set_actor_id(actor_id.Binary());
   auto actor = std::make_shared<GcsActor>(
-      actor_data, rpc::TaskSpec(), counter, fake_ray_event_recorder_, "", NodeID::Nil());
+      actor_data, rpc::TaskSpec(), counter, fake_ray_event_recorder_, "");
   rpc::ClientCallback<rpc::RequestWorkerLeaseReply> cb;
   EXPECT_CALL(*raylet_client,
               RequestWorkerLease(An<const rpc::LeaseSpec &>(), _, _, _, _))
@@ -159,7 +158,7 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
   actor_data.set_state(rpc::ActorTableData::PENDING_CREATION);
   actor_data.set_actor_id(actor_id.Binary());
   auto actor = std::make_shared<GcsActor>(
-      actor_data, rpc::TaskSpec(), counter, fake_ray_event_recorder_, "", NodeID::Nil());
+      actor_data, rpc::TaskSpec(), counter, fake_ray_event_recorder_, "");
   rpc::ClientCallback<rpc::RequestWorkerLeaseReply> request_worker_lease_cb;
   // Ensure actor is killed
   EXPECT_CALL(*raylet_client, KillLocalActor(_, _));

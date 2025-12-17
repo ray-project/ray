@@ -31,8 +31,7 @@ class MockGcsNodeManager : public GcsNodeManager {
                        /*raylet_client_pool=*/nullptr,
                        /*cluster_id=*/ClusterID::Nil(),
                        /*ray_event_recorder=*/fake_ray_event_recorder_,
-                       /*session_name=*/"",
-                       /*gcs_node_id=*/NodeID::Nil()) {}
+                       /*session_name=*/"") {}
   MOCK_METHOD(void,
               HandleRegisterNode,
               (rpc::RegisterNodeRequest request,

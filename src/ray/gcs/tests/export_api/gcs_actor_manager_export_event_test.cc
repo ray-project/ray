@@ -171,7 +171,6 @@ class GcsActorManagerTest : public ::testing::Test {
         });
     worker_client_pool_ = std::make_unique<rpc::CoreWorkerClientPool>(
         [this](const rpc::Address &address) { return worker_client_; });
-    gcs_node_id_ = NodeID::Nil();
     gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(
         std::move(actor_scheduler),
         gcs_table_storage_.get(),
@@ -184,7 +183,6 @@ class GcsActorManagerTest : public ::testing::Test {
         *worker_client_pool_,
         /*ray_event_recorder=*/fake_ray_event_recorder_,
         /*session_name=*/"",
-        gcs_node_id_,
         actor_by_state_gauge_,
         gcs_actor_by_state_gauge_);
 

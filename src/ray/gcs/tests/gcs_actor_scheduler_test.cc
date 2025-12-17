@@ -103,8 +103,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         raylet_client_pool_.get(),
         ClusterID::Nil(),
         /*ray_event_recorder=*/fake_ray_event_recorder_,
-        /*session_name=*/"",
-        /*gcs_node_id=*/NodeID::Nil());
+        /*session_name=*/"");
     gcs_actor_table_ = std::make_shared<FakeGcsActorTable>(store_client_);
     local_node_id_ = NodeID::FromRandom();
     cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
@@ -185,8 +184,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
                                            /*ray_namespace=*/"",
                                            /*counter=*/counter,
                                            /*recorder=*/fake_ray_event_recorder_,
-                                           /*session_name=*/"",
-                                           /*gcs_node_id=*/NodeID::Nil());
+                                           /*session_name=*/"");
   }
 
   std::shared_ptr<rpc::GcsNodeInfo> AddNewNode(
@@ -238,12 +236,8 @@ TEST_F(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode) {
 
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(),
-                                               "",
-                                               counter,
-                                               fake_ray_event_recorder_,
-                                               "",
-                                               NodeID::Nil());
+  auto actor = std::make_shared<gcs::GcsActor>(
+      create_actor_request.task_spec(), "", counter, fake_ray_event_recorder_, "");
 
   // Schedule the actor with zero node.
   gcs_actor_scheduler_->ScheduleByRaylet(actor);
@@ -264,12 +258,8 @@ TEST_F(GcsActorSchedulerTest, TestScheduleActorSuccess) {
 
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(),
-                                               "",
-                                               counter,
-                                               fake_ray_event_recorder_,
-                                               "",
-                                               NodeID::Nil());
+  auto actor = std::make_shared<gcs::GcsActor>(
+      create_actor_request.task_spec(), "", counter, fake_ray_event_recorder_, "");
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -306,12 +296,8 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenLeasing) {
 
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(),
-                                               "",
-                                               counter,
-                                               fake_ray_event_recorder_,
-                                               "",
-                                               NodeID::Nil());
+  auto actor = std::make_shared<gcs::GcsActor>(
+      create_actor_request.task_spec(), "", counter, fake_ray_event_recorder_, "");
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -361,12 +347,8 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenCreating) {
 
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(),
-                                               "",
-                                               counter,
-                                               fake_ray_event_recorder_,
-                                               "",
-                                               NodeID::Nil());
+  auto actor = std::make_shared<gcs::GcsActor>(
+      create_actor_request.task_spec(), "", counter, fake_ray_event_recorder_, "");
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -409,12 +391,8 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasing) {
 
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(),
-                                               "",
-                                               counter,
-                                               fake_ray_event_recorder_,
-                                               "",
-                                               NodeID::Nil());
+  auto actor = std::make_shared<gcs::GcsActor>(
+      create_actor_request.task_spec(), "", counter, fake_ray_event_recorder_, "");
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -455,12 +433,8 @@ TEST_F(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasing) {
 
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(),
-                                               "",
-                                               counter,
-                                               fake_ray_event_recorder_,
-                                               "",
-                                               NodeID::Nil());
+  auto actor = std::make_shared<gcs::GcsActor>(
+      create_actor_request.task_spec(), "", counter, fake_ray_event_recorder_, "");
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -496,12 +470,8 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreating) {
 
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(),
-                                               "",
-                                               counter,
-                                               fake_ray_event_recorder_,
-                                               "",
-                                               NodeID::Nil());
+  auto actor = std::make_shared<gcs::GcsActor>(
+      create_actor_request.task_spec(), "", counter, fake_ray_event_recorder_, "");
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -546,12 +516,8 @@ TEST_F(GcsActorSchedulerTest, TestWorkerFailedWhenCreating) {
 
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(),
-                                               "",
-                                               counter,
-                                               fake_ray_event_recorder_,
-                                               "",
-                                               NodeID::Nil());
+  auto actor = std::make_shared<gcs::GcsActor>(
+      create_actor_request.task_spec(), "", counter, fake_ray_event_recorder_, "");
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -592,12 +558,8 @@ TEST_F(GcsActorSchedulerTest, TestSpillback) {
 
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(),
-                                               "",
-                                               counter,
-                                               fake_ray_event_recorder_,
-                                               "",
-                                               NodeID::Nil());
+  auto actor = std::make_shared<gcs::GcsActor>(
+      create_actor_request.task_spec(), "", counter, fake_ray_event_recorder_, "");
 
   // Schedule the actor with 1 available node, and the lease request should be send to the
   // node.
@@ -664,12 +626,8 @@ TEST_F(GcsActorSchedulerTest, TestReschedule) {
   // 1.Actor is already tied to a leased worker.
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = GenCreateActorRequest(job_id);
-  auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(),
-                                               "",
-                                               counter,
-                                               fake_ray_event_recorder_,
-                                               "",
-                                               NodeID::Nil());
+  auto actor = std::make_shared<gcs::GcsActor>(
+      create_actor_request.task_spec(), "", counter, fake_ray_event_recorder_, "");
   rpc::Address address;
   WorkerID worker_id = WorkerID::FromRandom();
   address.set_node_id(node_id_1.Binary());
@@ -736,7 +694,7 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers) {
   auto job_id = JobID::FromInt(1);
   auto request = GenCreateActorRequest(job_id);
   auto actor = std::make_shared<gcs::GcsActor>(
-      request.task_spec(), "", counter, fake_ray_event_recorder_, "", NodeID::Nil());
+      request.task_spec(), "", counter, fake_ray_event_recorder_, "");
   gcs_actor_scheduler_->ScheduleByRaylet(actor);
   ASSERT_EQ(2, gcs_actor_scheduler_->num_retry_leasing_count_);
   ASSERT_EQ(raylet_client_->num_workers_requested, 0);

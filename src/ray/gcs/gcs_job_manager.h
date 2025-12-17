@@ -59,7 +59,6 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
       rpc::CoreWorkerClientPool &worker_client_pool,
       observability::RayEventRecorderInterface &ray_event_recorder,
       const std::string &session_name,
-      const NodeID &gcs_node_id,
       ray::observability::MetricInterface &running_job_gauge,
       ray::observability::MetricInterface &finished_job_counter,
       ray::observability::MetricInterface &job_duration_in_seconds_gauge)
@@ -72,7 +71,6 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
         worker_client_pool_(worker_client_pool),
         ray_event_recorder_(ray_event_recorder),
         session_name_(session_name),
-        gcs_node_id_(gcs_node_id),
         export_event_write_enabled_(IsExportAPIEnabledDriverJob()),
         running_job_gauge_(running_job_gauge),
         finished_job_counter_(finished_job_counter),
@@ -159,7 +157,6 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
   rpc::CoreWorkerClientPool &worker_client_pool_;
   observability::RayEventRecorderInterface &ray_event_recorder_;
   std::string session_name_;
-  const NodeID gcs_node_id_;
 
   /// If true, driver job events are exported for Export API
   bool export_event_write_enabled_ = false;

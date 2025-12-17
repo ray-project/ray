@@ -366,8 +366,7 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
       &raylet_client_pool_,
       rpc_server_.GetClusterId(),
       *ray_event_recorder_,
-      config_.session_name,
-      gcs_node_id_);
+      config_.session_name);
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::NodeInfoGrpcService>(
@@ -487,7 +486,6 @@ void GcsServer::InitGcsJobManager(
                                       worker_client_pool_,
                                       *ray_event_recorder_,
                                       config_.session_name,
-                                      gcs_node_id_,
                                       running_job_gauge,
                                       finished_job_counter,
                                       job_duration_in_seconds_gauge);
@@ -550,7 +548,6 @@ void GcsServer::InitGcsActorManager(
       worker_client_pool_,
       *ray_event_recorder_,
       config_.session_name,
-      gcs_node_id_,
       actor_by_state_gauge,
       gcs_actor_by_state_gauge);
 
