@@ -116,7 +116,10 @@ def report(
     if validate_config and not validate_fn:
         raise ValueError("validate_fn must be provided together with validate_config")
 
-    record_extra_usage_tag(TagKey.TRAIN_CHECKPOINT_MODE, checkpoint_upload_mode.value)
+    if checkpoint:
+        record_extra_usage_tag(
+            TagKey.TRAIN_CHECKPOINT_MODE, checkpoint_upload_mode.value
+        )
 
     if validate_fn:
         record_extra_usage_tag(TagKey.TRAIN_ASYNCHRONOUS_VALIDATION, "1")
