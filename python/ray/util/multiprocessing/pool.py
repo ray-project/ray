@@ -570,6 +570,12 @@ class Pool:
             also be specified using the `RAY_ADDRESS` environment variable.
         ray_remote_args: arguments used to configure the Ray Actors making up
             the pool. See :func:`ray.remote` for details.
+        cluster_resources_timeout: timeout in seconds to wait for cluster resources
+            to become available. Defaults to 0 (no waiting). When set to a positive
+            value, the Pool will retry checking for cluster resources until the
+            timeout is reached. This is useful when initializing a Pool immediately
+            after starting a Ray cluster, as it may take time for worker nodes to
+            report their resources to GCS.
     """
 
     def __init__(
@@ -581,6 +587,7 @@ class Pool:
         context: Any = None,
         ray_address: Optional[str] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        cluster_resources_timeout: float = 0,
     ):
         usage_lib.record_library_usage("util.multiprocessing.Pool")
 
@@ -602,10 +609,10 @@ class Pool:
                 "to control ray initialization."
             )
 
-        processes = self._init_ray(processes, ray_address)
+        processes = self._init_ray(processes, ray_address, cluster_resources_timeout)
         self._start_actor_pool(processes)
 
-    def _init_ray(self, processes=None, ray_address=None):
+    def _init_ray(self, processes=None, ray_address=None, cluster_resources_timeout=0):
         # Initialize ray. If ray is already initialized, we do nothing.
         # Else, the priority is:
         # ray_address argument > RAY_ADDRESS > start new local cluster.
@@ -628,7 +635,61 @@ class Pool:
             else:
                 ray.init(num_cpus=processes)
 
-        ray_cpus = int(ray._private.state.cluster_resources()["CPU"])
+        # Get cluster resources with optional retry logic
+        if cluster_resources_timeout <= 0:
+            # Original behavior: no retry, immediate check
+            cluster_resources = ray._private.state.cluster_resources()
+            if "CPU" not in cluster_resources:
+                raise ValueError(
+                    "No CPU resources found in the Ray cluster. "
+                    "The cluster may still be starting up. "
+                    "Consider setting cluster_resources_timeout to a positive value "
+                    "(e.g., 30.0) to wait for resources to become available."
+                )
+            ray_cpus = int(cluster_resources["CPU"])
+        else:
+            # Retry logic with timeout
+            start_time = time.time()
+            delay = 0.1  # Initial delay in seconds
+            max_delay = 2.0  # Maximum delay between retries
+            ray_cpus = None
+
+            while time.time() - start_time < cluster_resources_timeout:
+                cluster_resources = ray._private.state.cluster_resources()
+                if "CPU" in cluster_resources:
+                    current_cpus = int(cluster_resources["CPU"])
+                    # If processes is specified, we need to wait for enough CPUs
+                    if processes is not None:
+                        if current_cpus >= processes:
+                            ray_cpus = current_cpus
+                            break
+                    # If processes is None, we just need any CPUs (>0)
+                    elif current_cpus > 0:
+                        ray_cpus = current_cpus
+                        break
+
+                # Exponential backoff
+                time.sleep(delay)
+                delay = min(delay * 2, max_delay)
+
+            if ray_cpus is None:
+                # If we timed out, we should still try to get the current resources
+                # so the error message below can be accurate or we can catch the
+                # case where resources appeared just at the end.
+                cluster_resources = ray._private.state.cluster_resources()
+                if "CPU" in cluster_resources:
+                    ray_cpus = int(cluster_resources["CPU"])
+
+                # If still invalid, raise error with detailed info
+                if ray_cpus is None or (processes is not None and ray_cpus < processes):
+                    target_msg = f" >= {processes}" if processes is not None else " > 0"
+                    raise ValueError(
+                        f"Insufficient CPU resources found in the Ray cluster after waiting "
+                        f"{cluster_resources_timeout} seconds. Expected CPUs{target_msg}. "
+                        f"The cluster may still be starting up or there may be no worker "
+                        f"nodes available. Current CPUs: {ray_cpus}"
+                    )
+
         if processes is None:
             processes = ray_cpus
         if processes <= 0:
