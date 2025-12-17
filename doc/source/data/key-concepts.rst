@@ -88,7 +88,7 @@ Ray Data can leverage a *streaming execution model* to efficiently process large
 
 This means that different operators in an execution can be scaled independently while running concurrently, allowing for more flexible and fine-grained resource allocation. For example, if two map operators require different amounts or types of resources, the streaming execution model can allow them to run concurrently and independently while still maintaining high performance.
 
-Note that this is primarily useful for non-shuffle operations. Shuffle operations like :meth:`ds.sort() <ray.data.Dataset.sort>` and :meth:`ds.groupby() <ray.data.Dataset.groupby>` require materializing data, which will stop streaming until the shuffle is complete.
+Note that this is primarily useful for non-shuffle operations. Shuffle operations like :meth:`ds.sort() <ray.data.Dataset.sort>` and :meth:`ds.groupby() <ray.data.Dataset.groupby>` require materializing data, which stops streaming until the shuffle is complete.
 
 Here is an example of how the streaming execution works in Ray Data.
 
