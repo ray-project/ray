@@ -2,9 +2,9 @@ build_arg_sets:
   cpu:
     PYTHON_VERSION: py311
     CUDA_CODE: cpu
-  cu128:
+  cu129:
     PYTHON_VERSION: py311
-    CUDA_CODE: cu128
+    CUDA_CODE: cu129
 
 
 .common_settings: &common_settings
@@ -15,7 +15,7 @@ build_arg_sets:
     - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
   build_arg_sets:
     - cpu
-    - cu128
+    - cu129
 
 depsets:
 # First, extract base test dependencies from the current compiled mono repo one.

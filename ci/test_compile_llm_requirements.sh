@@ -14,7 +14,7 @@ echo "Created temporary directory: $TEMP_DIR"
 
 # Create backup copies of req files to reference to
 LOCK_TYPES=(rayllm_test ray_test ray rayllm)
-VARIANTS=(cpu cu121 cu128)
+VARIANTS=(cpu cu121 cu129)
 
 for LOCK_TYPE in "${LOCK_TYPES[@]}"; do
     for VARIANT in "${VARIANTS[@]}"; do

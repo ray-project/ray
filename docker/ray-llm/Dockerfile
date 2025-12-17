@@ -16,8 +16,8 @@ set -euo pipefail
 
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
 
-# ray-llm image only support cuda 12.8
-CUDA_CODE=cu128
+# ray-llm image only support cuda 12.9
+CUDA_CODE=cu129
 
 if [[ "${PYTHON_CODE}" != "py311" ]]; then
     echo "ray-llm only support Python 3.11 now (this image is for ${PYTHON_CODE})."
