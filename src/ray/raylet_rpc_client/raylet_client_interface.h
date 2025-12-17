@@ -174,7 +174,8 @@ class RayletClientInterface {
       uint64_t metadata_size,
       void *data,
       void *metadata,
-      const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) = 0;
+      const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback,
+      int64_t timeout_ms = -1) = 0;
 
   /// Get the system config from Raylet.
   /// \param callback Callback that will be called after raylet replied the system config.

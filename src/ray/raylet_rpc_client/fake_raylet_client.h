@@ -235,13 +235,13 @@ class FakeRayletClient : public RayletClientInterface {
       const ObjectID &reader_object_id,
       const ClientCallback<RegisterMutableObjectReply> &callback) override {}
 
-  void PushMutableObject(
-      const ObjectID &writer_object_id,
-      uint64_t data_size,
-      uint64_t metadata_size,
-      void *data,
-      void *metadata,
-      const ClientCallback<PushMutableObjectReply> &callback) override {}
+  void PushMutableObject(const ObjectID &writer_object_id,
+                         uint64_t data_size,
+                         uint64_t metadata_size,
+                         void *data,
+                         void *metadata,
+                         const ClientCallback<PushMutableObjectReply> &callback,
+                         int64_t timeout_ms = -1) override {}
 
   void GetWorkerFailureCause(
       const LeaseID &lease_id,

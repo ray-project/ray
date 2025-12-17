@@ -14,6 +14,7 @@
 
 #include "ray/raylet_rpc_client/raylet_client.h"
 
+#include <atomic>
 #include <limits>
 #include <memory>
 #include <set>
@@ -166,7 +167,8 @@ void RayletClient::PushMutableObject(
     uint64_t metadata_size,
     void *data,
     void *metadata,
-    const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply> &callback) {
+    const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply> &callback,
+    int64_t timeout_ms) {
   // Ray sets the gRPC max payload size to ~512 MiB. We set the max chunk size to a
   // slightly lower value to allow extra padding just in case.
   uint64_t kMaxGrpcPayloadSize = RayConfig::instance().max_grpc_message_size() * 0.98;
@@ -176,6 +178,10 @@ void RayletClient::PushMutableObject(
   if (data_size % kMaxGrpcPayloadSize) {
     total_num_chunks++;
   }
+
+  // Use shared state to ensure callback is only invoked once across all chunks.
+  // Multiple chunks may fail, but the user should only receive one callback.
+  auto callback_invoked = std::make_shared<std::atomic<bool>>(false);
 
   for (uint64_t i = 0; i < total_num_chunks; i++) {
     rpc::PushMutableObjectRequest request;
@@ -195,21 +201,35 @@ void RayletClient::PushMutableObject(
 
     // Use retryable RPC call to handle failure recovery, retries, and timeout.
     // Each chunk is retried automatically on transient network errors.
-    INVOKE_RETRYABLE_RPC_CALL(
-        retryable_grpc_client_,
-        NodeManagerService,
-        PushMutableObject,
-        request,
-        [callback](const Status &status, rpc::PushMutableObjectReply &&reply) {
-          RAY_LOG_IF_ERROR(ERROR, status) << "Error pushing mutable object: " << status;
-          if (reply.done()) {
-            // The callback is only executed once the receiver node receives all chunks
-            // for the mutable object write.
-            callback(status, std::move(reply));
-          }
-        },
-        grpc_client_,
-        /*method_timeout_ms*/ -1);
+    auto lambda_callback = [callback, callback_invoked](
+                               const Status &status,
+                               rpc::PushMutableObjectReply &&reply) {
+      RAY_LOG_IF_ERROR(ERROR, status) << "Error pushing mutable object: " << status;
+
+      // Ensure callback is only invoked once across all chunks
+      bool expected = false;
+      bool should_invoke = false;
+
+      if (reply.done()) {
+        // Success case: all chunks received
+        should_invoke = callback_invoked->compare_exchange_strong(expected, true);
+      } else if (!status.ok()) {
+        // Error case: invoke on first failure only
+        should_invoke = callback_invoked->compare_exchange_strong(expected, true);
+      }
+      // Otherwise: intermediate chunk received successfully, waiting for more chunks.
+
+      if (should_invoke) {
+        callback(status, std::move(reply));
+      }
+    };
+    INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                              NodeManagerService,
+                              PushMutableObject,
+                              request,
+                              lambda_callback,
+                              grpc_client_,
+                              /*method_timeout_ms*/ timeout_ms);
   }
 }
 

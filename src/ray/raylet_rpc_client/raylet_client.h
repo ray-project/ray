@@ -82,13 +82,14 @@ class RayletClient : public RayletClientInterface {
       const ray::rpc::ClientCallback<ray::rpc::RegisterMutableObjectReply> &callback)
       override;
 
-  void PushMutableObject(const ObjectID &writer_object_id,
-                         uint64_t data_size,
-                         uint64_t metadata_size,
-                         void *data,
-                         void *metadata,
-                         const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply>
-                             &callback) override;
+  void PushMutableObject(
+      const ObjectID &writer_object_id,
+      uint64_t data_size,
+      uint64_t metadata_size,
+      void *data,
+      void *metadata,
+      const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply> &callback,
+      int64_t timeout_ms = -1) override;
 
   void ReportWorkerBacklog(
       const WorkerID &worker_id,
