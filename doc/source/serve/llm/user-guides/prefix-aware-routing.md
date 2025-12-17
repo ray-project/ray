@@ -50,7 +50,7 @@ The router maintains a distributed prefix tree actor that:
 
 The following example shows how to deploy an LLM with prefix-aware routing:
 
-```{literalinclude} ../../../../llm/doc_code/serve/prefix_aware_router/prefix_aware_example.py
+```{literalinclude} ../../../llm/doc_code/serve/prefix_aware_router/prefix_aware_example.py
 :start-after: __prefix_aware_example_start__
 :end-before: __prefix_aware_example_end__
 :language: python
