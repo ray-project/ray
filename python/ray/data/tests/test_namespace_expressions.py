@@ -623,11 +623,11 @@ def _make_nested_fixed_size_list_table() -> pa.Table:
     return pa.Table.from_arrays([fixed_nested], names=["features"])
 
 
-def test_list_to_list_fixed_size(ray_start_regular):
+def test_arr_to_list_fixed_size(ray_start_regular):
     table = _make_fixed_size_list_table()
     ds = ray.data.from_arrow(table)
 
-    result = ds.select(col("features").list.to_list().alias("features")).to_pandas()
+    result = ds.select(col("features").arr.to_list().alias("features")).to_pandas()
     expected = pd.DataFrame(
         [
             {"features": [1, 2]},
