@@ -13,6 +13,7 @@ steps:
     wanda: ci/docker/manylinux.wanda.yaml
     env:
       HOSTTYPE: "aarch64"
+      MANYLINUX_VERSION: "251216.3835fc5"
     instance_type: builder-arm64
 
   - name: ray-java-build-aarch64
@@ -25,6 +26,7 @@ steps:
     env:
       ARCH_SUFFIX: "-aarch64"
       HOSTTYPE: "aarch64"
+      MANYLINUX_VERSION: "251216.3835fc5"
     instance_type: builder-arm64
 
   - name: raycpubase-aarch64
@@ -127,6 +129,7 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: "-aarch64"
       HOSTTYPE: "aarch64"
+      MANYLINUX_VERSION: "251216.3835fc5"
     tags: release_wheels
     instance_type: builder-arm64
 

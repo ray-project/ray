@@ -8,3 +8,4 @@ steps:
     wanda: ci/docker/manylinux.wanda.yaml
     env:
       HOSTTYPE: "x86_64"
+      MANYLINUX_VERSION: "251216.3835fc5"
