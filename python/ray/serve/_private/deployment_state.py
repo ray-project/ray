@@ -2357,13 +2357,6 @@ class DeploymentState:
         Returns:
             bool: Whether the target state has changed.
         """
-
-        logger.info(f"Deploying deployment '{self._id}': {deployment_info.to_dict()}")
-        logger.info(
-            f"Current target state for deployment '{self._id}': "
-            f"{self._target_state.info.to_dict() if self._target_state.info is not None else None}"
-        )
-
         curr_deployment_info = self._target_state.info
         if curr_deployment_info is not None:
             # Redeploying should not reset the deployment's start time.
@@ -2393,6 +2386,12 @@ class DeploymentState:
         # is idempotent.
         if not deployment_settings_changed and not target_capacity_changed:
             return False
+
+        logger.debug(f"Deploying '{self._id}': {deployment_info.to_dict()}")
+        logger.debug(
+            f"Current target state for '{self._id}': "
+            f"{self._target_state.info.to_dict() if self._target_state.info is not None else None}"
+        )
 
         if deployment_info.deployment_config.autoscaling_config:
             target_num_replicas = self._autoscaling_state_manager.register_deployment(
