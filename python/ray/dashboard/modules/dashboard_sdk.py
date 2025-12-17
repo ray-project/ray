@@ -274,6 +274,7 @@ class SubmissionClient:
             r.raise_for_status()
 
             running_ray_version = r.json()["ray_version"]
+            self._server_ray_version = running_ray_version
             if packaging.version.parse(running_ray_version) < packaging.version.parse(
                 min_version
             ):
