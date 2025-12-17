@@ -3,6 +3,7 @@ import time
 from typing import Optional
 
 from ray._private import ray_constants
+from ray._raylet import GcsClient  # type: ignore[attr-defined]
 from ray.core.generated.common_pb2 import ErrorType, JobConfig
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
@@ -158,7 +159,7 @@ def cleanup_redis_storage(
 
 
 def get_node_info_with_retry(
-    gcs_client,
+    gcs_client: GcsClient,
     node_ip_address: str,
     timeout_s: float = 30,
     retry_interval_s: float = 1,

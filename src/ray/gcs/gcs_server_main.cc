@@ -112,6 +112,7 @@ int main(int argc, char *argv[]) {
   const std::string redis_username = FLAGS_redis_username;
   const bool retry_redis = FLAGS_retry_redis;
   const std::string node_ip_address = FLAGS_node_ip_address;
+  const std::string node_id_hex = FLAGS_node_id;
   const std::string session_name = FLAGS_session_name;
   const std::string session_dir = FLAGS_session_dir;
   gflags::ShutDownCommandLineFlags();
@@ -250,7 +251,6 @@ int main(int argc, char *argv[]) {
 #endif
   signals.async_wait(handler);
 
-  std::string node_id_hex = FLAGS_node_id;
   gcs_server.SetPortReadyCallback([session_dir, node_id_hex](int bound_port) {
     if (!session_dir.empty()) {
       auto node_id = ray::NodeID::FromHex(node_id_hex);
