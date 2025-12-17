@@ -14,10 +14,7 @@
 
 #include "ray/util/memory.h"
 
-<<<<<<< Updated upstream
-=======
 #include <algorithm>
->>>>>>> Stashed changes
 #include <condition_variable>
 #include <cstring>
 #include <deque>
@@ -60,12 +57,8 @@ class ParallelMemcopyThreadPool {
   void ParallelMemcpy(uint8_t *dst,
                       const uint8_t *src,
                       int64_t nbytes,
-<<<<<<< Updated upstream
-                      uintptr_t block_size);
-=======
                       uintptr_t block_size,
                       int num_threads);
->>>>>>> Stashed changes
 
  private:
   void WorkerLoop();
@@ -128,11 +121,6 @@ void ParallelMemcopyThreadPool::WorkerLoop() {
 void ParallelMemcopyThreadPool::ParallelMemcpy(uint8_t *dst,
                                                const uint8_t *src,
                                                int64_t nbytes,
-<<<<<<< Updated upstream
-                                               uintptr_t block_size) {
-  const size_t num_threads = workers_.size();
-  if (num_threads == 0) {
-=======
                                                uintptr_t block_size,
                                                int num_threads) {
   const size_t available_threads = workers_.size();
@@ -144,7 +132,6 @@ void ParallelMemcopyThreadPool::ParallelMemcpy(uint8_t *dst,
   size_t requested = static_cast<size_t>(num_threads);
   size_t threads_to_use = std::min(available_threads, requested);
   if (threads_to_use <= 1) {
->>>>>>> Stashed changes
     std::memcpy(dst, src, nbytes);
     return;
   }
@@ -152,28 +139,17 @@ void ParallelMemcopyThreadPool::ParallelMemcpy(uint8_t *dst,
   uint8_t *left = pointer_logical_and(src + block_size - 1, ~(block_size - 1));
   uint8_t *right = pointer_logical_and(src + nbytes, ~(block_size - 1));
   int64_t num_blocks = (right - left) / block_size;
-<<<<<<< Updated upstream
-  const int64_t thread_count = static_cast<int64_t>(num_threads);
-=======
   const int64_t thread_count = static_cast<int64_t>(threads_to_use);
->>>>>>> Stashed changes
   right = right - (num_blocks % thread_count) * block_size;
 
   int64_t chunk_size = (right - left) / thread_count;
   int64_t prefix = left - src;
   int64_t suffix = src + nbytes - right;
 
-<<<<<<< Updated upstream
-  auto completion = std::make_shared<MemcopyTaskCompletion>(num_threads);
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    for (size_t i = 0; i < num_threads; ++i) {
-=======
   auto completion = std::make_shared<MemcopyTaskCompletion>(threads_to_use);
   {
     std::lock_guard<std::mutex> lock(mutex_);
     for (size_t i = 0; i < threads_to_use; ++i) {
->>>>>>> Stashed changes
       uint8_t *task_dst = dst + prefix + i * chunk_size;
       const uint8_t *task_src = left + i * chunk_size;
       const int64_t copy_size = chunk_size;
@@ -253,11 +229,7 @@ void parallel_memcopy_with_pool(ParallelMemcopyThreadPool *pool,
     parallel_memcopy(dst, src, nbytes, block_size, num_threads);
     return;
   }
-<<<<<<< Updated upstream
-  pool->ParallelMemcpy(dst, src, nbytes, block_size);
-=======
   pool->ParallelMemcpy(dst, src, nbytes, block_size, num_threads);
->>>>>>> Stashed changes
 }
 
 }  // namespace ray

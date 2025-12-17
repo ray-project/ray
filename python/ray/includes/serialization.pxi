@@ -3,13 +3,8 @@ from libc.stdint cimport uintptr_t, uint64_t, INT32_MAX
 import contextlib
 import cython
 
-<<<<<<< Updated upstream
-DEF MEMCOPY_THREADS = 6
-cdef public int MEMCOPY_THREAD_COUNT = MEMCOPY_THREADS
-=======
 DEF MEMCOPY_THREADS_DEFAULT = 6
 cdef public int MEMCOPY_THREAD_COUNT = MEMCOPY_THREADS_DEFAULT
->>>>>>> Stashed changes
 
 # This is the default alignment value for len(buffer) < 2048.
 DEF kMinorBufferAlign = 8
@@ -485,11 +480,7 @@ cdef class Pickle5SerializedObject(SerializedObject):
     @cython.boundscheck(False)
     @cython.wraparound(False)
     cdef void write_to(self, uint8_t[:] buffer) nogil:
-<<<<<<< Updated upstream
-        self.writer.write_to(self.inband, buffer, MEMCOPY_THREADS,
-=======
         self.writer.write_to(self.inband, buffer, MEMCOPY_THREAD_COUNT,
->>>>>>> Stashed changes
                              self._memcopy_pool)
 
 
@@ -591,10 +582,6 @@ cdef class RawSerializedObject(SerializedObject):
                     self.value_ptr,
                     self._total_bytes,
                     kMemcopyDefaultBlocksize,
-<<<<<<< Updated upstream
-                    MEMCOPY_THREADS)
-=======
                     MEMCOPY_THREAD_COUNT)
->>>>>>> Stashed changes
             else:
                 memcpy(&buffer[0], self.value_ptr, self._total_bytes)
