@@ -75,6 +75,7 @@ depsets:
       - py310
       - py311
       - py312
+      - py313
 
   - name: ray_base_extra_testdeps_gpu_${PYTHON_SHORT}
     operation: expand

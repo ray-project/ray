@@ -253,7 +253,7 @@ install_pip_packages() {
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt")
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt")
     #TODO(amogkam): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
-    pip install --no-dependencies mlagents==0.28.0
+    pip install --no-dependencies mlagents==1.1.0
 
     # Install MuJoCo.
     sudo apt-get install -y libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf
