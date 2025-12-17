@@ -10,6 +10,7 @@ class TestMethodNumReturns:
 
     def test_num_returns_negative_raises_error(self, shutdown_only):
         """Test that num_returns < 0 raises ValueError at decoration time."""
+        # validate_num_returns checks for negative values and raises an error
         with pytest.raises(ValueError, match="num_returns must be >= 0"):
 
             @ray.remote

@@ -10,7 +10,9 @@ class TestRemoteNumReturns:
 
     def test_num_returns_negative_raises_error(self):
         """Test that num_returns < 0 raises ValueError at decoration time."""
-        with pytest.raises(ValueError, match="num_returns must be >= 0"):
+        # Option validation happens before validate_num_returns, so it raises
+        # a different error message, but still validates that negative values fail fast.
+        with pytest.raises(ValueError, match="non-negative integer"):
 
             @ray.remote(num_returns=-1)
             def f():
