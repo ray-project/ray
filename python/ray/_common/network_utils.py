@@ -5,7 +5,9 @@ from typing import Optional, Tuple, Union
 
 from ray._raylet import (
     build_address as _build_address,
+    get_localhost_ip as _get_localhost_ip,
     is_ipv6 as _is_ipv6,
+    is_localhost_address as _is_localhost_address,
     node_ip_address_from_perspective as _node_ip_address_from_perspective,
     parse_address as _parse_address,
 )
@@ -70,18 +72,7 @@ def get_localhost_ip() -> str:
     Returns:
         The localhost loopback IP.
     """
-    # Try IPv4 first, then IPv6 localhost resolution
-    for family in [socket.AF_INET, socket.AF_INET6]:
-        try:
-            dns_result = socket.getaddrinfo(
-                "localhost", None, family, socket.SOCK_STREAM
-            )
-            return dns_result[0][4][0]
-        except Exception:
-            continue
-
-    # Final fallback to IPv4 loopback
-    return "127.0.0.1"
+    return _get_localhost_ip()
 
 
 def is_localhost(host: str) -> bool:
@@ -93,7 +84,7 @@ def is_localhost(host: str) -> bool:
     Returns:
         True if the host is a localhost address, False otherwise.
     """
-    return host in ("localhost", "127.0.0.1", "::1")
+    return _is_localhost_address(host)
 
 
 def find_free_port(family: socket.AddressFamily = socket.AF_INET) -> int:

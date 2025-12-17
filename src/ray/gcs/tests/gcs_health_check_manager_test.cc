@@ -90,9 +90,10 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
     auto node_id = NodeID::FromRandom();
     auto port = GetFreePort();
     RAY_LOG(INFO) << "Get port " << port;
-    auto server = std::make_shared<rpc::GrpcServer>(node_id.Hex(), port, true);
+    auto server =
+        std::make_shared<rpc::GrpcServer>(node_id.Hex(), port, GetLocalhostIp());
 
-    auto channel = grpc::CreateChannel(BuildAddress("localhost", port),
+    auto channel = grpc::CreateChannel(BuildAddress(GetLocalhostIp(), port),
                                        grpc::InsecureChannelCredentials());
     server->Run();
     if (alive) {

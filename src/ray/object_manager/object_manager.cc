@@ -87,7 +87,9 @@ ObjectManager::ObjectManager(
       rpc_service_(rpc_service),
       object_manager_server_("ObjectManager",
                              config_.object_manager_port,
-                             config_.object_manager_address == "127.0.0.1",
+                             IsLocalhostAddress(config_.object_manager_address)
+                                 ? GetLocalhostIp()
+                                 : config_.object_manager_address,
                              config_.rpc_service_threads_number),
       client_call_manager_(main_service,
                            /*record_stats=*/true,
