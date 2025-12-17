@@ -366,7 +366,8 @@ class ServerCallImpl : public ServerCall {
     }
 
     const std::string_view header(it->second.data(), it->second.length());
-    return ray::rpc::AuthenticationTokenValidator::instance().ValidateToken(auth_token_, header);
+    return ray::rpc::AuthenticationTokenValidator::instance().ValidateToken(auth_token_,
+                                                                            header);
   }
 
   /// Log the duration this query used
