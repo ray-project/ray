@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, List
 
 from ray.llm._internal.serve.utils.broadcast import broadcast
@@ -19,5 +20,7 @@ class ReplicaBroadcastable:
         """
         model_id = await self._get_model_id(model)
         handle = self._get_configured_serve_handle(model_id)
-        results = broadcast(handle, method, kwargs=kwargs)
+        # Run blocking broadcast() in a thread to avoid blocking the event loop.
+        # broadcast() uses ray.get() internally which is synchronous.
+        results = await asyncio.to_thread(broadcast, handle, method, kwargs=kwargs)
         return results
