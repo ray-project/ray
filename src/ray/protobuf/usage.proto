@@ -210,7 +210,9 @@ enum TagKey {
   // Train V2 Trainer name (e.g. "TorchTrainer")
   TRAIN_TRAINER = 521;
 
+  // The checkpoint upload mode ("ASYNC", "SYNC", "NO_UPLOAD").
   TRAIN_CHECKPOINT_MODE = 522;
+  // Whether or not asynchronous validation is used ("1" if used).
   TRAIN_ASYNCHRONOUS_VALIDATION = 523;
 
   // LLM Serve
