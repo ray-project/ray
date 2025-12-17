@@ -17,8 +17,8 @@ from ray._private import (
     tensor_serialization_utils,
 )
 from ray._raylet import (
-    DynamicObjectRefGenerator,
     MEMCOPY_THREAD_COUNT,
+    DynamicObjectRefGenerator,
     MessagePackSerializedObject,
     MessagePackSerializer,
     Pickle5SerializedObject,
