@@ -798,9 +798,7 @@ class ArrowTensorArray(pa.ExtensionArray):
             #       arrays. Convert the entire array to scalar dtype through PyArrow,
             #       which handles None -> null -> nan conversion.
             original_shape = arr.shape
-            arr = (
-                _ensure_scalar_ndarray(arr).reshape(original_shape)
-            )
+            arr = _ensure_scalar_ndarray(arr).reshape(original_shape)
 
         if not arr.flags.c_contiguous:
             # We only natively support C-contiguous ndarrays.
@@ -1356,11 +1354,7 @@ def _ensure_scalar_ndarray(a: np.ndarray) -> np.ndarray:
     #       to appropriately handle type conversions
     if a.dtype == np.object_:
         shape = a.shape
-        a = (
-            pa.array(np.ravel(a))
-                .to_numpy(zero_copy_only=False)
-                .reshape(shape)
-        )
+        a = pa.array(np.ravel(a)).to_numpy(zero_copy_only=False).reshape(shape)
 
     return a
 

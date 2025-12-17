@@ -61,31 +61,21 @@ def test_tensor_array_validation():
 
 def test_pandas_to_arrow_fixed_shape_tensor_conversion():
     # First, convert Pandas serise w/ nulls to numpy
-    array = (
-        pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype)
-            .to_numpy()
-            .reshape((2, 2))
-    )
+    array = pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype).to_numpy().reshape((2, 2))
 
     input_tensor = np.stack([array, array])
 
     pa_tensor = ArrowTensorArray.from_numpy(input_tensor)
     res_tensor = pa_tensor.to_numpy()
 
-    np.testing.assert_array_equal(
-        res_tensor,
-        np.stack([array.astype(np.float64)] * 2)
-    )
+    np.testing.assert_array_equal(res_tensor, np.stack([array.astype(np.float64)] * 2))
 
 
 def test_pandas_to_arrow_var_shape_tensor_conversion():
     # First, convert Pandas serise w/ nulls to numpy
     array = pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype).to_numpy()
 
-    input_tensor = create_ragged_ndarray([
-        array.reshape(1, 4),
-        array.reshape((2, 2))
-    ])
+    input_tensor = create_ragged_ndarray([array.reshape(1, 4), array.reshape((2, 2))])
 
     # For ragged arrays, we need to convert each element individually
     expeted_np_tensor = create_ragged_ndarray(
@@ -197,9 +187,7 @@ def test_arrow_variable_shaped_tensor_array_validation(
         )
 
 
-def test_arrow_variable_shaped_tensor_array_roundtrip(
-    restore_data_context
-):
+def test_arrow_variable_shaped_tensor_array_roundtrip(restore_data_context):
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
@@ -218,9 +206,7 @@ def test_arrow_variable_shaped_tensor_array_roundtrip(
         np.testing.assert_array_equal(o, a)
 
 
-def test_arrow_variable_shaped_tensor_array_roundtrip_boolean(
-    restore_data_context
-):
+def test_arrow_variable_shaped_tensor_array_roundtrip_boolean(restore_data_context):
     arr = np.array(
         [[True, False], [False, False, True], [False], [True, True, False, True]],
         dtype=object,
@@ -234,7 +220,7 @@ def test_arrow_variable_shaped_tensor_array_roundtrip_boolean(
 
 
 def test_arrow_variable_shaped_tensor_array_roundtrip_contiguous_optimization(
-    restore_data_context
+    restore_data_context,
 ):
     # Test that a roundtrip on slices of an already-contiguous 1D base array does not
     # create any unnecessary copies.
@@ -285,9 +271,7 @@ def test_arrow_variable_shaped_tensor_array_slice(restore_data_context):
             np.testing.assert_array_equal(o, e)
 
 
-def test_arrow_variable_shaped_bool_tensor_array_slice(
-    restore_data_context
-):
+def test_arrow_variable_shaped_bool_tensor_array_slice(restore_data_context):
     arr = np.array(
         [
             [True],
@@ -323,9 +307,7 @@ def test_arrow_variable_shaped_bool_tensor_array_slice(
             np.testing.assert_array_equal(o, e)
 
 
-def test_arrow_variable_shaped_string_tensor_array_slice(
-    restore_data_context
-):
+def test_arrow_variable_shaped_string_tensor_array_slice(restore_data_context):
     arr = np.array(
         [
             ["Philip", "J", "Fry"],
