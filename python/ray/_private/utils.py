@@ -520,7 +520,8 @@ def get_cgroup_used_memory(
     return cgroup_usage_in_bytes - inactive_file_bytes - active_file_bytes
 
 
-def get_configured_object_store_memory(
+def resolve_object_store_memory(
+    available_memory: int,
     object_store_memory: Optional[int] = None,
 ) -> int:
     """Resolve the object store memory size.
@@ -529,28 +530,13 @@ def get_configured_object_store_memory(
     the provided value or calculates a default based on available system memory.
 
     Args:
+        available_memory: The memory available for this raylet.
         object_store_memory: The user-specified object store memory size in bytes.
             If None, a default size will be calculated.
 
     Returns:
         The resolved object store memory size in bytes.
     """
-    if object_store_memory is not None:
-        return object_store_memory
-
-    avail_memory = estimate_available_memory()
-    object_store_memory = int(
-        avail_memory * ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
-    )
-
-    # Set the object_store_memory size to 2GB on Mac
-    # to avoid degraded performance.
-    # (https://github.com/ray-project/ray/issues/20388)
-    if sys.platform == "darwin":
-        object_store_memory = min(
-            object_store_memory, ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT
-        )
-
     object_store_memory_cap = ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
 
     # Cap by shm size by default to avoid low performance, but don't
@@ -563,8 +549,22 @@ def get_configured_object_store_memory(
 
         object_store_memory_cap = min(object_store_memory_cap, shm_cap)
 
+    # Derive default object store memory if not specified
+    if object_store_memory is None:
+        object_store_memory = int(
+            available_memory * ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+        )
+
+        # Set the object_store_memory size to 2GB on Mac
+        # to avoid degraded performance.
+        # (https://github.com/ray-project/ray/issues/20388)
+        if sys.platform == "darwin":
+            object_store_memory = min(
+                object_store_memory, ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT
+            )
+
     # Cap memory to avoid memory waste and perf issues on large nodes
-    if object_store_memory_cap and object_store_memory > object_store_memory_cap:
+    if object_store_memory > object_store_memory_cap:
         logger.debug(
             "Warning: Capping object memory store to {}GB. ".format(
                 object_store_memory_cap // 1e9

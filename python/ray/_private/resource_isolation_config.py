@@ -58,6 +58,7 @@ class ResourceIsolationConfig:
                 for ray system processes. Must be >= ray_constants.MINIMUM_SYSTEM_RESERVED_MEMORY_BYTES
                 and system_reserved_memory + object_store_memory < the total memory available.
             object_store_memory: The amount of memory in bytes reserved for the object store.
+                Must be not None when resource isolation is enabled.
         """
         self._resource_isolation_enabled = enable_resource_isolation
         self.cgroup_path = cgroup_path
@@ -89,14 +90,15 @@ class ResourceIsolationConfig:
                 )
             return
 
+        if object_store_memory is None:
+            raise ValueError(
+                "object_store_memory must be resolved before creating a ResourceIsolationConfig."
+                "when resource isolation is enabled."
+            )
+
         self.system_reserved_cpu_weight = self._validate_and_get_system_reserved_cpu(
             system_reserved_cpu
         )
-
-        if object_store_memory is None:
-            object_store_memory = (
-                ray._private.utils.get_configured_object_store_memory()
-            )
 
         self.system_reserved_memory = self._validate_and_get_system_reserved_memory(
             system_reserved_memory, object_store_memory

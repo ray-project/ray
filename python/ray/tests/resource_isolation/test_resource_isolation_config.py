@@ -40,24 +40,43 @@ def test_disabled_resource_isolation_with_overrides_raises_value_error():
 def test_enabled_resource_isolation_with_non_string_cgroup_path_raises_value_error():
 
     with pytest.raises(ValueError, match="Invalid value.*for cgroup_path"):
-        ResourceIsolationConfig(enable_resource_isolation=True, cgroup_path=1)
+        ResourceIsolationConfig(
+            enable_resource_isolation=True, cgroup_path=1, object_store_memory=0
+        )
 
     with pytest.raises(ValueError, match="Invalid value.*for cgroup_path"):
-        ResourceIsolationConfig(enable_resource_isolation=True, cgroup_path=1.0)
+        ResourceIsolationConfig(
+            enable_resource_isolation=True, cgroup_path=1.0, object_store_memory=0
+        )
 
 
 def test_enabled_resource_isolation_with_non_number_reserved_cpu_raises_value_error():
 
     with pytest.raises(ValueError, match="Invalid value.*for system_reserved_cpu."):
-        ResourceIsolationConfig(enable_resource_isolation=True, system_reserved_cpu="1")
+        ResourceIsolationConfig(
+            enable_resource_isolation=True,
+            system_reserved_cpu="1",
+            object_store_memory=0,
+        )
 
 
 def test_enabled_resource_isolation_with_non_number_reserved_memory_raises_value_error():
 
     with pytest.raises(ValueError, match="Invalid value.*for system_reserved_memory."):
         ResourceIsolationConfig(
-            enable_resource_isolation=True, system_reserved_memory="1"
+            enable_resource_isolation=True,
+            system_reserved_memory="1",
+            object_store_memory=0,
         )
+
+
+def test_enabled_resource_isolation_with_no_object_store_memory_raises_value_error():
+
+    with pytest.raises(
+        ValueError,
+        match="object_store_memory must be resolved before creating a ResourceIsolationConfig.",
+    ):
+        ResourceIsolationConfig(enable_resource_isolation=True)
 
 
 def test_enabled_default_config_with_insufficient_cpu_and_memory_raises_value_error(
@@ -177,14 +196,20 @@ def test_enabled_with_resource_overrides_less_than_minimum_defaults_raise_value_
         ValueError,
         match="The requested system_reserved_cpu=0.5 is less than the minimum number of cpus that can be used for resource isolation.",
     ):
-        ResourceIsolationConfig(enable_resource_isolation=True, system_reserved_cpu=0.5)
+        ResourceIsolationConfig(
+            enable_resource_isolation=True,
+            system_reserved_cpu=0.5,
+            object_store_memory=0,
+        )
 
     with pytest.raises(
         ValueError,
         match="The requested system_reserved_memory 4194304 is less than the minimum number of bytes that can be used for resource isolation.",
     ):
         ResourceIsolationConfig(
-            enable_resource_isolation=True, system_reserved_memory=4 * (1024**2)
+            enable_resource_isolation=True,
+            system_reserved_memory=4 * (1024**2),
+            object_store_memory=0,
         )
 
 
@@ -200,7 +225,11 @@ def test_enabled_with_resource_overrides_gte_than_available_resources_raise_valu
         ValueError,
         match="The requested system_reserved_cpu=32.0 is greater than or equal to the number of cpus available=32",
     ):
-        ResourceIsolationConfig(enable_resource_isolation=True, system_reserved_cpu=32)
+        ResourceIsolationConfig(
+            enable_resource_isolation=True,
+            system_reserved_cpu=32,
+            object_store_memory=0,
+        )
 
     monkeypatch.setattr(
         common_utils, "get_system_memory", lambda *args, **kwargs: 10 * (1024**3)

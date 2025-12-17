@@ -1653,14 +1653,6 @@ def init(
     # Fix for https://github.com/ray-project/ray/issues/26729
     _skip_env_hook: bool = kwargs.pop("_skip_env_hook", False)
 
-    resource_isolation_config = ResourceIsolationConfig(
-        enable_resource_isolation=enable_resource_isolation,
-        cgroup_path=_cgroup_path,
-        system_reserved_cpu=system_reserved_cpu,
-        system_reserved_memory=system_reserved_memory,
-        object_store_memory=object_store_memory,
-    )
-
     # terminate any signal before connecting driver
     def sigterm_handler(signum, frame):
         sys.exit(signum)
@@ -1869,6 +1861,19 @@ def init(
         else:
             usage_lib.set_usage_stats_enabled_via_env_var(False)
 
+        available_memory = ray._private.utils.estimate_available_memory()
+        object_store_memory = ray._private.utils.resolve_object_store_memory(
+            available_memory, object_store_memory
+        )
+
+        resource_isolation_config = ResourceIsolationConfig(
+            enable_resource_isolation=enable_resource_isolation,
+            cgroup_path=_cgroup_path,
+            system_reserved_cpu=system_reserved_cpu,
+            system_reserved_memory=system_reserved_memory,
+            object_store_memory=object_store_memory,
+        )
+
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=_node_ip_address,
@@ -1889,6 +1894,7 @@ def init(
             dashboard_host=dashboard_host,
             dashboard_port=dashboard_port,
             memory=_memory,
+            available_memory=available_memory,
             object_store_memory=object_store_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
