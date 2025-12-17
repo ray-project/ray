@@ -202,7 +202,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
 
   gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(std::move(inner_publisher));
   metrics_agent_client_ = std::make_unique<rpc::MetricsAgentClientImpl>(
-      "127.0.0.1",
+      GetLocalhostIp(),
       config_.metrics_agent_port,
       io_context_provider_.GetDefaultIOContext(),
       client_call_manager_);

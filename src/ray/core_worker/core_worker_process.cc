@@ -834,8 +834,11 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     auto write_locked = core_worker_.LockForWrite();
     write_locked.Get() = worker;
     // Initialize metrics agent client.
-    metrics_agent_client_ = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
-        "127.0.0.1", options_.metrics_agent_port, io_service_, *client_call_manager_);
+    metrics_agent_client_ =
+        std::make_unique<ray::rpc::MetricsAgentClientImpl>(GetLocalhostIp(),
+                                                           options_.metrics_agent_port,
+                                                           io_service_,
+                                                           *client_call_manager_);
     metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
       if (server_status.ok()) {
         stats::InitOpenTelemetryExporter(options_.metrics_agent_port);

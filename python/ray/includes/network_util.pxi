@@ -59,9 +59,5 @@ def is_localhost_address(host: str) -> bool:
 
 
 def get_localhost_ip() -> str:
-    """Get localhost loopback IP with IPv4/IPv6 support.
-
-    Returns the localhost loopback IP ("127.0.0.1" or "::1").
-    """
     cdef string result = GetLocalhostIp()
     return result.decode('utf-8')

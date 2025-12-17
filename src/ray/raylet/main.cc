@@ -1023,7 +1023,7 @@ int main(int argc, char *argv[]) {
         {ray::stats::SessionNameKey, session_name}};
     ray::stats::Init(global_tags, metrics_agent_port, ray::WorkerID::Nil());
     metrics_agent_client = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
-        "127.0.0.1", metrics_agent_port, main_service, *client_call_manager);
+        GetLocalhostIp(), metrics_agent_port, main_service, *client_call_manager);
     metrics_agent_client->WaitForServerReady([metrics_agent_port](
                                                  const ray::Status &server_status) {
       if (server_status.ok()) {

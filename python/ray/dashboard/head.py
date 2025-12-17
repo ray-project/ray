@@ -444,7 +444,7 @@ class DashboardHead:
             logger.info("http server disabled.")
 
         # We need to expose dashboard's node's ip for other worker nodes
-        # if it's listening to all interfaces.
+        # if it's configured for cross-node access.
         dashboard_http_host = self.ip if not is_localhost(self.http_host) else http_host
         # This synchronous code inside an async context is not great.
         # It is however acceptable, because this only gets run once

@@ -1074,7 +1074,7 @@ def list_objects(
         address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
-            the filter value. E.g., `("ip", "=", "0.0.0.0")`
+            the filter value. E.g., `("ip", "=", "192.168.1.1")`
             String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.

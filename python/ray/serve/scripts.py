@@ -861,7 +861,7 @@ def build(
     deploy_config = {
         "proxy_location": "EveryNode",
         "http_options": {
-            "host": "0.0.0.0",
+            "host": DEFAULT_HTTP_HOST,
             "port": 8000,
         },
         "grpc_options": {
@@ -903,7 +903,7 @@ class ServeDeploySchemaDumper(yaml.SafeDumper):
     proxy_location: EveryNode
 
     http_options:
-      host: 0.0.0.0
+      host: 127.0.0.1  # or ::1 for IPv6
       port: 8000
 
     grpc_options:
