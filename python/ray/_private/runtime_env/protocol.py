@@ -221,7 +221,29 @@ class ProtocolsProvider:
         keeps behaviour consistent with tools such as `wget` or `curl`.
         """
 
-        request = urllib.request.Request(source_uri, headers=cls._http_headers())
+        headers = cls._http_headers()
+
+        # Prefer smart_open so we get consistent redirect/cert handling with the
+        # rest of our remote protocols.  Fall back to urllib if it is not
+        # available so HTTPS downloads keep working without extra deps.
+        try:
+            from smart_open import open as smart_open_open
+        except ImportError:
+            smart_open_open = None
+
+        if smart_open_open is not None:
+            with smart_open_open(
+                source_uri,
+                "rb",
+                transport_params={
+                    "headers": headers,
+                    "timeout": 60,
+                },
+            ) as fin, open(dest_file, "wb") as fout:
+                shutil.copyfileobj(fin, fout)
+            return
+
+        request = urllib.request.Request(source_uri, headers=headers)
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
                 with open(dest_file, "wb") as fout:

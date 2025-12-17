@@ -6,6 +6,7 @@ import socket
 import string
 import sys
 import tempfile
+import types
 import uuid
 import zipfile
 from filecmp import dircmp
@@ -799,6 +800,8 @@ def test_https_downloader_sets_curl_user_agent(tmp_path, monkeypatch):
         captured_headers.update(headers)
         return DummyResponse(payload)
 
+    # Force smart_open import to fail so we exercise the urllib fallback.
+    monkeypatch.setitem(sys.modules, "smart_open", None)
     monkeypatch.setattr(
         "ray._private.runtime_env.protocol.urllib.request.urlopen", fake_urlopen
     )
@@ -811,6 +814,45 @@ def test_https_downloader_sets_curl_user_agent(tmp_path, monkeypatch):
     assert dest_file.read_bytes() == payload
     assert "curl" in captured_headers["user-agent"].lower()
     assert captured_headers["accept"] == "*/*"
+
+
+def test_https_downloader_uses_smart_open_headers(tmp_path, monkeypatch):
+    payload = b"dummy-zip-content"
+    captured = {}
+
+    class DummyResponse(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            self.close()
+
+    def fake_open(uri, mode, transport_params=None):
+        captured["uri"] = uri
+        captured["mode"] = mode
+        captured["transport_params"] = transport_params
+        return DummyResponse(payload)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "smart_open",
+        types.SimpleNamespace(open=fake_open),
+    )
+
+    dest_file = tmp_path / "downloaded_via_smart_open.zip"
+    ProtocolsProvider._download_https_uri(
+        "https://example.com/test.zip", str(dest_file)
+    )
+
+    assert dest_file.read_bytes() == payload
+    assert captured["uri"] == "https://example.com/test.zip"
+    assert captured["mode"] == "rb"
+    tp = captured["transport_params"]
+    assert tp is not None
+    assert "headers" in tp
+    assert tp["headers"]["User-Agent"].startswith("ray-runtime-env-curl")
+    assert tp["headers"]["Accept"] == "*/*"
+    assert tp["timeout"] == 60
 
 
 @pytest.mark.asyncio
