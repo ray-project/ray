@@ -6,11 +6,7 @@ they will be upstreamed to vLLM.
 
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, Union
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-)
+from pydantic import BaseModel, ConfigDict, Field
 from vllm.entrypoints.openai.protocol import (
     ChatCompletionRequest as vLLMChatCompletionRequest,
     ChatCompletionResponse as vLLMChatCompletionResponse,
@@ -63,15 +59,6 @@ class ErrorResponse(vLLMErrorResponse):
 class CompletionRequest(vLLMCompletionRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    request_id: str = Field(
-        default_factory=lambda: f"{random_uuid()}",
-        description=(
-            "The request_id related to this request. If the caller does "
-            "not set it, a random_uuid will be generated. This id is used "
-            "through out the inference process and return in response."
-        ),
-    )
-
 
 class CompletionResponse(vLLMCompletionResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -84,15 +71,6 @@ class CompletionStreamResponse(vLLMCompletionStreamResponse):
 # TODO (Kourosh): Upstream
 class EmbeddingCompletionRequest(vLLMEmbeddingCompletionRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    request_id: str = Field(
-        default_factory=lambda: f"{random_uuid()}",
-        description=(
-            "The request_id related to this request. If the caller does "
-            "not set it, a random_uuid will be generated. This id is used "
-            "through out the inference process and return in response."
-        ),
-    )
 
 
 class EmbeddingChatRequest(vLLMEmbeddingChatRequest):
@@ -236,3 +214,44 @@ def to_model_metadata(
         permission=[],
         metadata=metadata,
     )
+
+
+# Control Plane Request/Response Models (engine-agnostic)
+
+
+class SleepRequest(BaseModel):
+    """Request to put an engine to sleep."""
+
+    model: str
+    options: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Engine-specific sleep options (e.g., level for vLLM)",
+    )
+
+
+class WakeupRequest(BaseModel):
+    """Request to wake up an engine from sleep."""
+
+    model: str
+    options: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Engine-specific wakeup options (e.g., tags for vLLM)",
+    )
+
+
+class IsSleepingRequest(BaseModel):
+    """Request to check if an engine is sleeping."""
+
+    model: str
+
+
+class IsSleepingResponse(BaseModel):
+    """Response indicating whether the engine is sleeping."""
+
+    is_sleeping: bool
+
+
+class ResetPrefixCacheRequest(BaseModel):
+    """Request to reset the prefix cache."""
+
+    model: str
