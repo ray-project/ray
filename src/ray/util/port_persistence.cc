@@ -34,22 +34,31 @@ Status PersistPort(const std::string &dir,
   return WriteFile(file_path, std::to_string(port));
 }
 
-StatusOr<int> WaitForPersistedPort(const std::string &dir,
-                                   const NodeID &node_id,
-                                   const std::string &port_name,
-                                   int timeout_ms,
-                                   int poll_interval_ms) {
+StatusSetOr<int, StatusT::IOError, StatusT::TimedOut, StatusT::Invalid>
+WaitForPersistedPort(const std::string &dir,
+                     const NodeID &node_id,
+                     const std::string &port_name,
+                     int timeout_ms,
+                     int poll_interval_ms) {
+  using RetType = StatusSetOr<int, StatusT::IOError, StatusT::TimedOut, StatusT::Invalid>;
   std::string file_name = GetPortFileName(node_id, port_name);
   std::string file_path = (std::filesystem::path(dir) / file_name).string();
   auto result = WaitForFile(file_path, timeout_ms, poll_interval_ms);
-  if (!result.ok()) {
-    return result.status();
+  if (result.has_error()) {
+    return std::visit(overloaded{[](const StatusT::IOError &e) -> RetType {
+                                   return StatusT::IOError(e.message());
+                                 },
+                                 [](const StatusT::TimedOut &e) -> RetType {
+                                   return StatusT::TimedOut(e.message());
+                                 }},
+                      result.error());
   }
 
   try {
-    return std::stoi(*result);
+    return std::stoi(result.value());
   } catch (const std::exception &e) {
-    return Status::Invalid("Invalid port value in file " + file_path + ": " + *result);
+    return StatusT::Invalid("Invalid port value in file " + file_path + ": " +
+                            result.value());
   }
 }
 

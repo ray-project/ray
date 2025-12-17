@@ -45,9 +45,8 @@ Status WriteFile(const std::string &file_path, const std::string &value) {
   return Status::OK();
 }
 
-StatusOr<std::string> WaitForFile(const std::string &file_path,
-                                  int timeout_ms,
-                                  int poll_interval_ms) {
+StatusSetOr<std::string, StatusT::IOError, StatusT::TimedOut> WaitForFile(
+    const std::string &file_path, int timeout_ms, int poll_interval_ms) {
   auto start = std::chrono::steady_clock::now();
   while (true) {
     if (std::filesystem::exists(file_path)) {
@@ -59,14 +58,14 @@ StatusOr<std::string> WaitForFile(const std::string &file_path,
         if (!file.fail()) {
           return content;
         }
-        return Status::IOError("Failed to read file: " + file_path);
+        return StatusT::IOError("Failed to read file: " + file_path);
       }
     }
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                        std::chrono::steady_clock::now() - start)
                        .count();
     if (elapsed >= timeout_ms) {
-      return Status::TimedOut("Timed out waiting for file " + file_path);
+      return StatusT::TimedOut("Timed out waiting for file " + file_path);
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(poll_interval_ms));
   }

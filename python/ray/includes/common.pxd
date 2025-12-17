@@ -152,6 +152,26 @@ cdef extern from "ray/common/status_or.h" namespace "ray" nogil:
         const CRayStatus &status() const
         T &value()
 
+cdef extern from "ray/common/status.h" namespace "ray::StatusT" nogil:
+    cdef cppclass CStatusTIOError "ray::StatusT::IOError":
+        CStatusTIOError(const c_string &msg)
+        c_string message() const
+
+    cdef cppclass CStatusTTimedOut "ray::StatusT::TimedOut":
+        CStatusTTimedOut(const c_string &msg)
+        c_string message() const
+
+    cdef cppclass CStatusTInvalid "ray::StatusT::Invalid":
+        CStatusTInvalid(const c_string &msg)
+        c_string message() const
+
+cdef extern from "ray/common/status.h" namespace "ray" nogil:
+    cdef cppclass CWaitForPersistedPortResult "ray::StatusSetOr<int, ray::StatusT::IOError, ray::StatusT::TimedOut, ray::StatusT::Invalid>":
+        c_bool has_value()
+        c_bool has_error()
+        int &value()
+        c_string message()
+
 cdef extern from "ray/util/port_persistence.h" namespace "ray" nogil:
     c_string GetPortFileName "ray::GetPortFileName"(
         const CNodeID &node_id,
@@ -161,7 +181,7 @@ cdef extern from "ray/util/port_persistence.h" namespace "ray" nogil:
         const CNodeID &node_id,
         const c_string &port_name,
         int port)
-    CStatusOr[int] WaitForPersistedPort "ray::WaitForPersistedPort"(
+    CWaitForPersistedPortResult WaitForPersistedPort "ray::WaitForPersistedPort"(
         const c_string &dir,
         const CNodeID &node_id,
         const c_string &port_name,

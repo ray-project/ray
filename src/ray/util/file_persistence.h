@@ -48,12 +48,11 @@ Status WriteFile(const std::string &file_path, const std::string &value);
   @param poll_interval_ms Interval between filesystem checks in milliseconds.
          Defaults to 100.
 
-  @return StatusOr containing the file content if successful.
-  @return Status::IOError if the file exists but cannot be read.
-  @return Status::TimedOut if the file does not appear within the timeout period.
+  @return The file content if successful.
+  @return StatusT::IOError if the file exists but cannot be read.
+  @return StatusT::TimedOut if the file does not appear within the timeout period.
 */
-StatusOr<std::string> WaitForFile(const std::string &file_path,
-                                  int timeout_ms = 30000,
-                                  int poll_interval_ms = 100);
+StatusSetOr<std::string, StatusT::IOError, StatusT::TimedOut> WaitForFile(
+    const std::string &file_path, int timeout_ms = 30000, int poll_interval_ms = 100);
 
 }  // namespace ray

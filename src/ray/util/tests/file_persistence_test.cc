@@ -35,8 +35,8 @@ TEST(FilePersistenceTest, ConcurrentRead) {
   for (int i = 0; i < 5; i++) {
     readers.emplace_back([&]() {
       auto result = WaitForFile(file_path, /*timeout_ms=*/5000, /*poll_interval_ms=*/10);
-      EXPECT_TRUE(result.ok());
-      EXPECT_EQ(*result, expected_content);
+      EXPECT_TRUE(result.has_value());
+      EXPECT_EQ(result.value(), expected_content);
     });
   }
 
@@ -60,8 +60,8 @@ TEST(FilePersistenceTest, TimeoutOnMissingFile) {
                             /*timeout_ms=*/10,
                             /*poll_interval_ms=*/5);
 
-  EXPECT_FALSE(result.ok());
-  EXPECT_TRUE(result.status().IsTimedOut());
+  EXPECT_TRUE(result.has_error());
+  EXPECT_TRUE(std::holds_alternative<StatusT::TimedOut>(result.error()));
 }
 
 }  // namespace ray

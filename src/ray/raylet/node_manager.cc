@@ -3320,19 +3320,19 @@ std::tuple<int, int, int> NodeManager::WaitForDashboardAgentPorts(
     const NodeID &self_node_id, const NodeManagerConfig &config) {
   int metrics_agent_port = config.metrics_agent_port;
   if (metrics_agent_port == 0) {
-    RAY_ASSIGN_OR_CHECK(
+    RAY_ASSIGN_OR_CHECK_SET(
         metrics_agent_port,
         WaitForPersistedPort(config.session_dir, self_node_id, kMetricsAgentPortName));
   }
   int metrics_export_port = config.metrics_export_port;
   if (metrics_export_port == 0) {
-    RAY_ASSIGN_OR_CHECK(
+    RAY_ASSIGN_OR_CHECK_SET(
         metrics_export_port,
         WaitForPersistedPort(config.session_dir, self_node_id, kMetricsExportPortName));
   }
   int dashboard_agent_listen_port = config.dashboard_agent_listen_port;
   if (dashboard_agent_listen_port == 0) {
-    RAY_ASSIGN_OR_CHECK(
+    RAY_ASSIGN_OR_CHECK_SET(
         dashboard_agent_listen_port,
         WaitForPersistedPort(
             config.session_dir, self_node_id, kDashboardAgentListenPortName));
@@ -3380,8 +3380,8 @@ int NodeManager::WaitForRuntimeEnvAgentPort(const NodeID &self_node_id,
   if (config.runtime_env_agent_port != 0) {
     return config.runtime_env_agent_port;
   }
-  RAY_ASSIGN_OR_CHECK(
-      auto port,
+  RAY_ASSIGN_OR_CHECK_SET(
+      int port,
       WaitForPersistedPort(config.session_dir, self_node_id, kRuntimeEnvAgentPortName));
   return port;
 }

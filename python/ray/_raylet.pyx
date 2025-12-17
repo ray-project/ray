@@ -142,6 +142,7 @@ from ray.includes.common cimport (
     GetPortFileName,
     PersistPort,
     WaitForPersistedPort,
+    CWaitForPersistedPortResult,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -410,11 +411,11 @@ def wait_for_persisted_port(
     poll_interval_ms: int = 100
 ) -> int:
     cdef CNodeID c_node_id = CNodeID.FromHex(node_id)
-    cdef optional[CStatusOr[int]] result = WaitForPersistedPort(
+    cdef CWaitForPersistedPortResult result = WaitForPersistedPort(
         dir.encode(), c_node_id, port_name.encode(), timeout_ms, poll_interval_ms)
-    if not result.value().ok():
-        raise RuntimeError(result.value().status().message().decode())
-    return result.value().value()
+    if not result.has_value():
+        raise RuntimeError(result.message().decode())
+    return result.value()
 
 
 cdef increase_recursion_limit():
