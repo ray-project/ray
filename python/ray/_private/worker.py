@@ -3389,10 +3389,8 @@ def _make_remote(function_or_class, options):
         function_or_class.__module__ = "global"
 
     if inspect.isfunction(function_or_class) or is_cython(function_or_class):
-        ray_option_utils.validate_task_options(options, in_options=False)
-        # Validate num_returns for generator functions
-        ray_option_utils.validate_num_returns_for_remote_function(
-            function_or_class, options
+        ray_option_utils.validate_task_options(
+            options, in_options=False, function=function_or_class
         )
         return ray.remote_function.RemoteFunction(
             Language.PYTHON,
