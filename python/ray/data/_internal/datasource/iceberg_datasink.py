@@ -185,7 +185,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         self,
         txn: "Table.transaction",
         data_files: List["DataFile"],
-        upsert_keys_tables: List["pa.Table"],
+        upsert_keys: Optional["pa.Table"],
     ) -> None:
         """
         Commit upsert transaction with copy-on-write strategy.
@@ -193,26 +193,21 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         Args:
             txn: PyIceberg transaction object
             data_files: List of DataFile objects to commit
-            upsert_keys_tables: List of PyArrow tables containing upsert key columns
+            upsert_keys: PyArrow table containing upsert key columns
         """
         import functools
 
         import pyarrow as pa
         from pyiceberg.table.upsert_util import create_match_filter
 
-        from ray.data._internal.arrow_ops.transform_pyarrow import concat
-
         # Create delete filter if we have join keys
-        if upsert_keys_tables:
-            # Concatenate all key tables
-            keys_table = concat(upsert_keys_tables)
-
+        if upsert_keys is not None and len(upsert_keys) > 0:
             # Filter out rows with any NULL values in join columns
             # (NULL != NULL in SQL semantics)
             upsert_cols = self._get_upsert_cols()
-            masks = (pa.compute.is_valid(keys_table[col]) for col in upsert_cols)
+            masks = (pa.compute.is_valid(upsert_keys[col]) for col in upsert_cols)
             mask = functools.reduce(pa.compute.and_, masks)
-            keys_table = keys_table.filter(mask)
+            keys_table = upsert_keys.filter(mask)
 
             # Only delete if we have non-NULL keys
             if len(keys_table) > 0:
@@ -442,6 +437,11 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         if not all_data_files:
             return
 
+        # Concatenate all upsert keys from all workers into a single table
+        from ray.data._internal.arrow_ops.transform_pyarrow import concat
+
+        upsert_keys = concat(upsert_keys_tables) if upsert_keys_tables else None
+
         # Reconcile all schemas from all blocks across all workers
         # Get table schema and union with reconciled schema using unify_schemas with promotion
         from pyiceberg.io import pyarrow as pyi_pa_io
@@ -470,6 +470,6 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         elif self._mode == SaveMode.OVERWRITE:
             self._commit_overwrite(txn, all_data_files)
         elif self._mode == SaveMode.UPSERT:
-            self._commit_upsert(txn, all_data_files, upsert_keys_tables)
+            self._commit_upsert(txn, all_data_files, upsert_keys)
         else:
             raise ValueError(f"Unsupported mode: {self._mode}")
