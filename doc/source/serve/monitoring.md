@@ -669,8 +669,8 @@ These metrics track the Serve controller's performance. Useful for debugging con
 | `ray_serve_controller_control_loop_duration_s` | Gauge | — | Duration of the last control loop iteration in seconds. |
 | `ray_serve_controller_num_control_loops` | Gauge | `actor_id` | Total number of control loop iterations. Increases monotonically. |
 | `ray_serve_long_poll_host_transmission_counter_total` **[†]** | Counter | `namespace_or_state` | Total number of long poll updates transmitted to clients. |
-| `ray_serve_deployment_status` | Gauge | `deployment`, `application` | Numeric status of deployment: `0` = DEPLOY_FAILED, `1` = UNHEALTHY, `2` = UPDATING, `3` = UPSCALING, `4` = DOWNSCALING, `5` = HEALTHY. Use for state timeline visualization and lifecycle debugging. |
-| `ray_serve_application_status` | Gauge | `application` | Numeric status of application: `0` = NOT_STARTED, `1` = DEPLOYING, `2` = DEPLOY_FAILED, `3` = RUNNING, `4` = UNHEALTHY, `5` = DELETING. Use for state timeline visualization and lifecycle debugging. |
+| `ray_serve_deployment_status` | Gauge | `deployment`, `application` | Numeric status of deployment: `0` = UNKNOWN, `1` = DEPLOY_FAILED, `2` = UNHEALTHY, `3` = UPDATING, `4` = UPSCALING, `5` = DOWNSCALING, `6` = HEALTHY. Use for state timeline visualization and lifecycle debugging. |
+| `ray_serve_application_status` | Gauge | `application` | Numeric status of application: `0` = UNKNOWN, `1` = DEPLOY_FAILED, `2` = UNHEALTHY, `3` = NOT_STARTED, `4` = DELETING, `5` = DEPLOYING, `6` = RUNNING. Use for state timeline visualization and lifecycle debugging. |
 
 To see this in action, first run the following command to start Ray and set up the metrics export port:
 
