@@ -4,7 +4,6 @@
 This section helps you understand how to:
 - Build a user defined gRPC service and protobuf
 - Start Serve with gRPC enabled
-- Configure gRPC message size limits
 - Deploy gRPC applications
 - Send gRPC requests to Serve deployments
 - Check proxy health
@@ -113,18 +112,8 @@ serve run config.yaml
 
 ::::
 
-(serve-grpc-max-message-size)=
-## Configure gRPC message size limits
-
-By default, Ray Serve's gRPC proxy allows messages up to approximately 2GB (2,147,483,647 bytes). You can adjust this limit by setting the `RAY_SERVE_GRPC_MAX_MESSAGE_SIZE` environment variable.
-
-```bash
-# Set max message size to 100MB
-export RAY_SERVE_GRPC_MAX_MESSAGE_SIZE=104857600
-```
-
 :::{note}
-You may need to increase this limit when working with large payloads such as high-resolution images, large model inputs/outputs, or batch requests with many items. Set this environment variable before starting Ray.
+The default max gRPC message size is ~2GB. To adjust it, set `RAY_SERVE_GRPC_MAX_MESSAGE_SIZE` (in bytes) before starting Ray, e.g., `export RAY_SERVE_GRPC_MAX_MESSAGE_SIZE=104857600` for 100MB.
 :::
 
 (deploy-serve-grpc-applications)=
