@@ -103,12 +103,11 @@ Global shuffle
 
 To shuffle all rows globally, across the whole dataset, multiple options are available
 
-    1. *Random shuffling*: invoking :meth:`~ray.data.Dataset.random_shuffle` essentially permutes and shuffles individual rows
-    from existing blocks into the new ones using an optionally provided seed.
-
-    2. (**New in 2.46**) *Key-based repartitioning*: invoking :meth:`~ray.data.Dataset.repartition` with `keys` parameter triggers
-    :ref:`hash-shuffle <hash-shuffle>` operation, shuffling the rows based on the hash of the values in the provided key columns, providing
-    deterministic way of co-locating rows based on the hash of the column values.
+1. *Random shuffling*: invoking :meth:`~ray.data.Dataset.random_shuffle` essentially permutes and shuffles individual rows
+from existing blocks into the new ones using an optionally provided seed.
+2. (**New in 2.46**) *Key-based repartitioning*: invoking :meth:`~ray.data.Dataset.repartition` with `keys` parameter triggers
+:ref:`hash-shuffle <hash-shuffle>` operation, shuffling the rows based on the hash of the values in the provided key columns, providing
+deterministic way of co-locating rows based on the hash of the column values.
 
 Note that shuffle is an expensive operation requiring materializing of the whole dataset in memory as well as serving as a synchronization
 barrier---subsequent operators won't be able to start executing until shuffle completion.

@@ -114,7 +114,7 @@ class LongPollClient:
                 "controller to clients."
             ),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("key",),
+            tag_keys=("namespace",),
         )
 
         # NOTE(edoakes): we schedule the initial _poll_next call with an empty context
@@ -233,7 +233,9 @@ class LongPollClient:
         for key, update in updates.items():
             # Record end-to-end latency from controller to client
             latency_ms = (receive_time - update.notify_timestamp) * 1000
-            self.long_poll_latency_histogram.observe(latency_ms, tags={"key": str(key)})
+            self.long_poll_latency_histogram.observe(
+                latency_ms, tags={"namespace": str(key)}
+            )
 
             self.snapshot_ids[key] = update.snapshot_id
             callback = self.key_listeners[key]
@@ -287,8 +289,8 @@ class LongPollHost:
         )
         self.pending_clients_gauge = metrics.Gauge(
             "serve_long_poll_pending_clients",
-            description=("The number of clients waiting for updates per key."),
-            tag_keys=("key",),
+            description=("The number of clients waiting for updates per namespace."),
+            tag_keys=("namespace",),
         )
 
     def _get_num_notifier_events(self, key: Optional[KeyType] = None):
@@ -377,7 +379,7 @@ class LongPollHost:
 
             # Update pending clients gauge for this key
             self.pending_clients_gauge.set(
-                len(self.notifier_events[key]), tags={"key": str(key)}
+                len(self.notifier_events[key]), tags={"namespace": str(key)}
             )
 
             task = get_or_create_event_loop().create_task(event.wait())
@@ -398,7 +400,7 @@ class LongPollHost:
                 self.notifier_events[key].remove(event)
                 # Update pending clients gauge after removing
                 self.pending_clients_gauge.set(
-                    len(self.notifier_events[key]), tags={"key": str(key)}
+                    len(self.notifier_events[key]), tags={"namespace": str(key)}
                 )
             except KeyError:
                 # Because we use `FIRST_COMPLETED` above, a task in `not_done` may
@@ -533,6 +535,6 @@ class LongPollHost:
             events_to_notify = self.notifier_events.pop(object_key, set())
             if events_to_notify:
                 # Update pending clients gauge (now 0 for this key since we popped all)
-                self.pending_clients_gauge.set(0, tags={"key": str(object_key)})
+                self.pending_clients_gauge.set(0, tags={"namespace": str(object_key)})
             for event in events_to_notify:
                 event.set()
