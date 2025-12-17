@@ -1349,7 +1349,7 @@ def _ravel_tensors(
 
 def _ensure_scalar_ndarray(a: np.ndarray) -> np.ndarray:
     # NOTE: In cases of nullable types being passed from Pandas
-    #       we might get ndarrays(type='0') that unfortunately
+    #       we might get ndarrays(dtype='O') that unfortunately
     #       would have to be copied. We cycle these t/h Pyarrow
     #       to appropriately handle type conversions
     if a.dtype == np.object_:
