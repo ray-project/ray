@@ -2060,7 +2060,7 @@
   cluster:
     byod:
       post_build_script: byod_rllib.sh
-      cluster_compute: cpu_single_node.yaml
+    cluster_compute: cpu_single_node.yaml
 
   run:
     timeout: 3000  # expected 2000 seconds
@@ -2077,7 +2077,7 @@
   cluster:
     byod:
       post_build_script: byod_rllib.sh
-      cluster_compute: cpu_single_node.yaml
+    cluster_compute: cpu_single_node.yaml
 
   run:
     timeout: 3000  # expected 2000 seconds

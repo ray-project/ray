@@ -82,6 +82,23 @@ class TicTacToe(MultiAgentEnv):
         if self.board[action] != 0:
             rewards = {self.current_player: -1.0}
             terminations = {"__all__": False}
+        # Truncate the agents after `max_timesteps`
+        elif self.timestep >= self.max_timesteps:
+            rewards = {
+                self.current_player: -0.0,
+                opponent: -0.0,
+            }
+            obs = {
+                self.current_player: np.array(self.board, np.float32),
+                opponent: np.array(self.board, np.float32) * -1,
+            }
+            return (
+                obs,
+                rewards,
+                {"__all__": False},
+                {"__all__": True},
+                {},
+            )
         else:
             # Change the board according to the (valid) action taken.
             # For the next turn we "flip" the tokens so that the agent is always playing with the 1 vs the -1
@@ -121,23 +138,6 @@ class TicTacToe(MultiAgentEnv):
                     opponent: 0.0,
                 }
                 terminations = {"__all__": True}
-            # Truncate the agents after `max_timesteps`
-            elif self.timestep >= self.max_timesteps:
-                rewards = {
-                    self.current_player: -0.5,
-                    opponent: -0.5,
-                }
-                obs = {
-                    self.current_player: np.array(self.board, np.float32),
-                    opponent: np.array(self.board, np.float32) * -1,
-                }
-                return (
-                    obs,
-                    rewards,
-                    {"__all__": False},
-                    {"__all__": True},
-                    {},
-                )
             # Standard move with no reward
             else:
                 rewards = {self.current_player: 0.0}
