@@ -63,7 +63,7 @@ class TrainStateManager:
     ) -> None:
 
         datasets_details = DatasetsDetails(
-            datasets=datasets.keys(),
+            datasets=list(datasets.keys()),
             data_config=construct_data_config_dict(dataset_config),
         )
 

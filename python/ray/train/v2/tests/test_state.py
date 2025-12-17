@@ -6,7 +6,12 @@ import pytest
 
 import ray
 from ray.actor import ActorHandle
-from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
+from ray.train import BackendConfig, DataConfig
+from ray.train.v2._internal.callbacks.state_manager import (
+    StateManagerCallback,
+    TrainingFramework,
+    _get_framework_version,
+)
 from ray.train.v2._internal.exceptions import WorkerGroupStartupTimeoutError
 from ray.train.v2._internal.execution.context import DistributedContext
 from ray.train.v2._internal.execution.controller.state import (
@@ -29,8 +34,11 @@ from ray.train.v2._internal.execution.worker_group import (
 )
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
+    DatasetsDetails,
     RunAttemptStatus,
     RunStatus,
+    RuntimeConfiguration,
+    TrainingExecutionConfiguration,
     TrainResources,
     TrainRun,
     TrainRunAttempt,
@@ -41,6 +49,12 @@ from ray.train.v2._internal.state.state_actor import (
 )
 from ray.train.v2._internal.state.state_manager import TrainStateManager
 from ray.train.v2._internal.state.util import _DEAD_CONTROLLER_ABORT_STATUS_DETAIL
+from ray.train.v2.api.config import (
+    CheckpointConfig,
+    FailureConfig,
+    RunConfig,
+    ScalingConfig,
+)
 from ray.train.v2.api.exceptions import ControllerError, WorkerGroupError
 from ray.train.v2.tests.util import (
     create_dummy_run_context,
@@ -115,6 +129,10 @@ def mock_worker_group(mock_worker_group_context, mock_worker):
     group.get_worker_group_context.return_value = mock_worker_group_context
     group.get_worker_group_state.return_value = MagicMock(workers=[mock_worker])
     group.get_latest_poll_status.return_value = None
+
+    # Mocks the return value of _get_framework_version
+    group.execute_single.return_value = {"ray": ray.__version__}
+
     return group
 
 
@@ -157,6 +175,21 @@ def test_train_state_actor_create_and_get_run(ray_start_regular):
         controller_actor_id="controller_1",
         start_time_ns=1000,
         controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
+        framework_versions={"ray": ray.__version__},
+        datasets_details=DatasetsDetails(
+            datasets=["dataset_1"], data_config={"datasets_to_split": "all"}
+        ),
+        runtime_configuration=RuntimeConfiguration(
+            failure_config={"max_failures": 1},
+            worker_runtime_env={"type": "conda"},
+            checkpoint_config={"num_to_keep": 1},
+            storage_path="s3://bucket/path",
+        ),
+        training_execution_config=TrainingExecutionConfiguration(
+            train_loop_config={"epochs": 10},
+            backend_config={"backend": "nccl"},
+            scaling_config={"num_workers": "2"},
+        ),
     )
 
     ray.get(actor.create_or_update_train_run.remote(run))
@@ -411,6 +444,18 @@ def test_train_state_manager_run_lifecycle(ray_start_regular):
         job_id="job_1",
         controller_actor_id="controller_1",
         controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
+        run_config=RunConfig(
+            name="test",
+            failure_config=FailureConfig(max_failures=1),
+            worker_runtime_env={"type": "conda"},
+            checkpoint_config=CheckpointConfig(num_to_keep=1),
+            storage_path="s3://bucket/path",
+        ),
+        train_loop_config={"epochs": 10},
+        scaling_config=ScalingConfig(num_workers=2),
+        backend_config=BackendConfig(),
+        datasets={"dataset_1": ray.data.from_items([1, 2, 3])},
+        dataset_config=DataConfig(datasets_to_split="all"),
     )
 
     def get_run():
@@ -452,6 +497,18 @@ def test_train_state_manager_run_attempt_lifecycle(ray_start_regular):
         job_id="job_1",
         controller_actor_id="controller_1",
         controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
+        run_config=RunConfig(
+            name="test",
+            failure_config=FailureConfig(max_failures=1),
+            worker_runtime_env={"type": "conda"},
+            checkpoint_config=CheckpointConfig(),
+            storage_path="s3://bucket/path",
+        ),
+        train_loop_config={"epochs": 10},
+        scaling_config=ScalingConfig(num_workers=2),
+        backend_config=BackendConfig(),
+        datasets={"dataset_1": ray.data.from_items([1, 2, 3])},
+        dataset_config=DataConfig(datasets_to_split="all"),
     )
 
     # Test attempt creation
@@ -716,6 +773,10 @@ def test_callback_log_file_paths(
     mock_worker_group.get_worker_group_state.return_value = MagicMock(
         workers=[mock_worker]
     )
+
+    # Mocks the return value of _get_framework_version
+    mock_worker_group.execute_single.return_value = {"ray": ray.__version__}
+
     # mock_worker_group.get_latest_poll_status.return_value = None
 
     # Start the worker group
@@ -727,6 +788,71 @@ def test_callback_log_file_paths(
     attempt = list(attempts.values())[0][mock_worker_group_context.run_attempt_id]
     assert len(attempt.workers) == 1
     assert attempt.workers[0].log_file_path == mock_worker.log_file_path
+
+
+@pytest.mark.parametrize(
+    "fw",
+    [
+        None,
+        TrainingFramework.TORCH.value,
+        TrainingFramework.LIGHTGBM.value,
+        TrainingFramework.XGBOOST.value,
+        TrainingFramework.TENSORFLOW.value,
+        TrainingFramework.JAX.value,
+    ],
+)
+def test_get_framework_version(ray_start_regular, fw):
+    """Validate version reporting and framework lookup per framework, assuming frameworks are installed."""
+    manager = TrainStateManager()
+
+    # Create backend config for this framework (assumes frameworks are importable).
+    if fw is None:
+        backend_config = BackendConfig()
+    elif fw == TrainingFramework.TORCH.value:
+        from ray.train.torch import TorchConfig
+
+        backend_config = TorchConfig()
+    elif fw == TrainingFramework.LIGHTGBM.value:
+        from ray.train.lightgbm.config import LightGBMConfig
+
+        backend_config = LightGBMConfig()
+    elif fw == TrainingFramework.XGBOOST.value:
+        from ray.train.xgboost.config import XGBoostConfig
+
+        backend_config = XGBoostConfig()
+    elif fw == TrainingFramework.TENSORFLOW.value:
+        from ray.train.tensorflow.config import TensorflowConfig
+
+        backend_config = TensorflowConfig()
+    elif fw == TrainingFramework.JAX.value:
+        from ray.train.v2.jax.config import JaxConfig
+
+        backend_config = JaxConfig()
+    else:
+        raise AssertionError("Unknown framework parameter")
+
+    run_id = "fw_run_param"
+    manager.create_train_run(
+        id=run_id,
+        name="train",
+        job_id="job_id",
+        controller_actor_id="controller_id",
+        controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
+        run_config=RunConfig(name="train"),
+        train_loop_config={},
+        scaling_config=ScalingConfig(num_workers=1),
+        backend_config=backend_config,
+        datasets={},
+        dataset_config=DataConfig(),
+    )
+    assert manager.get_train_run_framework(run_id) == fw
+
+    versions = _get_framework_version(fw)
+    assert "ray" in versions
+    if fw is None:
+        assert list(versions.keys()) == ["ray"]
+    else:
+        assert fw in versions
 
 
 if __name__ == "__main__":

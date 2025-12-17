@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import List, Optional
 from unittest.mock import MagicMock
 
+import ray
 from ray.train import Checkpoint
 from ray.train._internal.session import _TrainingResult
 from ray.train.context import TrainContext
@@ -31,8 +32,11 @@ from ray.train.v2._internal.execution.worker_group import (
 )
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
+    DatasetsDetails,
     RunAttemptStatus,
     RunStatus,
+    RuntimeConfiguration,
+    TrainingExecutionConfiguration,
     TrainResources,
     TrainRun,
     TrainRunAttempt,
@@ -173,7 +177,6 @@ def create_mock_train_run(
     status_detail: Optional[str] = None,
 ):
     return TrainRun(
-        schema_version=0,
         id=id or _RUN_ID,
         name="test_run",
         job_id=uuid.uuid4().hex,
@@ -183,6 +186,21 @@ def create_mock_train_run(
         start_time_ns=time.time_ns(),
         end_time_ns=end_time_ns,
         controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
+        framework_versions={"ray": ray.__version__},
+        datasets_details=DatasetsDetails(
+            datasets=["dataset_1"], data_config={"datasets_to_split": "all"}
+        ),
+        runtime_configuration=RuntimeConfiguration(
+            failure_config={"max_failures": 1},
+            worker_runtime_env={"type": "conda"},
+            checkpoint_config={"type": "s3"},
+            storage_path="s3://bucket/path",
+        ),
+        training_execution_config=TrainingExecutionConfiguration(
+            train_loop_config={"epochs": 10},
+            backend_config={"backend": "nccl"},
+            scaling_config={"num_workers": "2"},
+        ),
     )
 
 
@@ -209,7 +227,6 @@ def create_mock_train_run_attempt(
     )
 
     return TrainRunAttempt(
-        schema_version=0,
         attempt_id=attempt_id,
         run_id=run_id or _RUN_ID,
         status=status,
