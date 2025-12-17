@@ -1629,7 +1629,7 @@ py==1.11.0
     # via pytest-forked
 py-cpuinfo==9.0.0
     # via deepspeed
-py-partiql-parser==0.5.0
+py-partiql-parser==0.6.3
     # via moto
 py-spy==0.4.0 ; python_version < "3.12"
     # via -r python/requirements.txt
