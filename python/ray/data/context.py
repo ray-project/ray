@@ -251,6 +251,7 @@ DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: int = env_integer(
 )
 
 
+# Dynamic output queue size backpressure disabled by default.
 DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
     "RAY_DATA_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE", False
 )
