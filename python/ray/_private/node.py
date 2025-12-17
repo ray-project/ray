@@ -258,7 +258,7 @@ class Node:
         self._node_ip_address = node_ip_address
 
         # It creates a session_dir.
-        self._init_temp()
+        self._init_temp(connect_only)
 
         # Resolve socket and port names
         if connect_only:
