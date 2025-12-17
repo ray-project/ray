@@ -713,13 +713,23 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
 
         start_idx = ctx.kwargs.get(counter_key, 0)
         num_rows = self.block_accessor.num_rows()
-        ctx.kwargs[counter_key] = start_idx + num_rows
+        end_idx = start_idx + num_rows
+        ctx.kwargs[counter_key] = end_idx
 
-        # Upper 31 bits = task/partition ID, lower 33 bits = row number
-        partition_mask = ctx.task_idx << 33
-        ids = partition_mask + np.arange(
-            start_idx, start_idx + num_rows, dtype=np.int64
-        )
+        # int64 (signed): upper 30 bits = task ID, lower 33 bits = row number
+        ROW_BITS = 33
+        TASK_BITS = 30
+        if end_idx.bit_length() > ROW_BITS:
+            raise ValueError(
+                f"Cannot generate monotonically increasing IDs: row count for this task exceeds the maximum allowed value of {(1<<ROW_BITS)-1}"
+            )
+        elif ctx.task_idx.bit_length() > TASK_BITS:
+            raise ValueError(
+                f"Cannot generate monotonically increasing IDs: number of tasks exceeds the maximum allowed value of {(1<<TASK_BITS)-1}"
+            )
+
+        partition_mask = ctx.task_idx << ROW_BITS
+        ids = partition_mask + np.arange(start_idx, end_idx, dtype=np.int64)
 
         block_type = self.block_accessor.block_type()
         if block_type == BlockType.PANDAS:
