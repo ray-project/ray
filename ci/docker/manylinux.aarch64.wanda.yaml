@@ -1,8 +1,0 @@
-name: "manylinux-aarch64"
-froms:
-  - rayproject/manylinux2014:$MANYLINUX_VERSION-jdk-$HOSTTYPE
-build_args:
-  - BUILDKITE_BAZEL_CACHE_URL
-  - MANYLINUX_VERSION=251216.3835fc5
-  - HOSTTYPE=aarch64
-dockerfile: ci/docker/manylinux-retag.Dockerfile

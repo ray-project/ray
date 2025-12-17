@@ -12,7 +12,6 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: ""
       HOSTTYPE: "x86_64"
-      MANYLINUX_VERSION: "251216.3835fc5"
     tags: release_wheels
 
   - name: ray-dashboard-build
@@ -20,7 +19,6 @@ steps:
     wanda: ci/docker/ray-dashboard.wanda.yaml
     env:
       HOSTTYPE: "x86_64"
-      MANYLINUX_VERSION: "251216.3835fc5"
     tags: release_wheels
 
   - name: ray-java-build
@@ -33,7 +31,6 @@ steps:
     env:
       ARCH_SUFFIX: ""
       HOSTTYPE: "x86_64"
-      MANYLINUX_VERSION: "251216.3835fc5"
 
   - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
     key: linux_wheels
@@ -63,8 +60,8 @@ steps:
       - ./ci/build/build-manylinux-ray.sh
       - ./ci/build/build-manylinux-jar.sh
       - ./ci/build/copy_build_artifacts.sh jar
-    depends_on: manylinux
-    job_env: manylinux
+    depends_on: manylinux-x86_64
+    job_env: manylinux-x86_64
 
   - label: ":tapioca: build: ray py{{matrix}} docker (x86_64)"
     key: ray_images
