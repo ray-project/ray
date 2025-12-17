@@ -785,20 +785,30 @@ class ArrowTensorArray(pa.ExtensionArray):
         arr: np.ndarray,
     ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
 
-        if _is_ndarray_variable_shaped_tensor(arr):
-            # Tensor elements have variable shape, so we delegate to
-            # ArrowVariableShapedTensorArray.
-            return ArrowVariableShapedTensorArray.from_numpy(arr)
-        elif len(arr) > 0 and np.isscalar(arr[0]):
-            # Elements are scalar so a plain Arrow Array will suffice.
+        if len(arr) > 0 and np.isscalar(arr[0]):
+            # This is 1D tensor so a plain `pyarrow.Array` will work
             return pa.array(arr)
         elif arr.dtype == np.object_:
-            # NOTE: In case of conversion from Pandas extension types supporting
-            #       nullable numeric values (like `pd.Int64Dtype`) we get object
-            #       arrays. Convert the entire array to scalar dtype through PyArrow,
-            #       which handles None -> null -> nan conversion.
-            original_shape = arr.shape
-            arr = _ensure_scalar_ndarray(arr).reshape(original_shape)
+            if _is_ndarray_variable_shaped_tensor(arr):
+                # Tensor elements have variable shape, so we delegate to
+                # ArrowVariableShapedTensorArray.
+                return ArrowVariableShapedTensorArray.from_numpy(arr)
+            else:
+                # NOTE: In case of conversion from Pandas extension types supporting
+                #       nullable numeric values (like `pd.Int64Dtype`) we get object
+                #       arrays. Convert the entire array to scalar dtype through PyArrow,
+                #       which handles None -> null -> nan conversion.
+                # Ravel tensors to combine into contiguous block
+                _, raveled, shapes, _ = _ravel_tensors(arr)
+
+                assert len({tuple(s) for s in shapes}) == 1, (
+                    f"Provided tensors must be homogeneously shaped "
+                    f"(got: {set(tuple(s) for s in shapes)=})"
+                )
+
+                num_tensors = len(arr)
+                target_shape = (num_tensors,) + shapes[0]
+                arr = _concat_ndarrays(raveled).reshape(target_shape)
 
         if not arr.flags.c_contiguous:
             # We only natively support C-contiguous ndarrays.
@@ -1190,17 +1200,16 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
             # Empty ragged tensor arrays are not supported.
             raise ValueError("Creating empty ragged tensor arrays is not supported.")
 
-        # Pre-allocate lists for better performance
+        # Ravel provided tensors to combine into contigous block
         ndim, raveled, shapes, sizes = _ravel_tensors(arr)
-
-        # Get size offsets and total size.
-        size_offsets = np.cumsum(sizes)
-        total_size = size_offsets[-1]
-
         # An optimized zero-copy path if raveled tensor elements are already
         # contiguous in memory, e.g. if this tensor array has already done a
         # roundtrip through our Arrow representation.
         data_buffer = _concat_ndarrays(raveled)
+
+        # Get size offsets and total size.
+        size_offsets = np.cumsum(sizes)
+        total_size = size_offsets[-1]
 
         dtype = data_buffer.dtype
         pa_scalar_type = pa.from_numpy_dtype(dtype)
@@ -1315,6 +1324,7 @@ def _pad_shape_with_singleton_axes(
 def _ravel_tensors(
     arr: Union[np.ndarray, List[np.ndarray], Tuple[np.ndarray]],
 ) -> Tuple[int, np.ndarray, np.ndarray, np.ndarray,]:
+    # Pre-allocate lists for better performance
     raveled = np.empty(len(arr), dtype=np.object_)
 
     shapes = np.empty(len(arr), dtype=np.object_)
