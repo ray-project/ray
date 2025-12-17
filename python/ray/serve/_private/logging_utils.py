@@ -144,14 +144,14 @@ class TimedMemoryHandler(logging.handlers.MemoryHandler):
         self,
         capacity: int,
         target: logging.Handler,
-        flushLevel: int = logging.ERROR,
+        flushLevel: int,
         flush_timeout_s: Optional[float] = None,
     ):
         super().__init__(capacity, flushLevel, target)
+        self._shutdown = False
         self.flush_timeout_s = flush_timeout_s
         self._check_thread = None
-        self._shutdown = False
-        self._shutdown_event = threading.Event()  # Event to wake up sleeping thread
+        self._check_event = threading.Event()  # Event to notify check thread
 
         if self.flush_timeout_s is not None and self.flush_timeout_s > 0:
             self._start_check_thread()
@@ -177,16 +177,23 @@ class TimedMemoryHandler(logging.handlers.MemoryHandler):
         """Check if idle timeout has elapsed and flush if needed."""
         while not self._shutdown:
             try:
-                # Use wait with timeout instead of sleep to allow immediate wakeup
-                if self._shutdown_event.wait(timeout=self.flush_timeout_s):
-                    self._shutdown_event.clear()
-                    continue
+                # Wait for notification or timeout
+                # If no emit happens within flush_timeout_s, wait will timeout
+                event_set = self._check_event.wait(timeout=self.flush_timeout_s)
 
-                # Check shutdown flag after wait
+                # Check shutdown flag
                 if self._shutdown:
                     break
 
-                super().flush()
+                # If event was set, it means a new emit happened (timeout was reset)
+                if event_set:
+                    # Clear the event for next wait
+                    self._check_event.clear()
+                    continue
+
+                # If we reach here, wait() timed out (no new logs during the wait period)
+                self.flush()
+
             except Exception:
                 # Ignore exceptions in background thread to prevent crashes
                 # but check shutdown flag to exit gracefully
@@ -194,7 +201,14 @@ class TimedMemoryHandler(logging.handlers.MemoryHandler):
                     break
 
     def emit(self, record: logging.LogRecord):
-        """Emit a record"""
+        # Notify check thread if timeout is enabled
+        if self.flush_timeout_s is not None and self.flush_timeout_s > 0:
+            # Ensure check thread is running
+            if self._check_thread is None or not self._check_thread.is_alive():
+                self._start_check_thread()
+            # Notify check thread that a new emit happened (reset timeout)
+            self._check_event.set()
+
         super().emit(record)
 
     def flush(self):
@@ -203,18 +217,14 @@ class TimedMemoryHandler(logging.handlers.MemoryHandler):
 
     def close(self):
         """Close the handler and clean up the check thread."""
-        # Set shutdown flag and wake up the sleeping thread
+        # Set shutdown flag and wake up the check thread
         self._shutdown = True
-
-        # Signal the event to wake up the sleeping thread immediately
-        self._shutdown_event.set()
+        self._check_event.set()
 
         # Wait for check thread to finish (with timeout)
         if self._check_thread is not None and self._check_thread.is_alive():
-            self._check_thread.join(timeout=1.0)
-
-        # Flush any remaining buffered logs before closing
-        super().flush()
+            self._check_thread.join()
+            self._check_thread = None
 
         super().close()
 
