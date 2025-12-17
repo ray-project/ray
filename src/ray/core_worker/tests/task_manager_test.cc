@@ -63,8 +63,7 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
   if (enable_tensor_transport) {
     // Currently, only actors support transferring tensors out-of-band.
     task.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
-    tensor_transport = "some direct transport";
-    task.GetMutableMessage().set_tensor_transport(tensor_transport);
+    task.GetMutableMessage().set_tensor_transport("some direct transport");
   }
 
   return task;
