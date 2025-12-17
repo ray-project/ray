@@ -1318,7 +1318,7 @@ def _ravel_tensors(
     raveled = np.empty(len(arr), dtype=np.object_)
 
     shapes = np.empty(len(arr), dtype=np.object_)
-    sizes = np.arange(len(arr), dtype=np.int64)
+    sizes = np.empty(len(arr), dtype=np.int64)
 
     ndim = None
 
