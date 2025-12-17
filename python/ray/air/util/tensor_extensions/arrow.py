@@ -793,19 +793,14 @@ class ArrowTensorArray(pa.ExtensionArray):
             # Elements are scalar so a plain Arrow Array will suffice.
             return pa.array(arr)
         elif arr.dtype == np.object_:
-            # NOTE: In case of conversion from a Pandas extension types supporting
-            #       nullable numeric values (like `pd.Int64Dtype`) we have to explicitly
-            #       ravel tensors
-            _, raveled, shapes, _ = _ravel_tensors(arr)
-
-            assert (
-                len({tuple(s) for s in shapes}) == 1
-            ), f"Expected fixed-shape tensor, instead got: {shapes}"
-
-            # An optimized zero-copy path if raveled tensor elements are already
-            # contiguous in memory, e.g. if this tensor array has already done a
-            # roundtrip through our Arrow representation.
-            arr = _concat_ndarrays(raveled)
+            # NOTE: In case of conversion from Pandas extension types supporting
+            #       nullable numeric values (like `pd.Int64Dtype`) we get object
+            #       arrays. Convert the entire array to scalar dtype through PyArrow,
+            #       which handles None -> null -> nan conversion.
+            original_shape = arr.shape
+            arr = (
+                _ensure_scalar_ndarray(arr).reshape(original_shape)
+            )
 
         if not arr.flags.c_contiguous:
             # We only natively support C-contiguous ndarrays.
