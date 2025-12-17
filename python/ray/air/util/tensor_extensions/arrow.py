@@ -803,7 +803,7 @@ class ArrowTensorArray(pa.ExtensionArray):
 
                 assert len({tuple(s) for s in shapes}) == 1, (
                     f"Provided tensors must be homogeneously shaped "
-                    f"(got: {set(tuple(s) for s in shapes)=})"
+                    f"(got: {set(tuple(s) for s in shapes)=})"  # noqa: C401
                 )
 
                 num_tensors = len(arr)

@@ -63,11 +63,21 @@ def test_pandas_to_arrow_fixed_shape_tensor_conversion():
     # First, convert Pandas serise w/ nulls to numpy
     array = pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype).to_numpy().reshape((2, 2))
 
+    # First, check on singular tensor of shape (2, 2, 2)
     input_tensor = np.stack([array, array])
 
     pa_tensor = ArrowTensorArray.from_numpy(input_tensor)
     res_tensor = pa_tensor.to_numpy()
 
+    np.testing.assert_array_equal(res_tensor, np.stack([array.astype(np.float64)] * 2))
+
+    # Next, check "ragged" tensor
+    #   - Outermost ndarray is of shape (2,) (dtype='O')
+    #   - Internal ndarrays are homogeneously shaped (2, 2) (dtype='O')
+    input_tensor = create_ragged_ndarray([array, array])
+
+    pa_tensor = ArrowTensorArray.from_numpy(input_tensor)
+    res_tensor = pa_tensor.to_numpy()
     np.testing.assert_array_equal(res_tensor, np.stack([array.astype(np.float64)] * 2))
 
 
@@ -85,8 +95,8 @@ def test_pandas_to_arrow_var_shape_tensor_conversion():
     pa_tensor = ArrowVariableShapedTensorArray.from_numpy(input_tensor)
     res_tensor = pa_tensor.to_numpy()
 
-    assert len(res_tensor) == len(expeted_np_tensor)
-    for actual, expected in zip(res_tensor, expeted_np_tensor):
+    assert len(res_tensor) == len(expected_np_tensor)
+    for actual, expected in zip(res_tensor, expected_np_tensor):
         np.testing.assert_array_equal(actual, expected)
 
 
