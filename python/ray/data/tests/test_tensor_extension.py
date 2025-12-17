@@ -59,19 +59,35 @@ def test_tensor_array_validation():
         TensorArray([object(), object()])
 
 
-@pytest.mark.parametrize("tensor_type", ["fixed_shape", "var_shape"])
-def test_pandas_to_arrow_tensor_conversion(tensor_type):
+def test_pandas_to_arrow_fixed_shape_tensor_conversion():
     array = pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype).to_numpy()
-    tensor = np.stack([array, array])
+    input_tensor = np.stack([array, array])
 
-    if tensor_type == "fixed_shape":
-        fixed_shape = ArrowTensorArray.from_numpy(tensor)
-        print(fixed_shape)
-    elif tensor_type == "var_shape":
-        var_shape = ArrowVariableShapedTensorArray.from_numpy(tensor)
-        print(var_shape)
-    else:
-        pytest.fail(f"Invalid tensor type: {tensor_type}")
+    pa_tensor = ArrowTensorArray.from_numpy(input_tensor)
+    res_tensor = pa_tensor.to_numpy()
+
+    np.testing.assert_array_equal(
+        res_tensor,
+        np.stack([array.astype(np.float64)] * 2)
+    )
+
+
+def test_pandas_to_arrow_var_shape_tensor_conversion():
+    array = pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype).to_numpy()
+
+    input_tensor = create_ragged_ndarray([array.reshape(1, 4), array.reshape((2, 2))])
+
+    # For ragged arrays, we need to convert each element individually
+    expeted_np_tensor = create_ragged_ndarray(
+        [t.astype(np.float64) for t in input_tensor]
+    )
+
+    pa_tensor = ArrowVariableShapedTensorArray.from_numpy(input_tensor)
+    res_tensor = pa_tensor.to_numpy()
+
+    assert len(res_tensor) == len(expeted_np_tensor)
+    for actual, expected in zip(res_tensor, expeted_np_tensor):
+        np.testing.assert_array_equal(actual, expected)
 
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
