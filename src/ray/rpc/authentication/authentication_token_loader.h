@@ -19,7 +19,6 @@
 #include <string>
 
 #include "absl/synchronization/mutex.h"
-#include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/authentication_token.h"
 
 namespace ray {
@@ -63,7 +62,6 @@ class AuthenticationTokenLoader {
   void ResetCache() {
     absl::MutexLock lock(&token_mutex_);
     cached_token_ = nullptr;
-    cache_initialized_ = false;
   }
 
   AuthenticationTokenLoader(const AuthenticationTokenLoader &) = delete;
@@ -87,7 +85,6 @@ class AuthenticationTokenLoader {
 
   absl::Mutex token_mutex_;
   std::shared_ptr<const AuthenticationToken> cached_token_;
-  bool cache_initialized_ = false;  // Track if already loaded and cached
 };
 
 }  // namespace rpc

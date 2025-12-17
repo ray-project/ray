@@ -19,6 +19,7 @@
 #include <string>
 #include <utility>
 
+#include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/k8s_constants.h"
 #include "ray/util/logging.h"
 
@@ -53,14 +54,12 @@ std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
   absl::MutexLock lock(&token_mutex_);
 
   // If already loaded, return cached value
-  if (cache_initialized_) {
+  if (cached_token_) {
     return cached_token_;
   }
 
   // If token or k8s auth is not enabled, return nullptr (unless ignoring auth mode)
   if (!ignore_auth_mode && !RequiresTokenAuthentication()) {
-    cached_token_ = nullptr;
-    cache_initialized_ = true;
     return nullptr;
   }
 
@@ -77,10 +76,7 @@ std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
   // Cache and return the loaded token
   if (has_token) {
     cached_token_ = std::make_shared<const AuthenticationToken>(std::move(*result.token));
-  } else {
-    cached_token_ = nullptr;
   }
-  cache_initialized_ = true;
   return cached_token_;
 }
 
@@ -89,19 +85,13 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
   TokenLoadResult result;
 
   // If already loaded, return cached value
-  if (cache_initialized_) {
-    if (cached_token_) {
-      result.token = *cached_token_;  // Copy from shared_ptr
-    } else {
-      result.token = std::nullopt;
-    }
+  if (cached_token_) {
+    result.token = *cached_token_;  // Copy from shared_ptr
     return result;
   }
 
   // If auth is disabled, return nullopt (no token needed)
   if (!ignore_auth_mode && !RequiresTokenAuthentication()) {
-    cached_token_ = nullptr;
-    cache_initialized_ = true;
     result.token = std::nullopt;
     return result;
   }
@@ -112,19 +102,17 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
     return result;  // Propagate error
   }
 
-  bool no_token = !result.token.has_value() || result.token->empty();
-  if (no_token && ignore_auth_mode) {
+  bool has_token = result.token.has_value() && !result.token->empty();
+  if (!has_token && ignore_auth_mode) {
     result.token = std::nullopt;
-    cache_initialized_ = true;
     return result;
-  } else if (no_token) {
+  } else if (!has_token) {
     result.error_message = kNoTokenErrorMessage;
     return result;
   }
   // Cache and return success
   cached_token_ = std::make_shared<const AuthenticationToken>(std::move(*result.token));
   result.token = *cached_token_;  // Copy back for return
-  cache_initialized_ = true;
   return result;
 }
 
@@ -165,16 +153,17 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadTokenFromSources() {
 
   // Precedence 3 (auth_mode=k8s only): Load Kubernetes service account token
   if (GetAuthenticationMode() == AuthenticationMode::K8S) {
-    std::string token_str = TrimWhitespace(ReadTokenFromFile(k8s::kK8sSaTokenPath));
+    const std::string k8s_token_path(k8s::kK8sSaTokenPath);
+    std::string token_str = TrimWhitespace(ReadTokenFromFile(k8s_token_path));
     if (!token_str.empty()) {
       RAY_LOG(DEBUG)
           << "Loaded authentication token from Kubernetes service account path: "
-          << k8s::kK8sSaTokenPath;
+          << k8s_token_path;
       result.token = AuthenticationToken(token_str);
       return result;
     }
     RAY_LOG(DEBUG) << "Kubernetes service account token not found or empty at: "
-                   << k8s::kK8sSaTokenPath;
+                   << k8s_token_path;
   }
 
   // Precedence 4: Default token path ~/.ray/auth_token
