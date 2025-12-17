@@ -2,7 +2,7 @@ import asyncio
 import json
 import random
 from random import randint
-from typing import AsyncGenerator, Dict, Optional, Union
+from typing import Any, AsyncGenerator, Dict, Optional, Union
 
 from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
 from ray.llm._internal.serve.core.configs.llm_config import (
@@ -42,6 +42,7 @@ class MockVLLMEngine(LLMEngine):
         self.llm_config = llm_config
         self.started = False
         self._current_lora_model: Dict[str, DiskMultiplexConfig] = {}
+        self._is_sleeping = False
 
     async def start(self):
         """Start the mock engine."""
@@ -70,6 +71,38 @@ class MockVLLMEngine(LLMEngine):
         """Stop profiling of the mock engine."""
         if not self.started:
             raise RuntimeError("Engine not started")
+
+    async def sleep(self, **kwargs: Any) -> None:
+        """Put the mock engine to sleep.
+
+        This mimics vLLM's behavior: resets prefix cache and sets sleeping state.
+
+        Args:
+            **kwargs: Engine-specific options.
+        """
+        if not self.started:
+            raise RuntimeError("Engine not started")
+        # vLLM resets prefix cache on sleep
+        await self.reset_prefix_cache()
+        self._is_sleeping = True
+
+    async def wakeup(self, **kwargs: Any) -> None:
+        """Wake up the mock engine from sleep.
+
+        Args:
+            **kwargs: Engine-specific options.
+        """
+        if not self.started:
+            raise RuntimeError("Engine not started")
+        self._is_sleeping = False
+
+    async def is_sleeping(self) -> bool:
+        """Check if the mock engine is sleeping.
+
+        Returns:
+            True if the engine is sleeping, False otherwise.
+        """
+        return self._is_sleeping
 
     async def chat(
         self,

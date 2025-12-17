@@ -162,12 +162,10 @@ downscaling.
 * **[`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst) [default_value=10]**: In future this deployment level
 config will be removed in favor of cross-application level global config.
   
-This controls how often each replica and handle sends reports on current ongoing
-requests to the autoscaler. Note that the autoscaler can't make new decisions if
-it doesn't receive updated metrics, so you most likely want to set these values to
-be less than or equal to the upscale and downscale delay values. For instance, if
-you set `upscale_delay_s = 3`, but keep the push interval at 10s, the autoscaler
-only upscales roughly every 10 seconds.
+This controls how often each replica and handle sends reports on current ongoing requests to the autoscaler.
+::{note}
+If metrics are reported infrequently, Ray Serve can take longer to notice a change in autoscaling metrics, so scaling can start later even if your delays are short. For example, if you set `upscale_delay_s = 3` but metrics are pushed every 10 seconds, Ray Serve might not see a change until the next push, so scaling up can be limited to about once every 10 seconds.
+::
 
 * **[`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) [default_value=30]**: This is the window over which the
 average number of ongoing requests per replica is calculated.
@@ -269,7 +267,7 @@ The timing parameters interact in important ways:
 - With default values: Each push contains 1 data points (10s ÷ 10s)
 
 **Push interval vs look-back period:**
-- [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) (30s) should be ≥ push interval (10s)
+- [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) (30s) should be > push interval (10s)
 - If look-back is too short, you won't have enough data for stable decisions
 - If look-back is too long, autoscaling becomes less responsive
 
@@ -279,10 +277,10 @@ The timing parameters interact in important ways:
 - New scaling decisions only happen when fresh metrics arrive
 
 **Push interval vs upscale/downscale delays:**
-- Delays (30s/600s) should be ≥ push interval (10s)
-- Generally the delay should be set to some multiples of push interval, so the autoscaler only reacts after 
-  multiple consecutive metric breaches—this filters out short-lived spikes and prevents noisy, oscillating scale-ups.
-- Example: `upscale_delay_s = 5` but push interval = 10s means actual delay ≈ 10s
+- Delays control when Ray Serve applies a scale up or scale down.
+- The metrics push interval controls how quickly Ray Serve receives fresh metrics.
+- If the push interval < delay, Ray Serve can use multiple metric updates before it scales.
+- Example: push every 10s with `upscale_delay_s = 20` means up to 2 new metric updates before scaling
 
 **Recommendation:** Keep default values unless you have specific needs. If you
 need faster autoscaling, decrease push intervals first, then adjust delays.
