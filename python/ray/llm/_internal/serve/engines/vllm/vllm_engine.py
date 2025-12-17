@@ -157,6 +157,20 @@ class VLLMWakeupConfig(BaseModel):
         return v
 
 
+class VLLMPauseConfig(BaseModel):
+    """vLLM-specific configuration for pause operation."""
+
+    wait_for_inflight_requests: bool = False
+    """When True, waits for in-flight requests to finish before pausing.
+    When False (default), aborts in-flight requests immediately.
+    """
+
+    clear_cache: bool = True
+    """Whether to clear KV and prefix caches after draining.
+    Set to False to preserve cache for faster resume.
+    """
+
+
 class VLLMEngine(LLMEngine):
     def __init__(
         self,
@@ -582,6 +596,43 @@ class VLLMEngine(LLMEngine):
         """
         assert self._engine_client is not None, "engine_client is not initialized"
         return await self._engine_client.is_sleeping()
+
+    async def pause(self, **kwargs: Any) -> None:
+        """Pause generation on the vLLM engine.
+
+        This halts generation/encoding requests while keeping model weights
+        in GPU memory. New requests are blocked until resume is called.
+
+        Args:
+            **kwargs: Options parsed into VLLMPauseConfig.
+                - wait_for_inflight_requests (bool): Wait for in-flight requests
+                  to finish. Default False.
+                - clear_cache (bool): Clear KV cache after draining. Default True.
+        """
+        assert self._engine_client is not None, "engine_client is not initialized"
+        config = VLLMPauseConfig(**kwargs)
+        await self._engine_client.pause_generation(
+            wait_for_inflight_requests=config.wait_for_inflight_requests,
+            clear_cache=config.clear_cache,
+        )
+
+    async def resume(self, **kwargs: Any) -> None:
+        """Resume generation on the vLLM engine after pause.
+
+        Args:
+            **kwargs: Reserved for future options.
+        """
+        assert self._engine_client is not None, "engine_client is not initialized"
+        await self._engine_client.resume_generation()
+
+    async def is_paused(self) -> bool:
+        """Check whether the vLLM engine is currently paused.
+
+        Returns:
+            True if the engine is paused, False otherwise.
+        """
+        assert self._engine_client is not None, "engine_client is not initialized"
+        return await self._engine_client.is_paused()
 
     async def start_profile(self) -> None:
         assert self._engine_client is not None, "engine_client is not initialized"
