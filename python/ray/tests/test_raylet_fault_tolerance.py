@@ -1,15 +1,17 @@
+import json
 import os
 import sys
 
 import pytest
 
 import ray
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.test_utils import (
     RPC_FAILURE_MAP,
     RPC_FAILURE_TYPES,
-    wait_for_condition,
 )
 from ray.core.generated import autoscaler_pb2
+from ray.exceptions import GetTimeoutError, TaskCancelledError
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
@@ -23,10 +25,11 @@ import psutil
 def test_request_worker_lease_idempotent(
     monkeypatch, shutdown_only, deterministic_failure, ray_start_cluster
 ):
-    failure = RPC_FAILURE_MAP[deterministic_failure]
+    failure = RPC_FAILURE_MAP[deterministic_failure].copy()
+    failure["num_failures"] = 1
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        f"NodeManagerService.grpc_client.RequestWorkerLease=1:{failure}",
+        json.dumps({"NodeManagerService.grpc_client.RequestWorkerLease": failure}),
     )
 
     @ray.remote
@@ -61,7 +64,16 @@ def test_drain_node_idempotent(monkeypatch, shutdown_only, ray_start_cluster):
     # NOTE: not testing response failure since the node is already marked as draining and shuts down gracefully.
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "NodeManagerService.grpc_client.DrainRaylet=1:100:0:0",
+        json.dumps(
+            {
+                "NodeManagerService.grpc_client.DrainRaylet": {
+                    "num_failures": 1,
+                    "req_failure_prob": 100,
+                    "resp_failure_prob": 0,
+                    "in_flight_failure_prob": 0,
+                }
+            }
+        ),
     )
 
     cluster = ray_start_cluster
@@ -98,11 +110,21 @@ def test_drain_node_idempotent(monkeypatch, shutdown_only, ray_start_cluster):
 @pytest.fixture
 def inject_release_unused_bundles_rpc_failure(monkeypatch, request):
     deterministic_failure = request.param
-    failure = RPC_FAILURE_MAP[deterministic_failure]
+    failure = RPC_FAILURE_MAP[deterministic_failure].copy()
+    failure["num_failures"] = 1
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        f"NodeManagerService.grpc_client.ReleaseUnusedBundles=1:{failure}"
-        + ",NodeManagerService.grpc_client.CancelResourceReserve=-1:100:0:0",
+        json.dumps(
+            {
+                "NodeManagerService.grpc_client.ReleaseUnusedBundles": failure,
+                "NodeManagerService.grpc_client.CancelResourceReserve": {
+                    "num_failures": -1,
+                    "req_failure_prob": 100,
+                    "resp_failure_prob": 0,
+                    "in_flight_failure_prob": 0,
+                },
+            }
+        ),
     )
 
 
@@ -152,10 +174,11 @@ def test_release_unused_bundles_idempotent(
 @pytest.fixture
 def inject_notify_gcs_restart_rpc_failure(monkeypatch, request):
     deterministic_failure = request.param
-    failure = RPC_FAILURE_MAP[deterministic_failure]
+    failure = RPC_FAILURE_MAP[deterministic_failure].copy()
+    failure["num_failures"] = 1
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        f"NodeManagerService.grpc_client.NotifyGCSRestart=1:{failure}",
+        json.dumps({"NodeManagerService.grpc_client.NotifyGCSRestart": failure}),
     )
 
 
@@ -215,7 +238,16 @@ def test_kill_local_actor_rpc_retry_and_idempotency(monkeypatch, shutdown_only):
 
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "NodeManagerService.grpc_client.KillLocalActor=1:100:0:0",
+        json.dumps(
+            {
+                "NodeManagerService.grpc_client.KillLocalActor": {
+                    "num_failures": 1,
+                    "req_failure_prob": 100,
+                    "resp_failure_prob": 0,
+                    "in_flight_failure_prob": 0,
+                }
+            }
+        ),
     )
 
     ray.init()
@@ -245,6 +277,63 @@ def test_kill_local_actor_rpc_retry_and_idempotency(monkeypatch, shutdown_only):
         return not psutil.pid_exists(worker_pid)
 
     wait_for_condition(verify_process_killed, timeout=30)
+
+
+@pytest.fixture
+def inject_cancel_local_task_rpc_failure(monkeypatch, request):
+    failure = RPC_FAILURE_MAP[request.param].copy()
+    failure["num_failures"] = 1
+    monkeypatch.setenv(
+        "RAY_testing_rpc_failure",
+        json.dumps(
+            {
+                "NodeManagerService.grpc_client.CancelLocalTask": failure,
+            }
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "inject_cancel_local_task_rpc_failure", RPC_FAILURE_TYPES, indirect=True
+)
+@pytest.mark.parametrize("force_kill", [True, False])
+def test_cancel_local_task_rpc_retry_and_idempotency(
+    inject_cancel_local_task_rpc_failure, force_kill, shutdown_only
+):
+    """Test that CancelLocalTask RPC retries work correctly.
+
+    Verify that the RPC is idempotent when network failures occur.
+    When force_kill=True, verify the worker process is actually killed using psutil.
+    """
+    ray.init(num_cpus=1)
+    signaler = SignalActor.remote()
+
+    @ray.remote(num_cpus=1)
+    def get_pid():
+        return os.getpid()
+
+    @ray.remote(num_cpus=1)
+    def blocking_task():
+        return ray.get(signaler.wait.remote())
+
+    worker_pid = ray.get(get_pid.remote())
+
+    blocking_ref = blocking_task.remote()
+
+    with pytest.raises(GetTimeoutError):
+        ray.get(blocking_ref, timeout=1)
+
+    ray.cancel(blocking_ref, force=force_kill)
+
+    with pytest.raises(TaskCancelledError):
+        ray.get(blocking_ref, timeout=10)
+
+    if force_kill:
+
+        def verify_process_killed():
+            return not psutil.pid_exists(worker_pid)
+
+        wait_for_condition(verify_process_killed, timeout=30)
 
 
 if __name__ == "__main__":

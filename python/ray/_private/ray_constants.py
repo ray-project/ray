@@ -411,6 +411,12 @@ DEFAULT_RUNTIME_ENV_DIR_NAME = "runtime_resources"
 # dafault timeout is 10 minutes
 DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS = 600
 
+# The timeout seconds for the GCS server request.
+# Try fetching from the cpp environment variable first.
+GCS_SERVER_REQUEST_TIMEOUT_SECONDS = int(
+    os.environ.get("RAY_gcs_server_request_timeout_seconds", "60")
+)
+
 # Used to separate lines when formatting the call stack where an ObjectRef was
 # created.
 CALL_STACK_LINE_DELIMITER = " | "
@@ -578,7 +584,10 @@ RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
 #   the component, including WorkerId, (task or actor) Name, etc. This is the default.
 # Recommended: report only the node level metrics to prometheus. This means that the
 #   WorkerId will be removed from all metrics.
-RAY_METRIC_CARDINALITY_LEVEL = os.environ.get("RAY_metric_cardinality_level", "legacy")
+# Low: Same as recommended, but also drop the Name label for tasks and actors.
+RAY_METRIC_CARDINALITY_LEVEL = os.environ.get(
+    "RAY_metric_cardinality_level", "recommended"
+)
 
 # Whether enable OpenTelemetry as the metrics collection backend. The default is
 # using OpenCensus.
