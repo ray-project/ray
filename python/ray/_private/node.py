@@ -248,17 +248,51 @@ class Node:
         if node_ip_address is None:
             if connect_only:
                 assert node_to_connect_info is not None
-                node_ip_address = getattr(
-                    node_to_connect_info, "node_manager_address", None
-                )
+                node_ip_address = node_to_connect_info.node_manager_address
             else:
                 node_ip_address = ray.util.get_node_ip_address()
         assert node_ip_address is not None
         ray_params.update_if_absent(node_ip_address=node_ip_address)
         self._node_ip_address = node_ip_address
 
+        # Resolve head node directories for defaults
+        if not self.head and not connect_only:
+            try:
+                head_node_selector = GetAllNodeInfoRequest.NodeSelector()
+                head_node_selector.is_head_node = True
+
+                node_infos = (
+                    self.get_gcs_client()
+                    .get_all_node_info(
+                        timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
+                        node_selectors=[head_node_selector],
+                    )
+                    .values()
+                )
+            except Exception as e:
+                logger.exception(f"Failed to get head node info: {repr(e)}")
+                raise e
+
+            if not node_infos:
+                raise Exception(
+                    "Head node not found in GCS when trying to get temp dir, did GCS start successfully?"
+                )
+            node_info = next(iter(node_infos))
+            self._head_temp_dir = node_info.temp_dir
+            if self._head_temp_dir is None:
+                raise Exception(
+                    "Head node temp_dir not found in NodeInfo, "
+                    "either GCS or head node's raylet may not have started successfully."
+                )
+            self._head_session_dir = node_info.session_dir
+            if self._head_session_dir is None:
+                raise Exception(
+                    "Head node session dir not found in NodeInfo, "
+                    "either GCS or head node's raylet may not have started successfully."
+                )
+
         # It creates a session_dir.
-        self._init_temp(connect_only)
+        self._init_temp(node_to_connect_info)
 
         # Resolve socket and port names
         if connect_only:
@@ -308,6 +342,11 @@ class Node:
                     self._fallback_directory = directory_path[0]
                 elif isinstance(directory_path, str):
                     self._fallback_directory = directory_path
+                if self._fallback_directory is None:
+                    raise ValueError(
+                        f"Failed to obtain fallback directory from "
+                        f"object spilling config: {self._object_spilling_config}"
+                    )
 
         # If it is a head node, try validating if external storage is configurable.
         if head:
@@ -478,90 +517,14 @@ class Node:
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
 
-    def _init_temp(self, connect_only):
+    def _init_temp(self, node_to_connect_info):
         # Create a dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
-        if not self.head and not self._default_worker:
-            # Unconditionally fetch head node info to get the session dir when creating
-            # worker nodes as we will need it to resolve whether head node received a
-            # custom object spilling directory.
-            try:
-                head_node_selector = GetAllNodeInfoRequest.NodeSelector()
-                head_node_selector.is_head_node = True
-
-                node_infos = (
-                    self.get_gcs_client()
-                    .get_all_node_info(
-                        timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
-                        node_selectors=[head_node_selector],
-                    )
-                    .values()
-                )
-            except Exception as e:
-                logger.error(f"Failed to get head node info: {repr(e)}")
-                raise e
-
-            if not node_infos:
-                raise Exception(
-                    "Head node not found in GCS when trying to get temp dir, did GCS start successfully?"
-                )
-            node_info = next(iter(node_infos))
-            self._head_temp_dir = getattr(node_info, "temp_dir", None)
-            if self._head_temp_dir is None:
-                raise Exception(
-                    "Head node temp_dir not found in NodeInfo, "
-                    "either GCS or head node's raylet may not have started successfully."
-                )
-            self._head_session_dir = getattr(node_info, "session_dir", None)
-            if self._head_session_dir is None:
-                raise Exception(
-                    "Head node session dir not found in NodeInfo, "
-                    "either GCS or head node's raylet may not have started successfully."
-                )
-
         self.temp_dir = self._ray_params.temp_dir
         if self.temp_dir is None:
-            node_infos = []
-            if connect_only:
-                # Connecting to an existing Ray cluster without a temp-dir specified using ray.init().
-                # In this case, we will resolve the temp-dir by querying the temp-dir on the host.
-                # Note: If the user specified an ip_address that's different from the
-                # discoverable ip_address on a worker node with custom temp dir, they must
-                # explicitly specify either the temp dir or node ip address if they
-                # want to connect a driver to the worker node. Otherwise, we will
-                # not be able to retrieve the temp dir for the current node.
-                # For more information, please check the API doc of ray.init().
-                if self._ray_params.node_ip_address is not None:
-                    node_ip_address = self._ray_params.node_ip_address
-                else:
-                    node_ip_address = ray._private.services.get_node_ip_address()
-                try:
-                    ip_node_selector = GetAllNodeInfoRequest.NodeSelector()
-                    ip_node_selector.node_ip_address = node_ip_address
-
-                    node_infos = (
-                        self.get_gcs_client()
-                        .get_all_node_info(
-                            timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
-                            node_selectors=[ip_node_selector],
-                        )
-                        .values()
-                    )
-                except Exception as e:
-                    raise Exception(
-                        f"Failed to get node info from gcs with node ip address {node_ip_address} "
-                        f"when connecting to the current node: {repr(e)}. "
-                    )
-
-            if node_infos:
-                node_info = next(iter(node_infos))
-                self.temp_dir = getattr(node_info, "temp_dir", None)
-                if self.temp_dir is None:
-                    raise Exception(
-                        "Node temp_dir not found in NodeInfo when connecting to the current node, "
-                        "either the GCS, the head node, or the node's raylet may not have started successfully."
-                    )
+            if node_to_connect_info is not None:
+                self.temp_dir = node_to_connect_info.temp_dir
             else:
                 if self.head:
                     # fallback to head node's default
@@ -570,6 +533,15 @@ class Node:
                     # fallback to head node's temp dir if no node info is found for the given node ip address
                     assert not self._default_worker
                     self.temp_dir = self._head_temp_dir
+        else:
+            if (
+                node_to_connect_info is not None
+                and node_to_connect_info.temp_dir != self.temp_dir
+            ):
+                raise ValueError(
+                    f"Given temp dir {self.temp_dir} does not match the temp dir "
+                    f"{node_to_connect_info.temp_dir} on the node to connect to."
+                )
 
         # Assumes session_name is resolved before _init_temp is called
         self._session_dir = os.path.join(self.temp_dir, self._session_name)
@@ -582,7 +554,7 @@ class Node:
             self._session_dir, self._ray_params.runtime_env_dir_name
         )
 
-        if not connect_only:
+        if node_to_connect_info is None:
             # Only create the temp dir on node creation
             try_to_create_directory(self.temp_dir)
             # Send a warning message if the session exists.
@@ -1450,19 +1422,29 @@ class Node:
                 if new_config["automatic_object_spilling_enabled"]:
                     config = json.loads(new_config["object_spilling_config"])
                     if config.get("type") == "filesystem":
+                        fetched_config_directory_path = config["params"][
+                            "directory_path"
+                        ]
+                        if isinstance(fetched_config_directory_path, list):
+                            directory_path = fetched_config_directory_path[0]
+                        elif isinstance(fetched_config_directory_path, str):
+                            directory_path = fetched_config_directory_path
+                        if directory_path is None:
+                            raise ValueError(
+                                f"Failed to obtain spill directory path from "
+                                f"object spilling config: {fetched_config_directory_path}"
+                            )
+
                         if (
                             self._fallback_directory != self._session_dir
-                            or config["params"]["directory_path"]
-                            == self._head_session_dir
+                            or directory_path == self._head_session_dir
                         ):
                             config["params"][
                                 "directory_path"
                             ] = self._fallback_directory
                             new_config["object_spilling_config"] = json.dumps(config)
                         else:
-                            self._fallback_directory = config["params"][
-                                "directory_path"
-                            ]
+                            self._fallback_directory = directory_path
 
                         try_to_create_directory(self._fallback_directory)
                 self._config = new_config

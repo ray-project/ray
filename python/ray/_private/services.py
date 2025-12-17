@@ -523,8 +523,13 @@ def get_node_to_connect_for_driver(
     filtered_node_to_connect_infos = []
     for node_info in node_to_connect_infos:
         if (
-            node_ip_address is None or node_info.node_manager_address == node_ip_address
-        ) and (node_name is None or node_info.node_name == node_name):
+            (
+                node_ip_address is None
+                or node_info.node_manager_address == node_ip_address
+            )
+            and (node_name is None or node_info.node_name == node_name)
+            and (temp_dir is None or node_info.temp_dir == temp_dir)
+        ):
             filtered_node_to_connect_infos.append(node_info)
 
     if not filtered_node_to_connect_infos:
