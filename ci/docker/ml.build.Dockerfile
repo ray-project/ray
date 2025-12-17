@@ -23,10 +23,9 @@ if [[ "${PYTHON-}" == "3.12" ]]; then
   TRAIN_TESTING=1 TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 \
     INSTALL_HDFS=1 ./ci/env/install-dependencies.sh
 else
+  pip install HEBO==0.3.5
   DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 \
     INSTALL_HDFS=1 ./ci/env/install-dependencies.sh
-
-  pip install HEBO==0.3.5
 fi
 
 if [[ "$RAYCI_IS_GPU_BUILD" == "true" ]]; then
