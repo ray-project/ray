@@ -574,10 +574,6 @@ def setup(app):
     app.add_js_file("js/csat.js", defer="defer")
     app.add_css_file("css/csat.css")
 
-    # Disabled: Custom "Ask AI" widget (replaced with runLLM widget)
-    # app.add_js_file("js/assistant.js", defer="defer")
-    # app.add_css_file("css/assistant.css")
-
     app.add_js_file("js/dismissable-banner.js", defer="defer")
     app.add_css_file("css/dismissable-banner.css")
 
