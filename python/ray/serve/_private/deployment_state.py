@@ -252,7 +252,7 @@ class ActorReplicaWrapper:
         self._last_health_check_time: float = 0.0
         self._consecutive_health_check_failures = 0
         self._last_health_check_latency_ms: Optional[float] = None
-        self._last_health_check_failed: bool = False
+        self._last_health_check_failed: Optional[bool] = None
         self._initialization_latency_s: Optional[float] = None
         self._reconfigure_start_time: Optional[float] = None
         self._internal_grpc_port: Optional[int] = None
@@ -467,7 +467,7 @@ class ActorReplicaWrapper:
         return self._last_health_check_latency_ms
 
     @property
-    def last_health_check_failed(self) -> bool:
+    def last_health_check_failed(self) -> Optional[bool]:
         """Returns whether the last completed health check failed.
 
         Returns False if no health check has completed in the current check cycle.
@@ -894,21 +894,18 @@ class ActorReplicaWrapper:
               before the timeout).
             - ACTOR_CRASHED if the underlying actor crashed.
         """
-        # Reset the last health check status for this check cycle.
-        self._last_health_check_latency_ms = None
-        self._last_health_check_failed = False
-
         if self._health_check_ref is None:
             # There is no outstanding health check.
             response = ReplicaHealthCheckResponse.NONE
         elif check_obj_ref_ready_nowait(self._health_check_ref):
             # Object ref is ready, ray.get it to check for exceptions.
-            # Calculate health check latency.
-            self._last_health_check_latency_ms = (
-                time.time() - self._last_health_check_time
-            ) * 1000
             try:
                 ray.get(self._health_check_ref)
+                # Calculate health check latency.
+                self._last_health_check_latency_ms = (
+                    time.time() - self._last_health_check_time
+                ) * 1000
+                self._last_health_check_failed = False
                 # Health check succeeded without exception.
                 response = ReplicaHealthCheckResponse.SUCCEEDED
             except RayActorError:
@@ -1236,7 +1233,7 @@ class DeploymentReplica:
         return self._actor.last_health_check_latency_ms
 
     @property
-    def last_health_check_failed(self) -> bool:
+    def last_health_check_failed(self) -> Optional[bool]:
         """Returns whether the last completed health check failed."""
         return self._actor.last_health_check_failed
 

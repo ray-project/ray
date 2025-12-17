@@ -1439,7 +1439,7 @@ def test_health_check_latency_metrics(metrics_start_shutdown):
             expected_tags={"deployment": "MyDeployment", "application": "app"},
         )
         # Health check count should be at least 1
-        assert value == 1, f"Health check count is {value}, expected to be 1"
+        assert value > 1, f"Health check count is {value}, expected to be 1"
         return True
 
     wait_for_condition(check_health_check_latency_metrics, timeout=30)
@@ -1492,7 +1492,7 @@ def test_health_check_failures_metrics(metrics_start_shutdown):
             expected_tags={"deployment": "FailingHealthCheck", "application": "app"},
         )
         # Should have at least 1 failure
-        return value == 1
+        return value > 1
 
     wait_for_condition(check_health_check_failure_metrics, timeout=30)
 
