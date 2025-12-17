@@ -248,20 +248,6 @@ class ServerCallImpl : public ServerCall {
       grpc_server_req_handling_counter_.Record(1.0, {{"Method", call_name_}});
     }
     if (!io_service_.stopped()) {
-      if constexpr (std::is_base_of_v<DelayedServiceHandler, ServiceHandler>) {
-        if (!service_handler_initialized_) {
-          service_handler_.WaitUntilInitialized();
-          service_handler_initialized_ = true;
-        }
-      }
-      state_ = ServerCallState::PROCESSING;
-      if (factory_.GetMaxActiveRPCs() == -1) {
-        // Create a new `ServerCall` to accept the next incoming request.
-        // We create this before handling the request only when no back pressure limit is
-        // set. So that the it can be populated by the completion queue in the background
-        // if a new request comes in.
-        factory_.CreateCall();
-      }
       io_service_.post(
           [this, auth_success, token_auth_failed, cluster_id_auth_failed] {
             HandleRequestImpl(auth_success, token_auth_failed, cluster_id_auth_failed);
@@ -288,6 +274,20 @@ class ServerCallImpl : public ServerCall {
   void HandleRequestImpl(bool auth_success,
                          bool token_auth_failed,
                          bool cluster_id_auth_failed) {
+    if constexpr (std::is_base_of_v<DelayedServiceHandler, ServiceHandler>) {
+      if (!service_handler_initialized_) {
+        service_handler_.WaitUntilInitialized();
+        service_handler_initialized_ = true;
+      }
+    }
+    state_ = ServerCallState::PROCESSING;
+    if (factory_.GetMaxActiveRPCs() == -1) {
+      // Create a new `ServerCall` to accept the next incoming request.
+      // We create this before handling the request only when no back pressure limit is
+      // set. So that the it can be populated by the completion queue in the background if
+      // a new request comes in.
+      factory_.CreateCall();
+    }
     if (!auth_success) {
       boost::asio::post(GetServerCallExecutor(), [this, token_auth_failed]() {
         if (token_auth_failed) {
