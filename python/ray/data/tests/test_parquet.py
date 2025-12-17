@@ -2392,6 +2392,54 @@ def test_hive_partitioned_parquet_operations(
     )
 
 
+@pytest.mark.parametrize("choice", ["default", "hive", "filename", "ray_default"])
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="Hive partitioned parquet operations require pyarrow >= 14.0.0",
+)
+def test_write_parquet_partitioning(choice, tmp_path):
+
+    # Ray's default is "hive", while pyarrow's default is "directory" (when None).
+    kwargs = {
+        "default": (
+            {"partitioning_flavor": None},
+            pds.partitioning(field_names=["grp"], flavor=None),
+        ),
+        "hive": ({"partitioning_flavor": "hive"}, pds.partitioning(flavor="hive")),
+        "filename": (
+            {"partitioning_flavor": "filename"},
+            pds.partitioning(
+                pa.schema([pa.field("grp", pa.int64())]), flavor="filename"
+            ),
+        ),
+        "ray_default": (
+            {},
+            "hive",
+        ),
+    }
+
+    parquet_kwargs, partitioning = kwargs[choice]
+
+    ds = ray.data.range(1000).add_column("grp", lambda x: x["id"] % 10)
+
+    ds.write_parquet(
+        tmp_path,
+        partition_cols=["grp"],
+        **parquet_kwargs,
+        mode="overwrite",
+    )
+
+    pq_ds = pq.ParquetDataset(
+        tmp_path,
+        partitioning=partitioning,
+    )
+    df = pq_ds.read_pandas().to_pandas()
+
+    assert len(df) == 1000
+    assert df["grp"].nunique() == 10
+    assert set(df.columns.tolist()) == {"id", "grp"}
+
+
 if __name__ == "__main__":
     import sys
 
