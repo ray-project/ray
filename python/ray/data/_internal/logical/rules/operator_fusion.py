@@ -320,6 +320,7 @@ class FuseOperators(Rule):
             name,
             input_op,
             up_logical_op._fn,
+            udf_modifying_row_count=up_logical_op.can_modify_num_rows(),
             fn_args=up_logical_op._fn_args,
             fn_kwargs=up_logical_op._fn_kwargs,
             fn_constructor_args=up_logical_op._fn_constructor_args,
@@ -479,6 +480,8 @@ class FuseOperators(Rule):
                 fn_constructor_kwargs=down_logical_op._fn_constructor_kwargs,
                 min_rows_per_bundled_input=min_rows_per_bundled_input,
                 compute=compute,
+                udf_modifying_row_count=up_logical_op.can_modify_num_rows()
+                or down_logical_op.can_modify_num_rows(),
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
             )

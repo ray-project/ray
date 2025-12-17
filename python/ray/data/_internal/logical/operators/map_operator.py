@@ -77,6 +77,7 @@ class AbstractUDFMap(AbstractMap):
         name: str,
         input_op: LogicalOperator,
         fn: UserDefinedFunction,
+        udf_modifying_row_count: bool,
         *,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -94,6 +95,7 @@ class AbstractUDFMap(AbstractMap):
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
             fn: User-defined function to be called.
+            # TODO(Justin): Add a docstring
             fn_args: Arguments to `fn`.
             fn_kwargs: Keyword arguments to `fn`.
             fn_constructor_args: Arguments to provide to the initializor of `fn` if
@@ -126,6 +128,7 @@ class AbstractUDFMap(AbstractMap):
         self._fn_constructor_args = fn_constructor_args
         self._fn_constructor_kwargs = fn_constructor_kwargs
         self._ray_remote_args_fn = ray_remote_args_fn
+        self._udf_modifying_row_count = udf_modifying_row_count
 
     def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
         """Gets the Operator name including the map `fn` UDF name."""
@@ -155,6 +158,9 @@ class AbstractUDFMap(AbstractMap):
         except AttributeError as e:
             logger.error("Failed to get name of UDF %s: %s", fn, e)
             return "<unknown>"
+
+    def can_modify_num_rows(self) -> bool:
+        return self._udf_modifying_row_count
 
 
 class MapBatches(AbstractUDFMap):
@@ -187,13 +193,13 @@ class MapBatches(AbstractUDFMap):
             fn_constructor_kwargs=fn_constructor_kwargs,
             min_rows_per_bundled_input=min_rows_per_bundled_input,
             compute=compute,
+            udf_modifying_row_count=udf_modifying_row_count,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
         self._batch_size = batch_size
         self._batch_format = batch_format
         self._zero_copy_batch = zero_copy_batch
-        self._udf_modifying_row_count = udf_modifying_row_count
 
     def can_modify_num_rows(self) -> bool:
         return self._udf_modifying_row_count
@@ -218,6 +224,7 @@ class MapRows(AbstractUDFMap):
             "Map",
             input_op,
             fn,
+            udf_modifying_row_count=False,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
@@ -226,9 +233,6 @@ class MapRows(AbstractUDFMap):
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-
-    def can_modify_num_rows(self) -> bool:
-        return False
 
 
 class Filter(AbstractUDFMap):
@@ -259,6 +263,7 @@ class Filter(AbstractUDFMap):
         super().__init__(
             "Filter",
             input_op,
+            udf_modifying_row_count=True,
             fn=fn,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
@@ -268,9 +273,6 @@ class Filter(AbstractUDFMap):
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-
-    def can_modify_num_rows(self) -> bool:
-        return True
 
     def is_expression_based(self) -> bool:
         return self._predicate_expr is not None
@@ -376,6 +378,7 @@ class FlatMap(AbstractUDFMap):
             "FlatMap",
             input_op,
             fn,
+            udf_modifying_row_count=True,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
@@ -384,9 +387,6 @@ class FlatMap(AbstractUDFMap):
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-
-    def can_modify_num_rows(self) -> bool:
-        return True
 
 
 class StreamingRepartition(AbstractMap):
