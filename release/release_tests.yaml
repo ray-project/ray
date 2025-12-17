@@ -2020,15 +2020,15 @@
 # --------------------------
 # APPO
 #
-# | APPO (14 total tests)          |                Number of Learners (Device)                                                      |
-# | Environment                    | Local (CPU) | Single (CPU)    | Single (GPU) | Multi (GPU) Single Node | Multi (GPU) Multi Node |
-# |--------------------------------|-------------|-----------------|--------------|-------------------------|------------------------|
-# | (SA/D) Cartpole                | ✅          | ✅              | ❌           | ❌                     | ❌                     |
-# | (SA/D/LSTM) Stateless Cartpole | ✅          | ❌              | ✅           | ❌                     | ❌                     |
-# | (MA/D) TicTacToe               | ✅          | ✅              | ❌           | ✅                     | ❌                     |
-# | (SA/D) Atari (Breakout)        | ❌          | ❌              | ❌           | ✅                     | ✅                     |
-# | (SA/C) IsaacLab (Humanoid)     | ❌          | ✅ (with 1 GPU) | ⚠️           | ❌                     | ❌                     |
-# | (MA/D) Footsies                | ❌          | ❌              | ✅           | ❌                     | ❌                     |
+# | APPO (14 total tests)          |         |                Number of Learners (Device)                                                      |
+# | Environment                    | Success | Local (CPU) | Single (CPU)    | Single (GPU) | Multi (GPU) Single Node | Multi (GPU) Multi Node |
+# |--------------------------------|---------|-------------|-----------------|--------------|-------------------------|------------------------|
+# | (SA/D) Cartpole                | 450     | ✅          | ✅              | ❌           | ❌                     | ❌                     |
+# | (SA/D/LSTM) Stateless Cartpole | 350     | ✅          | ❌              | ✅           | ❌                     | ❌                     |
+# | (MA/D) TicTacToe               | 0       | ✅          | ✅              | ❌           | ✅                     | ❌                     |
+# | (SA/D) Atari (Pong)            | 18      | ❌          | ❌              | ❌           | ✅                     | ✅                     |
+# | (SA/C) IsaacLab (Humanoid)     | ??      | ❌          | ✅ (with 1 GPU) | ⚠️           | ❌                     | ❌                     |
+# | (MA/D) Footsies                | ??      | ❌          | ❌              | ✅           | ❌                     | ❌                     |
 #
 # --------------------------
 

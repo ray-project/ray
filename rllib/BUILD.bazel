@@ -112,16 +112,16 @@ py_library(
 #   - LSTM = recurrent policy through lstms
 # --------------------------------------------------------------------
 
-# | APPO (14 total tests)          |                Number of Learners (Device)                 |
-# | Environment                    | Local (CPU) | Single (CPU)    | Single (GPU) | Multi (GPU) |
-# |--------------------------------|-------------|-----------------|--------------|-------------|
-# | (SA/D) Cartpole                | ✅          | ✅              | ❌           | ❌         |
-# | (SA/D/LSTM) Stateless Cartpole | ✅          | ❌              | ✅           | ❌         |
-# | (MA/D) TicTacToe               | ✅          | ❌              | ✅           | ✅         |
-# | (SA/D) Atari (Breakout)        | ❌          | ❌              | ✅           | ✅         |
-# | (SA/C) MuJoCo (Humanoid)       | ❌          | ✅              | ❌           | ✅         |
-# | (MA/D) Footsies                | ❌          | ❌              | ✅           | ✅         |
-# | (SA/C) IsaacLab (Humanoid)     | ❌          | ✅ (with 1 GPU) | ⚠️           | ❌         |
+# | APPO (14 total tests)          |         |                Number of Learners (Device)                 |
+# | Environment                    | Success | Local (CPU) | Single (CPU)    | Single (GPU) | Multi (GPU) |
+# |--------------------------------|---------|-------------|-----------------|--------------|-------------|
+# | (SA/D) Cartpole                | 200     | ✅          | ✅              | ❌           | ❌         |
+# | (SA/D/LSTM) Stateless Cartpole | 150     | ✅          | ❌              | ✅           | ❌         |
+# | (MA/D) TicTacToe               | -0.2    | ✅          | ❌              | ✅           | ✅         |
+# | (SA/D) Atari (Pong)            | 5       | ❌          | ❌              | ✅           | ✅         |
+# | (SA/C) MuJoCo (Humanoid)       | 200     | ❌          | ✅              | ❌           | ✅         |
+# | (MA/D) Footsies                |         | ❌          | ❌              | ✅           | ✅         |
+# | (SA/C) IsaacLab (Humanoid)     |         | ❌          | ✅ (with 1 GPU) | ⚠️           | ❌         |
 
 py_test(
     name = "learning_test_appo_cartpole_local",
@@ -132,6 +132,7 @@ py_test(
         "--num-cpus=7",
         "--num-env-runners=5",
         "--num-learners=0",
+        "--stop-reward=200",
     ],
     main = "examples/algorithms/appo/cartpole_appo.py",
     tags = [
@@ -151,6 +152,7 @@ py_test(
         "--num-cpus=7",
         "--num-env-runners=5",
         "--num-learners=1",
+        "--stop-reward=200",
     ],
     main = "examples/algorithms/appo/cartpole_appo.py",
     tags = [
@@ -170,6 +172,7 @@ py_test(
         "--num-cpus=7",
         "--num-env-runners=5",
         "--num-learners=0",
+        "--stop-reward=150",
     ],
     main = "examples/algorithms/appo/stateless_cartpole_appo_with_lstm.py",
     tags = [
@@ -190,6 +193,7 @@ py_test(
         "--num-env-runners=5",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--stop-reward=150",
     ],
     main = "examples/algorithms/appo/stateless_cartpole_appo_with_lstm.py",
     tags = [
@@ -210,6 +214,7 @@ py_test(
         "--num-cpus=7",
         "--num-env-runners=5",
         "--num-learners=0",
+        "--stop-reward=-2",
     ],
     main = "examples/algorithms/appo/tictactoe_appo.py",
     tags = [
@@ -230,6 +235,7 @@ py_test(
         "--num-env-runners=5",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--stop-reward=-2",
     ],
     main = "examples/algorithms/appo/tictactoe_appo.py",
     tags = [
@@ -251,6 +257,7 @@ py_test(
         "--num-env-runners=5",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--stop-reward=-2",
     ],
     main = "examples/algorithms/appo/tictactoe_appo.py",
     tags = [
@@ -272,6 +279,8 @@ py_test(
         "--num-env-runners=5",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--stop-iters=50",
+        "--stop-reward=5.0",
     ],
     main = "examples/algorithms/appo/atari_appo.py",
     tags = [
@@ -293,6 +302,8 @@ py_test(
         "--num-env-runners=5",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--stop-iters=50",
+        "--stop-reward=1.0",
     ],
     main = "examples/algorithms/appo/atari_appo.py",
     tags = [
@@ -313,6 +324,7 @@ py_test(
         "--num-cpus=7",
         "--num-env-runners=5",
         "--num-learners=1",
+        "--stop-reward=200.0",
     ],
     main = "examples/algorithms/appo/mujoco_appo.py",
     tags = [
@@ -333,6 +345,7 @@ py_test(
         "--num-env-runners=5",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--stop-reward=200.0",
     ],
     main = "examples/algorithms/appo/mujoco_appo.py",
     tags = [
