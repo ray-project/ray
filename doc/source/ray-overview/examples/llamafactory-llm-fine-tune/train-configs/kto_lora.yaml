@@ -13,8 +13,6 @@ lora_target: all
 pref_beta: 0.1
 
 ### acceleration methods
-# You can enable both methods at the same time
-flash_attn: fa2            # Speed up attention and cut activation memory at long context. Use auto on Turing GPUs (e.g., T4)
 enable_liger_kernel: true  # Reduce VRAM and improve throughput across multiple transformer ops
 
 ### dataset
