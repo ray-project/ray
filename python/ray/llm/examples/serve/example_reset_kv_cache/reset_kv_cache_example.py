@@ -41,7 +41,7 @@ import httpx
 
 from ray import serve
 from ray.llm._internal.serve.core.ingress.ingress import DEFAULT_ENDPOINTS
-from ray.llm._internal.serve.utils.dispatch import dispatch
+from ray.llm._internal.serve.utils.dispatch import broadcast
 from ray.serve.llm import LLMConfig, build_llm_deployment, build_openai_app
 from ray.serve.llm.ingress import OpenAiIngress, make_fastapi_ingress
 
@@ -78,7 +78,7 @@ class KVCacheResetIngress(OpenAiIngress):
         """
         model_id = request.query_params.get("model")
         handle = self._get_configured_serve_handle(model_id)
-        dispatch(handle, "reset_prefix_cache")
+        broadcast(handle, "reset_prefix_cache")
 
 
 # Endpoint map for the custom ingress
@@ -159,7 +159,7 @@ def reset_cache_via_handle(model: str):
     all replicas without exposing functionality over HTTP.
     """
     llm_handle = serve.get_deployment_handle("LLMServer:llm", app_name="default")
-    dispatch(llm_handle, "reset_prefix_cache")
+    broadcast(llm_handle, "reset_prefix_cache")
 
 
 # =============================================================================

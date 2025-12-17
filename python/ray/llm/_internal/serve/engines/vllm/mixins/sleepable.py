@@ -8,6 +8,10 @@ from typing import Any, List, Optional
 
 from pydantic import BaseModel, field_validator
 
+from ray.llm._internal.serve.observability.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 class VLLMSleepConfig(BaseModel):
     """vLLM-specific configuration for sleep operation."""
@@ -84,4 +88,6 @@ class VLLMSleepableEngineMixin:
             True if the engine is sleeping, False otherwise.
         """
         assert self._engine_client is not None, "engine_client is not initialized"
-        return await self._engine_client.is_sleeping()
+        result = await self._engine_client.is_sleeping()
+        logger.info("[DEBUG] Engine is sleeping from vLLM engine: %s", result)
+        return result

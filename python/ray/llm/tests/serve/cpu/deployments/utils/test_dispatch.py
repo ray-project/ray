@@ -5,7 +5,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray.llm._internal.serve.utils.dispatch import dispatch
+from ray.llm._internal.serve.utils.dispatch import broadcast
 
 
 # Define a simple deployment for testing
@@ -59,7 +59,7 @@ def mock_handle(serve_instance, request):
 async def test_dispatch_basic(mock_handle):
     """Test basic dispatch without combine."""
     # We can use get_reset_count which doesn't modify state
-    results = dispatch(mock_handle, "get_reset_count")
+    results = broadcast(mock_handle, "get_reset_count")
 
     assert len(results) == 2
     # Verify we got unique IDs back
@@ -71,14 +71,14 @@ async def test_dispatch_basic(mock_handle):
 async def test_dispatch_with_combine(mock_handle):
     """Test dispatch with a combine function."""
     # First, increment count so we have something to sum
-    dispatch(mock_handle, "reset_prefix_cache")
+    broadcast(mock_handle, "reset_prefix_cache")
 
     def sum_counts(results):
         # results is list of (id, count)
         return sum(r[1] for r in results)
 
     # Get counts using dispatch and combine
-    total_count = dispatch(mock_handle, "get_reset_count", combine=sum_counts)
+    total_count = broadcast(mock_handle, "get_reset_count", combine=sum_counts)
 
     # We have 2 replicas, each should have reset_count=1 after one reset call
     assert total_count == 2
@@ -88,7 +88,7 @@ async def test_dispatch_with_combine(mock_handle):
 @pytest.mark.asyncio
 async def test_dispatch_args_kwargs(mock_handle):
     """Test dispatch passing args and kwargs."""
-    results = dispatch(mock_handle, "echo", args=("hello",), kwargs={"repeat": 2})
+    results = broadcast(mock_handle, "echo", args=("hello",), kwargs={"repeat": 2})
 
     assert len(results) == 2
     for r in results:
@@ -105,7 +105,7 @@ async def test_dispatch_callable_args(mock_handle):
         # replica has unique_id or similar
         return (f"msg-{replica.unique_id}",)
 
-    results = dispatch(mock_handle, "echo", args=arg_gen)
+    results = broadcast(mock_handle, "echo", args=arg_gen)
 
     assert len(results) == 2
     msgs = set()
@@ -134,7 +134,7 @@ async def test_dispatch_handles_dead_replica(serve_instance, request):
     )
 
     # First, verify dispatch works with all replicas alive
-    results_before = dispatch(handle, "get_reset_count")
+    results_before = broadcast(handle, "get_reset_count")
     assert len(results_before) == 2, "Should have 2 results from 2 replicas"
 
     # Kill one replica by calling self_destruct through the handle.
@@ -151,7 +151,7 @@ async def test_dispatch_handles_dead_replica(serve_instance, request):
 
     # Dispatch should still work with the remaining replica(s)
     # The dead replica will be skipped (ValueError caught in dispatch)
-    results_after = dispatch(handle, "get_reset_count")
+    results_after = broadcast(handle, "get_reset_count")
 
     # Should get at least 1 result from the surviving replica
     # (The killed replica may or may not be in the replica set depending

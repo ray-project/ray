@@ -15,8 +15,6 @@ Endpoints:
 import pprint
 from typing import Dict
 
-from starlette.responses import Response
-
 from ray import serve
 from ray.llm._internal.common.dict_utils import (
     maybe_apply_llm_deployment_config_defaults,
@@ -33,7 +31,6 @@ from ray.llm._internal.serve.core.ingress.mixins import (
 )
 from ray.llm._internal.serve.core.server.builder import build_llm_deployment
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.utils.dispatch import dispatch
 from ray.serve.deployment import Application
 
 logger = get_logger(__name__)
@@ -64,23 +61,7 @@ class DevIngress(OpenAiIngress, SleepableIngressMixin, CacheManagerIngressMixin)
     environments. Consider access control in production deployments.
     """
 
-    async def _dispatch_to_replicas(
-        self, model: str, method: str, kwargs: dict | None = None
-    ) -> Response:
-        """Helper to dispatch a command to all replicas and return a 200 response.
-
-        Args:
-            model: The model ID or None to use default.
-            method: The method name to call on each replica.
-            kwargs: Optional kwargs to pass to the method.
-
-        Returns:
-            200 OK response.
-        """
-        model_id = await self._get_model_id(model)
-        handle = self._get_configured_serve_handle(model_id)
-        dispatch(handle, method, kwargs=kwargs)
-        return Response(status_code=200)
+    pass
 
 
 def build_dev_openai_app(builder_config: Dict) -> Application:

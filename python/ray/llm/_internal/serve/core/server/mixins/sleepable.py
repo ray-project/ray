@@ -57,12 +57,15 @@ class SleepableServerMixin:
         Returns:
             True if the engine is sleeping, False otherwise.
         """
+        logger.info("[DEBUG] Checking if engine is sleeping from server")
         if self.engine is None:
             return False
         if not hasattr(self.engine, "is_sleeping"):
             return False
         try:
-            return await self.engine.is_sleeping()
+            result = await self.engine.is_sleeping()
+            logger.info("[DEBUG] Engine is sleeping from server: %s", result)
+            return result
         except Exception as e:
             logger.error("Engine is_sleeping failed in LLMServer.is_sleeping: %s", e)
             raise e

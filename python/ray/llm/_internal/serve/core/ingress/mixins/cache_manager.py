@@ -6,6 +6,9 @@ Provides HTTP endpoints for cache management control plane operations.
 from pydantic import BaseModel
 from starlette.responses import Response
 
+from ray.llm._internal.serve.core.ingress.mixins.broadcastable import (
+    ReplicaBroadcastable,
+)
 from ray.llm._internal.serve.observability.logging import get_logger
 
 logger = get_logger(__name__)
@@ -23,7 +26,7 @@ class ResetPrefixCacheRequest(BaseModel):
 # --- Mixin ---
 
 
-class CacheManagerIngressMixin:
+class CacheManagerIngressMixin(ReplicaBroadcastable):
     """Ingress mixin for /reset_prefix_cache endpoint.
 
     Adds control plane endpoint for managing the KV prefix cache.
@@ -46,4 +49,5 @@ class CacheManagerIngressMixin:
             200 OK on success.
         """
         logger.info("Resetting prefix cache for model: %s", body.model)
-        return await self._dispatch_to_replicas(body.model, "reset_prefix_cache")
+        await self._broadcast_to_replicas(body.model, "reset_prefix_cache")
+        return Response(status_code=200)

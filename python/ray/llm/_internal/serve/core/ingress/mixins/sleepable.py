@@ -9,8 +9,10 @@ from fastapi import Query
 from pydantic import BaseModel, Field
 from starlette.responses import Response
 
+from ray.llm._internal.serve.core.ingress.mixins.broadcastable import (
+    ReplicaBroadcastable,
+)
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.utils.dispatch import dispatch
 
 logger = get_logger(__name__)
 
@@ -47,7 +49,7 @@ class IsSleepingResponse(BaseModel):
 # --- Mixin ---
 
 
-class SleepableIngressMixin:
+class SleepableIngressMixin(ReplicaBroadcastable):
     """Ingress mixin for /sleep, /wakeup, /is_sleeping endpoints.
 
     Adds control plane endpoints for managing engine sleep state.
@@ -75,9 +77,8 @@ class SleepableIngressMixin:
         logger.info(
             "Putting model %s to sleep with options: %s", body.model, body.options
         )
-        return await self._dispatch_to_replicas(
-            body.model, "sleep", kwargs=body.options
-        )
+        await self._broadcast_to_replicas(body.model, "sleep", kwargs=body.options)
+        return Response(status_code=200)
 
     async def wakeup(self, body: WakeupRequest) -> Response:
         """Wake up the engine from sleep on all replicas for the specified model.
@@ -89,9 +90,8 @@ class SleepableIngressMixin:
             200 OK on success.
         """
         logger.info("Waking up model %s with options: %s", body.model, body.options)
-        return await self._dispatch_to_replicas(
-            body.model, "wakeup", kwargs=body.options
-        )
+        await self._broadcast_to_replicas(body.model, "wakeup", kwargs=body.options)
+        return Response(status_code=200)
 
     async def is_sleeping(
         self, model: str = Query(..., description="The model ID to check")
@@ -107,9 +107,6 @@ class SleepableIngressMixin:
         Returns:
             IsSleepingResponse with is_sleeping boolean.
         """
-        model_id = await self._get_model_id(model)
-        handle = self._get_configured_serve_handle(model_id)
-        # Check sleeping status across all replicas - return True if any is sleeping
-        results = dispatch(handle, "is_sleeping")
+        results = await self._broadcast_to_replicas(model, "is_sleeping")
         is_sleeping_result = any(results) if results else False
         return IsSleepingResponse(is_sleeping=is_sleeping_result)

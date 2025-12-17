@@ -28,10 +28,6 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
-from ray.llm._internal.serve.core.server.mixins import (
-    CacheManagerServerMixin,
-    SleepableServerMixin,
-)
 from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
@@ -100,7 +96,7 @@ def _merge_replica_actor_and_child_actor_bundles(
     ]
 
 
-class LLMServer(LLMServerProtocol, SleepableServerMixin, CacheManagerServerMixin):
+class LLMServer(LLMServerProtocol):
     """This is a shim layer to decouple the LLM engine from the ingress
     deployment.
 
@@ -466,6 +462,75 @@ class LLMServer(LLMServerProtocol, SleepableServerMixin, CacheManagerServerMixin
             return await self.engine.check_health()
         except Exception as e:
             logger.error("Engine health check failed in LLMServer.check_health: %s", e)
+            raise e
+
+    async def sleep(self, **kwargs: Any) -> None:
+        """Put the engine to sleep.
+
+        Args:
+            **kwargs: Engine-specific sleep options. Passed through to the engine.
+        """
+        if self.engine is None:
+            return
+        if not hasattr(self.engine, "sleep"):
+            logger.warning("Engine does not support sleep")
+            return
+        try:
+            await self.engine.sleep(**kwargs)
+        except Exception as e:
+            logger.error("Engine sleep failed in LLMServer.sleep: %s", e)
+            raise e
+
+    async def wakeup(self, **kwargs: Any) -> None:
+        """Wake up the engine from sleep mode.
+
+        Args:
+            **kwargs: Engine-specific wakeup options. Passed through to the engine.
+        """
+        if self.engine is None:
+            return
+        if not hasattr(self.engine, "wakeup"):
+            logger.warning("Engine does not support wakeup")
+            return
+        try:
+            await self.engine.wakeup(**kwargs)
+        except Exception as e:
+            logger.error("Engine wakeup failed in LLMServer.wakeup: %s", e)
+            raise e
+
+    async def is_sleeping(self) -> bool:
+        """Check whether the engine is currently sleeping.
+
+        Returns:
+            True if the engine is sleeping, False otherwise.
+        """
+        if self.engine is None:
+            return False
+        if not hasattr(self.engine, "is_sleeping"):
+            return False
+        try:
+            return await self.engine.is_sleeping()
+        except Exception as e:
+            logger.error("Engine is_sleeping failed in LLMServer.is_sleeping: %s", e)
+            raise e
+
+    async def reset_prefix_cache(self) -> None:
+        """Reset the KV prefix cache on the engine.
+
+        Clears cached key-value pairs from previous requests.
+        """
+        if self.engine is None:
+            return
+        if not hasattr(self.engine, "reset_prefix_cache"):
+            logger.warning("Engine does not support reset_prefix_cache")
+            return
+        try:
+            await self.engine.reset_prefix_cache()
+        except Exception as e:
+            logger.error(
+                "Engine reset_prefix_cache failed in LLMServer.reset_prefix_cache: %s",
+                e,
+            )
             raise e
 
     async def start_profile(self) -> None:
