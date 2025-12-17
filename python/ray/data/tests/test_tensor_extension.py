@@ -60,7 +60,13 @@ def test_tensor_array_validation():
 
 
 def test_pandas_to_arrow_fixed_shape_tensor_conversion():
-    array = pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype).to_numpy()
+    # First, convert Pandas serise w/ nulls to numpy
+    array = (
+        pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype)
+            .to_numpy()
+            .reshape((2, 2))
+    )
+
     input_tensor = np.stack([array, array])
 
     pa_tensor = ArrowTensorArray.from_numpy(input_tensor)
@@ -73,9 +79,13 @@ def test_pandas_to_arrow_fixed_shape_tensor_conversion():
 
 
 def test_pandas_to_arrow_var_shape_tensor_conversion():
+    # First, convert Pandas serise w/ nulls to numpy
     array = pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype).to_numpy()
 
-    input_tensor = create_ragged_ndarray([array.reshape(1, 4), array.reshape((2, 2))])
+    input_tensor = create_ragged_ndarray([
+        array.reshape(1, 4),
+        array.reshape((2, 2))
+    ])
 
     # For ragged arrays, we need to convert each element individually
     expeted_np_tensor = create_ragged_ndarray(
