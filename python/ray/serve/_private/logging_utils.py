@@ -201,6 +201,8 @@ class TimedMemoryHandler(logging.handlers.MemoryHandler):
                     break
 
     def emit(self, record: logging.LogRecord):
+        super().emit(record)
+
         # Notify check thread if timeout is enabled
         if self.flush_timeout_s is not None and self.flush_timeout_s > 0:
             # Ensure check thread is running
@@ -208,8 +210,6 @@ class TimedMemoryHandler(logging.handlers.MemoryHandler):
                 self._start_check_thread()
             # Notify check thread that a new emit happened (reset timeout)
             self._check_event.set()
-
-        super().emit(record)
 
     def flush(self):
         """Flush the buffer."""
