@@ -101,6 +101,7 @@ message LoggingConfig {
   string logs_dir = 3;
   bool enable_access_log = 4;
   repeated string additional_log_standard_attrs = 5;
+  optional double flush_timeout_s = 6;
 }
 
 //[End] Logging Config

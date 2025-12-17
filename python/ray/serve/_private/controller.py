@@ -52,6 +52,7 @@ from ray.serve._private.http_util import (
     configure_http_options_with_defaults,
 )
 from ray.serve._private.logging_utils import (
+    TimedMemoryHandler,
     configure_component_logger,
     configure_component_memory_profiler,
     get_component_logger_file_path,
@@ -1277,7 +1278,9 @@ class ServeController:
         """Get the logging configuration (for testing purposes)."""
         log_file_path = None
         for handler in logger.handlers:
-            if isinstance(handler, logging.handlers.MemoryHandler):
+            if isinstance(
+                handler, (logging.handlers.MemoryHandler, TimedMemoryHandler)
+            ):
                 log_file_path = handler.target.baseFilename
         return self.global_logging_config, log_file_path
 

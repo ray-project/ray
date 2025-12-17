@@ -153,6 +153,15 @@ class LoggingConfig(BaseModel):
             "for a list of available attributes."
         ),
     )
+    flush_timeout_s: Optional[float] = Field(
+        default=5.0,
+        description=(
+            "Idle timeout in seconds for flushing buffered logs. If set, the log "
+            "handler will automatically flush its buffer if no new log records have "
+            "been emitted for this duration. The timeout resets on each emitted record. "
+            "If None, timeout-based flushing is disabled. Defaults to 5.0 seconds."
+        ),
+    )
 
     @validator("encoding")
     def valid_encoding_format(cls, v):
@@ -190,6 +199,14 @@ class LoggingConfig(BaseModel):
                     f"Additional log standard attributes must be one of {LOGRECORD_STANDARD_ATTRS}."
                 )
         return list(set(v))
+
+    @validator("flush_timeout_s")
+    def valid_flush_timeout_s(cls, v):
+        if v is not None and v <= 0:
+            raise ValueError(
+                f'Got "{v}" for flush_timeout_s. flush_timeout_s must be positive or None.'
+            )
+        return v
 
     def _compute_hash(self) -> int:
         return crc32(

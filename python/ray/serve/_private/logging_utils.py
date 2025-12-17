@@ -2,6 +2,7 @@ import builtins
 import logging
 import os
 import sys
+import threading
 import traceback
 from typing import Any, Optional
 
@@ -121,6 +122,103 @@ class ServeLogAttributeRemovalFilter(logging.Filter):
         return True
 
 
+class TimedMemoryHandler(logging.handlers.MemoryHandler):
+    """MemoryHandler with idle timeout-based flush mechanism.
+
+    This handler extends the standard MemoryHandler to automatically flush
+    its buffer if no new log records have been emitted for a configurable
+    duration (flush_timeout_s seconds). The timeout resets on each emitted record.
+
+    Args:
+        capacity: Maximum number of records to buffer before flushing.
+        target: Target handler to flush records to.
+        flushLevel: Log level that triggers immediate flush (e.g., logging.ERROR).
+        flush_timeout_s: Idle timeout in seconds. If set, the handler will
+            automatically flush its buffer if no new log records have been emitted
+            for this duration. The timeout resets on each emitted record.
+            If None, timeout-based flushing is disabled and the handler behaves
+            like a standard MemoryHandler.
+    """
+
+    def __init__(
+        self,
+        capacity: int,
+        target: logging.Handler,
+        flushLevel: int = logging.ERROR,
+        flush_timeout_s: Optional[float] = None,
+    ):
+        super().__init__(capacity, flushLevel, target)
+        self.flush_timeout_s = flush_timeout_s
+        self._check_thread = None
+        self._shutdown = False
+        self._shutdown_event = threading.Event()  # Event to wake up sleeping thread
+
+        if self.flush_timeout_s is not None and self.flush_timeout_s > 0:
+            self._start_check_thread()
+
+    def _start_check_thread(self):
+        """Start the background thread that checks for idle timeout."""
+        if self._shutdown:
+            return
+
+        # Stop existing thread if any
+        if self._check_thread is not None and self._check_thread.is_alive():
+            return
+
+        # Start background check thread
+        self._check_thread = threading.Thread(
+            target=self._check_idle_timeout,
+            daemon=True,
+            name="TimedMemoryHandler-check",
+        )
+        self._check_thread.start()
+
+    def _check_idle_timeout(self):
+        """Check if idle timeout has elapsed and flush if needed."""
+        while not self._shutdown:
+            try:
+                # Use wait with timeout instead of sleep to allow immediate wakeup
+                if self._shutdown_event.wait(timeout=self.flush_timeout_s):
+                    self._shutdown_event.clear()
+                    continue
+
+                # Check shutdown flag after wait
+                if self._shutdown:
+                    break
+
+                super().flush()
+            except Exception:
+                # Ignore exceptions in background thread to prevent crashes
+                # but check shutdown flag to exit gracefully
+                if self._shutdown:
+                    break
+
+    def emit(self, record: logging.LogRecord):
+        """Emit a record"""
+        super().emit(record)
+
+    def flush(self):
+        """Flush the buffer."""
+        super().flush()
+
+    def close(self):
+        """Close the handler and clean up the check thread."""
+        # Set shutdown flag and wake up the sleeping thread
+        self._shutdown = True
+
+        # Signal the event to wake up the sleeping thread immediately
+        self._shutdown_event.set()
+
+        # Wait for check thread to finish (with timeout)
+        if self._check_thread is not None and self._check_thread.is_alive():
+            self._check_thread.join(timeout=1.0)
+
+        # Flush any remaining buffered logs before closing
+        super().flush()
+
+        super().close()
+
+
 class ServeFormatter(TextFormatter):
     """Serve Logging Formatter
 
@@ -210,7 +308,7 @@ def get_component_logger_file_path() -> Optional[str]:
     """
     logger = logging.getLogger(SERVE_LOGGER_NAME)
     for handler in logger.handlers:
-        if isinstance(handler, logging.handlers.MemoryHandler):
+        if isinstance(handler, (logging.handlers.MemoryHandler, TimedMemoryHandler)):
             absolute_path = handler.target.baseFilename
             ray_logs_dir = ray._private.worker._global_node.get_logs_dir_path()
             if absolute_path.startswith(ray_logs_dir):
@@ -315,7 +413,22 @@ def configure_component_logger(
     using the provided name and unique ID for this instance (e.g., replica ID).
 
     This logger will *not* propagate its log messages to the parent logger(s).
+
+    Args:
+        component_name: Name of the component.
+        component_id: Unique ID for this component instance.
+        logging_config: Logging configuration.
+        component_type: Type of the component (e.g., REPLICA).
+        max_bytes: Maximum bytes for log rotation.
+        backup_count: Number of backup log files.
+        stream_handler_only: If True, only add stream handler.
+        buffer_size: Buffer size for memory handler.
+
+    Returns:
+        None
     """
+    # Get flush_timeout_s from logging_config (defaults to None if not set)
+    flush_timeout_s = logging_config.flush_timeout_s
     logger = logging.getLogger(SERVE_LOGGER_NAME)
     logger.propagate = False
     logger.setLevel(logging_config.log_level)
@@ -372,11 +485,12 @@ def configure_component_logger(
     )
     # Create a memory handler that buffers log records and flushes to file handler
     # Buffer capacity: buffer_size records
-    # Flush triggers: buffer full, ERROR messages, or explicit flush
-    memory_handler = logging.handlers.MemoryHandler(
+    # Flush triggers: buffer full, ERROR messages, idle timeout, or explicit flush
+    memory_handler = TimedMemoryHandler(
         capacity=buffer_size,
         target=file_handler,
         flushLevel=logging.ERROR,  # Auto-flush on ERROR/CRITICAL
+        flush_timeout_s=flush_timeout_s,  # Auto-flush on idle timeout
     )
     if RAY_SERVE_ENABLE_JSON_LOGGING:
         logger.warning(

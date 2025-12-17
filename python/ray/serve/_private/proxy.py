@@ -58,6 +58,7 @@ from ray.serve._private.http_util import (
     start_asgi_http_server,
 )
 from ray.serve._private.logging_utils import (
+    TimedMemoryHandler,
     access_log_msg,
     configure_component_logger,
     configure_component_memory_profiler,
@@ -1284,7 +1285,9 @@ class ProxyActor(ProxyActorInterface):
         """Get the logging configuration (for testing purposes)."""
         log_file_path = None
         for handler in logger.handlers:
-            if isinstance(handler, logging.handlers.MemoryHandler):
+            if isinstance(
+                handler, (logging.handlers.MemoryHandler, TimedMemoryHandler)
+            ):
                 log_file_path = handler.target.baseFilename
         return log_file_path
 
