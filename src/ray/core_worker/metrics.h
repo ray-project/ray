@@ -83,7 +83,7 @@ inline ray::stats::Histogram GetTaskTotalSubmitterPreprocessingTimeMsHistogramMe
       "Total submitter-side time from task submission to task being pushed to the "
       "worker, including dependency resolution and scheduling.",
       /*unit=*/"ms",
-      /*boundaries=*/{1, 10, 100, 1000, 10000},
+      /*boundaries=*/{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000},
       /*tag_keys=*/{},
   };
 }
@@ -97,7 +97,7 @@ inline ray::stats::Histogram GetTaskDependencyResolutionTimeMsHistogramMetric() 
       /*description=*/
       "Time from task submission to dependency resolution completion.",
       /*unit=*/"ms",
-      /*boundaries=*/{1, 10, 100, 1000, 10000},
+      /*boundaries=*/{1, 5, 10, 25, 50, 100, 250, 500, 1000, 3000, 2000, 5000, 10000},
       /*tag_keys=*/{},
   };
 }
@@ -111,7 +111,7 @@ inline ray::stats::Histogram GetTaskPushTimeMsHistogramMetric() {
       /*description=*/
       "Time from worker lease granted to task being pushed to the worker.",
       /*unit=*/"ms",
-      /*boundaries=*/{1, 10, 100, 1000, 10000},
+      /*boundaries=*/{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000},
       /*tag_keys=*/{},
   };
 }

@@ -2719,7 +2719,7 @@ cdef class CoreWorker:
             self._task_prepare_time_ms_histogram = Histogram(
                 "task_prepare_time_ms",
                 "Time spent in Python preparing a task before C++ submission in ms.",
-                [1.0, 10.0, 100.0, 1000.0, 10000.0],
+                [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000],
                 [])
         else:
             self._task_prepare_time_ms_histogram = None
