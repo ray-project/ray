@@ -13,3 +13,4 @@ For the high level architecture overview, please refer to the `whitepaper <https
     internals/autoscaler-v2.rst
     internals/rpc-fault-tolerance.rst
     internals/metric-exporter.rst
+    internals/ray-event-exporter.rst
