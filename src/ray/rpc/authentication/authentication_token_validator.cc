@@ -51,7 +51,7 @@ bool AuthenticationTokenValidator::ValidateToken(
 
     // Parse metadata into token for K8S validation (needed for cache and API call)
     AuthenticationToken provided_token =
-        AuthenticationToken::FromMetadata(std::string(provided_metadata));
+        AuthenticationToken::FromMetadata(provided_metadata);
     if (provided_token.empty()) {
       return false;
     }

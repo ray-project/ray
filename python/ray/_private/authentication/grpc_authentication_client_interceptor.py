@@ -2,7 +2,7 @@
 
 import logging
 from collections import namedtuple
-from typing import Tuple
+from typing import Optional, Tuple
 
 import grpc
 from grpc import aio as aiogrpc
@@ -18,6 +18,8 @@ _ClientCallDetails = namedtuple(
     ("method", "timeout", "metadata", "credentials", "wait_for_ready", "compression"),
 )
 
+_cached_auth_metadata: Optional[Tuple[Tuple[str, str], ...]] = None
+
 
 def _get_authentication_metadata_tuple() -> Tuple[Tuple[str, str], ...]:
     """Get gRPC metadata tuple for authentication. Currently only supported for token authentication.
@@ -25,15 +27,22 @@ def _get_authentication_metadata_tuple() -> Tuple[Tuple[str, str], ...]:
     Returns:
         tuple: Empty tuple or ((AUTHORIZATION_HEADER_NAME, "Bearer <token>"),)
     """
+    global _cached_auth_metadata
+
+    if _cached_auth_metadata is not None:
+        return _cached_auth_metadata
+
     token_loader = AuthenticationTokenLoader.instance()
     if not token_loader.has_token():
-        return ()
+        _cached_auth_metadata = ()
+    else:
+        headers = token_loader.get_token_for_http_header()
 
-    headers = token_loader.get_token_for_http_header()
+        # Convert HTTP header dict to gRPC metadata tuple
+        # gRPC expects: (("key", "value"), ...)
+        _cached_auth_metadata = tuple((k, v) for k, v in headers.items())
 
-    # Convert HTTP header dict to gRPC metadata tuple
-    # gRPC expects: (("key", "value"), ...)
-    return tuple((k, v) for k, v in headers.items())
+    return _cached_auth_metadata
 
 
 class SyncAuthenticationMetadataClientInterceptor(

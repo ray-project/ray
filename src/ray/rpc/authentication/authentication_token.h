@@ -93,17 +93,9 @@ class AuthenticationToken {
 
     std::string_view provided_token = metadata_value.substr(prefix_len);
 
-    // Size check (fast path)
-    if (provided_token.size() != secret_.size()) {
-      return false;
-    }
-
-    // Constant-time comparison directly on bytes (avoids vector allocation)
-    unsigned char diff = 0;
-    for (size_t i = 0; i < secret_.size(); ++i) {
-      diff |= secret_[i] ^ static_cast<uint8_t>(provided_token[i]);
-    }
-    return diff == 0;
+    // Convert to vector and use constant-time comparison
+    std::vector<uint8_t> provided_bytes(provided_token.begin(), provided_token.end());
+    return ConstTimeEqual(secret_, provided_bytes);
   }
 
   /// Set authentication metadata on a gRPC client context
@@ -166,7 +158,7 @@ class AuthenticationToken {
  private:
   std::vector<uint8_t> secret_;
 
-  // Constant-time string comparison to avoid timing attacks.
+  // Constant-time comparison to avoid timing attacks.
   // https://en.wikipedia.org/wiki/Timing_attack
   static bool ConstTimeEqual(const std::vector<uint8_t> &a,
                              const std::vector<uint8_t> &b) noexcept {

@@ -64,7 +64,6 @@ RayServerBidiReactor::RayServerBidiReactor(
 
     const std::string_view header(it->second.data(), it->second.length());
 
-    // Use CompareWithMetadata for efficient constant-time comparison
     if (!auth_token_->CompareWithMetadata(header)) {
       RAY_LOG(WARNING) << "Invalid bearer token in syncer connection from node "
                        << NodeID::FromBinary(GetRemoteNodeID());

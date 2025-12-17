@@ -87,7 +87,7 @@ class AuthenticationTokenLoader {
 
   absl::Mutex token_mutex_;
   std::shared_ptr<const AuthenticationToken> cached_token_;
-  bool cache_initialized_ = false;  // Track if we've tried to load
+  bool cache_initialized_ = false;  // Track if already loaded and cached
 };
 
 }  // namespace rpc

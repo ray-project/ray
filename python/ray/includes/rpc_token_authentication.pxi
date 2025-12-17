@@ -49,9 +49,6 @@ def validate_authentication_token(provided_metadata: str) -> bool:
         if not expected_ptr:
             return False
 
-    # ValidateToken handles both TOKEN and K8S modes:
-    # - TOKEN mode uses CompareWithMetadata for efficient constant-time comparison
-    # - K8S mode parses metadata and validates against Kubernetes API
     return CAuthenticationTokenValidator.instance().ValidateToken(
         expected_ptr, provided_metadata.encode())
 
