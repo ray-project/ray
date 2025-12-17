@@ -51,7 +51,7 @@ class MetricCardinality(str, Enum):
     def get_aggregation_function(
         metric_name: str, metric_type: MetricType = MetricType.GAUGE
     ) -> Callable[[List[float]], float]:
-        """Get the aggregation function for a metric when labels are dropped.
+        """Get the aggregation function for a metric when labels are dropped. This method does not currently support histogram metrics.
 
         Args:
             metric_name: The name of the metric.
@@ -67,6 +67,9 @@ class MetricCardinality(str, Enum):
         # Gauge metrics use metric-specific aggregation or default to first value
         if metric_name in HIGH_CARDINALITY_GAUGE_AGGREGATION:
             return HIGH_CARDINALITY_GAUGE_AGGREGATION[metric_name]
+        # Histogram metrics are not supported by this method
+        if metric_type == MetricType.HISTOGRAM:
+            raise ValueError("No Aggregation function for histogram metrics.")
         return lambda values: values[0]
 
     @staticmethod
