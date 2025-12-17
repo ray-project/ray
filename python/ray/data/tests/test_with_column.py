@@ -6,6 +6,7 @@ from pkg_resources import parse_version
 
 import ray
 from ray._private.arrow_utils import get_pyarrow_version
+from ray.data._internal.util import rows_same
 from ray.data.datatype import DataType
 from ray.data.exceptions import UserCodeException
 from ray.data.expressions import col, lit, udf
@@ -624,7 +625,7 @@ def test_with_column_rounding_operations(
     expr = expr_factory()
     result_df = ds.with_column("result", expr).to_pandas()
     expected_df = pd.DataFrame({"value": values, "result": expected_values})
-    pd.testing.assert_frame_equal(result_df, expected_df, check_dtype=False)
+    assert rows_same(result_df, expected_df)
 
 
 @pytest.mark.skipif(

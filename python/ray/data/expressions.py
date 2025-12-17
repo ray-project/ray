@@ -295,19 +295,6 @@ class Expr(ABC):
             other = LiteralExpr(other)
         return BinaryExpr(op, self, other)
 
-    def _apply_pyarrow_unary(
-        self,
-        func: Callable[[pyarrow.Array], pyarrow.Array],
-        return_dtype: DataType | None = None,
-    ) -> "UDFExpr":
-        """Apply a PyArrow compute unary function to this expression."""
-
-        @pyarrow_udf(return_dtype=return_dtype or self.data_type)
-        def _unary(arr: pyarrow.Array) -> pyarrow.Array:
-            return func(arr)
-
-        return _unary(self)
-
     # arithmetic
     def __add__(self, other: Any) -> "Expr":
         """Addition operator (+)."""
@@ -434,19 +421,19 @@ class Expr(ABC):
     # rounding helpers
     def ceil(self) -> "UDFExpr":
         """Round values up to the nearest integer."""
-        return self._apply_pyarrow_unary(pc.ceil)
+        return _create_pyarrow_compute_udf(pc.ceil)(self)
 
     def floor(self) -> "UDFExpr":
         """Round values down to the nearest integer."""
-        return self._apply_pyarrow_unary(pc.floor)
+        return _create_pyarrow_compute_udf(pc.floor)(self)
 
     def round(self) -> "UDFExpr":
         """Round values to the nearest integer using PyArrow semantics."""
-        return self._apply_pyarrow_unary(pc.round)
+        return _create_pyarrow_compute_udf(pc.round)(self)
 
     def trunc(self) -> "UDFExpr":
         """Truncate fractional values toward zero."""
-        return self._apply_pyarrow_unary(pc.trunc)
+        return _create_pyarrow_compute_udf(pc.trunc)(self)
 
     @property
     def list(self) -> "_ListNamespace":
@@ -893,6 +880,22 @@ def pyarrow_udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
         return _create_udf_callable(wrapped_fn, return_dtype)
 
     return decorator
+
+
+def _create_pyarrow_compute_udf(
+    pc_func: Callable[..., pyarrow.Array],
+    return_dtype: DataType | None = None,
+) -> Callable[..., "UDFExpr"]:
+    """Create an expression UDF backed by a PyArrow compute function."""
+
+    def wrapper(expr: "Expr", *positional: Any, **kwargs: Any) -> "UDFExpr":
+        @pyarrow_udf(return_dtype=return_dtype or expr.data_type)
+        def udf(arr: pyarrow.Array) -> pyarrow.Array:
+            return pc_func(arr, *positional, **kwargs)
+
+        return udf(expr)
+
+    return wrapper
 
 
 @DeveloperAPI(stability="alpha")
