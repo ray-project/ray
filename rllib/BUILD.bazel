@@ -518,172 +518,180 @@ py_test(
     ],
 )
 
-# DQN
-# CartPole
+# | DQN (8 total tests)              |         |                Number of Learners (Device)                 |
+# | Environment                      | Success | Local (CPU) | Single (CPU)    | Single (GPU) | Multi (GPU) |
+# |----------------------------------|---------|-------------|-----------------|--------------|-------------|
+# | (SA/D) Cartpole                  | 200     | ✅          | ✅              | ❌          | ❌          |
+# | (SA/D/LSTM) Stateless Cartpole   | 150     | ✅          | ❌              | ✅          | ❌          |
+# | (MA/D) TicTacToe                 | -0.2    | ✅          | ❌              | ❌          | ✅          |
+# | (SA/D) Atari (Breakout)          | 5       | ❌          | ❌              | ✅          | ✅          |
+
 py_test(
-    name = "learning_tests_cartpole_dqn",
+    name = "learning_test_dqn_cartpole_local",
     size = "large",
     srcs = ["examples/algorithms/dqn/cartpole_dqn.py"],
     args = [
         "--as-test",
+        "--num-cpus=7",
+        "--num-env-runners=5",
+        "--num-learners=0",
+        "--stop-reward=200",
     ],
     main = "examples/algorithms/dqn/cartpole_dqn.py",
     tags = [
-        "exclusive",
         "learning_tests",
         "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
         "team:rllib",
         "torch_only",
     ],
 )
 
 py_test(
-    name = "learning_tests_cartpole_dqn_gpu",
+    name = "learning_test_dqn_cartpole_single_cpu",
     size = "large",
     srcs = ["examples/algorithms/dqn/cartpole_dqn.py"],
     args = [
         "--as-test",
+        "--num-cpus=7",
+        "--num-env-runners=5",
         "--num-learners=1",
-        "--num-gpus-per-learner=1",
+        "--stop-reward=200",
     ],
     main = "examples/algorithms/dqn/cartpole_dqn.py",
     tags = [
-        "exclusive",
+        "learning_tests",
+        "learning_tests_discrete",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
+py_test(
+    name = "learning_test_dqn_stateless_cartpole_local",
+    size = "large",
+    srcs = ["examples/algorithms/dqn/stateless_cartpole_dqn_with_lstm.py"],
+    args = [
+        "--as-test",
+        "--num-cpus=7",
+        "--num-env-runners=5",
+        "--num-learners=0",
+        "--stop-reward=150",
+    ],
+    main = "examples/algorithms/dqn/stateless_cartpole_dqn_with_lstm.py",
+    tags = [
+        "learning_tests",
+        "learning_tests_discrete",
+        "team:rllib",
+        "torch_only",
+    ],
+)
+
+py_test(
+    name = "learning_test_dqn_stateless_cartpole_single_gpu",
+    size = "large",
+    srcs = ["examples/algorithms/dqn/stateless_cartpole_dqn_with_lstm.py"],
+    args = [
+        "--as-test",
+        "--num-cpus=7",
+        "--num-env-runners=5",
+        "--num-learners=1",
+        "--num-gpus-per-learner=1",
+        "--stop-reward=150",
+    ],
+    main = "examples/algorithms/dqn/stateless_cartpole_dqn_with_lstm.py",
+    tags = [
         "gpu",
         "learning_tests",
         "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
         "team:rllib",
         "torch_only",
     ],
 )
 
 py_test(
-    name = "learning_tests_cartpole_dqn_multi_cpu",
+    name = "learning_test_dqn_tictactoe_local",
     size = "large",
-    srcs = ["examples/algorithms/dqn/cartpole_dqn.py"],
+    srcs = ["examples/algorithms/dqn/tictactoe_dqn.py"],
     args = [
         "--as-test",
-        "--num-learners=2",
+        "--num-cpus=7",
+        "--num-env-runners=5",
+        "--num-learners=0",
+        "--stop-reward=-2",
     ],
-    main = "examples/algorithms/dqn/cartpole_dqn.py",
+    main = "examples/algorithms/dqn/tictactoe_dqn.py",
     tags = [
-        "exclusive",
         "learning_tests",
         "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
         "team:rllib",
         "torch_only",
     ],
 )
 
 py_test(
-    name = "learning_tests_cartpole_dqn_multi_gpu",
+    name = "learning_test_dqn_tictactoe_multi_gpu",
     size = "large",
-    srcs = ["examples/algorithms/dqn/cartpole_dqn.py"],
+    srcs = ["examples/algorithms/dqn/tictactoe_dqn.py"],
     args = [
         "--as-test",
+        "--num-cpus=7",
+        "--num-env-runners=5",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--stop-reward=-2",
     ],
-    main = "examples/algorithms/dqn/cartpole_dqn.py",
+    main = "examples/algorithms/dqn/tictactoe_dqn.py",
     tags = [
-        "exclusive",
         "learning_tests",
         "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
         "multi_gpu",
         "team:rllib",
         "torch_only",
-        # Disabled: https://github.com/ray-project/ray/issues/47216
-        "manual",
-    ],
-)
-
-# MultiAgentCartPole
-py_test(
-    name = "learning_tests_multi_agent_cartpole_dqn",
-    size = "large",
-    srcs = ["examples/algorithms/dqn/multi_agent_cartpole_dqn.py"],
-    args = [
-        "--as-test",
-        "--num-agents=2",
-        "--num-cpus=4",
-    ],
-    main = "examples/algorithms/dqn/multi_agent_cartpole_dqn.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
-        "team:rllib",
-        "torch_only",
     ],
 )
 
 py_test(
-    name = "learning_tests_multi_agent_cartpole_dqn_gpu",
+    name = "learning_test_dqn_atari_single_gpu",
     size = "large",
-    srcs = ["examples/algorithms/dqn/multi_agent_cartpole_dqn.py"],
+    srcs = ["examples/algorithms/dqn/atari_dqn.py"],
     args = [
         "--as-test",
-        "--num-agents=2",
-        "--num-cpus=4",
+        "--num-cpus=7",
+        "--num-env-runners=5",
         "--num-learners=1",
         "--num-gpus-per-learner=1",
+        "--env=ale_py:ALE/Breakout-v5",
+        "--stop-iters=50",
+        "--stop-reward=5.0",
     ],
-    main = "examples/algorithms/dqn/multi_agent_cartpole_dqn.py",
+    main = "examples/algorithms/dqn/atari_dqn.py",
     tags = [
-        "exclusive",
         "gpu",
         "learning_tests",
         "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
         "team:rllib",
         "torch_only",
     ],
 )
 
 py_test(
-    name = "learning_tests_multi_agent_cartpole_dqn_multi_cpu",
+    name = "learning_test_dqn_atari_multi_gpu",
     size = "large",
-    srcs = ["examples/algorithms/dqn/multi_agent_cartpole_dqn.py"],
+    srcs = ["examples/algorithms/dqn/atari_dqn.py"],
     args = [
         "--as-test",
-        "--num-agents=2",
-        "--num-cpus=5",
-        "--num-learners=2",
-    ],
-    main = "examples/algorithms/dqn/multi_agent_cartpole_dqn.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
-        "team:rllib",
-        "torch_only",
-    ],
-)
-
-py_test(
-    name = "learning_tests_multi_agent_cartpole_dqn_multi_gpu",
-    size = "large",
-    timeout = "eternal",
-    srcs = ["examples/algorithms/dqn/multi_agent_cartpole_dqn.py"],
-    args = [
-        "--as-test",
-        "--num-agents=2",
-        "--num-cpus=4",
+        "--num-cpus=7",
+        "--num-env-runners=5",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
+        "--env=ale_py:ALE/Breakout-v5",
+        "--stop-iters=50",
+        "--stop-reward=5.0",
     ],
-    main = "examples/algorithms/dqn/multi_agent_cartpole_dqn.py",
+    main = "examples/algorithms/dqn/atari_dqn.py",
     tags = [
-        "exclusive",
         "learning_tests",
         "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
         "multi_gpu",
         "team:rllib",
         "torch_only",

@@ -1,3 +1,50 @@
+"""Example showing how to run Rainbow DQN on Atari environments with frame stacking.
+
+This example demonstrates DQN with Rainbow enhancements (prioritized replay,
+n-step returns, distributional RL, noisy nets, double Q-learning, and dueling
+networks) on Atari Pong. DQN learns Q-values directly from high-dimensional
+sensory inputs using deep neural networks and experience replay.
+
+This example:
+- demonstrates how to wrap Atari environments for preprocessing (grayscale,
+  64x64 resolution, reward clipping)
+- configures a CNN-based model with 4 convolutional layers suitable for
+  processing stacked Atari frames
+- shows how to use the `FrameStackingEnvToModule` and `FrameStackingLearner`
+  ConnectorV2 pieces for proper 4-frame stacking
+- uses prioritized experience replay with 1M capacity buffer (alpha=0.5,
+  beta=0.4)
+- enables Rainbow components: 3-step returns, 51-atom distributional RL,
+  noisy networks, double DQN, and dueling architecture
+- updates target network every 32,000 steps with hard updates (tau=1.0)
+
+How to run this script
+----------------------
+`python atari_dqn.py [options]`
+
+To run with default settings on Pong:
+`python atari_dqn.py`
+
+To run on a different Atari environment:
+`python atari_dqn.py --env=ale_py:ALE/Breakout-v5`
+
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key]
+ --wandb-project=[some project name]
+ --wandb-run-name=[optional: WandB run name (within the defined project)]`
+
+Results to expect
+-----------------
+The algorithm should reach the default reward threshold of 18.0 on Pong
+within 10 million timesteps (40 million frames with 4x frame stacking).
+The 80,000 frame warm-up period (num_steps_sampled_before_learning_starts)
+fills the replay buffer before training begins.
+"""
 import gymnasium as gym
 
 from ray.rllib.algorithms.dqn import DQNConfig
@@ -12,8 +59,8 @@ from ray.rllib.examples.utils import (
 from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args(
-    default_reward=20.0,
-    default_timesteps=10_000_000,
+    default_reward=18.0,
+    default_timesteps=10_000_000,  # 40 million timesteps
 )
 parser.set_defaults(
     env="ale_py:ALE/Pong-v5",
@@ -45,7 +92,7 @@ config = (
     .environment(
         env="atari-env",
         env_config={
-            "max_episode_steps": 108000,
+            "max_episode_steps": 108_000,
             "obs_type": "grayscale",
             # The authors actually use an action repetition of 4.
             "repeat_action_probability": 0.25,
@@ -65,30 +112,22 @@ config = (
         n_step=3,
         tau=1.0,
         train_batch_size=32,
-        target_network_update_freq=32000,
+        target_network_update_freq=32_000,
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
-            "capacity": 1000000,
+            "capacity": 1_000_000,
             "alpha": 0.5,
             # Note the paper used a linear schedule for beta.
             "beta": 0.4,
         },
         # Note, these are frames.
-        num_steps_sampled_before_learning_starts=80000,
+        num_steps_sampled_before_learning_starts=80_000,
         noisy=True,
         num_atoms=51,
         v_min=-10.0,
         v_max=10.0,
         double_q=True,
         dueling=True,
-        model={
-            "cnn_filter_specifiers": [[32, 8, 4], [64, 4, 2], [64, 3, 1]],
-            "fcnet_activation": "tanh",
-            "post_fcnet_hiddens": [512],
-            "post_fcnet_activation": "relu",
-            "post_fcnet_weights_initializer": "orthogonal_",
-            "post_fcnet_weights_initializer_config": {"gain": 0.01},
-        },
         learner_connector=_make_learner_connector,
     )
     .rl_module(
