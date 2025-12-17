@@ -224,7 +224,7 @@ def create_classification_processor():
             "text": row["prompt"],
             # Classification models return logits in the 'embeddings' field
             "score": float(row["embeddings"][0])
-            if row.get("embeddings") is not None
+            if row.get("embeddings")
             else None,
         },
     )
