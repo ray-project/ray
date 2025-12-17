@@ -596,6 +596,11 @@ def process_completed_tasks(
                         if state in max_bytes_to_read_per_op:
                             max_bytes_to_read_per_op[state] -= bytes_read
                     except Exception as e:
+                        # Ensure task cleanup happens even on failure.
+                        if not task._has_finished:
+                            task._task_done_callback(e)
+                            task._has_finished = True
+
                         num_errored_blocks += 1
                         should_ignore = (
                             max_errored_blocks < 0
