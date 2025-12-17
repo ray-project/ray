@@ -53,10 +53,10 @@ def format_messages_to_prompt(messages: List[Any]) -> str:
 
 
 class SGLangServer:
-    def __init__(self, _llm_config: LLMConfig):
+    def __init__(self, llm_config: LLMConfig):
 
-        self._llm_config = _llm_config
-        self.engine_kwargs = _llm_config.engine_kwargs
+        self._llm_config = llm_config
+        self.engine_kwargs = llm_config.engine_kwargs
 
         try:
             import sglang
@@ -144,7 +144,7 @@ class SGLangServer:
         }
 
     async def chat(
-        self, request: ChatCompletionRequest
+        self, request: ChatCompletionRequest, raw_request: Optional[Any] = None
     ) -> AsyncGenerator[ChatCompletionResponse, None]:
 
         prompt_string = format_messages_to_prompt(request.messages)
@@ -175,7 +175,7 @@ class SGLangServer:
         yield resp
 
     async def completions(
-        self, request: CompletionRequest
+        self, request: CompletionRequest, raw_request: Optional[Any] = None
     ) -> AsyncGenerator[CompletionResponse, None]:
 
         prompt_input = request.prompt
@@ -237,7 +237,7 @@ class SGLangServer:
 
     @classmethod
     def get_deployment_options(cls, llm_config: "LLMConfig"):
-
+        print(llm_config)
         deployment_options = copy.deepcopy(llm_config.deployment_config)
         pg_config = llm_config.placement_group_config or {}
 
