@@ -9,6 +9,7 @@ import pandas as pd
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray.exceptions import AsyncioActorExit
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
@@ -431,6 +432,8 @@ class TrainController:
         elif isinstance(controller_state, RunningState):
             try:
                 worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
+            except AsyncioActorExit:
+                raise
             except Exception as e:
                 training_failed_error = ControllerError(e)
                 failure_decision = self._failure_policy.make_decision(
