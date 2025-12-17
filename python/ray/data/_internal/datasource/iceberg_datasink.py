@@ -364,7 +364,8 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                 # Extract join key values for copy-on-write upsert
                 if use_copy_on_write_upsert:
                     upsert_cols = self._get_upsert_cols()
-                    upsert_keys_tables.append(pa_table.select(upsert_cols))
+                    if len(upsert_cols) > 0:
+                        upsert_keys_tables.append(pa_table.select(upsert_cols))
 
                 # Write data files to storage
                 data_files = list(
