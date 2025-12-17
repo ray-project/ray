@@ -38,7 +38,7 @@ def run_classification_example():
             "text": row["prompt"],
             # Classification models return logits in the 'embeddings' field
             "edu_score": float(row["embeddings"][0])
-            if row.get("embeddings") is not None
+            if row.get("embeddings")
             else None,
         },
     )
