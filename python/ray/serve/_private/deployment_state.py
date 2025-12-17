@@ -894,6 +894,13 @@ class ActorReplicaWrapper:
               before the timeout).
             - ACTOR_CRASHED if the underlying actor crashed.
         """
+        # Reset the last health check status for this check cycle.
+        # We do this because _check_active_health_check is being called in a loop,
+        # and we want to avoid accumulating latency and failure metrics over multiple
+        # check cycles.
+        self._last_health_check_latency_ms = None
+        self._last_health_check_failed = None
+
         if self._health_check_ref is None:
             # There is no outstanding health check.
             response = ReplicaHealthCheckResponse.NONE
