@@ -237,7 +237,6 @@ class SGLangServer:
 
     @classmethod
     def get_deployment_options(cls, llm_config: "LLMConfig"):
-        print(llm_config)
         deployment_options = copy.deepcopy(llm_config.deployment_config)
         pg_config = llm_config.placement_group_config or {}
 
