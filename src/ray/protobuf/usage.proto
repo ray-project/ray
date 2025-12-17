@@ -210,6 +210,9 @@ enum TagKey {
   // Train V2 Trainer name (e.g. "TorchTrainer")
   TRAIN_TRAINER = 521;
 
+  TRAIN_CHECKPOINT_MODE = 522;
+  TRAIN_ASYNCHRONOUS_VALIDATION = 523;
+
   // LLM Serve
   // Whether or not multiple models are getting deployed in the cluster ("1" if used).
   LLM_SERVE_SERVE_MULTIPLE_MODELS = 600;
