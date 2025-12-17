@@ -24,10 +24,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
-from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.utils.lora_serve_utils import LoraModelLoader
-
-logger = get_logger(__name__)
 
 
 class MockVLLMEngine(LLMEngine):
@@ -88,7 +85,6 @@ class MockVLLMEngine(LLMEngine):
         # vLLM resets prefix cache on sleep
         await self.reset_prefix_cache()
         self._is_sleeping = True
-        logger.info("sleep: set _is_sleeping to %s", self._is_sleeping)
 
     async def wakeup(self, **kwargs: Any) -> None:
         """Wake up the mock engine from sleep.
@@ -106,7 +102,6 @@ class MockVLLMEngine(LLMEngine):
         Returns:
             True if the engine is sleeping, False otherwise.
         """
-        logger.info("is_sleeping: %s", self._is_sleeping)
         return self._is_sleeping
 
     async def chat(

@@ -16,8 +16,8 @@ from ray.llm._internal.serve.core.ingress.mixins.sleepable import (
 
 __all__ = [
     "CacheManagerIngressMixin",
-    "ResetPrefixCacheRequest",
     "SleepableIngressMixin",
+    "ResetPrefixCacheRequest",
     "SleepRequest",
     "WakeupRequest",
     "IsSleepingResponse",

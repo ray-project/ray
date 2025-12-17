@@ -472,9 +472,6 @@ class LLMServer(LLMServerProtocol):
         """
         if self.engine is None:
             return
-        if not hasattr(self.engine, "sleep"):
-            logger.warning("Engine does not support sleep")
-            return
         try:
             await self.engine.sleep(**kwargs)
         except Exception as e:
@@ -488,9 +485,6 @@ class LLMServer(LLMServerProtocol):
             **kwargs: Engine-specific wakeup options. Passed through to the engine.
         """
         if self.engine is None:
-            return
-        if not hasattr(self.engine, "wakeup"):
-            logger.warning("Engine does not support wakeup")
             return
         try:
             await self.engine.wakeup(**kwargs)
@@ -506,8 +500,6 @@ class LLMServer(LLMServerProtocol):
         """
         if self.engine is None:
             return False
-        if not hasattr(self.engine, "is_sleeping"):
-            return False
         try:
             return await self.engine.is_sleeping()
         except Exception as e:
@@ -520,9 +512,6 @@ class LLMServer(LLMServerProtocol):
         Clears cached key-value pairs from previous requests.
         """
         if self.engine is None:
-            return
-        if not hasattr(self.engine, "reset_prefix_cache"):
-            logger.warning("Engine does not support reset_prefix_cache")
             return
         try:
             await self.engine.reset_prefix_cache()
