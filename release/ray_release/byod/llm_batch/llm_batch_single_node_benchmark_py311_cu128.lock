@@ -1,6 +1,5 @@
 --index-url https://pypi.org/simple
 --extra-index-url https://download.pytorch.org/whl/cu128
---find-links https://wheels.vllm.ai/7d80c73d4277187d0468f15a22bba959ce853261/cu129/vllm/
 
 absl-py==2.3.1 \
     --hash=sha256:a97820526f7fbfd2ec1bce83f3f25e3a14840dac0d8e02a0b71cd75db3f77fc9 \

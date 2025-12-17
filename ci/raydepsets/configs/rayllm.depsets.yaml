@@ -1,9 +1,7 @@
 build_arg_sets:
-  # TODO: Re-enable CPU when vLLM 0.13.0 is on PyPI.
-  # CPU depset is disabled because there's no pre-built CPU x86_64 wheel for v0.13.0rc1.
-  # cpu:
-  #   PYTHON_VERSION: py311
-  #   CUDA_CODE: cpu
+  cpu:
+    PYTHON_VERSION: py311
+    CUDA_CODE: cpu
   cu128:
     PYTHON_VERSION: py311
     CUDA_CODE: cu128
@@ -13,14 +11,10 @@ build_arg_sets:
   append_flags:
     - --python-version=3.11
     - --unsafe-package ray
-    # vLLM pre-built wheels require manylinux_2_31
-    - --python-platform=x86_64-manylinux_2_31
+    - --python-platform=linux
     - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
-    # TODO: Remove --find-links when vLLM 0.13.0 is on PyPI.
-    # Using pre-built wheels from vLLM's wheel index for v0.13.0rc1 commit
-    # to avoid building from source (which fails due to torch version mismatch).
-    - --find-links https://wheels.vllm.ai/7d80c73d4277187d0468f15a22bba959ce853261/cu129/vllm/
   build_arg_sets:
+    - cpu
     - cu128
 
 depsets:
