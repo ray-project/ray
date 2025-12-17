@@ -10,6 +10,7 @@ from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig,
     DetokenizeStageConfig,
     PrepareImageStageConfig,
+    PrepareMultimodalStageConfig,
     TokenizerStageConfig,
 )
 
@@ -55,6 +56,7 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
         "dynamic_lora_loading_path": None,
         "max_concurrent_batches": 8,
         "batch_size": 64,
+        "should_continue_on_error": False,
     }
 
     runtime_env = stage.map_batches_kwargs.pop("runtime_env")
@@ -137,10 +139,11 @@ def test_generation_model(gpu_type, model_opt_125m, backend):
         batch_size=16,
         accelerator_type=gpu_type,
         concurrency=1,
-        apply_chat_template=True,
-        chat_template=chat_template,
-        tokenize=True,
-        detokenize=True,
+        chat_template_stage=ChatTemplateStageConfig(
+            enabled=True, chat_template=chat_template
+        ),
+        tokenize_stage=TokenizerStageConfig(enabled=True),
+        detokenize_stage=DetokenizeStageConfig(enabled=True),
     )
 
     processor = build_processor(
@@ -184,10 +187,9 @@ def test_embedding_model(gpu_type, model_smolvlm_256m):
         batch_size=16,
         accelerator_type=gpu_type,
         concurrency=1,
-        apply_chat_template=True,
-        chat_template=None,
-        tokenize=True,
-        detokenize=False,
+        chat_template_stage=ChatTemplateStageConfig(enabled=True),
+        tokenize_stage=TokenizerStageConfig(enabled=True),
+        detokenize_stage=DetokenizeStageConfig(enabled=False),
     )
 
     processor = build_processor(
@@ -214,8 +216,12 @@ def test_embedding_model(gpu_type, model_smolvlm_256m):
     assert all("prompt" in out for out in outs)
 
 
-def test_vision_model(gpu_type, model_smolvlm_256m):
-    processor_config = vLLMEngineProcessorConfig(
+@pytest.mark.parametrize("use_nested_config", [True, False])
+def test_legacy_vision_model(
+    gpu_type, model_smolvlm_256m, use_nested_config, image_asset
+):
+    image_url, _ = image_asset
+    processor_config = dict(
         model_source=model_smolvlm_256m,
         task_type="generate",
         engine_kwargs=dict(
@@ -224,23 +230,28 @@ def test_vision_model(gpu_type, model_smolvlm_256m):
             # CI uses T4 GPU which does not support bfloat16.
             dtype="half",
         ),
-        # CI uses T4 GPU which is not supported by vLLM v1 FlashAttn.
-        # runtime_env=dict(
-        #     env_vars=dict(
-        #         VLLM_USE_V1="0",
-        #     ),
-        # ),
-        apply_chat_template=True,
-        has_image=True,
-        tokenize=False,
-        detokenize=False,
         batch_size=16,
         accelerator_type=gpu_type,
         concurrency=1,
     )
 
+    if use_nested_config:
+        processor_config.update(
+            prepare_image_stage=PrepareImageStageConfig(enabled=True),
+            chat_template_stage=ChatTemplateStageConfig(enabled=True),
+            tokenize_stage=TokenizerStageConfig(enabled=False),
+            detokenize_stage=DetokenizeStageConfig(enabled=False),
+        )
+    else:
+        processor_config.update(
+            apply_chat_template=True,
+            has_image=True,
+            tokenize=False,
+            detokenize=False,
+        )
+
     processor = build_processor(
-        processor_config,
+        vLLMEngineProcessorConfig(**processor_config),
         preprocess=lambda row: dict(
             messages=[
                 {"role": "system", "content": "You are an assistant"},
@@ -249,11 +260,11 @@ def test_vision_model(gpu_type, model_smolvlm_256m):
                     "content": [
                         {
                             "type": "text",
-                            "text": f"Say {row['id']} words about this image.",
+                            "text": f"Say {row['val']} words about this image.",
                         },
                         {
                             "type": "image",
-                            "image": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg",
+                            "image": image_url,
                         },
                     ],
                 },
@@ -271,6 +282,146 @@ def test_vision_model(gpu_type, model_smolvlm_256m):
     ds = ray.data.range(60)
     ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
     ds = processor(ds)
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 60
+    assert all("resp" in out for out in outs)
+
+
+@pytest.mark.parametrize("input_raw_image_data", [True, False])
+@pytest.mark.parametrize("decouple_tokenizer", [True, False])
+def test_vision_model(
+    gpu_type, model_smolvlm_256m, image_asset, input_raw_image_data, decouple_tokenizer
+):
+    image_url, image_pil = image_asset
+    llm_processor_config = vLLMEngineProcessorConfig(
+        model_source=model_smolvlm_256m,
+        task_type="generate",
+        engine_kwargs=dict(
+            # Skip CUDA graph capturing to reduce startup time.
+            enforce_eager=True,
+            # CI uses T4 GPU which does not support bfloat16.
+            dtype="half",
+            limit_mm_per_prompt={"image": 1},
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+        prepare_multimodal_stage=PrepareMultimodalStageConfig(
+            enabled=True,
+            chat_template_content_format="openai",
+        ),
+        chat_template_stage=ChatTemplateStageConfig(enabled=True),
+        tokenize_stage=TokenizerStageConfig(enabled=decouple_tokenizer),
+        detokenize_stage=DetokenizeStageConfig(enabled=decouple_tokenizer),
+    )
+    llm_processor = build_processor(
+        llm_processor_config,
+        preprocess=lambda row: dict(
+            messages=[
+                {"role": "system", "content": "You are an assistant"},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Say {row['val']} words about this image.",
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": image_url},
+                            "uuid": "image-1-id",  # UUID will not be included in the output as it's only used for internal caching
+                        }
+                        if input_raw_image_data
+                        else {
+                            "type": "image_pil",
+                            "image_pil": image_pil,
+                            "uuid": "image-2-id",
+                        },
+                    ],
+                },
+            ],
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=50,
+                detokenize=not decouple_tokenizer,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    ds = llm_processor(ds)
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 60
+    assert all("resp" in out for out in outs)
+
+
+@pytest.mark.parametrize("input_raw_audio_data", [True, False])
+def test_audio_model(
+    gpu_type, model_qwen_2_5_omni_3b, audio_asset, input_raw_audio_data
+):
+    audio_url, audio_data = audio_asset
+    llm_processor_config = vLLMEngineProcessorConfig(
+        model_source=model_qwen_2_5_omni_3b,
+        task_type="generate",
+        engine_kwargs=dict(
+            enforce_eager=True,
+            limit_mm_per_prompt={"audio": 1},
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+        prepare_multimodal_stage=PrepareMultimodalStageConfig(
+            enabled=True,
+            chat_template_content_format="openai",
+        ),
+        chat_template_stage=ChatTemplateStageConfig(enabled=True),
+        tokenize_stage=TokenizerStageConfig(enabled=False),
+        detokenize_stage=DetokenizeStageConfig(enabled=False),
+    )
+
+    llm_processor = build_processor(
+        llm_processor_config,
+        preprocess=lambda row: dict(
+            messages=[
+                {"role": "system", "content": "You are an assistant"},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Describe this audio in {row['val']} words.",
+                        },
+                        {
+                            "type": "input_audio",
+                            "input_audio": {"data": audio_data, "format": "wav"},
+                        }
+                        if input_raw_audio_data
+                        else {
+                            "type": "audio_url",
+                            "audio_url": {"url": audio_url},
+                        },
+                    ],
+                },
+            ],
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=50,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    ds = llm_processor(ds)
     ds = ds.materialize()
     outs = ds.take_all()
     assert len(outs) == 60

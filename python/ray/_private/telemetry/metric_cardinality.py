@@ -6,7 +6,7 @@ from ray._private.telemetry.metric_types import MetricType
 
 # Keep in sync with the WorkerIdKey in src/ray/stats/tag_defs.cc
 WORKER_ID_TAG_KEY = "WorkerId"
-# Keep in sync with the NameKey in src/ray/stats/metric_defs.cc
+# Keep in sync with the NameKey in src/ray/stats/tag_defs.cc
 TASK_OR_ACTOR_NAME_TAG_KEY = "Name"
 # Aggregation functions for high-cardinality gauge metrics when labels are dropped.
 # Counter and Sum metrics always use sum() aggregation.
