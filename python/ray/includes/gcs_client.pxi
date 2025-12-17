@@ -34,6 +34,7 @@ from ray.includes.common cimport (
 )
 from ray.includes.optional cimport optional, make_optional
 from ray.core.generated import gcs_pb2, autoscaler_pb2
+from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 from cython.operator import dereference, postincrement
 cimport cpython
 
@@ -326,19 +327,43 @@ cdef class InnerGcsClient:
 
     def get_all_node_info(
         self, timeout: Optional[int | float] = None,
+        node_selectors: Optional[List[GetAllNodeInfoRequest.NodeSelector]] = None,
         state_filter: Optional[int] = None,
     ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
+        """Get all node info with optional filters.
+
+        Args:
+            timeout: Timeout in seconds
+            node_selectors: Optional list of GetAllNodeInfoRequest.NodeSelector
+                proto objects to filter nodes.
+            state_filter: Optional int representing the GcsNodeState enum value
+                to filter by node state.
+
+        Returns:
+            Dictionary mapping NodeID to GcsNodeInfo
+        """
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[CGcsNodeInfo] reply
             CRayStatus status
             optional[CStatusOr[c_vector[CGcsNodeInfo]]] status_or
             optional[CGcsNodeState] c_state_filter = nullopt
-            optional[CNodeSelector] c_node_selector = nullopt
+            c_vector[CNodeSelector] c_node_selectors
+            CNodeSelector c_node_selector
+
+        # Convert state_filter int to CGcsNodeState
         if state_filter is not None:
             c_state_filter.emplace(<CGcsNodeState>state_filter)
+
+        # Convert Python NodeSelector protos to C++ CNodeSelector
+        if node_selectors is not None:
+            for py_selector in node_selectors:
+                c_node_selector = CNodeSelector()
+                c_node_selector.ParseFromString(py_selector.SerializeToString())
+                c_node_selectors.push_back(c_node_selector)
+
         with nogil:
-            status_or = self.inner.get().Nodes().GetAllNoCache(timeout_ms, c_state_filter, c_node_selector)
+            status_or = self.inner.get().Nodes().GetAllNoCache(timeout_ms, c_state_filter, c_node_selectors)
         status = status_or.value().status()
         if status_or.value().ok():
             reply = move(status_or.value().value())

@@ -9,26 +9,35 @@ from pprint import pformat
 from typing import List, Optional, Set, Tuple
 
 
-def _list_changed_files(commit_range):
+def _list_changed_files(base: str, commit: str) -> List[str]:
     """Returns a list of names of files changed in the given commit range.
 
     The function works by opening a subprocess and running git. If an error
     occurs while running git, the script will abort.
 
     Args:
-        commit_range: The commit range to diff, consisting of the two
-            commit IDs separated by \"..\"
+        base: The base branch to diff, fetchable from origin.
+        commit: The commit to diff.
 
     Returns:
-        list: List of changed files within the commit range
+        list: List of changed files within the commit range.
     """
-    base_branch = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
-    if base_branch:
-        pull_command = ["git", "fetch", "-q", "origin", base_branch]
-        subprocess.check_call(pull_command)
+    if not base:
+        raise ValueError("Base branch is required.")
+    if not commit:
+        raise ValueError("Commit is required.")
 
-    command = ["git", "diff", "--name-only", commit_range, "--"]
-    diff_names = subprocess.check_output(command).decode()
+    pull_command = ["git", "fetch", "-q", "origin", base]
+    subprocess.check_call(pull_command)
+
+    merge_base = (
+        subprocess.check_output(["git", "merge-base", f"origin/{base}", commit])
+        .decode()
+        .strip()
+    )
+
+    command = ["git", "diff", "--name-only", merge_base, commit, "--"]
+    diff_names = subprocess.check_output(command).decode().strip()
 
     files: List[str] = []
     for line in diff_names.splitlines():
@@ -42,11 +51,10 @@ def _is_pull_request():
     return os.environ.get("BUILDKITE_PULL_REQUEST", "false") != "false"
 
 
-def _get_commit_range():
-    return "origin/{}...{}".format(
-        os.environ["BUILDKITE_PULL_REQUEST_BASE_BRANCH"],
-        os.environ["BUILDKITE_COMMIT"],
-    )
+def _get_commit_range() -> Tuple[str, str]:
+    base_branch = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH", "master")
+    head_commit = os.environ.get("BUILDKITE_COMMIT", "HEAD")
+    return base_branch, head_commit
 
 
 class TagRule:
@@ -215,9 +223,9 @@ if __name__ == "__main__":
         tags.update(line.split())
 
     if _is_pull_request():
-        commit_range = _get_commit_range()
-        files = _list_changed_files(commit_range)
-        print(pformat(commit_range), file=sys.stderr)
+        base_branch, head_commit = _get_commit_range()
+        files = _list_changed_files(base_branch, head_commit)
+        print(pformat(f"origin/{base_branch} -> {head_commit}"), file=sys.stderr)
         print(pformat(files), file=sys.stderr)
 
         for changed_file in files:

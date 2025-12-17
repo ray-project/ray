@@ -290,23 +290,28 @@ class FakeRayletClient : public RayletClientInterface {
 
   int64_t GetPinsInFlight() const override { return 0; }
 
+  void CancelLocalTask(const CancelLocalTaskRequest &request,
+                       const ClientCallback<CancelLocalTaskReply> &callback) override {
+    num_cancel_local_task_requested += 1;
+  }
+
   int num_workers_requested = 0;
   int num_workers_returned = 0;
   int num_workers_disconnected = 0;
   int num_leases_canceled = 0;
   int num_release_unused_workers = 0;
   int num_get_task_failure_causes = 0;
+  int num_lease_requested = 0;
+  int num_return_requested = 0;
+  int num_commit_requested = 0;
+  int num_cancel_local_task_requested = 0;
+  int num_release_unused_bundles_requested = 0;
   NodeID node_id_ = NodeID::FromRandom();
   std::vector<ActorID> killed_actors;
   std::list<ClientCallback<DrainRayletReply>> drain_raylet_callbacks = {};
   std::list<ClientCallback<RequestWorkerLeaseReply>> callbacks = {};
   std::list<ClientCallback<CancelWorkerLeaseReply>> cancel_callbacks = {};
   std::list<ClientCallback<ReleaseUnusedActorWorkersReply>> release_callbacks = {};
-  int num_lease_requested = 0;
-  int num_return_requested = 0;
-  int num_commit_requested = 0;
-
-  int num_release_unused_bundles_requested = 0;
   std::list<ClientCallback<PrepareBundleResourcesReply>> lease_callbacks = {};
   std::list<ClientCallback<CommitBundleResourcesReply>> commit_callbacks = {};
   std::list<ClientCallback<CancelResourceReserveReply>> return_callbacks = {};

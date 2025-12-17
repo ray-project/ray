@@ -96,7 +96,16 @@ from ray.data._internal.util import (
     get_compute_strategy,
     merge_resources_to_ray_remote_args,
 )
-from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum, Unique
+from ray.data.aggregate import (
+    AggregateFn,
+    AggregateFnV2,
+    Max,
+    Mean,
+    Min,
+    Std,
+    Sum,
+    Unique,
+)
 from ray.data.block import (
     VALID_BATCH_FORMATS,
     Block,
@@ -112,6 +121,7 @@ from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
 from ray.data.datasource.datasink import WriteResult, _gen_datasink_write_result
 from ray.data.datasource.file_datasink import _FileDatasink
+from ray.data.datatype import DataType
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
@@ -135,6 +145,7 @@ if TYPE_CHECKING:
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data.grouped_data import GroupedData
+    from ray.data.stats import DatasetSummary
 
 from ray.data.expressions import Expr, StarExpr, col
 
@@ -160,8 +171,8 @@ a torch.device object, or an integer (e.g. 0 for 'cuda:0').
 
 BT_API_GROUP = "Basic Transformations"
 SSR_API_GROUP = "Sorting, Shuffling and Repartitioning"
-SMJ_API_GROUP = "Splitting, Merging, Joining datasets"
-GGA_API_GROUP = "Grouped and Global aggregations"
+SMJ_API_GROUP = "Splitting, Merging, Joining Datasets"
+GGA_API_GROUP = "Grouped and Global Aggregations"
 CD_API_GROUP = "Consuming Data"
 IOC_API_GROUP = "I/O and Conversion"
 IM_API_GROUP = "Inspecting Metadata"
@@ -553,7 +564,7 @@ class Dataset:
                     .map_batches(map_fn_with_large_output)
                 )
 
-            If you require stateful transfomation,
+            If you require stateful transformation,
             use Python callable class. Here is an example showing how to use stateful transforms to create model inference workers, without having to reload the model on each call.
 
             .. testcode::
@@ -2937,7 +2948,7 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
-    def unique(self, column: str) -> List[Any]:
+    def unique(self, column: str, ignore_nulls: bool = False) -> List[Any]:
         """List the unique elements in a given column.
 
         Examples:
@@ -2952,7 +2963,7 @@ class Dataset:
 
             >>> import ray
             >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-            >>> ds.unique("target")
+            >>> sorted(ds.unique("target"))
             [0, 1, 2]
 
             One common use case is to convert the class labels
@@ -2971,11 +2982,12 @@ class Dataset:
 
         Args:
             column: The column to collect unique elements over.
+            ignore_nulls: If ``True``, ignore null values in the column.
 
         Returns:
             A list with unique elements in the given column.
         """  # noqa: E501
-        ret = self._aggregate_on(Unique, column)
+        ret = self._aggregate_on(Unique, column, ignore_nulls=ignore_nulls)
         return self._aggregate_result(ret)
 
     @AllToAllAPI
@@ -3253,6 +3265,143 @@ class Dataset:
         """  # noqa: E501
         ret = self._aggregate_on(Std, on, ignore_nulls=ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
+
+    @AllToAllAPI
+    @ConsumptionAPI
+    @PublicAPI(api_group=GGA_API_GROUP, stability="alpha")
+    def summary(
+        self,
+        columns: Optional[List[str]] = None,
+        override_dtype_agg_mapping: Optional[
+            Dict[DataType, Callable[[str], List[AggregateFnV2]]]
+        ] = None,
+    ) -> "DatasetSummary":
+        """Generate a statistical summary of the dataset, organized by data type.
+
+        This method computes various statistics for different column dtypes:
+
+        - For numerical dtypes (int*, float*, decimal, bool): count, mean, min, max, std, approx_quantile (median), missing%, zero%
+        - For string and binary dtypes: count, missing%, approx_top_k (top 10 values)
+        - For temporal dtypes (timestamp, date, time, duration): count, min, max, missing%
+        - For other dtypes: count, missing%, approx_top_k
+
+        You can customize the aggregations performed for specific data types using the
+        `override_dtype_agg_mapping` parameter.
+
+        The summary separates statistics into two tables:
+        - Schema-matching stats: Statistics that preserve the original column type (e.g., min/max for integers)
+        - Schema-changing stats: Statistics that change the type (e.g., mean converts int to float)
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.from_items([
+            ...     {"age": 25, "salary": 50000, "name": "Alice", "city": "NYC"},
+            ...     {"age": 30, "salary": 60000, "name": None, "city": "LA"},
+            ...     {"age": 0, "salary": None, "name": "Bob", "city": None},
+            ... ])
+            >>> summary = ds.summary()
+            >>> # Get combined pandas DataFrame with all statistics
+            >>> summary.to_pandas()  # doctest: +SKIP
+                      statistic        age                         city                           name        salary
+            0  approx_quantile[0]  25.000000                         None                           None  60000.000000
+            1      approx_topk[0]        NaN   {'city': 'LA', 'count': 1}    {'count': 1, 'name': 'Bob'}           NaN
+            2      approx_topk[1]        NaN  {'city': 'NYC', 'count': 1}  {'count': 1, 'name': 'Alice'}           NaN
+            3               count   3.000000                            3                              3      3.000000
+            4                 max  30.000000                          NaN                            NaN  60000.000000
+            5                mean  18.333333                         None                           None  55000.000000
+            6                 min   0.000000                          NaN                            NaN  50000.000000
+            7         missing_pct   0.000000                    33.333333                      33.333333     33.333333
+            8                 std  13.123346                         None                           None   5000.000000
+            9            zero_pct  33.333333                         None                           None      0.000000
+
+            >>> # Access individual column statistics
+            >>> summary.get_column_stats("age")  # doctest: +SKIP
+            statistic               value
+            0   approx_quantile[0]  25.000000
+            1       approx_topk[0]        NaN
+            2       approx_topk[1]        NaN
+            3                count   3.000000
+            4                  max  30.000000
+            5                 mean  18.333333
+            6                  min   0.000000
+            7          missing_pct   0.000000
+            8                  std  13.123346
+            9            zero_pct  33.333333
+
+            Custom aggregations for specific types:
+
+            >>> from ray.data.datatype import DataType
+            >>> from ray.data.aggregate import Sum, Count
+            >>> # Override aggregations for int64 columns
+            >>> custom_mapping = {
+            ...     DataType.int64(): lambda col: [Count(on=col), Sum(on=col)]
+            ... }
+            >>> summary = ds.summary(override_dtype_agg_mapping=custom_mapping)
+
+        Args:
+            columns: Optional list of column names to include in the summary.
+                If None, all columns will be included.
+            override_dtype_agg_mapping: Optional mapping from DataType to factory
+                functions. Each factory function takes a column name and returns a
+                list of aggregators for that column. This will be merged with the
+                default mapping, with user-provided mappings taking precedence.
+
+        Returns:
+            A DatasetSummary object with methods to access statistics and the
+            original dataset schema. Use `to_pandas()` to get all statistics
+            as a DataFrame, or `get_column_stats(col)` for a specific column
+        """
+        from ray.data.stats import (
+            DatasetSummary,
+            _build_summary_table,
+            _dtype_aggregators_for_dataset,
+            _parse_summary_stats,
+        )
+
+        # Compute aggregations
+        dtype_aggs = _dtype_aggregators_for_dataset(
+            self.schema(),
+            columns=columns,
+            dtype_agg_mapping=override_dtype_agg_mapping,
+        )
+
+        if not dtype_aggs.aggregators:
+            raise ValueError(
+                "summary() requires at least one column with a supported type. "
+                f"Columns provided: {columns if columns is not None else 'all'}. "
+                "Check that the specified columns exist and have supported types "
+                "(numeric, string, binary, or temporal). Columns with None or "
+                "object types are skipped."
+            )
+
+        aggs_dataset = self.groupby(None).aggregate(*dtype_aggs.aggregators)
+        agg_result = aggs_dataset.take(1)[0]
+
+        # Separate statistics by whether they preserve original column types
+        original_schema = self.schema().base_schema
+        agg_schema = aggs_dataset.schema().base_schema
+        (
+            schema_matching_stats,
+            schema_changing_stats,
+            all_columns,
+        ) = _parse_summary_stats(
+            agg_result, original_schema, agg_schema, dtype_aggs.aggregators
+        )
+
+        # Build PyArrow tables
+        schema_matching_table = _build_summary_table(
+            schema_matching_stats, all_columns, original_schema, preserve_types=True
+        )
+        schema_changing_table = _build_summary_table(
+            schema_changing_stats, all_columns, original_schema, preserve_types=False
+        )
+
+        return DatasetSummary(
+            _stats_matching_column_dtype=schema_matching_table,
+            _stats_mismatching_column_dtype=schema_changing_table,
+            dataset_schema=original_schema,
+            columns=list(all_columns),
+        )
 
     @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
@@ -4051,7 +4200,8 @@ class Dataset:
         """Writes the :class:`~ray.data.Dataset` to an Iceberg table.
 
         .. tip::
-            For more details on PyIceberg, see https://py.iceberg.apache.org/
+            For more details on PyIceberg, see
+            - URI: https://py.iceberg.apache.org/
 
         Examples:
              .. testcode::
@@ -4062,22 +4212,12 @@ class Dataset:
                 from ray.data import SaveMode
                 from ray.data.expressions import col
 
-                # Basic append (current behavior)
+                # Basic append (default behavior)
                 docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
                 ds = ray.data.from_pandas(pd.DataFrame(docs))
                 ds.write_iceberg(
                     table_identifier="db_name.table_name",
                     catalog_kwargs={"name": "default", "type": "sql"}
-                )
-
-                # Upsert mode - update existing rows or insert new ones
-                updated_docs = [{"id": 2, "title": "Updated Doc 2"}, {"id": 5, "title": "New Doc 5"}]
-                ds_updates = ray.data.from_pandas(pd.DataFrame(updated_docs))
-                ds_updates.write_iceberg(
-                    table_identifier="db_name.table_name",
-                    catalog_kwargs={"name": "default", "type": "sql"},
-                    mode=SaveMode.UPSERT,
-                    upsert_kwargs={"join_cols": ["id"]},
                 )
 
                 # Schema evolution is automatic - new columns are added automatically
@@ -4086,6 +4226,15 @@ class Dataset:
                 ds_enriched.write_iceberg(
                     table_identifier="db_name.table_name",
                     catalog_kwargs={"name": "default", "type": "sql"}
+                )
+                 # Upsert mode - update existing rows or insert new ones
+                updated_docs = [{"id": 2, "title": "Updated Doc 2"}, {"id": 5, "title": "New Doc 5"}]
+                ds_updates = ray.data.from_pandas(pd.DataFrame(updated_docs))
+                ds_updates.write_iceberg(
+                    table_identifier="db_name.table_name",
+                    catalog_kwargs={"name": "default", "type": "sql"},
+                    mode=SaveMode.UPSERT,
+                    upsert_kwargs={"join_cols": ["id"]},
                 )
 
                 # Partial overwrite with Ray Data expressions
@@ -4099,7 +4248,7 @@ class Dataset:
         Args:
             table_identifier: Fully qualified table identifier (``db_name.table_name``)
             catalog_kwargs: Optional arguments to pass to PyIceberg's catalog.load_catalog()
-                function (such as name, type). For the function definition, see
+                function (such as name, type, etc.). For the function definition, see
                 `pyiceberg catalog
                 <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
                 #pyiceberg.catalog.load_catalog>`_.
@@ -4117,9 +4266,10 @@ class Dataset:
                 Must be a Ray Data expression from `ray.data.expressions`. Only rows matching
                 this filter are replaced. If None with OVERWRITE mode, replaces all table data.
                 Example: `col("date") >= "2024-01-01"` or `(col("region") == "US") & (col("status") == "active")`
-            upsert_kwargs: Optional arguments to pass through to PyIceberg's table.upsert() method.
-                Supported parameters: join_cols (List[str]), when_matched_update_all (bool), when_not_matched_insert_all (bool),
-                case_sensitive (bool), branch (str). See PyIceberg documentation for details.
+            upsert_kwargs: Optional arguments for upsert operations.
+                Supported parameters: join_cols (List[str]), case_sensitive (bool), branch (str).
+                Note: Ray Data uses a copy-on-write strategy that always updates all columns
+                for matched keys and inserts all new keys for optimal parallelism.
             overwrite_kwargs: Optional arguments to pass through to PyIceberg's table.overwrite() method.
                 Supported parameters: case_sensitive (bool), branch (str). See PyIceberg documentation
                 for details.
@@ -4131,12 +4281,9 @@ class Dataset:
 
         Note:
             Schema evolution is automatically enabled. New columns in the incoming data
-            are automatically added to the table schema.
-
-        Raises:
-            ValueError: If `mode` is `SaveMode.UPSERT`, `join_cols` is not provided in `upsert_kwargs`, and the table has no identifier fields.
+            are automatically added to the table schema. The schema is extracted
+            automatically from the data being written.
         """
-
         datasink = IcebergDatasink(
             table_identifier=table_identifier,
             catalog_kwargs=catalog_kwargs,
@@ -5169,9 +5316,14 @@ class Dataset:
         logical_plan = LogicalPlan(write_op, self.context)
 
         try:
-            datasink.on_write_start()
+            # Call on_write_start for _FileDatasink before execution to handle
+            # SaveMode checks (ERROR raises, OVERWRITE deletes contents, IGNORE skips)
+            # and directory creation. For other datasinks, on_write_start is called
+            # automatically by the Write operator when the first input bundle arrives.
             if isinstance(datasink, _FileDatasink):
-                if not datasink.has_created_dir and datasink.mode == SaveMode.IGNORE:
+                datasink.on_write_start()
+                # TODO (https://github.com/ray-project/ray/issues/59326): There should be no special handling for skipping writes.
+                if datasink._skip_write:
                     logger.info(
                         f"Ignoring write because {datasink.path} already exists"
                     )
@@ -6716,7 +6868,8 @@ class Schema:
                 # Manually convert our Pandas tensor extension type to Arrow.
                 arrow_types.append(
                     pa_tensor_type_class(
-                        shape=dtype._shape, dtype=_convert_to_pa_type(dtype._dtype)
+                        shape=dtype._shape,
+                        dtype=_convert_to_pa_type(dtype._dtype),
                     )
                 )
 

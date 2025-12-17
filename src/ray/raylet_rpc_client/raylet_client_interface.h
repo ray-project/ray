@@ -218,6 +218,10 @@ class RayletClientInterface {
 
   virtual int64_t GetPinsInFlight() const = 0;
 
+  virtual void CancelLocalTask(
+      const rpc::CancelLocalTaskRequest &request,
+      const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback) = 0;
+
   virtual ~RayletClientInterface() = default;
 };
 

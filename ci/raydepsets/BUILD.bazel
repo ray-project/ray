@@ -27,7 +27,7 @@ py_library(
 py_binary(
     name = "raydepsets",
     srcs = ["raydepsets.py"],
-    exec_compatible_with = ["//bazel:py310"],
+    exec_compatible_with = ["//bazel:py3"],
     deps = [":raydepsets_lib"],
 )
 
@@ -45,7 +45,7 @@ py_test(
         "tests/test_data/test.depsets.yaml",
         "tests/test_data/test2.depsets.yaml",
     ],
-    exec_compatible_with = ["//bazel:py310"],
+    exec_compatible_with = ["//bazel:py3"],
     tags = [
         "ci_unit",
         "team:ci",

@@ -1,4 +1,4 @@
-ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build
+ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build-py$PYTHON
 FROM $DOCKER_IMAGE_BASE_BUILD
 
 SHELL ["/bin/bash", "-ice"]

@@ -2,32 +2,56 @@
 Module to write a Ray Dataset into an iceberg table, by using the Ray Datasink API.
 """
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.savemode import SaveMode
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink, WriteResult
+from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow as pa
     from pyiceberg.catalog import Catalog
+    from pyiceberg.manifest import DataFile
+    from pyiceberg.schema import Schema
     from pyiceberg.table import Table
-
-    from ray.data.expressions import Expr
-
+    from pyiceberg.table.update.schema import UpdateSchema
 
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
-class IcebergDatasink(Datasink[List["pa.Table"]]):
-    """
-    Iceberg datasink to write a Ray Dataset into an existing Iceberg table. This module
-    heavily uses PyIceberg to write to iceberg table. All the routines in this class override
-    `ray.data.Datasink`.
+@dataclass
+class IcebergWriteResult:
+    """Result from writing blocks to Iceberg storage.
 
+    Attributes:
+        data_files: List of DataFile objects containing metadata about written Parquet files.
+        upsert_keys: Dictionary mapping column names to lists of key values for upsert operations.
+        schemas: List of PyArrow schemas from all non-empty blocks.
+    """
+
+    data_files: List["DataFile"] = field(default_factory=list)
+    upsert_keys: Optional[Dict[str, List[Any]]] = None
+    schemas: List["pa.Schema"] = field(default_factory=list)
+
+
+_UPSERT_COLS_ID = "join_cols"
+
+
+@DeveloperAPI
+class IcebergDatasink(Datasink[IcebergWriteResult]):
+    """
+    Iceberg datasink to write a Ray Dataset into an existing Iceberg table.
+    This datasink handles concurrent writes by:
+    - Each worker writes Parquet files to storage and returns DataFile metadata
+    - The driver collects all DataFile objects and performs a single commit
+
+    Schema evolution is supported:
+    - New columns in incoming data are automatically added to the table schema
+    - Type promotion across blocks is handled via schema reconciliation on the driver
     """
 
     def __init__(
@@ -44,10 +68,9 @@ class IcebergDatasink(Datasink[List["pa.Table"]]):
         Initialize the IcebergDatasink
 
         Args:
-            table_identifier: The identifier of the table to read such as `default.taxi_dataset`
-            catalog_kwargs: Optional arguments to use when setting up the Iceberg
-                catalog
-            snapshot_properties: Custom properties to write to snapshot summary, such as commit metadata
+            table_identifier: The identifier of the table such as `default.taxi_dataset`
+            catalog_kwargs: Optional arguments to use when setting up the Iceberg catalog
+            snapshot_properties: Custom properties to write to snapshot summary
             mode: Write mode - APPEND, UPSERT, or OVERWRITE. Defaults to APPEND.
                 - APPEND: Add new data without checking for duplicates
                 - UPSERT: Update existing rows or insert new ones based on a join condition
@@ -55,22 +78,22 @@ class IcebergDatasink(Datasink[List["pa.Table"]]):
             overwrite_filter: Optional filter for OVERWRITE mode to perform partial overwrites.
                 Must be a Ray Data expression from `ray.data.expressions`. Only rows matching
                 this filter are replaced. If None with OVERWRITE mode, replaces all table data.
-            upsert_kwargs: Optional arguments to pass through to PyIceberg's table.upsert()
-                method. Supported parameters include join_cols (List[str]),
-                when_matched_update_all (bool), when_not_matched_insert_all (bool),
-                case_sensitive (bool), branch (str). See PyIceberg documentation for details.
+            upsert_kwargs: Optional arguments for upsert operations.
+                Supported parameters: join_cols (List[str]), case_sensitive (bool),
+                branch (str). Note: This implementation uses a copy-on-write strategy
+                that always updates all columns for matched keys and inserts all new keys.
             overwrite_kwargs: Optional arguments to pass through to PyIceberg's table.overwrite()
                 method. Supported parameters include case_sensitive (bool) and branch (str).
                 See PyIceberg documentation for details.
 
         Note:
             Schema evolution is automatically enabled. New columns in the incoming data
-            are automatically added to the table schema.
+            are automatically added to the table schema. The schema is extracted from
+            the first input bundle when on_write_start is called.
         """
-
         self.table_identifier = table_identifier
         self._catalog_kwargs = (catalog_kwargs or {}).copy()
-        self._snapshot_properties = snapshot_properties or {}
+        self._snapshot_properties = (snapshot_properties or {}).copy()
         self._mode = mode
         self._overwrite_filter = overwrite_filter
         self._upsert_kwargs = (upsert_kwargs or {}).copy()
@@ -79,14 +102,32 @@ class IcebergDatasink(Datasink[List["pa.Table"]]):
         # Validate kwargs are only set for relevant modes
         if self._upsert_kwargs and self._mode != SaveMode.UPSERT:
             raise ValueError(
-                f"upsert_kwargs can only be specified when mode is SaveMode.UPSERT, "
-                f"but mode is {self._mode}"
+                f"upsert_kwargs can only be specified when mode is SaveMode.UPSERT, but mode is {self._mode}"
             )
         if self._overwrite_kwargs and self._mode != SaveMode.OVERWRITE:
             raise ValueError(
-                f"overwrite_kwargs can only be specified when mode is SaveMode.OVERWRITE, "
-                f"but mode is {self._mode}"
+                f"overwrite_kwargs can only be specified when mode is SaveMode.OVERWRITE, but mode is {self._mode}"
             )
+        if self._overwrite_filter and self._mode != SaveMode.OVERWRITE:
+            raise ValueError(
+                f"overwrite_filter can only be specified when mode is SaveMode.OVERWRITE, but mode is {self._mode}"
+            )
+
+        # Remove invalid parameters from overwrite_kwargs if present
+        for invalid_param, reason in [
+            (
+                "overwrite_filter",
+                "should be passed as a separate parameter to write_iceberg()",
+            ),
+            (
+                "delete_filter",
+                "is an internal PyIceberg parameter; use 'overwrite_filter' instead",
+            ),
+        ]:
+            if self._overwrite_kwargs.pop(invalid_param, None) is not None:
+                logger.warning(
+                    f"Removed '{invalid_param}' from overwrite_kwargs: {reason}"
+                )
 
         if "name" in self._catalog_kwargs:
             self._catalog_name = self._catalog_kwargs.pop("name")
@@ -95,7 +136,6 @@ class IcebergDatasink(Datasink[List["pa.Table"]]):
 
         self._table: "Table" = None
 
-    # Since iceberg table is not pickle-able, we need to exclude it during serialization
     def __getstate__(self) -> dict:
         """Exclude `_table` during pickling."""
         state = self.__dict__.copy()
@@ -111,147 +151,331 @@ class IcebergDatasink(Datasink[List["pa.Table"]]):
 
         return catalog.load_catalog(self._catalog_name, **self._catalog_kwargs)
 
-    def _update_schema(self, incoming_schema: "pa.Schema") -> None:
-        """
-        Update the table schema to accommodate incoming data using union-by-name semantics.
+    def _reload_table(self) -> None:
+        """Reload the Iceberg table from the catalog."""
+        catalog = self._get_catalog()
+        self._table = catalog.load_table(self.table_identifier)
 
-        This automatically handles:
-        - Adding new columns from the incoming schema
-        - Type promotion (e.g., int32 -> int64) where compatible
-        - Preserving existing columns not in the incoming schema
+    def _get_upsert_cols(self) -> List[str]:
+        """Get join columns for upsert, using table identifier fields as fallback."""
+        upsert_cols = self._upsert_kwargs.get(_UPSERT_COLS_ID, [])
+        if not upsert_cols:
+            # Use table's identifier fields as fallback
+            for field_id in self._table.metadata.schema().identifier_field_ids:
+                col_name = self._table.metadata.schema().find_column_name(field_id)
+                if col_name:
+                    upsert_cols.append(col_name)
+        return upsert_cols
+
+    def _append_and_commit(
+        self, txn: "Table.transaction", data_files: List["DataFile"]
+    ) -> None:
+        """Append data files to a transaction and commit.
 
         Args:
-            incoming_schema: The PyArrow schema from the incoming data
+            txn: PyIceberg transaction object
+            data_files: List of DataFile objects to append
         """
-        # Use PyIceberg's update_schema API
-        with self._table.update_schema() as update:
-            update.union_by_name(incoming_schema)
+        with txn._append_snapshot_producer(self._snapshot_properties) as append_files:
+            for data_file in data_files:
+                append_files.append_data_file(data_file)
+        txn.commit_transaction()
 
-        # Reload table completely after schema evolution
-        catalog = self._get_catalog()
-        self._table = catalog.load_table(self.table_identifier)
+    def _commit_upsert(
+        self,
+        txn: "Table.transaction",
+        data_files: List["DataFile"],
+        upsert_keys_dicts: List[Dict[str, List[Any]]],
+    ) -> None:
+        """
+        Commit upsert transaction with copy-on-write strategy.
 
-    def on_write_start(self) -> None:
-        """Initialize table for writing."""
-        catalog = self._get_catalog()
-        self._table = catalog.load_table(self.table_identifier)
+        Args:
+            txn: PyIceberg transaction object
+            data_files: List of DataFile objects to commit
+            upsert_keys_dicts: List of dictionaries mapping column names to lists of key values
+        """
+        import functools
+        from collections import defaultdict
 
-    def _collect_tables_from_blocks(self, blocks: Iterable[Block]) -> List["pa.Table"]:
-        """Collect PyArrow tables from blocks."""
-        collected_tables = []
+        import pyarrow as pa
+        from pyiceberg.table.upsert_util import create_match_filter
+
+        # Merge all join keys dictionaries
+        merged_keys_dict = defaultdict(list)
+        for upsert_keys_dict in upsert_keys_dicts:
+            for col, values in upsert_keys_dict.items():
+                merged_keys_dict[col].extend(values)
+
+        # Create delete filter if we have join keys
+        if merged_keys_dict:
+            # Create PyArrow table from join keys
+            keys_table = pa.table(dict(merged_keys_dict))
+
+            # Filter out rows with any NULL values in join columns
+            # (NULL != NULL in SQL semantics)
+            upsert_cols = self._get_upsert_cols()
+            masks = (pa.compute.is_valid(keys_table[col]) for col in upsert_cols)
+            mask = functools.reduce(pa.compute.and_, masks)
+            keys_table = keys_table.filter(mask)
+
+            # Only delete if we have non-NULL keys
+            if len(keys_table) > 0:
+                # Use PyIceberg's helper to build delete filter
+                delete_filter = create_match_filter(keys_table, upsert_cols)
+
+                # Prepare kwargs for delete
+                delete_kwargs = self._upsert_kwargs.copy()
+                delete_kwargs.pop(_UPSERT_COLS_ID, None)
+
+                txn.delete(
+                    delete_filter=delete_filter,
+                    snapshot_properties=self._snapshot_properties,
+                    **delete_kwargs,
+                )
+
+        # Append new data files (includes updates and inserts) and commit
+        self._append_and_commit(txn, data_files)
+
+    def _preserve_identifier_field_requirements(
+        self, update: "UpdateSchema", table_schema: "Schema"
+    ) -> None:
+        """Ensure identifier fields remain required after schema union.
+
+        When union_by_name is called with a schema that has nullable fields,
+        PyIceberg may make identifier fields optional. Since identifier fields
+        must be required, this helper ensures they remain required after union.
+
+        Example:
+            Table schema:   id: int (required, identifier), val: string
+            Input schema:   id: int (optional),             val: string
+
+            `union_by_name` merges them to:
+                            id: int (optional),             val: string
+
+            This violates the identifier constraint. This function forces `id`
+            back to required in the pending update.
+
+        Args:
+            update: The UpdateSchema object from update_schema() context manager
+            table_schema: The current table schema to get identifier field IDs from
+        """
+        from pyiceberg.types import NestedField
+
+        identifier_field_ids = table_schema.identifier_field_ids
+        for field_id in identifier_field_ids:
+            # Check if this field has a pending update
+            if field_id in update._updates:
+                updated_field = update._updates[field_id]
+                # If it was made optional (likely by union_by_name), force it back to required
+                if not updated_field.required:
+                    # Directly update the pending change to enforce required=True.
+                    # We create a new NestedField because it might be immutable.
+                    # We bypass _set_column_requirement because it has a check that
+                    # incorrectly returns early if the original field is already required,
+                    # ignoring the fact that we are overwriting a pending update.
+                    update._updates[field_id] = NestedField(
+                        field_id=updated_field.field_id,
+                        name=updated_field.name,
+                        field_type=updated_field.field_type,
+                        doc=updated_field.doc,
+                        required=True,
+                        initial_default=updated_field.initial_default,
+                        write_default=updated_field.write_default,
+                    )
+
+    def _update_schema_with_union(
+        self,
+        update: "UpdateSchema",
+        new_schema: Union["pa.Schema", "Schema"],
+        table_schema: "Schema",
+    ) -> None:
+        """Update schema using union_by_name while preserving identifier field requirements.
+
+        Args:
+            update: The UpdateSchema object.
+            new_schema: The new schema to union with the table schema.
+            table_schema: The current table schema.
+        """
+        update.union_by_name(new_schema)
+        self._preserve_identifier_field_requirements(update, table_schema)
+
+    def on_write_start(self, schema: Optional["pa.Schema"] = None) -> None:
+        """Initialize table for writing and create a shared write UUID.
+
+        Args:
+            schema: The PyArrow schema of the data being written. This is
+                automatically extracted from the first input bundle by the
+                Write operator. Used to evolve the table schema before writing
+                to avoid PyIceberg name mapping errors.
+        """
+        self._reload_table()
+
+        # Evolve schema BEFORE any files are written
+        # This prevents PyIceberg name mapping errors when incoming data has new columns
+        if schema is not None:
+            table_schema = self._table.metadata.schema()
+            with self._table.update_schema() as update:
+                self._update_schema_with_union(update, schema, table_schema)
+            # Succeeded, reload to get latest table version and exit.
+            self._reload_table()
+
+        # Validate join_cols for UPSERT mode before writing any files
+        if self._mode == SaveMode.UPSERT:
+            upsert_cols = self._upsert_kwargs.get(_UPSERT_COLS_ID, [])
+            if not upsert_cols:
+                # Check if table has identifier fields as fallback
+                identifier_field_ids = (
+                    self._table.metadata.schema().identifier_field_ids
+                )
+                if not identifier_field_ids:
+                    raise ValueError(
+                        "join_cols must be specified in upsert_kwargs for UPSERT mode "
+                        "when table has no identifier fields"
+                    )
+
+    def write(self, blocks: Iterable[Block], ctx: TaskContext) -> IcebergWriteResult:
+        """
+        Write blocks to Parquet files in storage and return DataFile metadata with schemas.
+
+        This runs on each worker in parallel. Files are written directly to storage
+        (S3, HDFS, etc.) and only metadata is returned to the driver.
+        Schema updates are NOT performed here - they happen on the driver.
+
+        Args:
+            blocks: Iterable of Ray Data blocks to write
+            ctx: TaskContext object containing task-specific information
+
+        Returns:
+            IcebergWriteResult containing DataFile objects, upsert keys, and schemas.
+        """
+        from collections import defaultdict
+
+        from pyiceberg.io.pyarrow import _dataframe_to_data_files
+
+        # Workers receive a pickled datasink with _table=None (excluded during
+        # serialization), so we reload it on first use.
+        if self._table is None:
+            self._reload_table()
+
+        all_data_files = []
+        upsert_keys_dict = defaultdict(list)
+        block_schemas = []
+        use_copy_on_write_upsert = self._mode == SaveMode.UPSERT
 
         for block in blocks:
             pa_table = BlockAccessor.for_block(block).to_arrow()
-
             if pa_table.num_rows > 0:
-                collected_tables.append(pa_table)
+                block_schemas.append(pa_table.schema)
 
-        return collected_tables
+                # Extract join key values for copy-on-write upsert
+                if use_copy_on_write_upsert:
+                    upsert_cols = self._get_upsert_cols()
+                    for col in upsert_cols:
+                        upsert_keys_dict[col].extend(pa_table[col].to_pylist())
 
-    def write(self, blocks: Iterable[Block], ctx: TaskContext) -> List["pa.Table"]:
-        """Collect blocks as PyArrow tables for all write modes."""
-        return self._collect_tables_from_blocks(blocks)
+                # Write data files to storage
+                data_files = list(
+                    _dataframe_to_data_files(
+                        table_metadata=self._table.metadata,
+                        df=pa_table,
+                        io=self._table.io,
+                    )
+                )
+                all_data_files.extend(data_files)
 
-    def _collect_and_concat_tables(
-        self, write_result: WriteResult[List["pa.Table"]]
-    ) -> Optional["pa.Table"]:
-        """Collect and concatenate all PyArrow tables from write results."""
-        import pyarrow as pa
-
-        all_tables = []
-        for tables_batch in write_result.write_returns:
-            all_tables.extend(tables_batch)
-
-        if not all_tables:
-            logger.warning("No data to write")
-            return None
-
-        return pa.concat_tables(all_tables)
-
-    def _complete_append(self, combined_table: "pa.Table") -> None:
-        """Complete APPEND mode write using PyIceberg's append API."""
-        self._table.append(
-            df=combined_table,
-            snapshot_properties=self._snapshot_properties,
-        )
-        logger.info(
-            f"Appended {combined_table.num_rows} rows to {self.table_identifier}"
+        return IcebergWriteResult(
+            data_files=all_data_files,
+            upsert_keys=upsert_keys_dict or None,
+            schemas=block_schemas,
         )
 
-    def _complete_upsert(self, combined_table: "pa.Table") -> None:
-        """Complete UPSERT mode write using PyIceberg's upsert API."""
-        self._table.upsert(df=combined_table, **self._upsert_kwargs)
-
-        join_cols = self._upsert_kwargs.get("join_cols")
-        if join_cols:
-            logger.info(
-                f"Upserted {combined_table.num_rows} rows to {self.table_identifier} "
-                f"using join columns: {join_cols}"
-            )
-        else:
-            logger.info(
-                f"Upserted {combined_table.num_rows} rows to {self.table_identifier} "
-                f"using table-defined identifier-field-ids"
-            )
-
-    def _complete_overwrite(self, combined_table: "pa.Table") -> None:
-        """Complete OVERWRITE mode write using PyIceberg's overwrite API."""
-        # Warn if user passed overwrite_filter via overwrite_kwargs
-        if "overwrite_filter" in self._overwrite_kwargs:
-            self._overwrite_kwargs.pop("overwrite_filter")
-            logger.warning(
-                "Use Ray Data's Expressions for overwrite filter instead of passing "
-                "it via PyIceberg's overwrite_filter parameter"
-            )
-
-        if self._overwrite_filter:
-            # Partial overwrite with filter
+    def _commit_overwrite(
+        self, txn: "Table.transaction", data_files: List["DataFile"]
+    ) -> None:
+        """Commit data files using OVERWRITE mode."""
+        # Delete matching data if filter provided
+        if self._overwrite_filter is not None:
             from ray.data._internal.datasource.iceberg_datasource import (
                 _IcebergExpressionVisitor,
             )
 
-            iceberg_filter = _IcebergExpressionVisitor().visit(self._overwrite_filter)
-            self._table.overwrite(
-                df=combined_table,
-                overwrite_filter=iceberg_filter,
+            visitor = _IcebergExpressionVisitor()
+            pyi_filter = visitor.visit(self._overwrite_filter)
+
+            txn.delete(
+                delete_filter=pyi_filter,
                 snapshot_properties=self._snapshot_properties,
                 **self._overwrite_kwargs,
-            )
-            logger.info(
-                f"Overwrote {combined_table.num_rows} rows in {self.table_identifier} "
-                f"matching filter: {self._overwrite_filter}"
             )
         else:
-            # Full table overwrite
-            self._table.overwrite(
-                df=combined_table,
+            # Full overwrite - delete all
+            from pyiceberg.expressions import AlwaysTrue
+
+            txn.delete(
+                delete_filter=AlwaysTrue(),
                 snapshot_properties=self._snapshot_properties,
                 **self._overwrite_kwargs,
             )
-            logger.info(
-                f"Overwrote entire table {self.table_identifier} "
-                f"with {combined_table.num_rows} rows"
-            )
 
-    def on_write_complete(self, write_result: WriteResult[List["pa.Table"]]) -> None:
-        """Complete the write operation based on the configured mode."""
-        # Collect and concatenate all PyArrow tables
-        combined_table = self._collect_and_concat_tables(write_result)
-        if combined_table is None:
+        # Append new data files and commit
+        self._append_and_commit(txn, data_files)
+
+    def on_write_complete(self, write_result: WriteResult) -> None:
+        """
+        Complete the write by reconciling schemas and committing all data files.
+
+        This runs on the driver after all workers finish writing files.
+        Collects all DataFile objects and schemas from all workers, reconciles schemas
+        (allowing type promotion), updates table schema if needed, then performs a single
+        atomic commit.
+        """
+        # Collect all data files and schemas from all workers
+        all_data_files: List["DataFile"] = []
+        all_schemas: List["pa.Schema"] = []
+        upsert_keys_dicts: List[Dict[str, List[Any]]] = []
+
+        for write_return in write_result.write_returns:
+            if not write_return:
+                continue
+
+            if write_return.data_files:  # Only add schema if we have data files
+                all_data_files.extend(write_return.data_files)
+                all_schemas.extend(write_return.schemas)
+                if write_return.upsert_keys:
+                    upsert_keys_dicts.append(write_return.upsert_keys)
+
+        if not all_data_files:
             return
 
-        # Apply schema evolution for all modes (PyIceberg doesn't handle this automatically)
-        self._update_schema(combined_table.schema)
+        # Reconcile all schemas from all blocks across all workers
+        # Get table schema and union with reconciled schema using unify_schemas with promotion
+        from pyiceberg.io import pyarrow as pyi_pa_io
 
-        # Execute the appropriate write operation
+        from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
+
+        table_schema = pyi_pa_io.schema_to_pyarrow(self._table.schema())
+        final_reconciled_schema = unify_schemas(
+            [table_schema] + all_schemas, promote_types=True
+        )
+
+        # Create transaction and commit schema update + data files atomically
+        txn = self._table.transaction()
+
+        # Update table schema within the transaction if it differs
+        if not final_reconciled_schema.equals(table_schema):
+            current_table_schema = self._table.metadata.schema()
+            with txn.update_schema() as update:
+                self._update_schema_with_union(
+                    update, final_reconciled_schema, current_table_schema
+                )
+
+        # Create transaction and commit based on mode
         if self._mode == SaveMode.APPEND:
-            self._complete_append(combined_table)
-        elif self._mode == SaveMode.UPSERT:
-            self._complete_upsert(combined_table)
+            self._append_and_commit(txn, all_data_files)
         elif self._mode == SaveMode.OVERWRITE:
-            self._complete_overwrite(combined_table)
+            self._commit_overwrite(txn, all_data_files)
+        elif self._mode == SaveMode.UPSERT:
+            self._commit_upsert(txn, all_data_files, upsert_keys_dicts)
         else:
-            raise ValueError(
-                f"Unsupported write mode: {self._mode}. "
-                f"Supported modes are: APPEND, UPSERT, OVERWRITE"
-            )
+            raise ValueError(f"Unsupported mode: {self._mode}")
