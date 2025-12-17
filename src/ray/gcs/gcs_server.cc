@@ -378,8 +378,10 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
         "GcsServer.NodeDeathCallback");
   };
 
-  gcs_healthcheck_manager_ = GcsHealthCheckManager::Create(
-      io_context_provider_.GetDefaultIOContext(), node_death_callback);
+  gcs_healthcheck_manager_ =
+      GcsHealthCheckManager::Create(io_context_provider_.GetDefaultIOContext(),
+                                    node_death_callback,
+                                    metrics_.health_check_rpc_latency_ms_histogram);
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
       auto remote_address =
@@ -449,6 +451,7 @@ void GcsServer::InitClusterResourceScheduler() {
       NodeResources(),
       /*is_node_available_fn=*/
       [](auto) { return true; },
+      /*resource_usage_gauge=*/metrics_.resource_usage_gauge,
       /*is_local_node_with_raylet=*/false);
 }
 
@@ -952,11 +955,11 @@ void GcsServer::PrintDebugState() const {
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     RAY_LOG(INFO) << "Main service Event stats:\n\n"
-                  << io_context_provider_.GetDefaultIOContext().stats().StatsString()
+                  << io_context_provider_.GetDefaultIOContext().stats()->StatsString()
                   << "\n\n";
     for (const auto &io_context : io_context_provider_.GetAllDedicatedIOContexts()) {
       RAY_LOG(INFO) << io_context->GetName() << " Event stats:\n\n"
-                    << io_context->GetIoService().stats().StatsString() << "\n\n";
+                    << io_context->GetIoService().stats()->StatsString() << "\n\n";
     }
   }
 }

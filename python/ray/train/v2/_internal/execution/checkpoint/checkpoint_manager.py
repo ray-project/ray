@@ -342,6 +342,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
     ):
         if not training_report.checkpoint:
             self._current_report_index += 1
+            self._notify()
             return
 
         self.register_checkpoint(

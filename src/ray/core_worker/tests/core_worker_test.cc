@@ -216,6 +216,7 @@ class CoreWorkerTest : public ::testing::Test {
         fake_local_raylet_rpc_client,
         core_worker_client_pool,
         raylet_client_pool,
+        mock_gcs_client_,
         std::move(lease_policy),
         memory_store_,
         *task_manager_,
@@ -226,7 +227,7 @@ class CoreWorkerTest : public ::testing::Test {
         JobID::Nil(),
         lease_request_rate_limiter,
         [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
-        boost::asio::steady_timer(io_service_),
+        io_service_,
         fake_scheduler_placement_time_ms_histogram_,
         fake_task_total_submitter_preprocessing_time_ms_histogram_,
         fake_task_dependency_resolution_time_ms_histogram_,
@@ -234,6 +235,8 @@ class CoreWorkerTest : public ::testing::Test {
 
     auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *core_worker_client_pool,
+        *raylet_client_pool,
+        mock_gcs_client_,
         *memory_store_,
         *task_manager_,
         *actor_creator_,

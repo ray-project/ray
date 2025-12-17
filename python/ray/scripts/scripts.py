@@ -16,7 +16,6 @@ from typing import List, Optional, Set, Tuple
 import click
 import colorama
 import requests
-import yaml
 
 import ray
 import ray._common.usage.usage_constants as usage_constant
@@ -942,12 +941,7 @@ def start(
                 )
 
         # Ensure auth token is available if authentication mode is token
-        try:
-            ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
-        except ray.exceptions.AuthenticationError:
-            raise RuntimeError(
-                "Failed to load authentication token. To generate a token for local development, use `ray get-auth-token --generate`. For remote clusters, ensure that the token is propagated to all nodes of the cluster when token authentication is enabled."
-            )
+        ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
 
         node = ray._private.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block
@@ -2562,63 +2556,6 @@ def healthcheck(address, component, skip_version_check):
 
 
 @cli.command()
-@click.option("-v", "--verbose", is_flag=True)
-@click.option(
-    "--dryrun",
-    is_flag=True,
-    help="Identifies the wheel but does not execute the installation.",
-)
-def install_nightly(verbose, dryrun):
-    """Install the latest wheels for Ray.
-
-    This uses the same python environment as the one that Ray is currently
-    installed in. Make sure that there is no Ray processes on this
-    machine (ray stop) when running this command.
-    """
-    raydir = os.path.abspath(os.path.dirname(ray.__file__))
-    all_wheels_path = os.path.join(raydir, "nightly-wheels.yaml")
-
-    wheels = None
-    if os.path.exists(all_wheels_path):
-        with open(all_wheels_path) as f:
-            wheels = yaml.safe_load(f)
-
-    if not wheels:
-        raise click.ClickException(
-            f"Wheels not found in '{all_wheels_path}'! "
-            "Please visit https://docs.ray.io/en/master/installation.html to "
-            "obtain the latest wheels."
-        )
-
-    platform = sys.platform
-    py_version = "{0}.{1}".format(*sys.version_info[:2])
-
-    matching_wheel = None
-    for target_platform, wheel_map in wheels.items():
-        if verbose:
-            print(f"Evaluating os={target_platform}, python={list(wheel_map)}")
-        if platform.startswith(target_platform):
-            if py_version in wheel_map:
-                matching_wheel = wheel_map[py_version]
-                break
-        if verbose:
-            print("Not matched.")
-
-    if matching_wheel is None:
-        raise click.ClickException(
-            "Unable to identify a matching platform. "
-            "Please visit https://docs.ray.io/en/master/installation.html to "
-            "obtain the latest wheels."
-        )
-    if dryrun:
-        print(f"Found wheel: {matching_wheel}")
-    else:
-        cmd = [sys.executable, "-m", "pip", "install", "-U", matching_wheel]
-        print(f"Running: {' '.join(cmd)}.")
-        subprocess.check_call(cmd)
-
-
-@cli.command()
 @click.option(
     "--show-library-path",
     "-show",
@@ -2723,7 +2660,7 @@ def shutdown_prometheus():
     help="Generate a new token if none exists",
 )
 def get_auth_token(generate):
-    """Prints the Ray authentication token to stdout when RAY_AUTH_MODE=token.
+    """Prints the Ray authentication token to stdout.
 
     If --generate is specified, a new token is created and saved to ~/.ray/auth_token if one does not exist.
     """
@@ -2731,21 +2668,13 @@ def get_auth_token(generate):
         generate_and_save_token,
     )
     from ray._raylet import (
-        AuthenticationMode,
         AuthenticationTokenLoader,
-        get_authentication_mode,
     )
-
-    # Check if token auth mode is enabled and provide guidance if not
-    if get_authentication_mode() != AuthenticationMode.TOKEN:
-        raise click.ClickException(
-            "Token authentication is not currently enabled. To enable token authentication, set: export RAY_AUTH_MODE=token\n For more instructions, see: https://docs.ray.io/en/latest/ray-security/auth.html",
-        )
 
     # Try to load existing token
     loader = AuthenticationTokenLoader.instance()
 
-    if not loader.has_token():
+    if not loader.has_token(ignore_auth_mode=True):
         if generate:
             click.echo("Generating new authentication token...", err=True)
             generate_and_save_token()
@@ -2755,8 +2684,8 @@ def get_auth_token(generate):
                 "No authentication token found. Use ray `get-auth-token --generate` to create one.",
             )
 
-    # Get raw token value
-    token = loader.get_raw_token()
+    # Get raw token value (ignore auth mode - explicitly loading token)
+    token = loader.get_raw_token(ignore_auth_mode=True)
 
     # Print token to stdout (for piping) without newline
     click.echo(token, nl=False)
@@ -2783,7 +2712,6 @@ cli.add_command(local_dump)
 cli.add_command(cluster_dump)
 cli.add_command(global_gc)
 cli.add_command(timeline)
-cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)

@@ -4,7 +4,6 @@ steps:
     label: "wanda: core binary parts py{{matrix}} (x86_64)"
     wanda: ci/docker/ray-core.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -42,7 +41,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64 --upload
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -77,6 +75,7 @@ steps:
         --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
         --platform cu12.4.1-cudnn --platform cu12.5.1-cudnn
         --platform cu12.6.3-cudnn --platform cu12.8.1-cudnn
+        --platform cu12.9.1-cudnn
         --platform cpu
         --image-type ray --upload
     depends_on:
@@ -102,6 +101,7 @@ steps:
         --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
         --platform cu12.4.1-cudnn --platform cu12.5.1-cudnn
         --platform cu12.6.3-cudnn --platform cu12.8.1-cudnn
+        --platform cu12.9.1-cudnn
         --platform cpu
         --image-type ray-extra --upload
     depends_on:

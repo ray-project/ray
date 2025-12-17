@@ -2664,7 +2664,9 @@ cdef class CoreWorker:
         options.gcs_options = gcs_options.native()[0]
         options.enable_logging = True
         options.log_dir = log_dir.encode("utf-8")
-        options.install_failure_signal_handler = True
+        options.install_failure_signal_handler = (
+            not ray_constants.RAY_DISABLE_FAILURE_SIGNAL_HANDLER
+        )
         # https://stackoverflow.com/questions/2356399/tell-if-python-is-in-interactive-mode
         options.interactive = hasattr(sys, "ps1")
         options.node_ip_address = node_ip_address.encode("utf-8")
@@ -2887,7 +2889,7 @@ cdef class CoreWorker:
                 c_object_ids, timeout_ms, results)
         check_status(op_status)
 
-        return RayObjectsToSerializedRayObjects(results)
+        return RayObjectsToSerializedRayObjects(results, object_refs)
 
     def get_if_local(self, object_refs):
         """Get objects from local plasma store directly
@@ -2899,7 +2901,7 @@ cdef class CoreWorker:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().GetIfLocal(
                     c_object_ids, &results))
-        return RayObjectsToSerializedRayObjects(results)
+        return RayObjectsToSerializedRayObjects(results, object_refs)
 
     def object_exists(self, ObjectRef object_ref, memory_store_only=False):
         cdef:
