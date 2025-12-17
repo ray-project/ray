@@ -5,7 +5,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray.llm._internal.serve.utils.dispatch import broadcast
+from ray.llm._internal.serve.utils.broadcast import broadcast
 
 
 # Define a simple deployment for testing

@@ -1,4 +1,4 @@
-from fastapi import Response
+from typing import Any, List
 
 from ray.llm._internal.serve.utils.broadcast import broadcast
 
@@ -6,16 +6,16 @@ from ray.llm._internal.serve.utils.broadcast import broadcast
 class ReplicaBroadcastable:
     async def _broadcast_to_replicas(
         self, model: str, method: str, kwargs: dict | None = None
-    ) -> Response:
-        """Helper to broadcast a command to all replicas and return a 200 response.
+    ) -> List[Any]:
+        """Broadcast a command to all replicas and return their results.
 
         Args:
-            model: The model ID or None to use default.
+            model: The model ID to broadcast to.
             method: The method name to call on each replica.
             kwargs: Optional kwargs to pass to the method.
 
         Returns:
-            200 OK response.
+            List of results from each replica.
         """
         model_id = await self._get_model_id(model)
         handle = self._get_configured_serve_handle(model_id)
