@@ -424,11 +424,13 @@ cdef class SerializedObject(object):
         object _metadata
         object _contained_object_refs
         ParallelMemcopyThreadPool *_memcopy_pool
+        object _memcopy_pool_owner
 
     def __init__(self, metadata, contained_object_refs=None):
         self._metadata = metadata
         self._contained_object_refs = contained_object_refs or []
         self._memcopy_pool = NULL
+        self._memcopy_pool_owner = None
 
     @property
     def total_bytes(self):
@@ -452,8 +454,10 @@ cdef class SerializedObject(object):
     cpdef set_memcopy_thread_pool(self, _MemcopyThreadPool pool):
         if pool is not None and pool.get() != NULL:
             self._memcopy_pool = pool.get()
+            self._memcopy_pool_owner = pool
         else:
             self._memcopy_pool = NULL
+            self._memcopy_pool_owner = None
 
 
 cdef class Pickle5SerializedObject(SerializedObject):
