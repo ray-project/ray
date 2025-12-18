@@ -33,6 +33,7 @@ class DashboardAgent:
         events_export_addr=None,
         listen_port=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
         disable_metrics_collection: bool = False,
+        is_head: bool = False,
         *,  # the following are required kwargs
         object_store_name: str,
         raylet_name: str,
@@ -76,12 +77,20 @@ class DashboardAgent:
             cluster_id=self.cluster_id_hex,
         )
 
+        self.is_head = is_head
+
         if not self.minimal:
             self._init_non_minimal()
 
     def _init_non_minimal(self):
         from grpc import aio as aiogrpc
 
+        from ray._private.authentication.authentication_utils import (
+            is_token_auth_enabled,
+        )
+        from ray._private.authentication.grpc_authentication_server_interceptor import (
+            AsyncAuthenticationServerInterceptor,
+        )
         from ray._private.tls_utils import add_port_to_grpc_server
         from ray.dashboard.http_server_agent import HttpServerAgent
 
@@ -98,7 +107,13 @@ class DashboardAgent:
         else:
             aiogrpc.init_grpc_aio()
 
+        # Add authentication interceptor if token auth is enabled
+        interceptors = []
+        if is_token_auth_enabled():
+            interceptors.append(AsyncAuthenticationServerInterceptor())
+
         self.server = aiogrpc.server(
+            interceptors=interceptors,
             options=(
                 ("grpc.so_reuseport", 0),
                 (
@@ -109,7 +124,7 @@ class DashboardAgent:
                     "grpc.max_receive_message_length",
                     AGENT_GRPC_MAX_MESSAGE_LENGTH,
                 ),
-            )  # noqa
+            ),  # noqa
         )
         try:
             add_port_to_grpc_server(self.server, build_address(self.ip, self.grpc_port))
@@ -368,6 +383,11 @@ if __name__ == "__main__":
         help=("If this arg is set, metrics report won't be enabled from the agent."),
     )
     parser.add_argument(
+        "--head",
+        action="store_true",
+        help="Whether this node is the head node.",
+    )
+    parser.add_argument(
         "--session-name",
         required=False,
         type=str,
@@ -436,6 +456,7 @@ if __name__ == "__main__":
             object_store_name=args.object_store_name,
             raylet_name=args.raylet_name,
             disable_metrics_collection=args.disable_metrics_collection,
+            is_head=args.head,
             session_name=args.session_name,
         )
 

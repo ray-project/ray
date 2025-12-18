@@ -19,7 +19,7 @@ from ray.rllib.core.learner.learner import ParamDict
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import symlog, two_hot, clip_gradients
+from ray.rllib.utils.torch_utils import clip_gradients, symlog, two_hot
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 torch, nn = try_import_torch()
@@ -252,7 +252,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             self.metrics.log_value(
                 (module_id, "WORLD_MODEL_fwd_out_obs_distribution_means_b0xT"),
                 fwd_out["obs_distribution_means_BxT"][: self.config.batch_length_T],
-                reduce=None,  # No reduction, we want the obs tensor to stay in-tact.
+                reduce="item_series",  # No reduction, we want the obs tensor to stay in-tact.
                 window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
 
@@ -306,7 +306,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
                     if key.endswith("H_BxT")
                 },
                 key=(module_id, "dream_data"),
-                reduce=None,
+                reduce="item_series",
                 window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
 

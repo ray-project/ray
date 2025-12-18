@@ -133,6 +133,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsUnexpectedSystemExit()
         c_bool IsChannelError()
         c_bool IsChannelTimeoutError()
+        c_bool IsUnauthenticated()
 
         c_string ToString()
         c_string CodeAsString()
@@ -275,9 +276,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTensorTransport TENSOR_TRANSPORT_OBJECT_STORE "ray::rpc::TensorTransport::OBJECT_STORE"
-    cdef CTensorTransport TENSOR_TRANSPORT_NCCL "ray::rpc::TensorTransport::NCCL"
-    cdef CTensorTransport TENSOR_TRANSPORT_GLOO "ray::rpc::TensorTransport::GLOO"
-    cdef CTensorTransport TENSOR_TRANSPORT_NIXL "ray::rpc::TensorTransport::NIXL"
+    cdef CTensorTransport TENSOR_TRANSPORT_DIRECT_TRANSPORT "ray::rpc::TensorTransport::DIRECT_TRANSPORT"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CPlacementStrategy PLACEMENT_STRATEGY_PACK \
@@ -423,8 +422,8 @@ cdef extern from "ray/common/python_callbacks.h" namespace "ray":
             void (object, object) nogil,
             object) nogil
 
-cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
-    cdef cppclass CActorInfoAccessor "ray::gcs::ActorInfoAccessor":
+cdef extern from "ray/gcs_rpc_client/accessors/actor_info_accessor_interface.h" nogil:
+    cdef cppclass CActorInfoAccessorInterface "ray::gcs::ActorInfoAccessorInterface":
         void AsyncGetAllByFilter(
             const optional[CActorID] &actor_id,
             const optional[CJobID] &job_id,
@@ -432,12 +431,7 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             const MultiItemPyCallback[CActorTableData] &callback,
             int64_t timeout_ms)
 
-        void AsyncKillActor(const CActorID &actor_id,
-                                  c_bool force_kill,
-                                  c_bool no_restart,
-                                  const StatusPyCallback &callback,
-                                  int64_t timeout_ms)
-
+cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
     cdef cppclass CJobInfoAccessor "ray::gcs::JobInfoAccessor":
         CRayStatus GetAll(
             const optional[c_string] &job_or_submission_id,
@@ -472,7 +466,7 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
         CStatusOr[c_vector[CGcsNodeInfo]] GetAllNoCache(
             int64_t timeout_ms,
             optional[CGcsNodeState] state_filter,
-            optional[CNodeSelector] node_selector)
+            const c_vector[CNodeSelector] &node_selectors)
 
         void AsyncGetAll(
             const MultiItemPyCallback[CGcsNodeInfo] &callback,
@@ -629,6 +623,12 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             const StatusPyCallback &callback
         )
 
+    cdef cppclass CTaskInfoAccessor "ray::gcs::TaskInfoAccessor":
+        void AsyncAddEvents(
+            CAddEventsRequest &&request,
+            const StatusPyCallback &callback,
+            int64_t timeout_ms)
+
 
 cdef extern from "ray/gcs_rpc_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":
@@ -649,7 +649,7 @@ cdef extern from "ray/gcs_rpc_client/gcs_client.h" nogil:
         c_pair[c_string, int] GetGcsServerAddress() const
         CClusterID GetClusterId() const
 
-        CActorInfoAccessor& Actors()
+        CActorInfoAccessorInterface& Actors()
         CJobInfoAccessor& Jobs()
         CInternalKVAccessor& InternalKV()
         CNodeInfoAccessor& Nodes()
@@ -657,8 +657,20 @@ cdef extern from "ray/gcs_rpc_client/gcs_client.h" nogil:
         CRuntimeEnvAccessor& RuntimeEnvs()
         CAutoscalerStateAccessor& Autoscaler()
         CPublisherAccessor& Publisher()
+        CTaskInfoAccessor& Tasks()
+        CGcsRpcClient& GetGcsRpcClient()
 
     cdef CRayStatus ConnectOnSingletonIoContext(CGcsClient &gcs_client, int timeout_ms)
+
+cdef extern from "ray/gcs_rpc_client/rpc_client.h" namespace "ray::rpc::events" nogil:
+    cdef cppclass CAddEventsRequest "ray::rpc::events::AddEventsRequest":
+        bint ParseFromString(const c_string &data)
+    cdef cppclass CAddEventsReply "ray::rpc::events::AddEventsReply":
+        pass
+
+cdef extern from "ray/gcs_rpc_client/rpc_client.h" namespace "ray::rpc" nogil:
+    cdef cppclass CGcsRpcClient "ray::rpc::GcsRpcClient":
+        pass
 
 cdef extern from "ray/gcs_rpc_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, double] PythonGetResourcesTotal(
@@ -724,7 +736,12 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         ALIVE "ray::rpc::GcsNodeInfo_GcsNodeState_ALIVE",
 
     cdef cppclass CNodeSelector "ray::rpc::GetAllNodeInfoRequest::NodeSelector":
-        pass
+        CNodeSelector()
+        void set_node_id(const c_string &node_id)
+        void set_node_name(const c_string &node_name)
+        void set_node_ip_address(const c_string &node_ip_address)
+        void set_is_head_node(c_bool is_head_node)
+        void ParseFromString(const c_string &serialized)
 
     cdef cppclass CJobTableData "ray::rpc::JobTableData":
         c_string job_id() const

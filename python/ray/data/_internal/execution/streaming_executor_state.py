@@ -34,6 +34,7 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     HashShuffleProgressBarMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.ranker import Ranker
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
@@ -532,7 +533,7 @@ def process_completed_tasks(
     states, call `update_operator_states()` afterwards.
 
     Args:
-        topology: The toplogy of operators.
+        topology: The topology of operators.
         backpressure_policies: The backpressure policies to use.
         max_errored_blocks: Max number of errored blocks to allow,
             unlimited if negative.
@@ -671,7 +672,7 @@ def update_operator_states(topology: Topology) -> None:
         # Drain external input queue if current operator is execution finished.
         # This is needed when the limit is reached, and `mark_execution_finished`
         # is called manually.
-        if op.execution_finished():
+        if op.has_execution_finished():
             for input_queue in op_state.input_queues:
                 # Drain input queue
                 input_queue.clear()
@@ -746,6 +747,7 @@ def select_operator_to_run(
     resource_manager: ResourceManager,
     backpressure_policies: List[BackpressurePolicy],
     ensure_liveness: bool,
+    ranker: "Ranker",
 ) -> Optional[PhysicalOperator]:
     """Select next operator to launch new tasks.
 
@@ -769,55 +771,13 @@ def select_operator_to_run(
     if not eligible_ops:
         return None
 
-    ranks = _rank_operators(eligible_ops, resource_manager)
+    ranks = ranker.rank_operators(eligible_ops, topology, resource_manager)
 
     assert len(eligible_ops) == len(ranks), (eligible_ops, ranks)
 
     next_op, _ = min(zip(eligible_ops, ranks), key=lambda t: t[1])
 
     return next_op
-
-
-def _rank_operators(
-    ops: List[PhysicalOperator], resource_manager: ResourceManager
-) -> List[Tuple]:
-    """Picks operator to run according to the following semantic:
-
-    Operator to run next is selected as the one with the *smallest* value
-    of the lexicographically ordered ranks composed of (in order):
-
-        1. Whether operator's could be throttled (bool)
-        2. Operators' object store utilization
-
-    Consider following examples:
-
-    Example 1:
-
-        Operator 1 with rank (True, 1024 bytes)
-        Operator 2 with rank (False, 2048 bytes)
-
-    In that case Operator 2 will be selected.
-
-    Example 2:
-
-        Operator 1 with rank (True, 1024 bytes)
-        Operator 2 with rank (True, 2048 bytes)
-
-    In that case Operator 1 will be selected.
-    """
-
-    assert len(ops) > 0, ops
-
-    def _ranker(op):
-        # Rank composition:
-        #   1. Whether throttling is enabled
-        #   2. Estimated Object Store usage
-        return (
-            not op.throttling_disabled(),
-            resource_manager.get_op_usage(op).object_store_memory,
-        )
-
-    return [_ranker(op) for op in ops]
 
 
 def _actor_info_summary_str(info: _ActorPoolInfo) -> str:

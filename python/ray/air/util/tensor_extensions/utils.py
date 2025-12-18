@@ -1,5 +1,12 @@
 import warnings
-from typing import TYPE_CHECKING, Any, List, Protocol, Sequence, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    List,
+    Protocol,
+    Sequence,
+    Union,
+)
 
 import numpy as np
 
@@ -107,7 +114,9 @@ def _is_ndarray_variable_shaped_tensor(arr: np.ndarray) -> bool:
             return False
         if a.shape != shape:
             return True
-    return True
+
+    # All shapes are identical
+    return False
 
 
 def _create_possibly_ragged_ndarray(

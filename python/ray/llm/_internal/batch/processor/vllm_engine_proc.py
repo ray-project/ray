@@ -18,12 +18,25 @@ from ray.llm._internal.batch.processor.base import (
     Processor,
     ProcessorBuilder,
 )
+from ray.llm._internal.batch.processor.utils import (
+    build_cpu_stage_map_kwargs,
+    get_value_or_fallback,
+)
 from ray.llm._internal.batch.stages import (
     ChatTemplateStage,
     DetokenizeStage,
     PrepareImageStage,
+    PrepareMultimodalStage,
     TokenizeStage,
     vLLMEngineStage,
+)
+from ray.llm._internal.batch.stages.configs import (
+    ChatTemplateStageConfig,
+    DetokenizeStageConfig,
+    PrepareImageStageConfig,
+    PrepareMultimodalStageConfig,
+    TokenizerStageConfig,
+    resolve_stage_config,
 )
 from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
@@ -133,45 +146,92 @@ def build_vllm_engine_processor(
 
     stages = []
 
-    if config.has_image:
+    # Prepare processor defaults for merging into stage configs
+    processor_defaults = {
+        "batch_size": config.batch_size,
+        "concurrency": config.concurrency,
+        "runtime_env": config.runtime_env,
+        "model_source": config.model_source,
+    }
+
+    # Resolve and build PrepareImageStage if enabled
+    image_stage_cfg = resolve_stage_config(
+        config.prepare_image_stage,
+        PrepareImageStageConfig,
+        processor_defaults,
+    )
+
+    # Resolve and build PrepareMultimodalStage if enabled
+    prepare_multimodal_stage_cfg = resolve_stage_config(
+        config.prepare_multimodal_stage,
+        PrepareMultimodalStageConfig,
+        processor_defaults,
+    )
+
+    if image_stage_cfg.enabled and prepare_multimodal_stage_cfg.enabled:
+        raise ValueError(
+            "Cannot enable both 'prepare_image_stage' and 'prepare_multimodal_stage' "
+            "simultaneously. The 'prepare_multimodal_stage' handles image processing "
+            "along with other multimodal inputs. Please disable one of them."
+        )
+
+    if image_stage_cfg.enabled:
         stages.append(
             PrepareImageStage(
-                map_batches_kwargs=dict(
-                    zero_copy_batch=True,
-                    concurrency=config.get_concurrency(),
-                    batch_size=config.batch_size,
-                ),
+                map_batches_kwargs=build_cpu_stage_map_kwargs(image_stage_cfg),
             )
         )
-    if config.apply_chat_template:
+
+    if prepare_multimodal_stage_cfg.enabled:
         stages.append(
-            ChatTemplateStage(
+            PrepareMultimodalStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model_source,
-                    chat_template=config.chat_template,
-                    chat_template_kwargs=chat_template_kwargs,
+                    model=prepare_multimodal_stage_cfg.model_source,
+                    chat_template_content_format=prepare_multimodal_stage_cfg.chat_template_content_format,
+                    apply_sys_msg_formatting=prepare_multimodal_stage_cfg.apply_sys_msg_formatting,
                 ),
-                map_batches_kwargs=dict(
-                    zero_copy_batch=True,
-                    concurrency=config.get_concurrency(),
-                    batch_size=config.batch_size,
-                    runtime_env=config.runtime_env,
+                map_batches_kwargs=build_cpu_stage_map_kwargs(
+                    prepare_multimodal_stage_cfg
                 ),
             )
         )
 
-    if config.tokenize:
+    # Resolve and build ChatTemplateStage if enabled
+    chat_template_stage_cfg = resolve_stage_config(
+        getattr(config, "chat_template_stage", config.apply_chat_template),
+        ChatTemplateStageConfig,
+        processor_defaults,
+    )
+    if chat_template_stage_cfg.enabled:
+        stages.append(
+            ChatTemplateStage(
+                fn_constructor_kwargs=dict(
+                    model=chat_template_stage_cfg.model_source,
+                    chat_template=get_value_or_fallback(
+                        chat_template_stage_cfg.chat_template, config.chat_template
+                    ),
+                    chat_template_kwargs=get_value_or_fallback(
+                        chat_template_stage_cfg.chat_template_kwargs,
+                        chat_template_kwargs,
+                    ),
+                ),
+                map_batches_kwargs=build_cpu_stage_map_kwargs(chat_template_stage_cfg),
+            )
+        )
+
+    # Resolve and build TokenizeStage if enabled
+    tokenize_stage_cfg = resolve_stage_config(
+        getattr(config, "tokenize_stage", config.tokenize),
+        TokenizerStageConfig,
+        processor_defaults,
+    )
+    if tokenize_stage_cfg.enabled:
         stages.append(
             TokenizeStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model_source,
+                    model=tokenize_stage_cfg.model_source,
                 ),
-                map_batches_kwargs=dict(
-                    zero_copy_batch=True,
-                    concurrency=config.get_concurrency(),
-                    batch_size=config.batch_size,
-                    runtime_env=config.runtime_env,
-                ),
+                map_batches_kwargs=build_cpu_stage_map_kwargs(tokenize_stage_cfg),
             )
         )
 
@@ -188,6 +248,7 @@ def build_vllm_engine_processor(
                 max_pending_requests=config.max_pending_requests,
                 dynamic_lora_loading_path=config.dynamic_lora_loading_path,
                 placement_group_config=config.placement_group_config,
+                should_continue_on_error=config.should_continue_on_error,
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
@@ -212,18 +273,19 @@ def build_vllm_engine_processor(
         )
     )
 
-    if config.detokenize:
+    # Resolve and build DetokenizeStage if enabled
+    detokenize_stage_cfg = resolve_stage_config(
+        getattr(config, "detokenize_stage", config.detokenize),
+        DetokenizeStageConfig,
+        processor_defaults,
+    )
+    if detokenize_stage_cfg.enabled:
         stages.append(
             DetokenizeStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model_source,
+                    model=detokenize_stage_cfg.model_source,
                 ),
-                map_batches_kwargs=dict(
-                    zero_copy_batch=True,
-                    concurrency=config.get_concurrency(),
-                    batch_size=config.batch_size,
-                    runtime_env=config.runtime_env,
-                ),
+                map_batches_kwargs=build_cpu_stage_map_kwargs(detokenize_stage_cfg),
             )
         )
 
