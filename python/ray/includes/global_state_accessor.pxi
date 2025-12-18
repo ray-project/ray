@@ -263,24 +263,6 @@ cdef class GlobalStateAccessor:
     def get_system_config(self):
         return self.inner.get().GetSystemConfig()
 
-    def get_node_to_connect_for_driver(self, node_ip_address):
-        cdef CRayStatus status
-        cdef c_string cnode_ip_address = node_ip_address
-        cdef c_string cnode_to_connect
-        cdef CGcsNodeInfo c_node_info
-        with nogil:
-            status = self.inner.get().GetNodeToConnectForDriver(
-                cnode_ip_address, &cnode_to_connect)
-        if not status.ok():
-            raise RuntimeError(status.message())
-        c_node_info.ParseFromString(cnode_to_connect)
-        return {
-            "object_store_socket_name": c_node_info.object_store_socket_name().decode(),
-            "raylet_socket_name": c_node_info.raylet_socket_name().decode(),
-            "node_manager_port": c_node_info.node_manager_port(),
-            "node_id": c_node_info.node_id().hex(),
-        }
-
     def get_node(self, node_id):
         cdef CRayStatus status
         cdef c_string cnode_id = node_id
