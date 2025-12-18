@@ -1,5 +1,4 @@
 import os
-import warnings
 from typing import List
 
 from ray.serve._private.constants_utils import (
@@ -303,13 +302,6 @@ SERVE_LOG_UNWANTED_ATTRS = {
 }
 
 RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = 0
-if os.environ.get("RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S"):
-    warnings.warn(
-        "RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S is deprecated and will be ignored. "
-        "Use `http_options.keep_alive_timeout_s` in the Serve config instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
 
 RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = 0.0
 
