@@ -86,28 +86,43 @@ struct Group {
 /// non-retriable if it is the last member of the group, and is retriable otherwise.
 class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicy {
  public:
-  GroupByOwnerIdWorkerKillingPolicy();
+  GroupByOwnerIdWorkerKillingPolicy() = default;
+
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> SelectWorkersToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const MemorySnapshot &system_memory);
 
  private:
   /**
-   * Executes the worker selection policy.
-   * \param workers the list of candidate workers.
-   * \param system_memory snapshot of memory usage.
-   * \return the list of workers to kill and whether the task on each worker should be
-   * retried.
+   * Executes the worker killing selection policy.
+   * Here we prioritize killing groups that are retriable first.
+   * Else we prioritize killing the group with the largest number of workers.
+   * Else we prioritize killing the newest group.
+   *
+   * \param workers the list of workers to select and kill from.
+   * \param system_memory snapshot of memory usage. Used to print the memory usage of the
+   * workers. \return the list of workers to kill and whether the task on each worker
+   * should be retried.
    */
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> Policy(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const MemorySnapshot &system_memory) const;
 
-  /// Creates the debug string of the groups created by the policy.
+  /**
+   * Creates the debug string of the groups created by the policy.
+   *
+   * \param groups groups to print
+   * \param system_memory snapshot of memory usage.
+   * \return the debug string.
+   */
   static std::string PolicyDebugString(const std::vector<Group> &groups,
                                        const MemorySnapshot &system_memory);
 
-  /// Targets to be killed.
+  /**
+   * The current selected workers to be killed.
+   * If the killing policy is triggered while the previously selected workers are still
+   * alive, no new workers will be selected to be killed.
+   */
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
       high_memory_eviction_targets_;
 };

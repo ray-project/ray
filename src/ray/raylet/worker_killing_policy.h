@@ -44,20 +44,6 @@ class WorkerKillingPolicy {
                       const MemorySnapshot &system_memory) = 0;
 
   virtual ~WorkerKillingPolicy() = default;
-
- protected:
-  /// Returns debug string of the workers.
-  ///
-  /// \param workers The workers to be printed.
-  /// \param num_workers The number of workers to print starting from the beginning of the
-  /// worker list.
-  /// \param system_memory snapshot of memory usage.
-  ///
-  /// \return the debug string.
-  static std::string WorkersDebugString(
-      const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-      int32_t num_workers,
-      const MemorySnapshot &system_memory);
 };
 
 }  // namespace raylet

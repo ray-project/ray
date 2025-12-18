@@ -142,8 +142,8 @@ ray_cc_test(
     deps = [
         ":util",
         "//src/ray/common:lease",
+        "//src/ray/raylet:worker_killing_policy",
         "//src/ray/raylet:worker_killing_policy_group_by_owner",
-        "//src/ray/raylet:worker_killing_policy_interface",
         "@com_google_googletest//:gtest_main",
     ],
 )

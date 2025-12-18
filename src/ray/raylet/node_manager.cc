@@ -3040,7 +3040,7 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
 // if the memory usage is above the threshold. Allows one in-flight
 // process kill at a time as killing a process could sometimes take
 // seconds.
-// Assumes that the callback is running on the node manager's io_service thread.
+// NOTE: The callback is NOT thread-safe and must be run on the io_service thread.
 MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
   return [this](bool is_usage_above_threshold,
                 MemorySnapshot system_memory,
@@ -3049,42 +3049,40 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
       return;
     }
     system_memory.process_used_bytes = MemoryMonitor::GetProcessMemoryUsage();
-    auto workers = worker_pool_.GetAllRegisteredWorkers();
+    std::vector<std::shared_ptr<WorkerInterface>> workers =
+        worker_pool_.GetAllRegisteredWorkers();
     if (workers.empty()) {
-      RAY_LOG_EVERY_MS(WARNING, 5000)
-          << "Memory usage above threshold but no workers are available for "
-             "killing."
-          << "This could be due to worker memory leak and"
-          << "idle worker are occupying most of the memory.";
+      RAY_LOG_EVERY_MS(INFO, 10000)
+          << "Memory usage above threshold but no workers are available for killing.";
       return;
     }
-    auto workers_to_kill_and_should_retry =
-        worker_killing_policy_->SelectWorkersToKill(workers, system_memory);
-    for (std::pair<std::shared_ptr<WorkerInterface>, bool>
-             worker_to_kill_and_should_retry : workers_to_kill_and_should_retry) {
-      std::shared_ptr<WorkerInterface> worker_to_kill =
-          worker_to_kill_and_should_retry.first;
-      bool should_retry = worker_to_kill_and_should_retry.second;
+    std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
+        workers_to_kill_and_should_retry =
+            worker_killing_policy_->SelectWorkersToKill(workers, system_memory);
+    for (const auto &[worker_to_kill, should_retry] : workers_to_kill_and_should_retry) {
       /// TODO: (clarng) expose these strings in the frontend python error as well.
       std::string oom_kill_details = this->CreateOomKillMessageDetails(
           worker_to_kill, this->self_node_id_, system_memory, usage_threshold);
       std::string oom_kill_suggestions =
           this->CreateOomKillMessageSuggestions(worker_to_kill, should_retry);
 
-      RAY_LOG(INFO)
-          << "Killing worker with task "
-          << worker_to_kill->GetGrantedLease().GetLeaseSpecification().DebugString()
-          << "\n\n"
-          << oom_kill_details << "\n\n"
-          << oom_kill_suggestions;
+      std::string worker_exit_message = absl::StrFormat(
+          "Task was killed due to the node running low on memory. "
+          "OOM kill details: %s OOM kill suggestions: %s",
+          oom_kill_details,
+          oom_kill_suggestions);
 
-      std::stringstream worker_exit_message_ss;
-      worker_exit_message_ss << "Task was killed due to the node running low on memory.\n"
-                             << oom_kill_details << "\n"
-                             << oom_kill_suggestions;
-      std::string worker_exit_message = worker_exit_message_ss.str();
+      const LeaseSpecification &lease_spec =
+          worker_to_kill->GetGrantedLease().GetLeaseSpecification();
+      RAY_LOG(INFO) << absl::StrFormat(
+          "Killing worker with lease_id=%s task_name=%s OOM kill details: "
+          "%s OOM kill suggestions: %s",
+          lease_spec.LeaseId().Hex(),
+          lease_spec.GetTaskName(),
+          oom_kill_details,
+          oom_kill_suggestions);
 
-      // Rerpot the event to the dashboard.
+      // Report the event to the dashboard.
       RAY_EVENT_EVERY_MS(ERROR, "Out of Memory", 10 * 1000) << worker_exit_message;
 
       // Mark the worker as failure and raise an exception from a caller.
@@ -3107,13 +3105,13 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
         memory_manager_worker_eviction_total_count_.Record(
             1, {{"Type", "MemoryManager.DriverEviction.Total"}, {"Name", ""}});
       } else if (worker_to_kill->GetActorId().IsNil()) {
-        const auto &ray_lease = worker_to_kill->GetGrantedLease();
+        const RayLease &ray_lease = worker_to_kill->GetGrantedLease();
         memory_manager_worker_eviction_total_count_.Record(
             1,
             {{"Type", "MemoryManager.TaskEviction.Total"},
              {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
       } else {
-        const auto &ray_lease = worker_to_kill->GetGrantedLease();
+        const RayLease &ray_lease = worker_to_kill->GetGrantedLease();
         memory_manager_worker_eviction_total_count_.Record(
             1,
             {{"Type", "MemoryManager.ActorEviction.Total"},
