@@ -2129,7 +2129,6 @@
 
   cluster:
     byod:
-      type: gpu
       post_build_script: byod_rllib.sh
     cluster_compute: cpu_single_node.yaml
 
