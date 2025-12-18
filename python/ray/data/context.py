@@ -664,6 +664,10 @@ class DataContext:
             DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER
         )
 
+        # Unique id of the current execution of the data pipeline.
+        # This value increments only upon re-execution of the exact same pipeline.
+        self._execution_idx = 0
+
         is_ray_job = os.environ.get("RAY_JOB_ID") is not None
         if is_ray_job:
             is_driver = ray.get_runtime_context().worker.mode != WORKER_MODE
