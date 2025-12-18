@@ -68,7 +68,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       storage_type_(GetStorageType()),
       rpc_server_(config.grpc_server_name,
                   config.grpc_server_port,
-                  config.node_ip_address == "127.0.0.1",
+                  IsLocalhostAddress(config.node_ip_address) ? GetLocalhostIp()
+                                                             : config.node_ip_address,
                   config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service,
@@ -201,7 +202,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
 
   gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(std::move(inner_publisher));
   metrics_agent_client_ = std::make_unique<rpc::MetricsAgentClientImpl>(
-      "127.0.0.1",
+      GetLocalhostIp(),
       config_.metrics_agent_port,
       io_context_provider_.GetDefaultIOContext(),
       client_call_manager_);

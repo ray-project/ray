@@ -212,7 +212,9 @@ NodeManager::NodeManager(
                     }),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
-                           config.node_manager_address == "127.0.0.1"),
+                           IsLocalhostAddress(config.node_manager_address)
+                               ? GetLocalhostIp()
+                               : config.node_manager_address),
       local_object_manager_(local_object_manager),
       leased_workers_(leased_workers),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),

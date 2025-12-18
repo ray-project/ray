@@ -95,9 +95,18 @@ ParseUrlEndpoint(const std::string &endpoint, int default_port = 0);
 /// }
 std::shared_ptr<absl::flat_hash_map<std::string, std::string>> ParseURL(std::string url);
 
-inline bool IsLocalHost(std::string_view address, std::string_view host_address) {
-  return address == "127.0.0.1" || address == "::1" || address == "localhost" ||
-         address == host_address;
+/// Check if the given address is a localhost address (127.0.0.1, ::1, or localhost).
+inline bool IsLocalhostAddress(std::string_view address) {
+  return address == "127.0.0.1" || address == "::1" || address == "localhost";
 }
+
+inline bool IsLocalHost(std::string_view address, std::string_view host_address) {
+  return IsLocalhostAddress(address) || address == host_address;
+}
+
+/// Get localhost loopback IP with IPv4/IPv6 support.
+/// Resolves "localhost" and returns the actual IP address.
+/// \return The localhost loopback IP ("127.0.0.1" or "::1").
+std::string GetLocalhostIp();
 
 }  // namespace ray

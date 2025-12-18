@@ -8,6 +8,7 @@ import click
 import grpc
 
 import ray
+from ray._common.network_utils import get_localhost_ip
 from ray.serve._private.benchmarks.streaming._grpc import (
     test_server_pb2,
     test_server_pb2_grpc,
@@ -92,7 +93,7 @@ def _gen_addr_creds(socket_type, tempdir):
         server_creds = grpc.local_server_credentials(grpc.LocalConnectionType.UDS)
         channel_creds = grpc.local_channel_credentials(grpc.LocalConnectionType.UDS)
     elif socket_type == "local_tcp":
-        addr = "127.0.0.1:5432"
+        addr = f"{get_localhost_ip()}:5432"
         server_creds = grpc.local_server_credentials(grpc.LocalConnectionType.LOCAL_TCP)
         channel_creds = grpc.local_channel_credentials(
             grpc.LocalConnectionType.LOCAL_TCP

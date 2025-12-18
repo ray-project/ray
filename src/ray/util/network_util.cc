@@ -77,6 +77,29 @@ bool IsIPv6(const std::string &host) {
   return false;
 }
 
+std::string GetLocalhostIp() {
+  // Try IPv4 first, then IPv6 localhost resolution
+  boost::asio::io_service io_service;
+  boost::asio::ip::tcp::resolver resolver(io_service);
+
+  // Try IPv4 first
+  boost::system::error_code ec_v4;
+  auto results_v4 = resolver.resolve(boost::asio::ip::tcp::v4(), "localhost", "0", ec_v4);
+  if (!ec_v4 && !results_v4.empty()) {
+    return results_v4.begin()->endpoint().address().to_string();
+  }
+
+  // Try IPv6
+  boost::system::error_code ec_v6;
+  auto results_v6 = resolver.resolve(boost::asio::ip::tcp::v6(), "localhost", "0", ec_v6);
+  if (!ec_v6 && !results_v6.empty()) {
+    return results_v6.begin()->endpoint().address().to_string();
+  }
+
+  // Fallback to IPv4 loopback
+  return "127.0.0.1";
+}
+
 std::string BuildAddress(const std::string &host, const std::string &port) {
   if (host.find(':') != std::string::npos) {
     // IPv6 address

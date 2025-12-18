@@ -3,6 +3,8 @@ from ray.includes.network_util cimport (
     ParseAddress,
     GetNodeIpAddressFromPerspective,
     IsIPv6,
+    IsLocalhostAddress,
+    GetLocalhostIp,
     array_string_2,
     optional,
 )
@@ -49,3 +51,13 @@ def node_ip_address_from_perspective(address=None) -> str:
 def is_ipv6(host: str) -> bool:
     cdef string host_c = host.encode('utf-8')
     return IsIPv6(host_c)
+
+
+def is_localhost_address(host: str) -> bool:
+    cdef string host_c = host.encode('utf-8')
+    return IsLocalhostAddress(host_c)
+
+
+def get_localhost_ip() -> str:
+    cdef string result = GetLocalhostIp()
+    return result.decode('utf-8')

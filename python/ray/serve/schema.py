@@ -28,6 +28,7 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     DEFAULT_CONSUMER_CONCURRENCY,
     DEFAULT_GRPC_PORT,
+    DEFAULT_HTTP_HOST,
     DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_LOG_ENCODING,
@@ -548,12 +549,12 @@ class ServeApplicationSchema(BaseModel):
         ),
     )
     host: str = Field(
-        default="0.0.0.0",
+        default=DEFAULT_HTTP_HOST,
         description=(
             "Host for HTTP servers to listen on. Defaults to "
-            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
-            "your Serve application has started running. The Serve application "
-            "must be shut down and restarted with the new host instead."
+            f'"{DEFAULT_HTTP_HOST}". Use the node IP address for cross-node access. '
+            "Cannot be updated once your Serve application has started running. "
+            "The Serve application must be shut down and restarted with the new host instead."
         ),
     )
     port: int = Field(
@@ -728,12 +729,12 @@ class HTTPOptionsSchema(BaseModel):
     """
 
     host: str = Field(
-        default="0.0.0.0",
+        default=DEFAULT_HTTP_HOST,
         description=(
             "Host for HTTP servers to listen on. Defaults to "
-            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
-            "Serve has started running. Serve must be shut down and restarted "
-            "with the new host instead."
+            f'"{DEFAULT_HTTP_HOST}". Use the node IP address for cross-node access. '
+            "Cannot be updated once Serve has started running. Serve must be shut down "
+            "and restarted with the new host instead."
         ),
     )
     port: int = Field(

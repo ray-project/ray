@@ -1,0 +1,164 @@
+用户调用: task.remote()
+        │
+        ▼
+CoreWorker / NormalTaskSubmitter
+        │
+        │  发送 RequestWorkerLease RPC
+        ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  NodeManager::HandleRequestWorkerLease()                        [Raylet]    │
+│      │                                                                       │
+│      ▼                                                                       │
+│  cluster_lease_manager_.QueueAndScheduleLease(lease, ...)                   │
+│      │                                                                       │
+│      ▼                                                                       │
+│  ClusterLeaseManager::ScheduleAndGrantLeases()                              │
+│      │                                                                       │
+│      ▼                                                                       │
+│  cluster_resource_scheduler_.GetBestSchedulableNode(lease_spec, ...)        │
+│      │                                                                       │
+│      ▼                                                                       │
+│  CompositeSchedulingPolicy::Schedule(resource_request, options)             │
+│      │                                                                       │
+│      │  switch: HYBRID → hybrid_policy_.Schedule()                          │
+│      ▼                                                                       │
+│  HybridSchedulingPolicy::ScheduleImpl(resource_request, ...)                │
+│      │                                                                       │
+│      │  for (node_id, node) in nodes_:                                      │
+│      │      node_resources = node.GetLocalView()   ← NodeResources          │
+│      ▼                                                                       │
+│  ┌────────────────────────────────────────────────────────────────────┐     │
+│  │  IsNodeFeasible():                                                 │     │
+│  │      return node_resources.IsFeasible(resource_request)            │     │
+│  │             ↓                                                      │     │
+│  │      return this->total >= resource_request  ← 聚合值比较！         │     │
+│  │                                                                    │     │
+│  │  node_resources.IsAvailable(resource_request)                      │     │
+│  │             ↓                                                      │     │
+│  │      return this->available >= resource_request  ← 聚合值比较！     │     │
+│  └────────────────────────────────────────────────────────────────────┘     │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+
+
+
+用户调用: Actor.remote()
+        │
+        ▼
+GcsActorManager::SchedulePendingActors()
+        │
+        ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  GcsActorScheduler::Schedule(actor)                               [GCS]     │
+│      │                                                                       │
+│      │  if (gcs_actor_scheduling_enabled):                                  │
+│      ▼                                                                       │
+│  GcsActorScheduler::ScheduleByGcs(actor)                                    │
+│      │                                                                       │
+│      ▼                                                                       │
+│  cluster_lease_manager_.QueueAndScheduleLease(lease, ...)                   │
+│      │                                                                       │
+│      ▼                                                                       │
+│  ClusterLeaseManager::ScheduleAndGrantLeases()                              │
+│      │                                                                       │
+│      ▼                                                                       │
+│  cluster_resource_scheduler_.GetBestSchedulableNode(lease_spec, ...)        │
+│      │                                                                       │
+│      ▼                                                                       │
+│  CompositeSchedulingPolicy::Schedule(resource_request, options)             │
+│      │                                                                       │
+│      │  switch: HYBRID / NODE_AFFINITY / ...                                │
+│      ▼                                                                       │
+│  HybridSchedulingPolicy::ScheduleImpl(resource_request, ...)                │
+│      │                                                                       │
+│      │  for (node_id, node) in nodes_:                                      │
+│      │      node_resources = node.GetLocalView()   ← NodeResources          │
+│      ▼                                                                       │
+│  ┌────────────────────────────────────────────────────────────────────┐     │
+│  │  node_resources.IsFeasible(resource_request)                       │     │
+│  │             ↓                                                      │     │
+│  │      return this->total >= resource_request  ← 聚合值比较！         │     │
+│  │                                                                    │     │
+│  │  node_resources.IsAvailable(resource_request)                      │     │
+│  │             ↓                                                      │     │
+│  │      return this->available >= resource_request  ← 聚合值比较！     │     │
+│  └────────────────────────────────────────────────────────────────────┘     │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+
+
+
+用户调用: placement_group([{"GPU": 1}, {"GPU": 1}], strategy="PACK")
+        │
+        ▼
+GcsPlacementGroupManager
+        │
+        ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  GcsPlacementGroupScheduler::ScheduleUnplacedBundles()            [GCS]     │
+│      │                                                                       │
+│      │  // 构建资源请求列表（多个 bundle）                                    │
+│      │  resource_request_list = [bundle0, bundle1, ...]                     │
+│      ▼                                                                       │
+│  cluster_resource_scheduler_.Schedule(resource_request_list, options)       │
+│      │                                                                       │
+│      ▼                                                                       │
+│  CompositeBundleSchedulingPolicy::Schedule(resource_request_list, options)  │
+│      │                                                                       │
+│      │  switch: BUNDLE_PACK → bundle_pack_policy_.Schedule()                │
+│      ▼                                                                       │
+│  BundlePackSchedulingPolicy::Schedule(resource_request_list, options)       │
+│      │                                                                       │
+│      │  for each required_resources in list:                                │
+│      │      best_node = GetBestNode(required_resources, candidate_nodes)    │
+│      ▼                                                                       │
+│  BundleSchedulingPolicy::GetBestNode(required_resources, candidate_nodes)   │
+│      │                                                                       │
+│      │  for (node_id, node) in candidate_nodes:                             │
+│      │      node_resources = node->GetLocalView()   ← NodeResources         │
+│      │      score = node_scorer_->Score(required_resources, node_resources) │
+│      ▼                                                                       │
+│  LeastResourceScorer::Score(required_resources, node_resources)             │
+│      │                                                                       │
+│      │  for resource_id in required_resources:                              │
+│      │      available = node_resources.available.Get(resource_id)           │
+│      ▼                                                                       │
+│  ┌────────────────────────────────────────────────────────────────────┐     │
+│  │  LeastResourceScorer::Calculate(requested, available)              │     │
+│  │      │                                                             │     │
+│  │      │  if (requested > available):                                │     │
+│  │      │      return -1   // 不够                                    │     │
+│  │      │                                                             │     │
+│  │      │  available 来自 node_resources.available.Get()              │     │
+│  │      │        ↓                                                    │     │
+│  │      │  NodeResourceSet::Get() → 返回聚合值！                       │     │
+│  └────────────────────────────────────────────────────────────────────┘     │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+
+
+node feasibility and availability checking
+
+
+
+PG Bundle Scheduling Policy 检查总结
+Policy	IsFeasible 检查	IsAvailable 检查	检查位置
+PACK	❌ 没有单独检查	✅ 通过 GetBestNode → Score → IsAvailable	scorer.cc:22
+SPREAD	❌ 没有单独检查	✅ 通过 GetBestNode → Score → IsAvailable	scorer.cc:22
+STRICT_PACK	✅ 第304行检查聚合资源	✅ 通过 GetBestNode → Score → IsAvailable	bundle_scheduling_policy.cc:304 + scorer.cc:22
+STRICT_SPREAD	❌ 没有单独检查	✅ 通过 GetBestNode → Score → IsAvailable	scorer.cc:22
+
+
+
+
+Normal Task/Actor 所有 Scheduling Policy 检查表格
+Policy	类型	IsFeasible	IsAvailable	说明
+HybridSchedulingPolicy	HYBRID	✅ 第41行 IsNodeFeasible	✅ 第137行	先 feasible 过滤，再按 available 分类存储
+SpreadSchedulingPolicy	SPREAD	✅ 第49行	✅ 第52-54行	先遍历 available，再遍历 feasible-only
+RandomSchedulingPolicy	RANDOM	✅ 第47行	✅ 第48行	同时检查两者
+NodeAffinitySchedulingPolicy	NODE_AFFINITY	✅ 第26行	✅ 第29行 (条件)	feasible 必须，available 看配置
+NodeLabelSchedulingPolicy	NODE_LABEL	✅ 第171行 SelectFeasibleNodes	✅ 第180行 SelectAvailableNodes	分层过滤：feasible → label match → available
+AffinityWithBundleSchedulingPolicy	AFFINITY_WITH_BUNDLE	✅ 第25行	✅ 第26行	IsNodeFeasibleAndAvailable 同时检查

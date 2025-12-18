@@ -24,6 +24,7 @@
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/tests/grpc_test_common.h"
 #include "ray/util/env.h"
+#include "ray/util/network_util.h"
 #include "src/ray/protobuf/test_service.grpc.pb.h"
 
 namespace ray {
@@ -73,7 +74,8 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
       // Explicitly set empty token (no auth required)
       server_auth_token = AuthenticationToken("");
     }
-    grpc_server_.reset(new GrpcServer("test", 0, true, 1, 7200000, server_auth_token));
+    grpc_server_.reset(
+        new GrpcServer("test", 0, GetLocalhostIp(), 1, 7200000, server_auth_token));
     grpc_server_->RegisterService(
         std::make_unique<TestGrpcService>(handler_io_service_, test_service_handler_),
         false);
@@ -88,7 +90,7 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
     client_call_manager_.reset(
         new ClientCallManager(client_io_service_, false, /*local_address=*/""));
     grpc_client_.reset(new GrpcClient<TestService>(
-        "127.0.0.1", grpc_server_->GetPort(), *client_call_manager_));
+        GetLocalhostIp(), grpc_server_->GetPort(), *client_call_manager_));
   }
 
   void TearDown() override {

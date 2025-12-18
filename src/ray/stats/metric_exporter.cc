@@ -16,6 +16,8 @@
 
 #include <string_view>
 
+#include "ray/util/network_util.h"
+
 namespace ray {
 namespace stats {
 
@@ -28,12 +30,12 @@ OpenCensusProtoExporter::OpenCensusProtoExporter(const int port,
                                                  const WorkerID &worker_id,
                                                  size_t report_batch_size,
                                                  size_t max_grpc_payload_size)
-    // The MetricsAgentClient is always started with 127.0.0.1 so we don't need to pass
+    // The MetricsAgentClient always connects to localhost so we don't need to pass
     // the local address to this client call manager to tell it's local.
     : client_call_manager_(std::make_unique<rpc::ClientCallManager>(
           io_service, /*record_stats=*/true, /*local_address=*/"always local")),
       client_(std::make_shared<rpc::MetricsAgentClientImpl>(
-          "127.0.0.1", port, io_service, *client_call_manager_)),
+          GetLocalhostIp(), port, io_service, *client_call_manager_)),
       worker_id_(worker_id),
       report_batch_size_(report_batch_size),
       // To make sure we're not overflowing Agent's set gRPC max message size, we will be
