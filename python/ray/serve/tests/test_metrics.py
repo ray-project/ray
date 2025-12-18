@@ -26,7 +26,7 @@ from ray._private.test_utils import (
     PrometheusTimeseries,
     fetch_prometheus_metric_timeseries,
 )
-from ray.serve._private.long_poll import LongPollHost, UpdatedObject
+from ray.serve._private.long_poll import LongPollClient, LongPollHost, UpdatedObject
 from ray.serve._private.test_utils import (
     get_application_url,
     ping_grpc_call_method,
@@ -1676,7 +1676,145 @@ def test_user_autoscaling_stats_failure_metrics(metrics_start_shutdown):
     print("User autoscaling stats failure metric verified.")
 
 
-def test_long_poll_host_sends_counted(serve_instance):
+def test_long_poll_pending_clients_metric(metrics_start_shutdown):
+    """Check that pending clients gauge is tracked correctly."""
+    timeseries = PrometheusTimeseries()
+
+    # Create a LongPollHost with a longer timeout so we can observe pending state
+    host = ray.remote(LongPollHost).remote(
+        listen_for_change_request_timeout_s=(5.0, 5.0)
+    )
+
+    # Write initial values
+    ray.get(host.notify_changed.remote({"key_1": 100}))
+    ray.get(host.notify_changed.remote({"key_2": 200}))
+
+    # Get the current snapshot IDs
+    result = ray.get(host.listen_for_change.remote({"key_1": -1, "key_2": -1}))
+    key_1_snapshot_id = result["key_1"].snapshot_id
+    key_2_snapshot_id = result["key_2"].snapshot_id
+
+    # Start a listen call that will block waiting for updates
+    # (since we're using up-to-date snapshot IDs)
+    pending_ref = host.listen_for_change.remote(
+        {"key_1": key_1_snapshot_id, "key_2": key_2_snapshot_id}
+    )
+
+    # Check that pending clients gauge shows 1 for each key
+    # (wait_for_condition will retry until the metric is available)
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="ray_serve_long_poll_pending_clients",
+        expected=1,
+        expected_tags={"namespace": "key_1"},
+        timeseries=timeseries,
+    )
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="ray_serve_long_poll_pending_clients",
+        expected=1,
+        expected_tags={"namespace": "key_2"},
+        timeseries=timeseries,
+    )
+
+    # Trigger an update for key_1
+    ray.get(host.notify_changed.remote({"key_1": 101}))
+
+    # Wait for the pending call to complete
+    ray.get(pending_ref)
+
+    # After update, pending clients for key_1 should be 0
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="ray_serve_long_poll_pending_clients",
+        expected=0,
+        expected_tags={"namespace": "key_1"},
+        timeseries=timeseries,
+    )
+
+
+def test_long_poll_latency_metric(metrics_start_shutdown):
+    """Check that long poll latency histogram is recorded on the client side."""
+    timeseries = PrometheusTimeseries()
+
+    # Create a LongPollHost
+    host = ray.remote(LongPollHost).remote(
+        listen_for_change_request_timeout_s=(0.5, 0.5)
+    )
+
+    # Write initial value so the key exists
+    ray.get(host.notify_changed.remote({"test_key": "initial_value"}))
+
+    # Track received updates
+    received_updates = []
+    update_event = threading.Event()
+
+    def on_update(value):
+        received_updates.append(value)
+        update_event.set()
+
+    # Create event loop for the client
+    loop = asyncio.new_event_loop()
+
+    def run_loop():
+        asyncio.set_event_loop(loop)
+        loop.run_forever()
+
+    loop_thread = threading.Thread(target=run_loop, daemon=True)
+    loop_thread.start()
+
+    # Create the LongPollClient
+    client = LongPollClient(
+        host_actor=host,
+        key_listeners={"test_key": on_update},
+        call_in_event_loop=loop,
+    )
+
+    # Wait for initial update (client starts with snapshot_id -1)
+    assert update_event.wait(timeout=10), "Timed out waiting for initial update"
+    assert len(received_updates) == 1
+    assert received_updates[0] == "initial_value"
+
+    # Clear event and trigger another update
+    update_event.clear()
+    ray.get(host.notify_changed.remote({"test_key": "updated_value"}))
+
+    # Wait for the update to be received
+    assert update_event.wait(timeout=10), "Timed out waiting for update"
+    assert len(received_updates) == 2
+    assert received_updates[1] == "updated_value"
+
+    # Stop the client
+    client.stop()
+    loop.call_soon_threadsafe(loop.stop)
+    loop_thread.join(timeout=5)
+
+    # Check that latency metric was recorded
+    # The metric should have at least 2 observations (initial + update)
+    def check_latency_metric_exists():
+        metric_value = get_metric_float(
+            "ray_serve_long_poll_latency_ms_count",
+            expected_tags={"namespace": "test_key"},
+            timeseries=timeseries,
+        )
+        # Should have at least 2 observations
+        return metric_value == 2
+
+    wait_for_condition(check_latency_metric_exists, timeout=15)
+
+    # Verify the latency sum is positive (latency > 0)
+    latency_sum = get_metric_float(
+        "ray_serve_long_poll_latency_ms_sum",
+        expected_tags={"namespace": "test_key"},
+        timeseries=timeseries,
+    )
+    assert latency_sum > 0, "Latency sum should be positive"
+
+
+def test_long_poll_host_sends_counted(metrics_start_shutdown):
     """Check that the transmissions by the long_poll are counted."""
 
     timeseries = PrometheusTimeseries()
