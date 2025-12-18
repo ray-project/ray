@@ -4,14 +4,17 @@ import uuid
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
+from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.common import RequestMetadata
 from ray.serve.handle import DeploymentHandle
 
+logger = get_logger(__name__)
+
 # Timeout in seconds for waiting for deployment replicas to be populated
-DISPATCH_REPLICA_POPULATION_TIMEOUT_S = 30
+BROADCAST_REPLICA_POPULATION_TIMEOUT_S = 30
 
 
-def dispatch(
+def broadcast(
     handle: DeploymentHandle,
     method_name: str,
     args: Union[Any, Callable[[Any], Any]] = None,
@@ -19,9 +22,9 @@ def dispatch(
     combine: Optional[Callable[[List[Any]], Any]] = None,
 ) -> Any:
     """
-    Dispatches a method call to all replicas of the given handle.
+    Broadcasts a method call to all replicas of the given handle.
 
-    This is useful for dispatching a control plane message such as kv-cache
+    This is useful for broadcasting a control plane message such as kv-cache
     reset or weight update to all replicas of the given handle.
 
     NOTE: This API is experimental and may later be promoted to a public API in
@@ -30,7 +33,7 @@ def dispatch(
     required when orchestrating trianing and inference loops.
 
     Args:
-        handle: The DeploymentHandle to dispatch to.
+        handle: The DeploymentHandle to broadcast to.
         method_name: The name of the method to call on the deployment.
         args: The arguments to pass to the method. Can be a list/tuple of args,
               or a callable that takes the replica object and returns args.
@@ -61,7 +64,7 @@ def dispatch(
     # We add a timeout to prevent infinite hanging
     start_time = time.time()
     while not handle.running_replicas_populated():
-        if time.time() - start_time > DISPATCH_REPLICA_POPULATION_TIMEOUT_S:
+        if time.time() - start_time > BROADCAST_REPLICA_POPULATION_TIMEOUT_S:
             raise TimeoutError(
                 "Timed out waiting for deployment replicas to be populated."
             )
@@ -119,7 +122,7 @@ def dispatch(
                 raise ValueError(f"kwargs must be a dict, got {type(call_kwargs)}")
 
         # Prepare Metadata
-        request_id = f"dispatch-{uuid.uuid4()}"
+        request_id = f"broadcast-{uuid.uuid4()}"
         dummy_rm = RequestMetadata(
             request_id=request_id,
             internal_request_id=request_id,
