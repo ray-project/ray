@@ -4407,7 +4407,7 @@ def _resolve_parquet_args(
                 block = block.set_column(
                     block._ensure_integer_index(tensor_col_name),
                     tensor_col_name,
-                    ArrowTensorArray.from_numpy(np_col, tensor_col_name),
+                    ArrowTensorArray.from_numpy(np_col, column_name=tensor_col_name),
                 )
             if existing_block_udf is not None:
                 # Apply UDF after casting the tensor columns.

@@ -1820,6 +1820,9 @@ def init(
         gcs_address = bootstrap_address
         logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
 
+    if _node_ip_address is not None:
+        _node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
+
     if local_mode:
         driver_mode = LOCAL_MODE
         warnings.warn(
@@ -2824,15 +2827,15 @@ blocking_get_inside_async_warned = False
 
 @overload
 def get(
-    object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
-) -> List[Any]:
+    object_refs: "Sequence[ObjectRef[R]]", *, timeout: Optional[float] = None
+) -> List[R]:
     ...
 
 
 @overload
 def get(
-    object_refs: "Sequence[ObjectRef[R]]", *, timeout: Optional[float] = None
-) -> List[R]:
+    object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
+) -> List[Any]:
     ...
 
 
