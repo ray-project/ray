@@ -89,6 +89,10 @@ class ClusterNodeInfoCache(ABC):
 
         return self._cached_available_resources_per_node
 
+    def get_node_labels(self, node_id: str) -> Dict[str, str]:
+        """Get the labels for a specific node from the cache."""
+        return self._cached_node_labels.get(node_id, {})
+
 
 class DefaultClusterNodeInfoCache(ClusterNodeInfoCache):
     def __init__(self, gcs_client: GcsClient):

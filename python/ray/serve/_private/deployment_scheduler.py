@@ -24,7 +24,6 @@ from ray.serve._private.constants import (
 from ray.util.scheduling_strategies import (
     LabelMatchExpressionsT,
     NodeAffinitySchedulingStrategy,
-    NodeLabelSchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
 
@@ -153,6 +152,8 @@ class ReplicaSchedulingRequest:
     # These are optional: by default replicas do not have a placement group.
     placement_group_bundles: Optional[List[Dict[str, float]]] = None
     placement_group_strategy: Optional[str] = None
+    placement_group_bundle_label_selector: Optional[List[Dict[str, str]]] = None
+    placement_group_fallback_strategy: Optional[List[Dict[str, Any]]] = None
     max_replicas_per_node: Optional[int] = None
 
     @property
@@ -556,6 +557,7 @@ class DeploymentScheduler(ABC):
         deployment_id = replica_id.deployment_id
         placement_group = None
 
+        actor_options = copy.deepcopy(scheduling_request.actor_options)
         scheduling_strategy = default_scheduling_strategy
         if scheduling_request.placement_group_bundles is not None:
             placement_group_strategy = (
@@ -570,6 +572,7 @@ class DeploymentScheduler(ABC):
                         strategy=placement_group_strategy,
                         target_node_id=target_node_id,
                         name=scheduling_request.actor_options["name"],
+                        bundle_label_selector=scheduling_request.placement_group_bundle_label_selector,
                     )
                 )
             except Exception:
@@ -594,12 +597,10 @@ class DeploymentScheduler(ABC):
             )
             target_labels = None
         elif target_labels is not None:
-            scheduling_strategy = NodeLabelSchedulingStrategy(
-                hard={}, soft=target_labels
-            )
+            actor_options["label_selector"] = target_labels
+            actor_options["fallback_strategy"] = [{"label_selector": {}}]
             target_node_id = None
 
-        actor_options = copy.deepcopy(scheduling_request.actor_options)
         if scheduling_request.max_replicas_per_node is not None:
             if "resources" not in actor_options:
                 actor_options["resources"] = {}
@@ -678,12 +679,71 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 reverse=True,
             )
 
+            # Fetch node labels for active nodes.
+            active_nodes = self._cluster_node_info_cache.get_active_node_ids()
+            all_node_labels = {
+                node_id: self._cluster_node_info_cache.get_node_labels(node_id)
+                for node_id in active_nodes
+            }
+
             # Schedule each replica
             for scheduling_request in all_scheduling_requests:
-                target_node = self._find_best_available_node(
-                    scheduling_request.required_resources,
-                    self._get_available_resources_per_node(),
+                # Collect a list of required resources and labels to try to schedule to
+                # support replica compaction when fallback strategies are provided.
+                strategies_to_try = []
+
+                primary_labels = []
+                primary_bundles = scheduling_request.placement_group_bundles
+
+                if primary_bundles:
+                    # PG: Use PG bundle_label_selector
+                    if scheduling_request.placement_group_bundle_label_selector:
+                        primary_labels = (
+                            scheduling_request.placement_group_bundle_label_selector
+                        )
+                else:
+                    # Actor: Use Actor label selector
+                    if "label_selector" in scheduling_request.actor_options:
+                        primary_labels = [
+                            scheduling_request.actor_options["label_selector"]
+                        ]
+
+                strategies_to_try.append(
+                    (scheduling_request.required_resources, primary_labels)
                 )
+
+                if scheduling_request.placement_group_fallback_strategy:
+                    # Fallback strategy provided for placement group.
+                    for (
+                        fallback
+                    ) in scheduling_request.placement_group_fallback_strategy:
+                        fallback_bundles = fallback.get("bundles", primary_bundles)
+                        req_resources = sum(
+                            [Resources(b) for b in fallback_bundles], Resources()
+                        )
+
+                        fallback_labels = fallback.get("bundle_label_selector", [])
+                        strategies_to_try.append((req_resources, fallback_labels))
+                elif "fallback_strategy" in scheduling_request.actor_options:
+                    # Fallback strategy provided for Ray Actor.
+                    for fallback in scheduling_request.actor_options[
+                        "fallback_strategy"
+                    ]:
+                        fallback_labels = [fallback.get("label_selector", {})]
+                        strategies_to_try.append(
+                            (scheduling_request.required_resources, fallback_labels)
+                        )
+
+                target_node = None
+                for res, labels in strategies_to_try:
+                    target_node = self._find_best_available_node(
+                        res,
+                        self._get_available_resources_per_node(),
+                        required_labels_list=labels,
+                        node_labels=all_node_labels,
+                    )
+                    if target_node:
+                        break
 
                 self._schedule_replica(
                     scheduling_request,
@@ -772,10 +832,68 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
         return replicas_to_stop
 
+    def _filter_nodes_by_labels(
+        self,
+        available_nodes: Dict[str, Resources],
+        required_labels: Dict[str, str],
+        node_labels: Dict[str, Dict[str, str]],
+    ) -> Dict[str, Resources]:
+        """Filters available nodes based on label selector constraints.
+
+        Supports Ray's label syntax where values are strings:
+        - Equality: {"key": "value"}
+        - Not Equal: {"key": "!value"}
+        - In: {"key": "in(v1, v2, ...)"}
+        - Not In: {"key": "!in(v1, v2, ...)"}
+        """
+        filtered_nodes = {}
+        for node_id, resources in available_nodes.items():
+            labels = node_labels.get(node_id, {})
+            is_match = True
+
+            for key, req_val in required_labels.items():
+                node_val = labels.get(key)
+
+                # !in operator
+                if req_val.startswith("!in(") and req_val.endswith(")"):
+                    content = req_val[4:-1]
+                    values = [v.strip() for v in content.split(",")]
+                    if node_val is not None and node_val in values:
+                        is_match = False
+                        break
+
+                # in operator
+                elif req_val.startswith("in(") and req_val.endswith(")"):
+                    content = req_val[3:-1]
+                    values = [v.strip() for v in content.split(",")]
+                    if node_val not in values:
+                        is_match = False
+                        break
+
+                # not equal operator
+                elif req_val.startswith("!"):
+                    target_val = req_val[1:]
+                    if node_val == target_val:
+                        is_match = False
+                        break
+
+                # equals operator
+                else:
+                    if node_val != req_val:
+                        is_match = False
+                        break
+
+            if is_match:
+                filtered_nodes[node_id] = resources
+
+        return filtered_nodes
+
     def _find_best_available_node(
         self,
         required_resources: Resources,
         available_resources_per_node: Dict[str, Resources],
+        required_labels_list: Optional[List[Dict[str, str]]] = None,
+        node_labels: Optional[Dict[str, Dict[str, str]]] = None,
     ) -> Optional[str]:
         """Chooses best available node to schedule the required resources.
 
@@ -783,6 +901,15 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         available node, minimizing fragmentation. Prefers non-idle nodes
         over idle nodes.
         """
+
+        # Filter feasible nodes by provided label selectors if provided.
+        if required_labels_list and node_labels:
+            for required_labels in required_labels_list:
+                available_resources_per_node = self._filter_nodes_by_labels(
+                    available_resources_per_node, required_labels, node_labels
+                )
+                if not available_resources_per_node:
+                    return None
 
         node_to_running_replicas = self._get_node_to_running_replicas()
 

@@ -254,6 +254,19 @@ class RayActorOptionsSchema(BaseModel):
             "See :ref:`accelerator types <accelerator_types>`."
         ),
     )
+    label_selector: Dict[str, str] = Field(
+        default=None,
+        description=(
+            "If specified, requires that the actor run on a node with the specified labels."
+        ),
+    )
+    fallback_strategy: Union[str, List[Dict[str, Any]]] = Field(
+        default=None,
+        description=(
+            "If specified, expresses soft constraints through a list of decorator "
+            "options to fall back on when scheduling on a node."
+        ),
+    )
 
     @validator("runtime_env")
     def runtime_env_contains_remote_uris(cls, v):
@@ -395,6 +408,14 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         ),
     )
 
+    bundle_label_selector: List[Dict[str, str]] = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "A list of label selectors to apply to the placement group "
+            "on a per-bundle level."
+        ),
+    )
+
     max_replicas_per_node: int = Field(
         default=DEFAULT.VALUE,
         description=(
@@ -447,6 +468,28 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
                 "Setting max_replicas_per_node is not allowed when "
                 "placement_group_bundles is provided."
             )
+
+        return values
+
+    @root_validator
+    def validate_bundle_label_selector(cls, values):
+        placement_group_bundles = values.get("placement_group_bundles", None)
+        bundle_label_selector = values.get("bundle_label_selector", None)
+
+        if bundle_label_selector not in [DEFAULT.VALUE, None]:
+            if placement_group_bundles in [DEFAULT.VALUE, None]:
+                raise ValueError(
+                    "Setting bundle_label_selector is not allowed when "
+                    "placement_group_bundles is not provided."
+                )
+
+            if len(bundle_label_selector) != len(placement_group_bundles):
+                raise ValueError(
+                    f"If bundle_label_selector is provided, it must have the same "
+                    f"length as placement_group_bundles. Got "
+                    f"{len(bundle_label_selector)} label selectors and "
+                    f"{len(placement_group_bundles)} bundles."
+                )
 
         return values
 

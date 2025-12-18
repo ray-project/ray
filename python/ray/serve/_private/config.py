@@ -477,6 +477,7 @@ class ReplicaConfig:
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
         bundle_label_selector: Optional[List[Dict[str, str]]] = None,
+        fallback_strategy: Optional[List[Dict[str, Any]]] = None,
         max_replicas_per_node: Optional[int] = None,
         needs_pickle: bool = True,
     ):
@@ -503,6 +504,7 @@ class ReplicaConfig:
         self.placement_group_bundles = placement_group_bundles
         self.placement_group_strategy = placement_group_strategy
         self.bundle_label_selector = bundle_label_selector
+        self.fallback_strategy = fallback_strategy
 
         self.max_replicas_per_node = max_replicas_per_node
 
@@ -534,6 +536,7 @@ class ReplicaConfig:
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
         bundle_label_selector: Optional[List[Dict[str, str]]] = None,
+        fallback_strategy: Optional[List[Dict[str, Any]]] = None,
         max_replicas_per_node: Optional[int] = None,
     ):
         self.ray_actor_options = ray_actor_options
@@ -541,6 +544,7 @@ class ReplicaConfig:
         self.placement_group_bundles = placement_group_bundles
         self.placement_group_strategy = placement_group_strategy
         self.bundle_label_selector = bundle_label_selector
+        self.fallback_strategy = fallback_strategy
 
         self.max_replicas_per_node = max_replicas_per_node
 
@@ -558,6 +562,7 @@ class ReplicaConfig:
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
         bundle_label_selector: Optional[List[Dict[str, str]]] = None,
+        fallback_strategy: Optional[List[Dict[str, Any]]] = None,
         max_replicas_per_node: Optional[int] = None,
         deployment_def_name: Optional[str] = None,
     ):
@@ -598,18 +603,23 @@ class ReplicaConfig:
                 deployment_def_name = deployment_def.__name__
 
         config = cls(
-            deployment_def_name,
-            pickle_dumps(
+            deployment_def_name=deployment_def_name,
+            serialized_deployment_def=pickle_dumps(
                 deployment_def,
                 f"Could not serialize the deployment {repr(deployment_def)}",
             ),
-            pickle_dumps(init_args, "Could not serialize the deployment init args"),
-            pickle_dumps(init_kwargs, "Could not serialize the deployment init kwargs"),
-            ray_actor_options,
-            placement_group_bundles,
-            placement_group_strategy,
-            bundle_label_selector,
-            max_replicas_per_node,
+            serialized_init_args=pickle_dumps(
+                init_args, "Could not serialize the deployment init args"
+            ),
+            serialized_init_kwargs=pickle_dumps(
+                init_kwargs, "Could not serialize the deployment init kwargs"
+            ),
+            ray_actor_options=ray_actor_options,
+            placement_group_bundles=placement_group_bundles,
+            placement_group_strategy=placement_group_strategy,
+            bundle_label_selector=bundle_label_selector,
+            fallback_strategy=fallback_strategy,
+            max_replicas_per_node=max_replicas_per_node,
         )
 
         config._deployment_def = deployment_def
@@ -636,6 +646,7 @@ class ReplicaConfig:
             # Other options
             "runtime_env",
             "label_selector",
+            "fallback_strategy",
         }
 
         for option in self.ray_actor_options:
@@ -676,6 +687,24 @@ class ReplicaConfig:
                     "If `placement_group_strategy` is provided, "
                     "`placement_group_bundles` must also be provided."
                 )
+
+        if self.fallback_strategy is not None:
+            if self.placement_group_bundles is None:
+                raise ValueError(
+                    "If `fallback_strategy` is provided, "
+                    "`placement_group_bundles` must also be provided."
+                )
+            if not isinstance(self.fallback_strategy, list):
+                raise TypeError(
+                    "fallback_strategy must be a list of dictionaries. "
+                    f"Got: {type(self.fallback_strategy)}."
+                )
+            for i, strategy in enumerate(self.fallback_strategy):
+                if not isinstance(strategy, dict):
+                    raise TypeError(
+                        f"fallback_strategy entry at index {i} must be a dictionary. "
+                        f"Got: {type(strategy)}."
+                    )
 
         if self.placement_group_bundles is not None:
             validate_placement_group(
@@ -790,6 +819,7 @@ class ReplicaConfig:
             json.loads(proto.bundle_label_selector)
             if proto.bundle_label_selector
             else None,
+            json.loads(proto.fallback_strategy) if proto.fallback_strategy else None,
             proto.max_replicas_per_node if proto.max_replicas_per_node else None,
             needs_pickle,
         )
@@ -812,6 +842,9 @@ class ReplicaConfig:
             placement_group_strategy=self.placement_group_strategy,
             bundle_label_selector=json.dumps(self.bundle_label_selector)
             if self.bundle_label_selector is not None
+            else "",
+            fallback_strategy=json.dumps(self.fallback_strategy)
+            if self.fallback_strategy is not None
             else "",
             max_replicas_per_node=self.max_replicas_per_node
             if self.max_replicas_per_node is not None

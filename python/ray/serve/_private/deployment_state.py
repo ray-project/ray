@@ -134,6 +134,10 @@ class DeploymentTargetState:
             placement_group_strategy=info.replica_config.placement_group_strategy,
             max_replicas_per_node=info.replica_config.max_replicas_per_node,
             route_prefix=info.route_prefix,
+            placement_group_bundle_label_selector=(
+                info.replica_config.bundle_label_selector
+            ),
+            placement_group_fallback_strategy=(info.replica_config.fallback_strategy),
         )
 
         return cls(info, target_num_replicas, version, deleting)
@@ -159,6 +163,10 @@ class DeploymentTargetState:
                 == other_target_state.info.replica_config.placement_group_bundles,
                 self.info.replica_config.placement_group_strategy
                 == other_target_state.info.replica_config.placement_group_strategy,
+                self.info.replica_config.bundle_label_selector
+                == other_target_state.info.replica_config.bundle_label_selector,
+                self.info.replica_config.fallback_strategy
+                == other_target_state.info.replica_config.fallback_strategy,
                 self.info.replica_config.max_replicas_per_node
                 == other_target_state.info.replica_config.max_replicas_per_node,
                 self.info.deployment_config.dict(exclude={"num_replicas"})
@@ -558,6 +566,12 @@ class ActorReplicaWrapper:
             ),
             placement_group_strategy=(
                 deployment_info.replica_config.placement_group_strategy
+            ),
+            placement_group_bundle_label_selector=(
+                deployment_info.replica_config.bundle_label_selector
+            ),
+            placement_group_fallback_strategy=(
+                deployment_info.replica_config.fallback_strategy
             ),
             max_replicas_per_node=(
                 deployment_info.replica_config.max_replicas_per_node

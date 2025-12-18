@@ -353,10 +353,16 @@ def _get_node_id():
     return ray.get_runtime_context().get_node_id()
 
 
-# Test fixture to start a Serve instance in a RayCluster with two labelled nodes
+# Test fixture to start a Serve instance in a RayCluster with two labeled nodes
 @pytest.fixture
 def serve_instance_with_labeled_nodes():
     cluster = Cluster()
+    # Unlabeled default node.
+    node0_config = {
+        "num_cpus": 1,
+        "resources": {"worker0": 1},
+    }
+    cluster.add_node(**node0_config)
     node1_config = {
         "num_cpus": 1,
         "resources": {"worker1": 1},
@@ -367,7 +373,7 @@ def serve_instance_with_labeled_nodes():
     node_1_id = ray.get(_get_node_id.options(resources={"worker1": 1}).remote())
 
     node2_config = {
-        "num_cpus": 1,
+        "num_cpus": 2,
         "resources": {"worker2": 1},
         "labels": {"region": "us-east", "gpu-type": "H100"},
     }

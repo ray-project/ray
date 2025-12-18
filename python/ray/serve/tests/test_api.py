@@ -1219,35 +1219,6 @@ def test_max_constructor_retry_count(serve_instance):
     wait_for_condition(lambda: ray.get(counter.get_count.remote()) == 9)
 
 
-async def test_serve_label_selector_api(serve_instance_with_labeled_nodes):
-    serve_instance, node_1_id, node_2_id = serve_instance_with_labeled_nodes
-
-    # Test `label_selector` in `ray_actor_options` targets the desired node.
-    @serve.deployment(ray_actor_options={"label_selector": {"region": "us-west"}})
-    class Deployment1:
-        def get_node_id(self):
-            return ray.get_runtime_context().get_node_id()
-
-    handle1 = serve.run(Deployment1.bind(), name="app1")
-    replica_node_id_1 = await handle1.get_node_id.remote()
-    assert replica_node_id_1 == node_1_id
-    serve.delete("app1")
-
-    # Test `bundle_label_selector` targets the desired node.
-    @serve.deployment(
-        placement_group_bundles=[{"CPU": 1}],
-        bundle_label_selector=[{"gpu-type": "H100"}],
-    )
-    class Deployment2:
-        def get_node_id(self):
-            return ray.get_runtime_context().get_node_id()
-
-    handle2 = serve.run(Deployment2.bind(), name="app2")
-    replica_node_id_2 = await handle2.get_node_id.remote()
-    assert replica_node_id_2 == node_2_id
-    serve.delete("app2")
-
-
 if __name__ == "__main__":
     import sys
 

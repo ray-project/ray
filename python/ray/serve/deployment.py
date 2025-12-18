@@ -215,6 +215,8 @@ class Deployment:
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
         placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
         placement_group_strategy: Default[str] = DEFAULT.VALUE,
+        bundle_label_selector: Default[List[Dict[str, str]]] = DEFAULT.VALUE,
+        fallback_strategy: Default[List[Dict[str, Any]]] = DEFAULT.VALUE,
         max_replicas_per_node: Default[int] = DEFAULT.VALUE,
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
         max_ongoing_requests: Default[int] = DEFAULT.VALUE,
@@ -341,6 +343,12 @@ class Deployment:
         if placement_group_strategy is DEFAULT.VALUE:
             placement_group_strategy = self._replica_config.placement_group_strategy
 
+        if bundle_label_selector is DEFAULT.VALUE:
+            bundle_label_selector = self._replica_config.bundle_label_selector
+
+        if fallback_strategy is DEFAULT.VALUE:
+            fallback_strategy = self._replica_config.fallback_strategy
+
         if max_replicas_per_node is DEFAULT.VALUE:
             max_replicas_per_node = self._replica_config.max_replicas_per_node
 
@@ -378,6 +386,8 @@ class Deployment:
             ray_actor_options=ray_actor_options,
             placement_group_bundles=placement_group_bundles,
             placement_group_strategy=placement_group_strategy,
+            bundle_label_selector=bundle_label_selector,
+            fallback_strategy=fallback_strategy,
             max_replicas_per_node=max_replicas_per_node,
         )
 
