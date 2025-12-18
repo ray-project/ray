@@ -488,6 +488,8 @@ You can customize these buckets using environment variables:
   - `ray_serve_http_request_latency_ms`
   - `ray_serve_grpc_request_latency_ms`
   - `ray_serve_deployment_processing_latency_ms`
+  - `ray_serve_health_check_latency_ms`
+  - `ray_serve_replica_reconfigure_latency_ms`
 
 - **`RAY_SERVE_MODEL_LOAD_LATENCY_BUCKETS_MS`**: Controls bucket boundaries for model multiplexing latency histograms:
   - `ray_serve_multiplexed_model_load_latency_ms`
@@ -498,6 +500,11 @@ You can customize these buckets using environment variables:
 
 - **`RAY_SERVE_BATCH_SIZE_BUCKETS`**: Controls bucket boundaries for batch size histogram. Default: `[1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]`.
   - `ray_serve_actual_batch_size`
+
+- **`RAY_SERVE_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS`**: Controls bucket boundaries for replica lifecycle latency histograms:
+  - `ray_serve_replica_startup_latency_ms`
+  - `ray_serve_replica_initialization_latency_ms`
+  - `ray_serve_replica_shutdown_duration_ms`
 
 Note: `ray_serve_batch_wait_time_ms` and `ray_serve_batch_execution_time_ms` use the same buckets as `RAY_SERVE_REQUEST_LATENCY_BUCKETS_MS`.
 
@@ -624,12 +631,18 @@ These metrics track request batching behavior for deployments using `@serve.batc
 
 ### Replica lifecycle metrics
 
-These metrics track replica health and restarts.
+These metrics track replica health, restarts, and lifecycle timing.
 
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
 | `ray_serve_deployment_replica_healthy` | Gauge | `deployment`, `replica`, `application` | Health status of the replica: `1` = healthy, `0` = unhealthy. |
 | `ray_serve_deployment_replica_starts_total` | Counter | `deployment`, `replica`, `application` | Total number of times the replica has started (including restarts due to failure). |
+| `ray_serve_replica_startup_latency_ms` | Histogram | `deployment`, `replica`, `application` | Total time from replica creation to ready state in milliseconds. Includes node provisioning (if needed on VM or Kubernetes), runtime environment bootstrap (pip install, Docker image pull, etc.), Ray actor scheduling, and actor constructor execution. Useful for debugging slow cold starts. |
+| `ray_serve_replica_initialization_latency_ms` | Histogram | `deployment`, `replica`, `application` | Time for the actor constructor to run in milliseconds. This is a subset of `ray_serve_replica_startup_latency_ms`. |
+| `ray_serve_replica_reconfigure_latency_ms` | Histogram | `deployment`, `replica`, `application` | Time in milliseconds for a replica to complete reconfiguration. Includes both reconfigure time and one control-loop iteration, so very low values may be unreliable. |
+| `ray_serve_health_check_latency_ms` | Histogram | `deployment`, `replica`, `application` | Duration of health check calls in milliseconds. Useful for identifying slow health checks blocking scaling. |
+| `ray_serve_health_check_failures_total` | Counter | `deployment`, `replica`, `application` | Total number of failed health checks. Provides early warning before replica is marked unhealthy. |
+| `ray_serve_replica_shutdown_duration_ms` | Histogram | `deployment`, `replica`, `application` | Time from shutdown signal to replica fully stopped in milliseconds. Useful for debugging slow draining during scale-down or rolling updates. |
 
 ### Autoscaling metrics
 
@@ -669,6 +682,10 @@ These metrics track the Serve controller's performance. Useful for debugging con
 | `ray_serve_controller_control_loop_duration_s` | Gauge | — | Duration of the last control loop iteration in seconds. |
 | `ray_serve_controller_num_control_loops` | Gauge | `actor_id` | Total number of control loop iterations. Increases monotonically. |
 | `ray_serve_long_poll_host_transmission_counter_total` **[†]** | Counter | `namespace_or_state` | Total number of long poll updates transmitted to clients. |
+| `ray_serve_deployment_status` | Gauge | `deployment`, `application` | Numeric status of deployment: `0` = UNKNOWN, `1` = DEPLOY_FAILED, `2` = UNHEALTHY, `3` = UPDATING, `4` = UPSCALING, `5` = DOWNSCALING, `6` = HEALTHY. Use for state timeline visualization and lifecycle debugging. |
+| `ray_serve_application_status` | Gauge | `application` | Numeric status of application: `0` = UNKNOWN, `1` = DEPLOY_FAILED, `2` = UNHEALTHY, `3` = NOT_STARTED, `4` = DELETING, `5` = DEPLOYING, `6` = RUNNING. Use for state timeline visualization and lifecycle debugging. |
+| `ray_serve_long_poll_latency_ms` **[†]** | Histogram | `namespace` | Time for updates to propagate from controller to clients in milliseconds. `namespace` is the long poll namespace such as `ROUTE_TABLE`, `DEPLOYMENT_CONFIG`, or `DEPLOYMENT_TARGETS`. Debug slow config propagation; impacts autoscaling response time. |
+| `ray_serve_long_poll_pending_clients` **[†]** | Gauge | `namespace` | Number of clients waiting for updates. `namespace` is the long poll namespace such as `ROUTE_TABLE`, `DEPLOYMENT_CONFIG`, or `DEPLOYMENT_TARGETS`. Identify backpressure in notification system. |
 
 To see this in action, first run the following command to start Ray and set up the metrics export port:
 
