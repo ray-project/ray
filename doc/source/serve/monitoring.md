@@ -669,6 +669,8 @@ These metrics track the Serve controller's performance. Useful for debugging con
 | `ray_serve_controller_control_loop_duration_s` | Gauge | — | Duration of the last control loop iteration in seconds. |
 | `ray_serve_controller_num_control_loops` | Gauge | `actor_id` | Total number of control loop iterations. Increases monotonically. |
 | `ray_serve_long_poll_host_transmission_counter_total` **[†]** | Counter | `namespace_or_state` | Total number of long poll updates transmitted to clients. |
+| `ray_serve_long_poll_latency_ms` **[†]** | Histogram | `namespace` | Time for updates to propagate from controller to clients in milliseconds. `namespace` is the long poll namespace such as `ROUTE_TABLE`, `DEPLOYMENT_CONFIG`, or `DEPLOYMENT_TARGETS`. Debug slow config propagation; impacts autoscaling response time. |
+| `ray_serve_long_poll_pending_clients` **[†]** | Gauge | `namespace` | Number of clients waiting for updates. `namespace` is the long poll namespace such as `ROUTE_TABLE`, `DEPLOYMENT_CONFIG`, or `DEPLOYMENT_TARGETS`. Identify backpressure in notification system. |
 
 To see this in action, first run the following command to start Ray and set up the metrics export port:
 
