@@ -437,7 +437,7 @@ class ServerCallImpl : public ServerCall {
   /// Check skipped if empty.
   const ClusterID &cluster_id_;
 
-  /// Authentication token for token-based authentication (shared, not copied per call).
+  /// Cached authentication token for token-based authentication.
   std::shared_ptr<const AuthenticationToken> auth_token_;
 
   /// The callback when sending reply successes.
@@ -586,7 +586,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   /// Check skipped if empty.
   const ClusterID cluster_id_;
 
-  /// Authentication token for token-based authentication (shared, not copied per call).
+  /// Cached authentication token for token-based authentication.
   std::shared_ptr<const AuthenticationToken> auth_token_;
 
   /// Maximum request number to handle at the same time.

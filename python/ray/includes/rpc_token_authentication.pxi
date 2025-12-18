@@ -33,7 +33,7 @@ def get_authentication_mode():
 def validate_authentication_token(provided_metadata: str) -> bool:
     """Validate provided authentication token.
 
-    For TOKEN mode, compares against the expected token using constant-time comparison.
+    For TOKEN mode, compares against the expected token.
     For K8S mode, validates against the Kubernetes API.
 
     Args:
