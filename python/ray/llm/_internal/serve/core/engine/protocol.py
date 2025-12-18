@@ -217,6 +217,7 @@ class LLMEngine(abc.ABC):
         Args:
             **kwargs: Engine-specific pause options. Passed through to the engine.
         """
+        pass
 
     async def resume(self, **kwargs: Any) -> None:
         """Resume the engine.
@@ -224,6 +225,7 @@ class LLMEngine(abc.ABC):
         Args:
             **kwargs: Engine-specific resume options. Passed through to the engine.
         """
+        pass
 
     async def is_paused(self) -> bool:
         """Check whether the engine is currently paused.
@@ -231,6 +233,7 @@ class LLMEngine(abc.ABC):
         Returns:
             True if the engine is paused, False otherwise.
         """
+        return False
 
     def shutdown(self) -> None:
         """Shuts down the engine"""
