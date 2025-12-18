@@ -29,6 +29,7 @@ steps:
     parallelism: 4
     instance_type: large
     commands:
+      # All tests to with tags for components without gpu or multi_gpu tags
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --only-tags env,evaluation,models,offline,policy,utils,algorithms,callbacks,core
@@ -43,6 +44,7 @@ steps:
     parallelism: 6
     instance_type: large
     commands:
+      # Tests all examples without gpu, multi_gpu or examples_use_all_cores tag
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
         --only-tags examples
@@ -50,6 +52,7 @@ steps:
         --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         --build-name rllibbuild-py3.10
         --python-version 3.10
+      # Tests all examples without gpu or multi_gpu
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --only-tags examples_use_all_core
@@ -57,7 +60,7 @@ steps:
         --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         --build-name rllibbuild-py3.10
         --python-version 3.10
-        --skip-ray-installation
+        --skip-ray-installation # reuse the same docker image as the previous run
     depends_on: rllibbuild
 
   - label: ":brain: rllib: learning tests"
@@ -65,21 +68,23 @@ steps:
     parallelism: 5
     instance_type: large
     commands:
+      # learning tests without a gpu
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --only-tags learning_tests
-        --except-tags gpu,multi_gpu,learning_tests_pytorch_use_all_core,manual
+        --except-tags gpu,multi_gpu,learning_tests_use_all_core,manual
         --test-arg --framework=torch
         --build-name rllibbuild-py3.10
         --python-version 3.10
+      # learning tests without a gpu but use all cores
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
-        --only-tags learning_tests_pytorch_use_all_core
+        --only-tags learning_tests_use_all_core
         --except-tags gpu,multi_gpu,manual
         --test-arg --framework=torch
-        --skip-ray-installation
         --build-name rllibbuild-py3.10
         --python-version 3.10
+        --skip-ray-installation # reuse the same docker image as the previous run
     depends_on: rllibbuild
 
   - label: ":brain: rllib: gpu tests"
@@ -90,6 +95,7 @@ steps:
     parallelism: 5
     instance_type: gpu
     commands:
+      # All gpu tagged tests
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --only-tags gpu
@@ -108,6 +114,7 @@ steps:
     parallelism: 5
     instance_type: gpu-large
     commands:
+      # All multi-gpu tagged tests
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --parallelism-per-worker 2
@@ -125,7 +132,7 @@ steps:
       - disabled  # Tests of this tag do not exist anymore.
     instance_type: large
     commands:
-      # learning tests pytorch
+      # learning tests with ray data (currently no tests)
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
         --parallelism-per-worker 3
         --only-tags learning_tests_with_ray_data
@@ -134,15 +141,14 @@ steps:
         --build-name rllibbuild-py3.10
         --python-version 3.10
 
-      # rllib unittests
+      # ray data tests (currently tested twice as they are all tagged core or offline and run above in component testing)
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
         --parallelism-per-worker 3
         --only-tags ray_data
         --except-tags learning_tests_with_ray_data,gpu,multi_gpu,manual
-        --skip-ray-installation
         --build-name rllibbuild-py3.10
         --python-version 3.10
-        # reuse the same docker image as the previous run
+        --skip-ray-installation # reuse the same docker image as the previous run
     depends_on: rllibbuild
 
   - label: ":brain: rllib: doc tests"
@@ -163,16 +169,16 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... rllib
         --except-tags gpu,post_wheel_build,timeseries_libs,doctest
         --parallelism-per-worker 2
-        --skip-ray-installation
         --build-name rllibbuild-py3.10
         --python-version 3.10
+        --skip-ray-installation # reuse the same docker image as the previous run
       # documentation test
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
         --only-tags documentation
         --parallelism-per-worker 2
-        --skip-ray-installation
         --build-name rllibbuild-py3.10
         --python-version 3.10
+        --skip-ray-installation # reuse the same docker image as the previous run
     depends_on: rllibbuild
 
   - label: ":brain: rllib: flaky component & examples tests"
@@ -183,7 +189,7 @@ steps:
       - skip-on-premerge
     instance_type: large
     commands:
-      # components
+      # flaky components
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib  --run-flaky-tests --parallelism-per-worker 3
         --only-tags env,evaluation,models,offline,policy,utils,algorithms,callbacks,core
         --except-tags learning_tests,examples,documentation,gpu,multi_gpu,manual
@@ -191,7 +197,7 @@ steps:
         --build-name rllibbuild-py3.10
         --python-version 3.10
 
-      # examples
+      # flaky examples
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib  --run-flaky-tests --parallelism-per-worker 3
         --only-tags examples
         --except-tags multi_gpu,gpu,manual
@@ -200,6 +206,7 @@ steps:
         --python-version 3.10
         --skip-ray-installation # reuse the same docker image as the previous run
 
+      # flaky examples use all core
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib  --run-flaky-tests --parallelism-per-worker 3
         --only-tags examples_use_all_core
         --except-tags gpu,multi_gpu,manual
