@@ -476,7 +476,7 @@ def test_sigterm_while_ray_get_and_wait(shutdown_only, is_get):
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
-def test_kill_actor_after_restart(short_gcs_publish_timeout, shutdown_only):
+def test_kill_actor_after_restart(shutdown_only):
     """Test that killing an actor from a previous session raises a helpful error."""
     # Set include_dashboard=False to have faster startup.
     ray.init(num_cpus=1, include_dashboard=False)

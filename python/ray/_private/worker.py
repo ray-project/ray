@@ -3293,10 +3293,11 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
     try:
         worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
     except ActorHandleNotFoundError as e:
-        # Provide a more helpful error message with job ID context
+        # Preserve the original exception type (it's already a ValueError subclass),
+        # but provide a more helpful error message with job ID context.
         actor_job_id = actor._ray_actor_id.job_id
         current_job_id = worker.current_job_id
-        raise ValueError(
+        raise ActorHandleNotFoundError(
             f"ActorHandle objects are not valid across Ray sessions. "
             f"The actor handle was created in job {actor_job_id.hex()}, "
             f"but the current job is {current_job_id.hex()}. "
