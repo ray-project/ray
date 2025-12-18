@@ -83,6 +83,9 @@ config = (
         num_env_runners=args.num_env_runners,
         num_envs_per_env_runner=args.num_envs_per_env_runner,
     )
+    .learners(
+        num_aggregator_actors_per_learner=2,
+    )
     # TODO: Re-enable the MeanStdFilter() as it seems to cause NaNs when training.
     # .env_runners(env_to_module_connector=lambda env, spaces, device: MeanStdFilter())
     .training(

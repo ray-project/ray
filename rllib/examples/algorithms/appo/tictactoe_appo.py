@@ -84,6 +84,9 @@ config = (
         num_env_runners=args.num_env_runners,
         num_envs_per_env_runner=args.num_envs_per_env_runner,
     )
+    .learners(
+        num_aggregator_actors_per_learner=2,
+    )
     .training(
         train_batch_size_per_learner=256,
         target_network_update_freq=2,

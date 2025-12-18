@@ -81,6 +81,9 @@ config = (
         num_envs_per_env_runner=args.num_envs_per_env_runner,
         rollout_fragment_length=512,  # Note: [1] uses 1024.
     )
+    .learners(
+        num_aggregator_actors_per_learner=2,
+    )
     .training(
         train_batch_size_per_learner=4096,  # Note: [1] uses 32768.
         circular_buffer_num_batches=16,  # matches [1]
