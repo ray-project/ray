@@ -96,13 +96,13 @@ class MockRayletClient : public rpc::FakeRayletClient {
  public:
   virtual ~MockRayletClient() {}
 
-  void PushMutableObject(
-      const ObjectID &object_id,
-      uint64_t data_size,
-      uint64_t metadata_size,
-      void *data,
-      void *metadata,
-      const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) override {
+  void PushMutableObject(const ObjectID &object_id,
+                         uint64_t data_size,
+                         uint64_t metadata_size,
+                         void *data,
+                         void *metadata,
+                         const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback,
+                         int64_t timeout_ms = -1) override {
     absl::MutexLock guard(&lock_);
     pushed_objects_.push_back(object_id);
   }
@@ -436,7 +436,8 @@ TEST(MutableObjectProvider, HandleOutOfOrderPushMutableObject) {
   }
 
   // Single barrier to synchronize the start of all threads (but not between rounds)
-  // This allows rank0 to proceed to the next round before ranks 2-3 complete previous round
+  // This allows rank0 to proceed to the next round before ranks 2-3 complete previous
+  // round
   absl::Barrier start_barrier(kNumRanks);
 
   // Function for each rank to send requests for all rounds
@@ -445,7 +446,6 @@ TEST(MutableObjectProvider, HandleOutOfOrderPushMutableObject) {
     start_barrier.Block();
 
     for (int round = 0; round < kNumRounds; round++) {
-
       // Simulate network jitter: rank0 and rank1 send immediately,
       // rank2 and rank3 are delayed (simulating the issue scenario)
       if (rank >= 2 && round == 0) {
