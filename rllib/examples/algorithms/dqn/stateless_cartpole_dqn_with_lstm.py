@@ -10,7 +10,6 @@ This example:
   requiring the agent to infer dynamics from observation history
 - configures an LSTM-based Q-network with max sequence length of 20 to capture
   temporal dependencies
-- uses a MeanStdFilter connector for observation normalization
 - applies burn-in of 8 steps to initialize LSTM hidden states before computing
   Q-values for training
 - enables double DQN and dueling architecture for improved learning stability
@@ -53,7 +52,7 @@ from ray.rllib.examples.utils import (
 
 parser = add_rllib_example_script_args(
     default_reward=350.0,
-    default_timesteps=1_000_000,
+    default_timesteps=200_000,
 )
 parser.set_defaults(
     num_env_runners=3,
@@ -65,9 +64,6 @@ args = parser.parse_args()
 config = (
     DQNConfig()
     .environment(StatelessCartPole)
-    .env_runners(
-        env_to_module_connector=lambda env, spaces, device: MeanStdFilter(),
-    )
     .training(
         lr=0.0005,
         train_batch_size_per_learner=32,

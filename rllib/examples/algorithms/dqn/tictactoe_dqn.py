@@ -50,7 +50,7 @@ import random
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.core.rl_module import MultiRLModuleSpec, RLModuleSpec
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.examples.envs.classes.multi_agent.tic_tac_toe import TicTacToe
+from tic_tac_toe import TicTacToe
 from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
