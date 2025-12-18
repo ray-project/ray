@@ -114,7 +114,9 @@ def _is_ndarray_variable_shaped_tensor(arr: np.ndarray) -> bool:
             return False
         if a.shape != shape:
             return True
-    return True
+
+    # All shapes are identical
+    return False
 
 
 def _create_possibly_ragged_ndarray(

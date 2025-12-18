@@ -170,25 +170,32 @@ class AggregatorAgent(
         if not self._event_processing_enabled:
             return events_event_aggregator_service_pb2.AddEventsReply()
 
+        received_count = len(request.events_data.events)
+        failed_count = 0
+
         # TODO(myan) #54515: Considering adding a mechanism to also send out the events
         # metadata (e.g. dropped task attempts) to help with event processing at the
         # downstream
         events_data = request.events_data
         for event in events_data.events:
-            self._open_telemetry_metric_recorder.set_metric_value(
-                self._events_received_metric_name, self._common_tags, 1
-            )
             try:
                 await self._event_buffer.add_event(event)
             except Exception as e:
+                failed_count += 1
                 logger.error(
                     f"Failed to add event with id={event.event_id.decode()} to buffer. "
                     "Error: %s",
                     e,
                 )
-                self._open_telemetry_metric_recorder.set_metric_value(
-                    self._events_failed_to_add_metric_name, self._common_tags, 1
-                )
+
+        if received_count > 0:
+            self._open_telemetry_metric_recorder.set_metric_value(
+                self._events_received_metric_name, self._common_tags, received_count
+            )
+        if failed_count > 0:
+            self._open_telemetry_metric_recorder.set_metric_value(
+                self._events_failed_to_add_metric_name, self._common_tags, failed_count
+            )
 
         return events_event_aggregator_service_pb2.AddEventsReply()
 
