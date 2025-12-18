@@ -92,6 +92,8 @@ class FuseOperators(Rule):
         We also ensure the output rows is `batch_size`.
 
         Why don't we fuse `StreamingRepartition -> MapBatches`?
+        
+        ----------------------------------------------------------------------------------------------        
         |                      | Number of `map_batches` tasks                                       |
         |----------------------|---------------------------------------------------------------------|
         | Fused                | total_rows / (n * batch_size),                                      |
