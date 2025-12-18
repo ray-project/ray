@@ -497,7 +497,6 @@ class WorkerGroup(BaseWorkerGroup):
             )
 
             self._slice_placement_group_handle = spg_handle
-            self._head_pgs = spg_handle.head_placement_groups
             pg = spg_handle.placement_group
 
             # Use the handle's resolved properties
