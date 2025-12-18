@@ -348,17 +348,18 @@ class ProxyState:
             status=self._status,
         )
 
-        # Metric to track proxy health status (1=healthy, 0=unhealthy)
-        self._healthy_gauge = metrics.Gauge(
-            "serve_proxy_healthy",
+        # Metric to track proxy status as a numeric value
+        # 1=STARTING, 2=HEALTHY, 3=UNHEALTHY, 4=DRAINING, 5=DRAINED (0=UNKNOWN reserved)
+        self._status_gauge = metrics.Gauge(
+            "serve_proxy_status",
             description=(
-                "Tracks whether this proxy is healthy. "
-                "1 means healthy, 0 means unhealthy."
+                "The current status of the proxy. "
+                "1=STARTING, 2=HEALTHY, 3=UNHEALTHY, 4=DRAINING, 5=DRAINED."
             ),
             tag_keys=("node_id", "node_ip_address"),
         ).set_default_tags({"node_id": node_id, "node_ip_address": node_ip})
-        # Initially set to 0 since proxy starts in STARTING state
-        self._healthy_gauge.set(0)
+        # Set initial status (STARTING = 0)
+        self._status_gauge.set(ProxyStatus.STARTING.to_numeric())
 
         # Metric to track proxy shutdown duration
         self._shutdown_duration_histogram = metrics.Histogram(
@@ -403,9 +404,8 @@ class ProxyState:
         """
         self._status = status
         self.update_actor_details(status=self._status)
-        # Update the healthy gauge: 1 if HEALTHY or DRAINING, 0 otherwise
-        is_healthy = status in {ProxyStatus.HEALTHY, ProxyStatus.DRAINING}
-        self._healthy_gauge.set(1 if is_healthy else 0)
+        # Update the status gauge with the numeric value of the status
+        self._status_gauge.set(status.to_numeric())
 
     def try_update_status(self, status: ProxyStatus):
         """Try update with the new status and only update when the conditions are met.

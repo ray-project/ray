@@ -628,8 +628,10 @@ These metrics track proxy health and lifecycle.
 
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
-| `ray_serve_proxy_healthy` | Gauge | `node_id`, `node_ip_address` | Health status of the proxy: `1` = healthy, `0` = unhealthy. |
-| `ray_serve_proxy_shutdown_duration_ms` | Histogram | `node_id`, `node_ip_address` | Histogram of time taken for a proxy to shut down in milliseconds. |
+| `ray_serve_proxy_status` | Gauge | `node_id`, `node_ip_address` | Current status of the proxy as a numeric value: `1` = STARTING, `2` = HEALTHY, `3` = UNHEALTHY, `4` = DRAINING, `5` = DRAINED. |
+| `ray_serve_proxy_shutdown_duration_ms` | Histogram | `node_id`, `node_ip_address` | Time taken for a proxy to shut down in milliseconds. |
+| `ray_serve_http_proxy_draining` | Gauge | `node_id`, `node_ip_address` | Whether this http proxy is draining. 1 means draining, 0 means not draining. |
+| `ray_serve_grpc_proxy_draining` | Gauge | `node_id`, `node_ip_address` | Whether this grpc proxy is draining. 1 means draining, 0 means not draining. |
 
 ### Replica lifecycle metrics
 
@@ -677,7 +679,8 @@ These metrics track the Serve controller's performance. Useful for debugging con
 |--------|------|------|-------------|
 | `ray_serve_controller_control_loop_duration_s` | Gauge | — | Duration of the last control loop iteration in seconds. |
 | `ray_serve_controller_num_control_loops` | Gauge | `actor_id` | Total number of control loop iterations. Increases monotonically. |
-| `ray_serve_routing_stats_delay_ms` | Histogram | `deployment`, `application`, `handle` | Histogram of time taken for routing stats to propagate from handle to controller in milliseconds. |
+| `ray_serve_routing_stats_delay_ms` | Histogram | `deployment`, `replica`, `application` | Time taken for routing stats to propagate from replica to controller in milliseconds. |
+| `ray_serve_routing_stats_error_total` | Counter | `deployment`, `replica`, `application`, `error_type` | Total number of errors when getting routing stats from replicas. `error_type` is `exception` (replica raised an error) or `timeout` (replica didn't respond in time). |
 | `ray_serve_long_poll_host_transmission_counter_total` **[†]** | Counter | `namespace_or_state` | Total number of long poll updates transmitted to clients. |
 | `ray_serve_long_poll_latency_ms` **[†]** | Histogram | `namespace` | Time for updates to propagate from controller to clients in milliseconds. `namespace` is the long poll namespace such as `ROUTE_TABLE`, `DEPLOYMENT_CONFIG`, or `DEPLOYMENT_TARGETS`. Debug slow config propagation; impacts autoscaling response time. |
 | `ray_serve_long_poll_pending_clients` **[†]** | Gauge | `namespace` | Number of clients waiting for updates. `namespace` is the long poll namespace such as `ROUTE_TABLE`, `DEPLOYMENT_CONFIG`, or `DEPLOYMENT_TARGETS`. Identify backpressure in notification system. |

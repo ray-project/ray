@@ -950,8 +950,8 @@ class TestHandleMetrics:
 
 
 class TestProxyStateMetrics:
-    def test_proxy_healthy_metric(self, metrics_start_shutdown):
-        """Test that proxy healthy metric is reported correctly."""
+    def test_proxy_status_metric(self, metrics_start_shutdown):
+        """Test that proxy status metric is reported correctly."""
 
         @serve.deployment
         def f():
@@ -961,34 +961,33 @@ class TestProxyStateMetrics:
         timeseries = PrometheusTimeseries()
 
         # Wait for the proxy to become healthy and metric to be reported
-        def check_proxy_healthy():
+        def check_proxy_status():
             metrics = get_metric_dictionaries(
-                "ray_serve_proxy_healthy", timeseries=timeseries
+                "ray_serve_proxy_status", timeseries=timeseries
             )
             if not metrics:
                 return False
-            # Check that at least one proxy is healthy (value should be 1)
+            # Check that at least one proxy has the metric with expected tags
             for metric in metrics:
                 if "node_id" in metric and "node_ip_address" in metric:
                     return True
             return False
 
-        wait_for_condition(check_proxy_healthy, timeout=30)
+        wait_for_condition(check_proxy_status, timeout=30)
 
         # Verify the metric has the expected tags
         metrics = get_metric_dictionaries(
-            "ray_serve_proxy_healthy", timeseries=timeseries
+            "ray_serve_proxy_status", timeseries=timeseries
         )
         assert len(metrics) >= 1
         for metric in metrics:
             assert "node_id" in metric
             assert "node_ip_address" in metric
 
-        # Verify the metric value is 1
         wait_for_condition(
             check_metric_float_eq,
-            metric="ray_serve_proxy_healthy",
-            expected=1,
+            metric="ray_serve_proxy_status",
+            expected=2,
             timeseries=timeseries,
             expected_tags={},
         )
@@ -1040,11 +1039,11 @@ class TestProxyStateMetrics:
         serve.run(f.bind(), name="app")
         timeseries = PrometheusTimeseries()
 
-        # Wait for the proxy to become healthy first
+        # Wait for the proxy to become healthy first (status=2 means HEALTHY)
         wait_for_condition(
             check_metric_float_eq,
-            metric="ray_serve_proxy_healthy",
-            expected=1,
+            metric="ray_serve_proxy_status",
+            expected=2,
             timeseries=timeseries,
             expected_tags={},
             timeout=30,

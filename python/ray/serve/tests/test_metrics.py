@@ -33,6 +33,7 @@ from ray.serve._private.test_utils import (
     ping_grpc_list_applications,
 )
 from ray.serve._private.utils import block_until_http_ready
+from ray.serve.config import RequestRouterConfig
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.util.state import list_actors
 
@@ -1335,6 +1336,97 @@ def test_routing_stats_delay_metric(metrics_start_shutdown):
         return value > 0
 
     wait_for_condition(check_routing_stats_delay_metric_value, timeout=60)
+
+
+def test_routing_stats_error_metric(metrics_start_shutdown):
+    """Test that routing stats error metric is reported on exception and timeout."""
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        request_router_config=RequestRouterConfig(
+            request_routing_stats_period_s=0.1, request_routing_stats_timeout_s=0.5
+        )
+    )
+    class FailingModel:
+        def __init__(self, signal_actor):
+            self.should_fail = False
+            self.should_hang = False
+            self.signal = signal_actor
+
+        async def record_routing_stats(self):
+            if self.should_hang:
+                await self.signal.wait.remote()
+            if self.should_fail:
+                raise Exception("Intentional failure for testing")
+            return {}
+
+        def __call__(self):
+            return "hello"
+
+        def set_should_fail(self, value: bool):
+            self.should_fail = value
+
+        def set_should_hang(self, value: bool):
+            self.should_hang = value
+
+    handle = serve.run(FailingModel.bind(signal), name="error_app")
+    timeseries = PrometheusTimeseries()
+
+    # Make a request to ensure deployment is running
+    handle.remote().result()
+
+    # Trigger exception in record_routing_stats
+    handle.set_should_fail.remote(True).result()
+
+    # Make requests to trigger routing stats collection
+    for _ in range(5):
+        handle.remote().result()
+
+    # Check that error metric with error_type="exception" is reported
+    def check_exception_error_metric():
+        metrics = get_metric_dictionaries(
+            "ray_serve_routing_stats_error_total", timeseries=timeseries
+        )
+        for metric in metrics:
+            if (
+                metric.get("deployment") == "FailingModel"
+                and metric.get("application") == "error_app"
+                and metric.get("error_type") == "exception"
+            ):
+                assert "replica" in metric
+                return True
+        return False
+
+    wait_for_condition(check_exception_error_metric, timeout=30)
+    print("Exception error metric verified.")
+
+    # Now test timeout case
+    handle.set_should_fail.remote(False).result()
+    handle.set_should_hang.remote(True).result()
+
+    # Make requests to trigger routing stats timeout
+    for _ in range(5):
+        handle.remote().result()
+
+    # Check that error metric with error_type="timeout" is reported
+    def check_timeout_error_metric():
+        metrics = get_metric_dictionaries(
+            "ray_serve_routing_stats_error_total", timeseries=timeseries
+        )
+        for metric in metrics:
+            if (
+                metric.get("deployment") == "FailingModel"
+                and metric.get("application") == "error_app"
+                and metric.get("error_type") == "timeout"
+            ):
+                assert "replica" in metric
+                return True
+        return False
+
+    wait_for_condition(check_timeout_error_metric, timeout=30)
+    print("Timeout error metric verified.")
+
+    ray.get(signal.send.remote(clear=True))
 
 
 def test_batching_metrics(metrics_start_shutdown):

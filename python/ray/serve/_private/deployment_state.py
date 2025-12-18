@@ -304,6 +304,23 @@ class ActorReplicaWrapper:
             }
         )
 
+        # Counter to track exceptions/timeouts when getting routing stats
+        self._routing_stats_error_counter = metrics.Counter(
+            "serve_routing_stats_error",
+            description=(
+                "The number of errors (exceptions or timeouts) when getting "
+                "routing stats from replica."
+            ),
+            tag_keys=("deployment", "replica", "application", "error_type"),
+        )
+        self._routing_stats_error_counter.set_default_tags(
+            {
+                "deployment": self._deployment_id.name,
+                "replica": self._replica_id.unique_id,
+                "application": self._deployment_id.app_name,
+            }
+        )
+
     @property
     def replica_id(self) -> str:
         return self._replica_id
@@ -1036,6 +1053,7 @@ class ActorReplicaWrapper:
                     "Exception when trying to get routing stats:\n"
                     + traceback.format_exc()
                 )
+                self._routing_stats_error_counter.inc(tags={"error_type": "exception"})
             self._record_routing_stats_ref = None
         elif (
             time.time() - self._last_record_routing_stats_time
@@ -1047,6 +1065,7 @@ class ActorReplicaWrapper:
                 f"{self._replica_id} after "
                 f"{self.request_routing_stats_timeout_s}s, retrying."
             )
+            self._routing_stats_error_counter.inc(tags={"error_type": "timeout"})
             self._record_routing_stats_ref = None
 
         if self._should_record_routing_stats():
