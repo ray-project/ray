@@ -63,6 +63,12 @@ class vLLMTaskType(str, Enum):
     """Generate embeddings."""
     EMBED = "embed"
 
+    """Classification (e.g., sequence classification models)."""
+    CLASSIFY = "classify"
+
+    """Scoring (e.g., cross-encoder models)."""
+    SCORE = "score"
+
 
 class vLLMEngineRequest(BaseModel):
     """A request to the vLLM engine."""
@@ -255,7 +261,11 @@ class vLLMEngineWrapper:
             ) from e
 
         # Construct PoolerConfig if override_pooler_config is specified.
-        if self.task_type == vLLMTaskType.EMBED and "override_pooler_config" in kwargs:
+        if (
+            self.task_type
+            in {vLLMTaskType.EMBED, vLLMTaskType.CLASSIFY, vLLMTaskType.SCORE}
+            and "override_pooler_config" in kwargs
+        ):
             kwargs["override_pooler_config"] = vllm.config.PoolerConfig(
                 **kwargs["override_pooler_config"]
             )
@@ -375,7 +385,11 @@ class vLLMEngineWrapper:
                 **maybe_convert_ndarray_to_list(sampling_params),
                 structured_outputs=structured_outputs,
             )
-        elif self.task_type == vLLMTaskType.EMBED:
+        elif self.task_type in (
+            vLLMTaskType.EMBED,
+            vLLMTaskType.CLASSIFY,
+            vLLMTaskType.SCORE,
+        ):
             params = vllm.PoolingParams(task=self.task_type.value)
         else:
             raise ValueError(f"Unsupported task type: {self.task_type}")
@@ -456,8 +470,12 @@ class vLLMEngineWrapper:
             )
 
         # Send the request to the LLM engine.
-        # vLLM 0.12.0 uses encode() for pooling/embedding tasks, generate() for text generation
-        if self.task_type == vLLMTaskType.EMBED:
+        # vLLM 0.12.0 uses encode() for pooling/embedding/classification tasks, generate() for text generation
+        if self.task_type in (
+            vLLMTaskType.EMBED,
+            vLLMTaskType.CLASSIFY,
+            vLLMTaskType.SCORE,
+        ):
             stream = self.engine.encode(
                 request_id=str(request.request_id),
                 prompt=llm_prompt,
