@@ -111,6 +111,7 @@ class FuseOperators(Rule):
         |----------------------|--------------------------------|
         | Fused                | total_rows / batch_size        |
         | Not fused            | total_rows / batch_size        |
+        ----------------------------------------------------------
 
         Parallelism is unchanged, so we fuse to avoid intermediate materialization.
         """
