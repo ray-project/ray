@@ -202,14 +202,8 @@ class TimedMemoryHandler(logging.handlers.MemoryHandler):
 
     def emit(self, record: logging.LogRecord):
         super().emit(record)
-
-        # Notify check thread if timeout is enabled
-        if self.flush_timeout_s is not None and self.flush_timeout_s > 0:
-            # Ensure check thread is running
-            if self._check_thread is None or not self._check_thread.is_alive():
-                self._start_check_thread()
-            # Notify check thread that a new emit happened (reset timeout)
-            self._check_event.set()
+        # Notify check thread that a new emit happened (reset timeout)
+        self._check_event.set()
 
     def flush(self):
         """Flush the buffer."""
@@ -223,8 +217,7 @@ class TimedMemoryHandler(logging.handlers.MemoryHandler):
 
         # Wait for check thread to finish (with timeout)
         if self._check_thread is not None and self._check_thread.is_alive():
-            self._check_thread.join()
-            self._check_thread = None
+            self._check_thread.join(timeout=1.0)
 
         super().close()
 

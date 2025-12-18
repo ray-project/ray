@@ -215,6 +215,7 @@ class LoggingConfig(BaseModel):
                 + str(self.log_level)
                 + str(self.logs_dir)
                 + str(self.enable_access_log)
+                + str(self.flush_timeout_s)
             ).encode("utf-8")
         )
 
