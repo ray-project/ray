@@ -593,6 +593,8 @@ These metrics track request routing and queueing behavior.
 | `ray_serve_num_router_requests_total` **[H]** | Counter | `deployment`, `route`, `application`, `handle`, `actor_id` | Total number of requests routed to a deployment. |
 | `ray_serve_deployment_queued_queries` **[H]** | Gauge | `deployment`, `application`, `handle`, `actor_id` | Current number of requests waiting to be assigned to a replica. High values indicate backpressure. |
 | `ray_serve_num_ongoing_requests_at_replicas` **[H]** | Gauge | `deployment`, `application`, `handle`, `actor_id` | Current number of requests assigned and sent to replicas but not yet completed. |
+| `ray_serve_request_router_fulfillment_time_ms` **[H][D]** | Histogram | `deployment`, `actor_id`, `application`, `handle_source` | Histogram of time in milliseconds that a request spent waiting in the router queue before being assigned to a replica. This includes the time to resolve the pending request's arguments. |
+| `ray_serve_request_router_queue_len` **[H][D]** | Gauge | `deployment`, `replica_id`, `actor_id`, `application`, `handle_source` | Current number of requests running on a replica as tracked by the router's queue length cache. |
 | `ray_serve_num_scheduling_tasks` **[H][†]** | Gauge | `deployment`, `actor_id` | Current number of request scheduling tasks in the router. |
 | `ray_serve_num_scheduling_tasks_in_backoff` **[H][†]** | Gauge | `deployment`, `actor_id` | Current number of scheduling tasks in exponential backoff (waiting before retry). |
 
@@ -677,6 +679,8 @@ These metrics track the Serve controller's performance. Useful for debugging con
 | `ray_serve_controller_num_control_loops` | Gauge | `actor_id` | Total number of control loop iterations. Increases monotonically. |
 | `ray_serve_routing_stats_delay_ms` | Histogram | `deployment`, `application`, `handle` | Histogram of time taken for routing stats to propagate from handle to controller in milliseconds. |
 | `ray_serve_long_poll_host_transmission_counter_total` **[†]** | Counter | `namespace_or_state` | Total number of long poll updates transmitted to clients. |
+| `ray_serve_long_poll_latency_ms` **[†]** | Histogram | `namespace` | Time for updates to propagate from controller to clients in milliseconds. `namespace` is the long poll namespace such as `ROUTE_TABLE`, `DEPLOYMENT_CONFIG`, or `DEPLOYMENT_TARGETS`. Debug slow config propagation; impacts autoscaling response time. |
+| `ray_serve_long_poll_pending_clients` **[†]** | Gauge | `namespace` | Number of clients waiting for updates. `namespace` is the long poll namespace such as `ROUTE_TABLE`, `DEPLOYMENT_CONFIG`, or `DEPLOYMENT_TARGETS`. Identify backpressure in notification system. |
 
 To see this in action, first run the following command to start Ray and set up the metrics export port:
 

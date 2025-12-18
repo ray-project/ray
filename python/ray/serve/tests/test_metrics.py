@@ -5,6 +5,8 @@ import json
 import os
 import sys
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
 import grpc
@@ -24,7 +26,7 @@ from ray._private.test_utils import (
     PrometheusTimeseries,
     fetch_prometheus_metric_timeseries,
 )
-from ray.serve._private.long_poll import LongPollHost, UpdatedObject
+from ray.serve._private.long_poll import LongPollClient, LongPollHost, UpdatedObject
 from ray.serve._private.test_utils import (
     get_application_url,
     ping_grpc_call_method,
@@ -983,6 +985,123 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     } == expected_output
 
 
+def test_queue_wait_time_metric(metrics_start_shutdown):
+    """Test that queue wait time metric is recorded correctly."""
+    signal = SignalActor.remote()
+
+    @serve.deployment(max_ongoing_requests=1)
+    class SlowDeployment:
+        async def __call__(self):
+            await signal.wait.remote()
+            return "done"
+
+    handle = serve.run(SlowDeployment.bind(), name="app1", route_prefix="/slow")
+
+    futures = [handle.remote() for _ in range(2)]
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10
+    )
+
+    time.sleep(0.5)
+    ray.get(signal.send.remote())
+    [f.result() for f in futures]
+
+    timeseries = PrometheusTimeseries()
+
+    def check_queue_wait_time_metric():
+        metrics = get_metric_dictionaries(
+            "ray_serve_request_router_fulfillment_time_ms_sum", timeseries=timeseries
+        )
+        if not metrics:
+            return False
+        for metric in metrics:
+            if (
+                metric.get("deployment") == "SlowDeployment"
+                and metric.get("application") == "app1"
+            ):
+                return True
+        return False
+
+    wait_for_condition(check_queue_wait_time_metric, timeout=10)
+
+    def check_queue_wait_time_metric_value():
+        value = get_metric_float(
+            "ray_serve_request_router_fulfillment_time_ms_sum",
+            timeseries=timeseries,
+            expected_tags={"deployment": "SlowDeployment", "application": "app1"},
+        )
+        assert value > 400, f"Queue wait time should be greater than 500ms, got {value}"
+        return True
+
+    wait_for_condition(check_queue_wait_time_metric_value, timeout=10)
+
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == 0, timeout=10
+    )
+
+
+def test_router_queue_len_metric(metrics_start_shutdown):
+    """Test that router queue length metric is recorded correctly per replica."""
+    signal = SignalActor.remote()
+
+    @serve.deployment(max_ongoing_requests=10)
+    class TestDeployment:
+        async def __call__(self, request: Request):
+            await signal.wait.remote()
+            return "done"
+
+    serve.run(TestDeployment.bind(), name="app1", route_prefix="/test")
+
+    # Send a request that will block
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(httpx.get, "http://localhost:8000/test", timeout=60)
+
+        # Wait for request to reach the replica
+        wait_for_condition(
+            lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=15
+        )
+
+        timeseries = PrometheusTimeseries()
+
+        # Check that the router queue length metric appears with correct tags
+        def check_router_queue_len():
+            metrics = get_metric_dictionaries(
+                "ray_serve_request_router_queue_len", timeseries=timeseries
+            )
+            if not metrics:
+                return False
+            # Find metric for our deployment with replica_id tag
+            for metric in metrics:
+                if (
+                    metric.get("deployment") == "TestDeployment"
+                    and metric.get("application") == "app1"
+                    and "replica_id" in metric
+                ):
+                    # Check that required tags are present
+                    assert (
+                        "handle_source" in metric
+                    ), "handle_source tag should be present"
+                    print(f"Found router queue len metric: {metric}")
+                    return True
+            return False
+
+        wait_for_condition(check_router_queue_len, timeout=30)
+
+        wait_for_condition(
+            check_metric_float_eq,
+            timeout=15,
+            metric="ray_serve_request_router_queue_len",
+            expected=1,
+            expected_tags={"deployment": "TestDeployment", "application": "app1"},
+            timeseries=timeseries,
+        )
+        print("Router queue len metric verified.")
+
+        # Release request
+        ray.get(signal.send.remote())
+        future.result()
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
 def test_multiplexed_metrics(metrics_start_shutdown):
     """Tests multiplexed API corresponding metrics."""
@@ -1601,7 +1720,145 @@ def test_user_autoscaling_stats_failure_metrics(metrics_start_shutdown):
     print("User autoscaling stats failure metric verified.")
 
 
-def test_long_poll_host_sends_counted(serve_instance):
+def test_long_poll_pending_clients_metric(metrics_start_shutdown):
+    """Check that pending clients gauge is tracked correctly."""
+    timeseries = PrometheusTimeseries()
+
+    # Create a LongPollHost with a longer timeout so we can observe pending state
+    host = ray.remote(LongPollHost).remote(
+        listen_for_change_request_timeout_s=(5.0, 5.0)
+    )
+
+    # Write initial values
+    ray.get(host.notify_changed.remote({"key_1": 100}))
+    ray.get(host.notify_changed.remote({"key_2": 200}))
+
+    # Get the current snapshot IDs
+    result = ray.get(host.listen_for_change.remote({"key_1": -1, "key_2": -1}))
+    key_1_snapshot_id = result["key_1"].snapshot_id
+    key_2_snapshot_id = result["key_2"].snapshot_id
+
+    # Start a listen call that will block waiting for updates
+    # (since we're using up-to-date snapshot IDs)
+    pending_ref = host.listen_for_change.remote(
+        {"key_1": key_1_snapshot_id, "key_2": key_2_snapshot_id}
+    )
+
+    # Check that pending clients gauge shows 1 for each key
+    # (wait_for_condition will retry until the metric is available)
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="ray_serve_long_poll_pending_clients",
+        expected=1,
+        expected_tags={"namespace": "key_1"},
+        timeseries=timeseries,
+    )
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="ray_serve_long_poll_pending_clients",
+        expected=1,
+        expected_tags={"namespace": "key_2"},
+        timeseries=timeseries,
+    )
+
+    # Trigger an update for key_1
+    ray.get(host.notify_changed.remote({"key_1": 101}))
+
+    # Wait for the pending call to complete
+    ray.get(pending_ref)
+
+    # After update, pending clients for key_1 should be 0
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="ray_serve_long_poll_pending_clients",
+        expected=0,
+        expected_tags={"namespace": "key_1"},
+        timeseries=timeseries,
+    )
+
+
+def test_long_poll_latency_metric(metrics_start_shutdown):
+    """Check that long poll latency histogram is recorded on the client side."""
+    timeseries = PrometheusTimeseries()
+
+    # Create a LongPollHost
+    host = ray.remote(LongPollHost).remote(
+        listen_for_change_request_timeout_s=(0.5, 0.5)
+    )
+
+    # Write initial value so the key exists
+    ray.get(host.notify_changed.remote({"test_key": "initial_value"}))
+
+    # Track received updates
+    received_updates = []
+    update_event = threading.Event()
+
+    def on_update(value):
+        received_updates.append(value)
+        update_event.set()
+
+    # Create event loop for the client
+    loop = asyncio.new_event_loop()
+
+    def run_loop():
+        asyncio.set_event_loop(loop)
+        loop.run_forever()
+
+    loop_thread = threading.Thread(target=run_loop, daemon=True)
+    loop_thread.start()
+
+    # Create the LongPollClient
+    client = LongPollClient(
+        host_actor=host,
+        key_listeners={"test_key": on_update},
+        call_in_event_loop=loop,
+    )
+
+    # Wait for initial update (client starts with snapshot_id -1)
+    assert update_event.wait(timeout=10), "Timed out waiting for initial update"
+    assert len(received_updates) == 1
+    assert received_updates[0] == "initial_value"
+
+    # Clear event and trigger another update
+    update_event.clear()
+    ray.get(host.notify_changed.remote({"test_key": "updated_value"}))
+
+    # Wait for the update to be received
+    assert update_event.wait(timeout=10), "Timed out waiting for update"
+    assert len(received_updates) == 2
+    assert received_updates[1] == "updated_value"
+
+    # Stop the client
+    client.stop()
+    loop.call_soon_threadsafe(loop.stop)
+    loop_thread.join(timeout=5)
+
+    # Check that latency metric was recorded
+    # The metric should have at least 2 observations (initial + update)
+    def check_latency_metric_exists():
+        metric_value = get_metric_float(
+            "ray_serve_long_poll_latency_ms_count",
+            expected_tags={"namespace": "test_key"},
+            timeseries=timeseries,
+        )
+        # Should have at least 2 observations
+        return metric_value == 2
+
+    wait_for_condition(check_latency_metric_exists, timeout=15)
+
+    # Verify the latency sum is positive (latency > 0)
+    latency_sum = get_metric_float(
+        "ray_serve_long_poll_latency_ms_sum",
+        expected_tags={"namespace": "test_key"},
+        timeseries=timeseries,
+    )
+    assert latency_sum > 0, "Latency sum should be positive"
+
+
+def test_long_poll_host_sends_counted(metrics_start_shutdown):
     """Check that the transmissions by the long_poll are counted."""
 
     timeseries = PrometheusTimeseries()

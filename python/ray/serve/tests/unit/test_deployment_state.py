@@ -2848,6 +2848,7 @@ class TestAutoscaling:
                 "upscale_delay_s": 0,
                 "downscale_delay_s": 0,
                 "metrics_interval_s": 100,
+                "look_back_period_s": 200,
             }
         )
         dsm.deploy(TEST_DEPLOYMENT_ID, info)
@@ -3038,6 +3039,7 @@ class TestAutoscaling:
                 "upscale_delay_s": 0,
                 "downscale_delay_s": 0,
                 "metrics_interval_s": 100,
+                "look_back_period_s": 200,
             }
         )
 
@@ -3393,6 +3395,7 @@ class TestAutoscaling:
                 "upscale_delay_s": 0,
                 "downscale_delay_s": 0,
                 "metrics_interval_s": 100,
+                "look_back_period_s": 200,
             }
         )
         dsm.deploy(TEST_DEPLOYMENT_ID, info)
@@ -3484,6 +3487,7 @@ class TestAutoscaling:
                 "upscale_delay_s": 0,
                 "downscale_delay_s": 0,
                 "metrics_interval_s": 100,
+                "look_back_period_s": 200,
             }
         )
         dsm.deploy(TEST_DEPLOYMENT_ID, info)
@@ -3809,6 +3813,7 @@ class TestAutoscaling:
                 "upscale_delay_s": 0,
                 "downscale_delay_s": 0,
                 "metrics_interval_s": 100,
+                "look_back_period_s": 200,
             }
         )
         dsm.deploy(TEST_DEPLOYMENT_ID, info)
