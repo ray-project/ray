@@ -85,7 +85,7 @@ inline ray::stats::Histogram GetTaskReceiveTimeMsHistogramMetric() {
       /*description=*/
       "Time from task reception to execution start, including queuing and arg fetch.",
       /*unit=*/"ms",
-      /*boundaries=*/{1, 10, 100, 1000, 10000},
+      /*boundaries=*/{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000},
       /*tag_keys=*/{},
   };
 }
@@ -99,7 +99,7 @@ inline ray::stats::Histogram GetTaskArgFetchTimeMsHistogramMetric() {
       /*description=*/
       "Time spent fetching and pinning task arguments.",
       /*unit=*/"ms",
-      /*boundaries=*/{1, 10, 100, 1000, 10000},
+      /*boundaries=*/{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000},
       /*tag_keys=*/{},
   };
 }
@@ -114,7 +114,7 @@ inline ray::stats::Histogram GetTaskPostProcessingTimeMsHistogramMetric() {
       "Time from task execution completion to reply sent, including return "
       "serialization.",
       /*unit=*/"ms",
-      /*boundaries=*/{1, 10, 100, 1000, 10000},
+      /*boundaries=*/{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000},
       /*tag_keys=*/{},
   };
 }

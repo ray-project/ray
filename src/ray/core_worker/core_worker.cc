@@ -2812,9 +2812,11 @@ Status CoreWorker::ExecuteTask(
   Status pin_args_request_status =
       GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids);
   // Record arg fetch time metric if enabled.
-  if (auto *histogram = CoreWorkerProcess::GetTaskArgFetchTimeMsHistogram()) {
+  std::shared_ptr<ray::stats::Histogram> arg_fetch_histogram =
+      CoreWorkerProcess::GetTaskArgFetchTimeMsHistogram();
+  if (arg_fetch_histogram) {
     int64_t arg_fetch_time_ms = current_sys_time_ms() - arg_fetch_start_time_ms;
-    histogram->Record(static_cast<double>(arg_fetch_time_ms));
+    arg_fetch_histogram->Record(static_cast<double>(arg_fetch_time_ms));
   }
   task_counter_.UnsetMetricStatus(
       func_name, rpc::TaskStatus::GETTING_AND_PINNING_ARGS, is_retry);

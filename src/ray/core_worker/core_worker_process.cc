@@ -133,21 +133,24 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker() {
   return core_worker_process->TryGetCoreWorker();
 }
 
-ray::stats::Histogram *CoreWorkerProcess::GetTaskReceiveTimeMsHistogram() {
+std::shared_ptr<ray::stats::Histogram>
+CoreWorkerProcess::GetTaskReceiveTimeMsHistogram() {
   if (!core_worker_process) {
     return nullptr;
   }
   return core_worker_process->GetTaskReceiveTimeMsHistogram();
 }
 
-ray::stats::Histogram *CoreWorkerProcess::GetTaskArgFetchTimeMsHistogram() {
+std::shared_ptr<ray::stats::Histogram>
+CoreWorkerProcess::GetTaskArgFetchTimeMsHistogram() {
   if (!core_worker_process) {
     return nullptr;
   }
   return core_worker_process->GetTaskArgFetchTimeMsHistogram();
 }
 
-ray::stats::Histogram *CoreWorkerProcess::GetTaskPostProcessingTimeMsHistogram() {
+std::shared_ptr<ray::stats::Histogram>
+CoreWorkerProcess::GetTaskPostProcessingTimeMsHistogram() {
   if (!core_worker_process) {
     return nullptr;
   }
@@ -832,11 +835,11 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
 
   // Initialize worker task execution metrics if enabled.
   if (RayConfig::instance().enable_worker_task_execution_metrics()) {
-    task_receive_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
+    task_receive_time_ms_histogram_ = std::shared_ptr<ray::stats::Histogram>(
         new ray::stats::Histogram(GetTaskReceiveTimeMsHistogramMetric()));
-    task_arg_fetch_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
+    task_arg_fetch_time_ms_histogram_ = std::shared_ptr<ray::stats::Histogram>(
         new ray::stats::Histogram(GetTaskArgFetchTimeMsHistogramMetric()));
-    task_post_processing_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
+    task_post_processing_time_ms_histogram_ = std::shared_ptr<ray::stats::Histogram>(
         new ray::stats::Histogram(GetTaskPostProcessingTimeMsHistogramMetric()));
   }
 

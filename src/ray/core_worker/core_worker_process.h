@@ -110,9 +110,9 @@ class CoreWorkerProcess {
 
   /// Get the worker task execution histograms (nullptr if metrics disabled).
   /// These are gated by enable_worker_task_execution_metrics config.
-  static ray::stats::Histogram *GetTaskReceiveTimeMsHistogram();
-  static ray::stats::Histogram *GetTaskArgFetchTimeMsHistogram();
-  static ray::stats::Histogram *GetTaskPostProcessingTimeMsHistogram();
+  static std::shared_ptr<ray::stats::Histogram> GetTaskReceiveTimeMsHistogram();
+  static std::shared_ptr<ray::stats::Histogram> GetTaskArgFetchTimeMsHistogram();
+  static std::shared_ptr<ray::stats::Histogram> GetTaskPostProcessingTimeMsHistogram();
 
  private:
   /// Check that the core worker environment is initialized for this process.
@@ -155,14 +155,14 @@ class CoreWorkerProcessImpl {
 
   /// Get worker-side task execution metrics histograms.
   /// Returns nullptr if metrics are disabled.
-  ray::stats::Histogram *GetTaskReceiveTimeMsHistogram() const {
-    return task_receive_time_ms_histogram_.get();
+  std::shared_ptr<ray::stats::Histogram> GetTaskReceiveTimeMsHistogram() const {
+    return task_receive_time_ms_histogram_;
   }
-  ray::stats::Histogram *GetTaskArgFetchTimeMsHistogram() const {
-    return task_arg_fetch_time_ms_histogram_.get();
+  std::shared_ptr<ray::stats::Histogram> GetTaskArgFetchTimeMsHistogram() const {
+    return task_arg_fetch_time_ms_histogram_;
   }
-  ray::stats::Histogram *GetTaskPostProcessingTimeMsHistogram() const {
-    return task_post_processing_time_ms_histogram_.get();
+  std::shared_ptr<ray::stats::Histogram> GetTaskPostProcessingTimeMsHistogram() const {
+    return task_post_processing_time_ms_histogram_;
   }
 
  private:
@@ -213,9 +213,9 @@ class CoreWorkerProcessImpl {
   std::unique_ptr<ray::stats::Histogram> scheduler_placement_time_ms_histogram_;
 
   /// Worker-side task execution metrics (gated by enable_worker_task_execution_metrics).
-  std::unique_ptr<ray::stats::Histogram> task_receive_time_ms_histogram_;
-  std::unique_ptr<ray::stats::Histogram> task_arg_fetch_time_ms_histogram_;
-  std::unique_ptr<ray::stats::Histogram> task_post_processing_time_ms_histogram_;
+  std::shared_ptr<ray::stats::Histogram> task_receive_time_ms_histogram_;
+  std::shared_ptr<ray::stats::Histogram> task_arg_fetch_time_ms_histogram_;
+  std::shared_ptr<ray::stats::Histogram> task_post_processing_time_ms_histogram_;
 };
 }  // namespace core
 }  // namespace ray

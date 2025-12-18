@@ -66,8 +66,8 @@ class TaskReceiver {
                DependencyWaiter &dependency_waiter,
                std::function<std::function<void()>()> initialize_thread_callback,
                OnActorCreationTaskDone actor_creation_task_done,
-               ray::stats::Histogram *receive_time_histogram = nullptr,
-               ray::stats::Histogram *post_processing_histogram = nullptr)
+               std::shared_ptr<ray::stats::Histogram> receive_time_histogram = nullptr,
+               std::shared_ptr<ray::stats::Histogram> post_processing_histogram = nullptr)
       : task_handler_(std::move(task_handler)),
         task_execution_service_(task_execution_service),
         task_event_buffer_(task_event_buffer),
@@ -76,8 +76,8 @@ class TaskReceiver {
         actor_creation_task_done_(std::move(actor_creation_task_done)),
         pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()),
         fiber_state_manager_(nullptr),
-        receive_time_histogram_(receive_time_histogram),
-        post_processing_histogram_(post_processing_histogram) {}
+        receive_time_histogram_(std::move(receive_time_histogram)),
+        post_processing_histogram_(std::move(post_processing_histogram)) {}
 
   /// Handle a `PushTask` request. If it's an actor request, this function will enqueue
   /// the task and then start scheduling the requests to begin the execution. If it's a
@@ -174,11 +174,11 @@ class TaskReceiver {
 
   /// Optional histogram for recording receive time (from task reception to execution).
   /// Null if worker task execution metrics are disabled.
-  ray::stats::Histogram *receive_time_histogram_;
+  std::shared_ptr<ray::stats::Histogram> receive_time_histogram_;
 
   /// Optional histogram for recording post-processing time.
   /// Null if worker task execution metrics are disabled.
-  ray::stats::Histogram *post_processing_histogram_;
+  std::shared_ptr<ray::stats::Histogram> post_processing_histogram_;
 };
 
 }  // namespace core
