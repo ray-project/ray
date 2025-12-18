@@ -522,6 +522,51 @@ class LLMServer(LLMServerProtocol):
             )
             raise e
 
+    async def pause(self, **kwargs: Any) -> None:
+        """Pause generation on the engine.
+
+        This halts generation requests while keeping model weights
+        in GPU memory. New requests are blocked until resume is called.
+
+        Args:
+            **kwargs: Engine-specific pause options. Passed through to the engine.
+        """
+        if self.engine is None:
+            return
+        try:
+            await self.engine.pause(**kwargs)
+        except Exception as e:
+            logger.error("Engine pause failed in LLMServer.pause: %s", e)
+            raise e
+
+    async def resume(self, **kwargs: Any) -> None:
+        """Resume generation on the engine after pause.
+
+        Args:
+            **kwargs: Engine-specific resume options. Passed through to the engine.
+        """
+        if self.engine is None:
+            return
+        try:
+            await self.engine.resume(**kwargs)
+        except Exception as e:
+            logger.error("Engine resume failed in LLMServer.resume: %s", e)
+            raise e
+
+    async def is_paused(self) -> bool:
+        """Check whether the engine is currently paused.
+
+        Returns:
+            True if the engine is paused, False otherwise.
+        """
+        if self.engine is None:
+            return False
+        try:
+            return await self.engine.is_paused()
+        except Exception as e:
+            logger.error("Engine is_paused failed in LLMServer.is_paused: %s", e)
+            raise e
+
     async def start_profile(self) -> None:
         """Start profiling"""
         if self.engine is None:

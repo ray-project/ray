@@ -1,6 +1,6 @@
 import json
 import unittest
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
@@ -16,6 +16,9 @@ from ray.data.block import BlockMetadata
 from ray.data.dataset import Dataset
 from ray.data.datasource.datasource import ReadTask
 from ray.data.read_api import read_delta_sharing_tables
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
 
 
 class TestDeltaSharingDatasource(unittest.TestCase):
@@ -180,7 +183,10 @@ class MockDeltaSharingDatasource:
         return table, rest_client
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ):
         self._table, self._rest_client = self.setup_delta_sharing_connections(self._url)
         response = self._rest_client.list_files_in_table(

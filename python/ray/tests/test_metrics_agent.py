@@ -31,6 +31,7 @@ from ray._private.test_utils import (
     get_log_batch,
     raw_metric_timeseries,
 )
+from ray._raylet import JobID, TaskID
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.core.generated.common_pb2 import TaskAttempt
 from ray.core.generated.events_base_event_pb2 import RayEvent
@@ -493,6 +494,7 @@ def httpserver_listen_address():
             "env_vars": {
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_MAX_EVENT_BUFFER_SIZE": 2,
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
+                "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS": "True",
                 # Turn off task events generation to avoid the task events from the
                 # cluster impacting the test result
                 "RAY_task_events_report_interval_ms": 0,
@@ -547,28 +549,28 @@ def test_metrics_export_event_aggregator_agent(
                 return False
         return True
 
-    def test_case_publisher_specific_metrics_correct(publisher_name: str):
+    def test_case_publisher_specific_metrics_value_correct(
+        consumer_name: str, expected_metrics_values: dict
+    ):
         fetch_prometheus_timeseries(prom_addresses, timeseries)
         metric_samples = timeseries.metric_samples.values()
-        expected_metrics_values = {
-            "ray_aggregator_agent_published_events_total": 1.0,
-            "ray_aggregator_agent_filtered_events_total": 1.0,
-            "ray_aggregator_agent_queue_dropped_events_total": 1.0,
-        }
         for descriptor, expected_value in expected_metrics_values.items():
-            samples = [m for m in metric_samples if m.name == descriptor]
+            samples = [
+                m
+                for m in metric_samples
+                if m.name == descriptor and m.labels[CONSUMER_TAG_KEY] == consumer_name
+            ]
             if not samples:
                 return False
-            if (
-                samples[0].value != expected_value
-                or samples[0].labels[CONSUMER_TAG_KEY] != publisher_name
-            ):
+            if samples[0].value != expected_value:
                 return False
         return True
 
     now = time.time_ns()
     seconds, nanos = divmod(now, 10**9)
     timestamp = Timestamp(seconds=seconds, nanos=nanos)
+    job_id = JobID.from_int(1)
+    valid_task_id_bytes = TaskID.for_fake_task(job_id).binary()
     request = AddEventsRequest(
         events_data=RayEventsData(
             events=[
@@ -600,7 +602,7 @@ def test_metrics_export_event_aggregator_agent(
             task_events_metadata=TaskEventsMetadata(
                 dropped_task_attempts=[
                     TaskAttempt(
-                        task_id=b"1",
+                        task_id=valid_task_id_bytes,
                         attempt_number=1,
                     ),
                 ],
@@ -615,8 +617,27 @@ def test_metrics_export_event_aggregator_agent(
 
     wait_for_condition(test_case_value_correct, timeout=30, retry_interval_ms=1000)
 
+    expected_http_publisher_metrics_values = {
+        "ray_aggregator_agent_published_events_total": 1.0,
+        "ray_aggregator_agent_filtered_events_total": 1.0,
+        "ray_aggregator_agent_queue_dropped_events_total": 1.0,
+    }
     wait_for_condition(
-        lambda: test_case_publisher_specific_metrics_correct("http_publisher"),
+        lambda: test_case_publisher_specific_metrics_value_correct(
+            "http_service", expected_http_publisher_metrics_values
+        ),
+        timeout=30,
+        retry_interval_ms=1000,
+    )
+
+    expected_gcs_publisher_metrics_values = {
+        "ray_aggregator_agent_published_events_total": 2.0,
+        "ray_aggregator_agent_queue_dropped_events_total": 1.0,
+    }
+    wait_for_condition(
+        lambda: test_case_publisher_specific_metrics_value_correct(
+            "ray_gcs", expected_gcs_publisher_metrics_values
+        ),
         timeout=30,
         retry_interval_ms=1000,
     )
