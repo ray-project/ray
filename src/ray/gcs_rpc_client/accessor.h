@@ -200,8 +200,7 @@ class NodeInfoAccessor {
   virtual StatusOr<std::vector<rpc::GcsNodeInfo>> GetAllNoCache(
       int64_t timeout_ms,
       std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter = std::nullopt,
-      std::optional<rpc::GetAllNodeInfoRequest::NodeSelector> node_selector =
-          std::nullopt);
+      const std::vector<rpc::GetAllNodeInfoRequest::NodeSelector> &node_selectors = {});
 
   /// Subscribe to critical node information changes. This method transmits only address
   /// and liveness information for each node, excluding other node metadata.
