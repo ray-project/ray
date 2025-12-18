@@ -862,11 +862,13 @@ class vLLMEngineStage(StatefulStage):
         map_batches_kwargs.update(ray_remote_args)
         return values
 
+    def _get_task_type(self) -> vLLMTaskType:
+        return self.fn_constructor_kwargs.get("task_type", vLLMTaskType.GENERATE)
+
     def get_required_input_keys(self) -> Dict[str, str]:
         """The required input keys of the stage and their descriptions."""
         ret = {"prompt": "The text prompt (str)."}
-        task_type = self.fn_constructor_kwargs.get("task_type", vLLMTaskType.GENERATE)
-        if task_type == vLLMTaskType.GENERATE:
+        if self._get_task_type() == vLLMTaskType.GENERATE:
             ret["sampling_params"] = (
                 "The sampling parameters. See "
                 "https://docs.vllm.ai/en/latest/api/vllm/#vllm.SamplingParams "
@@ -885,8 +887,7 @@ class vLLMEngineStage(StatefulStage):
             "mm_processor_kwargs": "The kwargs for the engine's multimodal processor.",
             "multimodal_uuids": "User-specified UUIDs for multimodal items, mapped by modality.",
         }
-        task_type = self.fn_constructor_kwargs.get("task_type", vLLMTaskType.GENERATE)
-        if task_type == vLLMTaskType.EMBED:
+        if self._get_task_type() == vLLMTaskType.EMBED:
             ret["pooling_params"] = (
                 "The pooling parameters. See "
                 "https://docs.vllm.ai/en/latest/api/vllm/#vllm.PoolingParams "
