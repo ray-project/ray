@@ -1,6 +1,7 @@
 import logging
 import os
 from dataclasses import dataclass
+from typing import Optional
 
 import ray
 from ray._private import ray_constants
@@ -36,7 +37,7 @@ def _setup_jax_distributed_environment(
     use_tpu: bool,
     use_gpu: bool,
     resources_per_worker: dict,
-    jax_env_vars: dict = None,
+    jax_env_vars: Optional[dict] = None,
 ):
     """Set up distributed Jax training information.
 
