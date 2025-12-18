@@ -171,7 +171,7 @@ class WorkerGroup(BaseWorkerGroup):
         self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
         self._latest_poll_status: Optional[WorkerGroupPollStatus] = None
 
-        # For multi-host accelerators, store slice PG handle for clean-up.
+        # For multi-host TPUs, store slice PG handle for clean-up.
         self._slice_placement_group_handle: Optional[SlicePlacementGroup] = None
 
         # Environment variables
