@@ -279,7 +279,7 @@ class FuseOperators(Rule):
                 and up_logical_op._batch_size is not None
                 and down_logical_op.target_num_rows_per_block is not None
                 and down_logical_op.target_num_rows_per_block > 0
-                # When the batch_size is a multiple of target_num_rows_per_block, fusing would not change the parallelism.
+                # When the batch_size is a multiple of target_num_rows_per_block, fusing would still produce exactly identical sequence of blocks.
                 # See `_fuse_streaming_repartition_operators_in_dag` docstring for details.
                 # TODO: when the StreamingRepartition supports none_strict_mode, we can fuse
                 # `MapBatches -> StreamingRepartition` no matter what the `batch_size` and `target_num_rows` are.
