@@ -221,11 +221,10 @@ collecting ...
  python\ray\serve\tests\test_standalone_3.py::test_controller_shutdown_gracefully[True] ✓                                                                                              64% ██████▍
  python\ray\serve\tests\test_standalone_3.py::test_controller_shutdown_gracefully[False] ✓                                                                                             73% ███████▍
  python\ray\serve\tests\test_standalone_3.py::test_client_shutdown_gracefully_when_timeout ✓                                                                                           82% ████████▎
- python\ray\serve\tests\test_standalone_3.py::test_serve_shut_down_without_duplicated_logs ✓                                                                                           91% █████████▏ python\ray\serve\tests\test_standalone_3.py::test_job_runtime_env_not_leaked ✓                                                                                                       100% ██████████
+ python\ray\serve\tests\test_standalone_3.py::test_serve_shut_down_without_duplicated_logs ✓                                                                                           91% █████████▏ 
+ python\ray\serve\tests\test_standalone_3.py::test_job_runtime_env_not_leaked ✓                                                                                                       100% ██████████
 
 Results (345.27s):
       10 passed
        1 skipped
-
-
 
