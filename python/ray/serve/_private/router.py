@@ -974,7 +974,9 @@ class SingletonThreadRouter(Router):
                 cls._event_loop_monitor = EventLoopMonitor(
                     component=component,
                     loop_type=EventLoopMonitor.LOOP_TYPE_ROUTER,
-                    actor_id=actor_id,
+                    # actor_id is None when using DeploymentHandle.remote()
+                    # from the driver.
+                    actor_id=actor_id or "",
                 )
 
                 def _run_router_event_loop():
