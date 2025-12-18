@@ -258,6 +258,22 @@ class _StringNamespace:
             self._expr, width, padding, *args, **kwargs
         )
 
+    def lpad(
+        self, width: int, padding: str = " ", *args: Any, **kwargs: Any
+    ) -> "UDFExpr":
+        """Left-pad strings up to ``width`` using ``padding``."""
+        return _create_str_udf(pc.utf8_lpad, DataType.string())(
+            self._expr, width, padding, *args, **kwargs
+        )
+
+    def rpad(
+        self, width: int, padding: str = " ", *args: Any, **kwargs: Any
+    ) -> "UDFExpr":
+        """Right-pad strings up to ``width`` using ``padding``."""
+        return _create_str_udf(pc.utf8_rpad, DataType.string())(
+            self._expr, width, padding, *args, **kwargs
+        )
+
     # Custom methods that need special logic beyond simple PyArrow function calls
     def strip(self, characters: str | None = None) -> "UDFExpr":
         """Remove leading and trailing whitespace or specified characters.

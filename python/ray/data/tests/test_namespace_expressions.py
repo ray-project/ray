@@ -234,6 +234,8 @@ class TestStringTrimming:
         ("pad", {"width": 5, "fillchar": "*", "side": "right"}, "hi***"),
         ("pad", {"width": 5, "fillchar": "*", "side": "left"}, "***hi"),
         ("pad", {"width": 6, "fillchar": "*", "side": "both"}, "**hi**"),
+        ("lpad", {"width": 5, "padding": "*"}, "***hi"),
+        ("rpad", {"width": 5, "padding": "*"}, "hi***"),
         ("center", {"width": 6, "padding": "*"}, "**hi**"),
     ],
 )
