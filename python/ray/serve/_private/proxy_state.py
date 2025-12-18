@@ -23,6 +23,7 @@ from ray.serve._private.constants import (
     PROXY_READY_CHECK_TIMEOUT_S,
     RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE,
     RAY_SERVE_ENABLE_TASK_EVENTS,
+    REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
@@ -367,7 +368,7 @@ class ProxyState:
             description=(
                 "The time it takes for the proxy to shut down in milliseconds."
             ),
-            boundaries=[10, 50, 100, 200, 500, 1000, 2000, 5000, 10000],
+            boundaries=REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
             tag_keys=("node_id", "node_ip_address"),
         ).set_default_tags({"node_id": node_id, "node_ip_address": node_ip})
         self._shutdown_start_time: Optional[float] = None

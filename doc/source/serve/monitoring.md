@@ -505,6 +505,7 @@ You can customize these buckets using environment variables:
   - `ray_serve_replica_startup_latency_ms`
   - `ray_serve_replica_initialization_latency_ms`
   - `ray_serve_replica_shutdown_duration_ms`
+  - `ray_serve_proxy_shutdown_duration_ms`
 
 Note: `ray_serve_batch_wait_time_ms` and `ray_serve_batch_execution_time_ms` use the same buckets as `RAY_SERVE_REQUEST_LATENCY_BUCKETS_MS`.
 
