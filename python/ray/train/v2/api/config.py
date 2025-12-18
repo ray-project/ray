@@ -38,6 +38,10 @@ class ScalingConfig(ScalingConfigV1):
             ``resources_per_worker`` argument. If the number of workers is 0,
             the training function will run in local mode, meaning the training
             function runs in the same process.
+        use_gpu: If True, training will be done on GPUs (1 per worker).
+            Defaults to False. The number of GPUs reserved by each
+            worker can be overridden with the ``resources_per_worker``
+            argument.
         resources_per_worker: If specified, the resources
             defined in this Dict is reserved for each worker.
             Define the ``"CPU"`` and ``"GPU"`` keys (case-sensitive) to
