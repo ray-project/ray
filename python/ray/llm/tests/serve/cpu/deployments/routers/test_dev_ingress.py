@@ -3,10 +3,8 @@
 This module tests the HTTP endpoints exposed by DevIngress:
 - POST /sleep
 - POST /wakeup
-- POST /is_sleeping
+- GET /is_sleeping
 - POST /reset_prefix_cache
-
-All endpoints accept JSON body with Pydantic models.
 
 These tests verify:
 1. Endpoints are correctly registered and accessible
@@ -124,9 +122,8 @@ class TestDevIngressEndpoints:
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             # Initial state - should not be sleeping
-            response = await client.post(
-                "http://localhost:8000/is_sleeping",
-                json={"model": model_id},
+            response = await client.get(
+                f"http://localhost:8000/is_sleeping?model={model_id}",
             )
             assert response.status_code == 200
             assert response.json().get("is_sleeping") is False
@@ -139,9 +136,8 @@ class TestDevIngressEndpoints:
             assert response.status_code == 200
 
             # Check is_sleeping - should be True
-            response = await client.post(
-                "http://localhost:8000/is_sleeping",
-                json={"model": model_id},
+            response = await client.get(
+                f"http://localhost:8000/is_sleeping?model={model_id}",
             )
             assert response.status_code == 200
             assert response.json().get("is_sleeping") is True
@@ -154,9 +150,8 @@ class TestDevIngressEndpoints:
             assert response.status_code == 200
 
             # Check is_sleeping - should be False again
-            response = await client.post(
-                "http://localhost:8000/is_sleeping",
-                json={"model": model_id},
+            response = await client.get(
+                f"http://localhost:8000/is_sleeping?model={model_id}",
             )
             assert response.status_code == 200
             assert response.json().get("is_sleeping") is False
@@ -172,15 +167,13 @@ class TestDevIngressModelIsolation:
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             # Both models should start awake
-            response = await client.post(
-                "http://localhost:8000/is_sleeping",
-                json={"model": model_1},
+            response = await client.get(
+                f"http://localhost:8000/is_sleeping?model={model_1}",
             )
             assert response.json().get("is_sleeping") is False
 
-            response = await client.post(
-                "http://localhost:8000/is_sleeping",
-                json={"model": model_2},
+            response = await client.get(
+                f"http://localhost:8000/is_sleeping?model={model_2}",
             )
             assert response.json().get("is_sleeping") is False
 
@@ -192,16 +185,14 @@ class TestDevIngressModelIsolation:
             assert response.status_code == 200
 
             # model_1 should be sleeping
-            response = await client.post(
-                "http://localhost:8000/is_sleeping",
-                json={"model": model_1},
+            response = await client.get(
+                f"http://localhost:8000/is_sleeping?model={model_1}",
             )
             assert response.json().get("is_sleeping") is True
 
             # model_2 should NOT be sleeping
-            response = await client.post(
-                "http://localhost:8000/is_sleeping",
-                json={"model": model_2},
+            response = await client.get(
+                f"http://localhost:8000/is_sleeping?model={model_2}",
             )
             assert response.json().get("is_sleeping") is False
 
@@ -213,15 +204,13 @@ class TestDevIngressModelIsolation:
             assert response.status_code == 200
 
             # Both should now be awake
-            response = await client.post(
-                "http://localhost:8000/is_sleeping",
-                json={"model": model_1},
+            response = await client.get(
+                f"http://localhost:8000/is_sleeping?model={model_1}",
             )
             assert response.json().get("is_sleeping") is False
 
-            response = await client.post(
-                "http://localhost:8000/is_sleeping",
-                json={"model": model_2},
+            response = await client.get(
+                f"http://localhost:8000/is_sleeping?model={model_2}",
             )
             assert response.json().get("is_sleeping") is False
 

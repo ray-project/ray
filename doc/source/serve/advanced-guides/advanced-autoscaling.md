@@ -609,6 +609,7 @@ Custom policies let you implement scaling logic based on any metrics or rules yo
 
 A custom autoscaling policy is a user-provided Python function that takes an [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst) and returns a tuple `(target_replicas, policy_state)` for a single Deployment.
 
+An `AutoscalingContext` object provides the following information to the custom autoscaling policy:
 * **Current state:** Current replica count and deployment metadata.
 * **Built-in metrics:** Total requests, queued requests, per-replica counts.
 * **Custom metrics:** Values your deployment reports via `record_autoscaling_stats()`. (See below.)
@@ -618,12 +619,14 @@ A custom autoscaling policy is a user-provided Python function that takes an [`A
 
 The following example showcases a policy that scales up during business hours and evening batch processing, and scales down during off-peak hours:
 
+`autoscaling_policy.py` file:
 ```{literalinclude} ../doc_code/autoscaling_policy.py
 :language: python
 :start-after: __begin_scheduled_batch_processing_policy__
 :end-before: __end_scheduled_batch_processing_policy__
 ```
 
+`main.py` file:
 ```{literalinclude} ../doc_code/scheduled_batch_processing.py
 :language: python
 :start-after: __serve_example_begin__
@@ -645,12 +648,14 @@ You can make richer decisions by emitting your own metrics from the deployment. 
 
 This example demonstrates how deployments can provide their own metrics (CPU usage, memory usage) and how autoscaling policies can use these metrics to make scaling decisions:
 
+`autoscaling_policy.py` file:
 ```{literalinclude} ../doc_code/autoscaling_policy.py
 :language: python
 :start-after: __begin_custom_metrics_autoscaling_policy__
 :end-before: __end_custom_metrics_autoscaling_policy__
 ```
 
+`main.py` file:
 ```{literalinclude} ../doc_code/custom_metrics_autoscaling.py
 :language: python
 :start-after: __serve_example_begin__
@@ -674,13 +679,14 @@ By default, each deployment in Ray Serve autoscales independently. When you have
 
 #### Define an application level policy
 
-An application-level autoscaling policy is a function that takes a Dict[DeploymentID, [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst)] objects (one per deployment) and returns a tuple of `(decisions, policy_state)`. Each context contains metrics and bounds for one deployment, and the policy returns target replica counts for all deployments.
+An application-level autoscaling policy is a function that takes a `dict[DeploymentID, AutoscalingContext]` objects (one per deployment) and returns a tuple of `(decisions, policy_state)`. Each context contains metrics and bounds for one deployment, and the policy returns target replica counts for all deployments.
 
-The `policy_state` returned from an application-level policy must be a `Dict[DeploymentID, Dict]`— a dictionary mapping each deployment ID to its own state dictionary. Serve stores this per-deployment state and on the next control-loop iteration, injects each deployment's state back into that deployment's `AutoscalingContext.policy_state`. 
+The `policy_state` returned from an application-level policy must be a `dict[DeploymentID, dict]`— a dictionary mapping each deployment ID to its own state dictionary. Serve stores this per-deployment state and on the next control-loop iteration, injects each deployment's state back into that deployment's `AutoscalingContext.policy_state`. 
 
 Serve itself does not interpret the contents of `policy_state`. All the keys in each deployment's state dictionary are user-controlled.
 The following example shows a policy that scales deployments based on their relative load, ensuring that downstream deployments have enough capacity for upstream traffic:
 
+`autoscaling_policy.py` file:
 ```{literalinclude} ../doc_code/autoscaling_policy.py
 :language: python
 :start-after: __begin_application_level_autoscaling_policy__
@@ -688,6 +694,7 @@ The following example shows a policy that scales deployments based on their rela
 ```
 The following example shows a stateful application-level policy that persists state between control-loop iterations:
 
+`autoscaling_policy.py` file:
 ```{literalinclude} ../doc_code/autoscaling_policy.py
 :language: python
 :start-after: __begin_stateful_application_level_policy__
@@ -698,6 +705,7 @@ The following example shows a stateful application-level policy that persists st
 
 To use an application-level policy, you need to define your deployments:
 
+`main.py` file:
 ```{literalinclude} ../doc_code/application_level_autoscaling.py
 :language: python
 :start-after: __serve_example_begin__
@@ -706,6 +714,7 @@ To use an application-level policy, you need to define your deployments:
 
 Then specify the application-level policy in your application config:
 
+`serve.yaml` file:
 ```{literalinclude} ../doc_code/application_level_autoscaling.yaml
 :language: yaml
 :emphasize-lines: 4-5
