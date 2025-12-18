@@ -1114,6 +1114,87 @@ class ValueCounter(AggregateFnV2):
         return current_accumulator
 
 
+class TopKUnique(ValueCounter):
+    """Returns the k most frequent unique values in a column.
+
+    This aggregation computes value counts across all blocks, then returns
+    the top-k unique values sorted by frequency. It supports list columns
+    through the `encode_lists` parameter.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import TopKUnique
+
+            # Create a dataset with repeated values
+            ds = ray.data.from_items([
+                {"category": "A"}, {"category": "B"}, {"category": "A"},
+                {"category": "C"}, {"category": "A"}, {"category": "B"}
+            ])
+
+            # Get top 2 most frequent categories
+            result = ds.aggregate(TopKUnique(on="category", k=2))
+            # result: {'top_k_unique(category)': ['A', 'B']}
+
+    Args:
+        on: The name of the column to find top-k unique values in.
+        k: The number of top unique values to return.
+        encode_lists: If `True`, flatten list elements before counting.
+            If `False`, treat entire lists as single values. Default is `True`.
+        alias_name: Optional name for the resulting column. If not provided,
+            defaults to "top_k_unique({column_name})".
+    """
+
+    def __init__(
+        self,
+        on: str,
+        k: int,
+        encode_lists: bool = True,
+        alias_name: Optional[str] = None,
+    ):
+        super().__init__(
+            on=on,
+            alias_name=alias_name if alias_name else f"top_k_unique({str(on)})",
+        )
+        self.k = k
+        self._encode_lists = encode_lists
+
+    def aggregate_block(self, block: Block) -> Dict[str, List]:
+        column = block[self._target_col_name]
+        column_accessor = BlockColumnAccessor.for_column(column)
+
+        if column_accessor.is_composed_of_lists():
+            if self._encode_lists:
+                column_accessor = BlockColumnAccessor.for_column(
+                    column_accessor.flatten()
+                )
+                column_accessor = BlockColumnAccessor.for_column(
+                    column_accessor.dropna()
+                )
+            else:
+                column_accessor = BlockColumnAccessor.for_column(column_accessor.hash())
+
+        return column_accessor.value_counts()
+
+    def finalize(self, accumulator: Dict[str, List]) -> Optional[List]:
+        if accumulator is None:
+            return None
+
+        import heapq
+
+        values = accumulator["values"]
+        counts = accumulator["counts"]
+
+        if not values:
+            return []
+
+        # Use heapq.nlargest for O(n log k) instead of O(n log n) full sort
+        top_k_pairs = heapq.nlargest(self.k, zip(values, counts), key=lambda x: x[1])
+        return [v for v, _ in top_k_pairs]
+
+
 def _null_safe_zero_factory(zero_factory, ignore_nulls: bool):
     """NOTE: PLEASE READ CAREFULLY BEFORE CHANGING
 

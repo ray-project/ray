@@ -8,7 +8,9 @@ from ray.data.aggregate import (
     ApproximateQuantile,
     ApproximateTopK,
     MissingValuePercentage,
+    TopKUnique,
     Unique,
+    ValueCounter,
     ZeroPercentage,
 )
 from ray.data.tests.conftest import *  # noqa
@@ -557,6 +559,207 @@ class TestUnique:
         answer = ["a", "b", "c"]
 
         assert Counter(result["unique(id)"]) == Counter(answer)
+
+
+class TestValueCounter:
+    """Test cases for ValueCounter aggregation."""
+
+    def test_value_counter_basic(self, ray_start_regular_shared_2_cpus):
+        """Test basic value counting."""
+        data = [
+            {"category": "A"},
+            {"category": "B"},
+            {"category": "A"},
+            {"category": "C"},
+            {"category": "A"},
+            {"category": "B"},
+        ]
+        ds = ray.data.from_items(data)
+
+        result = ds.aggregate(ValueCounter(on="category"))
+        vc = result["value_counter(category)"]
+
+        # Convert to dict for easier comparison
+        counts = dict(zip(vc["values"], vc["counts"]))
+        assert counts == {"A": 3, "B": 2, "C": 1}
+
+    def test_value_counter_custom_alias(self, ray_start_regular_shared_2_cpus):
+        """Test value counting with custom alias."""
+        data = [{"x": "a"}, {"x": "b"}, {"x": "a"}]
+        ds = ray.data.from_items(data)
+
+        result = ds.aggregate(ValueCounter(on="x", alias_name="my_counts"))
+        assert "my_counts" in result
+        vc = result["my_counts"]
+        counts = dict(zip(vc["values"], vc["counts"]))
+        assert counts == {"a": 2, "b": 1}
+
+    def test_value_counter_groupby(self, ray_start_regular_shared_2_cpus):
+        """Test value counting with groupby."""
+        data = [
+            {"group": "X", "category": "A"},
+            {"group": "X", "category": "B"},
+            {"group": "X", "category": "A"},
+            {"group": "Y", "category": "A"},
+            {"group": "Y", "category": "A"},
+        ]
+        ds = ray.data.from_items(data)
+
+        result = ds.groupby("group").aggregate(ValueCounter(on="category")).take_all()
+
+        result_by_group = {}
+        for row in result:
+            vc = row["value_counter(category)"]
+            result_by_group[row["group"]] = dict(zip(vc["values"], vc["counts"]))
+
+        assert result_by_group["X"] == {"A": 2, "B": 1}
+        assert result_by_group["Y"] == {"A": 2}
+
+    def test_value_counter_numeric_values(self, ray_start_regular_shared_2_cpus):
+        """Test value counting with numeric values."""
+        data = [{"n": 1}, {"n": 2}, {"n": 1}, {"n": 1}, {"n": 3}]
+        ds = ray.data.from_items(data)
+
+        result = ds.aggregate(ValueCounter(on="n"))
+        vc = result["value_counter(n)"]
+        counts = dict(zip(vc["values"], vc["counts"]))
+
+        assert counts == {1: 3, 2: 1, 3: 1}
+
+    def test_value_counter_large_dataset(self, ray_start_regular_shared_2_cpus):
+        """Test value counting with a larger dataset across multiple blocks."""
+        # Create data where values are distributed across blocks
+        data = []
+        for i in range(1000):
+            data.append({"category": f"cat_{i % 10}"})
+
+        ds = ray.data.from_items(data).repartition(10)
+
+        result = ds.aggregate(ValueCounter(on="category"))
+        vc = result["value_counter(category)"]
+        counts = dict(zip(vc["values"], vc["counts"]))
+
+        # Each category should appear 100 times
+        for i in range(10):
+            assert counts[f"cat_{i}"] == 100
+
+
+class TestTopKUnique:
+    """Test cases for TopKUnique aggregation."""
+
+    def test_topk_unique_basic(self, ray_start_regular_shared_2_cpus):
+        """Test basic top-k unique values."""
+        data = [
+            *[{"category": "A"} for _ in range(5)],
+            *[{"category": "B"} for _ in range(3)],
+            *[{"category": "C"} for _ in range(2)],
+            *[{"category": "D"} for _ in range(1)],
+        ]
+        ds = ray.data.from_items(data)
+
+        result = ds.aggregate(TopKUnique(on="category", k=2))
+        top2 = result["top_k_unique(category)"]
+
+        assert top2 == ["A", "B"]
+
+    def test_topk_unique_global_frequency(self, ray_start_regular_shared_2_cpus):
+        """Test that TopKUnique computes global top-k, not per-block top-k.
+
+        This verifies that an element appearing across multiple blocks with
+        high cumulative count is correctly identified as a top element.
+        """
+        # Block 1: A=101, B=99, C=52
+        # Block 2: D=100, E=99, C=50
+        # Global counts: C=102, A=101, D=100, B=99, E=99
+        # Top 2 should be C and A
+        block1_data = ["A"] * 101 + ["B"] * 99 + ["C"] * 52
+        block2_data = ["D"] * 100 + ["E"] * 99 + ["C"] * 50
+
+        ds = ray.data.from_items(
+            [{"val": v} for v in block1_data + block2_data]
+        ).repartition(2)
+
+        result = ds.aggregate(TopKUnique(on="val", k=2))
+        top2 = result["top_k_unique(val)"]
+
+        assert "C" in top2, f"C should be in top 2 (count=102), but got {top2}"
+        assert "A" in top2, f"A should be in top 2 (count=101), but got {top2}"
+        assert len(top2) == 2
+
+    def test_topk_unique_custom_alias(self, ray_start_regular_shared_2_cpus):
+        """Test top-k unique with custom alias."""
+        data = [{"x": "a"}, {"x": "b"}, {"x": "a"}, {"x": "c"}]
+        ds = ray.data.from_items(data)
+
+        result = ds.aggregate(TopKUnique(on="x", k=2, alias_name="top_items"))
+        assert "top_items" in result
+        assert result["top_items"][0] == "a"
+
+    def test_topk_unique_fewer_than_k(self, ray_start_regular_shared_2_cpus):
+        """Test top-k unique when fewer unique values than k exist."""
+        data = [{"x": "a"}, {"x": "b"}, {"x": "a"}]
+        ds = ray.data.from_items(data)
+
+        result = ds.aggregate(TopKUnique(on="x", k=5))
+        top = result["top_k_unique(x)"]
+
+        # Should return only 2 items since that's all we have
+        assert len(top) == 2
+        assert top[0] == "a"  # Most frequent
+
+    def test_topk_unique_encode_lists_true(self, ray_start_regular_shared_2_cpus):
+        """Test top-k unique with list columns when encode_lists=True."""
+        data = [
+            {"tags": ["python", "java", "python"]},
+            {"tags": ["java", "go"]},
+            {"tags": ["python", "rust"]},
+        ]
+        ds = ray.data.from_items(data)
+
+        result = ds.aggregate(TopKUnique(on="tags", k=2, encode_lists=True))
+        top2 = result["top_k_unique(tags)"]
+
+        # python appears 3 times, java 2 times
+        assert top2[0] == "python"
+        assert top2[1] == "java"
+
+    def test_topk_unique_encode_lists_false(self, ray_start_regular_shared_2_cpus):
+        """Test top-k unique with list columns when encode_lists=False (hash lists)."""
+        data = [
+            {"tags": ["a", "b"]},
+            {"tags": ["a", "b"]},
+            {"tags": ["c", "d"]},
+        ]
+        ds = ray.data.from_items(data)
+
+        result = ds.aggregate(TopKUnique(on="tags", k=2, encode_lists=False))
+        top = result["top_k_unique(tags)"]
+
+        # Lists are hashed, so we get hashes back, not the original lists
+        # Just verify we get the expected number of results
+        assert len(top) == 2
+
+    def test_topk_unique_groupby(self, ray_start_regular_shared_2_cpus):
+        """Test top-k unique with groupby."""
+        data = [
+            *[{"group": "X", "item": "apple"} for _ in range(5)],
+            *[{"group": "X", "item": "banana"} for _ in range(3)],
+            *[{"group": "X", "item": "cherry"} for _ in range(1)],
+            *[{"group": "Y", "item": "date"} for _ in range(4)],
+            *[{"group": "Y", "item": "elderberry"} for _ in range(2)],
+        ]
+        ds = ray.data.from_items(data)
+
+        result = (
+            ds.groupby("group")
+            .aggregate(TopKUnique(on="item", k=2))
+            .take_all()
+        )
+
+        result_by_group = {row["group"]: row["top_k_unique(item)"] for row in result}
+
+        assert result_by_group["X"] == ["apple", "banana"]
+        assert result_by_group["Y"] == ["date", "elderberry"]
 
 
 if __name__ == "__main__":
