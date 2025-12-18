@@ -1114,6 +1114,7 @@ class ValueCounter(AggregateFnV2):
         return current_accumulator
 
 
+@PublicAPI
 class TopK(ValueCounter):
     """Returns the k most frequent unique values in a column.
 
