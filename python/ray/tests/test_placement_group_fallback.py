@@ -142,6 +142,53 @@ def test_placement_group_fallback_bundle_shapes(ray_start_cluster):
     placement_group_assert_no_leak([pg])
 
 
+def test_multiple_placement_groups_and_fallbacks(ray_start_cluster):
+    """
+    Test that multiple placement groups with fallback strategies correctly subtract
+    from available resources in the cluster.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=10)
+    ray.init(address=cluster.address)
+
+    # Define a fallback strategy that uses 3 CPUs.
+    fallback_strategy = [{"bundles": [{"CPU": 3}]}]
+
+    pgs = []
+    for i in range(3):
+        pg = placement_group(
+            name=f"pg_{i}",
+            bundles=[{"CPU": 100}],  # Infeasible
+            strategy="PACK",
+            fallback_strategy=fallback_strategy,
+        )
+        pgs.append(pg)
+
+    # Create 3 PGs that should all use the fallback strategy.
+    for pg in pgs:
+        ray.get(pg.ready(), timeout=10)
+
+    # Verify we can still schedule a task utilizing the last CPU (10 total - 9 used by PGs).
+    @ray.remote(num_cpus=1)
+    def small_task():
+        return "ok"
+
+    assert ray.get(small_task.remote(), timeout=5) == "ok"
+
+    # Validate PGs with fallback correctly subtract from the available cluster resources to where
+    # a task requesting more CPU than is available times out.
+    @ray.remote(num_cpus=2)
+    def large_task():
+        return "fail"
+
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(large_task.remote(), timeout=2)
+
+    for pg in pgs:
+        remove_placement_group(pg)
+    placement_group_assert_no_leak(pgs)
+
+
 if __name__ == "__main__":
     import sys
 
