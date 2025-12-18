@@ -222,8 +222,6 @@ void MutableObjectProvider::HandlePushMutableObject(
 
   // Copy chunk data to backing store.
   memcpy(object_backing_store->Data() + offset, request.data().data(), chunk_size);
-  size_t total_written = tmp_written_so_far + chunk_size;
-  RAY_CHECK_LE(total_written, total_data_size);
 
   // Mark this chunk as received only after successfully writing it.
   // This ensures retries are handled correctly even if WriteAcquire fails.
@@ -237,6 +235,7 @@ void MutableObjectProvider::HandlePushMutableObject(
       written_so_far_[writer_object_id] = 0;
     }
     written_so_far_[writer_object_id] += chunk_size;
+    RAY_CHECK_LE(written_so_far_[writer_object_id], total_data_size);
     if (written_so_far_[writer_object_id] == total_data_size) {
       object_complete = true;
       // Note: We keep received_chunks_ and written_so_far_ entries until WriteRelease
@@ -245,7 +244,7 @@ void MutableObjectProvider::HandlePushMutableObject(
     }
   }
 
-  if (total_written == total_data_size) {
+  if (object_complete) {
     // All data chunks received - copy metadata and release write lock.
     memcpy(object_backing_store->Data() + total_data_size,
            request.metadata().data(),
