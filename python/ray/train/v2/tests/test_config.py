@@ -44,6 +44,37 @@ def test_storage_filesystem_repr():
     repr(config)
 
 
+def test_scaling_config_tpu_validation_missing_workers():
+    """Test that num_workers is required when use_tpu=True."""
+    with pytest.raises(ValueError, match="`num_workers` must be specified"):
+        ScalingConfig(use_tpu=True, accelerator_type="TPU-V4", topology="2x2x2")
+
+
+def test_scaling_config_tpu_validation_topology_overflow(monkeypatch):
+    """Test that num_workers cannot exceed topology limits for a given TPU slice."""
+    # Create a valid Scaling config for a TPU slice that can accomodate at most 4 workers.
+    ScalingConfig(
+        use_tpu=True, num_workers=4, accelerator_type="v4-32", topology="2x2x4"
+    )
+
+    # Attempt to create an invalid ScalingConfig with num_workers greater than max allowed.
+    with pytest.raises(ValueError, match="exceeds the maximum number of workers"):
+        ScalingConfig(
+            use_tpu=True, num_workers=5, accelerator_type="v4-32", topology="2x2x4"
+        )
+
+
+def test_scaling_config_default_workers():
+    """Test that num_workers defaults to 1 for non-TPU workloads."""
+    config = ScalingConfig()
+    assert config.num_workers == 1
+    assert config.total_resources == {"CPU": 1}
+
+    config_gpu = ScalingConfig(use_gpu=True)
+    assert config_gpu.num_workers == 1
+    assert config_gpu.total_resources == {"GPU": 1}
+
+
 if __name__ == "__main__":
     import sys
 

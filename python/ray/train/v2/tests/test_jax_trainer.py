@@ -240,7 +240,7 @@ def test_tpu_single_host(ray_tpu_single_host, tmp_path):
 def test_tpu_single_slice_multi_host(ray_tpu_multi_host, tmp_path):
     """
     Tests scheduling on a single multi-host slice. The number of workers
-    is dynamically set to the number of hosts in the slice, with each
+    is set by the user to match the number of hosts in the slice, with each
     worker consuming the full resources on that host.
     """
     actor_name = "test_tpu_single_slice_multi_host"
@@ -253,6 +253,7 @@ def test_tpu_single_slice_multi_host(ray_tpu_multi_host, tmp_path):
             accelerator_type="TPU-V4",
             topology="2x2x2",
             num_slices=1,
+            num_workers=2,
         ),
         run_config=RunConfig(
             storage_path=str(tmp_path),
@@ -286,8 +287,8 @@ def test_tpu_single_slice_multi_host(ray_tpu_multi_host, tmp_path):
 def test_tpu_multi_slice_multi_host(ray_tpu_multi_host, tmp_path):
     """
     Tests execution of TPU workers across multiple multi-host slices. The
-    JaxTrainer will automatically create the number of workers to run 1
-    worker per TPU host.
+    user specifies num_workers equal to the total number of hosts across all
+    slices.
     """
     actor_name = "test_tpu_multi_slice_multi_host"
     verify_actor = VerificationActor.options(name=actor_name).remote()
@@ -299,6 +300,7 @@ def test_tpu_multi_slice_multi_host(ray_tpu_multi_host, tmp_path):
             accelerator_type="TPU-V4",
             topology="2x2x2",
             num_slices=2,
+            num_workers=4,
         ),
         run_config=RunConfig(
             storage_path=str(tmp_path),
@@ -343,7 +345,7 @@ def test_multi_slice_manual_resources(ray_tpu_multi_host, tmp_path):
     """
     Tests execution of TPU workers across multiple multi-host slices when
     `resources_per_worker` is specified. The JaxTrainer should execute across
-    both slices with a dynamic number of workers of the specified resources.
+    both slices with num_workers workers of the specified resources.
     """
     actor_name = "test_multi_slice_manual_resources"
     verify_actor = VerificationActor.options(name=actor_name).remote()
@@ -356,6 +358,7 @@ def test_multi_slice_manual_resources(ray_tpu_multi_host, tmp_path):
             topology="2x2x2",
             num_slices=2,
             resources_per_worker={"TPU": 1},  # 1 CPU added by default per-bundle.
+            num_workers=16,
         ),
         run_config=RunConfig(
             storage_path=str(tmp_path),

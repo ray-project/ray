@@ -85,7 +85,13 @@ class ScalingConfig(ScalingConfigV1):
         if self.trainer_resources is not None:
             raise DeprecationWarning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
 
-        # Auto-detect TPU resources when both topology and accelerator type are specified.
+        if self.use_tpu and self.num_workers is None:
+            raise ValueError(
+                "`num_workers` must be specified in ScalingConfig when `use_tpu=True`. "
+                "Please explicitly set the number of workers."
+            )
+
+        # Validate TPU resources when both topology and accelerator type are specified.
         if self.use_tpu and self.topology and self.accelerator_type:
             try:
                 tpu_num_workers, tpu_resources = get_tpu_worker_resources(
@@ -101,15 +107,12 @@ class ScalingConfig(ScalingConfigV1):
                     f"topology={self.topology}. Error: {e}"
                 )
 
-            if self.num_workers is None:
-                self.num_workers = tpu_num_workers
-                logger.info(
-                    f"Auto-detected num_workers={self.num_workers} based on topology."
-                )
-            elif self.num_workers != tpu_num_workers:
-                logger.warning(
-                    f"User specified num_workers={self.num_workers}, but topology "
-                    f"implies {tpu_num_workers} workers."
+            if self.num_workers is not None and self.num_workers > tpu_num_workers:
+                raise ValueError(
+                    f"The configured `num_workers` ({self.num_workers}) exceeds the "
+                    f"maximum number of workers ({tpu_num_workers}) supported by the "
+                    f"specified TPU topology ({self.topology}) and accelerator type "
+                    f"({self.accelerator_type})."
                 )
 
             if self.resources_per_worker is None:
@@ -133,7 +136,7 @@ class ScalingConfig(ScalingConfigV1):
                 "`resources_per_worker."
             )
 
-        # Default num_workers if not set by user or auto-detected for a topology.
+        # Default num_workers if not set by user.
         if self.num_workers is None:
             self.num_workers = 1
 
