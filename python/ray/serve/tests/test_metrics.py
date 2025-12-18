@@ -2389,6 +2389,11 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
             ("proxy", "main"),
             ("replica", "main"),
         }
+        if RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD:
+            expected_pairs.add(("replica", "user_code"))
+        if RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP:
+            expected_pairs.add(("replica", "router"))
+            expected_pairs.add(("proxy", "router"))
         return expected_pairs.issubset(component_loop_pairs)
 
     wait_for_condition(check_scheduling_latency_metric, timeout=30)
@@ -2401,8 +2406,24 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
             timeout=10,
             timeseries=timeseries,
         )
-        # Should have metrics for multiple components
-        return len(metrics) >= 4  # proxy main, replica main, user_code, router
+        # Should have metrics for proxy main, replica main, replica user_code, router
+        component_loop_pairs = set()
+        for m in metrics:
+            component = m.get("component")
+            loop_type = m.get("loop_type")
+            if component and loop_type:
+                component_loop_pairs.add((component, loop_type))
+
+        expected_pairs = {
+            ("proxy", "main"),
+            ("replica", "main"),
+        }
+        if RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD:
+            expected_pairs.add(("replica", "user_code"))
+        if RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP:
+            expected_pairs.add(("replica", "router"))
+            expected_pairs.add(("proxy", "router"))
+        return expected_pairs.issubset(component_loop_pairs)
 
     wait_for_condition(check_tasks_gauge_metric, timeout=30)
     print("Event loop tasks gauge metrics verified.")
