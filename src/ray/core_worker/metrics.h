@@ -97,7 +97,7 @@ inline ray::stats::Histogram GetTaskDependencyResolutionTimeMsHistogramMetric() 
       /*description=*/
       "Time from task submission to dependency resolution completion.",
       /*unit=*/"ms",
-      /*boundaries=*/{1, 5, 10, 25, 50, 100, 250, 500, 1000, 3000, 2000, 5000, 10000},
+      /*boundaries=*/{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000},
       /*tag_keys=*/{},
   };
 }
