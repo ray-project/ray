@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1.3-labs
+ARG HOSTTYPE=x86_64
 ARG ARCH_SUFFIX
-FROM cr.ray.io/rayproject/manylinux$ARCH_SUFFIX AS builder
+ARG MANYLINUX_VERSION
+FROM rayproject/manylinux2014:${MANYLINUX_VERSION}-jdk-${HOSTTYPE} AS builder
 
 ARG BUILDKITE_BAZEL_CACHE_URL
 ARG BUILDKITE_CACHE_READONLY
