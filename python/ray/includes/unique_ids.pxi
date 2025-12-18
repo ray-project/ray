@@ -319,6 +319,8 @@ cdef class ActorID(BaseID):
 
     @property
     def job_id(self):
+        if self.data.IsNil():
+            raise ValueError("ActorID is nil")
         return JobID(self.data.JobId().Binary())
 
     def binary(self):
