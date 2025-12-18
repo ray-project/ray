@@ -14,6 +14,12 @@ This compatibility means you can:
 
 This document provides a guide for deploying and interacting with the custom **SGLang engine** wrapped within a Ray Serve infrastructure. This setup leverages SGLang's efficient batching capabilities while providing a scalable, production-ready **OpenAI-compatible API**.
 
+What is NOT supported in this implementation:
+
+- Support for engine replicas
+- SGLangServer implemented chat and completions methods but no embeddings, transcriptions, and score methods
+- Support for TP/PP/DP
+
 ## Core Components
 
 Your custom deployment consists of two main components:
@@ -67,3 +73,4 @@ curl http://127.0.0.1:8000/v1/completions \
 
 - [SGLang supported models](https://docs.sglang.ai/supported_models/classify_models.html#supported-models) - Complete list of supported models and features
 - [SGLang OpenAI compatibility](https://docs.sglang.ai/basic_usage/openai_api.html) - SGLang's OpenAI-compatible server documentation
+- [Ray Serve LLM + SGLang PRD](https://docs.google.com/document/d/1FLaormOPANCCLBI_UBJLwPl6a9njIyT-kSJfhxLERXA/edit?usp=sharing) - On going working doc for Ray Serve LLM + SGLang PRD
