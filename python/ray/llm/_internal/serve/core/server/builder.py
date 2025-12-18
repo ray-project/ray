@@ -2,11 +2,14 @@ import pprint
 from typing import Optional, Type
 
 from ray import serve
-from ray.llm._internal.common.dict_utils import deep_merge_dicts
+from ray.llm._internal.common.dict_utils import (
+    maybe_apply_llm_deployment_config_defaults,
+)
 from ray.llm._internal.serve.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
+    DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
@@ -22,6 +25,9 @@ DEFAULT_DEPLOYMENT_OPTIONS = {
     "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
     "health_check_period_s": DEFAULT_HEALTH_CHECK_PERIOD_S,
     "health_check_timeout_s": DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+    "autoscaling_config": {
+        "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
+    },
 }
 
 
@@ -66,7 +72,7 @@ def build_llm_deployment(
     if override_serve_options:
         deployment_options.update(override_serve_options)
 
-    deployment_options = deep_merge_dicts(
+    deployment_options = maybe_apply_llm_deployment_config_defaults(
         DEFAULT_DEPLOYMENT_OPTIONS, deployment_options
     )
 

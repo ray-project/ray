@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Union
 
 import ray
-from ray._private.custom_types import TensorTransportEnum
 from ray._raylet import ObjectRef
 from ray.experimental.gpu_object_manager.types import (
     CommunicatorMetadata,
@@ -22,23 +21,6 @@ except ImportError:
         "`tensor_transport` requires PyTorch. "
         "Please install torch with 'pip install torch' to use this feature."
     )
-
-TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND = {
-    TensorTransportEnum.NCCL: "nccl",
-    TensorTransportEnum.GLOO: "torch_gloo",
-    TensorTransportEnum.NIXL: "nixl",
-}
-
-
-def _tensor_transport_to_collective_backend(
-    tensor_transport: TensorTransportEnum,
-) -> str:
-    try:
-        return TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND[tensor_transport]
-    except KeyError:
-        raise ValueError(
-            f"Invalid tensor transport {tensor_transport.name}, must be one of {list(TENSOR_TRANSPORT_TO_COLLECTIVE_BACKEND.keys())}."
-        )
 
 
 def __ray_get_tensor_transport_metadata__(

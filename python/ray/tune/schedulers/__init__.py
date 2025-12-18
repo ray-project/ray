@@ -15,8 +15,7 @@ from ray.util import PublicAPI
 
 
 def _pb2_importer():
-    # PB2 introduces a GPy dependency which can be expensive, so we import
-    # lazily.
+    # PB2 is imported lazily since it has additional dependencies.
     from ray.tune.schedulers.pb2 import PB2
 
     return PB2

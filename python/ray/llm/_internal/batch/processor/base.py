@@ -2,7 +2,7 @@ import logging
 from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
-from pydantic import Field, field_validator, root_validator
+from pydantic import Field, field_validator, model_validator
 
 import ray
 from ray.data import Dataset
@@ -154,6 +154,14 @@ class OfflineProcessorConfig(ProcessorConfig):
         "or the batch processing latency is too small, but it should be good "
         "enough for batch size >= 32.",
     )
+    should_continue_on_error: bool = Field(
+        default=False,
+        description="If True, continue processing when inference fails for a row "
+        "instead of raising an exception. Failed rows will have a non-null "
+        "'__inference_error__' column containing the error message, and other "
+        "output columns will be None. Error rows bypass postprocess. "
+        "If False (default), any inference error will raise an exception.",
+    )
 
     # Processor stage configurations (legacy booleans, will be deprecated).
     apply_chat_template: bool = Field(
@@ -174,7 +182,8 @@ class OfflineProcessorConfig(ProcessorConfig):
     )
     has_image: bool = Field(
         default=False,
-        description="[DEPRECATED] Prefer `prepare_image_stage`. Whether the input messages have images.",
+        description="[DEPRECATED] Prefer `prepare_multimodal_stage` for processing multimodal data. "
+        "Whether the input messages have images.",
     )
 
     # New nested stage configuration (bool | dict | typed config).
@@ -192,10 +201,14 @@ class OfflineProcessorConfig(ProcessorConfig):
     )
     prepare_image_stage: Any = Field(
         default=False,
-        description="Prepare image stage config (bool | dict | PrepareImageStageConfig).",
+        description="[DEPRECATED] Prefer `prepare_multimodal_stage` for processing multimodal data. Prepare image stage config (bool | dict | PrepareImageStageConfig).",
+    )
+    prepare_multimodal_stage: Any = Field(
+        default=False,
+        description="Prepare multimodal stage config (bool | dict | PrepareMultimodalStageConfig).",
     )
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
     def _coerce_legacy_to_stage_config(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         # Only set stage fields if not explicitly provided.
         # Emit deprecation warnings when legacy boolean flags are used.
@@ -240,6 +253,34 @@ class OfflineProcessorConfig(ProcessorConfig):
                 legacy_value = values.get(legacy_field)
                 enabled = default_enabled if legacy_value is None else legacy_value
                 values[stage_field] = {"enabled": enabled}
+
+        return values
+
+    @model_validator(mode="before")
+    def _warn_prepare_image_stage_deprecation(
+        cls, values: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Warn if prepare_image_stage is enabled, recommend prepare_multimodal_stage instead."""
+        if "prepare_image_stage" in values:
+            prepare_image_stage_value = values.get("prepare_image_stage")
+            if prepare_image_stage_value is None:
+                is_enabled = False
+            elif isinstance(prepare_image_stage_value, bool):
+                is_enabled = prepare_image_stage_value
+            elif isinstance(prepare_image_stage_value, dict):
+                is_enabled = True
+            else:
+                is_enabled = prepare_image_stage_value.enabled
+
+            if is_enabled:
+                logger.warning(
+                    "The stage `prepare_image_stage` is deprecated. "
+                    "Prefer `prepare_multimodal_stage` instead, which unifies image, audio, "
+                    "video, etc. processing with a single stage. For example: "
+                    "`prepare_multimodal_stage=PrepareMultimodalStageConfig(enabled=True)` "
+                    "or `prepare_multimodal_stage={'enabled': True}`. "
+                    "This will raise an error in a future version."
+                )
 
         return values
 
@@ -304,9 +345,13 @@ class Processor:
             self.DATA_COLUMN,
         )
 
+        # When should_continue_on_error is enabled, include __inference_error__ column
+        # in all output rows for consistent schema (None for success, message for error).
+        include_error_column = getattr(config, "should_continue_on_error", False)
         self.postprocess = wrap_postprocess(
             postprocess,
             self.DATA_COLUMN,
+            include_error_column=include_error_column,
         )
 
         for stage in stages:
@@ -443,7 +488,7 @@ class ProcessorBuilder:
             if conflicting_keys:
                 raise ValueError(
                     f"builder_kwargs cannot contain {conflicting_keys} as these are "
-                    "passed as explicit arguments to build_llm_processor. "
+                    "passed as explicit arguments to build_processor. "
                     "Please pass these directly instead of in builder_kwargs."
                 )
 

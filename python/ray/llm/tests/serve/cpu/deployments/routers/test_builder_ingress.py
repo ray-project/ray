@@ -10,6 +10,7 @@ import yaml
 
 from ray import serve
 from ray._common.test_utils import wait_for_condition
+from ray.llm._internal.serve.constants import DEFAULT_MAX_TARGET_ONGOING_REQUESTS
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     ModelLoadingConfig,
@@ -306,6 +307,69 @@ class TestBuildOpenaiApp:
         assert deployment.ray_actor_options["num_cpus"] == 4
         assert deployment.ray_actor_options["memory"] == 1024
         assert deployment._deployment_config.max_ongoing_requests == 200
+
+    def test_default_autoscaling_config_included_without_num_replicas(
+        self, llm_config, disable_placement_bundles
+    ):
+        """Test that default autoscaling_config with target_ongoing_requests is included
+        when num_replicas is not specified.
+        """
+        app = build_openai_app(
+            dict(
+                llm_configs=[llm_config],
+            )
+        )
+
+        deployment = app._bound_deployment
+        autoscaling_config = deployment._deployment_config.autoscaling_config
+        assert autoscaling_config is not None
+        assert (
+            autoscaling_config.target_ongoing_requests
+            == DEFAULT_MAX_TARGET_ONGOING_REQUESTS
+        )
+
+    def test_autoscaling_config_removed_from_defaults_when_num_replicas_specified(
+        self, llm_config, disable_placement_bundles
+    ):
+        """Test that autoscaling_config from defaults is removed when user specifies
+        num_replicas, since Ray Serve does not allow both.
+        """
+        app = build_openai_app(
+            dict(
+                llm_configs=[llm_config],
+                ingress_deployment_config={
+                    "num_replicas": 2,
+                },
+            )
+        )
+
+        deployment = app._bound_deployment
+        assert deployment._deployment_config.num_replicas == 2
+        # autoscaling_config should be None since num_replicas is set
+        assert deployment._deployment_config.autoscaling_config is None
+
+    def test_user_target_ongoing_requests_respected(
+        self, llm_config, disable_placement_bundles
+    ):
+        """Test that user-specified target_ongoing_requests is respected and not
+        overridden by defaults.
+        """
+        user_target = 50
+        app = build_openai_app(
+            dict(
+                llm_configs=[llm_config],
+                ingress_deployment_config={
+                    "autoscaling_config": {
+                        "target_ongoing_requests": user_target,
+                    },
+                },
+            )
+        )
+
+        deployment = app._bound_deployment
+        autoscaling_config = deployment._deployment_config.autoscaling_config
+        assert autoscaling_config is not None
+        assert autoscaling_config.target_ongoing_requests == user_target
 
 
 def extract_applications_from_output(output: bytes) -> dict:
