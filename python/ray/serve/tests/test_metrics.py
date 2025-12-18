@@ -33,6 +33,7 @@ from ray.serve._private.test_utils import (
     ping_grpc_list_applications,
 )
 from ray.serve._private.utils import block_until_http_ready
+from ray.serve.config import RequestRouterConfig
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.util.state import list_actors
 
@@ -1291,6 +1292,239 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
     assert (
         "/api/users/{user_id}" in latency_routes or "/api/" in latency_routes
     ), f"Latency metrics should use route patterns. Found: {latency_routes}"
+
+
+def test_routing_stats_delay_metric(metrics_start_shutdown):
+    """Test that routing stats delay metric is reported correctly."""
+
+    @serve.deployment
+    class Model:
+        def __call__(self):
+            return "hello"
+
+    serve.run(Model.bind(), name="app")
+    timeseries = PrometheusTimeseries()
+
+    # Wait for routing stats delay metric to be reported
+    # This metric is recorded when the controller polls routing stats from replicas
+    def check_routing_stats_delay_metric():
+        metrics = get_metric_dictionaries(
+            "ray_serve_routing_stats_delay_ms_count", timeseries=timeseries
+        )
+        if not metrics:
+            return False
+        # Check that at least one metric has expected tags
+        for metric in metrics:
+            assert metric["deployment"] == "Model"
+            assert metric["application"] == "app"
+            assert "replica" in metric
+            return True
+        return False
+
+    wait_for_condition(check_routing_stats_delay_metric, timeout=60)
+
+    # Verify the metric value is greater than 0
+    def check_routing_stats_delay_metric_value():
+        value = get_metric_float(
+            "ray_serve_routing_stats_delay_ms_count",
+            timeseries=timeseries,
+            expected_tags={
+                "deployment": "Model",
+                "application": "app",
+            },
+        )
+        return value > 0
+
+    wait_for_condition(check_routing_stats_delay_metric_value, timeout=60)
+
+
+def test_routing_stats_error_metric(metrics_start_shutdown):
+    """Test that routing stats error metric is reported on exception and timeout."""
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        request_router_config=RequestRouterConfig(
+            request_routing_stats_period_s=0.1, request_routing_stats_timeout_s=0.5
+        )
+    )
+    class FailingModel:
+        def __init__(self, signal_actor):
+            self.should_fail = False
+            self.should_hang = False
+            self.signal = signal_actor
+
+        async def record_routing_stats(self):
+            if self.should_hang:
+                await self.signal.wait.remote()
+            if self.should_fail:
+                raise Exception("Intentional failure for testing")
+            return {}
+
+        def __call__(self):
+            return "hello"
+
+        def set_should_fail(self, value: bool):
+            self.should_fail = value
+
+        def set_should_hang(self, value: bool):
+            self.should_hang = value
+
+    handle = serve.run(FailingModel.bind(signal), name="error_app")
+    timeseries = PrometheusTimeseries()
+
+    # Make a request to ensure deployment is running
+    handle.remote().result()
+
+    # Trigger exception in record_routing_stats
+    handle.set_should_fail.remote(True).result()
+
+    # Make requests to trigger routing stats collection
+    for _ in range(5):
+        handle.remote().result()
+
+    # Check that error metric with error_type="exception" is reported
+    def check_exception_error_metric():
+        metrics = get_metric_dictionaries(
+            "ray_serve_routing_stats_error_total", timeseries=timeseries
+        )
+        for metric in metrics:
+            if (
+                metric.get("deployment") == "FailingModel"
+                and metric.get("application") == "error_app"
+                and metric.get("error_type") == "exception"
+            ):
+                assert "replica" in metric
+                return True
+        return False
+
+    wait_for_condition(check_exception_error_metric, timeout=30)
+    print("Exception error metric verified.")
+
+    # Now test timeout case
+    handle.set_should_fail.remote(False).result()
+    handle.set_should_hang.remote(True).result()
+
+    # Make requests to trigger routing stats timeout
+    for _ in range(5):
+        handle.remote().result()
+
+    # Check that error metric with error_type="timeout" is reported
+    def check_timeout_error_metric():
+        metrics = get_metric_dictionaries(
+            "ray_serve_routing_stats_error_total", timeseries=timeseries
+        )
+        for metric in metrics:
+            if (
+                metric.get("deployment") == "FailingModel"
+                and metric.get("application") == "error_app"
+                and metric.get("error_type") == "timeout"
+            ):
+                assert "replica" in metric
+                return True
+        return False
+
+    wait_for_condition(check_timeout_error_metric, timeout=30)
+    print("Timeout error metric verified.")
+
+    ray.get(signal.send.remote(clear=True))
+
+
+def test_deployment_and_application_status_metrics(metrics_start_shutdown):
+    """Test that deployment and application status metrics are exported correctly.
+
+    These metrics track the numeric status of deployments and applications:
+    - serve_deployment_status: 0=UNKNOWN, 1=DEPLOY_FAILED, 2=UNHEALTHY,
+      3=UPDATING, 4=UPSCALING, 5=DOWNSCALING, 6=HEALTHY
+    - serve_application_status: 0=UNKNOWN, 1=NOT_STARTED, 2=DEPLOYING,
+      3=DEPLOY_FAILED, 4=RUNNING, 5=UNHEALTHY, 6=DELETING
+    """
+
+    signal = SignalActor.remote()
+
+    @serve.deployment(name="deployment_a")
+    class DeploymentA:
+        async def __init__(self):
+            await signal.wait.remote()
+
+        async def __call__(self):
+            return "hello"
+
+    @serve.deployment
+    def deployment_b():
+        return "world"
+
+    # Deploy two applications with different deployments
+    serve._run(DeploymentA.bind(), name="app1", route_prefix="/app1", _blocking=False)
+    serve._run(deployment_b.bind(), name="app2", route_prefix="/app2", _blocking=False)
+
+    timeseries = PrometheusTimeseries()
+
+    # Wait for deployments to become healthy
+    def check_status_metrics():
+        # Check deployment status metrics
+        deployment_metrics = get_metric_dictionaries(
+            "ray_serve_deployment_status", timeseries=timeseries
+        )
+        if len(deployment_metrics) < 2:
+            return False
+
+        # Check application status metrics
+        app_metrics = get_metric_dictionaries(
+            "ray_serve_application_status", timeseries=timeseries
+        )
+        if len(app_metrics) < 2:
+            return False
+
+        return True
+
+    wait_for_condition(check_status_metrics, timeout=30)
+
+    wait_for_condition(
+        check_metric_float_eq,
+        metric="ray_serve_deployment_status",
+        expected=3,  # UPDATING
+        expected_tags={"deployment": "deployment_a", "application": "app1"},
+        timeseries=timeseries,
+    )
+    wait_for_condition(
+        check_metric_float_eq,
+        metric="ray_serve_application_status",
+        expected=5,  # DEPLOYING
+        expected_tags={"application": "app1"},
+        timeseries=timeseries,
+    )
+
+    wait_for_condition(
+        check_metric_float_eq,
+        metric="ray_serve_deployment_status",
+        expected=6,
+        expected_tags={"deployment": "deployment_b", "application": "app2"},
+        timeseries=timeseries,
+    )
+    wait_for_condition(
+        check_metric_float_eq,
+        metric="ray_serve_application_status",
+        expected=6,
+        expected_tags={"application": "app2"},
+        timeseries=timeseries,
+    )
+
+    ray.get(signal.send.remote())
+
+    wait_for_condition(
+        check_metric_float_eq,
+        metric="ray_serve_deployment_status",
+        expected=6,
+        expected_tags={"deployment": "deployment_a", "application": "app1"},
+        timeseries=timeseries,
+    )
+    wait_for_condition(
+        check_metric_float_eq,
+        metric="ray_serve_application_status",
+        expected=6,
+        expected_tags={"application": "app1"},
+        timeseries=timeseries,
+    )
 
 
 def test_replica_startup_and_initialization_latency_metrics(metrics_start_shutdown):

@@ -35,6 +35,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_PER_REPLICA_RETRY_COUNT,
     RAY_SERVE_ENABLE_TASK_EVENTS,
@@ -75,6 +76,7 @@ from ray.serve.schema import (
     ReplicaRank,
     _deployment_info_to_schema,
 )
+from ray.util import metrics as ray_metrics
 from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -289,6 +291,41 @@ class ActorReplicaWrapper:
 
         # Outbound deployments polling state
         self._outbound_deployments: Optional[List[DeploymentID]] = None
+
+        # Histogram to track routing stats delay from replica to controller
+        self._routing_stats_delay_histogram = metrics.Histogram(
+            "serve_routing_stats_delay_ms",
+            description=(
+                "The delay in milliseconds for routing stats to propagate "
+                "from replica to controller."
+            ),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("deployment", "replica", "application"),
+        )
+        self._routing_stats_delay_histogram.set_default_tags(
+            {
+                "deployment": self._deployment_id.name,
+                "replica": self._replica_id.unique_id,
+                "application": self._deployment_id.app_name,
+            }
+        )
+
+        # Counter to track exceptions/timeouts when getting routing stats
+        self._routing_stats_error_counter = metrics.Counter(
+            "serve_routing_stats_error",
+            description=(
+                "The number of errors (exceptions or timeouts) when getting "
+                "routing stats from replica."
+            ),
+            tag_keys=("deployment", "replica", "application", "error_type"),
+        )
+        self._routing_stats_error_counter.set_default_tags(
+            {
+                "deployment": self._deployment_id.name,
+                "replica": self._replica_id.unique_id,
+                "application": self._deployment_id.app_name,
+            }
+        )
 
     @property
     def replica_id(self) -> str:
@@ -1058,11 +1095,15 @@ class ActorReplicaWrapper:
             # Object ref is ready, ray.get it to check for exceptions.
             try:
                 self._routing_stats = ray.get(self._record_routing_stats_ref)
+                # Record the round-trip delay for routing stats
+                delay_ms = (time.time() - self._last_record_routing_stats_time) * 1000
+                self._routing_stats_delay_histogram.observe(delay_ms)
             except Exception:
                 logger.exception(
                     "Exception when trying to get routing stats:\n"
                     + traceback.format_exc()
                 )
+                self._routing_stats_error_counter.inc(tags={"error_type": "exception"})
             self._record_routing_stats_ref = None
         elif (
             time.time() - self._last_record_routing_stats_time
@@ -1074,6 +1115,7 @@ class ActorReplicaWrapper:
                 f"{self._replica_id} after "
                 f"{self.request_routing_stats_timeout_s}s, retrying."
             )
+            self._routing_stats_error_counter.inc(tags={"error_type": "timeout"})
             self._record_routing_stats_ref = None
 
         if self._should_record_routing_stats():
@@ -3488,6 +3530,17 @@ class DeploymentStateManager:
         self._deployment_states: Dict[DeploymentID, DeploymentState] = {}
         self._app_deployment_mapping: Dict[str, Set[str]] = defaultdict(set)
 
+        # Metric for tracking deployment status
+        self._deployment_status_gauge = ray_metrics.Gauge(
+            "serve_deployment_status",
+            description=(
+                "Numeric status of deployment. "
+                "0=UNKNOWN, 1=DEPLOY_FAILED, 2=UNHEALTHY, 3=UPDATING, "
+                "4=UPSCALING, 5=DOWNSCALING, 6=HEALTHY."
+            ),
+            tag_keys=("deployment", "application"),
+        )
+
         self._recover_from_checkpoint(
             all_current_actor_names, all_current_placement_group_names
         )
@@ -3909,7 +3962,18 @@ class DeploymentStateManager:
                     running_replicas=deployment_state.get_running_replica_ids(),
                 )
 
-        # STEP 8: Cleanup
+        # STEP 8: Record deployment status metrics
+        for deployment_id, deployment_state in self._deployment_states.items():
+            status = deployment_state.curr_status_info.status
+            self._deployment_status_gauge.set(
+                status.to_numeric(),
+                tags={
+                    "deployment": deployment_id.name,
+                    "application": deployment_id.app_name,
+                },
+            )
+
+        # STEP 9: Cleanup
         for deployment_id in deleted_ids:
             self._deployment_scheduler.on_deployment_deleted(deployment_id)
             self._autoscaling_state_manager.deregister_deployment(deployment_id)

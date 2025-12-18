@@ -505,6 +505,7 @@ You can customize these buckets using environment variables:
   - `ray_serve_replica_startup_latency_ms`
   - `ray_serve_replica_initialization_latency_ms`
   - `ray_serve_replica_shutdown_duration_ms`
+  - `ray_serve_proxy_shutdown_duration_ms`
 
 Note: `ray_serve_batch_wait_time_ms` and `ray_serve_batch_execution_time_ms` use the same buckets as `RAY_SERVE_REQUEST_LATENCY_BUCKETS_MS`.
 
@@ -629,6 +630,15 @@ These metrics track request batching behavior for deployments using `@serve.batc
 | `ray_serve_actual_batch_size` | Histogram | `deployment`, `replica`, `application`, `function_name` | The computed size of each batch. When `batch_size_fn` is configured, this reports the custom computed size (such as total tokens). Otherwise, it reports the number of requests. |
 | `ray_serve_batches_processed_total` | Counter | `deployment`, `replica`, `application`, `function_name` | Total number of batches executed. Compare with request counter to measure batching efficiency. |
 
+### Proxy health metrics
+
+These metrics track proxy health and lifecycle.
+
+| Metric | Type | Tags | Description |
+|--------|------|------|-------------|
+| `ray_serve_proxy_status` | Gauge | `node_id`, `node_ip_address` | Current status of the proxy as a numeric value: `1` = STARTING, `2` = HEALTHY, `3` = UNHEALTHY, `4` = DRAINING, `5` = DRAINED. |
+| `ray_serve_proxy_shutdown_duration_ms` | Histogram | `node_id`, `node_ip_address` | Time taken for a proxy to shut down in milliseconds. |
+
 ### Replica lifecycle metrics
 
 These metrics track replica health, restarts, and lifecycle timing.
@@ -681,7 +691,11 @@ These metrics track the Serve controller's performance. Useful for debugging con
 |--------|------|------|-------------|
 | `ray_serve_controller_control_loop_duration_s` | Gauge | — | Duration of the last control loop iteration in seconds. |
 | `ray_serve_controller_num_control_loops` | Gauge | `actor_id` | Total number of control loop iterations. Increases monotonically. |
+| `ray_serve_routing_stats_delay_ms` | Histogram | `deployment`, `replica`, `application` | Time taken for routing stats to propagate from replica to controller in milliseconds. |
+| `ray_serve_routing_stats_error_total` | Counter | `deployment`, `replica`, `application`, `error_type` | Total number of errors when getting routing stats from replicas. `error_type` is `exception` (replica raised an error) or `timeout` (replica didn't respond in time). |
 | `ray_serve_long_poll_host_transmission_counter_total` **[†]** | Counter | `namespace_or_state` | Total number of long poll updates transmitted to clients. |
+| `ray_serve_deployment_status` | Gauge | `deployment`, `application` | Numeric status of deployment: `0` = UNKNOWN, `1` = DEPLOY_FAILED, `2` = UNHEALTHY, `3` = UPDATING, `4` = UPSCALING, `5` = DOWNSCALING, `6` = HEALTHY. Use for state timeline visualization and lifecycle debugging. |
+| `ray_serve_application_status` | Gauge | `application` | Numeric status of application: `0` = UNKNOWN, `1` = DEPLOY_FAILED, `2` = UNHEALTHY, `3` = NOT_STARTED, `4` = DELETING, `5` = DEPLOYING, `6` = RUNNING. Use for state timeline visualization and lifecycle debugging. |
 | `ray_serve_long_poll_latency_ms` **[†]** | Histogram | `namespace` | Time for updates to propagate from controller to clients in milliseconds. `namespace` is the long poll namespace such as `ROUTE_TABLE`, `DEPLOYMENT_CONFIG`, or `DEPLOYMENT_TARGETS`. Debug slow config propagation; impacts autoscaling response time. |
 | `ray_serve_long_poll_pending_clients` **[†]** | Gauge | `namespace` | Number of clients waiting for updates. `namespace` is the long poll namespace such as `ROUTE_TABLE`, `DEPLOYMENT_CONFIG`, or `DEPLOYMENT_TARGETS`. Identify backpressure in notification system. |
 
