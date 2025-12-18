@@ -387,6 +387,8 @@ def test_task_error_with_read_only_args_property(ray_start_regular):
         ray.get(raise_read_only_args.remote())
 
     assert isinstance(exc_info.value, RayTaskError)
+    assert isinstance(exc_info.value, ReadOnlyArgsError)  # verify dual inheritance
+    assert exc_info.value.args == (exc_info.value.cause,)  # verify args property works
     assert "boom" in str(exc_info.value)
 
 
