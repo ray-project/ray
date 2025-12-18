@@ -183,6 +183,10 @@ void MutableObjectProvider::HandlePushMutableObject(
       if (is_new_write) {
         write_acquired_[writer_object_id] = false;
         received_chunks_[writer_object_id].clear();
+        // Initialize written_so_far_ immediately to prevent race condition where
+        // multiple concurrent threads all see is_new_write=true and reset
+        // write_acquired_.
+        written_so_far_[writer_object_id] = 0;
       }
       if (!write_acquired_[writer_object_id]) {
         needs_write_acquire = true;
@@ -229,11 +233,8 @@ void MutableObjectProvider::HandlePushMutableObject(
     absl::MutexLock guard(&written_so_far_lock_);
     received_chunks_[writer_object_id].insert(offset);
     // Update written_so_far_ by adding this chunk's size.
-    // Note: We increment rather than set to handle potential out-of-order chunks.
-    // Initialize to 0 if this is the first chunk of a new write.
-    if (written_so_far_.find(writer_object_id) == written_so_far_.end()) {
-      written_so_far_[writer_object_id] = 0;
-    }
+    // Note: written_so_far_ was already initialized to 0 in the first lock block
+    // for new writes, so we can safely increment it here.
     written_so_far_[writer_object_id] += chunk_size;
     RAY_CHECK_LE(written_so_far_[writer_object_id], total_data_size);
     if (written_so_far_[writer_object_id] == total_data_size) {
