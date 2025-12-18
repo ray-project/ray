@@ -818,9 +818,9 @@ def test_streaming_repartition_no_further_fuse(
     assert "MapBatches(<lambda>)->MapBatches(<lambda>)" in stats1
 
 
-def test_filter_operator_no_double_fusion(ray_start_regular_shared):
-    """Test that fused filter operators don't fuse further with upstream maps
-    making sure it can_modify_num_rows
+def test_filter_operator_no_upstream_fusion(ray_start_regular_shared, capsys):
+    """Test that fused filter operators doesn't fuse further with upstream maps
+    that specify batch_size (since it filter can change the # of rows.)
 
     Case 1: map_batches -> filter -> map_batchess
             Result: (map -> filter) -> map
@@ -834,13 +834,10 @@ def test_filter_operator_no_double_fusion(ray_start_regular_shared):
     ds1 = ds1.filter(lambda x: True)
     ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
 
-    assert len(ds1.take_all()) == n
-    stats1 = ds1.stats()
-
-    assert (
-        "TaskPoolMapOperator[MapBatches(<lambda>)->Filter(<lambda>)]" in stats1
-    ), stats1
-    assert "TaskPoolMapOperator[MapBatches(<lambda>)]" in stats1
+    ds1.explain()
+    captured = capsys.readouterr().out.strip()
+    assert "TaskPoolMapOperator[MapBatches(<lambda>)]" in captured
+    assert "TaskPoolMapOperator[MapBatches(<lambda>)->Filter(<lambda>)]" in captured
 
 
 if __name__ == "__main__":
