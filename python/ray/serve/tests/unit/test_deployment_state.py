@@ -190,6 +190,18 @@ class MockReplicaActorWrapper:
     def initialization_latency_s(self) -> float:
         return self._initialization_latency_s
 
+    @property
+    def reconfigure_start_time(self) -> Optional[float]:
+        return None
+
+    @property
+    def last_health_check_latency_ms(self) -> Optional[float]:
+        return None
+
+    @property
+    def last_health_check_failed(self) -> bool:
+        return False
+
     def set_docs_path(self, docs_path: str):
         self._docs_path = docs_path
 
@@ -2848,6 +2860,7 @@ class TestAutoscaling:
                 "upscale_delay_s": 0,
                 "downscale_delay_s": 0,
                 "metrics_interval_s": 100,
+                "look_back_period_s": 200,
             }
         )
         dsm.deploy(TEST_DEPLOYMENT_ID, info)
@@ -3038,6 +3051,7 @@ class TestAutoscaling:
                 "upscale_delay_s": 0,
                 "downscale_delay_s": 0,
                 "metrics_interval_s": 100,
+                "look_back_period_s": 200,
             }
         )
 
@@ -3393,6 +3407,7 @@ class TestAutoscaling:
                 "upscale_delay_s": 0,
                 "downscale_delay_s": 0,
                 "metrics_interval_s": 100,
+                "look_back_period_s": 200,
             }
         )
         dsm.deploy(TEST_DEPLOYMENT_ID, info)
@@ -3484,6 +3499,7 @@ class TestAutoscaling:
                 "upscale_delay_s": 0,
                 "downscale_delay_s": 0,
                 "metrics_interval_s": 100,
+                "look_back_period_s": 200,
             }
         )
         dsm.deploy(TEST_DEPLOYMENT_ID, info)
@@ -3809,6 +3825,7 @@ class TestAutoscaling:
                 "upscale_delay_s": 0,
                 "downscale_delay_s": 0,
                 "metrics_interval_s": 100,
+                "look_back_period_s": 200,
             }
         )
         dsm.deploy(TEST_DEPLOYMENT_ID, info)
