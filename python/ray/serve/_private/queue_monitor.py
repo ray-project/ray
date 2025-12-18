@@ -1,9 +1,6 @@
 import logging
 from typing import Any, Dict
 
-import pika
-import redis
-
 import ray
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 
@@ -36,6 +33,7 @@ class QueueMonitorConfig:
 
 
 class QueueMonitor:
+
     """
     Actor that monitors queue length by directly querying the broker.
 
@@ -88,6 +86,8 @@ class QueueMonitor:
             raise
 
     def _init_redis(self) -> None:
+        import redis
+
         """Initialize Redis client."""
         self._redis_client = redis.from_url(self._config.broker_url)
 
@@ -95,6 +95,8 @@ class QueueMonitor:
         self._redis_client.ping()
 
     def _init_rabbitmq(self) -> None:
+        import pika
+
         """Initialize RabbitMQ connection and channel."""
         # Store connection parameters for reconnection
         self._rabbitmq_connection_params = pika.URLParameters(self._config.broker_url)
@@ -106,12 +108,16 @@ class QueueMonitor:
         self._rabbitmq_channel = self._rabbitmq_connection.channel()
 
     def _ensure_redis_connection(self) -> None:
+        import redis
+
         """Ensure Redis connection is open, reconnecting if necessary."""
         if self._redis_client is None or self._redis_client.ping() != "PONG":
             logger.warning("Redis connection lost, reconnecting...")
             self._redis_client = redis.from_url(self._config.broker_url)
 
     def _ensure_rabbitmq_connection(self) -> None:
+        import pika
+
         """Ensure RabbitMQ connection is open, reconnecting if necessary."""
         if (
             self._rabbitmq_connection is None
