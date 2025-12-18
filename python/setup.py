@@ -86,7 +86,7 @@ class SetupSpec:
         if build_type == BuildType.DEBUG:
             self.version: str = f"{version}+dbg"
         elif build_type == BuildType.ASAN:
-            self.version: str = f"{version}+asan"
+            self.version: str = f"{version}"
         elif build_type == BuildType.TSAN:
             self.version: str = f"{version}+tsan"
         elif build_type == BuildType.DEPS_ONLY:
