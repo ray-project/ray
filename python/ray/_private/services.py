@@ -2366,6 +2366,7 @@ def start_ray_client_server(
         redis_password: The password of the Redis server.
         runtime_env_agent_address: Address to the Runtime Env Agent listens on via HTTP.
             Only needed when server_type == "proxy".
+        node_id: The hex ID of this node.
         server_type: Whether to start the proxy version of Ray Client.
         serialized_runtime_env_context (str|None): If specified, the serialized
             runtime_env_context to start the client server in.
