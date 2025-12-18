@@ -6,6 +6,7 @@ from networkx import DiGraph
 
 @dataclass
 class Dep:
+    """Represents a dependency with its name, version, and dependents."""
     name: str
     version: str
     required_by: List[str]
