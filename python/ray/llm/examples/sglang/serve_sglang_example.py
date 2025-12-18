@@ -1,7 +1,7 @@
-from modules.builder import build_sglang_openai_app
+from modules.sglang_engine import SGLangServer
 
 from ray import serve
-from ray.serve.llm import LLMConfig
+from ray.serve.llm import LLMConfig, build_openai_app
 
 llm_config = LLMConfig(
     model_loading_config={
@@ -14,6 +14,7 @@ llm_config = LLMConfig(
             "max_replicas": 2,
         }
     },
+    deployment_cls=SGLangServer,
     engine_kwargs={
         "trust_remote_code": True,
         "model_path": "unsloth/Llama-3.1-8B-Instruct",
@@ -22,6 +23,6 @@ llm_config = LLMConfig(
     },
 )
 
-app = build_sglang_openai_app({"llm_configs": [llm_config]})
+app = build_openai_app({"llm_configs": [llm_config]})
 serve.start()
 serve.run(app, blocking=True)
