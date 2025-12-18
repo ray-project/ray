@@ -99,7 +99,7 @@ void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
   // Add authentication token to metadata if auth is enabled
   if (rpc::RequiresTokenAuthentication()) {
     auto token = rpc::AuthenticationTokenLoader::instance().GetToken();
-    if (token.has_value() && !token->empty()) {
+    if (token && !token->empty()) {
       exporter_options.metadata.insert(
           {std::string(kAuthTokenKey), token->ToAuthorizationHeaderValue()});
     }
