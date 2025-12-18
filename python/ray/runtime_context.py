@@ -119,7 +119,7 @@ class RuntimeContext(object):
         """Get the session name for the Ray cluster this process is connected to.
 
         The session name uniquely identifies a Ray cluster instance. This is the
-        same value that appears as the ``SessionName`` label in Prometheus metrics,
+        same value that appears as the ``SessionName`` label in Ray metrics,
         making it useful for filtering metrics when multiple clusters run the same
         application name.
 
@@ -142,9 +142,8 @@ class RuntimeContext(object):
                 # Session name is the same across all processes in the cluster
                 assert ray.get(get_session_name.remote()) == session_name
 
-                # Use in Prometheus query to filter metrics by cluster
-                # promql: ray_serve_http_request_latency_ms_bucket{SessionName="%s"}
-                # % session_name
+                # Use SessionName label to filter metrics by cluster, e.g.:
+                # ray_serve_http_request_latency_ms_bucket{SessionName="<session_name>"}
 
         Returns:
             A session name string for the Ray cluster (e.g.,
@@ -614,7 +613,7 @@ def get_runtime_context() -> RuntimeContext:
             import ray
             # Get the job id.
             ray.get_runtime_context().get_job_id()
-            # Get the session name (used in Prometheus SessionName label).
+            # Get the session name (used as SessionName label in Ray metrics).
             ray.get_runtime_context().get_session_name()
             # Get the actor id.
             ray.get_runtime_context().get_actor_id()
