@@ -240,14 +240,14 @@ def _get_most_frequent_values(
     key_gen: Callable[[str], str],
 ) -> Dict[str, Union[str, Number]]:
     # Use ValueCounter aggregator for all columns at once
-    aggregators = [ValueCounter(on=col) for col in columns]
-    value_counter_results = dataset.aggregate(*aggregators)
+    agg_fns = [ValueCounter(on=col) for col in columns]
+    aggregated_counts = dataset.aggregate(*agg_fns)
 
     # Convert ValueCounter results to Counter objects
     final_counters = {}
     for col in columns:
         value_counter_key = f"value_counter({col})"
-        value_counts = value_counter_results[value_counter_key]
+        value_counts = aggregated_counts[value_counter_key]
         # Create Counter from the values and counts lists
         final_counters[col] = Counter(
             dict(zip(value_counts["values"], value_counts["counts"]))
