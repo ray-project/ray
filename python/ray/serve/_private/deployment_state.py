@@ -40,7 +40,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FAIL_ON_RANK_ERROR,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
-    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -2023,6 +2023,15 @@ class DeploymentState:
             tag_keys=("deployment", "replica", "application"),
         )
 
+        self.target_replicas_gauge = metrics.Gauge(
+            "serve_autoscaling_target_replicas",
+            description=(
+                "The target number of replicas for this deployment. "
+                "This is the number the autoscaler is trying to reach."
+            ),
+            tag_keys=("deployment", "application"),
+        )
+
         # Whether the request routing info have been updated since the last
         # time we checked.
         self._request_routing_info_updated = False
@@ -2329,6 +2338,15 @@ class DeploymentState:
 
         self._target_state = new_target_state
 
+        # Emit target replicas metric
+        self.target_replicas_gauge.set(
+            target_num_replicas,
+            tags={
+                "deployment": self.deployment_name,
+                "application": self.app_name,
+            },
+        )
+
     def deploy(self, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.
 
@@ -2339,7 +2357,6 @@ class DeploymentState:
         Returns:
             bool: Whether the target state has changed.
         """
-
         curr_deployment_info = self._target_state.info
         if curr_deployment_info is not None:
             # Redeploying should not reset the deployment's start time.
@@ -2369,6 +2386,12 @@ class DeploymentState:
         # is idempotent.
         if not deployment_settings_changed and not target_capacity_changed:
             return False
+
+        logger.debug(f"Deploying '{self._id}': {deployment_info.to_dict()}")
+        logger.debug(
+            f"Current target state for '{self._id}': "
+            f"{self._target_state.info.to_dict() if self._target_state.info is not None else None}"
+        )
 
         if deployment_info.deployment_config.autoscaling_config:
             target_num_replicas = self._autoscaling_state_manager.register_deployment(
@@ -3647,7 +3670,7 @@ class DeploymentStateManager:
             and len(ds._replicas.get()) == ds.target_num_replicas
             for ds in self._deployment_states.values()
         )
-        if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY:
+        if RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY:
             # Tuple of target node to compact, and its draining deadline
             node_info: Optional[
                 Tuple[str, float]

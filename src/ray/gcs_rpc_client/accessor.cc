@@ -361,13 +361,13 @@ NodeInfoAccessor::GetAllNodeAddressAndLiveness() const {
 StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCache(
     int64_t timeout_ms,
     std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter,
-    std::optional<rpc::GetAllNodeInfoRequest::NodeSelector> node_selector) {
+    const std::vector<rpc::GetAllNodeInfoRequest::NodeSelector> &node_selectors) {
   rpc::GetAllNodeInfoRequest request;
   if (state_filter.has_value()) {
     request.set_state_filter(state_filter.value());
   }
-  if (node_selector.has_value()) {
-    *request.add_node_selectors() = std::move(node_selector.value());
+  for (const auto &node_selector : node_selectors) {
+    *request.add_node_selectors() = node_selector;
   }
   rpc::GetAllNodeInfoReply reply;
   RAY_RETURN_NOT_OK(client_impl_->GetGcsRpcClient().SyncGetAllNodeInfo(

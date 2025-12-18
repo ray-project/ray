@@ -1277,122 +1277,13 @@ def test_seed_file_shuffle(
         # Write dummy Parquet files
         write_parquet_file(path, i)
 
-    shuffle_config = FileShuffleConfig(seed=42, reseed_after_epoch=False)
+    # Read with deterministic shuffling
+    shuffle_config = FileShuffleConfig(seed=42)
     ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
     ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
 
     # Verify deterministic behavior
     assert ds1.take_all() == ds2.take_all()
-
-
-def test_seed_file_shuffle_with_epoch_update(
-    restore_data_context, tmp_path, target_max_block_size_infinite_or_default
-):
-    def write_parquet_file(path, file_index):
-        """Write a dummy Parquet file with test data."""
-        # Create a dummy dataset with unique data for each file
-        data = {
-            "col1": range(10 * file_index, 10 * (file_index + 1)),
-            "col2": ["foo", "bar"] * 5,
-        }
-        table = pa.Table.from_pydict(data)
-        pq.write_table(table, path)
-
-    ctx = ray.data.DataContext.get_current()
-    ctx.execution_options.preserve_order = True
-
-    # Create temporary Parquet files for testing in the current directory
-    paths = [os.path.join(tmp_path, f"test_file_{i}.parquet") for i in range(15)]
-    for i, path in enumerate(paths):
-        # Write dummy Parquet files
-        write_parquet_file(path, i)
-
-    shuffle_config = FileShuffleConfig(seed=42)
-    ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
-    ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
-
-    ds1_epoch_results = []
-    ds2_epoch_results = []
-    for i in range(5):
-        ds1_epoch = ds1.take_all()
-        ds2_epoch = ds2.take_all()
-        ds1_epoch_results.append(ds1_epoch)
-        ds2_epoch_results.append(ds2_epoch)
-        # For the same epoch, ds1 and ds2 should produce identical results
-        assert ds1_epoch == ds2_epoch, (
-            f"Epoch {i}: ds1 and ds2 should produce the same results "
-            "for the same epoch with the same shuffle seed"
-        )
-
-    # Convert results to hashable format for comparison
-    def make_hashable(rows):
-        """Convert a list of dicts to a hashable tuple representation."""
-        return tuple(tuple(sorted(row.items())) for row in rows)
-
-    ds1_hashable_results = {make_hashable(result) for result in ds1_epoch_results}
-    ds2_hashable_results = {make_hashable(result) for result in ds2_epoch_results}
-
-    assert (
-        len(ds1_hashable_results) == 5
-    ), "ds1 should produce different results across epochs"
-    assert (
-        len(ds2_hashable_results) == 5
-    ), "ds2 should produce different results across epochs"
-
-
-def test_seed_file_shuffle_with_epoch_no_effect(
-    restore_data_context, tmp_path, target_max_block_size_infinite_or_default
-):
-    def write_parquet_file(path, file_index):
-        """Write a dummy Parquet file with test data."""
-        # Create a dummy dataset with unique data for each file
-        data = {
-            "col1": range(10 * file_index, 10 * (file_index + 1)),
-            "col2": ["foo", "bar"] * 5,
-        }
-        table = pa.Table.from_pydict(data)
-        pq.write_table(table, path)
-
-    ctx = ray.data.DataContext.get_current()
-    ctx.execution_options.preserve_order = True
-
-    # Create temporary Parquet files for testing in the current directory
-    paths = [os.path.join(tmp_path, f"test_file_{i}.parquet") for i in range(5)]
-    for i, path in enumerate(paths):
-        # Write dummy Parquet files
-        write_parquet_file(path, i)
-
-    shuffle_config = FileShuffleConfig(seed=42, reseed_after_epoch=False)
-    ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
-    ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
-
-    ds1_epoch_results = []
-    ds2_epoch_results = []
-    for i in range(5):
-        ds1_epoch = ds1.take_all()
-        ds2_epoch = ds2.take_all()
-        ds1_epoch_results.append(ds1_epoch)
-        ds2_epoch_results.append(ds2_epoch)
-        # For the same epoch, ds1 and ds2 should produce identical results
-        assert ds1_epoch == ds2_epoch, (
-            f"Epoch {i}: ds1 and ds2 should produce the same results "
-            "for the same epoch with the same shuffle seed"
-        )
-
-    # Convert results to hashable format for comparison
-    def make_hashable(rows):
-        """Convert a list of dicts to a hashable tuple representation."""
-        return tuple(tuple(sorted(row.items())) for row in rows)
-
-    ds1_hashable_results = {make_hashable(result) for result in ds1_epoch_results}
-    ds2_hashable_results = {make_hashable(result) for result in ds2_epoch_results}
-
-    assert (
-        len(ds1_hashable_results) == 1
-    ), "ds1 should produce the same results across epochs"
-    assert (
-        len(ds2_hashable_results) == 1
-    ), "ds2 should produce the same results across epochs"
 
 
 def test_read_file_with_partition_values(
@@ -2499,6 +2390,54 @@ def test_hive_partitioned_parquet_operations(
         f"Expected head:\n{expected_df.head()}\n"
         f"Actual head:\n{actual_df.head()}"
     )
+
+
+@pytest.mark.parametrize("choice", ["default", "hive", "filename", "ray_default"])
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="Hive partitioned parquet operations require pyarrow >= 14.0.0",
+)
+def test_write_parquet_partitioning(choice, tmp_path):
+
+    # Ray's default is "hive", while pyarrow's default is "directory" (when None).
+    kwargs = {
+        "default": (
+            {"partitioning_flavor": None},
+            pds.partitioning(field_names=["grp"], flavor=None),
+        ),
+        "hive": ({"partitioning_flavor": "hive"}, pds.partitioning(flavor="hive")),
+        "filename": (
+            {"partitioning_flavor": "filename"},
+            pds.partitioning(
+                pa.schema([pa.field("grp", pa.int64())]), flavor="filename"
+            ),
+        ),
+        "ray_default": (
+            {},
+            "hive",
+        ),
+    }
+
+    parquet_kwargs, partitioning = kwargs[choice]
+
+    ds = ray.data.range(1000).add_column("grp", lambda x: x["id"] % 10)
+
+    ds.write_parquet(
+        tmp_path,
+        partition_cols=["grp"],
+        **parquet_kwargs,
+        mode="overwrite",
+    )
+
+    pq_ds = pq.ParquetDataset(
+        tmp_path,
+        partitioning=partitioning,
+    )
+    df = pq_ds.read_pandas().to_pandas()
+
+    assert len(df) == 1000
+    assert df["grp"].nunique() == 10
+    assert set(df.columns.tolist()) == {"id", "grp"}
 
 
 if __name__ == "__main__":
