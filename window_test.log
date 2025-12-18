@@ -1,0 +1,231 @@
+(ray) PS C:\Users\Administrator\yicheng\ray> python -m pytest python/ray/tests/test_global_state.py -sv 2>&1
+Test session starts (platform: win32, Python 3.9.7, pytest 7.4.4, pytest-sugar 0.9.5)
+cachedir: .pytest_cache
+rootdir: C:\Users\Administrator\yicheng\ray
+configfile: pytest.ini
+plugins: anyio-3.7.1, aiohttp-1.1.0, asyncio-0.17.2, docker-tools-3.1.3, forked-1.4.0, pytest_httpserver-1.1.3, lazy-fixtures-1.1.2, mock-3.14.0, rerunfailures-11.1.2, shutil-1.8.1, sphinx-0.5.1.dev0, sugar-0.9.5, timeout-2.1.0, virtualenv-1.8.1
+asyncio: mode=auto
+timeout: 180.0s
+timeout method: thread
+timeout func_only: False
+collecting ... python : 2025-12-18 23:10:35,742 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+At line:1 char:1
++ python -m pytest python/ray/tests/test_global_state.py -sv 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (2025-12-18 23:1...8265 :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+ python\ray\tests\test_global_state.py::test_replenish_resources ✓                                                                                                                      3% ▍
+2025-12-18 23:10:47,947 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_uses_resources ✓                                                                                                                           5% ▌
+ python\ray\tests\test_global_state.py::test_available_resources_per_node s                                                                                                             8% ▊
+ python\ray\tests\test_global_state.py::test_total_resources_per_node s                                                                                                                10% █
+ python\ray\tests\test_global_state.py::test_add_remove_cluster_resources s                                                                                                            13% █▍
+2025-12-18 23:10:59,600 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_global_state_actor_table[ray_start_regular0] ✓                                                                                            15% █▋
+2025-12-18 23:11:12,945 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_global_state_worker_table ✓                                                                                                               18% █▊
+2025-12-18 23:11:25,565 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_global_state_actor_entry[ray_start_regular0] ✓                                                                                            21% ██▏
+ python\ray\tests\test_global_state.py::test_node_name_cluster s                                                                                                                       23% ██▍
+2025-12-18 23:11:36,680 INFO worker.py:2010 -- Started a local Ray instance.
+
+ python\ray\tests\test_global_state.py::test_node_name_init ✓                                                                                                                          26% ██▋
+2025-12-18 23:11:46,440 INFO worker.py:2010 -- Started a local Ray instance.
+
+ python\ray\tests\test_global_state.py::test_no_node_name ✓                                                                                                                            28% ██▊
+2025-12-18 23:11:58,933 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+[]
+
+ python\ray\tests\test_global_state.py::test_load_report[0] ✓                                                                                                                          31% ███▏
+2025-12-18 23:12:11,654 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+[shape {
+  key: "CPU"
+  value: 1
+}
+num_ready_requests_queued: 3
+label_selectors {
+}
+, shape {
+  key: "CPU"
+  value: 1
+}
+shape {
+  key: "A"
+  value: 1
+}
+num_ready_requests_queued: 3
+label_selectors {
+}
+]
+
+ python\ray\tests\test_global_state.py::test_load_report[2] ✓                                                                                                                          33% ███▍
+2025-12-18 23:12:24,677 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+[shape {
+  key: "CPU"
+  value: 1
+}
+num_ready_requests_queued: 3
+label_selectors {
+}
+, shape {
+  key: "CPU"
+  value: 1
+}
+shape {
+  key: "A"
+  value: 1
+}
+num_ready_requests_queued: 3
+label_selectors {
+}
+, shape {
+  key: "CPU"
+  value: 1
+}
+shape {
+  key: "B"
+  value: 1
+}
+num_infeasible_requests_queued: 3
+label_selectors {
+}
+]
+
+ python\ray\tests\test_global_state.py::test_load_report[-1] ✓                                                                                                                         36% ███▋
+ python\ray\tests\test_global_state.py::test_placement_group_load_report s                                                                                                             38% ███▉
+2025-12-18 23:12:37,661 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+(foo pid=119824) .
+4
+
+ python\ray\tests\test_global_state.py::test_backlog_report ✓                                                                                                                          41% ████▏
+2025-12-18 23:12:50,757 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+Num shapes 0
+(raylet) E1218 23:12:50.808000000 124756 external/com_github_grpc_grpc/src/core/lib/iomgr/tcp_server_windows.cc:360] on_accept error: The I/O operation has been aborted because of either a thread
+exit or an application request.
+(raylet)
+Num shapes 0
+Num shapes 0
+Num shapes 1
+num in shape 2
+
+ python\ray\tests\test_global_state.py::test_default_load_reports ✓                                                                                                                    44% ████▍
+2025-12-18 23:13:03,054 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_heartbeat_ip ✓                                                                                                                            46% ████▋
+2025-12-18 23:13:15,423 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_next_job_id ✓                                                                                                                             49% ████▉
+2025-12-18 23:13:28,002 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_get_cluster_config ✓                                                                                                                      51% █████▎
+2025-12-18 23:13:40,652 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_get_max_cpus_from_cluster_config[should return 0 since empty config is provided-ClusterConfig-0] ✓                                        54% █████▍
+2025-12-18 23:13:53,986 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_get_max_cpus_from_cluster_config[should return 0 since no node_group_config is provided-ClusterConfig-0] ✓                                56% █████▋
+2025-12-18 23:14:06,889 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_get_max_cpus_from_cluster_config[should return 0 since no CPU is provided under node_group_configs-ClusterConfig-0] ✓                     59% █████▉
+2025-12-18 23:14:19,742 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_get_max_cpus_from_cluster_config[should return None since 0 instance is provided under node_group_configs-ClusterConfig-0] ✓              62% ██████▎
+2025-12-18 23:14:33,263 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_get_max_cpus_from_cluster_config[should return max since max_count=-1 under node_group_configs-ClusterConfig-9223372036854775807] ✓       64% ██████▌
+2025-12-18 23:14:46,230 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_get_max_cpus_from_cluster_config[should return the total under node_group_configs since it is less than max_resources-ClusterConfig-50] ✓ 67% ██████▋
+2025-12-18 23:14:59,337 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_get_max_cpus_from_cluster_config[should return the total under max_resources since it is less than node_group_configs total-ClusterConfig-30] ✓69% ██████▉   2025-12-18 23:15:12,843    INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_get_max_cpus_from_cluster_config[should return the total under node_group_configs - no max_resources-ClusterConfig-50] ✓                  72% ███████▎
+2025-12-18 23:15:26,197 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_get_max_cpus_from_cluster_config[should return the total under node_group_configs - multiple node_group_config-ClusterConfig-90] ✓        74% ███████▌
+2025-12-18 23:15:39,517 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_get_max_resources_from_cluster_config[should return CPU/GPU/TPU as None since empty config is provided-ClusterConfig-None] ✓              77% ███████▊
+2025-12-18 23:15:53,401 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_get_max_resources_from_cluster_config[should return CPU/GPU/TPU as None since no node_group_config is provided-ClusterConfig-None] ✓      79% ███████▉
+2025-12-18 23:16:06,853 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_get_max_resources_from_cluster_config[should return CPU/GPU/TPU plus resources from node_group_configs-ClusterConfig-expected_resources2] ✓82% ████████▎ 2025-12-18 23:16:20,317        INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_get_max_resources_from_cluster_config[should return resources from both node_group_configs and max_resources-ClusterConfig-expected_resources3] ✓85% ████████▌ 2025-12-18 23:16:33,940  INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_get_max_resources_from_cluster_config[should return limited by max_resources when node_group total exceeds it-ClusterConfig-expected_resources4] ✓87% ████████▊ 2025-12-18 23:16:47,258 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_get_max_resources_from_cluster_config[should return sys.maxsize when max_count=-1-ClusterConfig-expected_resources5] ✓                    90% █████████
+2025-12-18 23:17:00,414 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_get_max_resources_from_cluster_config[should sum across multiple node_group_configs-ClusterConfig-expected_resources6] ✓                  92% █████████▎2025-12-18 23:17:14,050 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_get_max_resources_from_cluster_config[should return 0 for resources with 0 count or 0 resources-ClusterConfig-expected_resources7] ✓      95% █████████▌2025-12-18 23:17:27,331 INFO worker.py:2001 -- Started a local Ray instance. View the dashboard at 127.0.0.1:8265 
+
+ python\ray\tests\test_global_state.py::test_get_max_resources_from_cluster_config[should discover all resource types including custom ones-ClusterConfig-expected_resources8] ✓       97% █████████▊ python\ray\tests\test_global_state.py::test_get_draining_nodes s                                                                                                                     100% ██████████
+
+Results (424.99s):
+      33 passed
+       6 skipped
+(ray) PS C:\Users\Administrator\yicheng\ray> python -m pytest python/ray/tests/test_submission_client_auth.py -v 2>&1
+Test session starts (platform: win32, Python 3.9.7, pytest 7.4.4, pytest-sugar 0.9.5)
+cachedir: .pytest_cache
+rootdir: C:\Users\Administrator\yicheng\ray
+configfile: pytest.ini
+plugins: anyio-3.7.1, aiohttp-1.1.0, asyncio-0.17.2, docker-tools-3.1.3, forked-1.4.0, pytest_httpserver-1.1.3, lazy-fixtures-1.1.2, mock-3.14.0, rerunfailures-11.1.2, shutil-1.8.1, sphinx-0.5.1.dev0, sugar-0.9.5, timeout-2.1.0, virtualenv-1.8.1
+asyncio: mode=auto
+timeout: 180.0s
+timeout method: thread
+timeout func_only: False
+collecting ... 
+ python\ray\tests\test_submission_client_auth.py::test_submission_client_adds_token_automatically ✓                                                                                    10% █
+ python\ray\tests\test_submission_client_auth.py::test_submission_client_without_token_shows_helpful_error ✓                                                                           20% ██
+ python\ray\tests\test_submission_client_auth.py::test_submission_client_with_invalid_token_shows_helpful_error ✓                                                                      30% ███
+ python\ray\tests\test_submission_client_auth.py::test_submission_client_with_valid_token_succeeds ✓                                                                                   40% ████
+ python\ray\tests\test_submission_client_auth.py::test_job_submission_client_inherits_auth ✓                                                                                           50% █████
+ python\ray\tests\test_submission_client_auth.py::test_state_api_client_inherits_auth ✓                                                                                                60% ██████
+ python\ray\tests\test_submission_client_auth.py::test_user_provided_header_not_overridden ✓                                                                                           70% ███████
+ python\ray\tests\test_submission_client_auth.py::test_user_provided_header_case_insensitive ✓                                                                                         80% ████████
+ python\ray\tests\test_submission_client_auth.py::test_error_messages_contain_instructions ✓                                                                                           90% █████████
+ python\ray\tests\test_submission_client_auth.py::test_no_token_added_when_auth_disabled ✓                                                                                            100% ██████████
+
+Results (128.31s):
+      10 passed
+(ray) PS C:\Users\Administrator\yicheng\ray>
+(ray) PS C:\Users\Administrator\yicheng\ray> python -m pytest python/ray/serve/tests/test_standalone_3.py -v 2>&1
+Test session starts (platform: win32, Python 3.9.7, pytest 7.4.4, pytest-sugar 0.9.5)
+cachedir: .pytest_cache
+rootdir: C:\Users\Administrator\yicheng\ray
+configfile: pytest.ini
+plugins: anyio-3.7.1, aiohttp-1.1.0, asyncio-0.17.2, docker-tools-3.1.3, forked-1.4.0, pytest_httpserver-1.1.3, lazy-fixtures-1.1.2, mock-3.14.0, rerunfailures-11.1.2, shutil-1.8.1, sphinx-0.5.1.dev0, sugar-0.9.5, timeout-2.1.0, virtualenv-1.8.1
+asyncio: mode=auto
+timeout: 180.0s
+timeout method: thread
+timeout func_only: False
+collecting ... 
+ python\ray\serve\tests\test_standalone_3.py::test_long_poll_timeout_with_max_ongoing_requests[ray_instance0] ✓                                                                         9% ▉
+ python\ray\serve\tests\test_standalone_3.py::test_replica_health_metric[ray_instance0] s                                                                                              18% █▊
+ python\ray\serve\tests\test_standalone_3.py::test_shutdown_remote ✓                                                                                                                   27% ██▊
+ python\ray\serve\tests\test_standalone_3.py::test_handle_early_detect_failure ✓                                                                                                       36% ███▋
+ python\ray\serve\tests\test_standalone_3.py::test_autoscaler_shutdown_node_http_everynode[v1] ✓                                                                                       45% ████▋
+ python\ray\serve\tests\test_standalone_3.py::test_autoscaler_shutdown_node_http_everynode[v2] ✓                                                                                       55% █████▌
+ python\ray\serve\tests\test_standalone_3.py::test_controller_shutdown_gracefully[True] ✓                                                                                              64% ██████▍
+ python\ray\serve\tests\test_standalone_3.py::test_controller_shutdown_gracefully[False] ✓                                                                                             73% ███████▍
+ python\ray\serve\tests\test_standalone_3.py::test_client_shutdown_gracefully_when_timeout ✓                                                                                           82% ████████▎
+ python\ray\serve\tests\test_standalone_3.py::test_serve_shut_down_without_duplicated_logs ✓                                                                                           91% █████████▏ python\ray\serve\tests\test_standalone_3.py::test_job_runtime_env_not_leaked ✓                                                                                                       100% ██████████
+
+Results (345.27s):
+      10 passed
+       1 skipped
+
+
+
