@@ -1,5 +1,5 @@
 import copy
-from typing import Callable, Dict, Generator, Iterable, List, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Generator, Iterable, List, Optional
 
 import numpy as np
 import pyarrow as pa
@@ -9,6 +9,9 @@ from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.datasource.util import _iter_sliced_blocks
 from ray.data.expressions import Expr
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
 
 
 class _DatasourceProjectionPushdownMixin:
@@ -263,7 +266,10 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
         raise NotImplementedError
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ) -> List["ReadTask"]:
         """Execute the read and return read tasks.
 
@@ -271,6 +277,7 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
             parallelism: The requested read parallelism. The number of read
                 tasks should equal to this value if possible.
             per_task_row_limit: The per-task row limit for the read tasks.
+            data_context: The data context to use to get read tasks.
         Returns:
             A list of read tasks that can be executed to read blocks from the
             datasource in parallel.
@@ -336,7 +343,10 @@ class _LegacyDatasourceReader(Reader):
         return None
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ) -> List["ReadTask"]:
         """Execute the read and return read tasks.
 
@@ -344,6 +354,8 @@ class _LegacyDatasourceReader(Reader):
             parallelism: The requested read parallelism. The number of read
                 tasks should equal to this value if possible.
             per_task_row_limit: The per-task row limit for the read tasks.
+            data_context: The data context to use to get read tasks. Not used by this
+                legacy reader.
 
         Returns:
             A list of read tasks that can be executed to read blocks from the
@@ -450,6 +462,7 @@ class RandomIntRowDatasource(Datasource):
         self,
         parallelism: int,
         per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         _check_pyarrow_version()
         import pyarrow

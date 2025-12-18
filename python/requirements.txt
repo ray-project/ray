@@ -12,7 +12,7 @@ cupy-cuda12x; sys_platform != 'darwin'
 filelock
 jsonschema
 msgpack<2.0.0,>=1.0.0
-packaging
+packaging>=24.2
 protobuf>=3.20.3
 pyyaml
 requests
@@ -39,7 +39,7 @@ opentelemetry-api
 opentelemetry-exporter-prometheus
 opentelemetry-proto
 fastapi
-gymnasium==1.1.1
+gymnasium==1.2.2
 virtualenv!=20.21.1,>=20.0.24
 opencensus
 aiohttp_cors
@@ -54,7 +54,7 @@ starlette
 typer
 fsspec
 pandas>=1.3
-pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3  # Serve users can use pydantic<2
+pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,!=2.10.*,!=2.11.*,<3  # Serve users can use pydantic<2
 py-spy>=0.2.0; python_version < '3.12'
 py-spy>=0.4.0; python_version >= '3.12'
 memray; sys_platform != "win32" # memray is not supported on Windows
