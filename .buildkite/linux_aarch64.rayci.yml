@@ -10,7 +10,10 @@ steps:
     instance_type: builder-arm64
 
   - name: manylinux-aarch64
-    wanda: ci/docker/manylinux.aarch64.wanda.yaml
+    wanda: ci/docker/manylinux.wanda.yaml
+    env:
+      HOSTTYPE: "aarch64"
+      MANYLINUX_VERSION: "251216.3835fc5"
     instance_type: builder-arm64
 
   - name: ray-java-build-aarch64
@@ -22,8 +25,9 @@ steps:
       - oss
     env:
       ARCH_SUFFIX: "-aarch64"
+      HOSTTYPE: "aarch64"
+      MANYLINUX_VERSION: "251216.3835fc5"
     instance_type: builder-arm64
-    depends_on: manylinux-aarch64
 
   - name: raycpubase-aarch64
     label: "wanda: ray.py{{matrix}}.cpu.base (aarch64)"
@@ -124,9 +128,10 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: "-aarch64"
+      HOSTTYPE: "aarch64"
+      MANYLINUX_VERSION: "251216.3835fc5"
     tags: release_wheels
     instance_type: builder-arm64
-    depends_on: manylinux-aarch64
 
   - label: ":tapioca: build: wheel {{matrix}} (aarch64)"
     tags:
