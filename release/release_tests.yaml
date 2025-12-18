@@ -4148,6 +4148,26 @@
     long_running: false
     script: pytest -vs test_llm_serve_sleep_wakeup.py
 
+- name: llm_serve_pause_resume
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu128
+    cluster_compute: llm_four_L4_gpu_head_node.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: pytest -vs test_llm_serve_pause_resume.py
+
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_1p1d
   frequency: nightly
   python: "3.11"
