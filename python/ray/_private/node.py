@@ -1242,6 +1242,7 @@ class Node:
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
             runtime_env_agent_address=self.runtime_env_agent_address,
+            node_id=self._node_id,
         )
         assert ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [

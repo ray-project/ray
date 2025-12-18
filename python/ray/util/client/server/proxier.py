@@ -29,12 +29,12 @@ from ray._private.authentication.http_token_authentication import (
     get_auth_headers_if_auth_enabled,
 )
 from ray._private.client_mode_hook import disable_client_hook
-from ray._private.gcs_utils import get_node_info_with_retry
 from ray._private.grpc_utils import init_grpc_channel
 from ray._private.parameter import RayParams
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.services import (
     ProcessInfo,
+    get_node_with_retry,
     start_ray_client_server,
 )
 from ray._private.tls_utils import add_port_to_grpc_server
@@ -131,6 +131,7 @@ class ProxyManager:
         session_dir: Optional[str] = None,
         redis_username: Optional[str] = None,
         redis_password: Optional[str] = None,
+        node_id: Optional[str] = None,
     ):
         self.servers: Dict[str, SpecificServer] = dict()
         self.server_lock = RLock()
@@ -145,12 +146,15 @@ class ProxyManager:
             parsed = urlparse(runtime_env_agent_address)
             # runtime env agent self-assigns a free port, fetch it from GCS
             if parsed.port is None or parsed.port == 0:
-                node_info = get_node_info_with_retry(
-                    GcsClient(address=address), parsed.hostname
-                )
+                if node_id is None:
+                    raise ValueError(
+                        "node_id is required when runtime_env_agent_address "
+                        "has no port specified"
+                    )
+                node_info = get_node_with_retry(address, node_id)
                 runtime_env_agent_address = urlunparse(
                     parsed._replace(
-                        netloc=f"{parsed.hostname}:{node_info.runtime_env_agent_port}"
+                        netloc=f"{parsed.hostname}:{node_info['runtime_env_agent_port']}"
                     )
                 )
 
@@ -888,6 +892,7 @@ def serve_proxier(
     redis_password: Optional[str] = None,
     session_dir: Optional[str] = None,
     runtime_env_agent_address: Optional[str] = None,
+    node_id: Optional[str] = None,
 ):
     # Initialize internal KV to be used to upload and download working_dir
     # before calling ray.init within the RayletServicers.
@@ -911,6 +916,7 @@ def serve_proxier(
         redis_username=redis_username,
         redis_password=redis_password,
         runtime_env_agent_address=runtime_env_agent_address,
+        node_id=node_id,
     )
     task_servicer = RayletServicerProxy(None, proxy_manager)
     data_servicer = DataServicerProxy(proxy_manager)

@@ -555,6 +555,50 @@ def get_node(gcs_address, node_id):
     return global_state.get_node(node_id)
 
 
+def get_node_with_retry(
+    gcs_address: str,
+    node_id: str,
+    timeout_s: float = 30,
+    retry_interval_s: float = 1,
+) -> dict:
+    """Get node info from GCS with retry logic.
+
+    Keeps retrying until the node is found or timeout is reached.
+
+    Some Ray processes (e.g., ray_client_server) start in parallel
+    with the raylet. When they query GCS for node info, the raylet may not have
+    registered yet. This function retries until the node info is available.
+
+    Args:
+        gcs_address: The address of the GCS server (e.g., "ip:port").
+        node_id: The hex string ID of the node to find.
+        timeout_s: Total timeout in seconds. Default 30s.
+        retry_interval_s: Interval between retries in seconds. Default 1s.
+
+    Returns:
+        A dictionary containing node info.
+
+    Raises:
+        RuntimeError: If the node is not found within the timeout.
+    """
+    end_time = time.time() + timeout_s
+
+    while True:
+        try:
+            node_info = get_node(gcs_address, node_id)
+            if node_info is not None:
+                return node_info
+        except Exception:
+            pass
+
+        if time.time() >= end_time:
+            raise RuntimeError(
+                f"Timed out waiting for node info for node_id={node_id}."
+            )
+
+        time.sleep(retry_interval_s)
+
+
 def get_webui_url_from_internal_kv():
     assert ray.experimental.internal_kv._internal_kv_initialized()
     webui_url = ray.experimental.internal_kv._internal_kv_get(
@@ -2304,6 +2348,7 @@ def start_ray_client_server(
     redis_password: Optional[str] = None,
     fate_share: Optional[bool] = None,
     runtime_env_agent_address: Optional[str] = None,
+    node_id: Optional[str] = None,
     server_type: str = "proxy",
     serialized_runtime_env_context: Optional[str] = None,
 ):
@@ -2357,6 +2402,8 @@ def start_ray_client_server(
         assert len(runtime_env_agent_address) > 0
     if runtime_env_agent_address:
         command.append(f"--runtime-env-agent-address={runtime_env_agent_address}")
+    if node_id:
+        command.append(f"--node-id={node_id}")
 
     process_info = start_ray_process(
         command,
