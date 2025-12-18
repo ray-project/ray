@@ -2363,19 +2363,6 @@ torchvision==0.18.0
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   mosaicml
     #   timm
-tornado==6.1 ; python_version < "3.12"
-    # via
-    #   -r python/requirements/test-requirements.txt
-    #   bokeh
-    #   distributed
-    #   ipykernel
-    #   jupyter-client
-    #   jupyter-server
-    #   jupyterlab
-    #   nbclassic
-    #   notebook
-    #   pymars
-    #   terminado
 tqdm==4.67.1
     # via
     #   -r python/requirements/cloud-requirements.txt
