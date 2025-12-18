@@ -93,7 +93,6 @@ def test_pause_resume_lifecycle():
     # Wait for application to be running
     wait_for_condition(is_default_app_running, timeout=300)
     wait_for_server_ready(timeout=240)
-    time.sleep(5)  # Buffer time for server to be fully ready
 
     try:
         # Step 1: Verify initial state - engine should not be paused
@@ -138,21 +137,17 @@ def test_pause_resume_lifecycle():
         ), f"pause returned {pause_response.status_code}"
         print("✓ Pause command executed successfully")
 
-        # Wait a bit for pause to complete
-        time.sleep(2)
-
         # Step 4: Verify engine is paused
         print("\n=== Step 4: Verifying engine is paused ===")
-        response = requests.get(
-            f"{BASE_URL}/is_paused?model={MODEL_ID}",
-            timeout=10,
+        # Wait for pause to complete
+        wait_for_condition(
+            lambda: requests.get(f"{BASE_URL}/is_paused?model={MODEL_ID}", timeout=5)
+            .json()
+            .get("is_paused")
+            is True,
+            timeout=30,
+            retry_interval_ms=1000,
         )
-        assert response.status_code == 200
-        pause_state = response.json().get("is_paused", None)
-        assert (
-            pause_state is True
-        ), f"Expected is_paused=True after pause, got {pause_state}"
-        print(f"✓ Paused state: {pause_state}")
 
         # Step 5: Resume the engine
         print("\n=== Step 5: Resuming engine ===")
@@ -166,21 +161,16 @@ def test_pause_resume_lifecycle():
         ), f"resume returned {resume_response.status_code}"
         print("✓ Resume command executed successfully")
 
-        # Wait a bit for resume to complete
-        time.sleep(2)
-
         # Step 6: Verify engine is no longer paused
         print("\n=== Step 6: Verifying engine is resumed ===")
-        response = requests.get(
-            f"{BASE_URL}/is_paused?model={MODEL_ID}",
-            timeout=10,
+        wait_for_condition(
+            lambda: requests.get(f"{BASE_URL}/is_paused?model={MODEL_ID}", timeout=5)
+            .json()
+            .get("is_paused")
+            is False,
+            timeout=30,
+            retry_interval_ms=1000,
         )
-        assert response.status_code == 200
-        resume_state = response.json().get("is_paused", None)
-        assert (
-            resume_state is False
-        ), f"Expected is_paused=False after resume, got {resume_state}"
-        print(f"✓ Paused state: {resume_state}")
 
         # Step 7: Verify model can still serve requests after resume
         print("\n=== Step 7: Verifying model can serve requests after resume ===")
