@@ -643,13 +643,21 @@ def test_with_column_rounding_operations(
         pytest.param(lambda: col("value").exp(), math.exp, id="exp"),
     ],
 )
+@pytest.mark.parametrize(
+    "input_values",
+    [
+        pytest.param([1.0, math.e, 10.0, 4.0], id="float_inputs"),
+        pytest.param([1, 10, 4, 2], id="int_inputs"),
+    ],
+)
 def test_with_column_logarithmic_operations(
     ray_start_regular_shared,
     expr_factory,
     expected_fn,
+    input_values,
 ):
     """Test logarithmic and exponential expressions."""
-    values = [1.0, math.e, 10.0, 4.0]
+    values = input_values
     ds = ray.data.from_items([{"value": v} for v in values])
     expr = expr_factory()
     expected_values = [expected_fn(v) for v in values]
