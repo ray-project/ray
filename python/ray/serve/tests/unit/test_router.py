@@ -1043,7 +1043,9 @@ class TestRouterMetricsManager:
         )
         metrics_manager.update_deployment_config(
             deployment_config=DeploymentConfig(
-                autoscaling_config=AutoscalingConfig(look_back_period_s=0.01)
+                autoscaling_config=AutoscalingConfig(
+                    metrics_interval_s=0.005, look_back_period_s=0.01
+                )
             ),
             curr_num_replicas=0,
         )
