@@ -11,15 +11,21 @@ set -euo pipefail
 
 WHEEL_DIR="${WHEEL_DIR:-.whl}"
 TEST_ENV="/tmp/ray-test-env"
-PYTHON_BIN="${PYTHON_BIN:-$HOME/.conda/envs/py310/bin/python}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 # Find the wheel file
-WHEEL_FILE=$(ls -1 "${WHEEL_DIR}"/ray-*.whl 2>/dev/null | head -1)
-if [[ -z "${WHEEL_FILE}" ]]; then
+WHEEL_FILES=("${WHEEL_DIR}"/ray-*.whl)
+if [[ ${#WHEEL_FILES[@]} -eq 0 || ! -e "${WHEEL_FILES[0]}" ]]; then
     echo "Error: No wheel file found in ${WHEEL_DIR}/"
-    echo "Run ci/build/build-wheel-local.sh 3.10 extract first"
+    echo "Run ci/build/build-wheel-local.sh <PYTHON_VERSION> extract first"
     exit 1
 fi
+if [[ ${#WHEEL_FILES[@]} -gt 1 ]]; then
+    echo "Error: Multiple wheel files found in ${WHEEL_DIR}/. Please clean up the directory."
+    ls -1 "${WHEEL_FILES[@]}"
+    exit 1
+fi
+WHEEL_FILE="${WHEEL_FILES[0]}"
 
 echo "Found wheel: ${WHEEL_FILE}"
 

@@ -19,6 +19,17 @@ header() {
     echo -e "\n\033[34;1m===> $1\033[0m"
 }
 
+# Extract wheel from a docker image to .whl/ directory
+extract_wheel() {
+    local image_name="$1"
+    local wheel_type="$2"
+    header "Extracting ${wheel_type} wheel to .whl/..."
+    container_id=$(docker create "${image_name}" true)
+    docker cp "${container_id}:/" - | tar -xf - -C .whl --strip-components=0 '*.whl' 2>/dev/null || \
+        docker cp "${container_id}:/" .whl/
+    docker rm "${container_id}" > /dev/null
+}
+
 usage() {
     echo "Usage: $0 [PYTHON_VERSION] [BUILD_TYPE] [OPTIONS]"
     echo ""
@@ -137,19 +148,11 @@ if [[ "$EXTRACT" == "extract" ]]; then
     mkdir -p .whl
 
     if [[ "$BUILD_TYPE" == "ray" || "$BUILD_TYPE" == "all" ]]; then
-        header "Extracting ray wheel to .whl/..."
-        container_id=$(docker create "cr.ray.io/rayproject/ray-wheel-py${PYTHON_VERSION}:latest" true)
-        docker cp "${container_id}:/" - | tar -xf - -C .whl --strip-components=0 '*.whl' 2>/dev/null || \
-            docker cp "${container_id}:/" .whl/
-        docker rm "${container_id}" > /dev/null
+        extract_wheel "cr.ray.io/rayproject/ray-wheel-py${PYTHON_VERSION}:latest" "ray"
     fi
 
     if [[ "$BUILD_TYPE" == "cpp" || "$BUILD_TYPE" == "all" ]]; then
-        header "Extracting ray-cpp wheel to .whl/..."
-        container_id=$(docker create "cr.ray.io/rayproject/ray-cpp-wheel-py${PYTHON_VERSION}:latest" true)
-        docker cp "${container_id}:/" - | tar -xf - -C .whl --strip-components=0 '*.whl' 2>/dev/null || \
-            docker cp "${container_id}:/" .whl/
-        docker rm "${container_id}" > /dev/null
+        extract_wheel "cr.ray.io/rayproject/ray-cpp-wheel-py${PYTHON_VERSION}:latest" "ray-cpp"
     fi
 
     # Clean up non-wheel files

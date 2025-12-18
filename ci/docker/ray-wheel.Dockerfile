@@ -60,7 +60,7 @@ COPY --chown=2000:100 python/ python/
 
 # Build the wheel using cached artifacts
 USER forge
-RUN --mount=from=ray-cpp-core,source=/,target=/ray-cpp-core,rw <<EOF
+RUN --mount=from=ray-cpp-core,source=/,target=/ray-cpp-core,ro <<EOF
 #!/bin/bash
 set -euo pipefail
 
