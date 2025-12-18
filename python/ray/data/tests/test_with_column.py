@@ -1,3 +1,5 @@
+import math
+
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -623,6 +625,34 @@ def test_with_column_rounding_operations(
     values = [-1.75, -0.25, 0.0, 0.25, 1.75]
     ds = ray.data.from_items([{"value": v} for v in values])
     expr = expr_factory()
+    result_df = ds.with_column("result", expr).to_pandas()
+    expected_df = pd.DataFrame({"value": values, "result": expected_values})
+    assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
+    "expr_factory, expected_fn",
+    [
+        pytest.param(lambda: col("value").ln(), math.log, id="ln"),
+        pytest.param(lambda: col("value").log10(), math.log10, id="log10"),
+        pytest.param(lambda: col("value").log2(), math.log2, id="log2"),
+        pytest.param(lambda: col("value").exp(), math.exp, id="exp"),
+    ],
+)
+def test_with_column_logarithmic_operations(
+    ray_start_regular_shared,
+    expr_factory,
+    expected_fn,
+):
+    """Test logarithmic and exponential expressions."""
+    values = [1.0, math.e, 10.0, 4.0]
+    ds = ray.data.from_items([{"value": v} for v in values])
+    expr = expr_factory()
+    expected_values = [expected_fn(v) for v in values]
     result_df = ds.with_column("result", expr).to_pandas()
     expected_df = pd.DataFrame({"value": values, "result": expected_values})
     assert rows_same(result_df, expected_df)

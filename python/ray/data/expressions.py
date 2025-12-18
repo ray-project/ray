@@ -435,6 +435,23 @@ class Expr(ABC):
         """Truncate fractional values toward zero."""
         return _create_pyarrow_compute_udf(pc.trunc)(self)
 
+    # logarithmic helpers
+    def ln(self) -> "UDFExpr":
+        """Compute the natural logarithm of the expression."""
+        return _create_pyarrow_compute_udf(pc.ln)(self)
+
+    def log10(self) -> "UDFExpr":
+        """Compute the base-10 logarithm of the expression."""
+        return _create_pyarrow_compute_udf(pc.log10)(self)
+
+    def log2(self) -> "UDFExpr":
+        """Compute the base-2 logarithm of the expression."""
+        return _create_pyarrow_compute_udf(pc.log2)(self)
+
+    def exp(self) -> "UDFExpr":
+        """Compute the natural exponential of the expression."""
+        return _create_pyarrow_compute_udf(pc.exp)(self)
+
     @property
     def list(self) -> "_ListNamespace":
         """Access list operations for this expression.
