@@ -11,8 +11,8 @@ from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.apis import ValueFunctionAPI
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
@@ -114,6 +114,8 @@ class IMPALALearner(Learner):
         self._submitted_updates = 0  # producer-side counter (update thread(s))
         self._num_updates = 0  # learner-side counter
         self._num_updates_lock = threading.Lock()
+        # Set the update kwargs passed in the main thread for use in the learner thread.
+        self._update_kwargs = {}
 
         self._model_io_lock = threading.RLock()
 
@@ -146,11 +148,10 @@ class IMPALALearner(Learner):
         )
 
         # Learner in-queue must be tiny. 1 strictly serializes GPU-resident batches.
-        # TODO (simon): Check, if deque is better here.
         # TODO (simon): Add a parameter to define queue size.
         if not hasattr(self, "_learner_thread_in_queue"):
             self._learner_thread_in_queue: "Queue[tuple[Any, Dict[str, Any]]]" = Queue(
-                maxsize=2
+                maxsize=self.config.learner_queue_size
             )
 
         # Get the rank of this learner, if necessary.
@@ -210,6 +211,8 @@ class IMPALALearner(Learner):
         Returns:
 
         """
+        # Set the update kwargs passed in the main thread for use in the learner thread.
+        self._update_kwargs = kwargs
 
         with TimerAndPrometheusLogger(self._metrics_learner_impala_update):
             # Get the train batch from the object store.
@@ -263,7 +266,7 @@ class IMPALALearner(Learner):
                 result["_rl_module_state_after_update"] = self._learner_state
             return result
 
-        # Result submission: wait until learner finished 20 updates (blocking).
+        # Result submission: wait until learner finished BATCHES_PER_AGGREGATION updates (blocking).
         self._agg_event.wait()
         # Reset the aggregation event to keep the `_LearnerThread` running.
         self._agg_event.clear()
@@ -536,6 +539,8 @@ class _LearnerThread(threading.Thread):
                     training_data=TrainingData(batch=ma_batch_on_gpu),
                     timesteps=timesteps,
                     _no_metrics_reduce=True,
+                    # Include the learner update kwargs set in the main thread.
+                    **self.learner._update_kwargs,
                 )
 
         # Signal queue done (unblocks producer’s put when bounded)

@@ -1,8 +1,10 @@
 import abc
+from collections import defaultdict
 from queue import Queue
 from typing import Any, Dict, Optional
 
 from ray.rllib.algorithms.appo.appo import APPOConfig
+from ray.rllib.algorithms.appo.utils import CircularBuffer
 from ray.rllib.algorithms.impala.impala_learner import IMPALALearner
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.utils import update_target_network
@@ -29,8 +31,18 @@ class APPOLearner(IMPALALearner):
 
     @override(IMPALALearner)
     def build(self):
-        # For APPO use a large queue.
-        self._learner_thread_in_queue = Queue(maxsize=32)
+        self._last_update_ts_by_mid = defaultdict(int)
+
+        # Use a CircularBuffer as learner-in-queue if configured to do so.
+        self._learner_thread_in_queue = (
+            CircularBuffer(
+                num_batches=self.config.circular_buffer_num_batches,
+                iterations_per_batch=self.config.circular_buffer_iterations_per_batch,
+                # For APPO use a large queue.
+            )
+            if self.config.use_circular_buffer
+            else Queue(maxsize=self.config.learner_queue_size)
+        )
 
         # Now build the super class. Otherwise the learner-queue would overriden.
         super().build()
@@ -91,9 +103,8 @@ class APPOLearner(IMPALALearner):
         for module_id, module in self.module._rl_modules.items():
             config = self.config.get_config_for_module(module_id)
 
-            last_update_ts_key = (module_id, LAST_TARGET_UPDATE_TS)
             if isinstance(module.unwrapped(), TargetNetworkAPI) and (
-                curr_timestep - self.metrics.peek(last_update_ts_key, default=0)
+                curr_timestep - self._last_update_ts_by_mid[module_id]
                 >= (
                     config.target_network_update_freq
                     * config.circular_buffer_num_batches
@@ -111,9 +122,14 @@ class APPOLearner(IMPALALearner):
                         tau=config.tau,
                     )
                 # Increase lifetime target network update counter by one.
-                self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
+                self.metrics.log_value(
+                    (module_id, NUM_TARGET_UPDATES), 1, reduce="lifetime_sum"
+                )
                 # Update the (single-value -> window=1) last updated timestep metric.
-                self.metrics.log_value(last_update_ts_key, curr_timestep, window=1)
+                self._last_update_ts_by_mid[module_id] = curr_timestep
+                self.metrics.log_value(
+                    (module_id, LAST_TARGET_UPDATE_TS), curr_timestep, reduce="max"
+                )
 
             if (
                 config.use_kl_loss
