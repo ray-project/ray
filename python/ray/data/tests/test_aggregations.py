@@ -8,7 +8,7 @@ from ray.data.aggregate import (
     ApproximateQuantile,
     ApproximateTopK,
     MissingValuePercentage,
-    TopKUnique,
+    TopK,
     Unique,
     ValueCounter,
     ZeroPercentage,
@@ -644,8 +644,8 @@ class TestValueCounter:
             assert counts[f"cat_{i}"] == 100
 
 
-class TestTopKUnique:
-    """Test cases for TopKUnique aggregation."""
+class TestTopK:
+    """Test cases for TopK aggregation."""
 
     def test_topk_unique_basic(self, ray_start_regular_shared_2_cpus):
         """Test basic top-k unique values."""
@@ -657,13 +657,13 @@ class TestTopKUnique:
         ]
         ds = ray.data.from_items(data)
 
-        result = ds.aggregate(TopKUnique(on="category", k=2))
-        top2 = result["top_k_unique(category)"]
+        result = ds.aggregate(TopK(on="category", k=2))
+        top2 = result["top_k(category)"]
 
         assert top2 == ["A", "B"]
 
     def test_topk_unique_global_frequency(self, ray_start_regular_shared_2_cpus):
-        """Test that TopKUnique computes global top-k, not per-block top-k.
+        """Test that TopK computes global top-k, not per-block top-k.
 
         This verifies that an element appearing across multiple blocks with
         high cumulative count is correctly identified as a top element.
@@ -679,8 +679,8 @@ class TestTopKUnique:
             [{"val": v} for v in block1_data + block2_data]
         ).repartition(2)
 
-        result = ds.aggregate(TopKUnique(on="val", k=2))
-        top2 = result["top_k_unique(val)"]
+        result = ds.aggregate(TopK(on="val", k=2))
+        top2 = result["top_k(val)"]
 
         assert "C" in top2, f"C should be in top 2 (count=102), but got {top2}"
         assert "A" in top2, f"A should be in top 2 (count=101), but got {top2}"
@@ -691,7 +691,7 @@ class TestTopKUnique:
         data = [{"x": "a"}, {"x": "b"}, {"x": "a"}, {"x": "c"}]
         ds = ray.data.from_items(data)
 
-        result = ds.aggregate(TopKUnique(on="x", k=2, alias_name="top_items"))
+        result = ds.aggregate(TopK(on="x", k=2, alias_name="top_items"))
         assert "top_items" in result
         assert result["top_items"][0] == "a"
 
@@ -700,8 +700,8 @@ class TestTopKUnique:
         data = [{"x": "a"}, {"x": "b"}, {"x": "a"}]
         ds = ray.data.from_items(data)
 
-        result = ds.aggregate(TopKUnique(on="x", k=5))
-        top = result["top_k_unique(x)"]
+        result = ds.aggregate(TopK(on="x", k=5))
+        top = result["top_k(x)"]
 
         # Should return only 2 items since that's all we have
         assert len(top) == 2
@@ -716,8 +716,8 @@ class TestTopKUnique:
         ]
         ds = ray.data.from_items(data)
 
-        result = ds.aggregate(TopKUnique(on="tags", k=2, encode_lists=True))
-        top2 = result["top_k_unique(tags)"]
+        result = ds.aggregate(TopK(on="tags", k=2, encode_lists=True))
+        top2 = result["top_k(tags)"]
 
         # python appears 3 times, java 2 times
         assert top2[0] == "python"
@@ -732,8 +732,8 @@ class TestTopKUnique:
         ]
         ds = ray.data.from_items(data)
 
-        result = ds.aggregate(TopKUnique(on="tags", k=2, encode_lists=False))
-        top = result["top_k_unique(tags)"]
+        result = ds.aggregate(TopK(on="tags", k=2, encode_lists=False))
+        top = result["top_k(tags)"]
 
         # Lists are hashed, so we get hashes back, not the original lists
         # Just verify we get the expected number of results
@@ -752,14 +752,45 @@ class TestTopKUnique:
 
         result = (
             ds.groupby("group")
-            .aggregate(TopKUnique(on="item", k=2))
+            .aggregate(TopK(on="item", k=2))
             .take_all()
         )
 
-        result_by_group = {row["group"]: row["top_k_unique(item)"] for row in result}
+        result_by_group = {row["group"]: row["top_k(item)"] for row in result}
 
         assert result_by_group["X"] == ["apple", "banana"]
         assert result_by_group["Y"] == ["date", "elderberry"]
+
+    def test_topk_unique_with_ties(self, ray_start_regular_shared_2_cpus):
+        """Test top-k unique with ties in frequency."""
+        data = [
+            *[{"category": "A"} for _ in range(5)],
+            *[{"category": "B"} for _ in range(5)],
+            *[{"category": "C"} for _ in range(3)],
+            *[{"category": "D"} for _ in range(3)],
+            *[{"category": "E"} for _ in range(1)],
+        ]
+        ds = ray.data.from_items(data)
+
+        # k=2, A and B are top 2 with same frequency.
+        result = ds.aggregate(TopK(on="category", k=2))
+        top2 = result["top_k(category)"]
+        assert set(top2) == {"A", "B"}
+
+        # k=3, A and B are top 2. C or D could be 3rd.
+        result = ds.aggregate(TopK(on="category", k=3))
+        top3 = result["top_k(category)"]
+        assert len(top3) == 3
+        assert "A" in top3
+        assert "B" in top3
+        # The third element must be either C or D
+        third_element = list(set(top3) - {"A", "B"})[0]
+        assert third_element in {"C", "D"}
+
+        # k=4, A, B, C, D are top 4.
+        result = ds.aggregate(TopK(on="category", k=4))
+        top4 = result["top_k(category)"]
+        assert set(top4) == {"A", "B", "C", "D"}
 
 
 if __name__ == "__main__":

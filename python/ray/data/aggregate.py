@@ -1114,7 +1114,7 @@ class ValueCounter(AggregateFnV2):
         return current_accumulator
 
 
-class TopKUnique(ValueCounter):
+class TopK(ValueCounter):
     """Returns the k most frequent unique values in a column.
 
     This aggregation computes value counts across all blocks, then returns
@@ -1126,7 +1126,7 @@ class TopKUnique(ValueCounter):
         .. testcode::
 
             import ray
-            from ray.data.aggregate import TopKUnique
+            from ray.data.aggregate import TopK
 
             # Create a dataset with repeated values
             ds = ray.data.from_items([
@@ -1135,8 +1135,8 @@ class TopKUnique(ValueCounter):
             ])
 
             # Get top 2 most frequent categories
-            result = ds.aggregate(TopKUnique(on="category", k=2))
-            # result: {'top_k_unique(category)': ['A', 'B']}
+            result = ds.aggregate(TopK(on="category", k=2))
+            # result: {'top_k(category)': ['A', 'B']}
 
     Args:
         on: The name of the column to find top-k unique values in.
@@ -1144,7 +1144,7 @@ class TopKUnique(ValueCounter):
         encode_lists: If `True`, flatten list elements before counting.
             If `False`, treat entire lists as single values. Default is `True`.
         alias_name: Optional name for the resulting column. If not provided,
-            defaults to "top_k_unique({column_name})".
+            defaults to "top_k({column_name})".
     """
 
     def __init__(
@@ -1156,7 +1156,7 @@ class TopKUnique(ValueCounter):
     ):
         super().__init__(
             on=on,
-            alias_name=alias_name if alias_name else f"top_k_unique({str(on)})",
+            alias_name=alias_name if alias_name else f"top_k({str(on)})",
         )
         self.k = k
         self._encode_lists = encode_lists
@@ -1167,14 +1167,11 @@ class TopKUnique(ValueCounter):
 
         if column_accessor.is_composed_of_lists():
             if self._encode_lists:
-                column_accessor = BlockColumnAccessor.for_column(
-                    column_accessor.flatten()
-                )
-                column_accessor = BlockColumnAccessor.for_column(
-                    column_accessor.dropna()
-                )
+                column = column_accessor.flatten()
+                column = BlockColumnAccessor.for_column(column).dropna()
             else:
-                column_accessor = BlockColumnAccessor.for_column(column_accessor.hash())
+                column = column_accessor.hash()
+            column_accessor = BlockColumnAccessor.for_column(column)
 
         return column_accessor.value_counts()
 
