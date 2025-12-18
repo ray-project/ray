@@ -1,3 +1,46 @@
+"""Example showing how to train SAC in a multi-agent Pendulum environment.
+
+This example demonstrates Soft Actor-Critic (SAC) in a multi-agent setting where
+multiple independent agents each control their own pendulum. Each agent has its
+own policy that learns to swing up and balance its pendulum.
+
+This example:
+- Trains on the MultiAgentPendulum environment with configurable number of agents
+- Uses a multi-agent prioritized experience replay buffer
+- Configures separate policies for each agent via policy_mapping_fn
+- Applies n-step returns with random n in range [2, 5]
+- Uses automatic entropy tuning with target_entropy="auto"
+
+How to run this script
+----------------------
+`python tictactoe_sac.py --num-agents=2`
+
+To train with more agents:
+`python tictactoe_sac.py --num-agents=4`
+
+For faster training with multiple learners:
+`python tictactoe_sac.py --num-learners=2 --num-env-runners=4`
+
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0 --num-learners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
+
+Results to expect
+-----------------
+Training should show all agents learning to swing up their pendulums within 500k
+timesteps.
+
++--------------------------------------------+------------+--------+------------------+
+| Trial name                                 | status     |   iter |   total time (s) |
+|--------------------------------------------+------------+--------+------------------+
+| SAC_multi_agent_pendulum_xxxxx_00000       | TERMINATED |    XXX |          XXXX.XX |
++--------------------------------------------+------------+--------+------------------+
+"""
 from torch import nn
 
 from ray.rllib.algorithms.sac import SACConfig

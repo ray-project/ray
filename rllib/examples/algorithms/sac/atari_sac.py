@@ -1,3 +1,43 @@
+"""Example showing how to train SAC on Atari environments with frame stacking.
+
+Soft Actor-Critic (SAC) is an off-policy algorithm typically used for continuous
+control, but can be adapted for discrete action spaces like Atari games. This
+example demonstrates SAC with image observations using custom frame stacking
+connectors and convolutional neural networks.
+
+This example:
+- Trains on the Pong Atari environment (configurable via --env)
+- Uses frame stacking (4 frames) via env-to-module and learner connectors
+- Applies Atari-specific preprocessing (64x64 grayscale, reward clipping)
+- Configures a CNN architecture suitable for visual observations
+- Uses an entropy coefficient schedule that anneals from 0.01 to 0.0 over 3M steps
+
+How to run this script
+----------------------
+`python atari_sac.py --env=ale_py:ALE/Pong-v5`
+
+For faster training with multiple learners and env runners:
+`python atari_sac.py --num-learners=2 --num-env-runners=8`
+
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0 --num-learners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
+
+Results to expect
+-----------------
+Training should reach a reward of ~20 (winning most games) within 10M timesteps.
+
++-----------------------------+------------+--------+------------------+
+| Trial name                  | status     |   iter |   total time (s) |
+|-----------------------------+------------+--------+------------------+
+| SAC_env_xxxxx_00000         | TERMINATED |   XXXX |         XXXXX.XX |
++-----------------------------+------------+--------+------------------+
+"""
 import gymnasium as gym
 
 from ray.rllib.algorithms.sac import SACConfig

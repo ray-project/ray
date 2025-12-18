@@ -1,3 +1,43 @@
+"""Example showing how to train SAC on MuJoCo's HalfCheetah continuous control task.
+
+Soft Actor-Critic (SAC) is an off-policy maximum entropy reinforcement learning
+algorithm that excels at continuous control tasks. This example demonstrates SAC
+on the HalfCheetah-v4 MuJoCo environment with prioritized experience replay and
+n-step returns.
+
+This example:
+- Trains on the HalfCheetah-v4 MuJoCo locomotion environment
+- Uses prioritized experience replay buffer (alpha=0.6, beta=0.4)
+- Configures separate learning rates for actor, critic, and alpha (temperature)
+- Applies n-step returns with random n in range [1, 5] for each sampled transition
+- Uses automatic entropy tuning with target_entropy="auto"
+
+How to run this script
+----------------------
+`python halfcheetah_sac.py`
+
+For faster training with multiple learners:
+`python halfcheetah_sac.py --num-learners=2 --num-env-runners=8`
+
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0 --num-learners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
+
+Results to expect
+-----------------
+Training should reach a reward of ~12,000 within 1M timesteps (~2000 iterations).
+
++--------------------------------------+------------+--------+------------------+
+| Trial name                           | status     |   iter |   total time (s) |
+|--------------------------------------+------------+--------+------------------+
+| SAC_HalfCheetah-v4_xxxxx_00000       | TERMINATED |   2000 |         XXXXX.XX |
++--------------------------------------+------------+--------+------------------+
+"""
 from torch import nn
 
 from ray.rllib.algorithms.sac.sac import SACConfig
