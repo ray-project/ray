@@ -138,7 +138,7 @@ Multimodal batch inference
 --------------------------------------------------------
 
 Ray Data LLM also supports running batch inference with vision language
-and omnimodal models on multimodal data. To enable multimodal batch inference,
+and omni-modal models on multimodal data. To enable multimodal batch inference,
 apply the following 2 adjustments on top of the previous example:
 
 - Set `PrepareMultimodalStageConfig(enabled=True)` in the `vLLMEngineProcessorConfig`
@@ -227,7 +227,7 @@ Finally, run the VLM inference:
     :end-before: # __vlm_video_run_example_end__
     :dedent: 0
 
-Audio batch inference with omnimodal model
+Audio batch inference with omni-modal model
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 First, load an audio dataset:
@@ -238,7 +238,7 @@ First, load an audio dataset:
     :end-before: def create_omni_audio_config():
     :dedent: 0
 
-Next, configure the omnimodal processor with the essential settings:
+Next, configure the omni-modal processor with the essential settings:
 
 .. literalinclude:: doc_code/working-with-llms/omni_audio_example.py
     :language: python
@@ -246,7 +246,7 @@ Next, configure the omnimodal processor with the essential settings:
     :end-before: __omni_audio_config_example_end__
 
 Define preprocessing and postprocessing functions to convert dataset rows into
-the format expected by the omnimodal model and extract model responses. Within the preprocessor,
+the format expected by the omni-modal model and extract model responses. Within the preprocessor,
 structure audio data as part of an OpenAI-compatible message. Both audio URL and audio
 binary data are supported.
 
@@ -260,7 +260,7 @@ binary data are supported.
     :start-after: __omni_audio_preprocess_example_start__
     :end-before: __omni_audio_preprocess_example_end__
 
-Finally, run the omnimodal inference:
+Finally, run the omni-modal inference:
 
 .. literalinclude:: doc_code/working-with-llms/omni_audio_example.py
     :language: python
