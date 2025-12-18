@@ -167,8 +167,7 @@ class DataOpTask(OpTask):
                         timeout_s=0
                     )
                 except StopIteration:
-                    self._task_done_callback(None)
-                    self._has_finished = True
+                    self.finish(None)
                     break
 
                 if self._pending_block_ref.is_nil():
@@ -194,8 +193,7 @@ class DataOpTask(OpTask):
                         ray.get(self._pending_block_ref)
                         assert False, "Above ray.get should raise an exception."
                     except Exception as ex:
-                        self._task_done_callback(ex)
-                        self._has_finished = True
+                        self.finish(ex)
                         raise ex from None
 
                 if self._pending_meta_ref.is_nil():
@@ -239,6 +237,20 @@ class DataOpTask(OpTask):
             bytes_read += meta.size_bytes
 
         return bytes_read
+
+    def finish(self, exception: Optional[Exception] = None):
+        """Mark this task as finished and invoke the done callback.
+
+        This method is idempotent - calling it multiple times has no effect
+        after the first call.
+
+        Args:
+            exception: Optional exception that caused the task to finish.
+                If None, the task completed successfully.
+        """
+        if not self._has_finished:
+            self._task_done_callback(exception)
+            self._has_finished = True
 
     @property
     def has_finished(self) -> bool:

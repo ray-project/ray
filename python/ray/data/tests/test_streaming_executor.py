@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray._raylet import NodeID
 from ray.data._internal.compute import ActorPoolStrategy
@@ -1220,11 +1221,11 @@ def test_process_completed_tasks_cleans_up_when_actor_dies_mid_task(
     topology = build_streaming_topology(op, ExecutionOptions())
 
     # Drive metadata tasks until the actor is running and input can be accepted.
-    deadline = time.time() + 30
-    while not op.should_add_input():
+    def _check_actor_pool_started():
         process_completed_tasks(topology, [], max_errored_blocks=-1)
-        if time.time() > deadline:
-            raise TimeoutError("Timed out waiting for actor pool to start.")
+        return op.should_add_input()
+
+    wait_for_condition(_check_actor_pool_started, timeout=3)
 
     # Submit one input, which should dispatch a data task to the actor pool.
     op.add_input(topology[input_op].output_queue.pop(), 0)
@@ -1237,13 +1238,10 @@ def test_process_completed_tasks_cleans_up_when_actor_dies_mid_task(
 
     # Now the streaming generator should error; `process_completed_tasks` must still
     # run the task cleanup callbacks to release the task slot.
-    num_errored_blocks = 0
-    while num_errored_blocks == 0:
-        num_errored_blocks += process_completed_tasks(
-            topology, [], max_errored_blocks=-1
-        )
-        if time.time() > deadline:
-            raise TimeoutError("Timed out waiting for task failure to be processed.")
+    def _check_task_failure_processed():
+        return process_completed_tasks(topology, [], max_errored_blocks=-1) > 0
+
+    wait_for_condition(_check_task_failure_processed, timeout=3)
 
     assert op._actor_pool.num_tasks_in_flight() == 0
     assert len(op._data_tasks) == 0
