@@ -722,7 +722,7 @@ grpcio==1.74.0 ; python_version >= "3.10"
     #   tensorflow
 grpcio-status==1.62.3
     # via google-api-core
-grpcio-tools==1.62.3
+grpcio-tools==1.66.2
     # via -r python/requirements/cloud-requirements.txt
 gsutil==5.27
     # via -r python/requirements/docker/ray-docker-requirements.txt
@@ -1578,7 +1578,7 @@ proto-plus==1.22.3
     #   google-api-core
     #   google-cloud-bigquery
     #   google-cloud-bigquery-storage
-protobuf==4.25.8
+protobuf==5.29.5
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
