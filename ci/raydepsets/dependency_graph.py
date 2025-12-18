@@ -7,6 +7,7 @@ from networkx import DiGraph
 @dataclass
 class Dep:
     """Represents a dependency with its name, version, and dependents."""
+
     name: str
     version: str
     required_by: List[str]
@@ -25,8 +26,6 @@ class DependencyGraph:
 
     def add_edges(self, deps: List[Dep]):
         for dep in deps:
-            if len(dep.required_by) == 0:
-                continue
             for dependent in dep.required_by:
                 if not self.graph.has_node(dependent):
                     raise ValueError(f"Dependency {dependent} not found in deps")
