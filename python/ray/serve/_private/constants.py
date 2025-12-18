@@ -125,6 +125,30 @@ MODEL_LOAD_LATENCY_BUCKETS_MS = parse_latency_buckets(
     DEFAULT_LATENCY_BUCKET_MS,
 )
 
+#: Histogram buckets for replica startup and reconfigure latency.
+#: These are longer operations (constructor, model loading) so buckets start higher.
+DEFAULT_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS = [
+    5,
+    20,
+    50,
+    100,
+    250,
+    500,
+    1000,
+    2000,
+    5000,
+    10000,
+    20000,
+    30000,
+    60000,
+    120000,
+    240000,
+]
+REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS = parse_latency_buckets(
+    get_env_str("RAY_SERVE_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS", ""),
+    DEFAULT_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
+)
+
 #: Histogram buckets for batch execution time in milliseconds.
 BATCH_EXECUTION_TIME_BUCKETS_MS = REQUEST_LATENCY_BUCKETS_MS
 
@@ -582,3 +606,32 @@ RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
 )
 # Key for the decision counters in default autoscaling policy state
 SERVE_AUTOSCALING_DECISION_COUNTERS_KEY = "__decision_counters"
+
+# Event loop monitoring interval in seconds.
+# This is how often the event loop lag is measured.
+RAY_SERVE_EVENT_LOOP_MONITORING_INTERVAL_S = get_env_float_positive(
+    "RAY_SERVE_EVENT_LOOP_MONITORING_INTERVAL_S", 5.0
+)
+
+# Histogram buckets for event loop scheduling latency in milliseconds.
+# These are tuned for detecting event loop blocking:
+# - < 10ms: healthy
+# - 10-50ms: acceptable under load
+# - 50-100ms: concerning, investigate
+# - 100-500ms: problematic, likely blocking code
+# - > 500ms: severe, definitely blocking
+# - > 5s: catastrophic
+SERVE_EVENT_LOOP_LATENCY_HISTOGRAM_BOUNDARIES_MS = [
+    1,  # 1ms
+    5,  # 5ms
+    10,  # 10ms
+    25,  # 25ms
+    50,  # 50ms
+    100,  # 100ms
+    250,  # 250ms
+    500,  # 500ms
+    1000,  # 1s
+    2500,  # 2.5s
+    5000,  # 5s
+    10000,  # 10s
+]

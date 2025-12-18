@@ -11,6 +11,7 @@ This guide shows you how to use :ref:`ray.data.llm <llm-ref>` to:
 * :ref:`Perform batch inference with LLMs <batch_inference_llm>`
 * :ref:`Configure vLLM for LLM inference <vllm_llm>`
 * :ref:`Batch inference with embedding models <embedding_models>`
+* :ref:`Batch inference with classification models <classification_models>`
 * :ref:`Query deployed models with an OpenAI compatible API endpoint <openai_compatible_api_endpoint>`
 
 .. _vllm_quickstart:
@@ -220,6 +221,39 @@ For a complete embedding configuration example, see:
     :language: python
     :start-after: __embedding_config_example_start__
     :end-before: __embedding_config_example_end__
+
+.. _classification_models:
+
+Batch inference with classification models
+------------------------------------------
+
+Ray Data LLM supports batch inference with sequence classification models, such as content classifiers and sentiment analyzers:
+
+.. literalinclude:: doc_code/working-with-llms/classification_example.py
+    :language: python
+    :start-after: __classification_example_start__
+    :end-before: __classification_example_end__
+
+.. testoutput::
+    :options: +MOCK
+
+    {'text': 'lol that was so funny haha', 'edu_score': -0.05}
+    {'text': 'Photosynthesis converts light energy...', 'edu_score': 1.73}
+    {'text': "Newton's laws describe...", 'edu_score': 2.52}
+
+Key differences for classification models:
+
+- Set ``task_type="classify"`` (or ``task_type="score"`` for scoring models)
+- Set ``apply_chat_template=False`` and ``detokenize=False``
+- Use direct ``prompt`` input instead of ``messages``
+- Access classification logits through ``row["embeddings"]``
+
+For a complete classification configuration example, see:
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __classification_config_example_start__
+    :end-before: __classification_config_example_end__
 
 .. _openai_compatible_api_endpoint:
 
