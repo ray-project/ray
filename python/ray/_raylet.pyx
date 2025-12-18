@@ -737,7 +737,7 @@ cdef prepare_args_internal(
                     c_owner_address,
                     arg.call_site(),
                     move(c_tensor_transport))))
-
+            c_tensor_transport = NULL_TENSOR_TRANSPORT
         else:
             try:
                 serialized_arg = serialization_context.serialize(arg)
