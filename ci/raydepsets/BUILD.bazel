@@ -10,12 +10,18 @@ py_library(
 )
 
 py_library(
+    name = "dependency_graph",
+    srcs = ["dependency_graph.py"],
+)
+
+py_library(
     name = "raydepsets_lib",
     srcs = [
         "cli.py",
     ],
     data = ["//:uv_file"],
     deps = [
+        ":dependency_graph",
         ":workspace",
         ci_require("bazel-runfiles"),
         ci_require("click"),
@@ -81,5 +87,21 @@ py_test(
         ci_require("pytest"),
         ":utils",
         ":workspace",
+    ],
+)
+
+py_test(
+    name = "test_dependency_graph",
+    srcs = ["tests/test_dependency_graph.py"],
+    data = [
+    ],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ":raydepsets_lib",
+        ":utils",
     ],
 )
