@@ -22,36 +22,34 @@
 namespace ray {
 
 /**
-  Write a string value to a file atomically. Overwrites if the file exists.
-
-  Uses temp file + rename pattern for cross-platform (Linux/Windows) and
-  cross-language (C++/Python) safe file sharing. This guarantees readers
-  will not read partial content.
-
-  @param file_path The absolute path to the target file.
-  @param value The string value to write.
-
-  @return Status::OK if the file was written successfully.
-  @return Status::IOError if the temp file could not be opened, written to,
-          or renamed to the target path.
-*/
+ * @brief Write a string value to a file atomically. Overwrites if the file exists.
+ *
+ * Uses temp file + rename pattern for cross-platform (Linux/Windows) and
+ * cross-language (C++/Python) safe file sharing. This guarantees readers
+ * will not read partial content.
+ *
+ * @param file_path The absolute path to the target file.
+ * @param value The string value to write.
+ * @return Status::OK if the file was written successfully.
+ * @return Status::IOError if the temp file could not be opened, written to,
+ *         or renamed to the target path.
+ */
 Status WriteFile(const std::string &file_path, const std::string &value);
 
 /**
-  Wait for a file to appear and return its content as a string.
-
-  Best suited for write-once, read-many scenarios. No protection against
-  concurrent writes or content changes during/after read.
-
-  @param file_path The absolute path to the file to wait for.
-  @param timeout_ms Maximum time to wait in milliseconds. Defaults to 30000.
-  @param poll_interval_ms Interval between filesystem checks in milliseconds.
-         Defaults to 100.
-
-  @return The file content if successful.
-  @return StatusT::IOError if the file exists but cannot be read.
-  @return StatusT::TimedOut if the file does not appear within the timeout period.
-*/
+ * @brief Wait for a file to appear and return its content as a string.
+ *
+ * Best suited for write-once, read-many scenarios. No protection against
+ * concurrent writes or content changes during/after read.
+ *
+ * @param file_path The absolute path to the file to wait for.
+ * @param timeout_ms Maximum time to wait in milliseconds. Defaults to 30000.
+ * @param poll_interval_ms Interval between filesystem checks in milliseconds.
+ *        Defaults to 100.
+ * @return The file content if successful.
+ * @return StatusT::IOError if the file exists but cannot be read.
+ * @return StatusT::TimedOut if the file does not appear within the timeout period.
+ */
 StatusSetOr<std::string, StatusT::IOError, StatusT::TimedOut> WaitForFile(
     const std::string &file_path, int timeout_ms = 30000, int poll_interval_ms = 100);
 
