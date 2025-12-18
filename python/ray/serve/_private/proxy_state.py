@@ -359,7 +359,7 @@ class ProxyState:
             ),
             tag_keys=("node_id", "node_ip_address"),
         ).set_default_tags({"node_id": node_id, "node_ip_address": node_ip})
-        # Set initial status (STARTING = 0)
+        # Set initial status (STARTING = 1)
         self._status_gauge.set(ProxyStatus.STARTING.to_numeric())
 
         # Metric to track proxy shutdown duration

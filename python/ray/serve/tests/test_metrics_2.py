@@ -992,43 +992,6 @@ class TestProxyStateMetrics:
             expected_tags={},
         )
 
-    def test_proxy_draining_metric(self, metrics_start_shutdown):
-        """Test that proxy draining metric is reported correctly."""
-
-        @serve.deployment
-        def f():
-            return "hello"
-
-        serve.run(f.bind(), name="app")
-        timeseries = PrometheusTimeseries()
-
-        # Wait for the HTTP proxy draining metric to be reported
-        def check_proxy_draining_metric_exists():
-            metrics = get_metric_dictionaries(
-                "ray_serve_http_proxy_draining", timeseries=timeseries
-            )
-            return len(metrics) >= 1
-
-        wait_for_condition(check_proxy_draining_metric_exists, timeout=30)
-
-        # Verify the metric has the expected tags and value is 0 (not draining)
-        metrics = get_metric_dictionaries(
-            "ray_serve_http_proxy_draining", timeseries=timeseries
-        )
-        assert len(metrics) >= 1
-        for metric in metrics:
-            assert "node_id" in metric
-            assert "node_ip_address" in metric
-
-        # Verify the metric value is 0 (not draining)
-        wait_for_condition(
-            check_metric_float_eq,
-            metric="ray_serve_http_proxy_draining",
-            expected=0,
-            timeseries=timeseries,
-            expected_tags={},
-        )
-
     def test_proxy_shutdown_duration_metric(self, metrics_start_shutdown):
         """Test that proxy shutdown duration metric is recorded when proxy shuts down."""
 

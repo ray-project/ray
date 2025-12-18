@@ -203,23 +203,6 @@ class GenericProxy(ABC):
             }
         )
 
-        # Metric to track whether proxy is draining (1=draining, 0=not draining)
-        self.draining_gauge = metrics.Gauge(
-            name=f"serve_{self.protocol.lower()}_proxy_draining",
-            description=(
-                f"Whether this {self.protocol} proxy is draining. "
-                "1 means draining, 0 means not draining."
-            ),
-            tag_keys=("node_id", "node_ip_address"),
-        ).set_default_tags(
-            {
-                "node_id": node_id,
-                "node_ip_address": node_ip_address,
-            }
-        )
-        # Initially set to 0 since proxy starts in non-draining state
-        self.draining_gauge.set(0)
-
         # `self._ongoing_requests` is used to count the number of ongoing requests
         self._ongoing_requests = 0
         # The time when the node starts to drain.
@@ -270,14 +253,12 @@ class GenericProxy(ABC):
                 extra={"log_to_stderr": False},
             )
             self._draining_start_time = time.time()
-            self.draining_gauge.set(1)
         if (not draining) and self._is_draining():
             logger.info(
                 f"Stop draining the proxy actor on node {self._node_id}.",
                 extra={"log_to_stderr": False},
             )
             self._draining_start_time = None
-            self.draining_gauge.set(0)
 
     @abstractmethod
     async def not_found_response(

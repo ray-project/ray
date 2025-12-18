@@ -638,8 +638,6 @@ These metrics track proxy health and lifecycle.
 |--------|------|------|-------------|
 | `ray_serve_proxy_status` | Gauge | `node_id`, `node_ip_address` | Current status of the proxy as a numeric value: `1` = STARTING, `2` = HEALTHY, `3` = UNHEALTHY, `4` = DRAINING, `5` = DRAINED. |
 | `ray_serve_proxy_shutdown_duration_ms` | Histogram | `node_id`, `node_ip_address` | Time taken for a proxy to shut down in milliseconds. |
-| `ray_serve_http_proxy_draining` | Gauge | `node_id`, `node_ip_address` | Whether this http proxy is draining. 1 means draining, 0 means not draining. |
-| `ray_serve_grpc_proxy_draining` | Gauge | `node_id`, `node_ip_address` | Whether this grpc proxy is draining. 1 means draining, 0 means not draining. |
 
 ### Replica lifecycle metrics
 
