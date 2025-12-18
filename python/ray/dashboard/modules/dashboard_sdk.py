@@ -249,6 +249,8 @@ class SubmissionClient:
             else:
                 self._ssl_context = None
 
+        self._server_ray_version: Optional[str] = None
+
     def _check_connection_and_version(
         self, min_version: str = "1.9", version_error_message: str = None
     ):
