@@ -94,7 +94,8 @@ class SetupSpec:
         else:
             self.version = version
         self.description: str = description
-        self.build_type: BuildType = build_type
+        self.build_type: BuildType = BuildType.ASAN
+        # self.build_type: BuildType = build_type
         self.files_to_include: list = []
         self.install_requires: list = []
         self.extras: dict = {}
