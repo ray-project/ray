@@ -2242,16 +2242,26 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
     - Router: router loop (when separate loop enabled, runs on replica)
     """
 
+    @serve.deployment(name="g")
+    class ChildDeployment:
+        def __call__(self):
+            return "child"
+
     @serve.deployment(name="f")
     class SimpleDeployment:
-        def __call__(self):
-            return "hello"
+        def __init__(self, child):
+            self.child = child
 
-    serve.run(SimpleDeployment.bind(), name="app", route_prefix="/test")
+        async def __call__(self):
+            return await self.child.remote()
+
+    serve.run(
+        SimpleDeployment.bind(ChildDeployment.bind()), name="app", route_prefix="/test"
+    )
 
     # Make a request to ensure everything is running
     url = get_application_url("HTTP", "app")
-    assert httpx.get(url).text == "hello"
+    assert httpx.get(url).text == "child"
 
     timeseries = PrometheusTimeseries()
 
@@ -2272,6 +2282,26 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
     wait_for_condition(check_proxy_main_loop_metrics, timeout=30)
     print("Proxy main loop monitoring metrics verified.")
 
+    # Test 1a: Check proxy router loop metrics
+    def check_proxy_router_loop_metrics():
+        metrics = get_metric_dictionaries(
+            "ray_serve_event_loop_monitoring_iterations_total",
+            timeout=10,
+            timeseries=timeseries,
+        )
+        for m in metrics:
+            if m.get("component") == "proxy" and m.get("loop_type") == "router":
+                assert "actor_id" in m, "actor_id tag should be present"
+                print(f"Proxy router loop metric found: {m}")
+                return True
+        return False
+
+    if RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP:
+        wait_for_condition(check_proxy_router_loop_metrics, timeout=30)
+        print("Proxy router loop monitoring metrics verified.")
+    else:
+        print("Proxy router loop monitoring metrics not verified.")
+
     # Test 2: Check replica main loop metrics
     def check_replica_main_loop_metrics():
         metrics = get_metric_dictionaries(
@@ -2282,7 +2312,10 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
         for m in metrics:
             if m.get("component") == "replica" and m.get("loop_type") == "main":
                 assert "actor_id" in m, "actor_id tag should be present"
-                assert m.get("deployment") == "f", "deployment tag should be 'f'"
+                assert m.get("deployment") in [
+                    "f",
+                    "g",
+                ], "deployment tag should be 'f' or 'g'"
                 assert m.get("application") == "app", "application tag should be 'app'"
                 print(f"Replica main loop metric found: {m}")
                 return True
@@ -2301,7 +2334,10 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
         for m in metrics:
             if m.get("component") == "replica" and m.get("loop_type") == "user_code":
                 assert "actor_id" in m, "actor_id tag should be present"
-                assert m.get("deployment") == "f", "deployment tag should be 'f'"
+                assert m.get("deployment") in [
+                    "f",
+                    "g",
+                ], "deployment tag should be 'f' or 'g'"
                 assert m.get("application") == "app", "application tag should be 'app'"
                 print(f"Replica user_code loop metric found: {m}")
                 return True

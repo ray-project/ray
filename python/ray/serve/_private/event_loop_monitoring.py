@@ -95,6 +95,7 @@ class EventLoopMonitor:
     # Component types
     COMPONENT_PROXY = "proxy"
     COMPONENT_REPLICA = "replica"
+    COMPONENT_UNKNOWN = "unknown"
 
     # Loop types
     LOOP_TYPE_MAIN = "main"

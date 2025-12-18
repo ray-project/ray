@@ -704,6 +704,7 @@ These metrics track the health of asyncio event loops in Serve components. High 
 - `component`: The Serve component type.
   - `proxy`: HTTP/gRPC proxy actor
   - `replica`: Deployment replica actor
+  - `unknown`: When using `DeploymentHandle.remote()`
 - `loop_type`: The type of event loop being monitored.
   - `main`: Main event loop for the actor (always present)
   - `user_code`: Separate event loop for user handler code (replicas only, when `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=1`, which is the default)

@@ -947,12 +947,19 @@ class SingletonThreadRouter(Router):
             "event_loop" not in passthrough_kwargs
         ), "SingletonThreadRouter manages the router event loop."
 
+        if passthrough_kwargs.get("handle_source") == DeploymentHandleSource.REPLICA:
+            component = EventLoopMonitor.COMPONENT_REPLICA
+        elif passthrough_kwargs.get("handle_source") == DeploymentHandleSource.PROXY:
+            component = EventLoopMonitor.COMPONENT_PROXY
+        else:
+            component = EventLoopMonitor.COMPONENT_UNKNOWN
+
         self._asyncio_router = AsyncioRouter(
-            event_loop=self._get_singleton_asyncio_loop(), **passthrough_kwargs
+            event_loop=self._get_singleton_asyncio_loop(component), **passthrough_kwargs
         )
 
     @classmethod
-    def _get_singleton_asyncio_loop(cls) -> asyncio.AbstractEventLoop:
+    def _get_singleton_asyncio_loop(cls, component: str) -> asyncio.AbstractEventLoop:
         """Get singleton asyncio loop running in a daemon thread.
 
         This method is thread safe.
@@ -965,7 +972,7 @@ class SingletonThreadRouter(Router):
                 # This is shared across all replicas in this process.
                 actor_id = ray.get_runtime_context().get_actor_id()
                 cls._event_loop_monitor = EventLoopMonitor(
-                    component=EventLoopMonitor.COMPONENT_REPLICA,
+                    component=component,
                     loop_type=EventLoopMonitor.LOOP_TYPE_ROUTER,
                     actor_id=actor_id,
                 )
