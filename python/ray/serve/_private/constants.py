@@ -125,6 +125,82 @@ MODEL_LOAD_LATENCY_BUCKETS_MS = parse_latency_buckets(
     DEFAULT_LATENCY_BUCKET_MS,
 )
 
+#: Histogram buckets for replica startup and reconfigure latency.
+#: These are longer operations (constructor, model loading) so buckets start higher.
+DEFAULT_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS = [
+    5,
+    20,
+    50,
+    100,
+    250,
+    500,
+    1000,
+    2000,
+    5000,
+    10000,
+    20000,
+    30000,
+    60000,
+    120000,
+    240000,
+]
+REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS = parse_latency_buckets(
+    get_env_str("RAY_SERVE_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS", ""),
+    DEFAULT_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
+)
+
+#: Histogram buckets for batch execution time in milliseconds.
+BATCH_EXECUTION_TIME_BUCKETS_MS = REQUEST_LATENCY_BUCKETS_MS
+
+#: Histogram buckets for batch wait time in milliseconds.
+BATCH_WAIT_TIME_BUCKETS_MS = REQUEST_LATENCY_BUCKETS_MS
+
+#: Histogram buckets for batch utilization percentage.
+DEFAULT_BATCH_UTILIZATION_BUCKETS_PERCENT = [
+    5,
+    10,
+    20,
+    30,
+    40,
+    50,
+    60,
+    70,
+    80,
+    90,
+    95,
+    99,
+    100,
+]
+BATCH_UTILIZATION_BUCKETS_PERCENT = parse_latency_buckets(
+    get_env_str(
+        "RAY_SERVE_BATCH_UTILIZATION_BUCKETS_PERCENT",
+        "",
+    ),
+    DEFAULT_BATCH_UTILIZATION_BUCKETS_PERCENT,
+)
+
+#: Histogram buckets for actual batch size.
+DEFAULT_BATCH_SIZE_BUCKETS = [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32,
+    64,
+    128,
+    256,
+    512,
+    1024,
+]
+BATCH_SIZE_BUCKETS = parse_latency_buckets(
+    get_env_str(
+        "RAY_SERVE_BATCH_SIZE_BUCKETS",
+        "",
+    ),
+    DEFAULT_BATCH_SIZE_BUCKETS,
+)
+
 #: Name of deployment health check method implemented by user.
 HEALTH_CHECK_METHOD = "check_health"
 

@@ -1,8 +1,12 @@
+import asyncio
+import concurrent.futures
 import http
 import json
 import os
 import sys
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
 import grpc
@@ -22,7 +26,7 @@ from ray._private.test_utils import (
     PrometheusTimeseries,
     fetch_prometheus_metric_timeseries,
 )
-from ray.serve._private.long_poll import LongPollHost, UpdatedObject
+from ray.serve._private.long_poll import LongPollClient, LongPollHost, UpdatedObject
 from ray.serve._private.test_utils import (
     get_application_url,
     ping_grpc_call_method,
@@ -981,6 +985,123 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     } == expected_output
 
 
+def test_queue_wait_time_metric(metrics_start_shutdown):
+    """Test that queue wait time metric is recorded correctly."""
+    signal = SignalActor.remote()
+
+    @serve.deployment(max_ongoing_requests=1)
+    class SlowDeployment:
+        async def __call__(self):
+            await signal.wait.remote()
+            return "done"
+
+    handle = serve.run(SlowDeployment.bind(), name="app1", route_prefix="/slow")
+
+    futures = [handle.remote() for _ in range(2)]
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10
+    )
+
+    time.sleep(0.5)
+    ray.get(signal.send.remote())
+    [f.result() for f in futures]
+
+    timeseries = PrometheusTimeseries()
+
+    def check_queue_wait_time_metric():
+        metrics = get_metric_dictionaries(
+            "ray_serve_request_router_fulfillment_time_ms_sum", timeseries=timeseries
+        )
+        if not metrics:
+            return False
+        for metric in metrics:
+            if (
+                metric.get("deployment") == "SlowDeployment"
+                and metric.get("application") == "app1"
+            ):
+                return True
+        return False
+
+    wait_for_condition(check_queue_wait_time_metric, timeout=10)
+
+    def check_queue_wait_time_metric_value():
+        value = get_metric_float(
+            "ray_serve_request_router_fulfillment_time_ms_sum",
+            timeseries=timeseries,
+            expected_tags={"deployment": "SlowDeployment", "application": "app1"},
+        )
+        assert value > 400, f"Queue wait time should be greater than 500ms, got {value}"
+        return True
+
+    wait_for_condition(check_queue_wait_time_metric_value, timeout=10)
+
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == 0, timeout=10
+    )
+
+
+def test_router_queue_len_metric(metrics_start_shutdown):
+    """Test that router queue length metric is recorded correctly per replica."""
+    signal = SignalActor.remote()
+
+    @serve.deployment(max_ongoing_requests=10)
+    class TestDeployment:
+        async def __call__(self, request: Request):
+            await signal.wait.remote()
+            return "done"
+
+    serve.run(TestDeployment.bind(), name="app1", route_prefix="/test")
+
+    # Send a request that will block
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(httpx.get, "http://localhost:8000/test", timeout=60)
+
+        # Wait for request to reach the replica
+        wait_for_condition(
+            lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=15
+        )
+
+        timeseries = PrometheusTimeseries()
+
+        # Check that the router queue length metric appears with correct tags
+        def check_router_queue_len():
+            metrics = get_metric_dictionaries(
+                "ray_serve_request_router_queue_len", timeseries=timeseries
+            )
+            if not metrics:
+                return False
+            # Find metric for our deployment with replica_id tag
+            for metric in metrics:
+                if (
+                    metric.get("deployment") == "TestDeployment"
+                    and metric.get("application") == "app1"
+                    and "replica_id" in metric
+                ):
+                    # Check that required tags are present
+                    assert (
+                        "handle_source" in metric
+                    ), "handle_source tag should be present"
+                    print(f"Found router queue len metric: {metric}")
+                    return True
+            return False
+
+        wait_for_condition(check_router_queue_len, timeout=30)
+
+        wait_for_condition(
+            check_metric_float_eq,
+            timeout=15,
+            metric="ray_serve_request_router_queue_len",
+            expected=1,
+            expected_tags={"deployment": "TestDeployment", "application": "app1"},
+            timeseries=timeseries,
+        )
+        print("Router queue len metric verified.")
+
+        # Release request
+        ray.get(signal.send.remote())
+        future.result()
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
 def test_multiplexed_metrics(metrics_start_shutdown):
     """Tests multiplexed API corresponding metrics."""
@@ -1170,6 +1291,455 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
     assert (
         "/api/users/{user_id}" in latency_routes or "/api/" in latency_routes
     ), f"Latency metrics should use route patterns. Found: {latency_routes}"
+
+
+def test_deployment_and_application_status_metrics(metrics_start_shutdown):
+    """Test that deployment and application status metrics are exported correctly.
+
+    These metrics track the numeric status of deployments and applications:
+    - serve_deployment_status: 0=UNKNOWN, 1=DEPLOY_FAILED, 2=UNHEALTHY,
+      3=UPDATING, 4=UPSCALING, 5=DOWNSCALING, 6=HEALTHY
+    - serve_application_status: 0=UNKNOWN, 1=NOT_STARTED, 2=DEPLOYING,
+      3=DEPLOY_FAILED, 4=RUNNING, 5=UNHEALTHY, 6=DELETING
+    """
+
+    signal = SignalActor.remote()
+
+    @serve.deployment(name="deployment_a")
+    class DeploymentA:
+        async def __init__(self):
+            await signal.wait.remote()
+
+        async def __call__(self):
+            return "hello"
+
+    @serve.deployment
+    def deployment_b():
+        return "world"
+
+    # Deploy two applications with different deployments
+    serve._run(DeploymentA.bind(), name="app1", route_prefix="/app1", _blocking=False)
+    serve._run(deployment_b.bind(), name="app2", route_prefix="/app2", _blocking=False)
+
+    timeseries = PrometheusTimeseries()
+
+    # Wait for deployments to become healthy
+    def check_status_metrics():
+        # Check deployment status metrics
+        deployment_metrics = get_metric_dictionaries(
+            "ray_serve_deployment_status", timeseries=timeseries
+        )
+        if len(deployment_metrics) < 2:
+            return False
+
+        # Check application status metrics
+        app_metrics = get_metric_dictionaries(
+            "ray_serve_application_status", timeseries=timeseries
+        )
+        if len(app_metrics) < 2:
+            return False
+
+        return True
+
+    wait_for_condition(check_status_metrics, timeout=30)
+
+    wait_for_condition(
+        check_metric_float_eq,
+        metric="ray_serve_deployment_status",
+        expected=3,  # UPDATING
+        expected_tags={"deployment": "deployment_a", "application": "app1"},
+        timeseries=timeseries,
+    )
+    wait_for_condition(
+        check_metric_float_eq,
+        metric="ray_serve_application_status",
+        expected=5,  # DEPLOYING
+        expected_tags={"application": "app1"},
+        timeseries=timeseries,
+    )
+
+    wait_for_condition(
+        check_metric_float_eq,
+        metric="ray_serve_deployment_status",
+        expected=6,
+        expected_tags={"deployment": "deployment_b", "application": "app2"},
+        timeseries=timeseries,
+    )
+    wait_for_condition(
+        check_metric_float_eq,
+        metric="ray_serve_application_status",
+        expected=6,
+        expected_tags={"application": "app2"},
+        timeseries=timeseries,
+    )
+
+    ray.get(signal.send.remote())
+
+    wait_for_condition(
+        check_metric_float_eq,
+        metric="ray_serve_deployment_status",
+        expected=6,
+        expected_tags={"deployment": "deployment_a", "application": "app1"},
+        timeseries=timeseries,
+    )
+    wait_for_condition(
+        check_metric_float_eq,
+        metric="ray_serve_application_status",
+        expected=6,
+        expected_tags={"application": "app1"},
+        timeseries=timeseries,
+    )
+
+
+def test_replica_startup_and_initialization_latency_metrics(metrics_start_shutdown):
+    """Test that replica startup and initialization latency metrics are recorded."""
+
+    @serve.deployment(num_replicas=2)
+    class MyDeployment:
+        def __init__(self):
+            time.sleep(1)
+
+        def __call__(self):
+            return "hello"
+
+    serve.run(MyDeployment.bind(), name="app", route_prefix="/f")
+    url = get_application_url("HTTP", "app")
+    assert "hello" == httpx.get(url).text
+
+    # Verify startup latency metric count is exactly 1 (one replica started)
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=20,
+        metric="ray_serve_replica_startup_latency_ms_count",
+        expected=1,
+        expected_tags={"deployment": "MyDeployment", "application": "app"},
+    )
+
+    # Verify initialization latency metric count is exactly 1
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=20,
+        metric="ray_serve_replica_initialization_latency_ms_count",
+        expected=1,
+        expected_tags={"deployment": "MyDeployment", "application": "app"},
+    )
+
+    # Verify initialization latency metric value is greater than 500ms
+    def check_initialization_latency_value():
+        value = get_metric_float(
+            "ray_serve_replica_initialization_latency_ms_sum",
+            expected_tags={"deployment": "MyDeployment", "application": "app"},
+        )
+        assert (
+            value > 500
+        ), f"Initialization latency value is {value}, expected to be greater than 500ms"
+        return True
+
+    wait_for_condition(check_initialization_latency_value, timeout=20)
+
+    # Assert that 2 metrics are recorded (one per replica)
+    def check_metrics_count():
+        metrics = get_metric_dictionaries(
+            "ray_serve_replica_initialization_latency_ms_count"
+        )
+        assert len(metrics) == 2, f"Expected 2 metrics, got {len(metrics)}"
+        # All metrics should have same deployment and application
+        for metric in metrics:
+            assert metric["deployment"] == "MyDeployment"
+            assert metric["application"] == "app"
+        # Each replica should have a unique replica tag
+        replica_ids = {metric["replica"] for metric in metrics}
+        assert (
+            len(replica_ids) == 2
+        ), f"Expected 2 unique replica IDs, got {replica_ids}"
+        return True
+
+    wait_for_condition(check_metrics_count, timeout=20)
+
+
+def test_replica_reconfigure_latency_metrics(metrics_start_shutdown):
+    """Test that replica reconfigure latency metrics are recorded when user_config changes."""
+
+    @serve.deployment(version="1")
+    class Configurable:
+        def __init__(self):
+            self.config = None
+
+        def reconfigure(self, config):
+            time.sleep(1)
+            self.config = config
+
+        def __call__(self):
+            return self.config
+
+    # Initial deployment with version specified to enable in-place reconfigure
+    serve.run(
+        Configurable.options(user_config={"version": 1}).bind(),
+        name="app",
+        route_prefix="/config",
+    )
+    url = get_application_url("HTTP", "app")
+    assert httpx.get(url).json() == {"version": 1}
+
+    # Update user_config to trigger in-place reconfigure (same version, different config)
+    serve.run(
+        Configurable.options(user_config={"version": 2}).bind(),
+        name="app",
+        route_prefix="/config",
+    )
+
+    # Wait for the new config to take effect
+    def config_updated():
+        return httpx.get(url).json() == {"version": 2}
+
+    wait_for_condition(config_updated, timeout=20)
+
+    # Verify reconfigure latency metric count is exactly 1 (one reconfigure happened)
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=20,
+        metric="ray_serve_replica_reconfigure_latency_ms_count",
+        expected=1,
+        expected_tags={"deployment": "Configurable", "application": "app"},
+    )
+
+    # Verify reconfigure latency metric value is greater than 500ms (we slept for 1s)
+    def check_reconfigure_latency_value():
+        value = get_metric_float(
+            "ray_serve_replica_reconfigure_latency_ms_sum",
+            expected_tags={"deployment": "Configurable", "application": "app"},
+        )
+        assert value > 500, f"Reconfigure latency value is {value}, expected > 500ms"
+        return True
+
+    wait_for_condition(check_reconfigure_latency_value, timeout=20)
+
+
+def test_health_check_latency_metrics(metrics_start_shutdown):
+    """Test that health check latency metrics are recorded."""
+
+    @serve.deployment(health_check_period_s=1)
+    class MyDeployment:
+        def __call__(self):
+            return "hello"
+
+        def check_health(self):
+            time.sleep(1)
+
+    serve.run(MyDeployment.bind(), name="app", route_prefix="/f")
+    url = get_application_url("HTTP", "app")
+    assert "hello" == httpx.get(url).text
+
+    # Wait for at least one health check to complete and verify metric is recorded
+    def check_health_check_latency_metrics():
+        value = get_metric_float(
+            "ray_serve_health_check_latency_ms_count",
+            expected_tags={"deployment": "MyDeployment", "application": "app"},
+        )
+        # Health check count should be at least 1
+        assert value >= 1, f"Health check count is {value}, expected to be 1"
+        return True
+
+    wait_for_condition(check_health_check_latency_metrics, timeout=30)
+
+    # Verify health check latency metric value is greater than 500ms
+    def check_health_check_latency_value():
+        value = get_metric_float(
+            "ray_serve_health_check_latency_ms_sum",
+            expected_tags={"deployment": "MyDeployment", "application": "app"},
+        )
+        assert (
+            value > 500
+        ), f"Health check latency value is {value}, expected to be greater than 500ms"
+        return True
+
+    wait_for_condition(check_health_check_latency_value, timeout=30)
+
+
+def test_health_check_failures_metrics(metrics_start_shutdown):
+    """Test that health check failure metrics are recorded when health checks fail."""
+
+    @serve.deployment(health_check_period_s=1, health_check_timeout_s=2)
+    class FailingHealthCheck:
+        def __init__(self):
+            self.should_fail = False
+
+        async def check_health(self):
+            if self.should_fail:
+                raise Exception("Health check failed!")
+
+        async def __call__(self, request):
+            action = (await request.body()).decode("utf-8")
+            if action == "fail":
+                self.should_fail = True
+            return "ok"
+
+    serve.run(FailingHealthCheck.bind(), name="app", route_prefix="/health")
+    url = get_application_url("HTTP", "app")
+
+    # Verify deployment is healthy initially
+    assert httpx.get(url).text == "ok"
+
+    # Trigger health check failure
+    httpx.request("GET", url, content=b"fail")
+
+    # Wait for at least one health check failure to be recorded
+    def check_health_check_failure_metrics():
+        value = get_metric_float(
+            "ray_serve_health_check_failures_total",
+            expected_tags={"deployment": "FailingHealthCheck", "application": "app"},
+        )
+        # Should have at least 1 failure
+        return value >= 1
+
+    wait_for_condition(check_health_check_failure_metrics, timeout=30)
+
+
+def test_replica_shutdown_duration_metrics(metrics_start_shutdown):
+    """Test that replica shutdown duration metrics are recorded."""
+
+    @serve.deployment
+    class MyDeployment:
+        def __call__(self):
+            return "hello"
+
+        def __del__(self):
+            time.sleep(1)
+
+    # Deploy the application
+    serve.run(MyDeployment.bind(), name="app", route_prefix="/f")
+    url = get_application_url("HTTP", "app")
+    assert "hello" == httpx.get(url).text
+
+    # Delete the application to trigger shutdown
+    serve.delete("app", _blocking=True)
+
+    # Verify shutdown duration metric count is exactly 1 (one replica stopped)
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=30,
+        metric="ray_serve_replica_shutdown_duration_ms_count",
+        expected=1,
+        expected_tags={"deployment": "MyDeployment", "application": "app"},
+    )
+    print("serve_replica_shutdown_duration_ms working as expected.")
+
+    # Verify shutdown duration metric value is greater than 500ms
+    def check_shutdown_duration_value():
+        value = get_metric_float(
+            "ray_serve_replica_shutdown_duration_ms_sum",
+            expected_tags={"deployment": "MyDeployment", "application": "app"},
+        )
+        assert (
+            value > 500
+        ), f"Shutdown duration value is {value}, expected to be greater than 500ms"
+        return True
+
+    wait_for_condition(check_shutdown_duration_value, timeout=30)
+
+
+def test_batching_metrics(metrics_start_shutdown):
+    @serve.deployment
+    class BatchedDeployment:
+        @serve.batch(max_batch_size=4, batch_wait_timeout_s=0.5)
+        async def batch_handler(self, requests: List[str]) -> List[str]:
+            # Simulate some processing time
+            await asyncio.sleep(0.05)
+            return [f"processed:{r}" for r in requests]
+
+        async def __call__(self, request: Request):
+            data = await request.body()
+            return await self.batch_handler(data.decode())
+
+    app_name = "batched_app"
+    serve.run(BatchedDeployment.bind(), name=app_name, route_prefix="/batch")
+
+    http_url = "http://localhost:8000/batch"
+
+    # Send multiple concurrent requests to trigger batching
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [
+            executor.submit(lambda i=i: httpx.post(http_url, content=f"req{i}"))
+            for i in range(8)
+        ]
+        results = [f.result() for f in futures]
+
+    # Verify all requests succeeded
+    assert all(r.status_code == 200 for r in results)
+
+    # Verify specific metric values and tags
+    timeseries = PrometheusTimeseries()
+    expected_tags = {
+        "deployment": "BatchedDeployment",
+        "application": app_name,
+        "function_name": "batch_handler",
+    }
+
+    # Check batches_processed_total counter exists and has correct tags
+    wait_for_condition(
+        lambda: check_metric_float_eq(
+            "ray_serve_batches_processed_total",
+            expected=2,
+            expected_tags=expected_tags,
+            timeseries=timeseries,
+        ),
+        timeout=10,
+    )
+
+    # Check batch_wait_time_ms histogram was recorded for 2 batches
+    wait_for_condition(
+        lambda: check_metric_float_eq(
+            "ray_serve_batch_wait_time_ms_count",
+            expected=2,
+            expected_tags=expected_tags,
+            timeseries=timeseries,
+        ),
+        timeout=10,
+    )
+
+    # Check batch_execution_time_ms histogram was recorded for 2 batches
+    wait_for_condition(
+        lambda: check_metric_float_eq(
+            "ray_serve_batch_execution_time_ms_count",
+            expected=2,
+            expected_tags=expected_tags,
+            timeseries=timeseries,
+        ),
+        timeout=10,
+    )
+
+    # Check batch_utilization_percent histogram: 2 batches at 100% each = 200 sum
+    wait_for_condition(
+        lambda: check_metric_float_eq(
+            "ray_serve_batch_utilization_percent_count",
+            expected=2,
+            expected_tags=expected_tags,
+            timeseries=timeseries,
+        ),
+        timeout=10,
+    )
+
+    # Check actual_batch_size histogram: 2 batches of 4 requests each = 8 sum
+    wait_for_condition(
+        lambda: check_metric_float_eq(
+            "ray_serve_actual_batch_size_count",
+            expected=2,
+            expected_tags=expected_tags,
+            timeseries=timeseries,
+        ),
+        timeout=10,
+    )
+
+    # Check batch_queue_length gauge exists (should be 0 after processing)
+    wait_for_condition(
+        lambda: check_metric_float_eq(
+            "ray_serve_batch_queue_length",
+            expected=0,
+            expected_tags=expected_tags,
+            timeseries=timeseries,
+        ),
+        timeout=10,
+    )
 
 
 def test_autoscaling_metrics(metrics_start_shutdown):
@@ -1451,7 +2021,145 @@ def test_user_autoscaling_stats_failure_metrics(metrics_start_shutdown):
     print("User autoscaling stats failure metric verified.")
 
 
-def test_long_poll_host_sends_counted(serve_instance):
+def test_long_poll_pending_clients_metric(metrics_start_shutdown):
+    """Check that pending clients gauge is tracked correctly."""
+    timeseries = PrometheusTimeseries()
+
+    # Create a LongPollHost with a longer timeout so we can observe pending state
+    host = ray.remote(LongPollHost).remote(
+        listen_for_change_request_timeout_s=(5.0, 5.0)
+    )
+
+    # Write initial values
+    ray.get(host.notify_changed.remote({"key_1": 100}))
+    ray.get(host.notify_changed.remote({"key_2": 200}))
+
+    # Get the current snapshot IDs
+    result = ray.get(host.listen_for_change.remote({"key_1": -1, "key_2": -1}))
+    key_1_snapshot_id = result["key_1"].snapshot_id
+    key_2_snapshot_id = result["key_2"].snapshot_id
+
+    # Start a listen call that will block waiting for updates
+    # (since we're using up-to-date snapshot IDs)
+    pending_ref = host.listen_for_change.remote(
+        {"key_1": key_1_snapshot_id, "key_2": key_2_snapshot_id}
+    )
+
+    # Check that pending clients gauge shows 1 for each key
+    # (wait_for_condition will retry until the metric is available)
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="ray_serve_long_poll_pending_clients",
+        expected=1,
+        expected_tags={"namespace": "key_1"},
+        timeseries=timeseries,
+    )
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="ray_serve_long_poll_pending_clients",
+        expected=1,
+        expected_tags={"namespace": "key_2"},
+        timeseries=timeseries,
+    )
+
+    # Trigger an update for key_1
+    ray.get(host.notify_changed.remote({"key_1": 101}))
+
+    # Wait for the pending call to complete
+    ray.get(pending_ref)
+
+    # After update, pending clients for key_1 should be 0
+    wait_for_condition(
+        check_metric_float_eq,
+        timeout=15,
+        metric="ray_serve_long_poll_pending_clients",
+        expected=0,
+        expected_tags={"namespace": "key_1"},
+        timeseries=timeseries,
+    )
+
+
+def test_long_poll_latency_metric(metrics_start_shutdown):
+    """Check that long poll latency histogram is recorded on the client side."""
+    timeseries = PrometheusTimeseries()
+
+    # Create a LongPollHost
+    host = ray.remote(LongPollHost).remote(
+        listen_for_change_request_timeout_s=(0.5, 0.5)
+    )
+
+    # Write initial value so the key exists
+    ray.get(host.notify_changed.remote({"test_key": "initial_value"}))
+
+    # Track received updates
+    received_updates = []
+    update_event = threading.Event()
+
+    def on_update(value):
+        received_updates.append(value)
+        update_event.set()
+
+    # Create event loop for the client
+    loop = asyncio.new_event_loop()
+
+    def run_loop():
+        asyncio.set_event_loop(loop)
+        loop.run_forever()
+
+    loop_thread = threading.Thread(target=run_loop, daemon=True)
+    loop_thread.start()
+
+    # Create the LongPollClient
+    client = LongPollClient(
+        host_actor=host,
+        key_listeners={"test_key": on_update},
+        call_in_event_loop=loop,
+    )
+
+    # Wait for initial update (client starts with snapshot_id -1)
+    assert update_event.wait(timeout=10), "Timed out waiting for initial update"
+    assert len(received_updates) == 1
+    assert received_updates[0] == "initial_value"
+
+    # Clear event and trigger another update
+    update_event.clear()
+    ray.get(host.notify_changed.remote({"test_key": "updated_value"}))
+
+    # Wait for the update to be received
+    assert update_event.wait(timeout=10), "Timed out waiting for update"
+    assert len(received_updates) == 2
+    assert received_updates[1] == "updated_value"
+
+    # Stop the client
+    client.stop()
+    loop.call_soon_threadsafe(loop.stop)
+    loop_thread.join(timeout=5)
+
+    # Check that latency metric was recorded
+    # The metric should have at least 2 observations (initial + update)
+    def check_latency_metric_exists():
+        metric_value = get_metric_float(
+            "ray_serve_long_poll_latency_ms_count",
+            expected_tags={"namespace": "test_key"},
+            timeseries=timeseries,
+        )
+        # Should have at least 2 observations
+        return metric_value == 2
+
+    wait_for_condition(check_latency_metric_exists, timeout=15)
+
+    # Verify the latency sum is positive (latency > 0)
+    latency_sum = get_metric_float(
+        "ray_serve_long_poll_latency_ms_sum",
+        expected_tags={"namespace": "test_key"},
+        timeseries=timeseries,
+    )
+    assert latency_sum > 0, "Latency sum should be positive"
+
+
+def test_long_poll_host_sends_counted(metrics_start_shutdown):
     """Check that the transmissions by the long_poll are counted."""
 
     timeseries = PrometheusTimeseries()
