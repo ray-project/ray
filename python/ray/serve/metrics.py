@@ -176,7 +176,7 @@ class Gauge(metrics.Gauge):
         self.set_default_tags({})
 
     def set_default_tags(self, default_tags: Dict[str, str]):
-        return super().set_default_tags(_add_serve_metric_default_tags(default_tags))
+        super().set_default_tags(_add_serve_metric_default_tags(default_tags))
 
     def set(self, value: Union[int, float], tags: Dict[str, str] = None):
         """Set the gauge to the given value, add serve context

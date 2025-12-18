@@ -2092,7 +2092,8 @@ class DeploymentState:
                 "healthy, 0 means unhealthy."
             ),
             tag_keys=("deployment", "replica", "application"),
-        ).set_default_tags(
+        )
+        self.health_check_gauge.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
         )
 
@@ -2102,7 +2103,8 @@ class DeploymentState:
             description=("Time from replica creation to ready state in milliseconds."),
             boundaries=REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
             tag_keys=("deployment", "replica", "application"),
-        ).set_default_tags(
+        )
+        self.replica_startup_latency_histogram.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
         )
 
@@ -2112,7 +2114,8 @@ class DeploymentState:
             description=("Time for replica to initialize in milliseconds."),
             boundaries=REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
             tag_keys=("deployment", "replica", "application"),
-        ).set_default_tags(
+        )
+        self.replica_initialization_latency_histogram.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
         )
 
@@ -2122,7 +2125,8 @@ class DeploymentState:
             description=("Time for replica to complete reconfigure in milliseconds."),
             boundaries=REQUEST_LATENCY_BUCKETS_MS,
             tag_keys=("deployment", "replica", "application"),
-        ).set_default_tags(
+        )
+        self.replica_reconfigure_latency_histogram.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
         )
 
@@ -2132,7 +2136,8 @@ class DeploymentState:
             description=("Duration of health check calls in milliseconds."),
             boundaries=REQUEST_LATENCY_BUCKETS_MS,
             tag_keys=("deployment", "replica", "application"),
-        ).set_default_tags(
+        )
+        self.health_check_latency_histogram.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
         )
 
@@ -2141,7 +2146,8 @@ class DeploymentState:
             "serve_health_check_failures_total",
             description=("Count of failed health checks."),
             tag_keys=("deployment", "replica", "application"),
-        ).set_default_tags(
+        )
+        self.health_check_failures_counter.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
         )
 
@@ -2153,7 +2159,8 @@ class DeploymentState:
             ),
             boundaries=REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
             tag_keys=("deployment", "replica", "application"),
-        ).set_default_tags(
+        )
+        self.replica_shutdown_duration_histogram.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
         )
 
@@ -2164,7 +2171,8 @@ class DeploymentState:
                 "This is the number the autoscaler is trying to reach."
             ),
             tag_keys=("deployment", "application"),
-        ).set_default_tags(
+        )
+        self.target_replicas_gauge.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
         )
 
