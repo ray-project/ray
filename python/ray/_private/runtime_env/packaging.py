@@ -779,6 +779,7 @@ async def download_and_unpack_package(
     gcs_client: Optional[GcsClient] = None,
     logger: Optional[logging.Logger] = default_logger,
     overwrite: bool = False,
+    transport_params: Optional[dict] = None,
 ) -> str:
     """Download the package corresponding to this URI and unpack it if zipped.
 
@@ -792,6 +793,11 @@ async def download_and_unpack_package(
         gcs_client: Client to use for downloading from the GCS.
         logger: The logger to use.
         overwrite: If True, overwrite the existing package.
+        transport_params: Optional transport parameters for smart_open. These parameters
+            will be passed to smart_open when downloading from remote storage.
+            For protocols with default configurations (S3, Azure, GCS, ABFSS),
+            these parameters will be merged with defaults, with custom parameters
+            taking precedence.
 
     Returns:
         Path to the local directory containing the unpacked package files.
@@ -874,7 +880,12 @@ async def download_and_unpack_package(
                 else:
                     return str(pkg_file)
             elif protocol in Protocol.remote_protocols():
-                protocol.download_remote_uri(source_uri=pkg_uri, dest_file=pkg_file)
+                # Use provided transport_params or fall back to None
+                protocol.download_remote_uri(
+                    source_uri=pkg_uri,
+                    dest_file=pkg_file,
+                    transport_params=transport_params,
+                )
 
                 if pkg_file.suffix in [".zip", ".jar"]:
                     unzip_package(

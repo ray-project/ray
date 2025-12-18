@@ -166,12 +166,16 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: logging.Logger = default_logger,
     ) -> int:
+        # Extract transport_params from runtime_env if available
+        transport_params = runtime_env.get("transport_params")
+
         local_dir = await download_and_unpack_package(
             uri,
             self._resources_dir,
             self._gcs_client,
             logger=logger,
             overwrite=True,
+            transport_params=transport_params,
         )
         return get_directory_size_bytes(local_dir)
 
