@@ -604,27 +604,25 @@ class ReporterAgent(
             metric.description,
             data_points[0].explicit_bounds,
         )
+        # Collect all data points and record using a single call
+        batch_data_points = []
         for data_point in data_points:
             if data_point.count == 0:
                 continue
 
-            bucket_midpoints = (
-                self._open_telemetry_metric_recorder.get_histogram_bucket_midpoints(
-                    metric.name
-                )
-            )
-            assert len(bucket_midpoints) == len(data_point.bucket_counts)
             tags = {tag.key: tag.value.string_value for tag in data_point.attributes}
-            for i, bucket_count in enumerate(data_point.bucket_counts):
-                if bucket_count == 0:
-                    continue
-                bucket_midpoint = bucket_midpoints[i]
-                for _ in range(bucket_count):
-                    self._open_telemetry_metric_recorder.set_metric_value(
-                        metric.name,
-                        tags,
-                        bucket_midpoint,
-                    )
+            batch_data_points.append(
+                {
+                    "tags": tags,
+                    "bucket_counts": list(data_point.bucket_counts),
+                }
+            )
+
+        if batch_data_points:
+            self._open_telemetry_metric_recorder.record_histogram_aggregated_batch(
+                metric.name,
+                batch_data_points,
+            )
 
     def _export_number_data(
         self,
