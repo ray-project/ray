@@ -137,7 +137,6 @@ fastrlock>=0.8.3; sys_platform != 'darwin'
 lz4>=4.4.5
 pyyaml>=6.0.3
 msgpack>=1.1.2
-pyyaml>=6.0.3
 
 # TODO(aslonnie): remove this
 # this is required as some packages depends on ray and will pick up older version of
