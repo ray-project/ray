@@ -235,6 +235,7 @@ exclude_patterns = [
     "train/examples/**/README.md",
     "serve/tutorials/deployment-serve-llm/README.*",
     "serve/tutorials/deployment-serve-llm/*/notebook.ipynb",
+    "data/examples/**/content/README.md",
     "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
     "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
 ] + autogen_files
@@ -572,9 +573,6 @@ def setup(app):
 
     app.add_js_file("js/csat.js", defer="defer")
     app.add_css_file("css/csat.css")
-
-    app.add_js_file("js/assistant.js", defer="defer")
-    app.add_css_file("css/assistant.css")
 
     app.add_js_file("js/dismissable-banner.js", defer="defer")
     app.add_css_file("css/dismissable-banner.css")

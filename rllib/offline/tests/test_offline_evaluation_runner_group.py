@@ -13,7 +13,7 @@ from ray.rllib.offline.offline_evaluation_runner_group import (
 
 class TestOfflineData(unittest.TestCase):
     def setUp(self) -> None:
-        data_path = "tests/data/cartpole/cartpole-v1_large"
+        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
         self.base_path = Path(__file__).parents[2]
         self.data_path = "local://" + self.base_path.joinpath(data_path).as_posix()
         # Assign the observation and action spaces.
@@ -116,7 +116,7 @@ class TestOfflineData(unittest.TestCase):
             "run",
             local_runner=False,
         )
-        from ray.rllib.utils.metrics.stats import Stats
+        from ray.rllib.utils.metrics.stats import StatsBase
 
         # Ensure that `metrics`` is a list of 2 metric dictionaries.
         self.assertIsInstance(metrics, list)
@@ -140,7 +140,7 @@ class TestOfflineData(unittest.TestCase):
             self.assertIn(NUM_MODULE_STEPS_SAMPLED_LIFETIME, metric_dict[ALL_MODULES])
             # Ensure all entries are `Stats` instances.
             for metric in metric_dict[DEFAULT_MODULE_ID].values():
-                self.assertIsInstance(metric, Stats)
+                self.assertIsInstance(metric, StatsBase)
 
         # Clean up.
         algo.cleanup()

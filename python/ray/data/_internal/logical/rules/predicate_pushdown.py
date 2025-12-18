@@ -9,7 +9,7 @@ from ray.data._internal.logical.interfaces import (
     PredicatePassThroughBehavior,
     Rule,
 )
-from ray.data._internal.logical.operators.map_operator import Filter
+from ray.data._internal.logical.operators.map_operator import Filter, Project
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnSubstitutionVisitor,
 )
@@ -64,6 +64,86 @@ class PredicatePushdown(Rule):
         )
 
     @classmethod
+    def _can_push_filter_through_projection(
+        cls, filter_op: "Filter", projection_op: Project
+    ) -> bool:
+        """Check if a filter can be pushed through a projection operator.
+
+        Returns False (blocks pushdown) if filter references:
+        - Columns removed by select: select(['a']).filter(col('b'))
+        - Computed columns: with_column('d', 4).filter(col('d'))
+        - Old column names after rename: rename({'b': 'B'}).filter(col('b'))
+
+        Returns True (allows pushdown) for:
+        - Columns present in output: select(['a', 'b']).filter(col('a'))
+        - New column names after rename: rename({'b': 'B'}).filter(col('B'))
+        - Rename chains with name reuse: rename({'a': 'b', 'b': 'c'}).filter(col('b'))
+          (where 'b' is valid output created by a->b)
+        """
+        from ray.data._internal.logical.rules.projection_pushdown import (
+            _is_renaming_expr,
+        )
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            _ColumnReferenceCollector,
+        )
+        from ray.data.expressions import AliasExpr
+
+        collector = _ColumnReferenceCollector()
+        collector.visit(filter_op._predicate_expr)
+        predicate_columns = set(collector.get_column_refs() or [])
+
+        output_columns = set()
+        new_names = set()
+        original_columns_being_renamed = set()
+
+        for expr in projection_op.exprs:
+            if expr.name is not None:
+                # Collect output column names
+                output_columns.add(expr.name)
+
+            # Process AliasExpr (computed columns or renames)
+            if isinstance(expr, AliasExpr):
+                new_names.add(expr.name)
+
+                # Check computed column: with_column('d', 4) creates AliasExpr(lit(4), 'd')
+                if expr.name in predicate_columns and not _is_renaming_expr(expr):
+                    return False  # Computed column
+
+                # Track old names being renamed for later check
+                if _is_renaming_expr(expr):
+                    original_columns_being_renamed.add(expr.expr.name)
+
+        # Check if filter references columns removed by explicit select
+        # Valid if: projection includes all columns (star) OR predicate columns exist in output
+        has_required_columns = (
+            projection_op.has_star_expr() or predicate_columns.issubset(output_columns)
+        )
+        if not has_required_columns:
+            return False
+
+        # Find old names that are:
+        # 1. Being renamed away (in original_columns_being_renamed), AND
+        # 2. Referenced in predicate (in predicate_columns), AND
+        # 3. NOT recreated as new names (not in new_names)
+        #
+        # Examples:
+        #   rename({'b': 'B'}).filter(col('b'))
+        #     → {'b'} & {'b'} - {'B'} = {'b'} → BLOCKS (old name 'b' no longer exists)
+        #
+        #   rename({'a': 'b', 'b': 'c'}).filter(col('b'))
+        #     → {'a','b'} & {'b'} - {'b','c'} = {} → ALLOWS (new 'b' created by a->b)
+        #
+        #   rename({'b': 'B'}).filter(col('B'))
+        #     → {'b'} & {'B'} - {'B'} = {} → ALLOWS (using new name 'B')
+        invalid_old_names = (
+            original_columns_being_renamed & predicate_columns
+        ) - new_names
+        if invalid_old_names:
+            return False  # Old name after rename
+
+        return True
+
+    @classmethod
     def _substitute_predicate_columns(
         cls, predicate_expr: Expr, column_rename_map: dict[str, str]
     ) -> Expr:
@@ -113,8 +193,16 @@ class PredicatePushdown(Rule):
                     predicate_expr, rename_map
                 )
 
-            # Push the predicate down and return the result without the filter
-            return input_op.apply_predicate(predicate_expr)
+            # Push the predicate down
+            result_op = input_op.apply_predicate(predicate_expr)
+
+            # If the operator is unchanged (e.g., predicate references partition columns
+            # that can't be pushed down), keep the Filter operator
+            if result_op is input_op:
+                return filter_op
+
+            # Otherwise, return the result without the filter (predicate was pushed down)
+            return result_op
 
         # Case 2: Check if operator allows predicates to pass through
         if isinstance(input_op, LogicalOperatorSupportsPredicatePassThrough):
@@ -135,6 +223,14 @@ class PredicatePushdown(Rule):
                     behavior
                     == PredicatePassThroughBehavior.PASSTHROUGH_WITH_SUBSTITUTION
                 ):
+                    # Check if we can safely push the filter through this projection
+                    if isinstance(
+                        input_op, Project
+                    ) and not cls._can_push_filter_through_projection(
+                        filter_op, input_op
+                    ):
+                        return filter_op
+
                     rename_map = input_op.get_column_substitutions()
                     if rename_map:
                         predicate_expr = cls._substitute_predicate_columns(

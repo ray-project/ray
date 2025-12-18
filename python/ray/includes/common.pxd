@@ -133,6 +133,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsUnexpectedSystemExit()
         c_bool IsChannelError()
         c_bool IsChannelTimeoutError()
+        c_bool IsUnauthenticated()
 
         c_string ToString()
         c_string CodeAsString()
@@ -275,9 +276,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTensorTransport TENSOR_TRANSPORT_OBJECT_STORE "ray::rpc::TensorTransport::OBJECT_STORE"
-    cdef CTensorTransport TENSOR_TRANSPORT_NCCL "ray::rpc::TensorTransport::NCCL"
-    cdef CTensorTransport TENSOR_TRANSPORT_GLOO "ray::rpc::TensorTransport::GLOO"
-    cdef CTensorTransport TENSOR_TRANSPORT_NIXL "ray::rpc::TensorTransport::NIXL"
+    cdef CTensorTransport TENSOR_TRANSPORT_DIRECT_TRANSPORT "ray::rpc::TensorTransport::DIRECT_TRANSPORT"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CPlacementStrategy PLACEMENT_STRATEGY_PACK \
@@ -432,11 +431,52 @@ cdef extern from "ray/gcs_rpc_client/accessors/actor_info_accessor_interface.h" 
             const MultiItemPyCallback[CActorTableData] &callback,
             int64_t timeout_ms)
 
-        void AsyncKillActor(const CActorID &actor_id,
-                                  c_bool force_kill,
-                                  c_bool no_restart,
-                                  const StatusPyCallback &callback,
-                                  int64_t timeout_ms)
+cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
+    cdef cppclass CJobInfoAccessor "ray::gcs::JobInfoAccessor":
+        CRayStatus GetAll(
+            const optional[c_string] &job_or_submission_id,
+            c_bool skip_submission_job_info_field,
+            c_bool skip_is_running_tasks_field,
+            c_vector[CJobTableData] &result,
+            int64_t timeout_ms)
+
+        void AsyncGetAll(
+            const optional[c_string] &job_or_submission_id,
+            c_bool skip_submission_job_info_field,
+            c_bool skip_is_running_tasks_field,
+            const MultiItemPyCallback[CJobTableData] &callback,
+            int64_t timeout_ms)
+
+    cdef cppclass CNodeInfoAccessor "ray::gcs::NodeInfoAccessor":
+        CRayStatus CheckAlive(
+            const c_vector[CNodeID] &node_ids,
+            int64_t timeout_ms,
+            c_vector[c_bool] &result)
+
+        void AsyncCheckAlive(
+            const c_vector[CNodeID] &node_ids,
+            int64_t timeout_ms,
+            const MultiItemPyCallback[c_bool] &callback)
+
+        CRayStatus DrainNodes(
+            const c_vector[CNodeID] &node_ids,
+            int64_t timeout_ms,
+            c_vector[c_string] &drained_node_ids)
+
+        CStatusOr[c_vector[CGcsNodeInfo]] GetAllNoCache(
+            int64_t timeout_ms,
+            optional[CGcsNodeState] state_filter,
+            const c_vector[CNodeSelector] &node_selectors)
+
+        void AsyncGetAll(
+            const MultiItemPyCallback[CGcsNodeInfo] &callback,
+            int64_t timeout_ms,
+            c_vector[CNodeID] node_ids)
+
+    cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
+        CRayStatus GetAllResourceUsage(
+            int64_t timeout_ms,
+            CGetAllResourceUsageReply &serialized_reply)
 
 cdef extern from "ray/gcs_rpc_client/accessors/internal_kv_accessor_interface.h" nogil:
     cdef cppclass CInternalKVAccessorInterface "ray::gcs::InternalKVAccessorInterface":
@@ -726,7 +766,12 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         ALIVE "ray::rpc::GcsNodeInfo_GcsNodeState_ALIVE",
 
     cdef cppclass CNodeSelector "ray::rpc::GetAllNodeInfoRequest::NodeSelector":
-        pass
+        CNodeSelector()
+        void set_node_id(const c_string &node_id)
+        void set_node_name(const c_string &node_name)
+        void set_node_ip_address(const c_string &node_ip_address)
+        void set_is_head_node(c_bool is_head_node)
+        void ParseFromString(const c_string &serialized)
 
     cdef cppclass CJobTableData "ray::rpc::JobTableData":
         c_string job_id() const
