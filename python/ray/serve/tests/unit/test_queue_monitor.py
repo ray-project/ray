@@ -81,12 +81,12 @@ class TestQueueMonitor:
             queue_name="test_queue",
         )
 
-    @patch("ray.serve._private.queue_monitor.redis")
-    def test_get_redis_queue_length(self, mock_redis_module, redis_config):
+    @patch("redis.from_url")
+    def test_get_redis_queue_length(self, mock_from_url, redis_config):
         """Test Redis queue length returns pending tasks."""
         mock_client = MagicMock()
         mock_client.llen.return_value = 30
-        mock_redis_module.from_url.return_value = mock_client
+        mock_from_url.return_value = mock_client
 
         monitor = QueueMonitor(redis_config)
         monitor.initialize()
@@ -95,11 +95,14 @@ class TestQueueMonitor:
         assert length == 30
         mock_client.llen.assert_called_with("test_queue")
 
-    @patch("ray.serve._private.queue_monitor.pika")
-    def test_get_rabbitmq_queue_length(self, mock_pika, rabbitmq_config):
+    @patch("pika.BlockingConnection")
+    @patch("pika.URLParameters")
+    def test_get_rabbitmq_queue_length(
+        self, mock_url_params, mock_blocking_connection, rabbitmq_config
+    ):
         """Test RabbitMQ queue length retrieval via AMQP."""
         mock_params = MagicMock()
-        mock_pika.URLParameters.return_value = mock_params
+        mock_url_params.return_value = mock_params
 
         # Mock connection and channel - connection is reused across calls
         mock_connection = MagicMock()
@@ -113,7 +116,7 @@ class TestQueueMonitor:
 
         mock_connection.channel.return_value = mock_channel
         mock_channel.queue_declare.return_value = mock_result
-        mock_pika.BlockingConnection.return_value = mock_connection
+        mock_blocking_connection.return_value = mock_connection
 
         monitor = QueueMonitor(rabbitmq_config)
         monitor.initialize()
@@ -121,20 +124,20 @@ class TestQueueMonitor:
 
         assert length == 25
         # Connection is established once during initialization
-        mock_pika.BlockingConnection.assert_called_once()
+        mock_blocking_connection.assert_called_once()
         mock_channel.queue_declare.assert_called_with(
             queue="test_queue",
             passive=True,
         )
 
-    @patch("ray.serve._private.queue_monitor.redis")
+    @patch("redis.from_url")
     def test_get_queue_length_returns_cached_on_error(
-        self, mock_redis_module, redis_config
+        self, mock_from_url, redis_config
     ):
         """Test get_queue_length returns cached value on error."""
         mock_client = MagicMock()
         mock_client.llen.return_value = 50
-        mock_redis_module.from_url.return_value = mock_client
+        mock_from_url.return_value = mock_client
 
         monitor = QueueMonitor(redis_config)
         monitor.initialize()
