@@ -14,7 +14,7 @@ llm_config = LLMConfig(
             "max_replicas": 2,
         }
     },
-    deployment_cls=SGLangServer,
+    server_cls=SGLangServer,
     engine_kwargs={
         "trust_remote_code": True,
         "model_path": "unsloth/Llama-3.1-8B-Instruct",

@@ -41,7 +41,7 @@ def build_llm_deployment(
     name_prefix: Optional[str] = None,
     bind_kwargs: Optional[dict] = None,
     override_serve_options: Optional[dict] = None,
-    deployment_cls: Optional[Type[LLMServer]] = None,
+    server_cls: Optional[Type[LLMServer]] = None,
 ) -> Application:
     """Build an LLMServer deployment.
 
@@ -52,16 +52,16 @@ def build_llm_deployment(
             Used for customizing the deployment.
         override_serve_options: The optional serve options to override the
             default options.
-        deployment_cls: The deployment class to use. Defaults to LLMServer.
+        server_cls: The server class to use. Defaults to LLMServer.
 
     Returns:
         The Ray Serve Application for the LLMServer deployment.
     """
-    deployment_cls = deployment_cls or llm_config.deployment_cls or LLMServer
-    name_prefix = name_prefix or f"{deployment_cls.__name__}:"
+    server_cls = server_cls or llm_config.server_cls or LLMServer
+    name_prefix = name_prefix or f"{server_cls.__name__}:"
     bind_kwargs = bind_kwargs or {}
 
-    deployment_options = deployment_cls.get_deployment_options(llm_config)
+    deployment_options = server_cls.get_deployment_options(llm_config)
 
     # Set the name of the deployment config to map to the model ID.
     deployment_name = deployment_options.get("name", _get_deployment_name(llm_config))
@@ -79,6 +79,6 @@ def build_llm_deployment(
     logger.info("============== Deployment Options ==============")
     logger.info(pprint.pformat(deployment_options))
 
-    return serve.deployment(deployment_cls, **deployment_options).bind(
+    return serve.deployment(server_cls, **deployment_options).bind(
         llm_config=llm_config, **bind_kwargs
     )

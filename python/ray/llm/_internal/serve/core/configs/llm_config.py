@@ -201,14 +201,14 @@ class LLMConfig(BaseModelExtended):
         """,
     )
 
-    deployment_cls: Optional[Union[str, Any]] = Field(
+    server_cls: Optional[Union[str, Any]] = Field(
         default=None,
-        description="The deployment class to use.(e.g., LLMServer, SGLangServer or other Server backends).",
+        description="The serve class to use.(e.g., LLMServer, SGLangServer or other Server backends).",
     )
 
-    @field_validator("deployment_cls")
+    @field_validator("server_cls")
     @classmethod
-    def validate_deployment_cls(cls, value):
+    def validate_server_cls(cls, value):
         if isinstance(value, str):
             return load_class(value)
         return value
