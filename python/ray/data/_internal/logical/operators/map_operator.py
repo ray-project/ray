@@ -172,7 +172,7 @@ class MapBatches(AbstractUDFMap):
         self,
         input_op: LogicalOperator,
         fn: UserDefinedFunction,
-        can_modify_num_rows: bool,
+        can_modify_num_rows: bool = False,
         batch_size: Optional[int] = None,
         batch_format: str = "default",
         zero_copy_batch: bool = True,

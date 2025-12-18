@@ -818,6 +818,31 @@ def test_streaming_repartition_no_further_fuse(
     assert "MapBatches(<lambda>)->MapBatches(<lambda>)" in stats1
 
 
+def test_filter_operator_no_double_fusion(ray_start_regular_shared):
+    """Test that fused filter operators don't fuse further with upstream maps
+    making sure it can_modify_num_rows
+
+    Case 1: map_batches -> filter -> map_batchess
+            Result: (map -> filter) -> map
+            The fused (map -> filter) doesn't fuse with upstream maps.
+    """
+    n = 100
+    target_rows = 20
+
+    ds1 = ray.data.range(n, override_num_blocks=2)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
+    ds1 = ds1.filter(lambda x: True)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
+
+    assert len(ds1.take_all()) == n
+    stats1 = ds1.stats()
+
+    assert (
+        "TaskPoolMapOperator[MapBatches(<lambda>)->Filter(<lambda>)]" in stats1
+    ), stats1
+    assert "TaskPoolMapOperator[MapBatches(<lambda>)]" in stats1
+
+
 if __name__ == "__main__":
     import sys
 

@@ -1,5 +1,5 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
-import abc
+
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
@@ -37,7 +37,7 @@ class AbstractOneToOne(LogicalOperator):
         super().__init__(
             name=name,
             input_dependencies=[input_op] if input_op else [],
-            num_outputs=num_outputs
+            num_outputs=num_outputs,
         )
         self._can_modify_num_rows = can_modify_num_rows
 
