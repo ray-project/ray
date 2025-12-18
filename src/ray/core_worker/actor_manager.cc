@@ -205,7 +205,19 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
 }
 
 void ActorManager::OnActorKilled(const ActorID &actor_id) {
-  MarkActorKilledOrOutOfScope(GetActorHandle(actor_id));
+  auto actor_handle = GetActorHandleIfExists(actor_id);
+  if (actor_handle == nullptr) {
+    // The actor handle may not exist if:
+    // 1. The actor was created in a previous Ray session and the user is trying
+    //    to kill it after ray.shutdown() and ray.init().
+    // 2. The actor handle was already removed for some other reason.
+    // In these cases, we simply log a warning and return instead of crashing.
+    RAY_LOG(WARNING) << "Cannot find actor handle for actor_id " << actor_id
+                     << ". The actor may have been created in a different Ray session "
+                     << "or already been cleaned up.";
+    return;
+  }
+  MarkActorKilledOrOutOfScope(actor_handle);
 }
 
 void ActorManager::WaitForActorRefDeleted(

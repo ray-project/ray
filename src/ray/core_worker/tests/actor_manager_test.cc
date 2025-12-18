@@ -393,6 +393,23 @@ TEST_F(ActorManagerTest, TestNamedActorIsKilledBeforeSubscribeFinished) {
   ASSERT_TRUE(actor_manager_->GetCachedNamedActorID(cached_actor_name).IsNil());
 }
 
+// Test that OnActorKilled does not crash when the actor handle does not exist.
+// This can happen when the actor was created in a previous Ray session.
+// Fixes https://github.com/ray-project/ray/issues/59340
+TEST_F(ActorManagerTest, TestOnActorKilledWithNonExistentHandle) {
+  // Create a random actor ID that does not have a registered handle.
+  ActorID non_existent_actor_id = ActorID::Of(JobID::FromInt(1), TaskID::Nil(), 1);
+
+  // Verify that the actor handle does not exist.
+  ASSERT_FALSE(actor_manager_->CheckActorHandleExists(non_existent_actor_id));
+
+  // Call OnActorKilled with a non-existent actor ID.
+  // This should NOT crash - it should log a warning and return gracefully.
+  actor_manager_->OnActorKilled(non_existent_actor_id);
+
+  // The test passes if we reach here without crashing.
+}
+
 }  // namespace core
 }  // namespace ray
 
