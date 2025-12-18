@@ -115,6 +115,20 @@ bool ClusterResourceManager::RemoveNode(scheduling::NodeID node_id) {
   return nodes_.erase(node_id) != 0;
 }
 
+bool ClusterResourceManager::SetNodeDraining(const scheduling::NodeID &node_id,
+                                             bool is_draining,
+                                             int64_t draining_deadline_timestamp_ms) {
+  auto it = nodes_.find(node_id);
+  if (it == nodes_.end()) {
+    return false;
+  }
+
+  auto *local_view = it->second.GetMutableLocalView();
+  local_view->is_draining = is_draining;
+  local_view->draining_deadline_timestamp_ms = draining_deadline_timestamp_ms;
+  return true;
+}
+
 bool ClusterResourceManager::GetNodeResources(scheduling::NodeID node_id,
                                               NodeResources *ret_resources) const {
   auto it = nodes_.find(node_id);

@@ -227,11 +227,8 @@ TEST_F(GcsResourceManagerTest, TestGetDrainingNodes) {
   ASSERT_EQ(reply.draining_nodes(0).node_id(), node1->node_id());
 }
 
-// Test that verifies the race condition in drain state propagation (CORE-2613).
-// When SetNodeDraining() is called, the scheduler should immediately see the node
-// as draining, without waiting for RaySyncer to propagate the state.
+// Verify SetNodeDraining() immediately updates ClusterResourceManager.
 TEST_F(GcsResourceManagerTest, DrainStateImmediatelyVisibleToScheduler) {
-  // Setup: Register a node with resources
   auto node = GenNodeInfo();
   node->mutable_resources_total()->insert({"CPU", 10});
   gcs_resource_manager_->OnNodeAdd(*node);
@@ -239,36 +236,23 @@ TEST_F(GcsResourceManagerTest, DrainStateImmediatelyVisibleToScheduler) {
   auto node_id = NodeID::FromBinary(node->node_id());
   auto scheduling_node_id = scheduling::NodeID(node_id.Binary());
 
-  // Initialize the node's resource view (simulating RaySyncer update)
   UpdateFromResourceViewSync(node_id,
-                             {{"CPU", 10}},  // available
-                             {{"CPU", 10}},  // total
-                             /* idle_ms */ 0,
-                             /* is_draining */ false);
+                             {{"CPU", 10}},
+                             {{"CPU", 10}},
+                             /*idle_ms=*/0,
+                             /*is_draining=*/false);
 
-  // Verify the node is initially not draining
   ASSERT_FALSE(cluster_resource_manager_.IsNodeDraining(scheduling_node_id));
 
-  // Simulate: Autoscaler decides to drain the node.
-  // This is what happens in GcsAutoscalerStateManager::HandleDrainNode()
-  // after the raylet accepts the drain request.
   auto drain_request = std::make_shared<rpc::autoscaler::DrainNodeRequest>();
   drain_request->set_node_id(node_id.Binary());
   drain_request->set_reason(rpc::autoscaler::DRAIN_NODE_REASON_IDLE_TERMINATION);
   drain_request->set_reason_message("idle termination");
 
-  // Add the node to GcsNodeManager so SetNodeDraining can find it
   gcs_node_manager_->AddNode(std::make_shared<rpc::GcsNodeInfo>(*node));
-
-  // This is the key call that happens when drain is accepted
   gcs_node_manager_->SetNodeDraining(node_id, drain_request);
+  io_service_.poll();
 
-  // BUG (CORE-2613): The scheduler should immediately see this node as draining.
-  // Currently, ClusterResourceManager::IsNodeDraining() returns false because
-  // it only gets updated when RaySyncer broadcasts the state from the raylet.
-  // This creates a race window where work can be scheduled to draining nodes.
-  //
-  // EXPECTED (after fix): This should return true immediately.
   ASSERT_TRUE(cluster_resource_manager_.IsNodeDraining(scheduling_node_id));
 }
 
