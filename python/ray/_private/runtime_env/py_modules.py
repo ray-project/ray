@@ -205,9 +205,16 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
+        # Extract transport_params from runtime_env config if available
+        config = runtime_env.get("config")
+        transport_params = config.get("transport_params") if config else None
 
         module_dir = await download_and_unpack_package(
-            uri, self._resources_dir, self._gcs_client, logger=logger
+            uri,
+            self._resources_dir,
+            self._gcs_client,
+            logger=logger,
+            transport_params=transport_params,
         )
 
         if is_whl_uri(uri):

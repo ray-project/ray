@@ -42,14 +42,19 @@ class RuntimeEnvConfig(dict):
         eager_install: Indicates whether to install the runtime environment
             on the cluster at `ray.init()` time, before the workers are leased.
             This flag is set to `True` by default.
+        transport_params: Optional transport parameters for downloading packages
+            from remote storage (e.g., S3, GCS, Azure). This is a dictionary
+            of type Dict[str, Any] that will be passed to smart_open when
+            downloading remote URIs.
     """
 
-    known_fields: Set[str] = {"setup_timeout_seconds", "eager_install", "log_files"}
+    known_fields: Set[str] = {"setup_timeout_seconds", "eager_install", "log_files", "transport_params"}
 
     _default_config: Dict = {
         "setup_timeout_seconds": DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
         "eager_install": True,
         "log_files": [],
+        "transport_params": None,
     }
 
     def __init__(
@@ -57,6 +62,7 @@ class RuntimeEnvConfig(dict):
         setup_timeout_seconds: int = DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
         eager_install: bool = True,
         log_files: Optional[List[str]] = None,
+        transport_params: Optional[Dict[str, Any]] = None,
     ):
         super().__init__()
         if not isinstance(setup_timeout_seconds, int):
@@ -90,6 +96,17 @@ class RuntimeEnvConfig(dict):
             log_files = self._default_config["log_files"]
 
         self["log_files"] = log_files
+
+        if transport_params is not None:
+            if not isinstance(transport_params, dict):
+                raise TypeError(
+                    "transport_params must be a dict or None, got "
+                    f"{transport_params} with type {type(transport_params)}."
+                )
+        else:
+            transport_params = self._default_config["transport_params"]
+
+        self["transport_params"] = transport_params
 
     @staticmethod
     def parse_and_validate_runtime_env_config(
@@ -137,6 +154,7 @@ class RuntimeEnvConfig(dict):
         # assign the default value to setup_timeout_seconds.
         if setup_timeout_seconds == 0:
             setup_timeout_seconds = cls._default_config["setup_timeout_seconds"]
+        
         return cls(
             setup_timeout_seconds=setup_timeout_seconds,
             eager_install=runtime_env_config.eager_install,
@@ -277,6 +295,10 @@ class RuntimeEnv(dict):
         config: config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.
+            (2) transport_params, optional transport parameters for downloading
+            packages from remote storage (e.g., S3, GCS, Azure). This is a
+            dictionary of type Dict[str, Any] that will be passed to smart_open
+            when downloading remote URIs.
         image_uri: URI to a container image. The Ray worker process runs
             in a container with this image. This parameter only works alone,
             or with the ``config`` or ``env_vars`` parameters.

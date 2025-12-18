@@ -233,13 +233,20 @@ class ProtocolsProvider:
         return open_file, None
 
     @classmethod
-    def download_remote_uri(cls, protocol: str, source_uri: str, dest_file: str):
+    def download_remote_uri(
+        cls,
+        protocol: str,
+        source_uri: str,
+        dest_file: str,
+        transport_params: dict = None,
+    ):
         """Download file from remote URI to destination file.
 
         Args:
             protocol: The protocol to use for downloading (e.g., 's3', 'https').
             source_uri: The source URI to download from.
             dest_file: The destination file path to save to.
+            transport_params: Optional transport parameters for smart_open.
 
         Raises:
             ImportError: If required dependencies for the protocol are not installed.
@@ -254,17 +261,28 @@ class ProtocolsProvider:
 
             def open_file(uri, mode, *, transport_params=None):
                 return open(uri, mode)
+        
+            tp = transport_params
 
         elif protocol == "https":
-            open_file, tp = cls._handle_https_protocol()
+            open_file, default_tp = cls._handle_https_protocol()
+            tp = cls._merge_transport_params(default_tp, transport_params)
         elif protocol == "s3":
-            open_file, tp = cls._handle_s3_protocol()
+            open_file, default_tp = cls._handle_s3_protocol()
+            # Merge custom transport_params with defaults
+            tp = cls._merge_transport_params(default_tp, transport_params)
         elif protocol == "gs":
-            open_file, tp = cls._handle_gs_protocol()
+            open_file, default_tp = cls._handle_gs_protocol()
+            # Merge custom transport_params with defaults
+            tp = cls._merge_transport_params(default_tp, transport_params)
         elif protocol == "azure":
-            open_file, tp = cls._handle_azure_protocol()
+            open_file, default_tp = cls._handle_azure_protocol()
+            # Merge custom transport_params with defaults
+            tp = cls._merge_transport_params(default_tp, transport_params)
         elif protocol == "abfss":
-            open_file, tp = cls._handle_abfss_protocol()
+            open_file, default_tp = cls._handle_abfss_protocol()
+            # Merge custom transport_params with defaults
+            tp = cls._merge_transport_params(default_tp, transport_params)
         else:
             try:
                 from smart_open import open as open_file
@@ -274,10 +292,31 @@ class ProtocolsProvider:
                     f"to fetch {protocol.upper()} URIs. "
                     + cls._MISSING_DEPENDENCIES_WARNING
                 )
+            tp = transport_params
 
         with open_file(source_uri, "rb", transport_params=tp) as fin:
             with open(dest_file, "wb") as fout:
                 fout.write(fin.read())
+
+    @classmethod
+    def _merge_transport_params(cls, default_params, custom_params: dict):
+        """
+        Merge custom transport parameters with default parameters.
+        Custom parameters take precedence over default parameters.
+        """
+        if custom_params is None:
+            return default_params
+
+        if default_params is None:
+            return custom_params
+
+        # Create a copy of default params to avoid modifying the original
+        merged = default_params.copy()
+
+        # Update with custom params, which take precedence
+        merged.update(custom_params)
+
+        return merged
 
 
 Protocol = enum.Enum(
@@ -298,8 +337,10 @@ def _remote_protocols(cls):
 Protocol.remote_protocols = _remote_protocols
 
 
-def _download_remote_uri(self, source_uri, dest_file):
-    return ProtocolsProvider.download_remote_uri(self.value, source_uri, dest_file)
+def _download_remote_uri(self, source_uri, dest_file, transport_params=None):
+    return ProtocolsProvider.download_remote_uri(
+        self.value, source_uri, dest_file, transport_params
+    )
 
 
 Protocol.download_remote_uri = _download_remote_uri
