@@ -65,3 +65,6 @@ bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... kuberay \
     --test-env=KUBECONFIG=/tmp/rayci-kubeconfig \
     --python-version "$PYTHON_VERSION" \
     "--test-env=KUBECONFIG_BASE64=$(base64 -w0 "$HOME/.kube/config")"
+
+echo "--- Sleeping for 50 minutes for testing"
+sleep 3000
