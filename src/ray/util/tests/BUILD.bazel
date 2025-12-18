@@ -5,6 +5,7 @@ ray_cc_test(
     size = "small",
     srcs = ["file_persistence_test.cc"],
     tags = ["team:core"],
+    visibility = ["//visibility:private"],
     deps = [
         "//src/ray/util:file_persistence",
         "@com_google_googletest//:gtest_main",
