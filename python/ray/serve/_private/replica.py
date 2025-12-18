@@ -573,10 +573,11 @@ class ReplicaBase(ABC):
         )
 
         # Start event loop monitoring for the replica's main event loop.
+        actor_id = ray.get_runtime_context().get_actor_id()
         self._main_loop_monitor = EventLoopMonitor(
             component=EventLoopMonitor.COMPONENT_REPLICA,
             loop_type=EventLoopMonitor.LOOP_TYPE_MAIN,
-            actor_id=ray.get_runtime_context().get_actor_id(),
+            actor_id=actor_id,
             extra_tags={
                 "deployment": self._deployment_id.name,
                 "application": self._deployment_id.app_name,
@@ -1477,7 +1478,10 @@ class UserCallableWrapper:
             # Start event loop monitoring for the user code event loop.
             # We create the monitor here but start it inside the thread function
             # so the task is created on the correct thread.
-            actor_id = ray.get_runtime_context().get_actor_id()
+            if self._local_testing_mode:
+                actor_id = "local"
+            else:
+                actor_id = ray.get_runtime_context().get_actor_id()
             self._user_code_loop_monitor = EventLoopMonitor(
                 component=EventLoopMonitor.COMPONENT_REPLICA,
                 loop_type=EventLoopMonitor.LOOP_TYPE_USER_CODE,
