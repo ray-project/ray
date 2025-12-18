@@ -201,6 +201,7 @@ def placement_group(
         lifetime=lifetime,
         _soft_target_node_id=_soft_target_node_id,
         bundle_label_selector=bundle_label_selector,
+        fallback_strategy=fallback_strategy,
     )
 
     if bundle_label_selector is None:
