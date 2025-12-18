@@ -2092,6 +2092,8 @@ class DeploymentState:
                 "healthy, 0 means unhealthy."
             ),
             tag_keys=("deployment", "replica", "application"),
+        ).set_default_tags(
+            {"deployment": self._id.name, "application": self._id.app_name}
         )
 
         # Histogram for replica startup latency (time from creation to ready state).
@@ -2100,6 +2102,8 @@ class DeploymentState:
             description=("Time from replica creation to ready state in milliseconds."),
             boundaries=REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
             tag_keys=("deployment", "replica", "application"),
+        ).set_default_tags(
+            {"deployment": self._id.name, "application": self._id.app_name}
         )
 
         # Histogram for replica initialization latency.
@@ -2108,6 +2112,8 @@ class DeploymentState:
             description=("Time for replica to initialize in milliseconds."),
             boundaries=REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
             tag_keys=("deployment", "replica", "application"),
+        ).set_default_tags(
+            {"deployment": self._id.name, "application": self._id.app_name}
         )
 
         # Histogram for replica reconfigure latency.
@@ -2116,6 +2122,8 @@ class DeploymentState:
             description=("Time for replica to complete reconfigure in milliseconds."),
             boundaries=REQUEST_LATENCY_BUCKETS_MS,
             tag_keys=("deployment", "replica", "application"),
+        ).set_default_tags(
+            {"deployment": self._id.name, "application": self._id.app_name}
         )
 
         # Histogram for health check latency.
@@ -2124,6 +2132,8 @@ class DeploymentState:
             description=("Duration of health check calls in milliseconds."),
             boundaries=REQUEST_LATENCY_BUCKETS_MS,
             tag_keys=("deployment", "replica", "application"),
+        ).set_default_tags(
+            {"deployment": self._id.name, "application": self._id.app_name}
         )
 
         # Counter for health check failures.
@@ -2131,6 +2141,8 @@ class DeploymentState:
             "serve_health_check_failures_total",
             description=("Count of failed health checks."),
             tag_keys=("deployment", "replica", "application"),
+        ).set_default_tags(
+            {"deployment": self._id.name, "application": self._id.app_name}
         )
 
         # Histogram for replica shutdown duration.
@@ -2141,6 +2153,8 @@ class DeploymentState:
             ),
             boundaries=REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
             tag_keys=("deployment", "replica", "application"),
+        ).set_default_tags(
+            {"deployment": self._id.name, "application": self._id.app_name}
         )
 
         self.target_replicas_gauge = metrics.Gauge(
@@ -2150,6 +2164,8 @@ class DeploymentState:
                 "This is the number the autoscaler is trying to reach."
             ),
             tag_keys=("deployment", "application"),
+        ).set_default_tags(
+            {"deployment": self._id.name, "application": self._id.app_name}
         )
 
         # Whether the request routing info have been updated since the last
@@ -2459,13 +2475,7 @@ class DeploymentState:
         self._target_state = new_target_state
 
         # Emit target replicas metric
-        self.target_replicas_gauge.set(
-            target_num_replicas,
-            tags={
-                "deployment": self.deployment_name,
-                "application": self.app_name,
-            },
-        )
+        self.target_replicas_gauge.set(target_num_replicas)
 
     def deploy(self, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.
@@ -2969,9 +2979,7 @@ class DeploymentState:
 
                 # Record startup or reconfigure latency metrics.
                 metric_tags = {
-                    "deployment": self.deployment_name,
                     "replica": replica.replica_id.unique_id,
-                    "application": self.app_name,
                 }
                 if original_state == ReplicaState.STARTING:
                     # Record replica startup latency (end-to-end from creation to ready).
@@ -3069,9 +3077,7 @@ class DeploymentState:
         self.health_check_gauge.set(
             0,
             tags={
-                "deployment": self.deployment_name,
                 "replica": replica.replica_id.unique_id,
-                "application": self.app_name,
             },
         )
 
@@ -3089,9 +3095,7 @@ class DeploymentState:
 
             # Record health check latency and failure metrics.
             metric_tags = {
-                "deployment": self.deployment_name,
                 "replica": replica.replica_id.unique_id,
-                "application": self.app_name,
             }
             if replica.last_health_check_latency_ms is not None:
                 self.health_check_latency_histogram.observe(
@@ -3105,9 +3109,7 @@ class DeploymentState:
                 self.health_check_gauge.set(
                     1,
                     tags={
-                        "deployment": self.deployment_name,
                         "replica": replica.replica_id.unique_id,
-                        "application": self.app_name,
                     },
                 )
                 routing_stats = replica.pull_routing_stats()
@@ -3119,9 +3121,7 @@ class DeploymentState:
                 self.health_check_gauge.set(
                     0,
                     tags={
-                        "deployment": self.deployment_name,
                         "replica": replica.replica_id.unique_id,
-                        "application": self.app_name,
                     },
                 )
                 self._stop_replica(
@@ -3223,9 +3223,7 @@ class DeploymentState:
                     self.replica_shutdown_duration_histogram.observe(
                         shutdown_duration_ms,
                         tags={
-                            "deployment": self.deployment_name,
                             "replica": replica.replica_id.unique_id,
-                            "application": self.app_name,
                         },
                     )
 

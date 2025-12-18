@@ -128,6 +128,8 @@ MODEL_LOAD_LATENCY_BUCKETS_MS = parse_latency_buckets(
 #: Histogram buckets for replica startup and reconfigure latency.
 #: These are longer operations (constructor, model loading) so buckets start higher.
 DEFAULT_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS = [
+    5,
+    20,
     50,
     100,
     250,
