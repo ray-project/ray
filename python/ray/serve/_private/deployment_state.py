@@ -2120,6 +2120,7 @@ class DeploymentState:
         )
 
         # Histogram for replica reconfigure latency.
+        # NOTE(abrar): value of this metric represents reconfigure + time until next controller loop
         self.replica_reconfigure_latency_histogram = metrics.Histogram(
             "serve_replica_reconfigure_latency_ms",
             description=("Time for replica to complete reconfigure in milliseconds."),
