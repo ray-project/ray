@@ -172,6 +172,13 @@ class LLMConfig(BaseModelExtended):
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
     )
 
+    use_cpu: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Whether to use CPU for model inference. If not set, Ray will try to infer based on the available GPU resources. If set to True the model will run on CPU."
+        ),
+    )
+
     placement_group_config: Optional[Dict[str, Any]] = Field(
         default=None,
         description=(

@@ -246,8 +246,6 @@ install_pip_packages() {
     # For DAG visualization
     requirements_packages+=("pydot")
     requirements_packages+=("pytesseract==0.3.13")
-    requirements_packages+=("spacy==3.7.5")
-    requirements_packages+=("spacy_langdetect==0.1.2")
   fi
 
   # Additional RLlib test dependencies.
@@ -382,13 +380,6 @@ install_pip_packages() {
 
   if [[ "${TUNE_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
     download_mnist
-  fi
-
-  if [[ "${DOC_TESTING-}" == 1 ]]; then
-    # Todo: This downgrades spacy and related dependencies because
-    # `en_core_web_sm` is only compatible with spacy < 3.6.
-    # We should move to a model that does not depend on a stale version.
-    python -m spacy download en_core_web_sm
   fi
 }
 

@@ -105,10 +105,22 @@ class AutoscalingActorPool(ABC):
         """Per actor resource usage."""
         ...
 
-    @abstractmethod
     def get_pool_util(self) -> float:
         """Calculate the utilization of the given actor pool."""
-        ...
+        # If there are no running actors, we set the utilization to indicate that the pool should be scaled up immediately.
+        if self.num_running_actors() == 0:
+            return float("inf")
+        else:
+            # We compute utilization as a ratio of
+            #  - Number of submitted tasks over
+            #  - Max number of tasks that Actor Pool could currently run
+            #
+            # This value could exceed 100%, since by default actors are allowed
+            # to queue tasks (to pipeline task execution by overlapping block
+            # fetching with the execution of the previous task)
+            return self.num_tasks_in_flight() / (
+                self.max_actor_concurrency() * self.num_running_actors()
+            )
 
     def max_concurrent_tasks(self) -> int:
         return self.max_actor_concurrency() * self.num_running_actors()

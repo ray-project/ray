@@ -124,9 +124,7 @@ LANGUAGE = ["PYTHON", "JAVA", "CPP"]
 # See `common.proto` for more details.
 class TensorTransportEnum(Enum):
     OBJECT_STORE = TensorTransport.Value("OBJECT_STORE")
-    NCCL = TensorTransport.Value("NCCL")
-    GLOO = TensorTransport.Value("GLOO")
-    NIXL = TensorTransport.Value("NIXL")
+    DIRECT_TRANSPORT = TensorTransport.Value("DIRECT_TRANSPORT")
 
     @classmethod
     def from_str(cls, name: str) -> "TensorTransportEnum":

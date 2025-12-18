@@ -18,6 +18,7 @@ examples/modin-example
 examples/rayserve-llm-example
 examples/rayserve-deepseek-example
 examples/verl-post-training
+examples/argocd
 ```
 
 

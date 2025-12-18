@@ -225,29 +225,6 @@ def test_read_example_data(ray_start_regular_shared, tmp_path):
     ]
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="Skip due to incompatibility tensorflow with Python 3.12+",
-)
-def test_from_tf(ray_start_regular_shared):
-    import tensorflow as tf
-    import tensorflow_datasets as tfds
-
-    tf_dataset = tfds.load("mnist", split=["train"], as_supervised=True)[0]
-    tf_dataset = tf_dataset.take(8)  # Use subset to make test run faster.
-
-    ray_dataset = ray.data.from_tf(tf_dataset)
-
-    actual_data = extract_values("item", ray_dataset.take_all())
-    expected_data = list(tf_dataset)
-    assert len(actual_data) == len(expected_data)
-    for (expected_features, expected_label), (actual_features, actual_label) in zip(
-        expected_data, actual_data
-    ):
-        tf.debugging.assert_equal(expected_features, actual_features)
-        tf.debugging.assert_equal(expected_label, actual_label)
-
-
 def test_read_s3_file_error(shutdown_only, s3_path):
     dummy_path = s3_path + "_dummy"
     error_message = "Please check that file exists and has properly configured access."

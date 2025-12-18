@@ -33,6 +33,7 @@
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/worker.h"
 #include "ray/util/path_utils.h"
@@ -139,7 +140,8 @@ class WorkerPoolMock : public WorkerPool {
                           const WorkerCommandMap &worker_commands,
                           gcs::GcsClient &gcs_client,
                           absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
-                              &mock_worker_rpc_clients)
+                              &mock_worker_rpc_clients,
+                          WorkerPoolMetrics &worker_pool_metrics)
       : WorkerPool(
             io_service,
             NodeID::FromRandom(),
@@ -155,7 +157,8 @@ class WorkerPoolMock : public WorkerPool {
             "",
             []() {},
             0,
-            [this]() { return absl::FromUnixMillis(current_time_ms_); }),
+            [this]() { return absl::FromUnixMillis(current_time_ms_); },
+            worker_pool_metrics),
         last_worker_process_(),
         instrumented_io_service_(io_service),
         client_call_manager_(instrumented_io_service_, false, /*local_address=*/""),
@@ -464,8 +467,11 @@ class WorkerPoolTest : public ::testing::Test {
   }
 
   void SetWorkerCommands(const WorkerCommandMap &worker_commands) {
-    worker_pool_ = std::make_unique<WorkerPoolMock>(
-        io_service_, worker_commands, *mock_gcs_client_, mock_worker_rpc_clients_);
+    worker_pool_ = std::make_unique<WorkerPoolMock>(io_service_,
+                                                    worker_commands,
+                                                    *mock_gcs_client_,
+                                                    mock_worker_rpc_clients_,
+                                                    worker_pool_metrics_);
   }
 
   void TestStartupWorkerProcessCount(Language language, int num_workers_per_process) {
@@ -499,6 +505,22 @@ class WorkerPoolTest : public ::testing::Test {
   std::unique_ptr<WorkerPoolMock> worker_pool_;
   std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_ =
       std::make_unique<gcs::MockGcsClient>();
+
+  ray::observability::FakeGauge fake_num_workers_started_metric_;
+  ray::observability::FakeGauge fake_num_cached_workers_skipped_job_mismatch_metric_;
+  ray::observability::FakeGauge
+      fake_num_cached_workers_skipped_runtime_environment_mismatch_metric_;
+  ray::observability::FakeGauge
+      fake_num_cached_workers_skipped_dynamic_options_mismatch_metric_;
+  ray::observability::FakeGauge fake_num_workers_started_from_cache_metric_;
+  ray::observability::FakeHistogram fake_worker_register_time_ms_histogram_;
+  WorkerPoolMetrics worker_pool_metrics_ = {
+      fake_num_workers_started_metric_,
+      fake_num_cached_workers_skipped_job_mismatch_metric_,
+      fake_num_cached_workers_skipped_runtime_environment_mismatch_metric_,
+      fake_num_cached_workers_skipped_dynamic_options_mismatch_metric_,
+      fake_num_workers_started_from_cache_metric_,
+      fake_worker_register_time_ms_histogram_};
 };
 
 class WorkerPoolDriverRegisteredTest : public WorkerPoolTest {

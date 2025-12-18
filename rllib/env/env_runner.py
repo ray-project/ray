@@ -59,6 +59,8 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         """
         self.config: AlgorithmConfig = config.copy(copy_frozen=False)
 
+        self.num_env_steps_sampled_lifetime = 0
+
         # Get the worker index on which this instance is running.
 
         # TODO (sven): We should make these c'tor named args.
@@ -67,7 +69,10 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
 
         self.env = None
         # Create a MetricsLogger object for logging custom stats.
-        self.metrics: MetricsLogger = MetricsLogger()
+        self.metrics: MetricsLogger = MetricsLogger(
+            stats_cls_lookup=config.stats_cls_lookup,
+            root=False,
+        )
 
         super().__init__()
 
@@ -256,7 +261,9 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
 
             return results
         except Exception as e:
-            self.metrics.log_value(NUM_ENV_STEP_FAILURES_LIFETIME, 1, reduce="sum")
+            self.metrics.log_value(
+                NUM_ENV_STEP_FAILURES_LIFETIME, 1, reduce="lifetime_sum"
+            )
 
             if self.config.restart_failed_sub_environments:
                 if not isinstance(e, StepFailedRecreateEnvError):

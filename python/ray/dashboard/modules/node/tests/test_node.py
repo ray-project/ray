@@ -289,7 +289,7 @@ def test_worker_pids_reported(enable_test_module, ray_start_with_dashboard):
     webui_url = format_web_url(webui_url)
     node_id = ray_start_with_dashboard["node_id"]
 
-    @ray.remote(runtime_env={"uv": {"packages": ["requests==2.3.0"]}})
+    @ray.remote(runtime_env={"uv": {"packages": ["requests==2.32.5"]}})
     class UvActor:
         def get_pid(self):
             return os.getpid()

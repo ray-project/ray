@@ -37,6 +37,7 @@
 #include "ray/common/lease/lease.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/raylet/metrics.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet_ipc_client/client_connection.h"
@@ -326,6 +327,7 @@ class WorkerPool : public WorkerPoolInterface {
       std::function<void()> starting_worker_timeout_callback,
       int ray_debugger_external,
       std::function<absl::Time()> get_time,
+      WorkerPoolMetrics &worker_pool_metrics,
       AddProcessToCgroupHook add_to_cgroup_hook = [](const std::string &) {});
 
   /// Destructor responsible for freeing a set of workers owned by this class.
@@ -926,32 +928,7 @@ class WorkerPool : public WorkerPoolInterface {
   AddProcessToCgroupHook add_to_cgroup_hook_;
 
   /// Ray metrics
-  ray::stats::Sum ray_metric_num_workers_started_{
-      /*name=*/"internal_num_processes_started",
-      /*description=*/"The total number of worker processes the worker pool has created.",
-      /*unit=*/"processes"};
-
-  ray::stats::Sum ray_metric_num_cached_workers_skipped_job_mismatch_{
-      /*name=*/"internal_num_processes_skipped_job_mismatch",
-      /*description=*/"The total number of cached workers skipped due to job mismatch.",
-      /*unit=*/"workers"};
-
-  ray::stats::Sum ray_metric_num_cached_workers_skipped_runtime_environment_mismatch_{
-      /*name=*/"internal_num_processes_skipped_runtime_environment_mismatch",
-      /*description=*/
-      "The total number of cached workers skipped due to runtime environment mismatch.",
-      /*unit=*/"workers"};
-
-  ray::stats::Sum ray_metric_num_cached_workers_skipped_dynamic_options_mismatch_{
-      /*name=*/"internal_num_processes_skipped_dynamic_options_mismatch",
-      /*description=*/
-      "The total number of cached workers skipped due to dynamic options mismatch.",
-      /*unit=*/"workers"};
-
-  ray::stats::Sum ray_metric_num_workers_started_from_cache_{
-      /*name=*/"internal_num_processes_started_from_cache",
-      /*description=*/"The total number of workers started from a cached worker process.",
-      /*unit=*/"workers"};
+  WorkerPoolMetrics worker_pool_metrics_;
 
   friend class WorkerPoolTest;
   friend class WorkerPoolDriverRegisteredTest;

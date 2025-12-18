@@ -37,6 +37,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_MODULE_STEPS_TRAINED_LIFETIME,
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TIMERS,
@@ -430,6 +431,16 @@ class PPO(Algorithm):
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: (
                         self.metrics.peek(
                             (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                        )
+                    ),
+                    NUM_MODULE_STEPS_TRAINED_LIFETIME: (
+                        self.metrics.peek(
+                            (
+                                LEARNER_RESULTS,
+                                ALL_MODULES,
+                                NUM_MODULE_STEPS_TRAINED_LIFETIME,
+                            ),
+                            default=0,
                         )
                     ),
                 },

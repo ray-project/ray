@@ -214,7 +214,15 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
         pd = lazy_import_pandas()
 
         try:
-            return pd.Series(self._column.unique())
+            if self.is_composed_of_lists():
+                # NOTE: Pandas uses hashing internally to compute unique values,
+                #       and hence we have to convert lists into tuples to make
+                #       them hashable
+                col = self._column.map(lambda l: l if l is None else tuple(l))
+            else:
+                col = self._column
+
+            return pd.Series(col.unique())
         except ValueError as e:
             if "buffer source array is read-only" in str(e):
                 # NOTE: Pandas < 2.0 somehow tries to update the underlying buffer
@@ -227,12 +235,20 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
         from ray.air.util.tensor_extensions.pandas import TensorArrayElement
 
         first_non_null = next((x for x in self._column if x is not None), None)
-        if isinstance(first_non_null, TensorArrayElement):
-            self._column = self._column.apply(
+        if not isinstance(first_non_null, TensorArrayElement):
+            column = self._column
+        else:
+            column = self._column.apply(
                 lambda x: x.to_numpy() if isinstance(x, TensorArrayElement) else x
             )
 
-        return self._column.explode(ignore_index=True)
+        # NOTE: `Series.explode` explodes empty lists into NaNs, necessitating
+        #       filtering out of empty lists first
+        if self.is_composed_of_lists():
+            mask = column.apply(lambda x: x is not None and len(x) > 0)
+            column = column[mask]
+
+        return column.explode(ignore_index=True)
 
     def dropna(self) -> BlockColumn:
         return self._column.dropna()
@@ -267,11 +283,10 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
     def _is_all_null(self):
         return not self._column.notna().any()
 
-    def is_composed_of_lists(self, types: Optional[Tuple] = None) -> bool:
+    def is_composed_of_lists(self) -> bool:
         from ray.air.util.tensor_extensions.pandas import TensorArrayElement
 
-        if not types:
-            types = (list, np.ndarray, TensorArrayElement)
+        types = (list, np.ndarray, TensorArrayElement)
         first_non_null = next((x for x in self._column if x is not None), None)
         return isinstance(first_non_null, types)
 
@@ -465,6 +480,8 @@ class PandasBlockAccessor(TableBlockAccessor):
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow as pa
 
+        from ray.air.util.tensor_extensions.pandas import TensorDtype
+
         # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
         # column to the resulting table.
         arrow_table = pa.Table.from_pandas(self._table, preserve_index=False)
@@ -481,7 +498,12 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         for idx, col_name in enumerate(self._table.columns):
             col = self._table[col_name]
-            # Check if there is any non-null value in the original Pandas column
+
+            # Skip coercing tensors to null-type to avoid type information loss
+            # See https://github.com/ray-project/ray/issues/59087 for context
+            if isinstance(col.dtype, TensorDtype):
+                continue
+
             if not col.notna().any():
                 # If there are only null-values, coerce column to Arrow's `NullType`
                 null_coerced_columns[(idx, col_name)] = pa.nulls(

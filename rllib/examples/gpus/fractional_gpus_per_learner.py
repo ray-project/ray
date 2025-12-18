@@ -73,7 +73,7 @@ The final output should look something like this:
 +----------------+----------------------+----------------------+----------------------+
 """
 from ray import tune
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )

@@ -216,6 +216,68 @@ def test_compose_args_and_kwargs(serve_instance):
     }
 
 
+@pytest.mark.parametrize("await_order", ["b_first", "c_first"])
+@pytest.mark.asyncio
+async def test_chained_deployment_response_await_order(
+    serve_instance, await_order: str
+):
+    @serve.deployment
+    class DeploymentA:
+        async def __call__(self, number: int) -> int:
+            await asyncio.sleep(0.01)
+            return number * 2
+
+    @serve.deployment
+    class DeploymentB:
+        async def __call__(self, number: int) -> int:
+            await asyncio.sleep(0.01)
+            return number * 3
+
+    @serve.deployment
+    class DeploymentC:
+        async def __call__(self, number: int) -> int:
+            await asyncio.sleep(0.01)
+            return number * 4
+
+    @serve.deployment
+    class ComposedDeployment:
+        def __init__(self, deployment_a, deployment_b, deployment_c):
+            self.deployment_a = deployment_a
+            self.deployment_b = deployment_b
+            self.deployment_c = deployment_c
+
+        async def __call__(self, number: int, await_order: str) -> int:
+            a = self.deployment_a.remote(number)
+            b = self.deployment_b.remote(a)
+            c = self.deployment_c.remote(b)
+
+            # Test different await orders - both should work without hanging
+            if await_order == "b_first":
+                true_b = await b
+                true_c = await c
+            else:
+                true_c = await c
+                true_b = await b
+
+            return true_b * true_c
+
+    handle = serve.run(
+        ComposedDeployment.bind(
+            DeploymentA.bind(), DeploymentB.bind(), DeploymentC.bind()
+        ),
+    )
+
+    # Use a timeout to detect hangs
+    result = await handle.remote(5, await_order)
+
+    # Verify the result is correct:
+    # a = 5 * 2 = 10
+    # b = 10 * 3 = 30 (true_b)
+    # c = 30 * 4 = 120 (true_c)
+    # result = 30 * 120 = 3600
+    assert result == 3600, f"Expected 3600, got {result}"
+
+
 def test_nested_deployment_response_error(serve_instance):
     """Test that passing a deployment response in a nested object to a downstream
     handle call errors, and with an informative error message."""

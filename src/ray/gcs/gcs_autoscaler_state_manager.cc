@@ -478,6 +478,8 @@ void GcsAutoscalerStateManager::HandleDrainNode(
   if (!maybe_node.has_value()) {
     if (gcs_node_manager_.IsNodeDead(node_id)) {
       // The node is dead so treat it as drained.
+      RAY_LOG(INFO).WithField(node_id)
+          << "Request to drain a dead node, treat it as drained";
       reply->set_is_accepted(true);
     } else {
       // Since gcs only stores limit number of dead nodes
@@ -508,6 +510,9 @@ void GcsAutoscalerStateManager::HandleDrainNode(
           gcs_node_manager_.SetNodeDraining(
               node_id, std::make_shared<rpc::autoscaler::DrainNodeRequest>(request));
         } else {
+          RAY_LOG(INFO).WithField(node_id) << "Node drain rejected by raylet. The node "
+                                              "will not be drained. Rejection reason: "
+                                           << raylet_reply.rejection_reason_message();
           reply->set_rejection_reason_message(raylet_reply.rejection_reason_message());
         }
         send_reply_callback(status, nullptr, nullptr);

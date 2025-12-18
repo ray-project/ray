@@ -8,7 +8,6 @@ steps:
       - ray-core-build
       - ray-dashboard-build
     matrix:
-      - "3.9"
       - "3.10"
     env:
       PYTHON: "{{matrix}}"

@@ -1,10 +1,17 @@
 name: "minbuild-$EXTRA_DEPENDENCY-py$PYTHON_VERSION"
-froms: ["cr.ray.io/rayproject/oss-ci-base_build"]
+froms: ["cr.ray.io/rayproject/oss-ci-base_test-py$PYTHON_VERSION"]
 dockerfile: ci/docker/min.build.Dockerfile
 srcs:
+  - .bazelrc
+  - ci/ci.sh
   - ci/env/install-dependencies.sh
+  - ci/env/install-llvm-binaries.sh
   - ci/env/install-core-prerelease-dependencies.sh
+  - ci/suppress_output
+  - python/requirements.txt
+  - python/requirements_compiled.txt
   - python/setup.py
+  - python/LICENSE.txt
   - python/ray/_version.py
   - README.rst
 build_args:

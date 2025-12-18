@@ -32,6 +32,7 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     OpRuntimeMetrics,
 )
 from ray.data._internal.metadata_exporter import (
+    DataContextMetadata,
     DatasetMetadata,
     Topology,
     get_dataset_metadata_exporter,
@@ -592,7 +593,7 @@ class _StatsActor:
         dataset_tag: str,
         operator_tags: List[str],
         topology: Topology,
-        data_context: DataContext,
+        data_context: DataContextMetadata,
     ):
         start_time = time.time()
         self.datasets[dataset_tag] = {
@@ -894,6 +895,9 @@ class _StatsManager:
             topology: Optional Topology representing the DAG structure to export
             data_context: The DataContext attached to the dataset
         """
+        # Convert DataContext to DataContextMetadata before serialization to avoid
+        # module dependency issues during Ray's cloudpickle serialization.
+        data_context = DataContextMetadata.from_data_context(data_context)
 
         get_or_create_stats_actor().register_dataset.remote(
             ray.get_runtime_context().get_job_id(),

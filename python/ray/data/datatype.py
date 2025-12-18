@@ -11,20 +11,14 @@ from ray.air.util.tensor_extensions.arrow import (
 from ray.util.annotations import PublicAPI
 
 
-class _LogicalDataType(str, Enum):
-    """DataType logical types for pattern matching.
+@PublicAPI(stability="alpha")
+class TypeCategory(str, Enum):
+    """High-level categories of data types.
 
-    These are used when _physical_dtype is None to represent categories of types
-    rather than concrete types. For example, _LogicalDataType.LIST matches any list
-    type regardless of element type.
-
-    Note: _LogicalDataType.ANY is exposed as DataType.ANY and used as the default
-    parameter in factory methods (e.g., DataType.list(DataType.ANY)) to explicitly
-    request pattern-matching types. When _logical_dtype field is None, that represents
-    matching "any type at all" (completely unspecified).
+    These categories correspond to groups of concrete data types.
+    Use DataType.is_of(category) to check if a DataType belongs to a category.
     """
 
-    ANY = "any"  # Sentinel for method parameters; not stored in _logical_dtype field
     LIST = "list"
     LARGE_LIST = "large_list"
     STRUCT = "struct"
@@ -113,22 +107,10 @@ class DataType:
     """A simplified Ray Data DataType supporting Arrow, NumPy, and Python types."""
 
     # Physical dtype: The concrete type implementation (e.g., pa.list_(pa.int64()), np.float64, str)
-    # Logical dtype: Used for pattern matching to represent a category of types
-    #   - When _physical_dtype is set: _logical_dtype is ANY (not used, indicates concrete type)
-    #   - When _physical_dtype is None: _logical_dtype specifies the pattern (LIST, STRUCT, MAP, etc.)
-    _physical_dtype: Optional[Union[pa.DataType, np.dtype, type]]
-    _logical_dtype: _LogicalDataType = _LogicalDataType.ANY
-
-    # Sentinel value for creating pattern-matching types.
-    # Used as default in factory methods to allow both DataType.list(DataType.ANY) and DataType.list().
-    ANY = _LogicalDataType.ANY
+    _physical_dtype: Union[pa.DataType, np.dtype, type]
 
     def __post_init__(self):
         """Validate the _physical_dtype after initialization."""
-        # Allow None for pattern-matching types
-        if self._physical_dtype is None:
-            return
-
         # TODO: Support Pandas extension types
         if not isinstance(
             self._physical_dtype,
@@ -137,6 +119,41 @@ class DataType:
             raise TypeError(
                 f"DataType supports only PyArrow DataType, NumPy dtype, or Python type, but was given type {type(self._physical_dtype)}."
             )
+
+    def is_of(self, category: Union["TypeCategory", str]) -> bool:
+        """Check if this DataType belongs to a specific type category.
+
+        Args:
+            category: The category to check against.
+
+        Returns:
+            True if the DataType belongs to the category.
+        """
+        if isinstance(category, str):
+            try:
+                category = TypeCategory(category)
+            except ValueError:
+                return False
+
+        if category == TypeCategory.LIST:
+            return self.is_list_type()
+        elif category == TypeCategory.LARGE_LIST:
+            if not self.is_arrow_type():
+                return False
+            pa_type = self._physical_dtype
+            return pa.types.is_large_list(pa_type) or (
+                hasattr(pa.types, "is_large_list_view")
+                and pa.types.is_large_list_view(pa_type)
+            )
+        elif category == TypeCategory.STRUCT:
+            return self.is_struct_type()
+        elif category == TypeCategory.MAP:
+            return self.is_map_type()
+        elif category == TypeCategory.TENSOR:
+            return self.is_tensor_type()
+        elif category == TypeCategory.TEMPORAL:
+            return self.is_temporal_type()
+        return False
 
     # Type checking methods
     def is_arrow_type(self) -> bool:
@@ -163,17 +180,6 @@ class DataType:
         """
         return isinstance(self._physical_dtype, type)
 
-    def is_pattern_matching(self) -> bool:
-        """Check if this DataType is a pattern-matching type.
-
-        Pattern-matching types have _physical_dtype=None and are used to match
-        categories of types (e.g., any list, any struct) rather than concrete types.
-
-        Returns:
-            bool: True if this is a pattern-matching type
-        """
-        return self._physical_dtype is None
-
     # Conversion methods
     def to_arrow_dtype(self, values: Optional[List[Any]] = None) -> pa.DataType:
         """
@@ -184,17 +190,7 @@ class DataType:
 
         Returns:
             A PyArrow DataType
-
-        Raises:
-            ValueError: If called on a pattern-matching type (where _physical_dtype is None)
         """
-        if self.is_pattern_matching():
-            raise ValueError(
-                f"Cannot convert pattern-matching type {self} to a concrete Arrow type. "
-                "Pattern-matching types represent abstract type categories (e.g., 'any list') "
-                "and do not have a concrete Arrow representation."
-            )
-
         if self.is_arrow_type():
             return self._physical_dtype
         else:
@@ -215,9 +211,6 @@ class DataType:
         Returns:
             np.dtype: A NumPy dtype representation
 
-        Raises:
-            ValueError: If called on a pattern-matching type (where _physical_dtype is None)
-
         Examples:
             >>> import numpy as np
             >>> DataType.from_numpy(np.dtype('int64')).to_numpy_dtype()
@@ -225,13 +218,6 @@ class DataType:
             >>> DataType.from_numpy(np.dtype('float32')).to_numpy_dtype()
             dtype('float32')
         """
-        if self.is_pattern_matching():
-            raise ValueError(
-                f"Cannot convert pattern-matching type {self} to a concrete NumPy dtype. "
-                "Pattern-matching types represent abstract type categories (e.g., 'any list') "
-                "and do not have a concrete NumPy representation."
-            )
-
         if self.is_numpy_type():
             return self._physical_dtype
         elif self.is_arrow_type():
@@ -350,9 +336,7 @@ class DataType:
             return cls(type(value))
 
     def __repr__(self) -> str:
-        if self._physical_dtype is None:
-            return f"DataType(logical_dtype:{self._logical_dtype.name})"
-        elif self.is_arrow_type():
+        if self.is_arrow_type():
             return f"DataType(arrow:{self._physical_dtype})"
         elif self.is_numpy_type():
             return f"DataType(numpy:{self._physical_dtype})"
@@ -363,17 +347,6 @@ class DataType:
         if not isinstance(other, DataType):
             return False
 
-        # Handle pattern-matching types (None internal type)
-        self_is_pattern = self._physical_dtype is None
-        other_is_pattern = other._physical_dtype is None
-
-        if self_is_pattern or other_is_pattern:
-            return (
-                self_is_pattern
-                and other_is_pattern
-                and self._logical_dtype == other._logical_dtype
-            )
-
         # Ensure they're from the same type system by checking the actual type
         # of the internal type object, not just the value
         if type(self._physical_dtype) is not type(other._physical_dtype):
@@ -382,86 +355,42 @@ class DataType:
         return self._physical_dtype == other._physical_dtype
 
     def __hash__(self) -> int:
-        # Handle pattern-matching types
-        if self._physical_dtype is None:
-            return hash(("PATTERN", None, self._logical_dtype))
         # Include the type of the internal type in the hash to ensure
         # different type systems don't collide
         return hash((type(self._physical_dtype), self._physical_dtype))
 
     @classmethod
-    def _is_pattern_matching_arg(cls, arg: Union["DataType", _LogicalDataType]) -> bool:
-        """Check if an argument should be treated as pattern-matching.
-
-        Args:
-            arg: Either a _LogicalDataType enum or a DataType instance
-
-        Returns:
-            True if the argument represents a pattern-matching type
-        """
-        return isinstance(arg, _LogicalDataType) or (
-            isinstance(arg, DataType) and arg.is_pattern_matching()
-        )
-
-    @classmethod
-    def list(
-        cls, value_type: Union["DataType", _LogicalDataType] = _LogicalDataType.ANY
-    ) -> "DataType":
+    def list(cls, value_type: "DataType") -> "DataType":
         """Create a DataType representing a list with the given element type.
 
-        Pass DataType.ANY (or omit the argument) to create a pattern that matches any list type.
-
         Args:
-            value_type: The DataType of the list elements, or DataType.ANY to match any list.
-                       Defaults to DataType.ANY.
+            value_type: The DataType of the list elements.
 
         Returns:
-            DataType: A DataType with PyArrow list type or a pattern-matching DataType
+            DataType: A DataType with PyArrow list type
 
         Examples:
             >>> from ray.data.datatype import DataType
             >>> DataType.list(DataType.int64())  # Exact match: list<int64>
             DataType(arrow:list<item: int64>)
-            >>> DataType.list(DataType.ANY)  # Pattern: matches any list (explicit)
-            DataType(logical_dtype:LIST)
-            >>> DataType.list()  # Same as above (terse)
-            DataType(logical_dtype:LIST)
         """
-        if cls._is_pattern_matching_arg(value_type):
-            return cls(_physical_dtype=None, _logical_dtype=_LogicalDataType.LIST)
-
         value_arrow_type = value_type.to_arrow_dtype()
         return cls.from_arrow(pa.list_(value_arrow_type))
 
     @classmethod
-    def large_list(
-        cls, value_type: Union["DataType", _LogicalDataType] = _LogicalDataType.ANY
-    ) -> "DataType":
+    def large_list(cls, value_type: "DataType") -> "DataType":
         """Create a DataType representing a large_list with the given element type.
 
-        Pass DataType.ANY (or omit the argument) to create a pattern that matches any large_list type.
-
         Args:
-            value_type: The DataType of the list elements, or DataType.ANY to match any large_list.
-                       Defaults to DataType.ANY.
+            value_type: The DataType of the list elements.
 
         Returns:
-            DataType: A DataType with PyArrow large_list type or a pattern-matching DataType
+            DataType: A DataType with PyArrow large_list type
 
         Examples:
-            >>> DataType.large_list(DataType.int64())  # Exact match
+            >>> DataType.large_list(DataType.int64())
             DataType(arrow:large_list<item: int64>)
-            >>> DataType.large_list(DataType.ANY)  # Pattern: matches any large_list (explicit)
-            DataType(logical_dtype:LARGE_LIST)
-            >>> DataType.large_list()  # Same as above (terse)
-            DataType(logical_dtype:LARGE_LIST)
         """
-        if cls._is_pattern_matching_arg(value_type):
-            return cls(
-                _physical_dtype=None,
-                _logical_dtype=_LogicalDataType.LARGE_LIST,
-            )
-
         value_arrow_type = value_type.to_arrow_dtype()
         return cls.from_arrow(pa.large_list(value_arrow_type))
 
@@ -485,77 +414,43 @@ class DataType:
         return cls.from_arrow(pa.list_(value_arrow_type, list_size))
 
     @classmethod
-    def struct(
-        cls,
-        fields: Union[
-            List[Tuple[str, "DataType"]], _LogicalDataType
-        ] = _LogicalDataType.ANY,
-    ) -> "DataType":
+    def struct(cls, fields: List[Tuple[str, "DataType"]]) -> "DataType":
         """Create a DataType representing a struct with the given fields.
 
-        Pass DataType.ANY (or omit the argument) to create a pattern that matches any struct type.
-
         Args:
-            fields: List of (field_name, field_type) tuples, or DataType.ANY to match any struct.
-                   Defaults to DataType.ANY.
+            fields: List of (field_name, field_type) tuples.
 
         Returns:
-            DataType: A DataType with PyArrow struct type or a pattern-matching DataType
+            DataType: A DataType with PyArrow struct type
 
         Examples:
             >>> from ray.data.datatype import DataType
             >>> DataType.struct([("x", DataType.int64()), ("y", DataType.float64())])
             DataType(arrow:struct<x: int64, y: double>)
-            >>> DataType.struct(DataType.ANY)  # Pattern: matches any struct (explicit)
-            DataType(logical_dtype:STRUCT)
-            >>> DataType.struct()  # Same as above (terse)
-            DataType(logical_dtype:STRUCT)
         """
-        if isinstance(fields, _LogicalDataType):
-            return cls(_physical_dtype=None, _logical_dtype=_LogicalDataType.STRUCT)
-
-        # Check if any field type is pattern-matching
-        if any(cls._is_pattern_matching_arg(dtype) for _, dtype in fields):
-            return cls(_physical_dtype=None, _logical_dtype=_LogicalDataType.STRUCT)
-
         arrow_fields = [(name, dtype.to_arrow_dtype()) for name, dtype in fields]
         return cls.from_arrow(pa.struct(arrow_fields))
 
     @classmethod
     def map(
         cls,
-        key_type: Union["DataType", _LogicalDataType] = _LogicalDataType.ANY,
-        value_type: Union["DataType", _LogicalDataType] = _LogicalDataType.ANY,
+        key_type: "DataType",
+        value_type: "DataType",
     ) -> "DataType":
         """Create a DataType representing a map with the given key and value types.
 
-        Pass DataType.ANY for either argument (or omit them) to create a pattern that matches any map type.
-
         Args:
-            key_type: The DataType of the map keys, or DataType.ANY to match any map.
-                     Defaults to DataType.ANY.
-            value_type: The DataType of the map values, or DataType.ANY to match any map.
-                       Defaults to DataType.ANY.
+            key_type: The DataType of the map keys.
+            value_type: The DataType of the map values.
 
         Returns:
-            DataType: A DataType with PyArrow map type or a pattern-matching DataType
+            DataType: A DataType with PyArrow map type
 
         Examples:
             >>> from ray.data.datatype import DataType
             >>> DataType.map(DataType.string(), DataType.int64())
             DataType(arrow:map<string, int64>)
-            >>> DataType.map(DataType.ANY, DataType.ANY)  # Pattern: matches any map (explicit)
-            DataType(logical_dtype:MAP)
-            >>> DataType.map()  # Same as above (terse)
-            DataType(logical_dtype:MAP)
-            >>> DataType.map(DataType.string(), DataType.ANY)  # Also pattern (partial spec)
-            DataType(logical_dtype:MAP)
         """
-        if cls._is_pattern_matching_arg(key_type) or cls._is_pattern_matching_arg(
-            value_type
-        ):
-            return cls(_physical_dtype=None, _logical_dtype=_LogicalDataType.MAP)
-
         key_arrow_type = key_type.to_arrow_dtype()
         value_arrow_type = value_type.to_arrow_dtype()
         return cls.from_arrow(pa.map_(key_arrow_type, value_arrow_type))
@@ -563,36 +458,23 @@ class DataType:
     @classmethod
     def tensor(
         cls,
-        shape: Union[Tuple[int, ...], _LogicalDataType] = _LogicalDataType.ANY,
-        dtype: Union["DataType", _LogicalDataType] = _LogicalDataType.ANY,
+        shape: Tuple[int, ...],
+        dtype: "DataType",
     ) -> "DataType":
         """Create a DataType representing a fixed-shape tensor.
 
-        Pass DataType.ANY for arguments (or omit them) to create a pattern that matches any tensor type.
-
         Args:
-            shape: The fixed shape of the tensor, or DataType.ANY to match any tensor.
-                  Defaults to DataType.ANY.
-            dtype: The DataType of the tensor elements, or DataType.ANY to match any tensor.
-                  Defaults to DataType.ANY.
+            shape: The fixed shape of the tensor.
+            dtype: The DataType of the tensor elements.
 
         Returns:
-            DataType: A DataType with Ray's ArrowTensorType or a pattern-matching DataType
+            DataType: A DataType with Ray's ArrowTensorType
 
         Examples:
             >>> from ray.data.datatype import DataType
             >>> DataType.tensor(shape=(3, 4), dtype=DataType.float32())  # doctest: +ELLIPSIS
             DataType(arrow:ArrowTensorType(...))
-            >>> DataType.tensor(DataType.ANY, DataType.ANY)  # Pattern: matches any tensor (explicit)
-            DataType(logical_dtype:TENSOR)
-            >>> DataType.tensor()  # Same as above (terse)
-            DataType(logical_dtype:TENSOR)
-            >>> DataType.tensor(shape=(3, 4), dtype=DataType.ANY)  # Also pattern (partial spec)
-            DataType(logical_dtype:TENSOR)
         """
-        if isinstance(shape, _LogicalDataType) or cls._is_pattern_matching_arg(dtype):
-            return cls(_physical_dtype=None, _logical_dtype=_LogicalDataType.TENSOR)
-
         from ray.air.util.tensor_extensions.arrow import ArrowTensorType
 
         element_arrow_type = dtype.to_arrow_dtype()
@@ -601,36 +483,23 @@ class DataType:
     @classmethod
     def variable_shaped_tensor(
         cls,
-        dtype: Union["DataType", _LogicalDataType] = _LogicalDataType.ANY,
-        ndim: Optional[int] = None,
+        dtype: "DataType",
+        ndim: int = 2,
     ) -> "DataType":
         """Create a DataType representing a variable-shaped tensor.
 
-        Pass DataType.ANY (or omit the argument) to create a pattern that matches any variable-shaped tensor.
-
         Args:
-            dtype: The DataType of the tensor elements, or DataType.ANY to match any tensor.
-                  Defaults to DataType.ANY.
-            ndim: The number of dimensions of the tensor
+            dtype: The DataType of the tensor elements.
+            ndim: The number of dimensions of the tensor. Defaults to 2.
 
         Returns:
-            DataType: A DataType with Ray's ArrowVariableShapedTensorType or pattern-matching DataType
+            DataType: A DataType with Ray's ArrowVariableShapedTensorType
 
         Examples:
             >>> from ray.data.datatype import DataType
             >>> DataType.variable_shaped_tensor(dtype=DataType.float32(), ndim=2)  # doctest: +ELLIPSIS
             DataType(arrow:ArrowVariableShapedTensorType(...))
-            >>> DataType.variable_shaped_tensor(DataType.ANY)  # Pattern: matches any var tensor (explicit)
-            DataType(logical_dtype:TENSOR)
-            >>> DataType.variable_shaped_tensor()  # Same as above (terse)
-            DataType(logical_dtype:TENSOR)
         """
-        if cls._is_pattern_matching_arg(dtype):
-            return cls(_physical_dtype=None, _logical_dtype=_LogicalDataType.TENSOR)
-
-        if ndim is None:
-            ndim = 2
-
         from ray.air.util.tensor_extensions.arrow import ArrowVariableShapedTensorType
 
         element_arrow_type = dtype.to_arrow_dtype()
@@ -639,13 +508,11 @@ class DataType:
     @classmethod
     def temporal(
         cls,
-        temporal_type: Union[str, _LogicalDataType] = _LogicalDataType.ANY,
+        temporal_type: str,
         unit: Optional[str] = None,
         tz: Optional[str] = None,
     ) -> "DataType":
         """Create a DataType representing a temporal type.
-
-        Pass DataType.ANY (or omit the argument) to create a pattern that matches any temporal type.
 
         Args:
             temporal_type: Type of temporal value - one of:
@@ -655,7 +522,6 @@ class DataType:
                 - "time32": 32-bit time of day (s or ms precision)
                 - "time64": 64-bit time of day (us or ns precision)
                 - "duration": Time duration with unit
-                - DataType.ANY: Pattern to match any temporal type (default)
             unit: Time unit for timestamp/time/duration types:
                 - timestamp: "s", "ms", "us", "ns" (default: "us")
                 - time32: "s", "ms" (default: "s")
@@ -664,7 +530,7 @@ class DataType:
             tz: Optional timezone string for timestamp types (e.g., "UTC", "America/New_York")
 
         Returns:
-            DataType: A DataType with PyArrow temporal type or a pattern-matching DataType
+            DataType: A DataType with PyArrow temporal type
 
         Examples:
             >>> from ray.data.datatype import DataType
@@ -678,14 +544,7 @@ class DataType:
             DataType(arrow:time64[ns])
             >>> DataType.temporal("duration", unit="ms")
             DataType(arrow:duration[ms])
-            >>> DataType.temporal(DataType.ANY)  # Pattern: matches any temporal (explicit)
-            DataType(logical_dtype:TEMPORAL)
-            >>> DataType.temporal()  # Same as above (terse)
-            DataType(logical_dtype:TEMPORAL)
         """
-        if isinstance(temporal_type, _LogicalDataType):
-            return cls(_physical_dtype=None, _logical_dtype=_LogicalDataType.TEMPORAL)
-
         temporal_type_lower = temporal_type.lower()
 
         if temporal_type_lower == "timestamp":
@@ -818,11 +677,6 @@ class DataType:
         Raises:
             ValueError: If called on a non-Arrow type (pattern-matching, NumPy, or Python types)
         """
-        if self.is_pattern_matching():
-            raise ValueError(
-                f"Cannot get Arrow type for pattern-matching type {self}. "
-                "Pattern-matching types do not have a concrete Arrow representation."
-            )
         if not self.is_arrow_type():
             raise ValueError(
                 f"Cannot get Arrow type for non-Arrow DataType {self}. "

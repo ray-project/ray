@@ -80,6 +80,12 @@ class VLLMEngineConfig(BaseModelExtended):
         None,
         description="The type of accelerator to use. This is used to determine the placement group strategy.",
     )
+    use_cpu: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Whether to use CPU for model inference. If not set, Ray will try to infer based on the available GPU resources. If set to True the model will run on CPU."
+        ),
+    )
     placement_group_config: Optional[Dict[str, Any]] = Field(
         default=None,
         description=(
@@ -125,21 +131,26 @@ class VLLMEngineConfig(BaseModelExtended):
         engine_kwargs["model"] = self.actual_hf_model_id
         engine_kwargs["served_model_name"] = [self.model_id]
 
-        if (
+        # Handle distributed_executor_backend based on GPU/CPU mode
+        if not self.use_gpu:
+            # For CPU mode, always use "mp" backend
+            engine_kwargs["distributed_executor_backend"] = "mp"
+        elif (
             "distributed_executor_backend" in engine_kwargs
             and engine_kwargs["distributed_executor_backend"] != "ray"
         ):
+            # For GPU mode, only "ray" backend is allowed
             raise ValueError(
                 "distributed_executor_backend != 'ray' is not allowed in engine_kwargs when using Ray Serve LLM Configs."
             )
         else:
+            # For GPU mode, use "ray" backend (default)
             engine_kwargs["distributed_executor_backend"] = "ray"
 
         # TODO (Nikhil): Remove this once vLLM fully deprecates disable_log_requests.
         if "disable_log_requests" in engine_kwargs:
             logger.warning(
-                "disable_log_requests is set in engine_kwargs, but vLLM "
-                "does not support it. Converting to enable_log_requests."
+                "disable_log_requests is set in engine_kwargs, but vLLM does not support it. Converting to enable_log_requests."
             )
             engine_kwargs["enable_log_requests"] = not engine_kwargs.pop(
                 "disable_log_requests"
@@ -152,11 +163,19 @@ class VLLMEngineConfig(BaseModelExtended):
     def get_runtime_env_with_local_env_vars(self) -> dict:
         runtime_env = self.runtime_env or {}
         runtime_env.setdefault("env_vars", {})
+        env_vars = runtime_env["env_vars"]
 
         # Propagate env vars to the runtime env
         for env_var in ENV_VARS_TO_PROPAGATE:
             if env_var in os.environ:
-                runtime_env["env_vars"][env_var] = os.getenv(env_var)
+                env_vars[env_var] = os.getenv(env_var)
+
+        if "VLLM_RAY_PER_WORKER_GPUS" not in env_vars:
+            fractional_gpu = self._detect_fractional_gpu_from_pg(
+                self.placement_group_config
+            )
+            if fractional_gpu is not None:
+                env_vars["VLLM_RAY_PER_WORKER_GPUS"] = str(fractional_gpu)
         return runtime_env
 
     @classmethod
@@ -194,12 +213,12 @@ class VLLMEngineConfig(BaseModelExtended):
 
         # placement_group_config is already validated and stored as dict in LLMConfig
         placement_group_config = llm_config.placement_group_config
-
         return VLLMEngineConfig(
             model_id=llm_config.model_id,
             hf_model_id=hf_model_id,
             mirror_config=mirror_config,
             accelerator_type=llm_config.accelerator_type,
+            use_cpu=llm_config.use_cpu,
             engine_kwargs=engine_kwargs,
             frontend_kwargs=frontend_kwargs,
             runtime_env=llm_config.runtime_env,
@@ -238,17 +257,22 @@ class VLLMEngineConfig(BaseModelExtended):
             bundles = []
             for bundle_dict in self.placement_group_config["bundles"]:
                 bundle = bundle_dict.copy()
-                if self.accelerator_type:
+                if self.accelerator_type and self.use_gpu:
                     # Use setdefault to add accelerator hint WITHOUT overriding explicit user values
                     bundle.setdefault(self.ray_accelerator_type(), 0.001)
                 bundles.append(bundle)
             return bundles
 
-        # Default bundles: GPU-only; replica actor contributes CPU to first bundle via merge
-        bundle = {"GPU": 1}
+        # Default bundles: Generate based on GPU/CPU mode
+        if self.use_gpu:
+            # GPU mode: replica actor contributes CPU to first bundle via merge
+            bundle = {"GPU": 1}
+            if self.accelerator_type:
+                bundle[self.ray_accelerator_type()] = 0.001
+        else:
+            # CPU-only mode
+            bundle = {"CPU": 1}
 
-        if self.accelerator_type:
-            bundle[self.ray_accelerator_type()] = 0.001
         bundles = [copy.deepcopy(bundle) for _ in range(self.num_devices)]
 
         return bundles
@@ -256,6 +280,10 @@ class VLLMEngineConfig(BaseModelExtended):
     @property
     def use_gpu(self) -> bool:
         """Returns True if vLLM is configured to use GPU resources."""
+        # Explicit use_cpu setting takes precedence over all other configurations
+        if isinstance(self.use_cpu, bool):
+            return not self.use_cpu
+
         # Check placement_group_config bundles for explicit GPU specification
         if self.placement_group_config:
             bundles = self.placement_group_config.get("bundles", [])
@@ -265,7 +293,7 @@ class VLLMEngineConfig(BaseModelExtended):
 
         # Default behavior based on accelerator_type
         if not self.accelerator_type:
-            # By default, GPU resources are used
+            # Default to GPU when no accelerator_type is specified
             return True
 
         return self.accelerator_type in (
@@ -318,3 +346,24 @@ class VLLMEngineConfig(BaseModelExtended):
 
             logger.info(f"Using new placement group {pg}. {placement_group_table(pg)}")
         return pg
+
+    @staticmethod
+    def _detect_fractional_gpu_from_pg(
+        placement_group_config: Optional[Dict[str, Any]]
+    ) -> Optional[float]:
+        if not placement_group_config:
+            return None
+
+        bundles = placement_group_config.get("bundles") or []
+
+        for bundle in bundles:
+            if "GPU" not in bundle:
+                continue
+
+            gpu_value = bundle["GPU"]
+            if gpu_value <= 0 or gpu_value >= 1:
+                return None
+
+            return gpu_value
+
+        return None

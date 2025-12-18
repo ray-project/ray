@@ -94,6 +94,7 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
+        "@nlohmann_json",
     ],
 )
 

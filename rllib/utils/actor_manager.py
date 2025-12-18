@@ -205,8 +205,8 @@ class FaultTolerantActorManager:
 
         @ray.remote
         class MyActor:
-            def apply(self, fn):
-                return fn(self)
+            def apply(self, func):
+                return func(self)
 
             def do_something(self):
                 return True

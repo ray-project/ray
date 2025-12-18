@@ -11,7 +11,6 @@ pip3 install --no-cache-dir \
     "mlflow==3.4.0" \
     "bitsandbytes==0.47.0" \
     "autoawq==0.2.9" \
-    "flash-attn==2.8.3" \
     "liger-kernel==0.6.2" \
     "hf_transfer==0.1.9"
     

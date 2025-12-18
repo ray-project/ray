@@ -89,7 +89,7 @@ def test_ordinal_encoder():
         }
     )
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df)
 
     # Transform batch.
     pred_col_a = ["blue", "yellow", None]
@@ -115,7 +115,7 @@ def test_ordinal_encoder():
         }
     )
 
-    assert pred_out_df.equals(pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
 
     # append mode
     with pytest.raises(ValueError):
@@ -440,7 +440,7 @@ def test_multi_hot_encoder():
         }
     )
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df)
 
     # Transform batch.
     pred_col_a = ["blue", "yellow", None]
@@ -467,7 +467,7 @@ def test_multi_hot_encoder():
         }
     )
 
-    assert pred_out_df.equals(pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
 
     # append mode
     with pytest.raises(ValueError):
@@ -498,7 +498,8 @@ def test_multi_hot_encoder():
             "D_multihot_encoded": pred_processed_col_d,
         }
     )
-    assert pred_out_df.equals(pred_expected_df)
+
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
 
     # Test null behavior.
     null_col = [1, None]

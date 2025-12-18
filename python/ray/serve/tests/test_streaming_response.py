@@ -11,7 +11,11 @@ from starlette.responses import StreamingResponse
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor
-from ray.serve._private.test_utils import get_application_url, get_application_urls
+from ray.serve._private.test_utils import (
+    get_application_url,
+    get_application_urls,
+    send_signal_on_cancellation,
+)
 from ray.serve.handle import DeploymentHandle
 
 
@@ -326,12 +330,9 @@ def test_http_disconnect(serve_instance):
     class SimpleGenerator:
         def __call__(self, request: Request) -> StreamingResponse:
             async def wait_for_disconnect():
-                try:
-                    yield "hi"
-                    await asyncio.sleep(100)
-                except asyncio.CancelledError:
-                    print("Cancelled!")
-                    signal_actor.send.remote()
+                yield "hi"
+                async with send_signal_on_cancellation(signal_actor):
+                    pass
 
             return StreamingResponse(wait_for_disconnect())
 

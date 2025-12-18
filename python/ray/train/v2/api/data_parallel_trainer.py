@@ -36,6 +36,9 @@ from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
 )
+from ray.train.v2._internal.callbacks.placement_group_callback import (
+    PlacementGroupCleanerCallback,
+)
 from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
 from ray.train.v2._internal.callbacks.user_callback import UserCallbackHandler
 from ray.train.v2._internal.constants import (
@@ -204,11 +207,13 @@ class DataParallelTrainer:
             train_run_context=self.train_run_context
         )
         tpu_reservation_setup_callback = TPUReservationCallback()
+        placement_group_cleaner_callback = PlacementGroupCleanerCallback()
         callbacks.extend(
             [
                 accelerator_setup_callback,
                 tpu_reservation_setup_callback,
                 backend_setup_callback,
+                placement_group_cleaner_callback,
                 datasets_callback,
             ]
         )

@@ -22,15 +22,13 @@ subprocess.check_call([sys.executable, "-m", "pip", "install", "numpy==1.26.4"])
 import ray
 from PIL import Image
 from io import BytesIO
-from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
+from ray.data.llm import vLLMEngineProcessorConfig, build_processor
+from huggingface_hub import HfFileSystem
 
-# Load "LMMs-Eval-Lite" dataset from Hugging Face
-import datasets as datasets_lib
-
-vision_dataset_llms_lite = datasets_lib.load_dataset(
-    "lmms-lab/LMMs-Eval-Lite", "coco2017_cap_val"
-)
-vision_dataset = ray.data.from_huggingface(vision_dataset_llms_lite["lite"])
+# Load "LMMs-Eval-Lite" dataset from Hugging Face using HfFileSystem
+path = "hf://datasets/lmms-lab/LMMs-Eval-Lite/coco2017_cap_val/"
+fs = HfFileSystem()
+vision_dataset = ray.data.read_parquet(path, filesystem=fs)
 
 HF_TOKEN = "your-hf-token-here"  # Replace with actual token if needed
 
@@ -59,6 +57,7 @@ vision_processor_config = vLLMEngineProcessorConfig(
 # __vlm_config_example_end__
 
 
+# __vlm_preprocess_example_start__
 def vision_preprocess(row: dict) -> dict:
     """
     Preprocessing function for vision-language model inputs.
@@ -126,7 +125,9 @@ def vision_postprocess(row: dict) -> dict:
     }
 
 
-vision_processor = build_llm_processor(
+# __vlm_preprocess_example_end__
+
+vision_processor = build_processor(
     vision_processor_config,
     preprocess=vision_preprocess,
     postprocess=vision_postprocess,
@@ -143,18 +144,17 @@ def load_vision_dataset():
     - Various visual reasoning tasks
     """
     try:
-        import datasets
+        from huggingface_hub import HfFileSystem
 
-        # Load "LMMs-Eval-Lite" dataset from Hugging Face
-        vision_dataset_llms_lite = datasets.load_dataset(
-            "lmms-lab/LMMs-Eval-Lite", "coco2017_cap_val"
-        )
-        vision_dataset = ray.data.from_huggingface(vision_dataset_llms_lite["lite"])
+        # Load "LMMs-Eval-Lite" dataset from Hugging Face using HfFileSystem
+        path = "hf://datasets/lmms-lab/LMMs-Eval-Lite/coco2017_cap_val/"
+        fs = HfFileSystem()
+        vision_dataset = ray.data.read_parquet(path, filesystem=fs)
 
         return vision_dataset
     except ImportError:
         print(
-            "datasets package not available. Install with: pip install datasets>=4.0.0"
+            "huggingface_hub package not available. Install with: pip install huggingface_hub"
         )
         return None
     except Exception as e:
@@ -189,14 +189,17 @@ def run_vlm_example():
     vision_dataset = load_vision_dataset()
 
     if vision_dataset:
-        # Build processor with preprocessing
-        processor = build_llm_processor(config, preprocess=vision_preprocess)
+        # Build processor with preprocessing and postprocessing
+        processor = build_processor(
+            config, preprocess=vision_preprocess, postprocess=vision_postprocess
+        )
 
         print("VLM processor configured successfully")
         print(f"Model: {config.model_source}")
         print(f"Has image support: {config.has_image}")
         result = processor(vision_dataset).take_all()
         return config, processor, result
+    # __vlm_run_example_end__
     return None, None, None
 
 

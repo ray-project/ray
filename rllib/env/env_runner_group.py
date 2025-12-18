@@ -402,6 +402,8 @@ class EnvRunnerGroup:
                 with the merged state. Use None (default) to update all remote
                 EnvRunners.
         """
+        if env_steps_sampled is not None:
+            env_steps_sampled = int(env_steps_sampled)
         from_worker = from_worker or self.local_env_runner
 
         merge = (
@@ -518,13 +520,8 @@ class EnvRunnerGroup:
                 )
 
         # Update the global number of environment steps, if necessary.
-        # Make sure to divide by the number of env runners (such that each EnvRunner
-        # knows (roughly) its own(!) lifetime count and can infer the global lifetime
-        # count from it).
         if env_steps_sampled is not None:
-            env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] = env_steps_sampled // (
-                config.num_env_runners or 1
-            )
+            env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] = env_steps_sampled
 
         # If we do NOT want remote EnvRunners to get their Connector states updated,
         # only update the local worker here (with all state components, except the model
@@ -661,7 +658,7 @@ class EnvRunnerGroup:
                 if policies is not None
                 else [COMPONENT_RL_MODULE]
             )
-            # LearnerGroup has-a Learner, which has-a RLModule.
+            # LearnerGroup has a Learner, which has an RLModule.
             if isinstance(weights_src, LearnerGroup):
                 rl_module_state = weights_src.get_state(
                     components=[COMPONENT_LEARNER + "/" + m for m in modules],
@@ -669,7 +666,7 @@ class EnvRunnerGroup:
                 )[COMPONENT_LEARNER]
             # EnvRunner (new API stack).
             elif self._remote_config.enable_env_runner_and_connector_v2:
-                # EnvRunner (remote) has-a RLModule.
+                # EnvRunner (remote) has an RLModule.
                 # TODO (sven): Replace this with a new ActorManager API:
                 #  try_remote_request_till_success("get_state") -> tuple(int,
                 #  remoteresult)
@@ -683,7 +680,7 @@ class EnvRunnerGroup:
                             inference_only=inference_only,
                         )
                     )
-                # EnvRunner (local) has-a RLModule.
+                # EnvRunner (local) has an RLModule.
                 else:
                     rl_module_state = weights_src.get_state(
                         components=modules,
@@ -1282,9 +1279,8 @@ class EnvRunnerGroup:
             .remote(**kwargs)
         )
 
-    @classmethod
-    def _valid_module(cls, class_path):
-        del cls
+    @staticmethod
+    def _valid_module(class_path):
         if (
             isinstance(class_path, str)
             and not os.path.isfile(class_path)
@@ -1295,9 +1291,8 @@ class EnvRunnerGroup:
                 spec = importlib.util.find_spec(module_path)
                 if spec is not None:
                     return True
-            except (ModuleNotFoundError, ValueError):
-                print(
-                    f"module {module_path} not found while trying to get "
-                    f"input {class_path}"
+            except (ModuleNotFoundError, ValueError) as e:
+                logger.warning(
+                    f"module {module_path} not found using input {class_path} with error: {e}"
                 )
         return False

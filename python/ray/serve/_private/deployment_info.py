@@ -167,3 +167,18 @@ class DeploymentInfo:
         else:
             data["target_capacity_direction"] = self.target_capacity_direction.name
         return DeploymentInfoProto(**data)
+
+    def to_dict(self):
+        # only use for logging purposes
+        return {
+            "deployment_config": (
+                self.deployment_config.to_dict() if self.deployment_config else None
+            ),
+            "replica_config": (
+                self.replica_config.to_dict() if self.replica_config else None
+            ),
+            "start_time_ms": self.start_time_ms,
+            "actor_name": self.actor_name,
+            "version": self.version,
+            "end_time_ms": self.end_time_ms,
+        }

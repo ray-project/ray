@@ -26,7 +26,7 @@ export const SideTabLayout = ({ children }: PropsWithChildren<{}>) => {
     <SideTabContext.Provider value={sideTabState}>
       <Box>
         <Box
-          sx={{
+          sx={(theme) => ({
             position: "fixed",
             height: "100%",
             width: 64,
@@ -36,9 +36,9 @@ export const SideTabLayout = ({ children }: PropsWithChildren<{}>) => {
             alignItems: "center",
             paddingTop: 1,
             paddingBottom: 2,
-            background: "white",
-            borderRight: "1px solid #D2DCE6",
-          }}
+            background: theme.palette.background.paper,
+            borderRight: `1px solid ${theme.palette.divider}`,
+          })}
         >
           {children}
         </Box>
@@ -74,20 +74,22 @@ export const SideTab = ({ tabId, title, Icon }: SideTabProps) => {
         id={tabId}
         role="tab"
         aria-selected={isSelected}
-        sx={{
+        sx={(theme) => ({
           width: 40,
           height: 40,
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
-          color: isSelected ? "#036DCF" : "#5F6469",
-          backgroundColor: isSelected ? "#EBF3FB" : null,
+          color: isSelected
+            ? theme.palette.primary.main
+            : theme.palette.text.secondary,
+          backgroundColor: isSelected ? theme.palette.action.selected : null,
           borderRadius: "4px",
           marginTop: 1,
           "&:hover": {
-            backgroundColor: "#EBF3FB",
+            backgroundColor: theme.palette.action.hover,
           },
-        }}
+        })}
       >
         {Icon ? <Box component={Icon} sx={{ width: 24, height: 24 }} /> : tabId}
       </Box>

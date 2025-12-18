@@ -203,7 +203,8 @@ py_test_module_list(
         "test_placement_group_4.py",
         "test_placement_group_5.py",
         "test_scheduling.py",
-        "test_scheduling_2.py",
+        # TODO(MengjinYan): https://github.com/anyscale/ray/issues/5
+        # "test_scheduling_2.py",
         "test_token_auth_integration.py",
         "test_wait.py",
     ],
@@ -506,6 +507,7 @@ py_test_module_list(
         "accelerators/test_accelerators.py",
         "accelerators/test_amd_gpu.py",
         "accelerators/test_intel_gpu.py",
+        "accelerators/test_metax_gpu.py",
         "accelerators/test_npu.py",
         "accelerators/test_nvidia_gpu.py",
         "accelerators/test_rbln.py",
@@ -522,6 +524,7 @@ py_test_module_list(
         "test_component_failures.py",
         "test_concurrency_group.py",
         "test_core_worker_io_thread_stack_size.py",
+        "test_cpu_tensor_zero_copy_serialization.py",
         "test_cross_language.py",
         "test_debug_tools.py",
         "test_distributed_sort.py",
@@ -640,7 +643,7 @@ py_test_module_list(
     files = [
         "gpu_objects/test_gpu_objects_nccl.py",
         "gpu_objects/test_gpu_objects_nixl.py",
-        "test_tensor_zero_copy_serialization.py",
+        "test_gpu_tensor_zero_copy_serialization.py",
     ],
     tags = [
         "custom_setup",

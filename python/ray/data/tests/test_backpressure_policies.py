@@ -60,10 +60,16 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             map_op_no_concurrency: MagicMock(),
         }
 
+        mock_resource_manager = MagicMock()
+        # Return None to skip dynamic output queue size backpressure check
+        mock_resource_manager.get_op_usage.return_value = None
+        mock_resource_manager.get_budget.return_value = None
+        mock_resource_manager.is_op_eligible.return_value = False
+
         policy = ConcurrencyCapBackpressurePolicy(
             DataContext.get_current(),
             topology,
-            MagicMock(),
+            mock_resource_manager,
         )
 
         self.assertEqual(policy._concurrency_caps[map_op], concurrency)
@@ -177,6 +183,67 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         # InputDataBuffer has infinite concurrency cap, so should always allow
         self.assertTrue(policy.can_add_input(input_op))
 
+    def test_can_add_input_with_ineligible_op(self):
+        """Test can_add_input when op is not eligible for backpressure."""
+        input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
+        map_op = TaskPoolMapOperator(
+            map_transformer=MagicMock(),
+            data_context=DataContext.get_current(),
+            input_op=input_op,
+            max_concurrency=5,
+        )
+        map_op.metrics.num_tasks_running = 3
+
+        topology = {map_op: MagicMock(), input_op: MagicMock()}
+
+        mock_resource_manager = MagicMock()
+        # Op is not eligible for backpressure
+        mock_resource_manager.is_op_eligible.return_value = False
+
+        policy = ConcurrencyCapBackpressurePolicy(
+            DataContext.get_current(),
+            topology,
+            mock_resource_manager,
+        )
+        policy.enable_dynamic_output_queue_size_backpressure = True
+
+        # Should skip dynamic backpressure and use basic cap check
+        self.assertTrue(policy.can_add_input(map_op))  # 3 < 5
+
+        map_op.metrics.num_tasks_running = 5
+        self.assertFalse(policy.can_add_input(map_op))  # 5 >= 5
+
+    def test_can_add_input_with_materializing_downstream_op(self):
+        """Test can_add_input when downstream op is a materializing operator."""
+        input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
+        map_op = TaskPoolMapOperator(
+            map_transformer=MagicMock(),
+            data_context=DataContext.get_current(),
+            input_op=input_op,
+            max_concurrency=5,
+        )
+        map_op.metrics.num_tasks_running = 3
+
+        topology = {map_op: MagicMock(), input_op: MagicMock()}
+
+        mock_resource_manager = MagicMock()
+        mock_resource_manager.is_op_eligible.return_value = True
+        mock_resource_manager.has_materializing_downstream_op.return_value = True
+
+        policy = ConcurrencyCapBackpressurePolicy(
+            DataContext.get_current(),
+            topology,
+            mock_resource_manager,
+        )
+        policy.enable_dynamic_output_queue_size_backpressure = True
+
+        # Should skip dynamic backpressure and use basic cap check
+        # to avoid starving materializing operators
+        self.assertTrue(policy.can_add_input(map_op))  # 3 < 5
+
+        map_op.metrics.num_tasks_running = 5
+        self.assertFalse(policy.can_add_input(map_op))  # 5 >= 5
+
     def test_can_add_input_with_object_store_memory_usage_ratio_above_threshold(self):
         """Test can_add_input when object store memory usage ratio is above threshold."""
         input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
@@ -193,8 +260,10 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         mock_resource_manager = MagicMock()
 
         # Mock object store memory usage ratio above threshold
-        # Ratio = budget / (usage + budget) > OBJECT_STORE_BUDGET_RATIO
-        threshold = ConcurrencyCapBackpressurePolicy.OBJECT_STORE_BUDGET_RATIO
+        # Ratio = budget / (usage + budget) > AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
+        threshold = (
+            ConcurrencyCapBackpressurePolicy.AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
+        )
         mock_usage = MagicMock()
         mock_usage.object_store_memory = 1000  # usage
         mock_budget = MagicMock()
@@ -207,6 +276,8 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
 
         mock_resource_manager.get_op_usage.return_value = mock_usage
         mock_resource_manager.get_budget.return_value = mock_budget
+        mock_resource_manager.is_op_eligible.return_value = True
+        mock_resource_manager.has_materializing_downstream_op.return_value = False
 
         policy = ConcurrencyCapBackpressurePolicy(
             DataContext.get_current(),
@@ -249,8 +320,10 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         mock_resource_manager = MagicMock()
 
         # Mock object store memory usage ratio below threshold
-        # Ratio = budget / (usage + budget) < OBJECT_STORE_BUDGET_RATIO
-        threshold = ConcurrencyCapBackpressurePolicy.OBJECT_STORE_BUDGET_RATIO
+        # Ratio = budget / (usage + budget) < AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
+        threshold = (
+            ConcurrencyCapBackpressurePolicy.AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
+        )
         mock_usage = MagicMock()
         mock_usage.object_store_memory = 1000  # usage
         mock_budget = MagicMock()
@@ -263,9 +336,11 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
 
         mock_resource_manager.get_op_usage.return_value = mock_usage
         mock_resource_manager.get_budget.return_value = mock_budget
+        mock_resource_manager.is_op_eligible.return_value = True
+        mock_resource_manager.has_materializing_downstream_op.return_value = False
 
         # Mock queue size methods
-        mock_resource_manager.get_op_internal_object_store_usage.return_value = 100
+        mock_resource_manager.get_mem_op_internal.return_value = 100
         mock_resource_manager.get_op_outputs_object_store_usage_with_downstream.return_value = (
             200
         )
@@ -286,9 +361,10 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         policy._q_level_dev[map_op] = initial_dev
 
         result = policy.can_add_input(map_op)
-        # With queue size 300, initial level=200, dev=50, bounds=[100, 300]
-        # Queue size 300 is at the upper bound, so should hold.
-        # running=3 < effective_cap=3 should be False
+        # With queue size 300, initial level=200, dev=50, bounds=[150, 250]
+        # Queue size 300 is above the upper bound, so should backoff.
+        # running=3, backoff by 1 -> effective_cap=2
+        # running=3 < effective_cap=2 should be False
         self.assertFalse(result)
         # EWMA state should be updated when ratio < threshold
         # Level should move toward 300 (queue size)
@@ -310,7 +386,9 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         topology = {map_op: MagicMock(), input_op: MagicMock()}
 
         mock_resource_manager = MagicMock()
-        threshold = ConcurrencyCapBackpressurePolicy.OBJECT_STORE_BUDGET_RATIO
+        threshold = (
+            ConcurrencyCapBackpressurePolicy.AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
+        )
         mock_usage = MagicMock()
         mock_usage.object_store_memory = 1000
         mock_budget = MagicMock()
@@ -323,6 +401,8 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
 
         mock_resource_manager.get_op_usage.return_value = mock_usage
         mock_resource_manager.get_budget.return_value = mock_budget
+        mock_resource_manager.is_op_eligible.return_value = True
+        mock_resource_manager.has_materializing_downstream_op.return_value = False
 
         policy = ConcurrencyCapBackpressurePolicy(
             DataContext.get_current(),
@@ -369,9 +449,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
             description,
         ) in test_cases:
             with self.subTest(description=description):
-                mock_resource_manager.get_op_internal_object_store_usage.return_value = (
-                    internal_usage
-                )
+                mock_resource_manager.get_mem_op_internal.return_value = internal_usage
                 mock_resource_manager.get_op_outputs_object_store_usage_with_downstream.return_value = (
                     downstream_usage
                 )

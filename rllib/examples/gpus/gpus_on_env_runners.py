@@ -48,7 +48,7 @@ In the console output, you can see that only fractional GPUs are being used by R
 
 """
 from ray.rllib.examples.envs.classes.gpu_requiring_env import GPURequiringEnv
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )

@@ -68,6 +68,7 @@ from ray.serve.schema import (
     ServeApplicationSchema,
 )
 from ray.types import ObjectRef
+from ray.util import metrics as ray_metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -1141,6 +1142,18 @@ class ApplicationStateManager:
         self._shutting_down = False
 
         self._application_states: Dict[str, ApplicationState] = {}
+
+        # Metric for tracking application status
+        self._application_status_gauge = ray_metrics.Gauge(
+            "serve_application_status",
+            description=(
+                "Numeric status of application. "
+                "0=UNKNOWN, 1=DEPLOY_FAILED, 2=UNHEALTHY, 3=NOT_STARTED, "
+                "4=DELETING, 5=DEPLOYING, 6=RUNNING."
+            ),
+            tag_keys=("application",),
+        )
+
         self._recover_from_checkpoint()
 
     def _recover_from_checkpoint(self):
@@ -1373,6 +1386,10 @@ class ApplicationStateManager:
                 if self.get_app_source(name) is source
             }
 
+    def list_app_names(self) -> List[str]:
+        """Return app names without instantiating status objects."""
+        return list(self._application_states.keys())
+
     def list_deployment_details(self, name: str) -> Dict[str, DeploymentDetails]:
         """Gets detailed info on all deployments in specified application."""
         if name not in self._application_states:
@@ -1393,8 +1410,13 @@ class ApplicationStateManager:
             return None
         return self._application_states[app_name].get_deployment_topology()
 
-    def update(self):
-        """Update each application state."""
+    def update(self) -> bool:
+        """
+        Update each application state.
+
+        Returns:
+            bool: True if any application's target state changed during this update.
+        """
         apps_to_be_deleted = []
         any_target_state_changed = False
         for name, app in self._application_states.items():
@@ -1408,6 +1430,13 @@ class ApplicationStateManager:
                 apps_to_be_deleted.append(name)
                 logger.debug(f"Application '{name}' deleted successfully.")
 
+        # Record application status metrics
+        for name, app in self._application_states.items():
+            self._application_status_gauge.set(
+                app.status.to_numeric(),
+                tags={"application": name},
+            )
+
         if len(apps_to_be_deleted) > 0:
             for app_name in apps_to_be_deleted:
                 self._autoscaling_state_manager.deregister_application(app_name)
@@ -1417,6 +1446,7 @@ class ApplicationStateManager:
         if any_target_state_changed:
             self.save_checkpoint()
             self._deployment_state_manager.save_checkpoint()
+        return any_target_state_changed
 
     def shutdown(self) -> None:
         self._shutting_down = True

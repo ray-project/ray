@@ -9,7 +9,7 @@ import pyarrow
 import pyarrow.compute as pc
 
 from ray.data.datatype import DataType
-from ray.data.expressions import pyarrow_udf
+from ray.data.expressions import _create_pyarrow_compute_udf, pyarrow_udf
 
 if TYPE_CHECKING:
     from ray.data.expressions import Expr, UDFExpr
@@ -33,14 +33,7 @@ def _create_str_udf(
         A callable that creates UDFExpr instances
     """
 
-    def wrapper(expr: Expr, *positional: Any, **kwargs: Any) -> "UDFExpr":
-        @pyarrow_udf(return_dtype=return_dtype)
-        def udf(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc_func(arr, *positional, **kwargs)
-
-        return udf(expr)
-
-    return wrapper
+    return _create_pyarrow_compute_udf(pc_func, return_dtype=return_dtype)
 
 
 @dataclass

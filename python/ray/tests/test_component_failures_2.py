@@ -124,11 +124,11 @@ def test_get_node_info_after_raylet_died(ray_start_cluster_head):
 
     def get_node_info():
         return ray._private.services.get_node_to_connect_for_driver(
-            cluster.gcs_address,
+            ray._raylet.GcsClient(address=cluster.gcs_address),
             cluster.head_node.node_ip_address,
         )
 
-    assert get_node_info()["raylet_socket_name"] == cluster.head_node.raylet_socket_name
+    assert get_node_info().raylet_socket_name == cluster.head_node.raylet_socket_name
 
     cluster.head_node.kill_raylet()
     wait_for_condition(
@@ -138,7 +138,7 @@ def test_get_node_info_after_raylet_died(ray_start_cluster_head):
         get_node_info()
 
     node2 = cluster.add_node()
-    assert get_node_info()["raylet_socket_name"] == node2.raylet_socket_name
+    assert get_node_info().raylet_socket_name == node2.raylet_socket_name
 
 
 if __name__ == "__main__":

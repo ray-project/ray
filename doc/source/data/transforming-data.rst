@@ -119,8 +119,8 @@ dictionaries that have the same type as the input, for example:
 Transforming batches
 ====================
 
-If your transformation is vectorized like most NumPy or pandas operations, transforming
-batches is more performant than transforming rows.
+If your transformation can be vectorized using NumPy, PyArrow or Pandas operations, transforming
+batches is considerably more performant than transforming individual rows.
 
 .. testcode::
 
@@ -142,10 +142,18 @@ batches is more performant than transforming rows.
 Configuring batch format
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data represents batches as dicts of NumPy ndarrays or pandas DataFrames. By
+Ray Data represents batches as dicts of NumPy ndarrays, pandas DataFrames or Arrow Tables. By
 default, Ray Data represents batches as dicts of NumPy ndarrays. To configure the batch type,
 specify ``batch_format`` in :meth:`~ray.data.Dataset.map_batches`. You can return either
 format from your function, but ``batch_format`` should match the input of your function.
+
+When applying transformations to batches of rows, Ray Data could represent these batches as either NumPy's ``ndarrays``,
+Pandas ``DataFrame`` or PyArrow ``Table``.
+
+When using
+    * ``batch_format=numpy``, the input to the function will be a dictionary where keys correspond to column names and values to column values represented as ``ndarrays``.
+    * ``batch_format=pyarrow``, the input to the function will be a Pyarrow ``Table``.
+    * ``batch_format=pandas``, the input to the function will be a Pandas ``DataFrame``.
 
 .. tab-set::
 
@@ -180,23 +188,21 @@ format from your function, but ``batch_format`` should match the input of your f
                 ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
                 .map_batches(drop_nas, batch_format="pandas")
             )
+    .. tab-item:: pyarrow
 
-The user defined function you pass to :meth:`~ray.data.Dataset.map_batches` is more flexible. Because you can represent batches
-in multiple ways (see :ref:`Configuring batch format <configure_batch_format>`), the function should be of type
-``Callable[DataBatch, DataBatch]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``. In
-other words, your function should take as input and output a batch of data which you can represent as a
-pandas DataFrame or a dictionary with string keys and NumPy ndarrays values. For example, your function might look like:
+        .. testcode::
 
-.. testcode::
+            import pyarrow as pa
+            import pyarrow.compute as pc
+            import ray
 
-    import pandas as pd
+            def drop_nas(batch: pa.Table) -> pa.Table:
+                return pc.drop_null(batch)
 
-    def fn(batch: pd.DataFrame) -> pd.DataFrame:
-        # modify batch
-        batch = ...
-
-        # return batch
-        return batch
+            ds = (
+                ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+                .map_batches(drop_nas, batch_format="pyarrow")
+            )
 
 The user defined function can also be a Python generator that yields batches, so the function can also
 be of type ``Callable[DataBatch, Iterator[[DataBatch]]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``.
@@ -211,14 +217,43 @@ In this case, your function would look like:
         # yield the same batch multiple times
         for _ in range(10):
             yield batch
+            
+Choosing the right batch format
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When choosing appropriate batch format for your ``map_batches`` primary consideration is a trade-off of convenience vs performance:
+
+1. Batches are a sliding window into the underlying block: the UDF is invoked with a subset of rows of the underlying block that make up the current batch of specified ``batch_size``. Specifying ``batch_size=None`` makes batch include all rows of the block in a single batch.
+2. Depending on the batch format, such view can either be a *zero-copy* (when batch format matches the block type of either ``pandas`` or ``pyarrow``) or copying one (when the batch format differs from the block type).
+
+For example, if the underlying block type is Arrow, specifying ``batch_format="numpy"`` or ``batch_format="pandas"``  might invoke a copy on the underlying data when converting it from the underlying block type.
+
+Ray Data also strives to minimize the amount of data conversions: for example, if your ``map_batches`` operation returns Pandas batches, then these batches are combined into blocks *without* conversion and propagated further as Pandas blocks. Most Ray Data datasources produce Arrow blocks, so using batch format ``pyarrow`` can avoid unnecessary data conversions.
+
+If you'd like to use a more ergonomic API for transformations but avoid performance overheads, you can consider using ``polars`` inside your ``map_batches`` operation with ``batch_format="pyarrow"`` as follows:
+
+.. testcode::
+
+    import pyarrow as pa
+
+    def udf(table: pa.Table):
+        import polars as pl
+        df = polars.from_pyarrow(table)
+        df.summary()
+        return df.to_arrow()
+
+    ds.map_batches(udf, batch_format="pyarrow")
+
+
 
 Configuring batch size
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Increasing ``batch_size`` improves the performance of vectorized transformations like
-NumPy functions and model inference. However, if your batch size is too large, your
-program might run out of memory. If you encounter an out-of-memory error, decrease your
-``batch_size``.
+Increasing ``batch_size`` improves the performance of vectorized transformations as well
+as performance of model inference. However, if your batch size is too large, your
+program might run into out-of-memory (OOM) errors.
+
+If you encounter an OOM errors, try decreasing your ``batch_size``.
 
 .. _ordering_of_rows:
 
