@@ -1,22 +1,3 @@
-"""Event loop monitoring utilities for Ray Serve.
-
-This module provides utilities for monitoring asyncio event loop health
-and performance. It tracks:
-- Event loop scheduling latency (how long it takes for a scheduled task to run)
-- Number of pending asyncio tasks
-- Monitoring iterations (heartbeat)
-
-These metrics are useful for detecting when event loops are blocked by
-synchronous code or otherwise unable to make progress.
-
-Event loops in Ray Serve:
-- Proxy: has a "main" event loop for HTTP/gRPC servers and control tasks
-- Replica: has a "main" event loop, and optionally a "user_code" event loop
-  (when RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=1, the default)
-- Router: optionally runs on its own event loop
-  (when RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=1, the default)
-"""
-
 import asyncio
 import logging
 import time
@@ -107,18 +88,6 @@ async def _run_monitoring_loop(
 
 
 class EventLoopMonitor:
-    """Encapsulates event loop monitoring for a specific component.
-
-    This class manages the lifecycle of event loop monitoring metrics
-    and tasks for a single event loop. It creates the necessary metrics
-    with appropriate tags and starts the monitoring task.
-
-    Attributes:
-        TAG_KEY_COMPONENT: Tag key for the component type ("proxy", "replica").
-        TAG_KEY_LOOP_TYPE: Tag key for the loop type ("main", "user_code", "router").
-        TAG_KEY_ACTOR_ID: Tag key for the actor ID.
-    """
-
     TAG_KEY_COMPONENT = "component"
     TAG_KEY_LOOP_TYPE = "loop_type"
     TAG_KEY_ACTOR_ID = "actor_id"
@@ -214,12 +183,10 @@ class EventLoopMonitor:
         return self._monitoring_task
 
     def stop(self):
-        """Stop the monitoring task if it's running."""
         if self._monitoring_task is not None and not self._monitoring_task.done():
             self._monitoring_task.cancel()
             self._monitoring_task = None
 
     @property
     def tags(self) -> Dict[str, str]:
-        """Return the tags used for this monitor's metrics."""
         return self._tags.copy()
