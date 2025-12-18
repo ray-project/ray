@@ -693,7 +693,7 @@ These metrics track the health of asyncio event loops in Serve components. High 
 
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
-| `ray_serve_event_loop_scheduling_latency_ms` **[†]** | Histogram | `component`, `loop_type`, `actor_id`, `deployment`*, `application`* | Event loop scheduling delay in milliseconds. Measures how long the loop was blocked beyond the expected sleep interval. Values close to zero indicate a healthy loop; high values indicate blocking code. |
+| `ray_serve_event_loop_scheduling_latency_ms` **[†]** | Histogram | `component`, `loop_type`, `actor_id`, `deployment`*, `application`* | Event loop scheduling delay in milliseconds. Measures how long the loop was blocked beyond the expected sleep interval. Values close to zero indicate a healthy loop; high values indicate either blocking code or a large number of tasks queued on the event loop. |
 | `ray_serve_event_loop_monitoring_iterations_total` **[†]** | Counter | `component`, `loop_type`, `actor_id`, `deployment`*, `application`* | Number of event loop monitoring iterations. Acts as a heartbeat; a stalled counter indicates the loop is completely blocked. |
 | `ray_serve_event_loop_tasks` **[†]** | Gauge | `component`, `loop_type`, `actor_id`, `deployment`*, `application`* | Number of pending asyncio tasks on the event loop. High values may indicate task accumulation. |
 

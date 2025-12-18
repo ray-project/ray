@@ -107,7 +107,7 @@ class EventLoopMonitor:
         component: str,
         loop_type: str,
         actor_id: str,
-        interval_s: Optional[float] = None,
+        interval_s: float = RAY_SERVE_EVENT_LOOP_MONITORING_INTERVAL_S,
         extra_tags: Optional[Dict[str, str]] = None,
     ):
         """Initialize the event loop monitor.
@@ -119,7 +119,7 @@ class EventLoopMonitor:
             interval_s: Optional override for the monitoring interval.
             extra_tags: Optional dictionary of additional tags to include in metrics.
         """
-        self._interval_s = interval_s or RAY_SERVE_EVENT_LOOP_MONITORING_INTERVAL_S
+        self._interval_s = interval_s
         self._tags = {
             self.TAG_KEY_COMPONENT: component,
             self.TAG_KEY_LOOP_TYPE: loop_type,
