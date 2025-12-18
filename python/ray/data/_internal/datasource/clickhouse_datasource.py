@@ -1,11 +1,14 @@
 import logging
 import math
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
 
@@ -258,7 +261,10 @@ class ClickHouseDatasource(Datasource):
         return self._get_estimate_size()
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         """
         Create read tasks for the ClickHouse query.
@@ -271,6 +277,8 @@ class ClickHouseDatasource(Datasource):
             per_task_row_limit: Maximum number of rows allowed in each emitted
                 task.  Blocks larger than this limit will be sliced before
                 being yielded downstream.
+            data_context: The data context to use to get read tasks. Not used by this
+                datasource.
 
         Returns:
             A list of read tasks to be executed.
