@@ -83,28 +83,31 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   if (!scheduling_result.status.IsSuccess()) {
     const auto &fallback_strategy = placement_group->GetFallbackStrategy();
-    if (!fallback_strategy.empty()) {
+
+    bool is_scheduling_whole_pg =
+        (bundles.size() == placement_group->GetBundles().size());
+    if (!fallback_strategy.empty() && is_scheduling_whole_pg) {
       RAY_LOG(DEBUG) << "Primary scheduling failed for PG "
                      << placement_group->GetPlacementGroupID() << ". Attempting "
                      << fallback_strategy.size() << " fallback options.";
-    }
 
-    for (const auto &option : fallback_strategy) {
-      fallback_bundles.clear();
-      for (const auto &bundle_proto : option.bundles()) {
-        fallback_bundles.push_back(
-            std::make_shared<const BundleSpecification>(bundle_proto));
-      }
+      for (const auto &option : fallback_strategy) {
+        fallback_bundles.clear();
+        for (const auto &bundle_proto : option.bundles()) {
+          fallback_bundles.push_back(
+              std::make_shared<const BundleSpecification>(bundle_proto));
+        }
 
-      auto fallback_result = TrySchedule(placement_group, fallback_bundles);
+        auto fallback_result = TrySchedule(placement_group, fallback_bundles);
 
-      if (fallback_result.status.IsSuccess()) {
-        RAY_LOG(INFO) << "Placement Group " << placement_group->GetPlacementGroupID()
-                      << " primary scheduling failed, but fallback strategy succeeded.";
-        scheduling_result = fallback_result;
-        bundles = fallback_bundles;
-        applied_fallback_option = &option;
-        break;
+        if (fallback_result.status.IsSuccess()) {
+          RAY_LOG(INFO) << "Placement Group " << placement_group->GetPlacementGroupID()
+                        << " primary scheduling failed, but fallback strategy succeeded.";
+          scheduling_result = fallback_result;
+          bundles = fallback_bundles;
+          applied_fallback_option = &option;
+          break;
+        }
       }
     }
   }

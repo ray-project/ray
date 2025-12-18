@@ -159,9 +159,6 @@ void GcsPlacementGroup::UpdateBundlesFromFallback(
   for (const auto &bundle : fallback_option.bundles()) {
     *placement_group_table_data_.add_bundles() = bundle;
   }
-
-  // Clear the fallback strategy so we don't try to fallback again later.
-  placement_group_table_data_.clear_fallback_strategy();
 }
 
 }  // namespace gcs
