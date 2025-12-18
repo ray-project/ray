@@ -9,6 +9,23 @@ from ray.serve._private.queue_monitor import (
 )
 
 
+# Create mock modules for pika and redis to allow patching even when not installed
+@pytest.fixture(autouse=True)
+def mock_broker_modules():
+    """Inject mock pika and redis modules into sys.modules for testing."""
+    mock_pika = MagicMock()
+    mock_redis = MagicMock()
+
+    with patch.dict(
+        sys.modules,
+        {
+            "pika": mock_pika,
+            "redis": mock_redis,
+        },
+    ):
+        yield {"pika": mock_pika, "redis": mock_redis}
+
+
 class TestQueueMonitorConfig:
     """Tests for QueueMonitorConfig class."""
 
