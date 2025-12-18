@@ -998,6 +998,7 @@ class ActorAlreadyExistsError(ValueError, RayError):
         return self.error_message
 
 
+@DeveloperAPI
 class ActorHandleNotFoundError(ValueError, RayError):
     """Raised when trying to kill an actor handle that doesn't exist.
 
