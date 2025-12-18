@@ -178,10 +178,17 @@ class RayTaskError(RayError):
         class cls(RayTaskError, cause_cls):
             def __init__(self, cause):
                 self.cause = cause
-                self.args = (cause,)
+                # Some exception types don't allow `args` to be set
+                # (e.g., their `args` property has no setter).
+                # In such cases, we skip setting `args` and rely on
+                # `__reduce__` returning `self.cause` for pickling.
+                try:
+                    self.args = (cause,)
+                except AttributeError:
+                    pass
 
             def __reduce__(self):
-                return (cls, self.args)
+                return (cls, (self.cause,))
 
             def __getattr__(self, name):
                 return getattr(self.cause, name)
