@@ -296,14 +296,23 @@ class DPGroupManager:
         Returns:
             Tuple of (dp_address, dp_rpc_port).
         """
-        # Ensure the group exists before waiting
-        async with self._group_info_lock:
-            if group_index not in self._group_info:
-                self._group_info[group_index] = GroupInfo()
-            event = self._group_info[group_index].master_info_event
+        while True:
+            async with self._group_info_lock:
+                if group_index not in self._group_info:
+                    self._group_info[group_index] = GroupInfo()
 
-        # Wait outside the lock to avoid blocking other operations
-        await event.wait()
+                group = self._group_info[group_index]
 
-        async with self._group_info_lock:
-            return self._group_info[group_index].master_info
+                # If master_info is already set, return it
+                if group.master_info is not None:
+                    return group.master_info
+
+                # Get the current event to wait on
+                event = group.master_info_event
+
+            # Wait outside the lock to avoid blocking other operations
+            await event.wait()
+
+            # After waking up, re-check under lock. The group may have been
+            # reset (e.g., due to double-registration) while we were waiting,
+            # in which case we need to wait on the new event.
