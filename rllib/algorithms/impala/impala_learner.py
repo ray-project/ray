@@ -467,27 +467,6 @@ class _LearnerThread(threading.Thread):
             {"rllib": "IMPALA/LearnerThread"}
         )
 
-        # Ray metrics
-        self._metrics_learner_impala_thread_step = Histogram(
-            name="rllib_learner_impala_learner_thread_step_time",
-            description="Time taken in seconds for learner thread _step.",
-            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
-            tag_keys=("rllib",),
-        )
-        self._metrics_learner_impala_thread_step.set_default_tags(
-            {"rllib": "IMPALA/LearnerThread"}
-        )
-
-        self._metrics_learner_impala_thread_step_update = Histogram(
-            name="rllib_learner_impala_learner_thread_step_update_time",
-            description="Time taken in seconds for learner thread _step update.",
-            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
-            tag_keys=("rllib",),
-        )
-        self._metrics_learner_impala_thread_step_update.set_default_tags(
-            {"rllib": "IMPALA/LearnerThread"}
-        )
-
     # Keeps compatibility, but thread-safe.
     @property
     def stopped(self) -> bool:
@@ -579,7 +558,7 @@ class _LearnerThread(threading.Thread):
                     try:
                         with self.learner._learner_state_lock:
                             self.learner.metrics.log_value(
-                                ("ALL_MODULES", "learner_thread_state_queue_size"),
+                                (ALL_MODULES, "learner_thread_state_queue_size"),
                                 self.learner._learner_state_queue.qsize(),
                                 window=1,
                             )
@@ -590,7 +569,7 @@ class _LearnerThread(threading.Thread):
                     # Pass the learner state into the queue to the main process.
                     self.learner._learner_state_queue.put_nowait(learner_state)
                 self.learner.metrics.log_value(
-                    ("ALL_MODULES", "learner_thread_out_queue_size"),
+                    (ALL_MODULES, "learner_thread_out_queue_size"),
                     self._out_queue.qsize(),
                     window=1,
                 )

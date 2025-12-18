@@ -1,256 +1,58 @@
-"""
-[1] IMPACT: Importance Weighted Asynchronous Architectures with Clipped Target Networks.
-Luo et al. 2020
-https://arxiv.org/pdf/1912.00167
-"""
-import threading
-import time
-from collections import deque
-from typing import Any, Optional
+import copy
 
-import numpy as np
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import NetworkType
+from ray.util import PublicAPI
 
-from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.utils.annotations import OldAPIStack
-from ray.rllib.utils.metrics.ray_metrics import (
-    DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
-    TimerAndPrometheusLogger,
-)
-from ray.util.metrics import Counter, Histogram
-
-POLICY_SCOPE = "func"
-TARGET_POLICY_SCOPE = "target_func"
+torch, _ = try_import_torch()
 
 
-class CircularBuffer:
-    """
-    A circular batch-wise buffer with Queue-like interface.
+def make_target_network(main_net: NetworkType) -> NetworkType:
+    """Creates a (deep) copy of `main_net` (including synched weights) and returns it.
 
-    The buffer holds at most N batches, which are sampled at random (uniformly).
-    If full and a new batch is added, the oldest batch is discarded. Each batch
-    can be sampled at most K times (after which it is also discarded).
-
-    This version implements Queue-like put/get methods with blocking support.
-    """
-
-    def __init__(self, num_batches: int, iterations_per_batch: int):
-        """
-        Args:
-            num_batches: N from the paper (buffer size).
-            iterations_per_batch: K ("replay coefficient") from the paper.
-        """
-        self.num_batches = num_batches
-        self.iterations_per_batch = iterations_per_batch
-
-        self._NxK = self.num_batches * self.iterations_per_batch
-        self._num_added = 0
-
-        self._buffer = deque([None for _ in range(self._NxK)], maxlen=self._NxK)
-        self._indices = set()
-        self._offset = self._NxK
-        self._lock = threading.Lock()
-
-        # Semaphore tracks the number of *available* samples.
-        self._items_available = threading.Semaphore(0)
-
-        self._rng = np.random.default_rng()
-
-        # Statistics
-        self._total_puts = 0
-        self._total_gets = 0
-        self._total_dropped = 0
-
-        # Ray metrics
-        self._metrics_circular_buffer_put_time = Histogram(
-            name="rllib_utils_circular_buffer_put_time",
-            description="Time spent in CircularBuffer.put()",
-            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
-            tag_keys=("rllib",),
-        )
-        self._metrics_circular_buffer_put_time.set_default_tags(
-            {"rllib": self.__class__.__name__}
-        )
-
-        self._metrics_circular_buffer_put_ts_dropped = Counter(
-            name="rllib_utils_circular_buffer_put_ts_dropped_counter",
-            description="Total number of env steps dropped by the CircularBuffer.",
-            tag_keys=("rllib",),
-        )
-        self._metrics_circular_buffer_put_ts_dropped.set_default_tags(
-            {"rllib": self.__class__.__name__}
-        )
-
-        self._metrics_circular_buffer_get_time = Histogram(
-            name="rllib_utils_circular_buffer_get_time",
-            description="Time spent in CircularBuffer.get()",
-            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
-            tag_keys=("rllib",),
-        )
-        self._metrics_circular_buffer_get_time.set_default_tags(
-            {"rllib": self.__class__.__name__}
-        )
-
-    def put(
-        self, item: Any, block: bool = True, timeout: Optional[float] = None
-    ) -> int:
-        """
-        Add a new batch to the buffer.
-
-        The batch is added K times (iterations_per_batch) to allow for K samples.
-        If full, the oldest batch entries are dropped.
-
-        Args:
-            item: The batch to add
-            block: Not used (always non-blocking for puts)
-            timeout: Not used
-
-        Returns:
-            Number of dropped entries (0 or iterations_per_batch)
-        """
-        with TimerAndPrometheusLogger(self._metrics_circular_buffer_put_time):
-            with self._lock:
-                self._total_puts += 1
-
-                # Check if we'll drop old entries
-                dropped_entry = self._buffer[0]
-
-                # Add buffer K times with new indices
-                for _ in range(self.iterations_per_batch):
-                    self._buffer.append(item)
-                    self._indices.add(self._offset)
-                    self._indices.discard(self._offset - self._NxK)
-                    self._offset += 1
-
-                    # Release semaphore for each available sample
-                    self._items_available.release()
-
-                self._num_added += 1
-
-                # A valid entry (w/ a batch whose k has not been reach K yet) was dropped.
-                dropped_ts = 0
-                if dropped_entry is not None:
-                    dropped_ts = (
-                        dropped_entry[0].env_steps()
-                        if isinstance(dropped_entry, tuple)
-                        else dropped_entry.env_steps()
-                    )
-                    if dropped_ts > 0:
-                        self._metrics_circular_buffer_put_ts_dropped.inc(
-                            value=dropped_ts
-                        )
-
-        return dropped_ts
-
-    def get(self, block: bool = True, timeout: Optional[float] = None) -> Any:
-        """
-        Sample a random batch from the buffer.
-
-        The sampled entry is removed and won't be sampled again.
-        Blocks if the buffer is empty (when block=True).
-
-        Args:
-            block: If True, block until an item is available
-            timeout: Maximum time to wait (only used when block=True)
-
-        Returns:
-            A randomly sampled batch
-
-        Raises:
-            TimeoutError: If timeout expires while blocking
-            IndexError: If buffer is empty and block=False
-        """
-        # Only initially, the buffer may be empty -> Just wait for some time.
-        with TimerAndPrometheusLogger(self._metrics_circular_buffer_get_time):
-            while len(self) == 0:
-                time.sleep(0.0001)
-
-            # Sample a random buffer index.
-            with self._lock:
-                idx = self._rng.choice(list(self._indices))
-                actual_buffer_idx = idx - self._offset + self._NxK
-                batch = self._buffer[actual_buffer_idx]
-                assert batch is not None, (
-                    idx,
-                    actual_buffer_idx,
-                    self._offset,
-                    self._indices,
-                    [b is None for b in self._buffer],
-                )
-                self._buffer[actual_buffer_idx] = None
-                self._indices.discard(idx)
-
-        # Return the sampled batch.
-        return batch
-
-    @property
-    def filled(self) -> bool:
-        """Whether the buffer has been filled once with at least `self.num_batches`."""
-        with self._lock:
-            return self._num_added >= self.num_batches
-
-    def qsize(self) -> int:
-        """Returns the number of actually valid (non-expired) batches in the buffer."""
-        with self._lock:
-            return len(self._indices)
-
-    def __len__(self) -> int:
-        return self.qsize()
-
-    def task_done(self):
-        """No-op for Queue compatibility."""
-        pass
-
-    def get_stats(self) -> dict:
-        """Get buffer statistics for monitoring."""
-        with self._lock:
-            return {
-                "size": len(self._indices),
-                "capacity": self._NxK,
-                "num_batches": self.num_batches,
-                "iterations_per_batch": self.iterations_per_batch,
-                "total_puts": self._total_puts,
-                "total_gets": self._total_gets,
-                "total_dropped": self._total_dropped,
-                "filled": self._num_added >= self.num_batches,
-            }
-
-
-@OldAPIStack
-def make_appo_models(policy) -> ModelV2:
-    """Builds model and target model for APPO.
+    Args:
+        main_net: The main network to return a target network for
 
     Returns:
-        ModelV2: The Model for the Policy to use.
-            Note: The target model will not be returned, just assigned to
-            `policy.target_model`.
+        The copy of `main_net` that can be used as a target net. Note that the weights
+        of the returned net are already synched (identical) with `main_net`.
     """
-    # Get the num_outputs for the following model construction calls.
-    _, logit_dim = ModelCatalog.get_action_dist(
-        policy.action_space, policy.config["model"]
+    # Deepcopy the main net (this should already take care of synching all weights).
+    target_net = copy.deepcopy(main_net)
+    # Make the target net not trainable.
+    if isinstance(main_net, torch.nn.Module):
+        target_net.requires_grad_(False)
+    else:
+        raise ValueError(f"Unsupported framework for given `main_net` {main_net}!")
+
+    return target_net
+
+
+@PublicAPI(stability="beta")
+def update_target_network(
+    *,
+    main_net: NetworkType,
+    target_net: NetworkType,
+    tau: float,
+) -> None:
+    """Updates a target network (from a "main" network) using Polyak averaging.
+
+    Thereby:
+    new_target_net_weight = (
+        tau * main_net_weight + (1.0 - tau) * current_target_net_weight
     )
 
-    # Construct the (main) model.
-    policy.model = ModelCatalog.get_model_v2(
-        policy.observation_space,
-        policy.action_space,
-        logit_dim,
-        policy.config["model"],
-        name=POLICY_SCOPE,
-        framework=policy.framework,
-    )
-    policy.model_variables = policy.model.variables()
+    Args:
+        main_net: The nn.Module to update from.
+        target_net: The target network to update.
+        tau: The tau value to use in the Polyak averaging formula. Use 1.0 for a
+            complete sync of the weights (target and main net will be the exact same
+            after updating).
+    """
+    if isinstance(main_net, torch.nn.Module):
+        from ray.rllib.utils.torch_utils import update_target_network as _update_target
 
-    # Construct the target model.
-    policy.target_model = ModelCatalog.get_model_v2(
-        policy.observation_space,
-        policy.action_space,
-        logit_dim,
-        policy.config["model"],
-        name=TARGET_POLICY_SCOPE,
-        framework=policy.framework,
-    )
-    policy.target_model_variables = policy.target_model.variables()
+    else:
+        raise ValueError(f"Unsupported framework for given `main_net` {main_net}!")
 
-    # Return only the model (not the target model).
-    return policy.model
+    _update_target(main_net=main_net, target_net=target_net, tau=tau)

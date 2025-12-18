@@ -34,15 +34,15 @@ class APPOLearner(IMPALALearner):
         self._last_update_ts_by_mid = defaultdict(int)
 
         # Use a CircularBuffer as learner-in-queue if configured to do so.
-        self._learner_thread_in_queue = (
-            CircularBuffer(
+        if self.config.use_circular_buffer:
+            self._learner_thread_in_queue = CircularBuffer(
                 num_batches=self.config.circular_buffer_num_batches,
                 iterations_per_batch=self.config.circular_buffer_iterations_per_batch,
-                # For APPO use a large queue.
             )
-            if self.config.use_circular_buffer
-            else Queue(maxsize=self.config.learner_queue_size)
-        )
+        # Otherwise, use a simple Queue.
+        else:
+            # For APPO use a large queue.
+            self._learner_thread_in_queue = Queue(maxsize=self.config.simple_queue_size)
 
         # Now build the super class. Otherwise the learner-queue would overriden.
         super().build()

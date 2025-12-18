@@ -24,8 +24,7 @@ TARGET_POLICY_SCOPE = "target_func"
 
 
 class CircularBuffer:
-    """
-    A circular batch-wise buffer with Queue-like interface.
+    """A circular batch-wise buffer with Queue-like interface.
 
     The buffer holds at most N batches, which are sampled at random (uniformly).
     If full and a new batch is added, the oldest batch is discarded. Each batch
@@ -37,8 +36,11 @@ class CircularBuffer:
     def __init__(self, num_batches: int, iterations_per_batch: int):
         """
         Args:
-            num_batches: N from the paper (buffer size).
-            iterations_per_batch: K ("replay coefficient") from the paper.
+            num_batches: N from the paper (queue buffer size).
+            iterations_per_batch: K ("replay coefficient") from the paper. Defines
+                how often a single batch can sampled before being discarded. If a
+                new batch is added when the buffer is full, the oldest batch is
+                discarded entirely (regardless of how often it has been sampled).
         """
         self.num_batches = num_batches
         self.iterations_per_batch = iterations_per_batch
@@ -94,8 +96,7 @@ class CircularBuffer:
     def put(
         self, item: Any, block: bool = True, timeout: Optional[float] = None
     ) -> int:
-        """
-        Add a new batch to the buffer.
+        """Add a new batch to the buffer.
 
         The batch is added K times (iterations_per_batch) to allow for K samples.
         If full, the oldest batch entries are dropped.
@@ -143,8 +144,7 @@ class CircularBuffer:
         return dropped_ts
 
     def get(self, block: bool = True, timeout: Optional[float] = None) -> Any:
-        """
-        Sample a random batch from the buffer.
+        """Sample a random batch from the buffer.
 
         The sampled entry is removed and won't be sampled again.
         Blocks if the buffer is empty (when block=True).
