@@ -790,6 +790,7 @@ class Dataset:
             self._logical_plan.dag,
             fn,
             batch_size=batch_size,
+            can_modify_num_rows=udf_modifying_row_count,
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
             min_rows_per_bundled_input=batch_size,
@@ -798,7 +799,6 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
-            udf_modifying_row_count=udf_modifying_row_count,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
