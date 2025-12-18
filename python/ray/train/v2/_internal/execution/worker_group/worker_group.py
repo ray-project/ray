@@ -171,7 +171,7 @@ class WorkerGroup(BaseWorkerGroup):
         self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
         self._latest_poll_status: Optional[WorkerGroupPollStatus] = None
 
-        # For multi-host TPUs, store slice PG handle for clean-up.
+        # For multi-host TPU accelerators, store slice PG handle for clean-up.
         self._slice_placement_group_handle: Optional[SlicePlacementGroup] = None
 
         # Environment variables
@@ -527,6 +527,7 @@ class WorkerGroup(BaseWorkerGroup):
 
     def _cleanup_slice_pg(self):
         """Removes the internal slice placement group used to reserve slices."""
+        # TODO(lehui): ensure the slice placement group is shut down by PG cleaner.
         if self._slice_placement_group_handle:
             self._slice_placement_group_handle.shutdown()
             self._slice_placement_group_handle = None
