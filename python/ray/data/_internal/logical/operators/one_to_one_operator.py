@@ -24,7 +24,8 @@ class AbstractOneToOne(LogicalOperator):
         can_modify_num_rows: bool,
         num_outputs: Optional[int] = None,
     ):
-        """
+        """Initialize an AbstractOneToOne operator.
+
         Args:
             name: Name for this operator. This is the name that will appear when
                 inspecting the logical plan of a Dataset.
