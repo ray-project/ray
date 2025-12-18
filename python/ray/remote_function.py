@@ -101,6 +101,18 @@ class RemoteFunction:
                 "async function with `asyncio.run(f())`. See more at:"
                 "https://docs.ray.io/en/latest/ray-core/actors/async_api.html "
             )
+
+        # Validate num_returns for non-generator functions
+        num_returns = task_options.get("num_returns")
+        is_generator = inspect.isgeneratorfunction(function)
+        if num_returns in ("streaming", "dynamic") and not is_generator:
+            raise ValueError(
+                f"num_returns='{num_returns}' is only valid for generator functions "
+                f"(functions that use 'yield'). The function '{function.__name__}' "
+                "is not a generator function. Either change the function to use "
+                "'yield' or remove/change the num_returns parameter."
+            )
+
         self._default_options = task_options
 
         # When gpu is used, set the task non-recyclable by default.

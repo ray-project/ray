@@ -459,7 +459,23 @@ def method(*args, **kwargs):
 
     def annotate_method(method: Callable[_P, _Ret]):
         if "num_returns" in kwargs:
-            method.__ray_num_returns__ = kwargs["num_returns"]
+            num_returns = kwargs["num_returns"]
+            # Validate num_returns value
+            if isinstance(num_returns, int) and num_returns < 0:
+                raise ValueError(
+                    f"num_returns must be a non-negative integer, 'streaming', "
+                    f"or 'dynamic'. Got num_returns={num_returns}."
+                )
+            # Validate streaming/dynamic is only used with generator methods
+            is_generator = inspect.isgeneratorfunction(method)
+            if num_returns in ("streaming", "dynamic") and not is_generator:
+                raise ValueError(
+                    f"num_returns='{num_returns}' is only valid for generator methods "
+                    f"(methods that use 'yield'). The method '{method.__name__}' "
+                    "is not a generator method. Either change the method to use "
+                    "'yield' or remove/change the num_returns parameter."
+                )
+            method.__ray_num_returns__ = num_returns
         if "max_task_retries" in kwargs:
             method.__ray_max_task_retries__ = kwargs["max_task_retries"]
         if "retry_exceptions" in kwargs:

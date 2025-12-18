@@ -803,6 +803,86 @@ def test_ray_client(call_ray_start_shared, store_in_plasma):
             assert ray.get(ref)[0] == i
 
 
+def test_num_returns_streaming_requires_generator():
+    """Test that num_returns='streaming' fails fast for non-generator functions.
+
+    This tests the fix for issue #59274.
+    """
+    # Regular functions with num_returns='streaming' should raise ValueError
+    with pytest.raises(ValueError, match="only valid for generator functions"):
+
+        @ray.remote(num_returns="streaming")
+        def non_generator_streaming():
+            return 1
+
+    # Regular functions with num_returns='dynamic' should raise ValueError
+    with pytest.raises(ValueError, match="only valid for generator functions"):
+
+        @ray.remote(num_returns="dynamic")
+        def non_generator_dynamic():
+            return 1
+
+    # Generator functions with num_returns='streaming' should work
+    @ray.remote(num_returns="streaming")
+    def generator_streaming():
+        yield 1
+        yield 2
+
+    # Generator functions with num_returns='dynamic' should work
+    @ray.remote(num_returns="dynamic")
+    def generator_dynamic():
+        yield 1
+        yield 2
+
+
+def test_ray_method_num_returns_validation():
+    """Test that @ray.method validates num_returns correctly.
+
+    This tests the fix for issue #59274.
+    """
+    # Negative num_returns should raise ValueError
+    with pytest.raises(ValueError, match="non-negative integer"):
+
+        @ray.remote
+        class ActorWithNegativeNumReturns:
+            @ray.method(num_returns=-1)
+            def method(self):
+                return 1
+
+    # num_returns='streaming' for non-generator method should raise ValueError
+    with pytest.raises(ValueError, match="only valid for generator methods"):
+
+        @ray.remote
+        class ActorWithStreamingNonGenerator:
+            @ray.method(num_returns="streaming")
+            def method(self):
+                return 1
+
+    # num_returns='dynamic' for non-generator method should raise ValueError
+    with pytest.raises(ValueError, match="only valid for generator methods"):
+
+        @ray.remote
+        class ActorWithDynamicNonGenerator:
+            @ray.method(num_returns="dynamic")
+            def method(self):
+                return 1
+
+    # num_returns='streaming' for generator method should work
+    @ray.remote
+    class ActorWithStreamingGenerator:
+        @ray.method(num_returns="streaming")
+        def method(self):
+            yield 1
+            yield 2
+
+    # Positive num_returns should work
+    @ray.remote
+    class ActorWithPositiveNumReturns:
+        @ray.method(num_returns=2)
+        def method(self):
+            return 1, 2
+
+
 if __name__ == "__main__":
 
     sys.exit(pytest.main(["-sv", __file__]))
