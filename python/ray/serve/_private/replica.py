@@ -81,6 +81,7 @@ from ray.serve._private.default_impl import (
     create_replica_impl,
     create_replica_metrics_manager,
 )
+from ray.serve._private.event_loop_monitoring import EventLoopMonitor
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIArgs,
@@ -570,6 +571,18 @@ class ReplicaBase(ABC):
             autoscaling_config=self._deployment_config.autoscaling_config,
             ingress=ingress,
         )
+
+        # Start event loop monitoring for the replica's main event loop.
+        self._main_loop_monitor = EventLoopMonitor(
+            component=EventLoopMonitor.COMPONENT_REPLICA,
+            loop_type=EventLoopMonitor.LOOP_TYPE_MAIN,
+            actor_id=ray.get_runtime_context().get_actor_id(),
+            extra_tags={
+                "deployment": self._deployment_id.name,
+                "application": self._deployment_id.app_name,
+            },
+        )
+        self._main_loop_monitor.start(self._event_loop)
 
         self._internal_grpc_port: Optional[int] = None
         self._docs_path: Optional[str] = None
@@ -1461,10 +1474,26 @@ class UserCallableWrapper:
                 asyncio.new_event_loop()
             )
 
+            # Start event loop monitoring for the user code event loop.
+            # We create the monitor here but start it inside the thread function
+            # so the task is created on the correct thread.
+            actor_id = ray.get_runtime_context().get_actor_id()
+            self._user_code_loop_monitor = EventLoopMonitor(
+                component=EventLoopMonitor.COMPONENT_REPLICA,
+                loop_type=EventLoopMonitor.LOOP_TYPE_USER_CODE,
+                actor_id=actor_id,
+                extra_tags={
+                    "deployment": self._deployment_id.name,
+                    "application": self._deployment_id.app_name,
+                },
+            )
+
             def _run_user_code_event_loop():
                 # Required so that calls to get the current running event loop work
                 # properly in user code.
                 asyncio.set_event_loop(self._user_code_event_loop)
+                # Start monitoring before run_forever so the task is scheduled.
+                self._user_code_loop_monitor.start(self._user_code_event_loop)
                 self._user_code_event_loop.run_forever()
 
             self._user_code_event_loop_thread = threading.Thread(
@@ -1474,6 +1503,7 @@ class UserCallableWrapper:
             self._user_code_event_loop_thread.start()
         else:
             self._user_code_event_loop = asyncio.get_running_loop()
+            self._user_code_loop_monitor = None
 
     @property
     def event_loop(self) -> asyncio.AbstractEventLoop:

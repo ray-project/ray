@@ -687,6 +687,39 @@ These metrics track the Serve controller's performance. Useful for debugging con
 | `ray_serve_long_poll_latency_ms` **[†]** | Histogram | `namespace` | Time for updates to propagate from controller to clients in milliseconds. `namespace` is the long poll namespace such as `ROUTE_TABLE`, `DEPLOYMENT_CONFIG`, or `DEPLOYMENT_TARGETS`. Debug slow config propagation; impacts autoscaling response time. |
 | `ray_serve_long_poll_pending_clients` **[†]** | Gauge | `namespace` | Number of clients waiting for updates. `namespace` is the long poll namespace such as `ROUTE_TABLE`, `DEPLOYMENT_CONFIG`, or `DEPLOYMENT_TARGETS`. Identify backpressure in notification system. |
 
+### Event loop monitoring metrics
+
+These metrics track the health of asyncio event loops in Serve components. High scheduling latency indicates the event loop is blocked, which can cause request latency issues. Use these metrics to detect blocking code in handlers or system bottlenecks.
+
+| Metric | Type | Tags | Description |
+|--------|------|------|-------------|
+| `ray_serve_event_loop_scheduling_latency_ms` **[†]** | Histogram | `component`, `loop_type`, `actor_id`, `deployment`*, `application`* | Event loop scheduling delay in milliseconds. Measures how long the loop was blocked beyond the expected sleep interval. Values close to zero indicate a healthy loop; high values indicate blocking code. |
+| `ray_serve_event_loop_monitoring_iterations_total` **[†]** | Counter | `component`, `loop_type`, `actor_id`, `deployment`*, `application`* | Number of event loop monitoring iterations. Acts as a heartbeat; a stalled counter indicates the loop is completely blocked. |
+| `ray_serve_event_loop_tasks` **[†]** | Gauge | `component`, `loop_type`, `actor_id`, `deployment`*, `application`* | Number of pending asyncio tasks on the event loop. High values may indicate task accumulation. |
+
+*\* `deployment` and `application` tags are only present for replica `main` and `user_code` loops, not for proxy or router loops.*
+
+**Tag values:**
+
+- `component`: The Serve component type.
+  - `proxy`: HTTP/gRPC proxy actor
+  - `replica`: Deployment replica actor
+- `loop_type`: The type of event loop being monitored.
+  - `main`: Main event loop for the actor (always present)
+  - `user_code`: Separate event loop for user handler code (replicas only, when `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=1`, which is the default)
+  - `router`: Separate event loop for request routing (replicas only, when `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=1`, which is the default)
+- `actor_id`: The Ray actor ID of the proxy or replica
+- `deployment`: The deployment name (replicas only, for `main` and `user_code` loops)
+- `application`: The application name (replicas only, for `main` and `user_code` loops)
+
+**Interpreting scheduling latency:**
+
+- **< 10ms**: Healthy event loop
+- **10-50ms**: Acceptable under load
+- **50-100ms**: Concerning; investigate for blocking code
+- **100-500ms**: Problematic; likely blocking I/O or CPU-bound code in async handlers
+- **> 500ms**: Severe blocking; definitely impacting request latency
+
 To see this in action, first run the following command to start Ray and set up the metrics export port:
 
 ```bash
