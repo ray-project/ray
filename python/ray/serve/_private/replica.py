@@ -530,6 +530,7 @@ class ReplicaBase(ABC):
         self._configure_logger_and_profilers(self._deployment_config.logging_config)
         self._event_loop = get_or_create_event_loop()
 
+        actor_id = ray.get_runtime_context().get_actor_id()
         self._user_callable_wrapper = UserCallableWrapper(
             deployment_def,
             init_args,
@@ -539,6 +540,7 @@ class ReplicaBase(ABC):
             run_user_code_in_separate_thread=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
             local_testing_mode=False,
             deployment_config=deployment_config,
+            actor_id=actor_id,
         )
         self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
 
@@ -573,7 +575,6 @@ class ReplicaBase(ABC):
         )
 
         # Start event loop monitoring for the replica's main event loop.
-        actor_id = ray.get_runtime_context().get_actor_id()
         self._main_loop_monitor = EventLoopMonitor(
             component=EventLoopMonitor.COMPONENT_REPLICA,
             loop_type=EventLoopMonitor.LOOP_TYPE_MAIN,
@@ -1444,6 +1445,7 @@ class UserCallableWrapper:
         run_user_code_in_separate_thread: bool,
         local_testing_mode: bool,
         deployment_config: DeploymentConfig,
+        actor_id: str,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
@@ -1478,10 +1480,6 @@ class UserCallableWrapper:
             # Start event loop monitoring for the user code event loop.
             # We create the monitor here but start it inside the thread function
             # so the task is created on the correct thread.
-            if self._local_testing_mode:
-                actor_id = "local"
-            else:
-                actor_id = ray.get_runtime_context().get_actor_id()
             self._user_code_loop_monitor = EventLoopMonitor(
                 component=EventLoopMonitor.COMPONENT_REPLICA,
                 loop_type=EventLoopMonitor.LOOP_TYPE_USER_CODE,
