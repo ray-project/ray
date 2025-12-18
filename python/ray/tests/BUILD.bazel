@@ -540,6 +540,7 @@ py_test_module_list(
         "test_list_actors_2.py",
         "test_list_actors_3.py",
         "test_list_actors_4.py",
+        "test_local_port_service_discovery.py",
         "test_log_dedup.py",
         "test_memory_scheduling.py",
         "test_metrics_agent_2.py",
