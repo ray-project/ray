@@ -5,8 +5,6 @@ This test validates end-to-end serving on CPU-only infrastructure:
 1. Model can be loaded and served on CPU with vLLM CPU backend
 2. Completions and chat completions work correctly
 
-Unit tests for use_cpu field logic are in:
-python/ray/llm/tests/serve/cpu/configs/test_models.py
 """
 
 import pytest
