@@ -40,10 +40,6 @@ class LLMEngine(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def reset_prefix_cache(self) -> None:
-        """Reset the prefix cache of the underlying engine"""
-
-    @abc.abstractmethod
     async def chat(
         self,
         request: "ChatCompletionRequest",
@@ -181,6 +177,10 @@ class LLMEngine(abc.ABC):
     # e.g. in usecases like RL training, we need to put the engine
     # to sleep during training and wake up during rollouts.
     ##############################################################
+
+    @abc.abstractmethod
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the underlying engine"""
 
     async def sleep(self, **kwargs: Any) -> None:
         """Put the engine to sleep.
