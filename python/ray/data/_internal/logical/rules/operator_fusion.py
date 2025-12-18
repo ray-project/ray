@@ -92,27 +92,27 @@ class FuseOperators(Rule):
         We also ensure the output rows is `batch_size`.
 
         Why don't we fuse `StreamingRepartition -> MapBatches`?
-        
-        ----------------------------------------------------------------------------------------------        
-        |                      | Number of `map_batches` tasks                                       |
-        |----------------------|---------------------------------------------------------------------|
-        | Fused                | total_rows / (n * batch_size),                                      |
-        |                      | because fused op receives RefBundles of `n * target_num_rows` rows. |
-        | Not fused            | total_rows / batch_size                                             |
 
-        Fusing would reduce parallelism (n >= 1), so we don't fuse.
+        ----------------------------------------------------------------------------------------------------
+        |                      | Number of `map_batches` tasks                                             |
+        |----------------------|---------------------------------------------------------------------------|
+        | Fused                | num_input_blocks (which is <= num output blocks of StreamingRepartition) |
+        | Not fused            | num output blocks of StreamingRepartition                                 |
+        ----------------------------------------------------------------------------------------------------
+
+        When fused, the number of tasks equals the number of input blocks, which is
+        <= the number of output blocks of StreamingRepartition. If StreamingRepartition
+        is supposed to break down blocks to increase parallelism, that won't happen
+        when fused. So we don't fuse.
 
         Why do we fuse `MapBatches -> StreamingRepartition` (when `batch_size % target_num_rows == 0`)?
+        ----------------------------------------------------------
         |                      | Number of `map_batches` tasks  |
         |----------------------|--------------------------------|
         | Fused                | total_rows / batch_size        |
         | Not fused            | total_rows / batch_size        |
 
         Parallelism is unchanged, so we fuse to avoid intermediate materialization.
-
-
-        TODO: when the StreamingRepartition supports none_strict_mode, we can fuse
-        `MapBatches -> StreamingRepartition` no matter what the `batch_size` and `target_num_rows` are.
         """
         upstream_ops = dag.input_dependencies
         while (
@@ -278,6 +278,11 @@ class FuseOperators(Rule):
                 and up_logical_op._batch_size is not None
                 and down_logical_op.target_num_rows_per_block is not None
                 and down_logical_op.target_num_rows_per_block > 0
+                # When the batch_size is a multiple of target_num_rows_per_block, fusing would not change the parallelism.
+                # See `_fuse_streaming_repartition_operators_in_dag` docstring for details.
+                # TODO: when the StreamingRepartition supports none_strict_mode, we can fuse
+                # `MapBatches -> StreamingRepartition` no matter what the `batch_size` and `target_num_rows` are.
+                # https://anyscale1.atlassian.net/browse/DATA-1731
                 and up_logical_op._batch_size
                 % down_logical_op.target_num_rows_per_block
                 == 0
