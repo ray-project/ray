@@ -818,7 +818,7 @@ def test_streaming_repartition_no_further_fuse(
     assert "MapBatches(<lambda>)->MapBatches(<lambda>)" in stats1
 
 
-def test_filter_operator_no_upstream_fusion(ray_start_regular_shared, capsys):
+def test_filter_operator_no_upstream_fusion(ray_start_regular_shared_2_cpus, capsys):
     """Test that fused filter operators doesn't fuse further with upstream maps
     that specify batch_size (since it filter can change the # of rows.)
 
