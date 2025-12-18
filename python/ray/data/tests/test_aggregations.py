@@ -750,11 +750,7 @@ class TestTopK:
         ]
         ds = ray.data.from_items(data)
 
-        result = (
-            ds.groupby("group")
-            .aggregate(TopK(on="item", k=2))
-            .take_all()
-        )
+        result = ds.groupby("group").aggregate(TopK(on="item", k=2)).take_all()
 
         result_by_group = {row["group"]: row["top_k(item)"] for row in result}
 
