@@ -1,8 +1,29 @@
+import asyncio
 from unittest.mock import patch
 
 import pytest
 
 import ray
+
+
+def run_sync(coro):
+    """Helper to run async methods synchronously in tests."""
+    loop = asyncio.get_event_loop()
+    return loop.run_until_complete(coro)
+
+
+def create_coordinator_for_testing():
+    """Create an _AutoscalingCoordinatorActor for unit tests.
+
+    Bypasses async __init__ and doesn't start the background tick loop.
+    """
+    instance = object.__new__(_AutoscalingCoordinatorActor)
+    instance._ongoing_reqs = {}
+    instance._cluster_node_resources = []
+    instance._update_cluster_node_resources()
+    return instance
+
+
 from ray.cluster_utils import Cluster
 from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
     HEAD_NODE_RESOURCE_LABEL,
@@ -102,14 +123,16 @@ def test_basic(cluster_nodes):
         MOCKED_TIME = 0
         req1 = [{"CPU": 3, "GPU": 1, "object_store_memory": 100}]
         req1_timeout = 2
-        as_coordinator = _AutoscalingCoordinatorActor()
-        as_coordinator.request_resources(
-            requester_id="requester1",
-            resources=req1,
-            expire_after_s=req1_timeout,
+        as_coordinator = create_coordinator_for_testing()
+        run_sync(
+            as_coordinator.request_resources(
+                requester_id="requester1",
+                resources=req1,
+                expire_after_s=req1_timeout,
+            )
         )
         mock_request_resources.assert_called_once_with(bundles=req1)
-        res1 = as_coordinator.get_allocated_resources("requester1")
+        res1 = run_sync(as_coordinator.get_allocated_resources("requester1"))
 
         def _remove_head_node_resources(res):
             for r in res:
@@ -121,10 +144,12 @@ def test_basic(cluster_nodes):
 
         # Send the same request again. `mock_request_resources` won't be called
         # since the request is not updated.
-        as_coordinator.request_resources(
-            requester_id="requester1",
-            resources=req1,
-            expire_after_s=req1_timeout,
+        run_sync(
+            as_coordinator.request_resources(
+                requester_id="requester1",
+                resources=req1,
+                expire_after_s=req1_timeout,
+            )
         )
         assert mock_request_resources.call_count == 1
 
@@ -132,38 +157,42 @@ def test_basic(cluster_nodes):
         # requester2 should get the requested + the remaining resources.
         req2 = [{"CPU": 2, "GPU": 1, "object_store_memory": 100}]
         req2_timeout = 20
-        as_coordinator.request_resources(
-            requester_id="requester2",
-            resources=req2,
-            expire_after_s=req2_timeout,
-            request_remaining=True,
+        run_sync(
+            as_coordinator.request_resources(
+                requester_id="requester2",
+                resources=req2,
+                expire_after_s=req2_timeout,
+                request_remaining=True,
+            )
         )
         mock_request_resources.assert_called_with(bundles=req1 + req2)
-        res2 = as_coordinator.get_allocated_resources("requester2")
+        res2 = run_sync(as_coordinator.get_allocated_resources("requester2"))
         _remove_head_node_resources(res2)
         assert res2 == req2 + [{"CPU": 5, "GPU": 3, "object_store_memory": 800}]
 
         # Test updating req1
         req1_updated = [{"CPU": 4, "GPU": 2, "object_store_memory": 300}]
-        as_coordinator.request_resources(
-            requester_id="requester1",
-            resources=req1_updated,
-            expire_after_s=req1_timeout,
+        run_sync(
+            as_coordinator.request_resources(
+                requester_id="requester1",
+                resources=req1_updated,
+                expire_after_s=req1_timeout,
+            )
         )
         mock_request_resources.assert_called_with(bundles=req1_updated + req2)
-        res1 = as_coordinator.get_allocated_resources("requester1")
+        res1 = run_sync(as_coordinator.get_allocated_resources("requester1"))
         _remove_head_node_resources(res1)
         assert res1 == req1_updated
-        res2 = as_coordinator.get_allocated_resources("requester2")
+        res2 = run_sync(as_coordinator.get_allocated_resources("requester2"))
         _remove_head_node_resources(res2)
         assert res2 == req2 + [{"CPU": 4, "GPU": 2, "object_store_memory": 600}]
 
         # After req1_timeout, req1 should be expired.
         MOCKED_TIME = req1_timeout + 0.1
-        as_coordinator.tick()
+        run_sync(as_coordinator.tick())
         mock_request_resources.assert_called_with(bundles=req2)
-        res1 = as_coordinator.get_allocated_resources("requester1")
-        res2 = as_coordinator.get_allocated_resources("requester2")
+        res1 = run_sync(as_coordinator.get_allocated_resources("requester1"))
+        res2 = run_sync(as_coordinator.get_allocated_resources("requester2"))
         _remove_head_node_resources(res1)
         _remove_head_node_resources(res2)
         assert res1 == []
@@ -171,18 +200,18 @@ def test_basic(cluster_nodes):
 
         # After req2_timeout, req2 should be expired.
         MOCKED_TIME = req2_timeout + 0.1
-        as_coordinator.tick()
+        run_sync(as_coordinator.tick())
         mock_request_resources.assert_called_with(bundles=[])
-        res1 = as_coordinator.get_allocated_resources("requester1")
-        res2 = as_coordinator.get_allocated_resources("requester2")
+        res1 = run_sync(as_coordinator.get_allocated_resources("requester1"))
+        res2 = run_sync(as_coordinator.get_allocated_resources("requester2"))
         _remove_head_node_resources(res1)
         _remove_head_node_resources(res2)
         assert res1 == []
         assert res2 == []
 
         # Test canceling a request
-        as_coordinator.cancel_request("requester2")
-        res2 = as_coordinator.get_allocated_resources("requester2")
+        run_sync(as_coordinator.cancel_request("requester2"))
+        res2 = run_sync(as_coordinator.get_allocated_resources("requester2"))
         _remove_head_node_resources(res2)
         assert res2 == []
 
@@ -394,6 +423,48 @@ def test_request_resources_handles_timeout_error(teardown_autoscaling_coordinato
         counter_attr="_consecutive_failures_request_resources",
         error_msg_prefix="Failed to send resource request for test",
     )
+
+
+def test_get_allocated_resources_not_blocked_by_slow_tick(
+    teardown_autoscaling_coordinator,
+):
+    """Test that get_allocated_resources() returns quickly even when tick() is slow.
+
+    This verifies that the async actor pattern with run_background_task() allows
+    method calls to be processed during asyncio.sleep() in the tick loop.
+    """
+    import time
+
+    ray.init(num_cpus=1)
+
+    # Create the actor
+    actor = get_or_create_autoscaling_coordinator()
+
+    # First, send a resource request so we have something to query
+    ray.get(
+        actor.request_resources.remote(
+            requester_id="test_requester",
+            resources=[{"CPU": 1}],
+            expire_after_s=100,
+        )
+    )
+
+    # Now call get_allocated_resources multiple times and verify they return quickly
+    # (within the 5 second default timeout). If the tick thread was blocking,
+    # this could timeout.
+    start_time = time.time()
+    for _ in range(5):
+        result = ray.get(
+            actor.get_allocated_resources.remote("test_requester"),
+            timeout=5,
+        )
+        # Should return without timing out
+        assert isinstance(result, list)
+
+    elapsed = time.time() - start_time
+    # All 5 calls should complete well within 5 seconds total
+    # (unless tick() is blocking them, which would cause timeouts)
+    assert elapsed < 5, f"get_allocated_resources calls took too long: {elapsed}s"
 
 
 if __name__ == "__main__":

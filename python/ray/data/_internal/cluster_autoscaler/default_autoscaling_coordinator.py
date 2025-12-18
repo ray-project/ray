@@ -1,3 +1,4 @@
+import asyncio
 import copy
 import functools
 import logging
@@ -14,6 +15,7 @@ from .base_autoscaling_coordinator import (
     ResourceDict,
     ResourceRequestPriority,
 )
+from ray._common.utils import run_background_task
 from ray.autoscaler._private.constants import env_integer
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -237,11 +239,16 @@ class _AutoscalingCoordinatorActor:
     This actor is responsible for:
     * Merging received requests and dispatching them to Ray Autoscaler.
     * Allocating cluster resources to the requesters.
+
+    This is an async actor that uses an internal background task for periodic
+    operations instead of calling tick() through the actor's external interface.
+    This allows other method calls (like get_allocated_resources) to be processed
+    during the tick interval without blocking.
     """
 
     TICK_INTERVAL_S = 20
 
-    def __init__(self):
+    async def __init__(self):
         self._ongoing_reqs: Dict[str, OngoingRequest] = {}
         self._cluster_node_resources: List[ResourceDict] = []
         self._update_cluster_node_resources()
@@ -249,27 +256,29 @@ class _AutoscalingCoordinatorActor:
         # This is an actor, so the following check should always be True.
         # It's only needed for unit tests.
         if ray.is_initialized():
-            self._self_handle = ray.get_runtime_context().current_actor
+            # Start a background task for periodic operations.
+            # Using run_background_task instead of a thread calling tick.remote()
+            # allows other method calls to be processed during asyncio.sleep().
+            run_background_task(self._tick_loop())
 
-            # Start a thread to perform periodical operations.
-            def tick_thread_run():
-                while True:
-                    # Call tick() as an actor task,
-                    # so we don't need to handle multi-threading.
-                    time.sleep(self.TICK_INTERVAL_S)
-                    ray.get(self._self_handle.tick.remote())
+    async def _tick_loop(self):
+        """Internal background loop for periodic operations."""
+        while True:
+            await asyncio.sleep(self.TICK_INTERVAL_S)
+            try:
+                self._merge_and_send_requests()
+                self._update_cluster_node_resources()
+                self._reallocate_resources()
+            except Exception:
+                logger.exception("Error in autoscaling coordinator tick loop")
 
-            self._tick_thread = threading.Thread(target=tick_thread_run, daemon=True)
-            self._tick_thread.start()
-
-    def tick(self):
-        """Used to perform periodical operations, e.g., purge expired requests,
-        merge and send requests, check cluster resource updates, etc."""
+    async def tick(self):
+        """External tick method - kept for API compatibility with tests."""
         self._merge_and_send_requests()
         self._update_cluster_node_resources()
         self._reallocate_resources()
 
-    def request_resources(
+    async def request_resources(
         self,
         requester_id: str,
         resources: List[ResourceDict],
@@ -313,7 +322,7 @@ class _AutoscalingCoordinatorActor:
             self._merge_and_send_requests()
             self._reallocate_resources()
 
-    def cancel_request(
+    async def cancel_request(
         self,
         requester_id: str,
     ):
@@ -340,7 +349,7 @@ class _AutoscalingCoordinatorActor:
             merged_req.extend(req.requested_resources)
         ray.autoscaler.sdk.request_resources(bundles=merged_req)
 
-    def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
+    async def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
         """Get the allocated resources for the requester."""
         if requester_id not in self._ongoing_reqs:
             return []
