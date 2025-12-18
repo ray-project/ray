@@ -2096,11 +2096,11 @@
     byod:
       type: gpu
       post_build_script: byod_rllib.sh
-    cluster_compute: cpu_single_node.yaml
+    cluster_compute: single_gpu_single_node.yaml
 
   run:
     timeout: 3000  # expected 2000 seconds
-    script: python example_algorithms/appo/stateless_cartpole_appo_with_lstm.py --num-learners=1 --as-release-test
+    script: python example_algorithms/appo/stateless_cartpole_appo_with_lstm.py --num-learners=1 --num-gpus-per-learner=1 --as-release-test
 
 - name: rllib_tictactoe_local
   python: "3.10"
@@ -2113,7 +2113,7 @@
   cluster:
     byod:
       post_build_script: byod_rllib.sh
-    cluster_compute: single_gpu_single_node.yaml
+    cluster_compute: cpu_single_node.yaml
 
   run:
     timeout: 3000  # expected 2000 seconds
@@ -2153,7 +2153,7 @@
 
   run:
     timeout: 3000  # expected 2000 seconds
-    script: python example_algorithms/appo/tictactoe_appo.py --num-learners=2 --num-env-runners=10 --as-release-test
+    script: python example_algorithms/appo/tictactoe_appo.py --num-learners=2 --num-env-runners=10 --num-gpus-per-learner=2 --as-release-test
 
 - name: rllib_atari_multi_gpu_single_node
   python: "3.10"
@@ -2171,7 +2171,7 @@
 
   run:
     timeout: 3000  # expected 2000 seconds
-    script: python example_algorithms/appo/atari_appo.py --num-learners=2 --num-env-runners=10 --as-release-test
+    script: python example_algorithms/appo/atari_appo.py --num-learners=2 --num-env-runners=10 --num-gpus-per-learner=2 --as-release-test
 
 - name: rllib_atari_multi_gpu_multi_node
   python: "3.10"
@@ -2189,7 +2189,7 @@
 
   run:
     timeout: 3000  # expected 2000 seconds
-    script: python example_algorithms/appo/atari_appo.py --num-learners=2 --num-env-runners=10 --as-release-test
+    script: python example_algorithms/appo/atari_appo.py --num-learners=2 --num-env-runners=10 --num-gpus-per-learner=2 --as-release-test
 
 ########################
 # Core Nightly Tests
