@@ -1,0 +1,19 @@
+# Ray CPU Image
+# Installs ray wheel into the CPU base image
+#
+# This produces the final rayproject/ray image for CPU-only deployments.
+#
+name: "ray-py$PYTHON_VERSION-cpu$ARCH_SUFFIX"
+froms:
+  - "@ray-py$PYTHON_VERSION-cpu-base$ARCH_SUFFIX"  # CPU base image with Python + deps
+  - "@ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"     # Ray wheel
+dockerfile: ci/docker/ray-image.Dockerfile
+srcs:
+  - python/requirements_compiled.txt
+build_args:
+  - PYTHON_VERSION
+  - ARCH_SUFFIX
+  - BASE_IMAGE=ray-py$PYTHON_VERSION-cpu-base$ARCH_SUFFIX
+  - RAY_WHEEL_IMAGE=ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX
+tags:
+  - cr.ray.io/rayproject/ray:nightly-py$PYTHON_VERSION-cpu$ARCH_SUFFIX
