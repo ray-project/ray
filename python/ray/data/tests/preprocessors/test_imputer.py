@@ -178,8 +178,8 @@ def test_simple_imputer():
 def test_most_frequent_tie_breaking():
     """Test that ties in most_frequent strategy are broken deterministically.
 
-    When multiple values have the same frequency, the lexicographically largest
-    value should be chosen consistently.
+    When multiple values have the same frequency, we should break the tie
+    lexicographically.
     """
     # Test with numeric ties - should pick lexicographically largest (2 > 1 as strings)
     numeric_tie_df = pd.DataFrame({"A": [1, 1, 2, 2]})
@@ -225,14 +225,12 @@ def test_most_frequent_tie_breaking():
             "most_frequent(C)": "z"
         }, f"Failed with {num_partitions} partitions"
 
-    # Test with mixed numeric values where string comparison matters
-    # e.g., 9 vs 10 - as strings "9" > "10", so 9 should be picked
+    # Test with mixed numeric values
     mixed_numeric_df = pd.DataFrame({"D": [9, 9, 10, 10]})
     mixed_numeric_ds = ray.data.from_pandas(mixed_numeric_df)
 
     mixed_imputer = SimpleImputer(["D"], strategy="most_frequent")
     mixed_imputer.fit(mixed_numeric_ds)
-    # "9" > "10" lexicographically, so 9 should be chosen
     assert mixed_imputer.stats_ == {"most_frequent(D)": 9}
 
 
