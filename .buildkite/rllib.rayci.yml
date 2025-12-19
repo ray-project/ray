@@ -125,32 +125,6 @@ steps:
         --python-version 3.10
     depends_on: rllibgpubuild
 
-  - label: ":brain: rllib: data tests"
-    tags:
-      - data
-      - rllib
-      - disabled  # Tests of this tag do not exist anymore.
-    instance_type: large
-    commands:
-      # learning tests with ray data (currently no tests)
-      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
-        --parallelism-per-worker 3
-        --only-tags learning_tests_with_ray_data
-        --except-tags gpu,multi_gpu,manual
-        --test-arg --framework=torch
-        --build-name rllibbuild-py3.10
-        --python-version 3.10
-
-      # ray data tests (currently tested twice as they are all tagged core or offline and run above in component testing)
-      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
-        --parallelism-per-worker 3
-        --only-tags ray_data
-        --except-tags learning_tests_with_ray_data,gpu,multi_gpu,manual
-        --build-name rllibbuild-py3.10
-        --python-version 3.10
-        --skip-ray-installation # reuse the same docker image as the previous run
-    depends_on: rllibbuild
-
   - label: ":brain: rllib: doc tests"
     tags:
       - rllib_directly
@@ -227,7 +201,7 @@ steps:
     commands:
       # torch
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib --run-flaky-tests
-        --only-tags learning_tests,learning_tests_with_ray_data
+        --only-tags learning_tests
         --except-tags gpu,multi_gpu,manual
         --test-arg --framework=torch
         --build-name rllibbuild-py3.10

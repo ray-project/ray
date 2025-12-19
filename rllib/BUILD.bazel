@@ -13,8 +13,6 @@
 # - Learning tests/regression, tagged:
 # -- "learning_tests": Tests for an algorithms expected return
 # -- "learning_tests_with_all_core":
-# -- "ray_data": Tests that rely on ray_data.
-# -- "learning_tests_with_ray_data": Learning tests that rely on ray_data.
 
 # - Folder-bound tests, tagged with the name of the top-level dir:
 #   - `env` directory tests.
@@ -2445,7 +2443,6 @@ py_test(
     tags = [
         "core",
         "exclusive",
-        "ray_data",
         "team:rllib",
     ],
 )
@@ -2457,7 +2454,6 @@ py_test(
     tags = [
         "core",
         "exclusive",
-        "ray_data",
         "team:rllib",
     ],
 )
@@ -2548,7 +2544,6 @@ py_test(
     data = ["offline/tests/data/cartpole/small.json"],
     tags = [
         "offline",
-        "ray_data",
         "team:rllib",
     ],
 )
