@@ -13,7 +13,7 @@ from ray.train.constants import (
     JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S,
 )
 from ray.util import PublicAPI
-from ray.util.tpu import get_tpu_coordinator_env_vars
+from ray.util.tpu import get_tpu_coordinator_env_vars, get_tpu_worker_resources
 
 logger = logging.getLogger(__name__)
 
@@ -119,14 +119,30 @@ class _JaxBackend(Backend):
         master_addr_with_port = f"{master_addr}:{master_port}"
         num_slices = backend_config.num_slices
 
+        # Calculate the number of workers per slice for multi-slice env setup.
+        if backend_config.use_tpu and num_slices > 1:
+            scaling_config = worker_group._train_run_context.scaling_config
+
+            # Handle the case where a user requests less workers than the total
+            # capacity of the TPU slice.
+            total_capacity, _ = get_tpu_worker_resources(
+                topology=scaling_config.topology,
+                accelerator_type=scaling_config.accelerator_type,
+                resources_per_unit=scaling_config.resources_per_worker,
+                num_slices=num_slices,
+            )
+            workers_per_slice = total_capacity // num_slices
+        else:
+            # Assume even distribution based on the requested number of workers.
+            workers_per_slice = max(1, len(worker_group) // num_slices)
+
         # Set up JAX distributed environment on all workers
         num_workers_total = len(worker_group)
-        num_workers_per_slice = max(1, num_workers_total // num_slices)
         setup_futures = []
         for i in range(num_workers_total):
             env_vars = {}
             if num_slices > 1:
-                slice_id = min(i // num_workers_per_slice, num_slices - 1)
+                slice_id = min(i // workers_per_slice, num_slices - 1)
                 env_vars = get_tpu_coordinator_env_vars(
                     coordinator_address=master_addr,
                     num_slices=num_slices,

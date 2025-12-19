@@ -407,6 +407,58 @@ def test_multi_slice_manual_resources(ray_tpu_multi_host, tmp_path):
     assert list({r["MEGASCALE_SLICE_ID"] for r in slice_b_reports}) == ["1"]
 
 
+def test_tpu_multi_slice_under_subscription(ray_tpu_multi_host, tmp_path):
+    """
+    Tests multi-slice execution where the number of workers requested is less
+    than the total physical capacity of the slices.
+
+    For example, if the cluster has 2 slices with a capacity of 8 workers per slice
+    (16 total) and the user requests num_slices=2 but only num_workers=4, all 4
+    workers will be placed on the first slice. This test validates that all workers
+    correctly report the same MEGASCALE_SLICE_ID, rather than being split across multiple
+    logical slice IDs.
+    """
+    actor_name = "test_tpu_multi_slice_under_subscription"
+    verify_actor = VerificationActor.options(name=actor_name).remote()
+
+    trainer = JaxTrainer(
+        train_loop_per_worker=train_func,
+        scaling_config=ScalingConfig(
+            use_tpu=True,
+            accelerator_type="TPU-V4",
+            topology="2x2x2",
+            num_slices=2,
+            resources_per_worker={
+                "TPU": 1
+            },  # 1 TPU per worker. Capacity is 8 per slice.
+            num_workers=4,
+        ),
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            callbacks=[CustomMetricsCallback(actor_name)],
+            worker_runtime_env={"env_vars": {"JAX_PLATFORMS": "cpu"}},
+        ),
+    )
+    result = trainer.fit()
+    assert result.error is None
+
+    reports = ray.get(verify_actor.get_reports.remote())
+
+    assert len(reports) == 4, f"Expected 4 workers, got {len(reports)}"
+
+    # All 4 workers should be on same slice.
+    slices_used = {r["slice_name"] for r in reports}
+    assert len(slices_used) == 1
+    assert list(slices_used)[0] in ["slice-A", "slice-B"]
+
+    # Verify ID assignment matches physical placement.
+    slice_ids = {r["MEGASCALE_SLICE_ID"] for r in reports}
+    assert slice_ids == {"0"}
+
+    # Verify MEGASCALE_NUM_SLICES is still reported as 2.
+    assert all(r["MEGASCALE_NUM_SLICES"] == "2" for r in reports)
+
+
 def test_scaling_config_validation():
     with pytest.raises(
         ValueError, match="Cannot set `label_selector` when `use_tpu=True`"
