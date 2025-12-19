@@ -196,7 +196,8 @@ repos:
     rev: v3.4.1
     hooks:
       - id: vale
-        files: ^doc/source/data/.*\.(md|rst)$
+        args: [--output=line, --minAlertLevel=error]
+        files: ^doc/source/.*\.(md|rst)$
 
   - repo: https://github.com/MarcoGorelli/cython-lint
     rev: v0.18.1
