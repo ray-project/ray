@@ -80,13 +80,13 @@ parser.add_argument(
 parser.add_argument(
     "--binary-download-dir",
     type=Path,
-    default="./tmp/ray/binaries/footsies",
+    default="/tmp/ray/binaries/footsies",
     help="Directory to download Footsies binaries (default: /tmp/ray/binaries/footsies)",
 )
 parser.add_argument(
     "--binary-extract-dir",
     type=Path,
-    default="./tmp/ray/binaries/footsies",
+    default="/tmp/ray/binaries/footsies",
     help="Directory to extract Footsies binaries (default: /tmp/ray/binaries/footsies)",
 )
 parser.add_argument(
