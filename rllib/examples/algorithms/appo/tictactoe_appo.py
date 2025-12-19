@@ -27,10 +27,10 @@ To run with default settings:
 `python tictactoe_appo.py`
 
 To scale up with distributed learning using multiple learners and env-runners:
-`python atari_appo.py --num-learners=2 --num-env-runners=8`
+`python tictactoe_appo.py --num-learners=2 --num-env-runners=8`
 
 To use a GPU-based learner add the number of GPUs per learners:
-`python atari_appo.py --num-learners=1 --num-gpus-per-learner=1`
+`python tictactoe_appo.py --num-learners=1 --num-gpus-per-learner=1`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0 --num-learners=0`
