@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type
 
 from ray._private.arrow_utils import get_pyarrow_version
-from ray.air.util.transform_pyarrow import _is_pa_extension_type
+from ray.air.util.transform_pyarrow import _is_native_tensor_type, _is_pa_extension_type
 from ray.data._internal.arrow_block import ArrowBlockAccessor, ArrowBlockBuilder
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES,
@@ -318,8 +318,10 @@ class JoiningShuffleAggregation(StatefulShuffleAggregation):
             col: "pa.ChunkedArray" = table.column(idx)
             col_type: "pa.DataType" = col.type
 
-            if _is_pa_extension_type(col_type) or self._is_pa_join_not_supported(
-                col_type
+            if (
+                _is_pa_extension_type(col_type)
+                or _is_native_tensor_type(col_type)
+                or self._is_pa_join_not_supported(col_type)
             ):
                 unsupported.append(idx)
             else:

@@ -547,6 +547,17 @@ def get_arrow_extension_tensor_types():
 
 
 @DeveloperAPI
+def get_arrow_native_fixed_shape_tensor_types():
+    """Returns list of Arrow extension types holding multidimensional
+    tensors of *fixed* shape
+    """
+    types = (ArrowTensorType, ArrowTensorTypeV2)
+    if FixedShapeTensorType is not None:
+        types = types + (FixedShapeTensorType,)
+    return types
+
+
+@DeveloperAPI
 def get_arrow_extension_fixed_shape_tensor_types():
     """Returns list of Arrow extension types holding multidimensional
     tensors of *fixed* shape
@@ -644,7 +655,7 @@ class _BaseFixedShapeArrowTensorType(
         """
         Convert an ExtensionScalar to a tensor element.
         """
-        return _fixed_shape_extension_scalar_to_ndarray(scalar)
+        return fixed_shape_extension_scalar_to_ndarray(scalar)
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__}(shape={self.shape}, dtype={self.storage_type.value_type})"
@@ -668,7 +679,8 @@ class _BaseFixedShapeArrowTensorType(
         return hash((self.extension_name, self.value_type, self._shape))
 
 
-def _fixed_shape_extension_scalar_to_ndarray(
+@DeveloperAPI
+def fixed_shape_extension_scalar_to_ndarray(
     scalar: "pa.ExtensionScalar",
 ) -> np.ndarray:
     """

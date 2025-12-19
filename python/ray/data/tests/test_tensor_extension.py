@@ -20,8 +20,8 @@ from ray.air.util.tensor_extensions.arrow import (
     _are_contiguous_1d_views,
     _concat_ndarrays,
     _extension_array_concat_supported,
-    _fixed_shape_extension_scalar_to_ndarray,
     concat_tensor_arrays,
+    fixed_shape_extension_scalar_to_ndarray,
     unify_tensor_arrays,
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
@@ -595,7 +595,7 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
             else:
                 # Returns an ExtensionScalar, item.type: FixedShapeTensorType
                 np.testing.assert_array_equal(
-                    _fixed_shape_extension_scalar_to_ndarray(item), arr[idx]
+                    fixed_shape_extension_scalar_to_ndarray(item), arr[idx]
                 )
 
             # NOTE: In addition we verify that for existing ``ArrowTensorScalar``
@@ -612,7 +612,7 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
         else:
             # Returns an ExtensionScalar
             np.testing.assert_array_equal(
-                _fixed_shape_extension_scalar_to_ndarray(t_subarr), subarr
+                fixed_shape_extension_scalar_to_ndarray(t_subarr), subarr
             )
 
     # Test to_pylist.
@@ -659,7 +659,7 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
             else:
                 # Returns an ExtensionScalar
                 np.testing.assert_array_equal(
-                    _fixed_shape_extension_scalar_to_ndarray(item), arr[idx]
+                    fixed_shape_extension_scalar_to_ndarray(item), arr[idx]
                 )
 
 

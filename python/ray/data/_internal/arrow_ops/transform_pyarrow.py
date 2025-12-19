@@ -145,10 +145,14 @@ def take_table(
     """
     from ray.air.util.transform_pyarrow import (
         _concatenate_extension_column,
+        _is_native_tensor_type,
         _is_pa_extension_type,
     )
 
-    if any(_is_pa_extension_type(col.type) for col in table.columns):
+    if any(
+        _is_pa_extension_type(col.type) or _is_native_tensor_type(col.type)
+        for col in table.columns
+    ):
         new_cols = []
         for col in table.columns:
             if _is_pa_extension_type(col.type) and col.num_chunks > 1:
