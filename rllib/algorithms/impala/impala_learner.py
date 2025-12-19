@@ -1,7 +1,7 @@
 import logging
 import queue
-from queue import Queue
 import threading
+from queue import Queue
 from typing import Any, Dict, List
 
 import ray
