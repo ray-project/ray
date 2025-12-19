@@ -1,5 +1,4 @@
 import logging
-from collections import Counter
 from numbers import Number
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
@@ -243,28 +242,21 @@ def _get_most_frequent_values(
     agg_fns = [ValueCounter(on=col) for col in columns]
     aggregated_counts = dataset.aggregate(*agg_fns)
 
-    # Convert ValueCounter results to Counter objects
-    final_counters = {}
+    result = {}
     for col in columns:
         value_counter_key = f"value_counter({col})"
         value_counts = aggregated_counts[value_counter_key]
-        # Create Counter from the values and counts lists
-        final_counters[col] = Counter(
-            dict(zip(value_counts["values"], value_counts["counts"]))
-        )
 
-    # Get the most frequent value for each column, with ties broken lexicographically
-    result = {}
-    for column in columns:
-        counter = final_counters[column]
-        max_count = max(counter.values())
-        # Get all values with the maximum count and lexicographically
-        # This is to ensure that the order of the categories is consistent
-        # across different runs when there is a tie in frequency.
-        most_frequent = sorted(
-            (value for value, count in counter.items() if count == max_count),
-            key=str,
-        )[-1]
-        result[key_gen(column)] = most_frequent
+        # Single pass: find most frequent, break ties lexicographically (largest)
+        values = value_counts["values"]
+        counts = value_counts["counts"]
+
+        # O(n) - no sorting needed
+        most_frequent = max(
+            zip(values, counts),
+            key=lambda x: (x[1], str(x[0])),  # (count, lexicographic)
+        )[0]
+
+        result[key_gen(col)] = most_frequent
 
     return result
