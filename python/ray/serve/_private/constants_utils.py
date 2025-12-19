@@ -305,7 +305,7 @@ def warn_if_deprecated_env_var_set(name: str) -> None:
     if name in _fully_deprecated_env_vars and os.environ.get(name):
         config_option = _fully_deprecated_env_vars[name]
         warnings.warn(
-            f"`{name}` environment variable is deprecated and will be ignored. "
+            f"`{name}` environment variable will be deprecated in the future. "
             f"Use `{config_option}` in the Serve config instead.",
             DeprecationWarning,
             stacklevel=2,

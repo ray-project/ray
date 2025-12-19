@@ -7,6 +7,7 @@ from ray.serve._private.constants_utils import (
     get_env_float_non_negative,
     get_env_float_positive,
     get_env_int,
+    get_env_int_non_negative,
     get_env_int_positive,
     get_env_str,
     parse_latency_buckets,
@@ -301,7 +302,9 @@ SERVE_LOG_UNWANTED_ATTRS = {
     "skip_context_filter",
 }
 
-RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = 0
+RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = get_env_int_non_negative(
+    "RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S", 0
+)
 
 RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = 0.0
 
