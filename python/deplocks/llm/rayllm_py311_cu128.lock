@@ -1,8 +1,5 @@
 --index-url https://pypi.org/simple
 --extra-index-url https://download.pytorch.org/whl/cu128
---find-links https://wheels.vllm.ai/7d80c73d4277187d0468f15a22bba959ce853261/cu129/vllm/
---find-links https://wheels.vllm.ai/7d80c73d4277187d0468f15a22bba959ce853261/cu129/vllm/
---find-links https://wheels.vllm.ai/7d80c73d4277187d0468f15a22bba959ce853261/cu129/vllm/
 
 aiohappyeyeballs==2.6.1 \
     --hash=sha256:c3f9d0113123803ccadfdf3f0faa505bc78e6a72d1cc4806cbd719826e943558 \
@@ -139,14 +136,17 @@ anthropic==0.71.0 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
     #   vllm
-anyio==3.7.1 \
-    --hash=sha256:44a3c9aba0f5defa43261a8b3efb97891f2bd7d804e0e1f56419befa1adfc780 \
-    --hash=sha256:91dee416e570e92c64041bd18b900d1d6fa78dff7048769ce5ac5ddad004fbb5
+anyio==4.12.0 \
+    --hash=sha256:73c693b567b0c55130c104d0b43a9baf3aa6a31fc6110116509f27bf75e21ec0 \
+    --hash=sha256:dad2376a628f98eeca4881fc56cd06affd18f659b17a747d3ff0307ced94b1bb
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+    #   -r python/requirements/llm/llm-requirements.txt
     #   anthropic
     #   httpx
+    #   mcp
     #   openai
+    #   sse-starlette
     #   starlette
     #   watchfiles
 apache-tvm-ffi==0.1.2 \
@@ -1365,8 +1365,15 @@ httpx==0.28.1 \
     #   anthropic
     #   fastapi
     #   fastapi-cloud-cli
+    #   mcp
     #   model-hosting-container-standards
     #   openai
+httpx-sse==0.4.3 \
+    --hash=sha256:0ac1c9fe3c0afad2e0ebb25a934a59f4c7823b60792691f779fad2c5568830fc \
+    --hash=sha256:9b1ed0127459a66014aec3c56bebd93da3c1bc8bb6618c8082039a44889a755d
+    # via
+    #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+    #   mcp
 huggingface-hub==0.34.3 \
     --hash=sha256:5444550099e2d86e68b2898b09e85878fbd788fc2957b506c6a79ce060e39492 \
     --hash=sha256:d58130fd5aa7408480681475491c0abd7e835442082fbc3ef4d45b6c39f83853
@@ -1803,6 +1810,12 @@ markupsafe==2.1.3 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
     #   jinja2
+mcp==1.1.3 \
+    --hash=sha256:71462d6cd7c06c14689dfcf110ff22286ba1b608cfc3515c0a5cbe33d131731a \
+    --hash=sha256:af11018b8e9153cdd25f3722ec639fe7a462c00213a330fd6f593968341a9883
+    # via
+    #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+    #   vllm
 mdit-py-plugins==0.3.5 ; sys_platform != 'win32' \
     --hash=sha256:ca9a0714ea59a24b2b044a1831f48d817dd0c817e84339f20e7889f392d77c4e \
     --hash=sha256:eee0adc7195e5827e17e02d2a258a2ba159944a0748f59c5099a4a27f78fcf6a
@@ -3044,6 +3057,7 @@ pydantic==2.12.4 \
     #   fastapi
     #   fastapi-cloud-cli
     #   lm-format-enforcer
+    #   mcp
     #   mistral-common
     #   model-hosting-container-standards
     #   openai
@@ -4118,7 +4132,6 @@ sniffio==1.3.1 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
     #   anthropic
-    #   anyio
     #   openai
 soundfile==0.13.1 \
     --hash=sha256:03267c4e493315294834a0870f31dbb3b28a95561b80b134f0bd3cf2d5f0e618 \
@@ -4160,6 +4173,12 @@ soxr==0.5.0.post1 \
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
     #   librosa
     #   mistral-common
+sse-starlette==3.0.4 \
+    --hash=sha256:32c80ef0d04506ced4b0b6ab8fe300925edc37d26f666afb1874c754895f5dc3 \
+    --hash=sha256:5e34286862e96ead0eb70f5ddd0bd21ab1f6473a8f44419dd267f431611383dd
+    # via
+    #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+    #   mcp
 starlette==0.49.1 \
     --hash=sha256:481a43b71e24ed8c43b11ea02f5353d77840e01480881b8cb5a26b8cae64a8cb \
     --hash=sha256:d92ce9f07e4a3caa3ac13a79523bd18e3bc0042bb8ff2d759a8e7dd0e1859875
@@ -4167,8 +4186,10 @@ starlette==0.49.1 \
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
     #   -r python/requirements.txt
     #   fastapi
+    #   mcp
     #   model-hosting-container-standards
     #   prometheus-fastapi-instrumentator
+    #   sse-starlette
 supervisor==4.3.0 \
     --hash=sha256:0bcb763fddafba410f35cbde226aa7f8514b9fb82eb05a0c85f6588d1c13f8db \
     --hash=sha256:4a2bf149adf42997e1bb44b70c43b613275ec9852c3edacca86a9166b27e945e
@@ -4350,7 +4371,6 @@ transformers==4.57.3 \
     --hash=sha256:df4945029aaddd7c09eec5cad851f30662f8bd1746721b34cc031d70c65afebc
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
-    #   -r python/requirements/llm/llm-requirements.txt
     #   compressed-tensors
     #   vllm
     #   xgrammar
@@ -4374,6 +4394,7 @@ typing-extensions==4.15.0 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
     #   anthropic
+    #   anyio
     #   apache-tvm-ffi
     #   fastapi
     #   gymnasium
@@ -4487,8 +4508,10 @@ virtualenv==20.29.1 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
     #   -r python/requirements.txt
-vllm==0.11.2.dev720+g7d80c73d4 \
-    --hash=sha256:c6f67c29592ad2daf55a1dd323978c0a5ab14ba341aeda8733055ced50241a52
+vllm==0.13.0 \
+    --hash=sha256:12b3d0a3b91c32a0091349de64b464f1c3d499a5b3a5d0ec387fef94ed5df6ee \
+    --hash=sha256:464b722c5c5d67a39593ada4a228f7558e860a732cb74a3bfa61c1b442b57581 \
+    --hash=sha256:4ad43db45fef37114b550d03a4f423fb3fa3a31d8bc09ee810ef8b9cdcd4b5fe
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
     #   -r python/requirements/llm/llm-requirements.txt

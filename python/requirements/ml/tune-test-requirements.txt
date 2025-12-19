@@ -1,6 +1,6 @@
 aim==3.23.0; python_version < "3.12"
 
-jupyterlab==3.6.1
+jupyterlab>=4.0.0
 matplotlib!=3.4.3
 
 pytest-remotedata==0.3.2
