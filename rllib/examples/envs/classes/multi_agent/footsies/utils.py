@@ -273,25 +273,16 @@ class MixManagerCallback(RLlibCallback):
                 ]
             ).agent_to_module_mapping_fn
 
-            # update (training) env runners with the new mapping function
-            algorithm.env_runner_group.foreach_env_runner(
-                lambda er: er.config.multi_agent(policy_mapping_fn=new_mapping_fn),
-                local_env_runner=True,
-            )
-
-            # update (eval) env runners with the new mapping function
-            algorithm.eval_env_runner_group.foreach_env_runner(
-                lambda er: er.config.multi_agent(policy_mapping_fn=new_mapping_fn),
-                local_env_runner=True,
-            )
-
+            # STEP 1: Add the new module first (if it's a trained module)
             if new_module_id not in self.fixed_modules_progression_sequence:
+                # Add module to Learners and EnvRunners (but don't update mapping yet)
                 algorithm.add_module(
                     module_id=new_module_id,
                     module_spec=new_module_spec,
-                    new_agent_to_module_mapping_fn=new_mapping_fn,
+                    new_agent_to_module_mapping_fn=None,  # Don't update mapping yet!
                 )
-                # newly added trained policy should be initialized with the state of the main policy
+
+                # Initialize the new module with main policy's weights
                 algorithm.set_state(
                     {
                         "learner_group": {
@@ -303,7 +294,53 @@ class MixManagerCallback(RLlibCallback):
                         },
                     }
                 )
-            # we added a new RL Module, so we need to update the current mix list.
+
+                # STEP 2: CRITICAL - Update aggregator actors with the new module
+                # Aggregators run the learner connector pipeline which needs all modules.
+                if (
+                    hasattr(algorithm, "_aggregator_actor_manager")
+                    and algorithm._aggregator_actor_manager
+                ):
+                    logger.info(
+                        f"RLlib {self.__class__.__name__}: Updating aggregator actors "
+                        f"with new module '{new_module_id}'..."
+                    )
+
+                    # Add the new module to each aggregator actor's MultiRLModule
+                    algorithm._aggregator_actor_manager.foreach_actor(
+                        func=lambda actor, mid=new_module_id, spec=new_module_spec: (
+                            actor._module.add_module(
+                                module_id=mid,
+                                module=spec.build(),
+                            )
+                        )
+                    )
+
+                    # Sync weights from learner to aggregator actors
+                    weights = algorithm.learner_group.get_weights(
+                        module_ids=[new_module_id]
+                    )
+                    algorithm._aggregator_actor_manager.foreach_actor(
+                        func=lambda actor, w=weights: actor._module.set_state(w)
+                    )
+
+                    logger.info(
+                        f"RLlib {self.__class__.__name__}: Aggregator actors updated successfully."
+                    )
+
+            # STEP 3: NOW update the policy mapping function on all EnvRunners
+            # At this point, the module exists everywhere (Learners, EnvRunners, Aggregators)
+            algorithm.env_runner_group.foreach_env_runner(
+                lambda er: er.config.multi_agent(policy_mapping_fn=new_mapping_fn),
+                local_env_runner=True,
+            )
+
+            algorithm.eval_env_runner_group.foreach_env_runner(
+                lambda er: er.config.multi_agent(policy_mapping_fn=new_mapping_fn),
+                local_env_runner=True,
+            )
+
+            # Update the current mix list
             self.modules_in_mix.append(new_module_id)
 
         else:
