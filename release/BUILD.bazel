@@ -438,6 +438,7 @@ py_library(
     ]) + [
         "ray_release/buildkite/aws_instance_types.csv",
         "ray_release/schema.json",
+        "//doc:asynchronous_inference_example_configs",
         "//doc:deployment_serve_llm_example_configs",
         "//doc:example_configs",
         "//doc/source/data/examples:data_example_configs",
