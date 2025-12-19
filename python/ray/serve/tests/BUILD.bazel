@@ -171,7 +171,7 @@ py_test_module_list(
 
 # Large tests.
 py_test_module_list(
-    size = "large",
+    size = "enormous",
     files = [
         "test_autoscaling_policy.py",
         "test_deploy.py",
@@ -470,7 +470,7 @@ py_test_module_list(
 
 # Large tests with pack scheduling
 py_test_module_list(
-    size = "large",
+    size = "enormous",
     env = {"RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1"},
     files = [
         "test_standalone.py",
