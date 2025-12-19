@@ -15,9 +15,6 @@ from ray.dashboard.modules.job.sdk import JobSubmissionClient
 from ray.exceptions import AuthenticationError
 from ray.util.state import StateApiClient
 
-# Each test starts a full Ray cluster, so we need a longer timeout
-pytestmark = [pytest.mark.timeout(360)]
-
 
 def test_submission_client_adds_token_automatically(setup_cluster_with_token_auth):
     """Test that SubmissionClient automatically adds token to headers."""
