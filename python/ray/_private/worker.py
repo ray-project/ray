@@ -3287,14 +3287,9 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
             "Got: {}.".format(type(actor))
         )
 
-    # Attempt to kill the actor. If the actor handle is from a previous session,
-    # the C++ code will return NotFound status which will be converted to ActorHandleNotFoundError.
-    # We catch it here to provide a more helpful error message with job ID context.
     try:
         worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
     except ActorHandleNotFoundError as e:
-        # Preserve the original exception type (it's already a ValueError subclass),
-        # but provide a more helpful error message with job ID context.
         actor_job_id = actor._ray_actor_id.job_id
         current_job_id = worker.current_job_id
         raise ActorHandleNotFoundError(

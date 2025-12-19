@@ -494,7 +494,8 @@ def test_kill_actor_after_restart(shutdown_only):
     # Attempting to kill an actor from the previous session should raise
     # a helpful error message instead of crashing the interpreter.
     with pytest.raises(
-        ValueError, match="ActorHandle objects are not valid across Ray sessions"
+        ray.exceptions.ActorHandleNotFoundError,
+        match="ActorHandle objects are not valid across Ray sessions",
     ):
         ray.kill(a)
 
