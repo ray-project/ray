@@ -30,4 +30,4 @@ Open this in the browser. You should see the following output:
   # TYPE ray_num_requests_total counter
   ray_num_requests_total{Component="core_worker",Version="3.0.0.dev0",actor_name="my_actor"} 2.0
 
-Please see :ref:`ray.util.metrics <custom-metric-api-ref>` for more details.
+See :ref:`ray.util.metrics <custom-metric-api-ref>` for more details.

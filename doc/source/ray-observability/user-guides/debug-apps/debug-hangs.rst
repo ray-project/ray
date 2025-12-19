@@ -10,7 +10,7 @@ The :ref:`Ray dashboard <observability-getting-started>`  lets you profile Ray D
    :align: center
    :width: 80%
 
-Clicking "Stack Trace" will return the current stack trace sample using ``py-spy``. By default, only the Python stack
+Clicking "Stack Trace" returns the current stack trace sample using ``py-spy``. By default, only the Python stack
 trace is shown. To show native code frames, set the URL parameter ``native=1`` (only supported on Linux).
 
 .. image:: /images/stack.png
@@ -26,8 +26,8 @@ trace is shown. To show native code frames, set the URL parameter ``native=1`` (
 .. note::
    The following errors are conditional and not signals of failures for your Python programs:
 
-   * If you see "No such file or direction", check if your worker process has exited.
-   * If you see "No stack counts found", check if your worker process was sleeping and not active in the last 5s.
+   * If you see "No such file or direction," check if your worker process has exited.
+   * If you see "No stack counts found," check if your worker process was sleeping and not active in the last 5 s.
 
 .. _`py-spy documentation`: https://github.com/benfred/py-spy#how-do-i-run-py-spy-in-docker
 
@@ -39,7 +39,7 @@ Once ``py-spy`` is installed (it is automatically installed if "Ray Dashboard" c
 the current node.
 
 This document discusses some common problems that people run into when using Ray
-as well as some known problems. If you encounter other problems, please
+as well as some known problems. If you encounter other problems,
 `let us know`_.
 
 .. _`let us know`: https://github.com/ray-project/ray/issues

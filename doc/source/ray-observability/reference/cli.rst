@@ -11,7 +11,7 @@ This section contains commands to access the :ref:`live state of Ray resources (
 
     APIs are :ref:`alpha <api-stability-alpha>`. This feature requires a full installation of Ray using ``pip install "ray[default]"``. This feature also requires the dashboard component to be available. The dashboard component needs to be included when starting the ray cluster, which is the default behavior for ``ray start`` and ``ray.init()``. For more in-depth debugging, you could check the dashboard log at ``<RAY_LOG_DIR>/dashboard.log``, which is usually ``/tmp/ray/session_latest/logs/dashboard.log``.
 
-State CLI allows users to access the state of various resources (e.g., actor, task, object).
+State CLI allows users to access the state of various resources (for example, actor, task, object).
 
 .. click:: ray.util.state.state_cli:task_summary
    :prog: ray summary tasks

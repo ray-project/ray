@@ -144,7 +144,7 @@ For example, suppose you define a remote function ``f`` and then redefine it; Ra
 
 However, there are cases where modifying a remote function doesn't take effect without restarting the cluster:
 
-— **Imported function issue:** If ``f`` is defined in an external file (e.g., ``file.py``), and you modify its definition, re-importing the file may be ignored because Python treats the subsequent import as a no-op. A solution is to use ``from importlib import reload; reload(file)`` instead of a second import.
+— **Imported function issue:** If ``f`` is defined in an external file (for example, ``file.py``), and you modify its definition, re-importing the file may be ignored because Python treats the subsequent import as a no-op. A solution is to use ``from importlib import reload; reload(file)`` instead of a second import.
 
 — **Helper function dependency:** If ``f`` depends on a helper function ``h`` defined in an external file, changes to ``h`` may not propagate. The easiest solution is to restart the Ray cluster. Alternatively, you can redefine ``f`` to reload ``file.py`` before invoking ``h``:
 
@@ -205,6 +205,6 @@ Example:
     # Capture the stack trace upon method invocation.
     counter.increment.remote()
 
-This document outlines common problems encountered when using Ray along with potential solutions. If you encounter additional issues, please report them.
+This document outlines common problems encountered when using Ray along with potential solutions. If you encounter additional issues, report them.
 
 .. _`let us know`: https://github.com/ray-project/ray/issues

@@ -122,7 +122,7 @@ Actor events
 
 For each actor, Ray exports two types of events: Actor Definition Events and Actor Lifecycle Events.
 
-* An Actor Definition Event contains the metadata of the actor when it is defined. See `src/ray/protobuf/public/events_actor_definition_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_actor_definition_event.proto>`_ for the event format.
+* An Actor Definition Event contains the metadata of the actor when it's defined. See `src/ray/protobuf/public/events_actor_definition_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_actor_definition_event.proto>`_ for the event format.
 * An Actor Lifecycle Event contains the actor state transition information and metadata associated with each transition. See `src/ray/protobuf/public/events_actor_lifecycle_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_actor_lifecycle_event.proto>`_ for the event format.
 
 .. code-block:: json
@@ -177,7 +177,7 @@ Driver job events
 
 For each driver job, Ray exports two types of events: Driver Job Definition Events and Driver Job Lifecycle Events.
 
-* A Driver Job Definition Event contains the metadata of the driver job when it is defined. See `src/ray/protobuf/public/events_driver_job_definition_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_driver_job_definition_event.proto>`_ for the event format.
+* A Driver Job Definition Event contains the metadata of the driver job when it's defined. See `src/ray/protobuf/public/events_driver_job_definition_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_driver_job_definition_event.proto>`_ for the event format.
 * A Driver Job Lifecycle Event contains the driver job state transition information and metadata associated with each transition. See `src/ray/protobuf/public/events_driver_job_lifecycle_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_driver_job_lifecycle_event.proto>`_ for the event format.
 
 .. code-block:: json
@@ -228,7 +228,7 @@ Node events
 
 For each node, Ray exports two types of events: Node Definition Events and Node Lifecycle Events.
 
-* A Node Definition Event contains the metadata of the node when it is defined. See `src/ray/protobuf/public/events_node_definition_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_node_definition_event.proto>`_ for the event format.
+* A Node Definition Event contains the metadata of the node when it's defined. See `src/ray/protobuf/public/events_node_definition_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_node_definition_event.proto>`_ for the event format.
 * A Node Lifecycle Event contains the node state transition information and metadata associated with each transition. See `src/ray/protobuf/public/events_node_lifecycle_event.proto <https://github.com/ray-project/ray/blob/master/src/ray/protobuf/public/events_node_lifecycle_event.proto>`_ for the event format.
 
 .. code-block:: json
