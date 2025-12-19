@@ -1337,7 +1337,7 @@ def test_arrow_extension_serialize_deserialize_cache():
         )
         assert mock_deserialize.call_count == 1
         assert deserialized1.shape == (2, 3)
-        assert deserialized1.scalar_type == pa.int64()
+        assert deserialized1.value_type == pa.int64()
 
         # Second deserialization with same key should use cache (no additional call)
         deserialized2 = ArrowTensorType.__arrow_ext_deserialize__(
@@ -1345,7 +1345,7 @@ def test_arrow_extension_serialize_deserialize_cache():
         )
         assert mock_deserialize.call_count == 1  # Still 1, proving cache hit
         assert deserialized1.shape == deserialized2.shape
-        assert deserialized1.scalar_type == deserialized2.scalar_type
+        assert deserialized1.value_type == deserialized2.scalar_type
         assert deserialized1.extension_name == deserialized2.extension_name
 
     # Test 3: Different serialized data produces different cache entries
