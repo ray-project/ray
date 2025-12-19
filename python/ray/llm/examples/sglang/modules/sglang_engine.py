@@ -240,11 +240,12 @@ class SGLangServer:
         deployment_options = copy.deepcopy(llm_config.deployment_config)
         pg_config = llm_config.placement_group_config or {}
 
+        tp_size = llm_config.engine_kwargs.get("tp_size", 1)
+
         if "placement_group_bundles" not in pg_config:
-            pg_bundles = [
-                {"CPU": 1, "GPU": 1},
-                {"GPU": 1},
-            ]
+            pg_bundles = [{"CPU": 1, "GPU": 1}]
+            if tp_size > 1:
+                pg_bundles.extend([{"GPU": 1} for _ in range(tp_size - 1)])
             pg_strategy = "PACK"
         else:
             pg_bundles = pg_config.get("placement_group_bundles")
