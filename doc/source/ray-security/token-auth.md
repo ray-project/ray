@@ -17,12 +17,12 @@ The process for generating and configuring authentication tokens differs dependi
 Other cluster launching methods require that you generate a token before starting the cluster. You can `ray get-auth-token [--generate]` to retrieve your existing token or generate a new one.
 
 :::{note}
-Authentication is disabled by default in Ray 2.52.0. Ray plans to enable token authentication by default in a future release. We recommend enabling token authentication to protect your cluster from unauthorized access.
+Authentication is disabled by default in Ray 2.52.0. Ray plans to enable token authentication by default in a future release. Consider enabling token authentication to protect your cluster from unauthorized access.
 :::
 
 ### What token does Ray use?
 
-You can configure authentication tokens using environment variables or the default path. We recommend using the default path when possible to reduce the chances of committing the token to version control.
+You can configure authentication tokens using environment variables or the default path. Use the default path when possible to reduce the chances of committing the token to version control.
 
 Ray checks for tokens in the following order, highest priority first:
 
@@ -30,16 +30,16 @@ Ray checks for tokens in the following order, highest priority first:
 2. `RAY_AUTH_TOKEN_PATH` environment variable, which provides a path to a token file.
 3. The default location, `~/.ray/auth_token`.
 
-When managing multiple tokens, we recommend storing them in local files and using the `RAY_AUTH_TOKEN_PATH` environment variable rather than setting the `RAY_AUTH_TOKEN` value directly to avoid exposing the token to other code that reads environment variables.
+When managing multiple tokens, store them in local files and use the `RAY_AUTH_TOKEN_PATH` environment variable rather than setting the `RAY_AUTH_TOKEN` value directly to avoid exposing the token to other code that reads environment variables.
 
 ## Security considerations
 
-Ray transmits the authentication token as an HTTP header, which is transmitted in plaintext when using insecure `http` connections. We recommend enabling some form of encryption whenever exposing a Ray cluster over the network. Consider the following:
+Ray transmits the authentication token as an HTTP header, which is transmitted in `plaintext` when using insecure `http` connections. Consider enabling some form of encryption whenever exposing a Ray cluster over the network:
 
 - **Local development**: Traffic doesn't leave your machine, so no additional security is needed.
-- **SSH tunneling**: Use SSH tunneling/port forwarding via the `ray dashboard` command or `kubectl port-forward`.
+- **SSH tunneling**: Use SSH tunneling/port forwarding through the `ray dashboard` command or `kubectl port-forward`.
 - **TLS termination**: Deploy a TLS proxy in front of your Ray cluster.
-- **VPN/Overlay networks**: Use network-level encryption for all traffic into and within the cluster.
+- **Virtual Private Network (VPN)/Overlay networks**: Use network-level encryption for all traffic into and within the cluster.
 
 :::{warning}
 Don't expose Ray clusters directly to the internet without encryption. Tokens alone don't protect against network eavesdropping.
@@ -47,7 +47,7 @@ Don't expose Ray clusters directly to the internet without encryption. Tokens al
 
 Tokens have the following properties:
 
-- Ray stores tokens by default in plaintext at `~/.ray/auth_token`.
+- Ray stores tokens by default in `plaintext` at `~/.ray/auth_token`.
 - Use file permissions to keep token files secure, especially in shared environments.
 - Don't commit tokens to version control.
 - Tokens don't expire. Your local token remains valid unless you delete and regenerate the token. Ray clusters use the same token for the lifetime of the cluster.
@@ -187,7 +187,7 @@ Run the following command to set up port forwarding for the Ray dashboard port (
 ray dashboard cluster.yaml
 ```
 
-Upon opening the dashboard, a prompt displays requesting your authentication token. To display the token in plaintext, you can run the following on your local machine:
+Upon opening the dashboard, a prompt displays requesting your authentication token. To display the token in `plaintext`, you can run the following on your local machine:
 
 ```bash
 export RAY_AUTH_MODE=token
