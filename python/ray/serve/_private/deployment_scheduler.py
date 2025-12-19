@@ -708,9 +708,21 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 if primary_bundles:
                     # PG: Use PG bundle_label_selector
                     if scheduling_request.placement_group_bundle_label_selector:
-                        primary_labels = (
-                            scheduling_request.placement_group_bundle_label_selector
+                        pg_strategy = (
+                            scheduling_request.placement_group_strategy or "PACK"
                         )
+                        if pg_strategy == "STRICT_PACK":
+                            # All bundle_label_selectors must be satisfied on same node.
+                            primary_labels = (
+                                scheduling_request.placement_group_bundle_label_selector
+                            )
+                        else:
+                            # Only the first bundle (where the replica actor lives) must be satisfied.
+                            primary_labels = [
+                                scheduling_request.placement_group_bundle_label_selector[
+                                    0
+                                ]
+                            ]
                 else:
                     # Actor: Use Actor label selector
                     if "label_selector" in scheduling_request.actor_options:
