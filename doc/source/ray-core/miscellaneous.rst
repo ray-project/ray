@@ -1,7 +1,7 @@
 Miscellaneous Topics
 ====================
 
-This page will cover some miscellaneous topics in Ray.
+This page covers some miscellaneous topics in Ray.
 
 .. contents::
   :local:
@@ -11,7 +11,7 @@ Dynamic Remote Parameters
 
 You can dynamically adjust resource requirements or return values of ``ray.remote`` during execution with ``.options``.
 
-For example, here we instantiate many copies of the same actor with varying resource requirements. Note that to create these actors successfully, Ray will need to be started with sufficient CPU resources and the relevant custom resources:
+For example, the following code instantiates many copies of the same actor with varying resource requirements. Note that to create these actors successfully, Ray needs to be started with sufficient CPU resources and the relevant custom resources:
 
 .. testcode::
 
@@ -77,9 +77,9 @@ And specify a name for tasks (and actor methods too) at task submission time:
    obj = f.options(name="special_f").remote(3)
    assert ray.get(obj) == 4
 
-This name will appear as the task name in the machine view of the dashboard, will appear
-as the worker process name when this task is executing (if a Python task), and will
-appear as the task name in the logs.
+This name appears as the task name in the machine view of the dashboard, appears
+as the worker process name when this task is executing (if a Python task), and appears
+as the task name in the logs.
 
 .. image:: images/task_name_dashboard.png
 
@@ -146,12 +146,12 @@ Overloaded actor task call:
 Inspecting Cluster State
 ------------------------
 
-Applications written on top of Ray will often want to have some information
+Applications written on top of Ray often want to have some information
 or diagnostics about the cluster. Some common questions include:
 
-    1. How many nodes are in my autoscaling cluster?
-    2. What resources are currently available in my cluster, both used and total?
-    3. What are the objects currently in my cluster?
+    1. How many nodes are in the autoscaling cluster?
+    2. What resources are currently available in the cluster, both used and total?
+    3. What are the objects currently in the cluster?
 
 For this, you can use the global state API.
 
@@ -190,7 +190,7 @@ To get information about the current nodes in your cluster, you can use ``ray.no
       'alive': True,
       'Resources': {'CPU': 16.0, 'memory': 100.0, 'object_store_memory': 34.0, 'node:192.168.1.82': 1.0}}]
 
-The above information includes:
+The preceding information includes:
 
   - `NodeID`: A unique identifier for the raylet.
   - `alive`: Whether the node is still alive.
@@ -222,8 +222,8 @@ communication between such a large number of machines.
 Tuning Operating System Settings
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Because all nodes and workers connect to the GCS, many network connections will
-be created and the operating system has to support that number of connections.
+Because all nodes and workers connect to the GCS, many network connections are
+created and the operating system has to support that number of connections.
 
 Maximum open files
 ******************
@@ -233,27 +233,27 @@ worker and raylet connects to the GCS. In POSIX systems, the current limit can
 be checked by ``ulimit -n`` and if it's small, it should be increased according to
 the OS manual.
 
-ARP cache
-*********
+Address Resolution Protocol (ARP) cache
+***************************************
 
-Another thing that needs to be configured is the ARP cache. In a large cluster,
+Another thing that needs to be configured is the Address Resolution Protocol (ARP) cache. In a large cluster,
 all the worker nodes connect to the head node, which adds a lot of entries to
 the ARP table. Ensure that the ARP cache size is large enough to handle this
 many nodes.
-Failure to do this will result in the head node hanging. When this happens,
-``dmesg`` will show errors like ``neighbor table overflow message``.
+Failure to do this results in the head node hanging. When this happens,
+``dmesg`` shows errors like ``neighbor table overflow message``.
 
 In Ubuntu, the ARP cache size can be tuned in ``/etc/sysctl.conf`` by increasing
 the value of ``net.ipv4.neigh.default.gc_thresh1`` - ``net.ipv4.neigh.default.gc_thresh3``.
-For more details, please refer to the OS manual.
+For more details, refer to the OS manual.
 
 Benchmark
 ~~~~~~~~~
 
 The machine setup:
 
-- 1 head node: m5.4xlarge (16 vCPUs/64GB mem)
-- 2000 worker nodes: m5.large (2 vCPUs/8GB mem)
+- 1 head node: m5.4xlarge (16 vCPUs/64 GB mem)
+- 2000 worker nodes: m5.large (2 vCPUs/8 GB mem)
 
 The OS setup:
 
@@ -281,7 +281,7 @@ Test workload:
      - Actor launch time
      - Actor ready time
      - Total time
-   * - 20k (10 actors / node)
-     - 14.5s
-     - 136.1s
-     - 150.7s
+  * - 20k (10 actors / node)
+    - 14.5 s
+    - 136.1 s
+    - 150.7 s

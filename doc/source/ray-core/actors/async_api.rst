@@ -1,7 +1,7 @@
 AsyncIO / Concurrency for Actors
 ================================
 
-Within a single actor process, it is possible to execute concurrent threads.
+Within a single actor process, it's possible to execute concurrent threads.
 
 Ray offers two types of concurrency within an actor:
 
@@ -9,18 +9,18 @@ Ray offers two types of concurrency within an actor:
  * :ref:`threading <threaded-actors>`
 
 
-Keep in mind that the Python's `Global Interpreter Lock (GIL) <https://wiki.python.org/moin/GlobalInterpreterLock>`_ will only allow one thread of Python code running at once.
+Keep in mind that the Python's `Global Interpreter Lock (GIL) <https://wiki.python.org/moin/GlobalInterpreterLock>`_ only allows one thread of Python code running at once.
 
-This means if you are just parallelizing Python code, you won't get true parallelism. If you call Numpy, Cython, Tensorflow, or PyTorch code, these libraries will release the GIL when calling into C/C++ functions.
+This means if you are just parallelizing Python code, you don't get true parallelism. If you call Numpy, Cython, TensorFlow, or PyTorch code, these libraries release the GIL when calling into C/C++ functions.
 
-**Neither the** :ref:`threaded-actors` nor :ref:`async-actors` **model will allow you to bypass the GIL.**
+**Neither the** :ref:`threaded-actors` nor :ref:`async-actors` **model allows you to bypass the GIL.**
 
 .. _async-actors:
 
 AsyncIO for Actors
 ------------------
 
-Since Python 3.5, it is possible to write concurrent code using the
+Since Python 3.5, it's possible to write concurrent code using the
 ``async/await`` `syntax <https://docs.python.org/3/library/asyncio.html>`__.
 Ray natively integrates with asyncio. You can use Ray alongside popular
 async frameworks like aiohttp, aioredis, etc.
@@ -85,9 +85,10 @@ async frameworks like aiohttp, aioredis, etc.
 
     ...
 
-ObjectRefs as asyncio.Futures
+ObjectRefs as ``asyncio.Futures``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-ObjectRefs can be translated to asyncio.Futures. This feature
+
+ObjectRefs can be translated to ``asyncio.Future`` objects. This feature
 make it possible to ``await`` on ray futures in existing concurrent
 applications.
 
@@ -143,7 +144,7 @@ for more `asyncio` patterns including timeouts and ``asyncio.gather``.
 
 .. _async-ref-to-futures:
 
-ObjectRefs as concurrent.futures.Futures
+ObjectRefs as ``concurrent.futures.Futures``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ObjectRefs can also be wrapped into ``concurrent.futures.Future`` objects. This
 is useful for interfacing with existing ``concurrent.futures`` APIs:
@@ -168,7 +169,7 @@ is useful for interfacing with existing ``concurrent.futures`` APIs:
 Defining an Async Actor
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-By using `async` method definitions, Ray will automatically detect whether an actor support `async` calls or not.
+By using `async` method definitions, Ray automatically detects whether an actor support `async` calls or not.
 
 .. testcode::
 
@@ -195,7 +196,7 @@ By using `async` method definitions, Ray will automatically detect whether an ac
             print("Finished task")
 
     actor = AsyncActor.remote(5)
-    # All 5 tasks will start at once and run concurrently.
+    # All 5 tasks start at once and run concurrently.
     ray.get([actor.run_task.remote() for _ in range(5)])
 
 .. testoutput::
@@ -213,11 +214,11 @@ By using `async` method definitions, Ray will automatically detect whether an ac
     (AsyncActor pid=3456) Finished task
 
 Under the hood, Ray runs all of the methods inside a single python event loop.
-Please note that running blocking ``ray.get`` or ``ray.wait`` inside async
-actor method is not allowed, because ``ray.get`` will block the execution
+Note that running blocking ``ray.get`` or ``ray.wait`` inside async
+actor method isn't allowed, because ``ray.get`` blocks the execution
 of the event loop.
 
-In async actors, only one task can be running at any point in time (though tasks can be multiplexed). There will be only one thread in AsyncActor! See :ref:`threaded-actors` if you want a threadpool.
+In async actors, only one task can be running at any point in time (though tasks can be multiplexed). There is only one thread in AsyncActor. See :ref:`threaded-actors` if you want a threadpool.
 
 Setting concurrency in Async Actors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -251,7 +252,7 @@ You can set the number of "concurrent" task running at once using the
 
     actor = AsyncActor.options(max_concurrency=2).remote(2)
 
-    # Only 2 tasks will run concurrently.
+    # Only 2 tasks run concurrently.
     # Once 2 finish, the next 2 should run.
     ray.get([actor.run_task.remote() for _ in range(8)])
 
@@ -280,8 +281,8 @@ You can set the number of "concurrent" task running at once using the
 Threaded Actors
 ---------------
 
-Sometimes, asyncio is not an ideal solution for your actor. For example, you may
-have one method that performs some computation heavy task while blocking the event loop, not giving up control via ``await``. This would hurt the performance of an Async Actor because Async Actors can only execute 1 task at a time and rely on ``await`` to context switch.
+Sometimes, asyncio isn't an ideal solution for your actor. For example, you may
+have one method that performs some computation heavy task while blocking the event loop, not giving up control with ``await``. This would hurt the performance of an Async Actor because Async Actors can only execute 1 task at a time and rely on ``await`` to context switch.
 
 
 Instead, you can use the ``max_concurrency`` Actor options without any async methods, allowing you to achieve threaded concurrency (like a thread pool).
@@ -289,7 +290,7 @@ Instead, you can use the ``max_concurrency`` Actor options without any async met
 
 .. warning::
     When there is at least one ``async def`` method in actor definition, Ray
-    will recognize the actor as AsyncActor instead of ThreadedActor.
+    recognizes the actor as AsyncActor instead of ThreadedActor.
 
 
 .. testcode::
@@ -308,12 +309,12 @@ Instead, you can use the ``max_concurrency`` Actor options without any async met
     (ThreadedActor pid=4822) I'm running in a thread!
     (ThreadedActor pid=4822) I'm running in another thread!
 
-Each invocation of the threaded actor will be running in a thread pool. The size of the threadpool is limited by the ``max_concurrency`` value.
+Each invocation of the threaded actor runs in a thread pool. The size of the threadpool is limited by the ``max_concurrency`` value.
 
 AsyncIO for Remote Tasks
 ------------------------
 
-We don't support asyncio for remote tasks. The following snippet will fail:
+AsyncIO for remote tasks isn't supported. The following snippet fails:
 
 .. testcode::
     :skipif: True

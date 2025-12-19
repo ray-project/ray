@@ -145,7 +145,7 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
 .. note::
 
   There's nothing preventing you from specifying a larger number of
-  accelerator resources (e.g., ``num_gpus``) than the true number of accelerators on the machine given Ray resources are :ref:`logical <logical-resources>`.
+  accelerator resources (for example,, ``num_gpus``) than the true number of accelerators on the machine given Ray resources are :ref:`logical <logical-resources>`.
   In this case, Ray acts as if the machine has the number of accelerators you specified
   for the purposes of scheduling tasks and actors that require accelerators.
   Trouble only occurs if those tasks and actors
@@ -154,9 +154,9 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
 Using accelerators in Tasks and Actors
 --------------------------------------
 
-If a task or actor requires accelerators, you can specify the corresponding :ref:`resource requirements <resource-requirements>` (e.g. ``@ray.remote(num_gpus=1)``).
+If a task or actor requires accelerators, you can specify the corresponding :ref:`resource requirements <resource-requirements>` (for example, ``@ray.remote(num_gpus=1)``).
 Ray then schedules the task or actor to a node that has enough free accelerator resources
-and assign accelerators to the task or actor by setting the corresponding environment variable (e.g. ``CUDA_VISIBLE_DEVICES``) before running the task or actor code.
+and assign accelerators to the task or actor by setting the corresponding environment variable (for example, ``CUDA_VISIBLE_DEVICES``) before running the task or actor code.
 
 .. tab-set::
 
@@ -510,13 +510,13 @@ and assign accelerators to the task or actor by setting the corresponding enviro
 
 Inside a task or actor, :func:`ray.get_runtime_context().get_accelerator_ids() <ray.runtime_context.RuntimeContext.get_accelerator_ids>` returns a
 list of accelerator IDs that are available to the task or actor.
-Typically, it is not necessary to call ``get_accelerator_ids()`` because Ray
-automatically sets the corresponding environment variable (e.g. ``CUDA_VISIBLE_DEVICES``),
+Typically, it isn't necessary to call ``get_accelerator_ids()`` because Ray
+automatically sets the corresponding environment variable (for example, ``CUDA_VISIBLE_DEVICES``),
 which most ML frameworks respect for purposes of accelerator assignment.
 
-**Note:** The remote function or actor defined above doesn't actually use any
+**Note:** The remote function or actor defined previously doesn't actually use any
 accelerators. Ray schedules it on a node which has at least one accelerator, and
-reserves one accelerator for it while it is being executed, however it is up to the
+reserves one accelerator for it while it's being executed, however it's up to the
 function to actually make use of the accelerator. This is typically done through an
 external library like TensorFlow. Here is an example that actually uses accelerators.
 In order for this example to work, you need to install the GPU version of
@@ -533,11 +533,11 @@ TensorFlow.
         tf.Session()
 
 
-**Note:** It is certainly possible for the person to
+**Note:** It's certainly possible for the person to
 ignore assigned accelerators and to use all of the accelerators on the machine. Ray does
 not prevent this from happening, and this can lead to too many tasks or actors using the
 same accelerator at the same time. However, Ray does automatically set the
-environment variable (e.g. ``CUDA_VISIBLE_DEVICES``), which restricts the accelerators used
+environment variable (for example, ``CUDA_VISIBLE_DEVICES``), which restricts the accelerators used
 by most deep learning frameworks assuming it's not overridden by the user.
 
 Fractional Accelerators
@@ -678,9 +678,9 @@ so multiple tasks and actors can share the same accelerator.
             # and share the same GPU.
             ray.get([f.remote() for _ in range(4)])
 
-**Note:** It is the user's responsibility to make sure that the individual tasks
+**Note:** It's the user's responsibility to make sure that the individual tasks
 don't use more than their share of the accelerator memory.
-Pytorch and TensorFlow can be configured to limit its memory usage.
+PyTorch and TensorFlow can be configured to limit its memory usage.
 
 When Ray assigns accelerators of a node to tasks or actors with fractional resource requirements,
 it packs one accelerator before moving on to the next one to avoid fragmentation.
@@ -715,7 +715,7 @@ it packs one accelerator before moving on to the next one to avoid fragmentation
 Workers not Releasing GPU Resources
 -----------------------------------
 
-Currently, when a worker executes a task that uses a GPU (e.g.,
+Currently, when a worker executes a task that uses a GPU (for example,,
 through TensorFlow), the task may allocate memory on the GPU and may not release
 it when the task finishes executing. This can lead to problems the next time a
 task tries to use the same GPU. To address the problem, Ray disables the worker
@@ -726,7 +726,7 @@ in the :func:`ray.remote <ray.remote>` decorator.
 
 .. testcode::
 
-    # By default, ray does not reuse workers for GPU tasks to prevent
+    # By default, ray doesn't reuse workers for GPU tasks to prevent
     # GPU resource leakage.
     @ray.remote(num_gpus=1)
     def leak_gpus():

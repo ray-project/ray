@@ -29,12 +29,12 @@ runtime_env = {"working_dir": (
 }
 ```
 
-In this example, `personal_access_token` is a secret credential that authenticates this URI. While Ray can successfully access your dependencies using authenticated URIs, **you should not include secret credentials in your URIs** for two reasons:
+In this example, `personal_access_token` is a secret credential that authenticates this URI. While Ray can successfully access your dependencies using authenticated URIs, **you shouldn't include secret credentials in your URIs** for two reasons:
 
 1. Ray may log the URIs used in your `runtime_env`, which means the Ray logs could contain your credentials.
 2. Ray stores your remote dependency package in a local directory, and it uses a parsed version of the remote URI–including your credential–as the directory's name.
 
-In short, your remote URI is not treated as a secret, so it should not contain secret info. Instead, use a `netrc` file.
+In short, your remote URI isn't treated as a secret, so it shouldn't contain secret info. Instead, use a `netrc` file.
 
 ## Running on VMs: the netrc File
 
@@ -51,7 +51,7 @@ password personal_access_token
 In this example, the `machine github.com` line specifies that any access to `github.com` should be authenticated using the provided `login` and `password`.
 
 :::{note}
-On Unix, name the `netrc` file as `.netrc`. On Windows, name the
+On UNIX, name the `netrc` file as `.netrc`. On Windows, name the
 file as `_netrc`.
 :::
 

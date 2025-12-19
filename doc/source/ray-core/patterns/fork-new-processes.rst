@@ -15,7 +15,7 @@ behavior.
 
 The solution is to:
 1. use the "spawn" method to start new processes so that the parent process's 
-memory space is not copied to the child processes or
+memory space isn't copied to the child processes or
 2. use Ray tasks and 
 actors to parallelize your workload and let Ray manage the lifecycle of the 
 processes for you.

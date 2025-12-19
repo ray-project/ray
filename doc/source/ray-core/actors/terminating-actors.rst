@@ -1,20 +1,20 @@
 Terminating Actors
 ==================
 
-Actor processes will be terminated automatically when all copies of the
+Actor processes are terminated automatically when all copies of the
 actor handle have gone out of scope in Python, or if the original creator
 process dies. When actors terminate gracefully, Ray calls the actor's
 ``__ray_shutdown__()`` method if defined, allowing for cleanup of resources
 (see :ref:`actor-cleanup` for details).
 
-Note that automatic termination of actors is not yet supported in Java or C++.
+Note that automatic termination of actors isn't yet supported in Java or C++.
 
 .. _ray-kill-actors:
 
-Manual termination via an actor handle
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Manual termination using an actor handle
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-In most cases, Ray will automatically terminate actors that have gone out of
+In most cases, Ray automatically terminates actors that have gone out of
 scope, but you may sometimes need to terminate an actor forcefully. This should
 be reserved for cases where an actor is unexpectedly hanging or leaking
 resources, and for :ref:`detached actors <actor-lifetimes>`, which must be
@@ -36,7 +36,7 @@ manually destroyed.
 
             ray.kill(actor_handle)
             # Force kill: the actor exits immediately without cleanup.
-            # This will NOT call __ray_shutdown__() or atexit handlers.
+            # This doesn't call __ray_shutdown__() or atexit handlers.
 
 
     .. tab-item:: Java
@@ -44,21 +44,21 @@ manually destroyed.
         .. code-block:: java
 
             actorHandle.kill();
-            // This will not go through the normal Java System.exit teardown logic, so any
-            // shutdown hooks installed in the actor using ``Runtime.addShutdownHook(...)`` will
-            // not be called.
+            // This doesn't go through the normal Java System.exit teardown logic, so any
+            // shutdown hooks installed in the actor using ``Runtime.addShutdownHook(...)`` are
+            // not called.
 
     .. tab-item:: C++
 
         .. code-block:: c++
 
             actor_handle.Kill();
-            // This will not go through the normal C++ std::exit
+            // This doesn't go through the normal C++ std::exit
             // teardown logic, so any exit handlers installed in
-            // the actor using ``std::atexit`` will not be called.
+            // the actor using ``std::atexit`` aren't called.
 
 
-This will cause the actor to immediately exit its process, causing any current,
+This causes the actor to immediately exit its process, causing any current,
 pending, and future tasks to fail with a ``RayActorError``. If you would like
 Ray to :ref:`automatically restart <fault-tolerance-actors>` the actor, make sure to set a nonzero
 ``max_restarts`` in the ``@ray.remote`` options for the actor, then pass the
@@ -108,7 +108,7 @@ Manual termination within the actor
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 If necessary, you can manually terminate an actor from within one of the actor methods.
-This will kill the actor process and release resources associated/assigned to the actor.
+This kills the actor process and releases resources associated/assigned to the actor.
 
 .. tab-set::
 
@@ -237,9 +237,9 @@ When ``__ray_shutdown__()`` is called:
 - **Automatic termination**: When all actor handles go out of scope (``del actor`` or natural scope exit)
 - **Manual graceful termination**: When you call ``actor.__ray_terminate__.remote()``
 
-When ``__ray_shutdown__()`` is **NOT** called:
+When ``__ray_shutdown__()`` **isn't** called:
 
-- **Force kill**: When you use ``ray.kill(actor)`` - the actor is killed immediately without cleanup.
+- **Forceful termination**: When you use ``ray.kill(actor)`` - the actor is terminated immediately without cleanup.
 - **Unexpected termination**: When the actor process crashes or exits unexpectedly (such as a segfault or being killed by the OOM killer).
 
 **Important notes:**

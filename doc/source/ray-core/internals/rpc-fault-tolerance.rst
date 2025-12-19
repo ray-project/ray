@@ -3,11 +3,11 @@
 RPC Fault Tolerance
 ===================
 
-All RPCs added to Ray Core should be fault tolerant and use the retryable gRPC client. 
+All RPCs added to Ray Core should be fault tolerant and use the retry-able gRPC client. 
 Ideally, they should be idempotent, or at the very least, the lack of idempotency should be 
 documented and the client must be able to take retries into account. If you aren't familiar 
 with what idempotency is, consider a function that writes "hello" to a file. On retry,
-it writes "hello" again, resulting in "hellohello". This isn't idempotent. To make it
+it writes "hello" again, resulting in ``"hellohello"``. This isn't idempotent. To make it
 idempotent, you could check the file contents before writing "hello" again, ensuring that the 
 observable state after multiple identical function calls is the same as after a single call.
 
@@ -21,8 +21,8 @@ Case study: RequestWorkerLease
 Problem
 ~~~~~~~
 
-Prior to the fix described here, ``RequestWorkerLease`` could not be made retryable because 
-its handler in the Raylet was not idempotent.
+Prior to the fix described here, ``RequestWorkerLease`` couldn't be made retry-able because 
+its handler in the Raylet wasn't idempotent.
 
 This was because once leases were granted, they were considered occupied until ``ReturnWorker``
 was called. Until this RPC was called, the worker and its resources were never returned to the pool 
@@ -34,7 +34,7 @@ For example, consider the following sequence of operations:
 1. Request a new worker lease (Owner → Raylet) through ``RequestWorkerLease``.
 2. Response is lost (Raylet → Owner).
 3. Retry ``RequestWorkerLease`` for lease (Owner → Raylet).
-4. Two sets of resources and workers are now granted, one for the original AND retry.
+4. Two sets of resources and workers are now granted, one for the original and retry.
 
 On the retry, the raylet should detect that the lease request is a retry and forward the 
 already leased worker address to the owner so a second lease isn't granted.
@@ -55,7 +55,7 @@ Hidden problem: long-polling RPCs
 Network transient errors can happen at any time. For most RPCs, they finish in one I/O context 
 execution, so guarding against whether the request or response failed is sufficient. 
 However, there are a few RPCs that are long-polling, meaning that once the ``HandleX`` function 
-executes, it won't immediately respond to the client but will rather depend on some state change 
+executes, it doesn't immediately respond to the client but rather depends on some state change 
 in the future to trigger the response back to the client.
 
 This was the case for ``RequestWorkerLease``. Leases aren't granted until all the args are pulled, 
@@ -83,10 +83,10 @@ able to deduplicate requests.
 For any long-polling RPC, you should be **particularly careful** about idempotency because the 
 client's retry won't necessarily wait for the response to be sent.
 
-Retryable gRPC client
+Retry-able gRPC client
 ---------------------
 
-The retryable gRPC client was updated during the RPC fault tolerance project. This section 
+The retry-able gRPC client was updated during the RPC fault tolerance project. This section 
 describes how it works and some gotchas to watch out for.
 
 For a basic introduction, read the 
@@ -95,9 +95,9 @@ For a basic introduction, read the
 How it works
 ~~~~~~~~~~~~
 
-The retryable gRPC client works as follows:
+The retry-able gRPC client works as follows:
 
-- RPCs are sent using the retryable gRPC client.
+- RPCs are sent using the retry-able gRPC client.
 - If the client encounters a 
   `gRPC transient network error <https://github.com/ray-project/ray/blob/78082d65fa7081172d2848ced56d68cc612f8fd1/src/ray/common/grpc_util.h#L130>`_, 
   it pushes the callback into a queue.
@@ -132,7 +132,7 @@ The retryable gRPC client works as follows:
   agnostic of the type of RPC that fails. The backoff period caps out to a max that you can 
   customize for the core worker and raylet clients using either the 
   ``core_worker_rpc_server_reconnect_timeout_max_s`` or ``raylet_rpc_server_reconnect_timeout_max_s`` 
-  config options. The GCS client doesn't have a max backoff period as noted above.
+  config options. The GCS client doesn't have a max backoff period as noted previously.
 - Once the channel check succeeds, the
   `exponential backoff period is reset and all RPCs in the queue are retried <https://github.com/ray-project/ray/blob/9b217e9ad01763e0b78c9161a4ebdd512289a748/src/ray/rpc/retryable_grpc_client.cc#L117>`_.
 - If the system successfully receives a node death notification (either through subscription or
@@ -145,18 +145,18 @@ Important considerations
 
 A few important points to keep in mind:
 
-- **Per-client queuing**: Each retryable gRPC client is unique to the client (``WorkerID`` for 
+- **Per-client queuing**: Each retry-able gRPC client is unique to the client (``WorkerID`` for 
   core worker clients, ``NodeID`` for raylet clients), not to the type of RPC. If you first 
   submit RPC A that fails due to a transient network error, then RPC B to the same client that 
-  fails due to a transient network error, the queue will have two items: RPC A then RPC B. 
+  fails due to a transient network error, the queue has two items: RPC A then RPC B. 
   There isn't a separate queue on an RPC basis, but on a client basis.
 
 - **Client-level timeouts**: Each timeout needs to wait for the previous timeout to complete. 
-  If both RPC A and RPC B are submitted in short succession, then RPC A will wait in total 
-  for 1 second, and RPC B will wait in total for 1 + 2 = 3 seconds. Different RPCs don't 
+  If both RPC A and RPC B are submitted in short succession, then RPC A waits in total 
+  for 1 second, and RPC B waits in total for 1 + 2 = 3 seconds. Different RPCs don't 
   matter and are treated the same. The reasoning is that transient network errors aren't RPC 
   specific. If RPC A sees a network failure, you can assume that RPC B, if sent to the same 
-  client, will experience the same failure. Hence, the time that an RPC waits is the sum of 
+  client, experiences the same failure. Hence, the time that an RPC waits is the sum of 
   the timeouts of all the previous RPCs in the queue and its own timeout.
 
 - **Destructor behavior**: In the destructor for ``RetryableGrpcClient``, the system fails all
@@ -214,10 +214,10 @@ for a small amount of time (5 seconds) to simulate transient network errors. The
 runs in the background, periodically (60 seconds) causing network blackouts while the test script
 executes.
 
-For core release tests, we've added the IP table blackout approach to all existing chaos release
+For core release tests, the IP table blackout approach has been added to all existing chaos release
 tests in `PR #58868 <https://github.com/ray-project/ray/pull/58868>`_.
 
 .. note::
-   Initially, Amazon FIS was considered. However, it has a 60-second minimum which caused node 
+   Initially, Amazon Fault Injection Simulator (FIS) was considered. However, it has a 60-second minimum which caused node 
    death due to configuration settings which was hard to debug, so the IP table approach was 
    simpler and more flexible to use.

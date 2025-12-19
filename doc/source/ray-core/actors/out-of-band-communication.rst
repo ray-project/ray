@@ -9,7 +9,7 @@ Wrapping Library Processes
 Many libraries already have mature, high-performance internal communication stacks and
 they leverage Ray as a language-integrated actor scheduler.
 The actual communication between actors is mostly done out-of-band using existing communication stacks.
-For example, Horovod-on-Ray uses NCCL or MPI-based collective communications, and RayDP uses Spark's internal RPC and object manager.
+For example, Horovod-on-Ray uses NCCL or Message Passing Interface (MPI)-based collective communications, and RayDP uses Spark's internal RPC and object manager.
 See `Ray Distributed Library Patterns <https://www.anyscale.com/blog/ray-distributed-library-patterns>`_ for more details.
 
 Ray Collective
@@ -28,9 +28,9 @@ so users outside of the Ray cluster can communicate with the actor.
 
         .. literalinclude:: ../doc_code/actor-http-server.py
 
-Similarly, you can expose other types of servers as well (e.g., gRPC servers).
+Similarly, you can expose other types of servers as well (for example, gRPC servers).
 
 Limitations
 -----------
 
-When using out-of-band communication with Ray actors, keep in mind that Ray does not manage the calls between actors. This means that functionality like distributed reference counting will not work with out-of-band communication, so you should take care not to pass object references in this way.
+When using out-of-band communication with Ray actors, keep in mind that Ray doesn't manage the calls between actors. This means that features like distributed reference counting don't work with out-of-band communication, so you should take care not to pass object references in this way.

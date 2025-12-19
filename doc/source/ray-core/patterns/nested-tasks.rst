@@ -13,7 +13,7 @@ Example use case
 ----------------
 
 You want to quick-sort a large list of numbers.
-By using nested tasks, we can sort the list in a distributed and parallel fashion.
+By using nested tasks, you can sort the list in a distributed and parallel fashion.
 
 .. figure:: ../images/tree-of-tasks.svg
 
@@ -28,8 +28,8 @@ Code example
     :start-after: __pattern_start__
     :end-before: __pattern_end__
 
-We call :func:`ray.get() <ray.get>` after both ``quick_sort_distributed`` function invocations take place.
+The code calls :func:`ray.get() <ray.get>` after both ``quick_sort_distributed`` function invocations take place.
 This allows you to maximize parallelism in the workload. See :doc:`ray-get-loop` for more details.
 
-Notice in the execution times above that with smaller tasks, the non-distributed version is faster. However, as the task execution
-time increases, i.e. because the lists to sort are larger, the distributed version is faster.
+Notice in the preceding execution times that with smaller tasks, the non-distributed version is faster. However, as the task execution
+time increases, because the lists to sort are larger, the distributed version is faster.

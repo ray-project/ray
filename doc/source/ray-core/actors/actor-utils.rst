@@ -26,7 +26,7 @@ Actor Pool
 Message passing using Ray Queue
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Sometimes just using one signal to synchronize is not enough. If you need to send data among many tasks or
+Sometimes just using one signal to synchronize isn't enough. If you need to send data among many tasks or
 actors, you can use :class:`ray.util.queue.Queue <ray.util.queue.Queue>`.
 
 .. literalinclude:: ../doc_code/actor-queue.py

@@ -13,7 +13,7 @@ Architecture Overview
 Ray's metric system uses a multi-stage pipeline:
 
 1. **C++ Components**: Raylet, GCS, and worker processes record metrics using the OpenTelemetry SDK
-2. **OTLP Export**: Metrics are exported via OpenTelemetry Protocol (OTLP) over gRPC to the metrics agent
+2. **OTLP Export**: Metrics are exported using OpenTelemetry Protocol (OTLP) over gRPC to the metrics agent
 3. **Metrics Agent**: The Python metrics agent (ReporterAgent) receives and processes metrics
 4. **Aggregation**: High-cardinality labels are filtered and values are aggregated
 5. **Prometheus Export**: Final metrics are exported in Prometheus format
@@ -40,15 +40,15 @@ Ray's C++ components register and record metrics through the `OpenTelemetryMetri
 Metric Types
 ~~~~~~~~~~~~
 
-- **Gauge**: Represents a current value that can go up or down (e.g., number of running tasks)
-- **Counter**: A cumulative metric that only increases (e.g., total tasks submitted)
-- **Sum (UpDownCounter)**: A cumulative metric that can increase or decrease (e.g., number of objects in object store)
-- **Histogram**: Tracks the distribution of values over time (e.g., task execution time)
+- **Gauge**: Represents a current value that can go up or down (for example, number of running tasks)
+- **Counter**: A cumulative metric that only increases (for example, total tasks submitted)
+- **Sum (UpDownCounter)**: A cumulative metric that can increase or decrease (for example, number of objects in object store)
+- **Histogram**: Tracks the distribution of values over time (for example, task execution time)
 
 Registration Process
 ~~~~~~~~~~~~~~~~~~~~
 
-Metrics are registered lazily on first use. The `OpenTelemetryMetricRecorder` uses a singleton pattern accessible via `GetInstance() <https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/src/ray/observability/open_telemetry_metric_recorder.cc#L75>`__. When a metric is first recorded, it's automatically registered if it hasn't been registered already.
+Metrics are registered lazily on first use. The `OpenTelemetryMetricRecorder` uses a singleton pattern accessible through `GetInstance() <https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/src/ray/observability/open_telemetry_metric_recorder.cc#L75>`__. When a metric is first recorded, it's automatically registered if it hasn't been registered already.
 
 Registration methods (defined in `open_telemetry_metric_recorder.cc <https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/src/ray/observability/open_telemetry_metric_recorder.cc>`__):
 
@@ -66,7 +66,7 @@ Ray uses two different recording mechanisms depending on the metric type:
   Observable gauges store values in an intermediate map (`observations_by_name_`) until collection time. When you call `SetMetricValue() <https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/src/ray/observability/open_telemetry_metric_recorder.cc#L258>`__ for a gauge, the value is stored with its tags. During export, a callback function (`_DoubleGaugeCallback <https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/src/ray/observability/open_telemetry_metric_recorder.cc#L39>`__) is invoked by the OpenTelemetry SDK, which collects all stored values and clears the map to prevent stale data. The callback implementation is in `CollectGaugeMetricValues() <https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/src/ray/observability/open_telemetry_metric_recorder.cc#L139>`__.
 
 **Synchronous Metrics (Counters, Sums, Histograms)**
-  Synchronous metrics record values directly to their instruments without intermediate storage. When you call `SetMetricValue() <https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/src/ray/observability/open_telemetry_metric_recorder.cc#L258>`__ for these types, the value is immediately added to the counter or recorded in the histogram via `SetSynchronousMetricValue() <https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/src/ray/observability/open_telemetry_metric_recorder.cc#L281>`__.
+  Synchronous metrics record values directly to their instruments without intermediate storage. When you call `SetMetricValue() <https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/src/ray/observability/open_telemetry_metric_recorder.cc#L258>`__ for these types, the value is immediately added to the counter or recorded in the histogram using `SetSynchronousMetricValue() <https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/src/ray/observability/open_telemetry_metric_recorder.cc#L281>`__.
 
 Key Implementation Details
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -114,12 +114,12 @@ During each export interval:
 1. **Observable Gauges**: The OpenTelemetry SDK invokes registered callbacks, which collect values from `observations_by_name_` and clear the map
 2. **Synchronous Metrics**: Values are read directly from the instruments
 3. **OTLP Format**: Metrics are converted to OTLP format
-4. **gRPC Export**: Metrics are sent to the metrics agent via gRPC
+4. **gRPC Export**: Metrics are sent to the metrics agent using gRPC
 
 Metric Reception and Processing (Python Side)
 ----------------------------------------------
 
-The metrics agent (ReporterAgent) receives metrics from C++ components via a gRPC service that implements the OpenTelemetry Metrics Service interface.
+The metrics agent (ReporterAgent) receives metrics from C++ components through a gRPC service that implements the OpenTelemetry Metrics Service interface.
 
 gRPC Service Implementation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -131,7 +131,7 @@ Metric Processing
 
 When metrics are received, the `Export()` method processes them in the following structure:
 
-- **Resource Metrics**: Top-level container for metrics from a specific resource (e.g., a raylet process)
+- **Resource Metrics**: Top-level container for metrics from a specific resource (for example, a raylet process)
 - **Scope Metrics**: Groups metrics by instrumentation scope
 - **Metrics**: Individual metric data points
 
@@ -174,7 +174,7 @@ High-cardinality labels can cause metric explosion, making metrics systems unusa
   - **Collection**: All observations for a metric are collected from `_observations_by_name <https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/python/ray/_private/telemetry/open_telemetry_metric_recorder.py#L61>`__
   - **Label Filtering**: High-cardinality labels are identified and removed from tag sets using `MetricCardinality.get_high_cardinality_labels_to_drop() <https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/python/ray/_private/telemetry/open_telemetry_metric_recorder.py#L67>`__
   - **Grouping**: Observations with the same filtered tag set are grouped together
-  - **Aggregation**: An aggregation function is applied to each group via `MetricCardinality.get_aggregation_function() <https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/python/ray/_private/telemetry/open_telemetry_metric_recorder.py#L86>`__ (sum for tasks/actors, first value for others)
+  - **Aggregation**: An aggregation function is applied to each group using `MetricCardinality.get_aggregation_function() <https://github.com/ray-project/ray/blob/4ebdc0abe5e5a551625fe7f87053c7e668a6ff74/python/ray/_private/telemetry/open_telemetry_metric_recorder.py#L86>`__ (sum for tasks/actors, first value for others)
   - **Export**: Aggregated observations are returned to OpenTelemetry for Prometheus export
 
   This process ensures that metrics remain manageable even when there are thousands of workers or unique task names.

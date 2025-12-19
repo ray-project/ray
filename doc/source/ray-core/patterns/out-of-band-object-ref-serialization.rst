@@ -1,9 +1,9 @@
 .. _ray-out-of-band-object-ref-serialization:
 
-Anti-pattern: Serialize ray.ObjectRef out of band
+Anti-pattern: Serialize ``ray.ObjectRef`` out of band
 =================================================
 
-**TLDR:** Avoid serializing ``ray.ObjectRef`` because Ray can't know when to garbage collect the underlying object.
+**Summary:** Avoid serializing ``ray.ObjectRef`` because Ray can't know when to garbage collect the underlying object.
 
 Ray's ``ray.ObjectRef`` is distributed reference counted. Ray pins the underlying object until the reference isn't used by the system anymore.
 When all references to the pinned object are gone, Ray garbage collects the pinned object and cleans it up from the system.

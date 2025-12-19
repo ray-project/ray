@@ -1,12 +1,12 @@
 Anti-pattern: Processing results in submission order using ray.get increases runtime
 ====================================================================================
 
-**TLDR:** Avoid processing independent results in submission order using :func:`ray.get() <ray.get>` since results may be ready in a different order than the submission order.
+**Summary:** Avoid processing independent results in submission order using :func:`ray.get() <ray.get>` since results may be ready in a different order than the submission order.
 
-A batch of tasks is submitted, and we need to process their results individually once they’re done.
-If each task takes a different amount of time to finish and we process results in submission order, we may waste time waiting for all of the slower (straggler) tasks that were submitted earlier to finish while later faster tasks have already finished.
+A batch of tasks is submitted, and the code needs to process their results individually once they're done.
+If each task takes a different amount of time to finish and the code processes results in submission order, it may waste time waiting for all of the slower (straggler) tasks that were submitted earlier to finish while later faster tasks have already finished.
 
-Instead, we want to process the tasks in the order that they finish using :func:`ray.wait() <ray.wait>` to speed up total time to completion.
+Instead, process the tasks in the order that they finish using :func:`ray.wait() <ray.wait>` to speed up total time to completion.
 
 .. figure:: ../images/ray-get-submission-order.svg
 

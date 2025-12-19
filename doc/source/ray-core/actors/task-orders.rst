@@ -8,10 +8,10 @@ Synchronous, Single-Threaded Actor
 In Ray, an actor receives tasks from multiple submitters (including driver and workers).
 For tasks received from the same submitter, a synchronous, single-threaded actor executes
 them in the order they were submitted, unless you set ``allow_out_of_order_execution``,
-or Ray retries tasks. In other words, a given task will not be executed until previously
+or Ray retries tasks. In other words, a given task won't be executed until previously
 submitted tasks from the same submitter have finished execution.
 For actors where `max_task_retries` is set to a non-zero number, the task
-execution order is not guaranteed when task retries occur.
+execution order isn't guaranteed when task retries occur.
 
 .. tab-set::
 
@@ -33,7 +33,7 @@ execution order is not guaranteed when task retries occur.
             counter = Counter.remote()
 
             # For tasks from the same submitter,
-            # they are executed according to submission order.
+            # they're executed according to submission order.
             value0 = counter.add.remote(1)
             value1 = counter.add.remote(2)
 
@@ -48,7 +48,7 @@ execution order is not guaranteed when task retries occur.
             3
 
 
-However, the actor does not guarantee the execution order of the tasks from different
+However, the actor doesn't guarantee the execution order of the tasks from different
 submitters. For example, suppose an unfulfilled argument blocks a previously submitted
 task. In this case, the actor can still execute tasks submitted by a different worker.
 
@@ -102,7 +102,7 @@ task. In this case, the actor can still execute tasks submitted by a different w
 
 Asynchronous or Threaded Actor
 ------------------------------
-:ref:`Asynchronous or threaded actors <async-actors>` do not guarantee the
+:ref:`Asynchronous or threaded actors <async-actors>` don't guarantee the
 task execution order. This means the system might execute a task
 even though previously submitted tasks are pending execution.
 

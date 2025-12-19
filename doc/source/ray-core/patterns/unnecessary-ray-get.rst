@@ -3,9 +3,9 @@
 Anti-pattern: Calling ray.get unnecessarily harms performance
 =============================================================
 
-**TLDR:** Avoid calling :func:`ray.get() <ray.get>` unnecessarily for intermediate steps. Work with object references directly, and only call ``ray.get()`` at the end to get the final result.
+**Summary:** Avoid calling :func:`ray.get() <ray.get>` unnecessarily for intermediate steps. Work with object references directly, and only call ``ray.get()`` at the end to get the final result.
 
-When ``ray.get()`` is called, objects must be transferred to the worker/node that calls ``ray.get()``. If you don't need to manipulate the object, you probably don't need to call ``ray.get()`` on it!
+When ``ray.get()`` is called, objects must be transferred to the worker/node that calls ``ray.get()``. If you don't need to manipulate the object, you probably don't need to call ``ray.get()`` on it.
 
 Typically, it’s best practice to wait as long as possible before calling ``ray.get()``, or even design your program to avoid having to call ``ray.get()`` at all.
 
@@ -30,10 +30,10 @@ Code example
 
 .. figure:: ../images/unnecessary-ray-get-better.svg
 
-Notice in the anti-pattern example, we call ``ray.get()`` which forces us to transfer the large rollout to the driver, then again to the *reduce* worker.
+Notice in the anti-pattern example, the code calls ``ray.get()`` which forces the large rollout to transfer to the driver, then again to the *reduce* worker.
 
-In the fixed version, we only pass the reference to the object to the *reduce* task.
-The ``reduce`` worker will implicitly call ``ray.get()`` to fetch the actual rollout data directly from the ``generate_rollout`` worker, avoiding the extra copy to the driver.
+In the fixed version, the code only passes the reference to the object to the *reduce* task.
+The ``reduce`` worker implicitly calls ``ray.get()`` to fetch the actual rollout data directly from the ``generate_rollout`` worker, avoiding the extra copy to the driver.
 
 Other ``ray.get()`` related anti-patterns are:
 

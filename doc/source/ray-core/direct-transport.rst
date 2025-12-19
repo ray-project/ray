@@ -14,7 +14,7 @@ This feature augments the familiar Ray :class:`ObjectRef <ray.ObjectRef>` API by
 
 - Keeping GPU data in GPU memory until a transfer is necessary
 - Avoiding expensive serialization and copies to and from the Ray object store
-- Using efficient data transports like collective communication libraries (`Gloo <https://github.com/pytorch/gloo>`__ or `NCCL <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`__) or point-to-point RDMA (via `NVIDIA's NIXL <https://github.com/ai-dynamo/nixl>`__) to transfer data directly between devices, including both CPU and GPUs
+- Using efficient data transports like collective communication libraries (`GLOO <https://github.com/pytorch/gloo>`__ or `NCCL <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`__) or point-to-point RDMA (using `NVIDIA's NIXL <https://github.com/ai-dynamo/nixl>`__) to transfer data directly between devices, including both CPU and GPUs
 
 .. note::
    RDT is currently in **alpha** and doesn't support all Ray Core APIs yet. Future releases may introduce breaking API changes. See the :ref:`limitations <limitations>` section for more details.
@@ -25,18 +25,18 @@ Getting started
 .. tip::
    RDT currently supports ``torch.Tensor`` objects created by Ray actor tasks. Other datatypes and Ray non-actor tasks may be supported in future releases.
 
-This walkthrough will show how to create and use RDT with different *tensor transports*, i.e. the mechanism used to transfer the tensor between actors.
+This walk-through shows how to create and use RDT with different *tensor transports*, the mechanism used to transfer the tensor between actors.
 Currently, RDT supports the following tensor transports:
 
-1. `Gloo <https://github.com/pytorch/gloo>`__: A collective communication library for PyTorch and CPUs.
+1. `GLOO <https://github.com/pytorch/gloo>`__: A collective communication library for PyTorch and CPUs.
 2. `NVIDIA NCCL <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`__: A collective communication library for NVIDIA GPUs.
-3. `NVIDIA NIXL <https://github.com/ai-dynamo/nixl>`__ (backed by `UCX <https://github.com/openucx/ucx>`__): A library for accelerating point-to-point transfers via RDMA, especially between various types of memory and NVIDIA GPUs.
+3. `NVIDIA NIXL <https://github.com/ai-dynamo/nixl>`__ (backed by `UCX <https://github.com/openucx/ucx>`__): A library for accelerating point-to-point transfers using RDMA, especially between various types of memory and NVIDIA GPUs.
 
-For ease of following along, we'll start with the `Gloo <https://github.com/pytorch/gloo>`__ transport, which can be used without any physical GPUs.
+For ease of following along, start with the `GLOO <https://github.com/pytorch/gloo>`__ transport, which can be used without any physical GPUs.
 
 .. _direct-transport-gloo:
 
-Usage with Gloo (CPUs only)
+Usage with GLOO (CPUs only)
 ---------------------------
 
 Installation
@@ -55,7 +55,7 @@ To get started, define an actor class and a task that returns a ``torch.Tensor``
    :start-after: __normal_example_start__
    :end-before: __normal_example_end__
 
-As written, when the ``torch.Tensor`` is returned, it will be copied into Ray's CPU-based object store.
+As written, when the ``torch.Tensor`` is returned, it's copied into Ray's CPU-based object store.
 For CPU-based tensors, this can require an expensive step to copy and serialize the object, while GPU-based tensors additionally require a copy to and from CPU memory.
 
 To enable RDT, use the ``tensor_transport`` option in the :func:`@ray.method <ray.method>` decorator.
@@ -66,14 +66,14 @@ To enable RDT, use the ``tensor_transport`` option in the :func:`@ray.method <ra
    :end-before: __gloo_example_end__
 
 This decorator can be added to any actor tasks that return a ``torch.Tensor``, or that return ``torch.Tensors`` nested inside other Python objects.
-Adding this decorator will change Ray's behavior in the following ways:
+Adding this decorator changes Ray's behavior in the following ways:
 
-1. When returning the tensor, Ray will store a *reference* to the tensor instead of copying it to CPU memory.
-2. When the :class:`ray.ObjectRef` is passed to another task, Ray will use Gloo to transfer the tensor to the destination task.
+1. When returning the tensor, Ray stores a *reference* to the tensor instead of copying it to CPU memory.
+2. When the :class:`ray.ObjectRef` is passed to another task, Ray uses GLOO to transfer the tensor to the destination task.
 
-Note that for (2) to work, the :func:`@ray.method(tensor_transport) <ray.method>` decorator only needs to be added to the actor task that *returns* the tensor. It should not be added to actor tasks that *consume* the tensor (unless those tasks also return tensors).
+Note that for (2) to work, the :func:`@ray.method(tensor_transport) <ray.method>` decorator only needs to be added to the actor task that *returns* the tensor. It shouldn't be added to actor tasks that *consume* the tensor (unless those tasks also return tensors).
 
-Also, for (2) to work, we must first create a *collective group* of actors.
+Also, for (2) to work, you must first create a *collective group* of actors.
 
 Creating a collective group
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -90,24 +90,24 @@ Here is an example:
    :start-after: __gloo_group_start__
    :end-before: __gloo_group_end__
 
-The actors can now communicate directly via gloo.
+The actors can now communicate directly using GLOO.
 The group can also be destroyed using the :func:`ray.experimental.collective.destroy_collective_group <ray.experimental.collective.destroy_collective_group>` function.
 After calling this function, a new collective group can be created on the same actors.
 
 Passing objects to other actors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Now that we have a collective group, we can create and pass RDT objects between the actors.
-Here is a full example:
+Now that there is a collective group, you can create and pass RDT objects between the actors.
+The following is a full example:
 
 .. literalinclude:: doc_code/direct_transport_gloo.py
    :language: python
    :start-after: __gloo_full_example_start__
    :end-before: __gloo_full_example_end__
 
-When the :class:`ray.ObjectRef` is passed to another task, Ray will use Gloo to transfer the tensor directly from the source actor to the destination actor instead of the default object store.
-Note that the :func:`@ray.method(tensor_transport) <ray.method>` decorator is only added to the actor task that *returns* the tensor; once this hint has been added, the receiving actor task `receiver.sum` will automatically use Gloo to receive the tensor.
-In this example, because `MyActor.sum` does not have the :func:`@ray.method(tensor_transport) <ray.method>` decorator, it will use the default Ray object store transport to return `torch.sum(tensor)`.
+When the :class:`ray.ObjectRef` is passed to another task, Ray uses GLOO to transfer the tensor directly from the source actor to the destination actor instead of the default object store.
+Note that the :func:`@ray.method(tensor_transport) <ray.method>` decorator is only added to the actor task that *returns* the tensor; once this hint has been added, the receiving actor task `receiver.sum` automatically uses GLOO to receive the tensor.
+In this example, because `MyActor.sum` doesn't have the :func:`@ray.method(tensor_transport) <ray.method>` decorator, it uses the default Ray object store transport to return `torch.sum(tensor)`.
 
 RDT also supports passing tensors nested inside Python data structures, as well as actor tasks that return multiple tensors, like in this example:
 
@@ -131,14 +131,14 @@ For example:
 
 .. note::
     Ray only keeps a reference to the tensor created by the user, so the tensor objects are *mutable*.
-    If ``sender.sum`` were to modify the tensor in the above example, the changes would also be seen by ``receiver.sum``.
+    If ``sender.sum`` were to modify the tensor in the preceding example, the changes would also be seen by ``receiver.sum``.
     This differs from the normal Ray Core API, which always makes an immutable copy of data returned by actors.
 
 
 ``ray.get``
 ^^^^^^^^^^^
 
-The :func:`ray.get <ray.get>` function can also be used as usual to retrieve the result of an RDT object. However, :func:`ray.get <ray.get>` will by default use the same tensor transport as the one specified in the :func:`@ray.method <ray.method>` decorator. For collective-based transports, this will not work if the caller is not part of the collective group.
+The :func:`ray.get <ray.get>` function can also be used as usual to retrieve the result of an RDT object. However, :func:`ray.get <ray.get>` by default uses the same tensor transport as the one specified in the :func:`@ray.method <ray.method>` decorator. For collective-based transports, this doesn't work if the caller isn't part of the collective group.
 
 Therefore, users need to specify the Ray object store as the tensor transport explicitly by setting ``_tensor_transport`` in :func:`ray.get <ray.get>`.
 
@@ -150,7 +150,7 @@ Therefore, users need to specify the Ray object store as the tensor transport ex
 Object mutability
 ^^^^^^^^^^^^^^^^^
 
-Unlike objects in the Ray object store, RDT objects are *mutable*, meaning that Ray only holds a reference to the tensor and will not copy it until a transfer is requested.
+Unlike objects in the Ray object store, RDT objects are *mutable*, meaning that Ray only holds a reference to the tensor and doesn't copy it until a transfer is requested.
 This means that if the actor that returns a tensor also keeps a reference to the tensor, and the actor later modifies it in place while Ray is still storing the tensor reference, it's possible that some or all of the changes may be seen by receiving actors.
 
 Here is an example of what can go wrong:
@@ -165,7 +165,7 @@ Then, in `sender.increment_and_sum_stored_tensor`, the sender actor modifies the
 Then, the `receiver.increment_and_sum` task receives the modified tensor instead of the original, so the assertion fails.
 
 To fix this kind of error, use the :func:`ray.experimental.wait_tensor_freed <ray.experimental.wait_tensor_freed>` function to wait for Ray to release all references to the tensor, so that the actor can safely write to the tensor again.
-:func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` will unblock once all tasks that depend on the tensor have finished executing and all corresponding `ObjectRefs` have gone out of scope.
+:func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` unblocks once all tasks that depend on the tensor have finished executing and all corresponding `ObjectRefs` have gone out of scope.
 Ray tracks tasks that depend on the tensor by keeping track of which tasks take the `ObjectRef` corresponding to the tensor as an argument.
 
 Here's a fixed version of the earlier example.
@@ -181,7 +181,7 @@ The main changes are:
 3. The driver calls `del tensor` to release its reference to the tensor. Again, this is necessary because :func:`wait_tensor_freed <ray.experimental.wait_tensor_freed>` blocks until all `ObjectRefs` pointing to the tensor are freed.
 
 When an RDT `ObjectRef` is passed back to the same actor that produced it, Ray passes back a *reference* to the tensor instead of a copy. Therefore, the same kind of bug can occur.
-To help catch such cases, Ray will print a warning if an RDT object is passed to the actor that produced it and a different actor, like so:
+To help catch such cases, Ray prints a warning if an RDT object is passed to the actor that produced it and a different actor, like so:
 
 .. literalinclude:: doc_code/direct_transport_gloo.py
    :language: python
@@ -192,7 +192,7 @@ To help catch such cases, Ray will print a warning if an RDT object is passed to
 Usage with NCCL (NVIDIA GPUs only)
 ----------------------------------
 
-RDT requires just a few lines of code change to switch tensor transports. Here is the :ref:`Gloo example <direct-transport-gloo>`, modified to use NVIDIA GPUs and the `NCCL <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`__ library for collective GPU communication.
+RDT requires just a few lines of code change to switch tensor transports. Here is the :ref:`GLOO example <direct-transport-gloo>`, modified to use NVIDIA GPUs and the `NCCL <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`__ library for collective GPU communication.
 
 .. literalinclude:: doc_code/direct_transport_nccl.py
    :language: python
@@ -211,7 +211,7 @@ Usage with NIXL (CPUs or NVIDIA GPUs)
 Installation
 ^^^^^^^^^^^^
 
-For maximum performance, run the `install_gdrcopy.sh <https://github.com/ray-project/ray/blob/master/doc/tools/install_gdrcopy.sh>`__ script (e.g., ``install_gdrcopy.sh "${GDRCOPY_OS_VERSION}" "12.8" "x64"``). You can find available OS versions `here <https://developer.download.nvidia.com/compute/redist/gdrcopy/CUDA%2012.8/>`__. If `gdrcopy` is not installed, things will still work with a plain ``pip install nixl``, just with lower performance. `nixl` and `ucx` are installed as dependencies via pip.
+For maximum performance, run the `install_gdrcopy.sh <https://github.com/ray-project/ray/blob/master/doc/tools/install_gdrcopy.sh>`__ script (for example, ``install_gdrcopy.sh "${GDRCOPY_OS_VERSION}" "12.8" "x64"``). You can find available OS versions `here <https://developer.download.nvidia.com/compute/redist/gdrcopy/CUDA%2012.8/>`__. If `gdrcopy` isn't installed, things still work with a plain ``pip install nixl``, just with lower performance. `nixl` and `ucx` are installed as dependencies using pip.
 
 Walkthrough
 ^^^^^^^^^^^
@@ -219,7 +219,7 @@ Walkthrough
 NIXL can transfer data between different devices, including CPUs and NVIDIA GPUs, but doesn't require a collective group to be created ahead of time.
 This means that any actor that has NIXL installed in its environment can be used to create and pass an RDT object.
 
-Otherwise, the usage is the same as in the :ref:`Gloo example <direct-transport-gloo>`.
+Otherwise, the usage is the same as in the :ref:`GLOO example <direct-transport-gloo>`.
 
 Here is an example showing how to use NIXL to transfer an RDT object between two actors:
 
@@ -228,7 +228,7 @@ Here is an example showing how to use NIXL to transfer an RDT object between two
    :start-after: __nixl_full_example_start__
    :end-before: __nixl_full_example_end__
 
-Compared to the :ref:`Gloo example <direct-transport-gloo>`, the main code differences are:
+Compared to the :ref:`GLOO example <direct-transport-gloo>`, the main code differences are:
 
 1. The :func:`@ray.method <ray.method>` uses ``tensor_transport="nixl"`` instead of ``tensor_transport="gloo"``.
 2. No collective group is needed.
@@ -236,7 +236,7 @@ Compared to the :ref:`Gloo example <direct-transport-gloo>`, the main code diffe
 ray.put and ray.get with NIXL
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Unlike the collective-based tensor transports (Gloo and NCCL), the :func:`ray.get <ray.get>` function can use NIXL to retrieve a copy of the result.
+Unlike the collective-based tensor transports (GLOO and NCCL), the :func:`ray.get <ray.get>` function can use NIXL to retrieve a copy of the result.
 By default, the tensor transport for :func:`ray.get <ray.get>` will be the one specified in the :func:`@ray.method <ray.method>` decorator.
 
 .. literalinclude:: doc_code/direct_transport_nixl.py
@@ -257,8 +257,8 @@ Summary
 RDT allows Ray to store and pass objects directly between Ray actors, using accelerated transports like GLOO, NCCL, and NIXL.
 Here are the main points to keep in mind:
 
-* If using a collective-based tensor transport (Gloo or NCCL), a collective group must be created ahead of time. NIXL just requires all involved actors to have NIXL installed.
-* Unlike objects in the Ray object store, RDT objects are *mutable*, meaning that Ray only holds a reference, not a copy, to the stored tensor(s). 
+* If using a collective-based tensor transport (GLOO or NCCL), a collective group must be created ahead of time. NIXL just requires all involved actors to have NIXL installed.
+* Unlike objects in the Ray object store, RDT objects are *mutable*, meaning that Ray only holds a reference, not a copy, to the stored tensors. 
 * Otherwise, actors can be used as normal.
 
 For a full list of limitations, see the :ref:`limitations <limitations>` section.
@@ -280,19 +280,19 @@ RDT is currently in alpha and currently has the following limitations, which may
 * Support for ``torch.Tensor`` objects only.
 * Support for Ray actors only, not Ray tasks.
 * Not yet compatible with `asyncio <https://docs.python.org/3/library/asyncio.html>`__. Follow the `tracking issue <https://github.com/ray-project/ray/issues/56398>`__ for updates.
-* Support for the following transports: Gloo, NCCL, and NIXL.
+* Support for the following transports: GLOO, NCCL, and NIXL.
 * Support for CPUs and NVIDIA GPUs only.
-* RDT objects are *mutable*. This means that Ray only holds a reference to the tensor, and will not copy it until a transfer is requested. Thus, if the application code also keeps a reference to a tensor before returning it, and modifies the tensor in place, then some or all of the changes may be seen by the receiving actor.
+* RDT objects are *mutable*. This means that Ray only holds a reference to the tensor, and doesn't copy it until a transfer is requested. Thus, if the application code also keeps a reference to a tensor before returning it, and modifies the tensor in place, then some or all of the changes may be seen by the receiving actor.
 
-For collective-based tensor transports (Gloo and NCCL):
+For collective-based tensor transports (GLOO and NCCL):
 
-* Only the process that created the collective group can submit actor tasks that return and pass RDT objects. If the creating process passes the actor handles to other processes, those processes can submit actor tasks as usual, but will not be able to use RDT objects.
-* Similarly, the process that created the collective group cannot serialize and pass RDT :class:`ray.ObjectRefs <ray.ObjectRef>` to other Ray tasks or actors. Instead, the :class:`ray.ObjectRef`\s can only be passed as direct arguments to other actor tasks, and those actors must be in the same collective group.
+* Only the process that created the collective group can submit actor tasks that return and pass RDT objects. If the creating process passes the actor handles to other processes, those processes can submit actor tasks as usual, but aren't able to use RDT objects.
+* Similarly, the process that created the collective group can't serialize and pass RDT :class:`ray.ObjectRefs <ray.ObjectRef>` to other Ray tasks or actors. Instead, the :class:`ray.ObjectRef`\s can only be passed as direct arguments to other actor tasks, and those actors must be in the same collective group.
 * Each actor can only be in one collective group per tensor transport at a time.
 * No support for :func:`ray.put <ray.put>`.
 
 
-Due to a known issue, for NIXL, we currently do not support storing different GPU objects at the same actor, where the objects contain an overlapping but not equal set of tensors. To support this pattern, ensure that the first `ObjectRef` has gone out of scope before storing the same tensor(s) again in a second object.
+Due to a known issue, for NIXL, storing different GPU objects at the same actor isn't supported, where the objects contain an overlapping but not equal set of tensors. To support this pattern, ensure that the first `ObjectRef` has gone out of scope before storing the same tensors again in a second object.
 
 .. literalinclude:: doc_code/direct_transport_nixl.py
    :language: python
@@ -302,16 +302,16 @@ Due to a known issue, for NIXL, we currently do not support storing different GP
 Error handling
 ==============
 
-* Application-level errors, i.e. exceptions raised by user code, will not destroy the collective group and will instead be propagated to any dependent task(s), as for non-RDT Ray objects.
+* Application-level errors (exceptions raised by user code) don't destroy the collective group and are instead propagated to any dependent tasks, as for non-RDT Ray objects.
 
-* If a system-level error occurs during a GLOO or NCCL collective operation, the collective group will be destroyed and the actors will be killed to prevent any hanging.
+* If a system-level error occurs during a GLOO or NCCL collective operation, the collective group is destroyed and the actors are killed to prevent any hanging.
 
-* If a system-level error occurs during a NIXL transfer, Ray or NIXL will abort the transfer with an exception and Ray will raise the exception in the dependent task or on the ray.get on the NIXL ref.
+* If a system-level error occurs during a NIXL transfer, Ray or NIXL aborts the transfer with an exception and Ray raises the exception in the dependent task or on the ray.get on the NIXL ref.
 
 * System-level errors include:
-   * Errors internal to the third-party transport, e.g., NCCL network errors
+   * Errors internal to the third-party transport, for example, NCCL network errors
    * Actor or node failures
-   * Transport errors due to tensor device / transport mismatches, e.g., a CPU tensor when using NCCL
+   * Transport errors due to tensor device / transport mismatches, for example, a CPU tensor when using NCCL
    * Ray RDT object fetch timeouts (can be overridden by setting the ``RAY_rdt_fetch_fail_timeout_milliseconds`` environment variable)
    * Any unexpected system bugs
 

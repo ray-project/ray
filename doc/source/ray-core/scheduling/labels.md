@@ -5,7 +5,7 @@ description: "Learn about using labels to control how Ray schedules tasks, actor
 (labels)=
 # Use labels to control scheduling
 
-In Ray version 2.49.0 and above, you can use labels to control scheduling for KubeRay. Labels are a beta feature.
+In Ray version 2.49.0 and later, you can use labels to control scheduling for KubeRay. Labels are a beta feature.
 
 This page provides a conceptual overview and usage instructions for labels. Labels are key-value pairs that provide a human-readable configuration for users to control how Ray schedules tasks, actors, and placement group bundles to specific nodes.
 
@@ -23,7 +23,7 @@ The following is a high-level overview of how you use labels to control scheduli
 - You define custom labels as key-value pairs. See [](custom).
 - You specify *label selectors* in your Ray code to define label requirements. You can specify these requirements at the task, actor, or placement group bundle level. See [](label-selectors).
 - Ray schedules tasks, actors, or placement group bundles based on the specified label selectors.
-- In Ray 2.50.0 and above, if you're using a dynamic cluster with autoscaler V2 enabled, the cluster scales up to add new nodes from a designated worker group to fulfill label requirements.
+- In Ray 2.50.0 and later, if you're using a dynamic cluster with autoscaler V2 enabled, the cluster scales up to add new nodes from a designated worker group to fulfill label requirements.
 
 (defaults)=
 ## Default node labels 
