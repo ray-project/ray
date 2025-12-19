@@ -26,6 +26,7 @@ from ray.serve._private.constants import (
 from ray.util.scheduling_strategies import (
     LabelMatchExpressionsT,
     NodeAffinitySchedulingStrategy,
+    NodeLabelSchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
 
@@ -599,8 +600,9 @@ class DeploymentScheduler(ABC):
             )
             target_labels = None
         elif target_labels is not None:
-            actor_options["label_selector"] = target_labels
-            actor_options["fallback_strategy"] = [{"label_selector": {}}]
+            scheduling_strategy = NodeLabelSchedulingStrategy(
+                hard={}, soft=target_labels
+            )
             target_node_id = None
 
         if scheduling_request.max_replicas_per_node is not None:
