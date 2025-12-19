@@ -2495,6 +2495,13 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
   return Status::OK();
 }
 
+bool CoreWorker::IsTaskCanceled(const TaskID &task_id) const {
+  // Check if the task is canceled on executor side. Check the canceled_tasks_ which is
+  // populated when CancelTask RPC is received.
+  absl::MutexLock lock(&mutex_);
+  return canceled_tasks_.find(task_id) != canceled_tasks_.end();
+}
+
 Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
   absl::flat_hash_set<TaskID> unknown_child_task_ids;
   auto child_task_ids = task_manager_->GetPendingChildrenTasks(task_id);
@@ -2977,6 +2984,8 @@ Status CoreWorker::ExecuteTask(
     absl::MutexLock lock(&mutex_);
     size_t erased = running_tasks_.erase(task_spec.TaskId());
     RAY_CHECK(erased == 1);
+    // Clean up cancellation state for this task
+    canceled_tasks_.erase(task_spec.TaskId());
     if (task_spec.IsNormalTask()) {
       resource_ids_.clear();
     }
@@ -3975,6 +3984,10 @@ void CoreWorker::CancelTaskOnExecutor(TaskID task_id,
   {
     absl::MutexLock lock(&mutex_);
     requested_task_running = main_thread_task_id_ == task_id;
+
+    if (requested_task_running) {
+      canceled_tasks_.insert(task_id);
+    }
   }
   bool success = requested_task_running;
 
@@ -4027,6 +4040,10 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
       {
         absl::MutexLock lock(&mutex_);
         is_running = running_tasks_.find(task_id) != running_tasks_.end();
+
+        if (is_running) {
+          canceled_tasks_.insert(task_id);
+        }
       }
 
       // Attempt to cancel the task if it's running.
@@ -4035,8 +4052,9 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
         success = options_.cancel_async_actor_task(task_id);
       } else {
         // If the task wasn't running, it was successfully cancelled by
-        // CancelQueuedActorTask. Else if this isn't an asyncio actor, return success so
-        // the client won't retry.
+        // CancelQueuedActorTask. Else if for non-async actor, we can't interrupt running
+        // tasks, but we've marked it as canceled so IsTaskCanceled() will return true.
+        // Return success so the client won't retry.
         success = true;
       }
     }
