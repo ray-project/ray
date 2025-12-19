@@ -324,7 +324,7 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         raise AssertionError(
             f"uv run command {command} is not a suffix of command line {cmdline}"
         )
-    uv_run_args = cmdline[: -len(command)]
+    uv_run_args = cmdline[:len(cmdline) - len(command)]
 
     # Remove the "--directory" argument since it has already been taken into
     # account when setting the current working directory of the current process.
