@@ -770,7 +770,7 @@ class CoreWorker {
   /// NOTE: The API doesn't guarantee the ordering of the report. The
   /// caller is supposed to reorder the report based on the item_index.
   ///
-  /// \param[in] dynamic_return_object A intermediate ray object to report
+  /// \param[in] returned_object A intermediate ray object to report
   /// to the caller before the task terminates. This object must have been
   /// created dynamically from this worker via AllocateReturnObject.
   /// If the Object ID is nil, it means it is the end of the task return.
@@ -787,7 +787,7 @@ class CoreWorker {
   /// \param[in] waiter The class to pause the thread if generator backpressure limit
   /// is reached.
   Status ReportGeneratorItemReturns(
-      const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
+      const std::pair<ObjectID, std::shared_ptr<RayObject>> &returned_object,
       const ObjectID &generator_id,
       const rpc::Address &caller_address,
       int64_t item_index,
@@ -963,6 +963,12 @@ class CoreWorker {
   /// \param[in] recursive Whether to cancel tasks submitted by the task to cancel.
   /// \param[out] Status
   Status CancelTask(const ObjectID &object_id, bool force_kill, bool recursive);
+
+  /// Check if a task has been canceled.
+  ///
+  /// \param[in] task_id The task ID to check.
+  /// \return Whether the task has been canceled.
+  bool IsTaskCanceled(const TaskID &task_id) const;
 
   /// Decrease the reference count for this actor. Should be called by the
   /// language frontend when a reference to the ActorHandle destroyed.
@@ -1208,9 +1214,9 @@ class CoreWorker {
                         rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
-  void HandleCancelRemoteTask(rpc::CancelRemoteTaskRequest request,
-                              rpc::CancelRemoteTaskReply *reply,
-                              rpc::SendReplyCallback send_reply_callback);
+  void HandleRequestOwnerToCancelTask(rpc::RequestOwnerToCancelTaskRequest request,
+                                      rpc::RequestOwnerToCancelTaskReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
@@ -1838,6 +1844,14 @@ class CoreWorker {
   /// We have to track this separately because we cannot access the thread-local worker
   /// contexts from GetCoreWorkerStats().
   absl::flat_hash_map<TaskID, TaskSpecification> running_tasks_ ABSL_GUARDED_BY(mutex_);
+
+  /// Tracks which tasks have been marked as canceled. For single-threaded, non-async
+  /// actors this will contain at most one task ID.
+  ///
+  /// We have to track this separately because cancellation requests come from submitter
+  /// thread than the thread executing the task, so we cannot get the cancellation status
+  /// from the thread-local WorkerThreadContext.
+  absl::flat_hash_set<TaskID> canceled_tasks_ ABSL_GUARDED_BY(mutex_);
 
   /// Key value pairs to be displayed on Web UI.
   std::unordered_map<std::string, std::string> webui_display_ ABSL_GUARDED_BY(mutex_);

@@ -20,6 +20,27 @@ more information.
 
     .. grid-item-card::
 
+        .. figure:: ../images/rayai_logo.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/rayai-labs/agentic-ray?style=social)]
+                :target: https://github.com/rayai-labs/agentic-ray
+
+            Agentic-Ray enables agents built with any framework to use Ray as their runtime, distribute tool calls across a cluster, and provision sandbox environments for executing AI-generated code.
+
+        +++
+        .. button-link:: https://rayai.com
+            :color: primary
+            :outline:
+            :expand:
+
+            Agentic-Ray Integration
+
+
+    .. grid-item-card::
+
         .. figure:: ../images/airflow_logo_full.png
             :class: card-figure
 
@@ -414,6 +435,27 @@ more information.
             :expand:
 
             RayDP Integration
+
+
+    .. grid-item-card::
+
+        .. figure:: ../images/raylight.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/komikndr/raylight?style=social)]
+                :target: https://github.com/komikndr/raylight
+
+            Raylight is an extension for ComfyUI that enables true multi-GPU capability using XDiT XFuser, and FSDP managed by Ray. It is designed to scale diffusion models efficiently across multiple GPUs. Raylight provides sequence parallelism, and optimized VRAM utilization, making it ideal for large video and image generation models.
+
+        +++
+        .. button-link:: https://github.com/komikndr/raylight
+            :color: primary
+            :outline:
+            :expand:
+
+            Raylight Integration
 
 
     .. grid-item-card::

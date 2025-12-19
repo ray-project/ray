@@ -6,7 +6,10 @@ from pydantic import Field, field_validator, model_validator
 
 from ray import serve
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
-from ray.llm._internal.common.dict_utils import deep_merge_dicts
+from ray.llm._internal.common.dict_utils import (
+    deep_merge_dicts,
+    maybe_apply_llm_deployment_config_defaults,
+)
 from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
     load_class,
@@ -20,6 +23,7 @@ from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
 from ray.serve.deployment import Application
 from ray.serve.llm import (
     LLMConfig,
+    build_dp_deployment,
     build_llm_deployment,
 )
 
@@ -119,12 +123,21 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
     """Build a deployable application utilizing prefill/decode disaggregation."""
     pd_config = PDServingArgs.model_validate(pd_serving_args)
 
-    prefill_deployment = build_llm_deployment(
+    # Determine the builder function for prefill and decode deployments independently based on data parallelism.
+    prefill_dp_size = pd_config.prefill_config.engine_kwargs.get(
+        "data_parallel_size", 1
+    )
+    decode_dp_size = pd_config.decode_config.engine_kwargs.get("data_parallel_size", 1)
+
+    prefill_builder = (
+        build_dp_deployment if prefill_dp_size > 1 else build_llm_deployment
+    )
+    decode_builder = build_dp_deployment if decode_dp_size > 1 else build_llm_deployment
+
+    prefill_deployment = prefill_builder(
         pd_config.prefill_config, name_prefix="Prefill:"
     )
-    decode_deployment = build_llm_deployment(
-        pd_config.decode_config, name_prefix="Decode:"
-    )
+    decode_deployment = decode_builder(pd_config.decode_config, name_prefix="Decode:")
 
     # Get the default deployment options from the PDProxyServer class based on the prefill and decode configs.
     proxy_cls_config = pd_config.proxy_cls_config
@@ -150,14 +163,13 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
     )
 
     ingress_cls_config = pd_config.ingress_cls_config
-    ingress_options = ingress_cls_config.ingress_cls.get_deployment_options(
+    default_ingress_options = ingress_cls_config.ingress_cls.get_deployment_options(
         [pd_config.prefill_config, pd_config.decode_config]
     )
 
-    if pd_config.ingress_deployment_config:
-        ingress_options = deep_merge_dicts(
-            ingress_options, pd_config.ingress_deployment_config
-        )
+    ingress_options = maybe_apply_llm_deployment_config_defaults(
+        default_ingress_options, pd_config.ingress_deployment_config
+    )
 
     ingress_cls = make_fastapi_ingress(ingress_cls_config.ingress_cls)
     return serve.deployment(ingress_cls, **ingress_options).bind(

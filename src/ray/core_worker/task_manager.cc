@@ -811,11 +811,11 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     execution_signal_callback(Status::NotFound("Stream is already deleted"), -1);
     return false;
   }
-
-  // TODO(sang): Support the regular return values as well.
   size_t num_objects_written = 0;
-  for (const auto &return_object : request.dynamic_return_objects()) {
-    const auto object_id = ObjectID::FromBinary(return_object.object_id());
+
+  if (request.has_returned_object()) {
+    const rpc::ReturnObject &returned_object = request.returned_object();
+    const auto object_id = ObjectID::FromBinary(returned_object.object_id());
 
     RAY_LOG(DEBUG) << "Write an object " << object_id
                    << " to the object ref stream of id " << generator_id;
@@ -832,7 +832,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     reference_counter_.UpdateObjectPendingCreation(object_id, false);
     StatusOr<bool> put_res =
         HandleTaskReturn(object_id,
-                         return_object,
+                         returned_object,
                          NodeID::FromBinary(request.worker_addr().node_id()),
                          /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
     if (!put_res.ok()) {
@@ -1514,6 +1514,15 @@ void TaskManager::MarkTaskCanceled(const TaskID &task_id) {
 
 void TaskManager::MarkTaskNoRetry(const TaskID &task_id) {
   MarkTaskNoRetryInternal(task_id, /*canceled=*/false);
+}
+
+bool TaskManager::IsTaskCanceled(const TaskID &task_id) const {
+  absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return false;
+  }
+  return it->second.is_canceled_;
 }
 
 absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(

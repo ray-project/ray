@@ -2460,12 +2460,13 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
   }
 
   if (obj_addr.SerializeAsString() != rpc_address_.SerializeAsString()) {
-    // We don't have CancelRemoteTask for actor_task_submitter_
+    // We don't have RequestOwnerToCancelTask for actor_task_submitter_
     // because it requires the same implementation.
     RAY_LOG(DEBUG).WithField(object_id)
         << "Request to cancel a task of object to an owner "
         << obj_addr.SerializeAsString();
-    normal_task_submitter_->CancelRemoteTask(object_id, obj_addr, force_kill, recursive);
+    normal_task_submitter_->RequestOwnerToCancelTask(
+        object_id, obj_addr, force_kill, recursive);
     return Status::OK();
   }
 
@@ -2492,6 +2493,13 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
     normal_task_submitter_->CancelTask(task_spec.value(), force_kill, recursive);
   }
   return Status::OK();
+}
+
+bool CoreWorker::IsTaskCanceled(const TaskID &task_id) const {
+  // Check if the task is canceled on executor side. Check the canceled_tasks_ which is
+  // populated when CancelTask RPC is received.
+  absl::MutexLock lock(&mutex_);
+  return canceled_tasks_.find(task_id) != canceled_tasks_.end();
 }
 
 Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
@@ -2976,6 +2984,8 @@ Status CoreWorker::ExecuteTask(
     absl::MutexLock lock(&mutex_);
     size_t erased = running_tasks_.erase(task_spec.TaskId());
     RAY_CHECK(erased == 1);
+    // Clean up cancellation state for this task
+    canceled_tasks_.erase(task_spec.TaskId());
     if (task_spec.IsNormalTask()) {
       resource_ids_.clear();
     }
@@ -3170,10 +3180,11 @@ Status CoreWorker::ReportGeneratorItemReturns(
   request.set_attempt_number(attempt_number);
   auto client = core_worker_client_pool_->GetOrConnect(caller_address);
 
+  // This means it is the last report when the task has finished executing.
   if (!dynamic_return_object.first.IsNil()) {
-    auto return_object_proto = request.add_dynamic_return_objects();
-    SerializeReturnObject(
-        dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
+    SerializeReturnObject(dynamic_return_object.first,
+                          dynamic_return_object.second,
+                          request.mutable_returned_object());
     std::vector<ObjectID> deleted;
     // When we allocate a dynamic return ID (AllocateDynamicReturnId),
     // we borrow the object. When the object value is allocatd, the
@@ -3910,9 +3921,10 @@ void CoreWorker::ProcessSubscribeForRefRemoved(
   reference_counter_->SubscribeRefRemoved(object_id, contained_in_id, owner_address);
 }
 
-void CoreWorker::HandleCancelRemoteTask(rpc::CancelRemoteTaskRequest request,
-                                        rpc::CancelRemoteTaskReply *reply,
-                                        rpc::SendReplyCallback send_reply_callback) {
+void CoreWorker::HandleRequestOwnerToCancelTask(
+    rpc::RequestOwnerToCancelTaskRequest request,
+    rpc::RequestOwnerToCancelTaskReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   auto status = CancelTask(ObjectID::FromBinary(request.remote_object_id()),
                            request.force_kill(),
                            request.recursive());
@@ -3972,6 +3984,10 @@ void CoreWorker::CancelTaskOnExecutor(TaskID task_id,
   {
     absl::MutexLock lock(&mutex_);
     requested_task_running = main_thread_task_id_ == task_id;
+
+    if (requested_task_running) {
+      canceled_tasks_.insert(task_id);
+    }
   }
   bool success = requested_task_running;
 
@@ -4024,6 +4040,10 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
       {
         absl::MutexLock lock(&mutex_);
         is_running = running_tasks_.find(task_id) != running_tasks_.end();
+
+        if (is_running) {
+          canceled_tasks_.insert(task_id);
+        }
       }
 
       // Attempt to cancel the task if it's running.
@@ -4032,8 +4052,9 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
         success = options_.cancel_async_actor_task(task_id);
       } else {
         // If the task wasn't running, it was successfully cancelled by
-        // CancelQueuedActorTask. Else if this isn't an asyncio actor, return success so
-        // the client won't retry.
+        // CancelQueuedActorTask. Else if for non-async actor, we can't interrupt running
+        // tasks, but we've marked it as canceled so IsTaskCanceled() will return true.
+        // Return success so the client won't retry.
         success = true;
       }
     }

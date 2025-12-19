@@ -33,6 +33,7 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
     Default,
+    copy_class_metadata,
     ensure_serialization_context,
     extract_self_if_method_call,
     validate_route_prefix,
@@ -309,7 +310,7 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
                     else:
                         cls.__del__(self)
 
-        ASGIIngressWrapper.__name__ = cls.__name__
+        copy_class_metadata(ASGIIngressWrapper, cls)
 
         return ASGIIngressWrapper
 
@@ -889,6 +890,11 @@ def get_multiplexed_model_id() -> str:
     This is used with a function decorated with `@serve.multiplexed`
     to retrieve the model ID for the current request.
 
+    When called from within a batched function (decorated with `@serve.batch`),
+    this returns the multiplexed model ID that is common to all requests in
+    the current batch. This works because batches are automatically split
+    by model ID to ensure all requests in a batch target the same model.
+
     .. code-block:: python
 
             import ray
@@ -910,6 +916,14 @@ def get_multiplexed_model_id() -> str:
             def my_deployment_function(request):
                 assert serve.get_multiplexed_model_id() == "model_1"
     """
+    # First check if we're inside a batch context. If so, get the model ID
+    # from the batch request context. All requests in a batch are guaranteed
+    # to have the same multiplexed_model_id (batches are split by model ID).
+    batch_request_context = ray.serve.context._get_serve_batch_request_context()
+    if batch_request_context:
+        return batch_request_context[0].multiplexed_model_id
+
+    # Fall back to the regular request context
     _request_context = ray.serve.context._get_serve_request_context()
     return _request_context.multiplexed_model_id
 

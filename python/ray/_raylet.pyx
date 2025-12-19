@@ -2874,7 +2874,7 @@ cdef class CoreWorker:
                 c_object_ids, timeout_ms, results)
         check_status(op_status)
 
-        return RayObjectsToSerializedRayObjects(results)
+        return RayObjectsToSerializedRayObjects(results, object_refs)
 
     def get_if_local(self, object_refs):
         """Get objects from local plasma store directly
@@ -2886,7 +2886,7 @@ cdef class CoreWorker:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().GetIfLocal(
                     c_object_ids, &results))
-        return RayObjectsToSerializedRayObjects(results)
+        return RayObjectsToSerializedRayObjects(results, object_refs)
 
     def object_exists(self, ObjectRef object_ref, memory_store_only=False):
         cdef:
@@ -3756,6 +3756,26 @@ cdef class CoreWorker:
 
         if not status.ok():
             raise TypeError(status.message().decode())
+
+    def is_canceled(self):
+        """Check if the current task has been canceled.
+
+        Returns:
+            True if the current task has been canceled, False otherwise.
+        """
+        cdef:
+            CTaskID c_task_id
+            c_bool is_canceled
+            TaskID task_id
+
+        # Get the current task ID
+        task_id = self.get_current_task_id()
+        c_task_id = task_id.native()
+
+        with nogil:
+            is_canceled = CCoreWorkerProcess.GetCoreWorker().IsTaskCanceled(c_task_id)
+
+        return is_canceled
 
     def resource_ids(self):
         cdef:
