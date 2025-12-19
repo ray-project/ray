@@ -14,10 +14,16 @@ This example:
 
 How to run this script
 ----------------------
-`python atari_sac.py --env=ale_py:ALE/Pong-v5`
+`python atari_sac.py
 
-For faster training with multiple learners and env runners:
-`python atari_sac.py --num-learners=2 --num-env-runners=8`
+To run on a different Atari environment:
+`python atari_sac.py --env=ale_py:ALE/SpaceInvaders-v5``
+
+To scale up with distributed learning using multiple learners and env-runners:
+`python [script file name].py --num-learners=2 --num-env-runners=8`
+
+To use a GPU-based learner add the number of GPUs per learners:
+`python [script file name].py --num-learners=1 --num-gpus-per-learner=1`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0 --num-learners=0`
@@ -99,14 +105,21 @@ config = (
         learner_connector=_make_learner_connector,
         train_batch_size_per_learner=500,
         target_network_update_freq=2,
-        lr=0.0005 * ((args.num_learners or 1) ** 0.5),
-        vf_loss_coeff=1.0,
-        entropy_coeff=[[0, 0.01], [3000000, 0.0]],  # <- crucial parameter to finetune
-        # Only update connector states and model weights every n training_step calls.
-        broadcast_interval=5,
-        # learner_queue_size=1,
-        circular_buffer_num_batches=4,
-        circular_buffer_iterations_per_batch=2,
+        # lr=0.0006 is very high, w/ 4 GPUs -> 0.0012
+        # Might want to lower it for better stability, but it does learn well.
+        actor_lr=2e-4 * (args.num_learners or 1) ** 0.5,
+        critic_lr=8e-4 * (args.num_learners or 1) ** 0.5,
+        alpha_lr=9e-4 * (args.num_learners or 1) ** 0.5,
+        target_entropy="auto",
+        n_step=(1, 5),  # 1?
+        tau=0.005,
+        replay_buffer_config={
+            "type": "PrioritizedEpisodeReplayBuffer",
+            "capacity": 100000,
+            "alpha": 0.6,
+            "beta": 0.4,
+        },
+        num_steps_sampled_before_learning_starts=10_000,
     )
     .rl_module(
         model_config=DefaultModelConfig(

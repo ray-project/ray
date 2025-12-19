@@ -18,8 +18,11 @@ How to run this script
 To train with more agents:
 `python tictactoe_sac.py --num-agents=4`
 
-For faster training with multiple learners:
-`python tictactoe_sac.py --num-learners=2 --num-env-runners=4`
+To scale up with distributed learning using multiple learners and env-runners:
+`python tictactoe_sac.py --num-learners=2 --num-env-runners=8`
+
+To use a GPU-based learner add the number of GPUs per learners:
+`python tictactoe_sac.py --num-learners=1 --num-gpus-per-learner=1`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0 --num-learners=0`
@@ -48,9 +51,7 @@ from ray.rllib.examples.utils import (
 )
 from ray.tune.registry import register_env
 
-parser = add_rllib_example_script_args(
-    default_timesteps=500000,
-)
+parser = add_rllib_example_script_args(default_timesteps=500_000, default_reward=-0.5)
 parser.set_defaults(
     num_agents=2,
 )

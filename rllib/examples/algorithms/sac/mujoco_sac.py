@@ -1,12 +1,12 @@
-"""Example showing how to train SAC on MuJoCo's HalfCheetah continuous control task.
+"""Example showing how to train SAC on MuJoCo's Humanoid continuous control task.
 
 Soft Actor-Critic (SAC) is an off-policy maximum entropy reinforcement learning
 algorithm that excels at continuous control tasks. This example demonstrates SAC
-on the HalfCheetah-v4 MuJoCo environment with prioritized experience replay and
+on the Humanoid-v4 MuJoCo environment with prioritized experience replay and
 n-step returns.
 
 This example:
-- Trains on the HalfCheetah-v4 MuJoCo locomotion environment
+- Trains on the Humanoid-v4 MuJoCo locomotion environment
 - Uses prioritized experience replay buffer (alpha=0.6, beta=0.4)
 - Configures separate learning rates for actor, critic, and alpha (temperature)
 - Applies n-step returns with random n in range [1, 5] for each sampled transition
@@ -16,8 +16,14 @@ How to run this script
 ----------------------
 `python mujoco_sac.py`
 
-For faster training with multiple learners:
+To run on a different Atari environment:
+`python mujoco_sac.py --env=HalfCheetah-v4``
+
+To scale up with distributed learning using multiple learners and env-runners:
 `python mujoco_sac.py --num-learners=2 --num-env-runners=8`
+
+To use a GPU-based learner add the number of GPUs per learners:
+`python mujoco_sac.py --num-learners=1 --num-gpus-per-learner=1`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0 --num-learners=0`
@@ -33,12 +39,6 @@ For logging to your WandB account, use:
 Results to expect
 -----------------
 Training should reach a reward of ~12,000 within 1M timesteps (~2000 iterations).
-
-+--------------------------------------+------------+--------+------------------+
-| Trial name                           | status     |   iter |   total time (s) |
-|--------------------------------------+------------+--------+------------------+
-| SAC_HalfCheetah-v4_xxxxx_00000       | TERMINATED |   2000 |         XXXXX.XX |
-+--------------------------------------+------------+--------+------------------+
 """
 from torch import nn
 
@@ -50,15 +50,15 @@ from ray.rllib.examples.utils import (
 )
 
 parser = add_rllib_example_script_args(
+    default_reward=800.0,
     default_timesteps=1_000_000,
-    default_reward=12_000.0,
-    default_iters=2_000,
 )
+parser.set_defaults(env="Humanoid-v4")
 args = parser.parse_args()
 
 config = (
     SACConfig()
-    .environment("HalfCheetah-v4")
+    .environment(args.env)
     .training(
         initial_alpha=1.001,
         # lr=0.0006 is very high, w/ 4 GPUs -> 0.0012
@@ -78,7 +78,7 @@ config = (
             "alpha": 0.6,
             "beta": 0.4,
         },
-        num_steps_sampled_before_learning_starts=10000,
+        num_steps_sampled_before_learning_starts=10_000,
     )
     .rl_module(
         model_config=DefaultModelConfig(
@@ -89,10 +89,6 @@ config = (
             head_fcnet_kernel_initializer="orthogonal_",
             head_fcnet_kernel_initializer_kwargs={"gain": 0.01},
         ),
-    )
-    .reporting(
-        metrics_num_episodes_for_smoothing=5,
-        min_sample_timesteps_per_iteration=1000,
     )
 )
 

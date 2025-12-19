@@ -13,10 +13,13 @@ This example:
 
 How to run this script
 ----------------------
-`python pendulum_sac.py`
+`python stateless_cartpole_sac_with_lstm.py [options]`
 
-For faster training with multiple learners:
-`python pendulum_sac.py --num-learners=2 --num-env-runners=4`
+To scale up with distributed learning using multiple learners and env-runners:
+`python stateless_cartpole_sac_with_lstm.py --num-learners=2 --num-env-runners=8`
+
+To use a GPU-based learner add the number of GPUs per learners:
+`python stateless_cartpole_sac_with_lstm.py --num-learners=1 --num-gpus-per-learner=1`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0 --num-learners=0`
@@ -32,12 +35,6 @@ For logging to your WandB account, use:
 Results to expect
 -----------------
 Training should reach a reward of ~350 within 500k timesteps.
-
-+------------------------------------+------------+--------+------------------+
-| Trial name                         | status     |   iter |   total time (s) |
-|------------------------------------+------------+--------+------------------+
-| SAC_StatelessCartPole_xxxxx_00000  | TERMINATED |     XX |            XX.XX |
-+------------------------------------+------------+--------+------------------+
 """
 from torch import nn
 
@@ -50,7 +47,7 @@ from ray.rllib.examples.utils import (
 )
 
 parser = add_rllib_example_script_args(
-    default_timesteps=500000,
+    default_timesteps=500_000,
     default_reward=350.0,
 )
 args = parser.parse_args()
