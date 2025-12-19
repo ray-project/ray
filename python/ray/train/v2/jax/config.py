@@ -123,6 +123,12 @@ class _JaxBackend(Backend):
         if backend_config.use_tpu and num_slices > 1:
             scaling_config = worker_group._train_run_context.scaling_config
 
+            if not scaling_config.topology or not scaling_config.accelerator_type:
+                raise ValueError(
+                    "When `num_slices > 1` for TPU, you must specify `topology` and "
+                    "`accelerator_type` in `ScalingConfig`."
+                )
+
             # Handle the case where a user requests less workers than the total
             # capacity of the TPU slice.
             total_capacity, _ = get_tpu_worker_resources(
