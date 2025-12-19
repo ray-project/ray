@@ -137,9 +137,7 @@ py_test(
     main = "examples/algorithms/appo/cartpole_appo.py",
     tags = [
         "learning_tests",
-        "learning_tests_discrete",
         "team:rllib",
-        "torch_only",
     ],
 )
 
@@ -157,9 +155,7 @@ py_test(
     main = "examples/algorithms/appo/cartpole_appo.py",
     tags = [
         "learning_tests",
-        "learning_tests_discrete",
         "team:rllib",
-        "torch_only",
     ],
 )
 
@@ -177,9 +173,7 @@ py_test(
     main = "examples/algorithms/appo/stateless_cartpole_appo_with_lstm.py",
     tags = [
         "learning_tests",
-        "learning_tests_discrete",
         "team:rllib",
-        "torch_only",
     ],
 )
 
@@ -199,9 +193,7 @@ py_test(
     tags = [
         "gpu",
         "learning_tests",
-        "learning_tests_discrete",
         "team:rllib",
-        "torch_only",
     ],
 )
 
@@ -219,9 +211,7 @@ py_test(
     main = "examples/algorithms/appo/tictactoe_appo.py",
     tags = [
         "learning_tests",
-        "learning_tests_discrete",
         "team:rllib",
-        "torch_only",
     ],
 )
 
@@ -241,9 +231,7 @@ py_test(
     tags = [
         "gpu",
         "learning_tests",
-        "learning_tests_discrete",
         "team:rllib",
-        "torch_only",
     ],
 )
 
@@ -262,10 +250,8 @@ py_test(
     main = "examples/algorithms/appo/tictactoe_appo.py",
     tags = [
         "learning_tests",
-        "learning_tests_discrete",
         "multi_gpu",
         "team:rllib",
-        "torch_only",
     ],
 )
 
@@ -286,9 +272,7 @@ py_test(
     tags = [
         "gpu",
         "learning_tests",
-        "learning_tests_discrete",
         "team:rllib",
-        "torch_only",
     ],
 )
 
@@ -303,15 +287,13 @@ py_test(
         "--num-learners=2",
         "--num-gpus-per-learner=1",
         "--stop-iters=50",
-        "--stop-reward=1.0",
+        "--stop-reward=5.0",
     ],
     main = "examples/algorithms/appo/atari_appo.py",
     tags = [
         "learning_tests",
-        "learning_tests_discrete",
         "multi_gpu",
         "team:rllib",
-        "torch_only",
     ],
 )
 
@@ -329,9 +311,7 @@ py_test(
     main = "examples/algorithms/appo/mujoco_appo.py",
     tags = [
         "learning_tests",
-        "learning_tests_continuous",
         "team:rllib",
-        "torch_only",
     ],
 )
 
@@ -350,10 +330,8 @@ py_test(
     main = "examples/algorithms/appo/mujoco_appo.py",
     tags = [
         "learning_tests",
-        "learning_tests_continuous",
         "multi_gpu",
         "team:rllib",
-        "torch_only",
     ],
 )
 
