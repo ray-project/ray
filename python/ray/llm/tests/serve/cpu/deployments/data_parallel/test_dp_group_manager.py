@@ -283,9 +283,8 @@ class TestRegister:
 
     @pytest.fixture
     def manager(self):
-        """Create a DPGroupManager instance (unwrapped from deployment)."""
-        # Access the underlying class, not the deployment wrapper
-        return DPGroupManager.__wrapped__(dp_group_size=8, dp_size_per_node=8)
+        """Create a DPGroupManager instance for testing."""
+        return DPGroupManager(dp_group_size=8, dp_size_per_node=8)
 
     @pytest.mark.asyncio
     async def test_first_time_registration(self, manager):
@@ -360,7 +359,7 @@ class TestRegister:
         - local_rank 4-7 -> group 1, dp_ranks 0-3
         """
         # Create manager with dp_group_size=4 for this test
-        manager = DPGroupManager.__wrapped__(dp_group_size=4, dp_size_per_node=8)
+        manager = DPGroupManager(dp_group_size=4, dp_size_per_node=8)
 
         # Register replicas for group 0 (local_rank 0-3)
         for local_rank in range(4):
@@ -402,8 +401,8 @@ class TestMasterInfo:
 
     @pytest.fixture
     def manager(self):
-        """Create a DPGroupManager instance (unwrapped from deployment)."""
-        return DPGroupManager.__wrapped__(dp_group_size=8, dp_size_per_node=8)
+        """Create a DPGroupManager instance for testing."""
+        return DPGroupManager(dp_group_size=8, dp_size_per_node=8)
 
     @pytest.mark.asyncio
     async def test_set_and_get_master_info(self, manager):
@@ -481,8 +480,8 @@ class TestDoubleRegistration:
 
     @pytest.fixture
     def manager(self):
-        """Create a DPGroupManager instance (unwrapped from deployment)."""
-        return DPGroupManager.__wrapped__(dp_group_size=8, dp_size_per_node=8)
+        """Create a DPGroupManager instance for testing."""
+        return DPGroupManager(dp_group_size=8, dp_size_per_node=8)
 
     @pytest.mark.asyncio
     async def test_double_registration_triggers_kill(self, manager):

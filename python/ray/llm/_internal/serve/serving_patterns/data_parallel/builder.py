@@ -54,7 +54,7 @@ def build_dp_deployment(
             "dp_size_per_node must be set in experimental_configs for DP deployment."
         )
 
-    dp_group_manager = DPGroupManager.bind(
+    dp_group_manager = serve.deployment(DPGroupManager, num_replicas=1).bind(
         dp_group_size=dp_size,
         dp_size_per_node=dp_size_per_node,
     )

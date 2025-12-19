@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 import ray
-from ray import serve
 from ray.serve.schema import ReplicaRank
 
 logger = logging.getLogger(__name__)
@@ -26,7 +25,6 @@ class GroupInfo:
     master_info_event: asyncio.Event = field(default_factory=asyncio.Event)
 
 
-@serve.deployment(num_replicas=1)
 class DPGroupManager:
     """Data Parallel Group Manager.
 
