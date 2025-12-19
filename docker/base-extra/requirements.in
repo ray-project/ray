@@ -4,7 +4,7 @@ ipywidgets
 grpcio
 grpcio-tools
 
-jupyter_server_terminals==0.4.4
+jupyter_server_terminals
 
 # [backend] is for installing anyscale CLI for use in the anyscale cloud.
 anyscale[backend]

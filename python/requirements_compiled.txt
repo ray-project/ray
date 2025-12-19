@@ -91,7 +91,6 @@ antlr4-python3-runtime==4.11.1
     #   qpd
 anyio==4.12.0
     # via
-    #   -r python/requirements/test-requirements.txt
     #   httpx
     #   jupyter-server
     #   starlette
