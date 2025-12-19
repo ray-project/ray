@@ -31,8 +31,8 @@ def call_with_retry(
         f: The function to retry.
         description: An imperative description of the function being retried. For
             example, "open the file".
-        match: A list of strings to match in the exception message. If ``None``, any
-            error is retried.
+        match: A sequence of strings to match in the exception message.
+            If ``None``, any error is retried.
         max_attempts: The maximum number of attempts to retry.
         max_backoff_s: The maximum number of seconds to backoff.
         *args: Arguments to pass to the function.
@@ -77,7 +77,19 @@ def retry(
     max_attempts: int = 10,
     max_backoff_s: int = 32,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    """Decorator-based version of call_with_retry."""
+    """Decorator-based version of call_with_retry.
+
+    Args:
+        description: An imperative description of the function being retried. For
+            example, "open the file".
+        match: A sequence of strings to match in the exception message.
+            If ``None``, any error is retried.
+        max_attempts: The maximum number of attempts to retry.
+        max_backoff_s: The maximum number of seconds to backoff.
+
+    Returns:
+        A Callable that can be applied in a normal decorator fashion.
+    """
 
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
         @functools.wraps(func)
