@@ -147,63 +147,73 @@ void MutableObjectProvider::HandlePushMutableObject(
       << "Metadata size mismatch. Expected " << total_metadata_size << " bytes, got "
       << request.metadata().size() << " bytes";
 
-  // Check if this chunk has already been received (idempotent retry handling).
-  bool is_new_chunk = false;
-  uint64_t tmp_written_so_far = 0;
-  bool object_complete = false;
-  bool needs_write_acquire = false;
+  // Version-based idempotent retry handling strategy:
+  // - Stale versions (<= highest_completed): discard immediately
+  // - Active version (== highest_completed + 1): write to backing store
+  // - Future versions (> highest_completed + 1): buffer for later processing
+  int64_t request_version = request.version();
+
+  // Step 1: Reject stale retries from completed writes (O(1) check)
+  int64_t highest_completed = 0;
   {
     absl::MutexLock guard(&written_so_far_lock_);
+    highest_completed = highest_completed_version_[writer_object_id];  // default 0
 
-    // Initialize tracking for this object if needed.
-    auto &received_chunks = received_chunks_[writer_object_id];
-
-    // Check if we've already received this specific chunk by offset.
-    if (received_chunks.find(offset) != received_chunks.end()) {
-      // This chunk was already received (retry) - skip processing but return status.
-      auto written_it = written_so_far_.find(writer_object_id);
-      if (written_it != written_so_far_.end()) {
-        tmp_written_so_far = written_it->second;
-        object_complete = (tmp_written_so_far == total_data_size);
-      } else {
-        // Tracking was cleaned up, meaning object is complete.
-        object_complete = true;
-      }
-    } else {
-      // This is a new chunk - check tracking but don't mark as received yet.
-      // We'll mark it as received only after successfully writing it.
-      is_new_chunk = true;
-      auto written_it = written_so_far_.find(writer_object_id);
-      bool is_new_write = (written_it == written_so_far_.end());
-      tmp_written_so_far = is_new_write ? 0 : written_it->second;
-
-      // Check if WriteAcquire needs to be called. This handles out-of-order chunks:
-      // only the first chunk (or first chunk to arrive) will call WriteAcquire.
-      // Reset write_acquired_ flag if this is a new write (after previous WriteRelease).
-      if (is_new_write) {
-        write_acquired_[writer_object_id] = false;
-        received_chunks_[writer_object_id].clear();
-        // Initialize written_so_far_ immediately to prevent race condition where
-        // multiple concurrent threads all see is_new_write=true and reset
-        // write_acquired_.
-        written_so_far_[writer_object_id] = 0;
-      }
-      if (!write_acquired_[writer_object_id]) {
-        needs_write_acquire = true;
-        write_acquired_[writer_object_id] = true;
-      }
+    if (request_version <= highest_completed) {
+      // Stale retry from already-completed write
+      reply->set_done(true);
+      return;
     }
   }
 
-  // If this is a retry of an already-received chunk, return current status without
-  // re-processing the data (idempotent operation).
-  if (!is_new_chunk) {
-    reply->set_done(object_complete);
-    return;
+  // Step 2: Determine if this is active version or future version
+  int64_t active_version = highest_completed + 1;
+  bool is_active_version = (request_version == active_version);
+
+  // Step 3: Check for duplicate chunks using (offset, version) key
+  auto chunk_key = std::make_pair(offset, request_version);
+  bool needs_write_acquire = false;
+
+  {
+    absl::MutexLock guard(&written_so_far_lock_);
+    auto &received_chunks = received_chunks_[writer_object_id];
+
+    if (received_chunks.find(chunk_key) != received_chunks.end()) {
+      // Duplicate chunk - return status
+      if (is_active_version) {
+        auto written_it = written_so_far_.find(writer_object_id);
+        uint64_t written = (written_it != written_so_far_.end()) ? written_it->second : 0;
+        reply->set_done(written == total_data_size);
+      } else {
+        reply->set_done(false);
+      }
+      return;
+    }
+
+    // Step 4: For future versions, buffer only (don't write to backing store)
+    if (!is_active_version) {
+      received_chunks.insert(chunk_key);
+      reply->set_done(false);
+      return;
+    }
+
+    // Step 5: Active version - check if need WriteAcquire
+    if (!write_acquired_[writer_object_id]) {
+      needs_write_acquire = true;
+      write_acquired_[writer_object_id] = true;
+    }
   }
+
+  // Continue with WriteAcquire and write logic for active version
+  bool object_complete = false;
 
   std::shared_ptr<Buffer> object_backing_store;
   if (needs_write_acquire) {
+    // Initialize written_so_far_ for new write
+    {
+      absl::MutexLock guard(&written_so_far_lock_);
+      written_so_far_[writer_object_id] = 0;
+    }
     // First chunk to arrive (may not be offset 0 due to out-of-order delivery) -
     // acquire write lock and allocate backing store.
     // We set `metadata` to nullptr since the metadata is at the end of the object, which
@@ -231,7 +241,8 @@ void MutableObjectProvider::HandlePushMutableObject(
   // This ensures retries are handled correctly even if WriteAcquire fails.
   {
     absl::MutexLock guard(&written_so_far_lock_);
-    received_chunks_[writer_object_id].insert(offset);
+    // Mark chunk as received using (offset, version) pair (reusing chunk_key from above)
+    received_chunks_[writer_object_id].insert(chunk_key);
     // Update written_so_far_ by adding this chunk's size.
     // Note: written_so_far_ was already initialized to 0 in the first lock block
     // for new writes, so we can safely increment it here.
@@ -253,13 +264,31 @@ void MutableObjectProvider::HandlePushMutableObject(
     // The entire object has been written, so call `WriteRelease()`.
     RAY_CHECK_OK(object_manager_->WriteRelease(info.local_object_id));
 
-    // Clean up tracking state after WriteRelease to prepare for the next write.
-    // This ensures that subsequent writes to the same channel start fresh.
+    // Update tracking state after WriteRelease
     {
       absl::MutexLock guard(&written_so_far_lock_);
+
+      // Update highest completed version
+      highest_completed_version_[writer_object_id] = request_version;
+
+      // Remove ONLY chunks belonging to this completed version
+      auto &chunks = received_chunks_[writer_object_id];
+      for (auto it = chunks.begin(); it != chunks.end();) {
+        if (it->second == request_version) {
+          it = chunks.erase(it);
+        } else {
+          ++it;
+        }
+      }
+
+      // Clear per-object tracking for next write
       written_so_far_.erase(writer_object_id);
-      received_chunks_.erase(writer_object_id);
       write_acquired_.erase(writer_object_id);
+
+      // Clean up received_chunks_ entry if empty
+      if (chunks.empty()) {
+        received_chunks_.erase(writer_object_id);
+      }
     }
 
     reply->set_done(true);
@@ -309,9 +338,11 @@ void MutableObjectProvider::PollWriterClosure(
         &remote_readers) {
   // NOTE: There's only 1 PollWriterClosure at any time in a single thread.
   std::shared_ptr<RayObject> object;
+  int64_t version = 0;
   // The corresponding ReadRelease() will be automatically called when
   // `object` goes out of scope.
-  Status status = object_manager_->ReadAcquire(writer_object_id, object);
+  Status status =
+      object_manager_->ReadAcquire(writer_object_id, object, version, /*timeout_ms=*/-1);
   // Check if the thread returned from ReadAcquire() because the process is exiting, not
   // because there is something to read.
   if (status.code() == StatusCode::ChannelError) {
@@ -323,6 +354,9 @@ void MutableObjectProvider::PollWriterClosure(
   RAY_CHECK(object->GetData());
   RAY_CHECK(object->GetMetadata());
 
+  // Version was obtained safely from ReadAcquire (with header_sem protection)
+  RAY_CHECK_GT(version, 0) << "Invalid version for " << writer_object_id;
+
   std::shared_ptr<size_t> num_replied = std::make_shared<size_t>(0);
   for (const auto &reader : *remote_readers) {
     reader->PushMutableObject(
@@ -331,6 +365,7 @@ void MutableObjectProvider::PollWriterClosure(
         object->GetMetadata()->Size(),
         object->GetData()->Data(),
         object->GetMetadata()->Data(),
+        version,
         [this, &io_context, writer_object_id, remote_readers, num_replied](
             const Status &push_object_status, const rpc::PushMutableObjectReply &reply) {
           *num_replied += 1;

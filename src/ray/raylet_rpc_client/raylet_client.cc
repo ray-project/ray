@@ -167,6 +167,7 @@ void RayletClient::PushMutableObject(
     uint64_t metadata_size,
     void *data,
     void *metadata,
+    int64_t version,
     const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply> &callback,
     int64_t timeout_ms) {
   // Ray sets the gRPC max payload size to ~512 MiB. We set the max chunk size to a
@@ -198,6 +199,8 @@ void RayletClient::PushMutableObject(
     // Set metadata for each message so on the receiver side
     // metadata from any message can be used.
     request.set_metadata(static_cast<char *>(metadata), metadata_size);
+    // Set the version from the sender's PlasmaObjectHeader to distinguish write epochs
+    request.set_version(version);
 
     // Use retryable RPC call to handle failure recovery, retries, and timeout.
     // Each chunk is retried automatically on transient network errors.

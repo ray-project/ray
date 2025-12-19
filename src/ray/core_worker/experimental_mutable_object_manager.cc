@@ -306,6 +306,15 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
                                          std::shared_ptr<RayObject> &result,
                                          int64_t timeout_ms)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
+  int64_t unused_version = 0;
+  return ReadAcquire(object_id, result, unused_version, timeout_ms);
+}
+
+Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
+                                         std::shared_ptr<RayObject> &result,
+                                         int64_t &version_read,
+                                         int64_t timeout_ms)
+    ABSL_NO_THREAD_SAFETY_ANALYSIS {
   RAY_LOG(DEBUG).WithField(object_id) << "ReadAcquire";
   absl::ReaderMutexLock guard(&destructor_lock_);
 
@@ -349,11 +358,11 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   }
 
   channel->reading = true;
-  int64_t version_read = 0;
+  int64_t version_read_internal = 0;
   Status s = object->header->ReadAcquire(object_id,
                                          sem,
                                          channel->next_version_to_read,
-                                         version_read,
+                                         version_read_internal,
                                          check_signals_,
                                          timeout_point);
   if (!s.ok()) {
@@ -363,8 +372,8 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
     channel->lock->unlock();
     return s;
   }
-  RAY_CHECK_GT(version_read, 0);
-  channel->next_version_to_read = version_read;
+  RAY_CHECK_GT(version_read_internal, 0);
+  channel->next_version_to_read = version_read_internal;
 
   size_t total_size = object->header->data_size + object->header->metadata_size;
   RAY_CHECK_LE(static_cast<int64_t>(total_size), channel->mutable_object->allocated_size);
@@ -402,6 +411,10 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
                                          std::move(metadata_copy),
                                          std::vector<rpc::ObjectReference>());
   }
+
+  // Return the version to caller (obtained atomically with header_sem)
+  version_read = version_read_internal;
+
   RAY_LOG(DEBUG).WithField(object_id) << "ReadAcquire returning buffer";
   return Status::OK();
 }

@@ -240,6 +240,7 @@ class FakeRayletClient : public RayletClientInterface {
                          uint64_t metadata_size,
                          void *data,
                          void *metadata,
+                         int64_t version,
                          const ClientCallback<PushMutableObjectReply> &callback,
                          int64_t timeout_ms = -1) override {}
 
