@@ -43,14 +43,14 @@ Status WriteFile(const std::string &file_path, const std::string &value);
  * concurrent writes or content changes during/after read.
  *
  * @param file_path The absolute path to the file to wait for.
- * @param timeout_ms Maximum time to wait in milliseconds. Defaults to 30000.
+ * @param timeout_ms Maximum time to wait in milliseconds. Defaults to 15000.
  * @param poll_interval_ms Interval between filesystem checks in milliseconds.
- *        Defaults to 100.
+ *        Defaults to 50.
  * @return The file content if successful.
  * @return StatusT::IOError if the file exists but cannot be read.
  * @return StatusT::TimedOut if the file does not appear within the timeout period.
  */
 StatusSetOr<std::string, StatusT::IOError, StatusT::TimedOut> WaitForFile(
-    const std::string &file_path, int timeout_ms = 30000, int poll_interval_ms = 100);
+    const std::string &file_path, int timeout_ms = 15000, int poll_interval_ms = 50);
 
 }  // namespace ray
