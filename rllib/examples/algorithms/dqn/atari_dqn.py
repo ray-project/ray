@@ -92,10 +92,10 @@ config = (
     .environment(
         env="atari-env",
         env_config={
-            "max_episode_steps": 108_000,
-            "obs_type": "grayscale",
-            # The authors actually use an action repetition of 4.
-            "repeat_action_probability": 0.25,
+            # Make analogous to old v4 + NoFrameskip.
+            "frameskip": 1,
+            "full_action_space": False,
+            "repeat_action_probability": 0.0,
         },
         clip_rewards=True,
     )
@@ -104,8 +104,8 @@ config = (
         rollout_fragment_length=4,
         num_env_runners=1,
         env_to_module_connector=_make_env_to_module_connector,
+        gym_env_vectorize_mode=gym.VectorizeMode.SYNC,
     )
-    # TODO (simon): Adjust to new model_config_dict.
     .training(
         # Note, the paper uses also an Adam epsilon of 0.00015.
         lr=0.0000625,

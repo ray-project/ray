@@ -42,7 +42,6 @@ standard CartPole, as the agent must learn to infer velocity from position
 changes over time using its LSTM memory.
 """
 from ray.rllib.algorithms.dqn import DQNConfig
-from ray.rllib.connectors.env_to_module import MeanStdFilter
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.examples.utils import (
@@ -52,7 +51,7 @@ from ray.rllib.examples.utils import (
 
 parser = add_rllib_example_script_args(
     default_reward=350.0,
-    default_timesteps=200_000,
+    default_timesteps=500_000,
 )
 parser.set_defaults(
     num_env_runners=3,

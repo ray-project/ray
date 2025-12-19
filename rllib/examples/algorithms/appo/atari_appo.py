@@ -106,6 +106,7 @@ config = (
     .env_runners(
         env_to_module_connector=_make_env_to_module_connector,
         num_envs_per_env_runner=2,
+        gym_env_vectorize_mode=gym.VectorizeMode.SYNC,
     )
     .learners(
         num_aggregator_actors_per_learner=2,

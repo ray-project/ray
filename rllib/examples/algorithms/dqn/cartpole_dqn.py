@@ -70,7 +70,7 @@ config = (
         n_step=(2, 5),
         double_q=True,
         dueling=True,
-        epsilon=[(0, 1.0), (10_000, 0.02)],
+        epsilon=[(0, 1.0), (25_000, 0.02)],
     )
     .rl_module(
         model_config=DefaultModelConfig(
