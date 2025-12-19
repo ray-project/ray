@@ -126,7 +126,7 @@ class _JaxBackend(Backend):
         for i in range(num_workers_total):
             env_vars = {}
             if num_slices > 1:
-                slice_id = i // num_workers_per_slice
+                slice_id = min(i // num_workers_per_slice, num_slices - 1)
                 env_vars = get_tpu_coordinator_env_vars(
                     coordinator_address=master_addr,
                     num_slices=num_slices,
