@@ -9,7 +9,7 @@ The templates just serve as skeletons that showcase popular applications of Ray.
 ## Running on a Ray Cluster
 
 <!-- TODO(justinvyu): Add in OSS cluster support. -->
-Coming soon...
+Coming soon
 
 ## Contributing Guide
 
@@ -29,7 +29,7 @@ To add a template:
             templates.yaml
     ```
 
-    Your template does not need to be a Jupyter notebook. It can also be presented as a
+    Your template doesn't need to be a Jupyter notebook. It can also be presented as a
     Python script with `README` instructions of how to run.
 
 2. Add a release test for the template in `release/release_tests.yaml` (for both AWS and GCE). For Data tests, use `release/release_data_tests.yaml` instead.
@@ -38,7 +38,7 @@ To add a template:
     compute config are a little different for release tests. Use the files in the
     `doc/source/templates/testing/release` folder.
 
-    The release test compute configs contain placeholders for regions and cloud ids that our CI infra will fill in.
+    The release test compute configs contain placeholders for regions and cloud ids that the CI infra fills in.
     The cluster env builds a nightly docker image with all the required dependencies.
 
 3. Add an entry to `doc/source/templates/templates.yaml` that links to your template.
@@ -49,7 +49,7 @@ To add a template:
 
     For handling dependencies:
 
-    - If your template requires any special dependencies that are not included in a
+    - If your template requires any special dependencies that aren't included in a
       base image that you chose, be sure to list and provide instructions to install
       the necessary dependencies within the notebook.
       See `02_many_model_training` for an example.
@@ -57,16 +57,16 @@ To add a template:
     - If your template requires a custom docker image, be sure to mention this in the
       `README` and link the docker image URL somewhere. See `03_serving_stable_diffusion` for an example.
 
-4. Run a validation script on `templates.yaml` to make sure that the paths you specified are all valid and all yamls are properly formatted.
+4. Run a validation script on `templates.yaml` to make sure that the paths you specified are all valid and all YAML files are properly formatted.
 
-    **Note:** This will also run in CI, but you can check quickly by running the validation script.
+    **Note:** This also runs in CI, but you can check quickly by running the validation script.
 
     ```bash
     $ python doc/source/templates/testing/validate.py
     Success!
     ```
 
-5. Success! Your template is ready for review.
+5. Success. Your template is ready for review.
 
 <!-- 2. Add another copy of the template that includes test-specific code and a smoke-test version if applicable.
 

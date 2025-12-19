@@ -2,16 +2,16 @@
 
 | Template Specification | Description |
 | ---------------------- | ----------- |
-| Summary | This example shows how to do [DreamBooth fine-tuning](https://dreambooth.github.io/) of a Stable Diffusion model using Ray Train for data-parallel training with many workers and Ray Data for data ingestion. Use one of the provided datasets, or supply your own photos. By the end of this example, you'll be able to generate images of your subject in a variety of situations, just by feeding in a text prompt! |
+| Summary | This example shows how to do [DreamBooth fine-tuning](https://dreambooth.github.io/) of a Stable Diffusion model using Ray Train for data-parallel training with many workers and Ray Data for data ingestion. Use one of the provided datasets, or supply your own photos. By the end of this example, you can generate images of your subject in a variety of situations, just by feeding in a text prompt. |
 | Time to Run | ~10-15 minutes to generate a regularization dataset and fine-tune the model on photos of your subject. |
-| Minimum Compute Requirements | At least 1 GPUs, where each GPU has >= 24GB GRAM. The default is 1 node with 4 GPUS: A10G GPU (AWS) or L4 GPU (GCE). |
+| Minimum Compute Requirements | At least 1 GPU, where each GPU has >= 24 GB GRAM. The default is 1 node with 4 GPUs: A10G GPU (AWS) or L4 GPU (GCE). |
 | Cluster Environment | This template uses a Docker image built on top of the latest Anyscale-provided Ray image using Python 3.9: [`anyscale/ray:latest-py39-cu118`](https://docs.anyscale.com/reference/base-images/overview?utm_source=ray_docs&utm_medium=docs&utm_campaign=dreambooth_finetuning). See the appendix below for more details. |
 
 ![Dreambooth fine-tuning sample results](https://raw.githubusercontent.com/ray-project/ray/workspace_templates_2.6.1/doc/source/templates/05_dreambooth_finetuning/dreambooth/images/dreambooth_example.png)
 
 ## Run the example
 
-This README will only contain minimal instructions on running this example on Anyscale.
+This README only contains minimal instructions on running this example on Anyscale.
 See [the guide on the Ray documentation](https://docs.ray.io/en/latest/train/examples/pytorch/dreambooth_finetuning.html)
 for a step-by-step walkthrough of the training code.
 
@@ -30,12 +30,12 @@ Here are a few modifications to the `dreambooth_run.sh` script that you may want
     - Modify the `$CLASS_NAME` and `$INSTANCE_DIR` environment variables.
 2. The `$DATA_PREFIX` that the pre-trained model is downloaded to. This directory is also where the training dataset and the fine-tuned model checkpoint are written at the end of training.
     - If you add more worker nodes to the cluster, you should `$DATA_PREFIX` to a shared NFS filesystem such as `/mnt/cluster_storage`. See [this doc](https://docs.anyscale.com/develop/workspaces/storage#storage-shared-across-nodes?utm_source=ray_docs&utm_medium=docs&utm_campaign=dreambooth_finetuning) for all the options.
-    - Note that each run of the script will overwrite the fine-tuned model checkpoint from the previous run, so consider changing the `$DATA_PREFIX` environment variable on each run if you don't want to lose the models/data of previous runs.
+    - Note that each run of the script overwrites the fine-tuned model checkpoint from the previous run, so consider changing the `$DATA_PREFIX` environment variable on each run if you don't want to lose the models/data of previous runs.
 3. The `$NUM_WORKERS` variable sets the number of data-parallel workers used during fine-tuning. The default is 2 workers (2 workers, each using 1 GPU), and you should increase this number if you add more GPU worker nodes to the cluster.
 4. Setting `--num_epochs` and `--max_train_steps` determines the number of fine-tuning steps to take.
-    - Depending on the batch size and number of data-parallel workers, one epoch will run for a certain number of steps. The run will terminate when one of these values (epoch vs. total number of steps) is reached.
+    - Depending on the batch size and number of data-parallel workers, one epoch runs for a certain number of steps. The run terminates when one of these values (epoch vs. total number of steps) is reached.
 5. `generate.py` is used to generate stable diffusion images after loading the model from a checkpoint. You should modify the prompt at the end to be something more interesting, rather than just a photo of your subject.
-6. If you want to launch another fine-tuning run, you may want to run *only* the `python train.py ...` command. Running the bash script will start from the beginning (generating another regularization dataset).
+6. If you want to launch another fine-tuning run, you may want to run *only* the `python train.py ...` command. Running the bash script starts from the beginning (generating another regularization dataset).
 7. Use the following command for LoRA fine-tuning. 
 ```bash
 python train.py \
