@@ -1,11 +1,6 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
 ray_cc_library(
-    name = "compat",
-    hdrs = ["compat.h"],
-)
-
-ray_cc_library(
     name = "constants",
     hdrs = ["constants.h"],
 )
@@ -16,6 +11,7 @@ ray_cc_library(
     hdrs = ["test_utils.h"],
     deps = [
         ":asio",
+        ":function_descriptor",
         ":id",
         ":placement_group",
         ":ray_object",
@@ -230,6 +226,7 @@ ray_cc_library(
         ":ray_config",
         ":ray_object",
         ":runtime_env",
+        "//src/ray/common/scheduling:fallback_strategy",
         "//src/ray/common/scheduling:label_selector",
         "//src/ray/common/scheduling:resource_set",
         "//src/ray/common/scheduling:scheduling_class_util",
@@ -277,13 +274,12 @@ ray_cc_library(
         "asio/instrumented_io_context.h",
         "asio/io_service_pool.h",
         "asio/periodical_runner.h",
-        "asio/postable.h",
     ],
     deps = [
         ":event_stats",
+        ":metrics",
         ":ray_config",
         "//src/ray/util:array",
-        "//src/ray/util:function_traits",
         "@boost//:asio",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
@@ -311,6 +307,7 @@ ray_cc_library(
         "event_stats.h",
     ],
     deps = [
+        ":metrics",
         ":ray_config",
         "//src/ray/stats:stats_metric",
         "//src/ray/util:time",

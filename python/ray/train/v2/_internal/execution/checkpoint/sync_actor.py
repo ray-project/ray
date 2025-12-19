@@ -5,9 +5,9 @@ from typing import List, Optional, TypeVar
 
 import ray
 from ray.train.v2._internal.constants import (
-    DEFAULT_REPORT_BARRIER_TIMEOUT_S,
-    DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
-    REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
+    COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
+    DEFAULT_COLLECTIVE_TIMEOUT_S,
+    DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
 )
 from ray.train.v2._internal.exceptions import BroadcastCollectiveTimeoutError
 
@@ -35,8 +35,8 @@ class SynchronizationActor:
 
     def __init__(
         self,
-        timeout_s: float = DEFAULT_REPORT_BARRIER_TIMEOUT_S,
-        warn_interval_s: float = DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
+        timeout_s: float = DEFAULT_COLLECTIVE_TIMEOUT_S,
+        warn_interval_s: float = DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
     ):
         self._counter: int = 0
         self._world_size: int = 0
@@ -139,7 +139,7 @@ class SynchronizationActor:
                         world_size=self._world_size,
                         max_time_elapsed_s=self._get_time_elapsed(),
                         missing_ranks=self._get_missing_ranks(),
-                        warn_interval_env_var=REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
+                        warn_interval_env_var=COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
                         warn_interval_s=self._warn_interval_s,
                     ),
                 )
@@ -189,7 +189,7 @@ class SynchronizationActor:
                         self._wait_with_logging(
                             self._condition, world_rank, caller_method_name
                         ),
-                        timeout=self._timeout_s,
+                        timeout=self._timeout_s if self._timeout_s >= 0 else None,
                     )
                     return self._reduced_data
                 except (asyncio.TimeoutError, TimeoutError) as e:

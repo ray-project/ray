@@ -7,28 +7,17 @@ Key Concepts
 Datasets and blocks
 -------------------
 
-There are two main concepts in Ray Data:
+There are two main concepts in Ray Data: Datasets and Blocks.
 
-* Datasets
-* Blocks
+A :class:`Dataset <ray.data.Dataset>` represents a distributed data collection and defines data loading and processing operations and is the primary user-facing API for Ray Data.
+Users typically use the API by creating a :class:`Dataset <ray.data.Dataset>` from external storage or in-memory data, applying transformations to the data, and writing the outputs to external storage or feeding the outputs to training workers.
 
-`Dataset` is the main user-facing Python API. It represents a distributed data collection and defines data loading and processing operations. Users typically use the API by:
+The Dataset API is lazy, meaning that operations aren't executed until you materialize or consume the dataset, with methods like :meth:`~ray.data.Dataset.show`. This allows Ray Data to optimize the execution plan and execute operations in a pipelined, streaming fashion.
 
-1. Create a :class:`Dataset <ray.data.Dataset>` from external storage or in-memory data.
-2. Apply transformations to the data.
-3. Write the outputs to external storage or feed the outputs to training workers.
-
-The Dataset API is lazy, meaning that operations aren't executed until you materialize or consume the dataset,
-like :meth:`~ray.data.Dataset.show`. This allows Ray Data to optimize the execution plan
-and execute operations in a pipelined, streaming fashion.
-
-*Block* is a set of rows representing single partition of the dataset. Blocks, as a collection of rows represented by columnar formats (like Arrow)
- are the basic unit of data processing in Ray Data:
+A *block* is a set of rows representing single partition of the dataset. Blocks, as a collection of rows represented by columnar formats (like Arrow) are the basic unit of data processing in Ray Data:
 
  1. Every dataset is partitioned into a number of blocks, then
  2. Processing of the whole dataset is distributed and parallelized at the block level (blocks are processed in parallel and for the most part independently)
-
-Block is the basic unit of data that every Ray Data dataset is partitioned into and stored in the object store. Data processing is parallelized at the block level.
 
 The following figure visualizes a dataset with three blocks, each holding 1000 rows.
 Ray Data holds the :class:`~ray.data.Dataset` on the process that triggers execution
@@ -55,8 +44,8 @@ This diagram illustrates the complete planning process:
 
 The building blocks of these plans are operators:
 
-* Logical plans consist of *logical operators* that describe *what* operation to perform. For example, ``ReadOp`` specifies what data to read.
-* Physical plans consist of *physical operators* that describe *how* to execute the operation. For example, ``TaskPoolMapOperator`` launches Ray tasks to actually read the data.
+* Logical plans consist of *logical operators* that describe *what* operation to perform. For example, when you write ``dataset = ray.data.read_parquet(...)``, Ray Data creates a ``ReadOp`` logical operator to specify what data to read.
+* Physical plans consist of *physical operators* that describe *how* to execute the operation. For example, Ray Data converts the ``ReadOp`` logical operator into a ``TaskPoolMapOperator`` physical operator that launches Ray tasks to read the data.
 
 Here is a simple example of how Ray Data builds a logical plan. As you chain operations together, Ray Data constructs the logical plan behind the scenes:
 
@@ -95,27 +84,26 @@ For more details on Ray Tasks and Actors, see :ref:`Ray Core Concepts <core-key-
 Streaming execution model
 -------------------------
 
-Ray Data uses a *streaming execution model* to efficiently process large datasets.
+Ray Data can stream data through a pipeline of operators to efficiently process large datasets.
 
-Rather than materializing the entire dataset in memory at once,
-Ray Data can process data in a streaming fashion through a pipeline of operations.
+This means that different operators in an execution can be scaled independently while running concurrently, allowing for more flexible and fine-grained resource allocation. For example, if two map operators require different amounts or types of resources, the streaming execution model can allow them to run concurrently and independently while still maintaining high performance.
 
-This is useful for inference and training workloads where the dataset can be too large to fit in memory and the workload doesn't require the entire dataset to be in memory at once.
+Note that this is primarily useful for non-shuffle operations. Shuffle operations like :meth:`ds.sort() <ray.data.Dataset.sort>` and :meth:`ds.groupby() <ray.data.Dataset.groupby>` require materializing data, which stops streaming until the shuffle is complete.
 
-Here is an example of how the streaming execution model works. The below code creates a dataset with 1K rows, applies a map and filter transformation, and then calls the ``show`` action to trigger the pipeline:
+Here is an example of how the streaming execution works in Ray Data.
 
-.. testcode::
+.. code-block:: python
 
     import ray
 
     # Create a dataset with 1K rows
-    ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+    ds = ray.data.read_parquet(...)
 
     # Define a pipeline of operations
-    ds = ds.map(lambda x: {"target1": x["target"] * 2})
-    ds = ds.map(lambda x: {"target2": x["target1"] * 2})
-    ds = ds.map(lambda x: {"target3": x["target2"] * 2})
-    ds = ds.filter(lambda x: x["target3"] % 4 == 0)
+    ds = ds.map(cpu_function, num_cpus=2)
+    ds = ds.map(GPUClass, num_gpus=1)
+    ds = ds.map(cpu_function2, num_cpus=4)
+    ds = ds.filter(filter_func)
 
     # Data starts flowing when you call a method like show()
     ds.show(5)
@@ -124,11 +112,11 @@ This creates a logical plan like the following:
 
 .. code-block::
 
-    Filter(<lambda>)
-    +- Map(<lambda>)
-       +- Map(<lambda>)
-          +- Map(<lambda>)
-             +- Dataset(schema={...})
+    Filter(filter_func)
+    +- Map(cpu_function2)
+       +- Map(GPUClass)
+          +- Map(cpu_function)
+                +- Dataset(schema={...})
 
 
 The streaming topology looks like the following:
@@ -141,13 +129,6 @@ The streaming topology looks like the following:
 
 In the streaming execution model, operators are connected in a pipeline, with each operator's output queue feeding directly into the input queue of the next downstream operator. This creates an efficient flow of data through the execution plan.
 
-The streaming execution model provides significant advantages for data processing.
-
-In particular, the pipeline architecture enables multiple stages to execute concurrently, improving overall performance and resource utilization. For example, if the map operator requires GPU resources, the streaming execution model can execute the map operator concurrently with the filter operator (which may run on CPUs), effectively utilizing the GPU through the entire duration of the pipeline.
-
-To summarize, Ray Data's streaming execution model can efficiently process datasets that are much larger than available memory while maintaining high performance through parallel execution across the cluster.
-
-.. note::
-   Operations like :meth:`ds.sort() <ray.data.Dataset.sort>` and :meth:`ds.groupby() <ray.data.Dataset.groupby>` require materializing data, which may impact memory usage for very large datasets.
+This enables multiple stages to execute concurrently, improving overall performance and resource utilization. For example, if the map operator requires GPU resources, the streaming execution model can execute the map operator concurrently with the filter operator (which may run on CPUs), effectively utilizing the GPU through the entire duration of the pipeline.
 
 You can read more about the streaming execution model in this `blog post <https://www.anyscale.com/blog/streaming-distributed-execution-across-cpus-and-gpus>`__.

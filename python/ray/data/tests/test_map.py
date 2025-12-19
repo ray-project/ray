@@ -193,34 +193,6 @@ def test_callable_classes(shutdown_only, target_max_block_size_infinite_or_defau
     assert sorted(extract_values("id", result)) == list(range(10)), result
 
 
-def test_concurrent_callable_classes(
-    shutdown_only, target_max_block_size_infinite_or_default
-):
-    """Test that concurrenct actor pool runs user UDF in a separate thread."""
-    ray.init(num_cpus=2)
-    ds = ray.data.range(10, override_num_blocks=10)
-
-    class StatefulFn:
-        def __call__(self, x):
-            thread_id = threading.get_ident()
-            assert threading.current_thread() is not threading.main_thread()
-            return {"tid": np.array([thread_id])}
-
-    thread_ids = extract_values(
-        "tid",
-        ds.map_batches(StatefulFn, concurrency=1, max_concurrency=2).take_all(),
-    )
-    # Make sure user's UDF is not running concurrently.
-    assert len(set(thread_ids)) == 1
-
-    class ErrorFn:
-        def __call__(self, x):
-            raise ValueError
-
-    with pytest.raises((UserCodeException, ValueError)):
-        ds.map_batches(ErrorFn, concurrency=1, max_concurrency=2).take_all()
-
-
 def test_transform_failure(shutdown_only, target_max_block_size_infinite_or_default):
     ray.init(num_cpus=2)
     ds = ray.data.from_items([0, 10], override_num_blocks=2)
@@ -278,34 +250,31 @@ def test_gpu_workers_not_reused(
     assert len(unique_worker_ids) == total_blocks
 
 
-def test_concurrency(shutdown_only, target_max_block_size_infinite_or_default):
-    ray.init(num_cpus=6)
-    ds = ray.data.range(10, override_num_blocks=10)
+@pytest.mark.parametrize(
+    "concurrency",
+    [
+        "spam",
+        # Two and three-tuples are valid for callable classes but not for functions.
+        (1, 2),
+        (1, 2, 3),
+        (1, 2, 3, 4),
+    ],
+)
+def test_invalid_func_concurrency_raises(ray_start_regular_shared, concurrency):
+    ds = ray.data.range(1)
+    with pytest.raises(ValueError):
+        ds.map(lambda x: x, concurrency=concurrency)
 
-    def udf(x):
-        return x
 
-    class UDFClass:
-        def __call__(self, x):
-            return x
+@pytest.mark.parametrize("concurrency", ["spam", (1, 2, 3, 4)])
+def test_invalid_class_concurrency_raises(ray_start_regular_shared, concurrency):
+    class Fn:
+        def __call__(self, row):
+            return row
 
-    # Test function and class.
-    for fn in [udf, UDFClass]:
-        # Test concurrency with None, single integer and a tuple of integers.
-        for concurrency in [2, (2, 4), (2, 6, 4)]:
-            if fn == udf and (concurrency == (2, 4) or concurrency == (2, 6, 4)):
-                error_message = "``concurrency`` is set as a tuple of integers"
-                with pytest.raises(ValueError, match=error_message):
-                    ds.map(fn, concurrency=concurrency).take_all()
-            else:
-                result = ds.map(fn, concurrency=concurrency).take_all()
-                assert sorted(extract_values("id", result)) == list(range(10)), result
-
-    # Test concurrency with an illegal value.
-    error_message = "``concurrency`` is expected to be set a"
-    for concurrency in ["dummy", (1, 3, 5, 7)]:
-        with pytest.raises(ValueError, match=error_message):
-            ds.map(UDFClass, concurrency=concurrency).take_all()
+    ds = ray.data.range(1)
+    with pytest.raises(ValueError):
+        ds.map(Fn, concurrency=concurrency)
 
 
 @pytest.mark.parametrize("udf_kind", ["gen", "func"])
@@ -973,7 +942,6 @@ def test_actor_pool_strategy_bundles_to_max_actors(
 def test_nonserializable_map_batches(
     shutdown_only, target_max_block_size_infinite_or_default
 ):
-    import threading
 
     lock = threading.Lock()
 

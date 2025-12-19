@@ -24,7 +24,7 @@ import pyarrow as pa
 import ray
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_integer
-from ray.data._internal.compute import get_compute
+from ray.data._internal.compute import ActorPoolStrategy, ComputeStrategy, get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -36,7 +36,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     Row,
     RowMapTransformFn,
 )
-from ray.data._internal.execution.util import make_callable_class_concurrent
+from ray.data._internal.execution.util import make_callable_class_single_threaded
 from ray.data._internal.logical.operators.map_operator import (
     AbstractUDFMap,
     Filter,
@@ -48,6 +48,7 @@ from ray.data._internal.logical.operators.map_operator import (
 )
 from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.output_buffer import OutputBlockSizeOption
+from ray.data._internal.streaming_repartition import StreamingRepartitionRefBundler
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,
@@ -98,7 +99,7 @@ class _MapActorContext:
             asyncio.set_event_loop(loop)
             loop.run_forever()
 
-        thread = Thread(target=run_loop)
+        thread = Thread(target=run_loop, daemon=True)
         thread.start()
         self.udf_map_asyncio_loop = loop
         self.udf_map_asyncio_thread = thread
@@ -112,13 +113,18 @@ def plan_project_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
+    # Extract op.exprs before defining the closure to prevent cloudpickle from
+    # serializing the entire op object (which may contain references to non-serializable
+    # datasources with weak references, e.g., PyIceberg tables)
+    projection_exprs = op.exprs
+
     def _project_block(block: Block) -> Block:
         try:
             from ray.data._internal.planner.plan_expression.expression_evaluator import (
                 eval_projection,
             )
 
-            return eval_projection(op.exprs, block)
+            return eval_projection(projection_exprs, block)
         except Exception as e:
             _try_wrap_udf_exception(e)
 
@@ -150,30 +156,27 @@ def plan_streaming_repartition_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
     compute = get_compute(op._compute)
-
-    # Create a no-op transform that is just coalescing/slicing the incoming
-    # blocks
     transform_fn = BlockMapTransformFn(
         lambda blocks, ctx: blocks,
         output_block_size_option=OutputBlockSizeOption.of(
-            target_num_rows_per_block=op.target_num_rows_per_block
+            target_num_rows_per_block=op.target_num_rows_per_block,  # To split n*target_max_block_size row into n blocks
         ),
     )
-
     map_transformer = MapTransformer([transform_fn])
 
     # Disable fusion for streaming repartition with the downstream op.
-    return MapOperator.create(
+    operator = MapOperator.create(
         map_transformer,
         input_physical_dag,
         data_context,
         name=op.name,
         compute_strategy=compute,
-        min_rows_per_bundle=op.target_num_rows_per_block,
+        ref_bundler=StreamingRepartitionRefBundler(op.target_num_rows_per_block),
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
-        supports_fusion=False,
     )
+
+    return operator
 
 
 def plan_filter_op(
@@ -214,6 +217,7 @@ def plan_filter_op(
             op._fn_kwargs,
             op._fn_constructor_args if udf_is_callable_class else None,
             op._fn_constructor_kwargs if udf_is_callable_class else None,
+            compute=compute,
         )
 
         transform_fn = RowMapTransformFn(
@@ -260,6 +264,7 @@ def plan_udf_map_op(
         op._fn_kwargs,
         op._fn_constructor_args if udf_is_callable_class else None,
         op._fn_constructor_kwargs if udf_is_callable_class else None,
+        compute=compute,
     )
 
     if isinstance(op, MapBatches):
@@ -307,6 +312,7 @@ def _get_udf(
     op_fn_kwargs: Dict[str, Any],
     op_fn_constructor_args: Optional[Tuple[Any, ...]],
     op_fn_constructor_kwargs: Optional[Dict[str, Any]],
+    compute: Optional[ComputeStrategy],
 ):
     # Note, it's important to define these standalone variables.
     # So the parsed functions won't need to capture the entire operator, which may not
@@ -321,10 +327,19 @@ def _get_udf(
 
         is_async_udf = _is_async_udf(udf.__call__)
 
-        if not is_async_udf:
-            # TODO(ak) this constrains concurrency for user UDFs to run in a single
-            #          thread irrespective of max_concurrency. Remove
-            udf = make_callable_class_concurrent(udf)
+        if (
+            not is_async_udf
+            and isinstance(compute, ActorPoolStrategy)
+            and not compute.enable_true_multi_threading
+        ):
+            # NOTE: By default Actor-based UDFs are restricted to run within a
+            # single-thread (when enable_true_multi_threading=False).
+            #
+            # Historically, this has been done to allow block-fetching, batching, etc to
+            # be overlapped with the actual UDF invocation, while avoiding the
+            # pitfalls of concurrent GPU access (like OOMs, etc) when specifying
+            # max_concurrency > 1.
+            udf = make_callable_class_single_threaded(udf)
 
         def init_fn():
             if ray.data._map_actor_context is None:

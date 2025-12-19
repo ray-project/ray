@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2.api.callback import RayTrainCallback
 from ray.train.v2.api.config import ScalingConfig
-from ray.train.v2.api.result import Result
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -20,6 +19,7 @@ if TYPE_CHECKING:
         WorkerGroupContext,
         WorkerGroupPollStatus,
     )
+    from ray.train.v2.api.result import Result
 
 
 @DeveloperAPI
@@ -62,6 +62,10 @@ class WorkerGroupCallback(RayTrainCallback):
         should catch and handle exceptions if attempting to execute tasks."""
         pass
 
+    def after_worker_group_shutdown(self, worker_group_context: "WorkerGroupContext"):
+        """Called after the worker group is shut down."""
+        pass
+
     def after_worker_group_poll_status(
         self, worker_group_status: "WorkerGroupPollStatus"
     ):
@@ -69,6 +73,10 @@ class WorkerGroupCallback(RayTrainCallback):
 
     def before_worker_group_abort(self, worker_group_context: "WorkerGroupContext"):
         """Called before the worker group is aborted."""
+        pass
+
+    def after_worker_group_abort(self, worker_group_context: "WorkerGroupContext"):
+        """Called after the worker group is aborted."""
         pass
 
 
@@ -80,7 +88,7 @@ class ControllerCallback(RayTrainCallback):
         pass
 
     # TODO(matthewdeng): Revisit this callback interface for better extensibility.
-    # This hook was added for the specific use case of setting a `bundle_label_selector`
+    # This hook was added for the specific use case of setting a `label_selector`
     # for new worker groups (e.g., for TPU reservations). The current interface is
     # tightly coupled to this purpose and limits its reuse for other use-cases.
     def on_controller_start_worker_group(
@@ -96,7 +104,7 @@ class ControllerCallback(RayTrainCallback):
             num_workers: The number of workers to be started.
 
         Returns:
-            An optional dictionary defining a `bundle_label_selector`
+            An optional dictionary defining a `label_selector`
             to gang schedule the worker group on the reserved TPU slice.
         """
         return None
@@ -128,7 +136,7 @@ class ControllerCallback(RayTrainCallback):
         """Called before the controller executes a resize decision."""
         pass
 
-    def after_controller_finish(self, result: Result):
+    def after_controller_finish(self, result: "Result"):
         """Called after the training run completes, providing access to the final result.
 
         Args:

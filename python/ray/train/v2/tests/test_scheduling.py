@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import pytest
 
 import ray
@@ -13,6 +15,20 @@ def multi_cpu_node_cluster():
     cluster = Cluster()
     for _ in range(4):
         cluster.add_node(num_cpus=4)
+    cluster.wait_for_nodes()
+    cluster.connect()
+    yield cluster
+    ray.shutdown()
+    cluster.shutdown()
+
+
+@pytest.fixture
+def multi_cpu_node_labeled_cluster():
+    cluster = Cluster()
+    for _ in range(2):
+        cluster.add_node(num_cpus=4, labels={"subcluster": "my_subcluster"})
+    for _ in range(2):
+        cluster.add_node(num_cpus=4, labels={"subcluster": "other_subcluster"})
     cluster.wait_for_nodes()
     cluster.connect()
     yield cluster
@@ -71,6 +87,52 @@ def test_infeasible_placement_strategy(
         multi_cpu_node_cluster.add_node(num_cpus=8)
 
     ray.get(future)
+
+
+@pytest.mark.parametrize(
+    "label_selector, expected_subcluster_counts",
+    [
+        ({"subcluster": "my_subcluster"}, {"my_subcluster": 2}),
+        (
+            [{"subcluster": "my_subcluster"}, {"subcluster": "my_subcluster"}],
+            {"my_subcluster": 2},
+        ),
+        (
+            [{"subcluster": "my_subcluster"}, {"subcluster": "other_subcluster"}],
+            {"my_subcluster": 1, "other_subcluster": 1},
+        ),
+    ],
+)
+def test_label_selector(
+    multi_cpu_node_labeled_cluster, label_selector, expected_subcluster_counts
+):
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.subcluster_counts = defaultdict(int)
+
+        def increment(self, subcluster):
+            self.subcluster_counts[subcluster] += 1
+
+        def get(self):
+            return self.subcluster_counts
+
+    counter = Counter.remote()
+    scaling_config = ScalingConfig(
+        num_workers=2,
+        label_selector=label_selector,
+    )
+
+    def train_fn():
+        ray.get(
+            counter.increment.remote(
+                ray.get_runtime_context().get_node_labels()["subcluster"]
+            )
+        )
+
+    trainer = DataParallelTrainer(train_fn, scaling_config=scaling_config)
+    trainer.fit()
+    assert ray.get(counter.get.remote()) == expected_subcluster_counts
 
 
 if __name__ == "__main__":

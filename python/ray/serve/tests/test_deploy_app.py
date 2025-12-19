@@ -725,7 +725,9 @@ def test_update_autoscaling_config(serve_instance):
                     "metrics_interval_s": 15,
                     "upscale_delay_s": 0.5,
                     "downscale_delay_s": 0.5,
-                    "look_back_period_s": 2,
+                    # Must be > metrics_interval_s. Keep it just above 15s so the
+                    # initial config is valid while still behaving similarly.
+                    "look_back_period_s": 16,
                 },
                 "graceful_shutdown_timeout_s": 1,
             }
@@ -750,6 +752,9 @@ def test_update_autoscaling_config(serve_instance):
 
     print(time.ctime(), "Redeploying with `metrics_interval_s` updated to 0.5s.")
     config_template["deployments"][0]["autoscaling_config"]["metrics_interval_s"] = 0.5
+    # With frequent metrics updates, use a shorter lookback to make the scale down
+    # portion of this test responsive.
+    config_template["deployments"][0]["autoscaling_config"]["look_back_period_s"] = 2
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
 
     wait_for_condition(check_num_replicas_gte, name="A", target=2)

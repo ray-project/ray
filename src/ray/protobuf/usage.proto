@@ -104,6 +104,8 @@ enum TagKey {
   SERVE_NUM_REPLICAS_VIA_API_CALL_UPDATED = 33;
   // Whether task consumer wrapper was used ("1" if used)
   SERVE_NUM_REPLICAS_USING_ASYNCHRONOUS_INFERENCE = 34;
+  // Whether a custom autoscaling policy was used ("1" if used)
+  SERVE_CUSTOM_AUTOSCALING_POLICY_USED = 35;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of
@@ -207,6 +209,11 @@ enum TagKey {
 
   // Train V2 Trainer name (e.g. "TorchTrainer")
   TRAIN_TRAINER = 521;
+
+  // The checkpoint upload mode ("ASYNC", "SYNC", "NO_UPLOAD").
+  TRAIN_CHECKPOINT_MODE = 522;
+  // Whether or not asynchronous validation is used ("1" if used).
+  TRAIN_ASYNCHRONOUS_VALIDATION = 523;
 
   // LLM Serve
   // Whether or not multiple models are getting deployed in the cluster ("1" if used).

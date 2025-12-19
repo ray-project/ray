@@ -63,11 +63,16 @@ def plan_download_op(
     if not upstream_op_is_download:
         # PartitionActor is a callable class, so we need ActorPoolStrategy
         partition_compute = ActorPoolStrategy(
-            size=1
+            size=1, enable_true_multi_threading=True
         )  # Use single actor for partitioning
 
         fn, init_fn = _get_udf(
-            PartitionActor, (), {}, (uri_column_names, data_context), {}
+            PartitionActor,
+            (),
+            {},
+            (uri_column_names, data_context),
+            {},
+            compute=partition_compute,
         )
         block_fn = _generate_transform_fn_for_map_batches(fn)
 
@@ -105,6 +110,7 @@ def plan_download_op(
         download_bytes_threaded,
         (uri_column_names, output_bytes_column_names, data_context),
         {},
+        None,
         None,
         None,
     )
@@ -181,22 +187,54 @@ def download_bytes_threaded(
         if len(uris) == 0:
             continue
 
-        paths, fs = _resolve_paths_and_filesystem(uris)
-        fs = RetryingPyFileSystem.wrap(
-            fs, retryable_errors=data_context.retried_io_errors
-        )
+        def load_uri_bytes(uri_iterator):
+            """Resolve filesystem and download bytes for each URI.
 
-        def load_uri_bytes(uri_path_iterator):
-            """Function that takes an iterator of URI paths and yields downloaded bytes for each."""
-            for uri_path in uri_path_iterator:
-                with fs.open_input_file(uri_path) as f:
-                    yield f.read()
+            Takes an iterator of URIs and yields bytes for each.
+            Uses lazy filesystem resolution - resolves once and reuses for subsequent URIs.
+            """
+            cached_fs = None
+            for uri in uri_iterator:
+                read_bytes = None
+                try:
+                    # Use cached FS if available, otherwise resolve the filesystem for the uri.
+                    resolved_paths, resolved_fs = _resolve_paths_and_filesystem(
+                        uri, filesystem=cached_fs
+                    )
+                    cached_fs = resolved_fs
 
-        # Use make_async_gen to download URI bytes concurrently
-        # This preserves the order of results to match the input URIs
+                    # Wrap with retrying filesystem
+                    fs = RetryingPyFileSystem.wrap(
+                        resolved_fs, retryable_errors=data_context.retried_io_errors
+                    )
+                    # We only pass one uri to resolve and unwrap it from the list of resolved paths,
+                    # if fails, we will catch the index error and log it.
+                    resolved_path = resolved_paths[0]
+                    if resolved_path is None:
+                        continue
+
+                    # Download bytes
+                    # Use open_input_stream to handle the rare scenario where the data source is not seekable.
+                    with fs.open_input_stream(resolved_path) as f:
+                        read_bytes = f.read()
+                except OSError as e:
+                    logger.debug(
+                        f"OSError reading uri '{uri}' for column '{uri_column_name}': {e}"
+                    )
+                except Exception as e:
+                    # Catch unexpected errors like pyarrow.lib.ArrowInvalid caused by an invalid uri like
+                    # `foo://bar` to avoid failing because of one invalid uri.
+                    logger.warning(
+                        f"Unexpected error reading uri '{uri}' for column '{uri_column_name}': {e}"
+                    )
+                finally:
+                    yield read_bytes
+
+        # Use make_async_gen to resolve and download URI bytes concurrently
+        # preserve_ordering=True ensures results are returned in the same order as input URIs
         uri_bytes = list(
             make_async_gen(
-                base_iterator=iter(paths),
+                base_iterator=iter(uris),
                 fn=load_uri_bytes,
                 preserve_ordering=True,
                 num_workers=URI_DOWNLOAD_MAX_WORKERS,
@@ -304,27 +342,38 @@ class PartitionActor:
         if not uris:
             return []
 
-        # Get the filesystem from the first URI
-        paths, fs = _resolve_paths_and_filesystem(uris)
-        fs = RetryingPyFileSystem.wrap(
-            fs, retryable_errors=self._data_context.retried_io_errors
-        )
+        # Get the filesystem from the URIs (assumes all URIs use same filesystem for sampling)
+        # This is for sampling the file sizes which doesn't require a full resolution of the paths.
+        try:
+            paths, fs = _resolve_paths_and_filesystem(uris)
+            fs = RetryingPyFileSystem.wrap(
+                fs, retryable_errors=self._data_context.retried_io_errors
+            )
+        except Exception as e:
+            logger.warning(f"Failed to resolve URIs for size sampling: {e}")
+            # Return zeros for all URIs if resolution fails
+            return [0] * len(uris)
 
         # Use ThreadPoolExecutor for concurrent size fetching
-        file_sizes = []
+        file_sizes = [None] * len(paths)
         with ThreadPoolExecutor(max_workers=URI_DOWNLOAD_MAX_WORKERS) as executor:
             # Submit all size fetch tasks
-            futures = [
-                executor.submit(get_file_size, uri_path, fs) for uri_path in paths
-            ]
+            future_to_file_index = {
+                executor.submit(get_file_size, uri_path, fs): file_index
+                for file_index, uri_path in enumerate(paths)
+            }
 
             # Collect results as they complete (order doesn't matter)
-            for future in as_completed(futures):
+            for future in as_completed(future_to_file_index):
+                file_index = future_to_file_index[future]
                 try:
                     size = future.result()
-                    if size is not None:
-                        file_sizes.append(size)
+                    file_sizes[file_index] = size if size is not None else 0
                 except Exception as e:
                     logger.warning(f"Error fetching file size for download: {e}")
+                    file_sizes[file_index] = 0
 
+        assert all(
+            fs is not None for fs in file_sizes
+        ), "File size sampling did not complete for all paths"
         return file_sizes

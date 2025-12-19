@@ -1,17 +1,17 @@
 import sys
+from typing import List
+from unittest.mock import patch
 
 import pytest
-from unittest.mock import patch
-from typing import List
 
 from ray_release.bazel import bazel_runfile
-from ray_release.configs.global_config import init_global_config, get_global_config
-from ray_release.test import Test
 from ray_release.byod.build import (
-    build_anyscale_custom_byod_image,
-    build_anyscale_base_byod_images,
     _get_ray_commit,
+    build_anyscale_base_byod_images,
+    build_anyscale_custom_byod_image,
 )
+from ray_release.configs.global_config import get_global_config, init_global_config
+from ray_release.test import Test
 
 
 def test_get_ray_commit() -> None:
@@ -121,13 +121,13 @@ def test_build_anyscale_base_byod_images() -> None:
         assert set(images) == {
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py39-cpu",
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py39-cu116",
-            f"{aws_cr}/anyscale/ray:a1b2c3d4-py39-cu121",
+            f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cu121",
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py311-cu118",
-            f"{aws_cr}/anyscale/ray-ml:a1b2c3d4-py39-gpu",
-            f"{gcp_cr}/anyscale/ray:a1b2c3d4-py39-cpu",
+            f"{aws_cr}/anyscale/ray-ml:a1b2c3d4-py310-gpu",
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cpu",
+            f"{gcp_cr}/anyscale/ray:a1b2c3d4-py310-cpu",
         }
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-vv", __file__]))

@@ -92,6 +92,7 @@ ray_cc_test(
     ],
     deps = [
         "//src/ray/gcs:gcs_health_check_manager",
+        "//src/ray/observability:fake_metric",
         "//src/ray/rpc:grpc_server",
         "//src/ray/util:network_util",
         "@boost//:thread",
@@ -268,6 +269,7 @@ ray_cc_test(
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/observability:fake_metric",
         "//src/ray/pubsub:publisher",
+        "//src/ray/raylet_rpc_client:fake_raylet_client",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -436,6 +438,7 @@ ray_cc_test(
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/observability:fake_metric",
         "//src/ray/pubsub:publisher",
+        "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/util:event",
         "@com_google_googletest//:gtest_main",
     ],
