@@ -343,7 +343,6 @@ cloudpickle==2.2.0 ; python_version < "3.12"
     #   distributed
     #   gymnasium
     #   hyperopt
-    #   mlagents-envs
     #   mlflow-skinny
     #   pymars
     #   statsforecast
@@ -717,7 +716,6 @@ grpcio==1.74.0 ; python_version >= "3.10"
     #   google-cloud-bigquery
     #   grpcio-status
     #   grpcio-tools
-    #   mlagents-envs
     #   tensorboard
     #   tensorflow
 grpcio-status==1.62.3
@@ -728,7 +726,7 @@ gsutil==5.27
     # via -r python/requirements/docker/ray-docker-requirements.txt
 gunicorn==20.1.0
     # via mlflow
-gymnasium==1.2.2
+gymnasium==1.2.2 ; python_version >= "3.10"
     # via
     #   -r python/requirements.txt
     #   minigrid
@@ -1101,8 +1099,6 @@ ml-dtypes==0.3.2
     #   jax
     #   jaxlib
     #   tensorflow
-mlagents-envs==0.28.0
-    # via -r python/requirements/ml/rllib-test-requirements.txt
 mlflow==2.22.0
     # via -r python/requirements/ml/core-requirements.txt
 mlflow-skinny==2.22.0
@@ -1279,7 +1275,6 @@ numpy==1.26.4
     #   matplotlib
     #   minigrid
     #   ml-dtypes
-    #   mlagents-envs
     #   mlflow
     #   modin
     #   moviepy
@@ -1527,7 +1522,6 @@ pillow==10.4.0 ; platform_system != "Windows"
     #   gradio
     #   imageio
     #   matplotlib
-    #   mlagents-envs
     #   scikit-image
     #   torchvision
 pkginfo==1.9.6
@@ -1589,7 +1583,6 @@ protobuf==4.25.8
     #   googleapis-common-protos
     #   grpcio-status
     #   grpcio-tools
-    #   mlagents-envs
     #   mlflow-skinny
     #   onnx
     #   onnxruntime
@@ -1881,7 +1874,6 @@ pyyaml==6.0.3
     #   knack
     #   kubernetes
     #   ml-collections
-    #   mlagents-envs
     #   mlflow-skinny
     #   mosaicml
     #   moto

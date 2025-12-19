@@ -379,9 +379,6 @@ REDIS_DEFAULT_USERNAME = ""
 
 REDIS_DEFAULT_PASSWORD = ""
 
-# The default ip address to bind to.
-NODE_DEFAULT_IP = "127.0.0.1"
-
 # The Mach kernel page size in bytes.
 MACH_PAGE_SIZE_BYTES = 4096
 

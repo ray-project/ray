@@ -623,5 +623,35 @@ def test_ray_task_cancel_and_retry_race_condition(ray_start_cluster):
         ray.get(consumer.remote([producer_ref]))
 
 
+def test_is_canceled_with_keyboard_interrupt(ray_start_regular):
+    """Test checking is_canceled() within KeyboardInterrupt in normal tasks.
+
+    is_canceled() will be True in KeyboardInterrupt exception block.
+    """
+
+    @ray.remote
+    def task_handling_keyboard_interrupt(signal_actor):
+        try:
+            ray.get(signal_actor.wait.remote())
+        except KeyboardInterrupt:
+            # is_canceled() should be true here
+            if ray.get_runtime_context().is_canceled():
+                return "canceled_via_keyboard_interrupt"
+        return "completed"
+
+    sig = SignalActor.remote()
+    ref = task_handling_keyboard_interrupt.remote(sig)
+
+    wait_for_condition(lambda: ray.get(sig.cur_num_waiters.remote()) == 1)
+
+    ray.cancel(ref)
+
+    # Send signal to unblock the task
+    ray.get(sig.send.remote())
+
+    # We will get the return value
+    assert ray.get(ref) == "canceled_via_keyboard_interrupt"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
