@@ -1,0 +1,24 @@
+name: "ray-cpp-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"
+froms:
+  - "rayproject/manylinux2014:$MANYLINUX_VERSION-jdk-$HOSTTYPE"
+  - "@ray-core-py$PYTHON_VERSION$ARCH_SUFFIX"      # C++ binaries (ray_pkg.zip)
+  - "@ray-cpp-core-py$PYTHON_VERSION$ARCH_SUFFIX"  # C++ headers/libs (ray_cpp_pkg.zip)
+  - "@ray-java-build$ARCH_SUFFIX"                  # Java JARs
+  - "@ray-dashboard"                               # Dashboard
+dockerfile: ci/docker/ray-cpp-wheel.Dockerfile
+srcs:
+  - pyproject.toml
+  - README.rst
+  - ci/build/build-manylinux-wheel.sh
+  - python/
+  - rllib/
+build_args:
+  - PYTHON_VERSION
+  - MANYLINUX_VERSION
+  - HOSTTYPE
+  - BUILDKITE_COMMIT
+  - ARCH_SUFFIX
+  - RAY_CORE_IMAGE=ray-core-py$PYTHON_VERSION$ARCH_SUFFIX
+  - RAY_CPP_CORE_IMAGE=ray-cpp-core-py$PYTHON_VERSION$ARCH_SUFFIX
+  - RAY_JAVA_IMAGE=ray-java-build$ARCH_SUFFIX
+  - RAY_DASHBOARD_IMAGE=ray-dashboard
