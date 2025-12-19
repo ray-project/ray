@@ -80,8 +80,7 @@ class ScalingConfig(ScalingConfigV1):
     accelerator_type: Optional[str] = None
     num_slices: int = 1
 
-    def _handle_deprecations(self):
-        """Handle all V2-specific deprecations."""
+    def __post_init__(self):
         if self.trainer_resources is not None:
             raise DeprecationWarning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
 

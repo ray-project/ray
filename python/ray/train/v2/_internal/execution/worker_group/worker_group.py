@@ -263,8 +263,11 @@ class WorkerGroup(BaseWorkerGroup):
         self._assert_inactive()
         worker_group_context = self._worker_group_context
 
-        pg = self._create_placement_group(
-            self._train_run_context.scaling_config, worker_group_context
+        # Check that we have sufficient resources in the cluster before waiting for
+        # a placement group.
+        WorkerGroup._check_cluster_resources_and_raise_if_insufficient(
+            worker_group_context.resources_per_worker,
+            worker_group_context.num_workers,
         )
 
         # TODO: Review the order of `on_xyz_start` and `after_xyz_start` callbacks.
@@ -275,6 +278,10 @@ class WorkerGroup(BaseWorkerGroup):
         ):
             for callback in self._callbacks:
                 callback.before_worker_group_start(worker_group_context)
+
+            pg = self._create_placement_group(
+                self._train_run_context.scaling_config, worker_group_context
+            )
 
             logger.info(
                 f"Attempting to start training worker group of size {worker_group_context.num_workers} with "
@@ -453,13 +460,6 @@ class WorkerGroup(BaseWorkerGroup):
         resources. Otherwise, it creates a standard placement group.
         """
 
-        # Check that we have sufficient resources in the cluster before waiting for
-        # a placement group.
-        WorkerGroup._check_cluster_resources_and_raise_if_insufficient(
-            worker_group_context.resources_per_worker,
-            worker_group_context.num_workers,
-        )
-
         if (
             scaling_config.use_tpu
             and scaling_config.topology
@@ -490,7 +490,7 @@ class WorkerGroup(BaseWorkerGroup):
                 self._cleanup_slice_pg()
                 raise ValueError(f"Failed to reserve TPU slice(s): {e}") from e
 
-        pg = placement_group(
+        return placement_group(
             # TODO: support heterogeneous workers and placement
             bundles=[worker_group_context.resources_per_worker]
             * worker_group_context.num_workers,
