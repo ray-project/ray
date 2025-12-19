@@ -94,7 +94,6 @@ cdef extern from "ray/core_worker/rdt_types.h" nogil:
     cdef cppclass CRDTObjectInfo "ray::core::RDTObjectInfo":
         c_string object_id
         c_string device
-        c_bool is_primary
         int64_t object_size
 
 

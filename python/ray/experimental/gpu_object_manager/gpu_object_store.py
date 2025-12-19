@@ -445,7 +445,6 @@ class GPUObjectStore:
                         {
                             "object_id": obj_id,
                             "size_bytes": obj_size,
-                            "is_primary": gpu_obj.is_primary,
                             "devices": devices,
                         }
                     )

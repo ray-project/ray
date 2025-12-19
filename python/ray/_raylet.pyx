@@ -2117,7 +2117,6 @@ cdef c_vector[CRDTObjectInfo] get_rdt_object_infos_callback() nogil:
             for rdt_info in gpu_object_manager.get_rdt_object_infos():
                 info.object_id = rdt_info["object_id"]
                 info.device = rdt_info["device"].encode("utf-8")
-                info.is_primary = rdt_info["is_primary"]
                 info.object_size = rdt_info["object_size"]
                 result.push_back(info)
     return result

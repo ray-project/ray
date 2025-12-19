@@ -4176,7 +4176,6 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
         auto *rdt_proto = stats->add_rdt_object_infos();
         rdt_proto->set_object_id(info.object_id);
         rdt_proto->set_device(info.device);
-        rdt_proto->set_is_primary(info.is_primary);
         rdt_proto->set_object_size(info.object_size);
       }
     }

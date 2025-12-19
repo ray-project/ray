@@ -686,7 +686,6 @@ class GPUObjectManager:
                 {
                     "object_id": bytes.fromhex(obj_id_hex),
                     "device": devices[0] if devices else "cpu",
-                    "is_primary": obj_info.get("is_primary", False),
                     "object_size": obj_info.get("size_bytes", 0),
                 }
             )

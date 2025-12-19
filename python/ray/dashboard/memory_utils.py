@@ -367,12 +367,16 @@ def construct_memory_table(
                 object_ref.get("objectId", b"")
             ).hex()
             rdt_info = rdt_info_map.get(object_id)
+            effective_object_ref = object_ref
             if rdt_info:
                 is_rdt = True
                 device = rdt_info["device"]
-                object_ref["objectSize"] = rdt_info["object_size"]
+                effective_object_ref = {
+                    **object_ref,
+                    "objectSize": rdt_info["object_size"],
+                }
             memory_table_entry = MemoryTableEntry(
-                object_ref=object_ref,
+                object_ref=effective_object_ref,
                 node_address=node_address,
                 is_driver=is_driver,
                 pid=pid,

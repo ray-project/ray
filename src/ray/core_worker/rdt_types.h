@@ -25,7 +25,6 @@ namespace core {
 struct RDTObjectInfo {
   std::string object_id;  // Binary object ID
   std::string device;     // Device location (e.g., "cuda:0", "cpu")
-  bool is_primary;        // Whether this is the primary copy
   int64_t object_size;    // Actual tensor data size in bytes
 };
 

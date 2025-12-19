@@ -954,10 +954,8 @@ message RDTObjectInfo {
   bytes object_id = 1;
   // Device location (e.g., "cuda:0", "cpu").
   string device = 2;
-  // Whether this is the primary copy of the object.
-  bool is_primary = 3;
   // Object size in bytes.
-  int64 object_size = 4;
+  int64 object_size = 3;
 }
 
 // Details about the allocation of a given resource. Some resources
