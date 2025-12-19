@@ -235,7 +235,7 @@ class IMPALALearner(Learner):
             # Pass timesteps alongside batch (no globals).
             self._gpu_loader_in_queue.put((batch, timesteps))
             # Only occasionally log loader queue size.
-            if (self._submitted_updates & 0x3FF) == 0:
+            if (self._submitted_updates & 0xFF) == 0:
                 self.metrics.log_value(
                     (ALL_MODULES, QUEUE_SIZE_GPU_LOADER_QUEUE),
                     self._gpu_loader_in_queue.qsize(),
@@ -255,7 +255,7 @@ class IMPALALearner(Learner):
                 with self._learner_state_lock:
                     self._learner_state = self._learner_state_queue.get_nowait()
             except queue.Empty:
-                pass
+                logger.warning("No learner state available in the queue yet.")
 
         # Every 20th block call we submit results. Otherwise we keep the
         # thread running without interruption to avoid thread contention.
@@ -501,7 +501,9 @@ class _LearnerThread(threading.Thread):
             try:
                 self._in_queue.task_done()
             except Exception:
-                pass
+                logger.warning(
+                    "_LearnerThread._in_queue.task_done() failed during stop handling."
+                )
             # Signal `run` to exit.
             return False
 
@@ -556,16 +558,17 @@ class _LearnerThread(threading.Thread):
                             learner_state[COMPONENT_RL_MODULE]
                         )
                     try:
-                        with self.learner._learner_state_lock:
-                            self.learner.metrics.log_value(
-                                (ALL_MODULES, "learner_thread_state_queue_size"),
-                                self.learner._learner_state_queue.qsize(),
-                                window=1,
-                            )
+                        if (self.learner._num_updates % 0xFF) == 0:
+                            with self.learner._learner_state_lock:
+                                self.learner.metrics.log_value(
+                                    (ALL_MODULES, "learner_thread_state_queue_size"),
+                                    self.learner._learner_state_queue.qsize(),
+                                    window=1,
+                                )
                         # Remove any old learner state in the queue.
                         self.learner._learner_state_queue.get_nowait()
                     except queue.Empty:
-                        pass
+                        logger.warning("No old learner state to remove from the queue.")
                     # Pass the learner state into the queue to the main process.
                     self.learner._learner_state_queue.put_nowait(learner_state)
                 self.learner.metrics.log_value(
