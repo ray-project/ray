@@ -261,9 +261,9 @@ class _StringNamespace:
     def lpad(
         self, width: int, padding: str = " ", *args: Any, **kwargs: Any
     ) -> "UDFExpr":
-        """Left-pad strings to a fixed ``width``.
+        """Right-align strings by padding with a given character while respecting ``width``.
 
-        If a string is longer than ``width``, it is truncated from the right.
+        If the string is longer than the specified width, it remains intact (no truncation occurs).
         """
         return _create_str_udf(pc.utf8_lpad, DataType.string())(
             self._expr, width, padding, *args, **kwargs
@@ -272,9 +272,9 @@ class _StringNamespace:
     def rpad(
         self, width: int, padding: str = " ", *args: Any, **kwargs: Any
     ) -> "UDFExpr":
-        """Right-pad strings to a fixed ``width``.
+        """Left-align strings by padding with a given character while respecting ``width``.
 
-        If a string is longer than ``width``, it is truncated from the right.
+        If the string is longer than the specified width, it remains intact (no truncation occurs).
         """
         return _create_str_udf(pc.utf8_rpad, DataType.string())(
             self._expr, width, padding, *args, **kwargs
