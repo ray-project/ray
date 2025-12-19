@@ -260,7 +260,7 @@ class RayActorOptionsSchema(BaseModel):
             "If specified, requires that the actor run on a node with the specified labels."
         ),
     )
-    fallback_strategy: Union[str, List[Dict[str, Any]]] = Field(
+    fallback_strategy: List[Dict[str, Any]] = Field(
         default=None,
         description=(
             "If specified, expresses soft constraints through a list of decorator "
