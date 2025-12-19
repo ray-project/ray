@@ -70,12 +70,12 @@ class RuntimeContext(object):
             job ID will be hex format.
 
         Raises:
-            AssertionError: If not called in a driver or worker. Generally,
-                this means that ray.init() was not called.
+            RuntimeError: If Ray has not been initialized.
         """
-        assert (
-            ray.is_initialized()
-        ), "Job ID is not available because Ray has not been initialized."
+        if not ray.is_initialized():
+            raise RuntimeError(
+                "Job ID is not available because Ray has not been initialized."
+            )
         job_id = self.worker.current_job_id
         return job_id.hex()
 
@@ -106,12 +106,12 @@ class RuntimeContext(object):
             A node id in hex format for this worker or driver.
 
         Raises:
-            AssertionError: If not called in a driver or worker. Generally,
-                this means that ray.init() was not called.
+            RuntimeError: If Ray has not been initialized.
         """
-        assert (
-            ray.is_initialized()
-        ), "Node ID is not available because Ray has not been initialized."
+        if not ray.is_initialized():
+            raise RuntimeError(
+                "Node ID is not available because Ray has not been initialized."
+            )
         node_id = self.worker.current_node_id
         return node_id.hex()
 
@@ -163,10 +163,14 @@ class RuntimeContext(object):
 
         Returns:
             A worker id in hex format for this worker or driver process.
+
+        Raises:
+            RuntimeError: If Ray has not been initialized.
         """
-        assert (
-            ray.is_initialized()
-        ), "Worker ID is not available because Ray has not been initialized."
+        if not ray.is_initialized():
+            raise RuntimeError(
+                "Worker ID is not available because Ray has not been initialized."
+            )
         return self.worker.worker_id.hex()
 
     @property
