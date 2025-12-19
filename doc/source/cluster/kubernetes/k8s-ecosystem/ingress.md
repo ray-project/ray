@@ -88,7 +88,7 @@ kubectl delete ingress ray-cluster-ingress
 
 ### Prerequisites
 
-* Create a GKE cluster and ensure that you have the kubectl tool installed and authenticated to communicate with your GKE cluster.  See [this tutorial](kuberay-gke-gpu-cluster-setup) for an example of how to create a GKE cluster with GPUs.  (GPUs are not necessary for this section.)
+* Create a GKE cluster and ensure that you have the kubectl tool installed and authenticated to communicate with your GKE cluster. See [this tutorial](kuberay-gke-gpu-cluster-setup) for an example of how to create a GKE cluster with GPUs.  (GPUs aren't necessary for this section.)
 
 * If you are using a `gce-internal` ingress, create a [Proxy-Only subnet](https://cloud.google.com/load-balancing/docs/proxy-only-subnets#proxy_only_subnet_create) in the same region as your GKE cluster.
 
@@ -221,7 +221,7 @@ kubectl describe ingress raycluster-ingress-head-ingress
 
 * Deploy Application Gateway for Containers [Quickstart: Create Application Gateway for Containers managed by ALB Controller](https://learn.microsoft.com/azure/application-gateway/for-containers/quickstart-create-application-gateway-for-containers-managed-by-alb-controller?tabs=new-subnet-aks-vnet) 
 
-* (Optional) Read [What is Application Gateway for Containers](https://learn.microsoft.com/azure/application-gateway/for-containers/overview).
+* (Optional) Read [Application Gateway for Containers overview](https://learn.microsoft.com/azure/application-gateway/for-containers/overview).
 
 * (Optional) Read [Secure your web applications with Azure Web Application Firewall on Application Gateway for Containers](https://learn.microsoft.com/azure/application-gateway/for-containers/web-application-firewall)
 

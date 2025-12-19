@@ -2,9 +2,9 @@
 
 # Using Prometheus and Grafana
 
-This section will describe how to monitor Ray Clusters in Kubernetes using Prometheus & Grafana.
+This section describes how to monitor Ray Clusters in Kubernetes using Prometheus & Grafana.
 
-If you do not have any experience with Prometheus and Grafana on Kubernetes, watch this [YouTube playlist](https://youtube.com/playlist?list=PLy7NrYWoggjxCF3av5JKwyG7FFF9eLeL4).
+If you don't have any experience with Prometheus and Grafana on Kubernetes, watch this [YouTube playlist](https://youtube.com/playlist?list=PLy7NrYWoggjxCF3av5JKwyG7FFF9eLeL4).
 
 ## Preparation
 
@@ -17,7 +17,7 @@ This tutorial requires several files in the repository.
 kind create cluster
 ```
 
-## Step 2: Install Kubernetes Prometheus Stack via Helm chart
+## Step 2: Install Kubernetes Prometheus Stack through Helm chart
 
 ```sh
 # Path: kuberay/
@@ -37,7 +37,7 @@ kubectl get all -n prometheus-system
   * Install the [kube-prometheus-stack v48.2.1](https://github.com/prometheus-community/helm-charts/tree/kube-prometheus-stack-48.2.1/charts/kube-prometheus-stack) chart and related custom resources, including **PodMonitor** for Ray Pods and **PrometheusRule**, in the namespace `prometheus-system` automatically. 
   * Import Ray Dashboard's [Grafana JSON files](https://github.com/ray-project/kuberay/tree/master/config/grafana) into Grafana using the `--auto-load-dashboard true` flag. If the flag isn't set, the following step also provides instructions for manual import. See [Step 12: Import Grafana dashboards manually (optional)](#step-12-import-grafana-dashboards-manually-optional) for more details.
 
-* We made some modifications to the original `values.yaml` in kube-prometheus-stack chart to allow embedding Grafana panels in Ray Dashboard. See [overrides.yaml](https://github.com/ray-project/kuberay/tree/master/install/prometheus/overrides.yaml) for more details.
+* The example makes some modifications to the original `values.yaml` in kube-prometheus-stack chart to allow embedding Grafana panels in Ray Dashboard. See [overrides.yaml](https://github.com/ray-project/kuberay/tree/master/install/prometheus/overrides.yaml) for more details.
   ```yaml
   grafana:
     grafana.ini:
@@ -52,7 +52,7 @@ kubectl get all -n prometheus-system
 
 ## Step 3: Install a KubeRay operator
 
-* Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository.
+* Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator through Helm repository.
 * Set `metrics.serviceMonitor.enabled=true` when installing the KubeRay operator with Helm to create a ServiceMonitor that scrapes metrics exposed by the KubeRay operator's service.
   ```sh
   # Enable the ServiceMonitor and set the label `release: prometheus` to the ServiceMonitor so that Prometheus can discover it
@@ -98,8 +98,8 @@ curl localhost:8080
 # ray_spill_manager_request_total{Component="raylet", NodeAddress="10.244.0.13", SessionName="session_2025-01-02_07-58-21_419367_11", Type="FailedDeletion", Version="2.9.0", container="ray-head", endpoint="metrics", instance="10.244.0.13:8080", job="prometheus-system/ray-head-monitor", namespace="default", pod="raycluster-embed-grafana-head-98fqt", ray_io_cluster="raycluster-embed-grafana"} 0
 ```
 
-* KubeRay exposes a Prometheus metrics endpoint in port **8080** via a built-in exporter by default. Hence, we do not need to install any external exporter.
-* If you want to configure the metrics endpoint to a different port, see [kuberay/#954](https://github.com/ray-project/kuberay/pull/954) for more details.
+* KubeRay exposes a Prometheus metrics endpoint in port **8080** through a built-in exporter by default. Hence, you don't need to install any external exporter.
+* If you want to configure the metrics endpoint to a different port, see [KubeRay/#954](https://github.com/ray-project/kuberay/pull/954) for more details.
 * Prometheus metrics format:
   * `# HELP`: Describe the meaning of this metric.
   * `# TYPE`: See [this document](https://prometheus.io/docs/concepts/metric_types/) for more details.
@@ -114,10 +114,10 @@ curl localhost:8080
     - name: RAY_PROMETHEUS_HOST
       value: http://prometheus-kube-prometheus-prometheus.prometheus-system.svc:9090
   ```
-  * Note that we do not deploy Grafana in the head Pod, so we need to set both `RAY_GRAFANA_IFRAME_HOST` and `RAY_GRAFANA_HOST`.
+  * Note that this example doesn't deploy Grafana in the head Pod, so you need to set both `RAY_GRAFANA_IFRAME_HOST` and `RAY_GRAFANA_HOST`.
     `RAY_GRAFANA_HOST` is used by the head Pod to send health-check requests to Grafana in the backend.
     `RAY_GRAFANA_IFRAME_HOST` is used by your browser to fetch the Grafana panels from the Grafana server rather than from the head Pod.
-    Because we forward the port of Grafana to `127.0.0.1:3000` in this example, we set `RAY_GRAFANA_IFRAME_HOST` to `http://127.0.0.1:3000`.
+    Because this example forwards the port of Grafana to `127.0.0.1:3000`, it sets `RAY_GRAFANA_IFRAME_HOST` to `http://127.0.0.1:3000`.
   * `http://` is required.
 
 ## Step 5: Collect Head Node metrics with a PodMonitor
@@ -165,7 +165,7 @@ spec:
           targetLabel: ray_io_cluster
 ```
 
-* The **install.sh** script creates the above YAML example, [podMonitor.yaml](https://github.com/ray-project/kuberay/blob/master/config/prometheus/podMonitor.yaml#L26-L63) so you don't need to create anything.
+* The **install.sh** script creates the preceding YAML example, [podMonitor.yaml](https://github.com/ray-project/kuberay/blob/master/config/prometheus/podMonitor.yaml#L26-L63) so you don't need to create anything.
 * See the official [PodMonitor doc](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#monitoring.coreos.com/v1.PodMonitor) for more details about configurations.
 * `release: $HELM_RELEASE`: Prometheus can only detect PodMonitor with this label. See [here](#prometheus-can-only-detect-this-label) for more details.
 
@@ -204,7 +204,7 @@ spec:
 
 Similar to the head Pod, this tutorial also uses a PodMonitor to collect metrics from worker Pods. The reason for using separate PodMonitors for head Pods and worker Pods is that the head Pod exposes multiple metric endpoints, whereas a worker Pod exposes only one.
 
-**Note**: You could create a Kubernetes service with selectors a common label subset from our worker pods, however, this configuration is not ideal because the workers are independent from each other, that is, they aren't a collection of replicas spawned by replicaset controller. Due to this behavior, avoid using a Kubernetes service for grouping them together.
+**Note**: You could create a Kubernetes service with selectors a common label subset from the worker pods, however, this configuration isn't ideal because the workers are independent from each other; they aren't a collection of replicas spawned by replicaset controller. Due to this behavior, avoid using a Kubernetes service for grouping them together.
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -286,11 +286,11 @@ spec:
       )
 ```
 
-* The PromQL expression above is:
-$$\frac{ number\ of\ update\ resource\ usage\ RPCs\ that\ have\ RTT\ smaller\ then\ 20ms\ in\ last\ 30\ days\ }{total\ number\ of\ update\ resource\ usage\ RPCs\ in\ last\ 30\ days\ }   \times 100 $$
+* The PromQL expression in the preceding example is:
+$$\frac{ number\ of\ update\ resource\ usage\ RPCs\ that\ have\ RTT\ smaller\ then\ 20\ ms\ in\ last\ 30\ days\ }{total\ number\ of\ update\ resource\ usage\ RPCs\ in\ last\ 30\ days\ }   \times 100 $$
 
 
-* The recording rule above is one of rules defined in [prometheusRules.yaml](https://github.com/ray-project/kuberay/blob/master/config/prometheus/rules/prometheusRules.yaml), and it is created by **install.sh**. Hence, no need to create anything here.
+* The recording rule in the preceding example is one of rules defined in [prometheusRules.yaml](https://github.com/ray-project/kuberay/blob/master/config/prometheus/rules/prometheusRules.yaml), and it's created by **install.sh**. Hence, no need to create anything here.
 
 * See the official [PrometheusRule document](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#monitoring.coreos.com/v1.PrometheusRule) for more details about configurations.
 
@@ -301,7 +301,7 @@ $$\frac{ number\ of\ update\ resource\ usage\ RPCs\ that\ have\ RTT\ smaller\ th
 
 ## Step 9: Define Alert Conditions with alerting rules (optional)
 
-[Alerting rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/) allow us to define alert conditions based on [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) expressions and to send notifications about firing alerts to [Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager) which adds summarization, notification rate limiting, silencing and alert dependencies on top of the simple alert definitions.
+[Alerting rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/) allow you to define alert conditions based on [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) expressions and to send notifications about firing alerts to [Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager) which adds summarization, notification rate limiting, silencing and alert dependencies on top of the simple alert definitions.
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -338,9 +338,9 @@ spec:
         severity: critical
 ```
 
-* The PromQL expression above checks if there is no time series exist for `ray_gcs_update_resource_usage_time_bucket` metric. See [absent()](https://prometheus.io/docs/prometheus/latest/querying/functions/#absent) for more detail.
+* The PromQL expression in the preceding example checks if there is no time series exist for `ray_gcs_update_resource_usage_time_bucket` metric. See [absent()](https://prometheus.io/docs/prometheus/latest/querying/functions/#absent) for more detail.
 
-* The alerting rule above is one of rules defined in [prometheusRules.yaml](https://github.com/ray-project/kuberay/blob/master/config/prometheus/rules/prometheusRules.yaml), and it is created by **install.sh**. Hence, no need to create anything here.
+* The alerting rule in the preceding example is one of rules defined in [prometheusRules.yaml](https://github.com/ray-project/kuberay/blob/master/config/prometheus/rules/prometheusRules.yaml), and it's created by **install.sh**. Hence, no need to create anything here.
 
 * Alerting rules are configured in the same way as recording rules.
 
@@ -351,7 +351,7 @@ spec:
 kubectl port-forward -n prometheus-system service/prometheus-kube-prometheus-prometheus http-web
 ```
 
-- Go to `${YOUR_IP}:9090/targets` (e.g. `127.0.0.1:9090/targets`). You should be able to see:
+- Go to `${YOUR_IP}:9090/targets` (for example, `127.0.0.1:9090/targets`). You should be able to see:
   - `podMonitor/prometheus-system/ray-workers-monitor/0 (1/1 up)`
   - `serviceMonitor/prometheus-system/ray-head-monitor/0 (1/1 up)`
 
@@ -360,10 +360,10 @@ kubectl port-forward -n prometheus-system service/prometheus-kube-prometheus-pro
 - Go to `${YOUR_IP}:9090/graph`. You should be able to query:
   - [System Metrics](https://docs.ray.io/en/latest/ray-observability/ray-metrics.html#system-metrics)
   - [Application Level Metrics](https://docs.ray.io/en/latest/ray-observability/ray-metrics.html#application-level-metrics)
-  - Custom Metrics defined in Recording Rules (e.g. `ray_gcs_availability_30d`)
+  - Custom Metrics defined in Recording Rules (for example, `ray_gcs_availability_30d`)
 
 - Go to `${YOUR_IP}:9090/alerts`. You should be able to see:
-  - Alerting Rules (e.g. `MissingMetricRayGlobalControlStore`).
+  - Alerting Rules (for example, `MissingMetricRayGlobalControlStore`).
 
 ## Step 11: Access Grafana
 
@@ -376,7 +376,7 @@ kubectl port-forward -n prometheus-system service/prometheus-grafana 3000:http-w
 # The default username is "admin" and the password is "prom-operator".
 ```
 
-> Note: `kubectl port-forward` is not recommended for production use.
+> Note: `kubectl port-forward` isn't recommended for production use.
 Refer to [this Grafana document](https://grafana.com/tutorials/run-grafana-behind-a-proxy/) for exposing Grafana behind a reverse proxy.
 
 * The default password is defined by `grafana.adminPassword` in the [values.yaml](https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml) of the kube-prometheus-stack chart.
@@ -387,13 +387,13 @@ If `--auto-load-dashboard true` is set when running `install.sh`, you can skip t
 
 * Import Grafana dashboards manually
   * Click "Dashboards" icon in the left panel.
-  * Click "New".
-  * Click "Import".
-  * Click "Upload JSON file".
+  * Click "New."
+  * Click "Import."
+  * Click "Upload JSON file."
   * Choose a JSON file.
     * Case 1: If you are using Ray 2.41.0, you can use [the sample config files in GitHub repository](https://github.com/ray-project/kuberay/tree/master/config/grafana). The file names have a pattern of `xxx_grafana_dashboard.json`.
     * Case 2: Otherwise, import the JSON files from the head Pod's `/tmp/ray/session_latest/metrics/grafana/dashboards/` directory. You can use `kubectl cp` to copy the files from the head Pod to your local machine. `kubectl cp $(kubectl get pods --selector ray.io/node-type=head,ray.io/cluster=raycluster-embed-grafana -o jsonpath={..metadata.name}):/tmp/ray/session_latest/metrics/grafana/dashboards/ /tmp/`
-  * Click "Import".
+  * Click "Import."
 
 ## Step 13: View metrics from different RayCluster CRs
 

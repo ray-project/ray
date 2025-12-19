@@ -8,7 +8,7 @@ To better understand this section, you should be familiar with the following Ray
 the [Ray Serve replica and ProxyActor](https://docs.ray.io/en/latest/serve/architecture.html#high-level-view).
 
 ProxyActor is responsible for forwarding incoming requests to the corresponding Ray Serve replicas. 
-Hence, if a Ray Pod without a running ProxyActor receives requests, those requests will fail.
+Hence, if a Ray Pod without a running ProxyActor receives requests, those requests fail.
 KubeRay's readiness probe fails, rendering the Pods unready and preventing ProxyActor from sending requests to them.
 
 The default behavior of Ray Serve only creates ProxyActor on Ray Pods with running Ray Serve replicas.

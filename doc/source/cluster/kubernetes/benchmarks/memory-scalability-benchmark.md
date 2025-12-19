@@ -6,7 +6,7 @@
 
 ![benchmark architecture](../images/benchmark_architecture.png)
 
-This architecture is not a good practice, but it can fulfill the current requirements.
+This architecture isn't a good practice, but it can fulfill the current requirements.
 
 ## Preparation
 
@@ -33,11 +33,11 @@ gcloud container clusters create kuberay-benchmark-cluster \
 ./install/prometheus/install.sh
 ```
 
-Follow "Step 2: Install Kubernetes Prometheus Stack via Helm chart" in [prometheus-grafana.md](kuberay-prometheus-grafana) to install the [kube-prometheus-stack v48.2.1](https://github.com/prometheus-community/helm-charts/tree/kube-prometheus-stack-48.2.1/charts/kube-prometheus-stack) chart and related custom resources.
+Follow "Step 2: Install Kubernetes Prometheus Stack through Helm chart" in [prometheus-grafana.md](kuberay-prometheus-grafana) to install the [kube-prometheus-stack v48.2.1](https://github.com/prometheus-community/helm-charts/tree/kube-prometheus-stack-48.2.1/charts/kube-prometheus-stack) chart and related custom resources.
 
 ## Step 3: Install a KubeRay operator
 
-Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository.
+Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator through Helm repository.
 
 ## Step 4: Run experiments
 
@@ -50,10 +50,10 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
   ```
 * Step 4.3: Follow [prometheus-grafana.md](kuberay-prometheus-grafana) to access Grafana's dashboard.
   * Sign into the Grafana dashboard.
-  * Click on "Dashboards".
+  * Click on "Dashboards."
   * Select "Kubernetes / Compute Resources / Pod".
   * Locate the "Memory Usage" panel for the KubeRay operator Pod.
-  * Select the time range, then click on "Inspect" followed by "Data" to download the memory usage data of the KubeRay operator Pod.
+  * Select the time range, then click "Inspect" followed by "Data" to download the memory usage data of the KubeRay operator Pod.
 * Step 4.4: Delete all RayCluster custom resources.
   ```sh
   kubectl delete --all rayclusters.ray.io --namespace=default
@@ -74,7 +74,7 @@ Based on [the survey](https://forms.gle/KtMLzjXcKoeSTj359) for KubeRay users, th
 
 ![benchmark result](../images/benchmark_result.png)
 
-* You can generate the above figure by running:
+* You can generate the preceding figure by running:
   ```sh
   # (path: benchmark/memory_benchmark/scripts)
   python3 experiment_figures.py
@@ -82,8 +82,8 @@ Based on [the survey](https://forms.gle/KtMLzjXcKoeSTj359) for KubeRay users, th
   ```
 
 * As shown in the figure, the memory usage of the KubeRay operator Pod is highly and positively correlated to the number of Pods in the Kubernetes cluster.
-In addition, the number of custom resources in the Kubernetes cluster does not have a significant impact on the memory usage.
+In addition, the number of custom resources in the Kubernetes cluster doesn't have a significant impact on the memory usage.
 * Note that the x-axis "Number of Pods" is the number of Pods that are created rather than running.
-If the Kubernetes cluster does not have enough computing resources, the GKE Autopilot adds a new Kubernetes node into the cluster.
+If the Kubernetes cluster doesn't have enough computing resources, the GKE Autopilot adds a new Kubernetes node into the cluster.
 This process may take a few minutes, so some Pods may be pending in the process.
 This lag may can explain why the memory usage is somewhat throttled.

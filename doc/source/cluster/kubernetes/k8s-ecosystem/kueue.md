@@ -679,7 +679,7 @@ stand-alone `RayCluster` name (`raycluster-kueue-autoscaler`).
   `enableInTreeAutoscaling: true` when ray image < 2.47.0.
 
 * **RayJob support** – Autoscaling for `RayJob` isn't yet supported.
-  The Kueue maintainers are actively tracking this work and will update
+  The Kueue maintainers are actively tracking this work and plan to update
   their documentation when it becomes available.
 
 * **Kueue versions prior to v0.13** – If you are using a Kueue version

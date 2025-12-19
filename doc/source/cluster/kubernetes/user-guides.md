@@ -36,7 +36,7 @@ user-guides/kuberay-dashboard
 
 
 :::{note}
-To learn the basics of Ray on Kubernetes, we recommend taking a look
+To learn the basics of Ray on Kubernetes, Ray recommends taking a look
 at the {ref}`introductory guide <kuberay-quickstart>` first.
 :::
 

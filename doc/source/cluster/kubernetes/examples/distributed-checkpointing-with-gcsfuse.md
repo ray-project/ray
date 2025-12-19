@@ -2,13 +2,13 @@
 
 # Distributed checkpointing with KubeRay and GCSFuse
 
-This example orchestrates distributed checkpointing with KubeRay, using the GCSFuse CSI driver and Google Cloud Storage as the remote storage system.
+This example orchestrates distributed checkpointing with KubeRay, using the GCSFuse Container Storage Interface (CSI) driver and Google Cloud Storage as the remote storage system.
 To illustrate the concepts, this guide uses the [Finetuning a Pytorch Image Classifier with Ray Train](https://docs.ray.io/en/latest/train/examples/pytorch/pytorch_resnet_finetune.html) example.
 
 ## Why distributed checkpointing with GCSFuse?
 
 In large-scale, high-performance machine learning, distributed checkpointing is crucial for fault tolerance, ensuring that if a node fails during training, Ray can resume the process from the latest saved checkpoint instead of starting from scratch.
-While it's possible to directly reference remote storage paths (e.g., `gs://my-checkpoint-bucket`), using Google Cloud Storage FUSE (GCSFuse) has distinct advantages for distributed applications. GCSFuse allows you to mount Cloud Storage buckets like local file systems, making checkpoint management more intuitive for distributed applications that rely on these semantics. Furthermore, GCSFuse is designed for high-performance workloads, delivering the performance and scalability you need for distributed checkpointing of large models.
+While it's possible to directly reference remote storage paths (for example, `gs://my-checkpoint-bucket`), using Google Cloud Storage FUSE (GCSFuse) has distinct advantages for distributed applications. GCSFuse allows you to mount Cloud Storage buckets like local file systems, making checkpoint management more intuitive for distributed applications that rely on these semantics. Furthermore, GCSFuse is designed for high-performance workloads, delivering the performance and scalability you need for distributed checkpointing of large models.
 
 [Distributed checkpointing](https://docs.ray.io/en/latest/train/user-guides/checkpoints.html), in combination with [GCSFuse](https://cloud.google.com/storage/docs/gcs-fuse), allows for larger-scale model training with increased availability and efficiency.
 
@@ -86,7 +86,7 @@ kubectl create -f ray-job.pytorch-image-classifier.yaml
 
 The deployed RayJob includes the following configuration to enable distributed checkpointing to a shared filesystem:
 * 4 Ray workers, each with a single GPU.
-* All Ray nodes use the `pytorch-distributed-training` ServiceAccount, which we created earlier.
+* All Ray nodes use the `pytorch-distributed-training` ServiceAccount, which was created earlier.
 * Includes volumes that are managed by the `gcsfuse.csi.storage.gke.io` CSI driver.
 * Mounts a shared storage path `/mnt/cluster_storage`, backed by the GCS bucket you created earlier.
 
@@ -128,7 +128,7 @@ Training saved a checkpoint for iteration 10 at: (local)/mnt/cluster_storage/fin
 
 ## Inspect checkpointing data
 
-Once the RayJob completes, you can inspect the contents of your bucket using a tool like [gsutil](https://cloud.google.com/storage/docs/gsutil).
+Once the RayJob completes, you can inspect the contents of your bucket using a tool like [`gsutil`](https://cloud.google.com/storage/docs/gsutil).
 ```
 gsutil ls gs://my-ray-bucket/**
 gs://my-ray-bucket/finetune-resnet/

@@ -25,16 +25,16 @@ It offers 3 custom resource definitions (CRDs):
 
 ## Which CRD should you choose?
 
-Using [RayService](kuberay-rayservice-quickstart) to serve models and using [RayCluster](kuberay-raycluster-quickstart) to develop Ray applications are no-brainer recommendations from us.
-However, if the use case is not model serving or prototyping, how do you choose between [RayCluster](kuberay-raycluster-quickstart) and [RayJob](kuberay-rayjob-quickstart)?
+Using [RayService](kuberay-rayservice-quickstart) to serve models and using [RayCluster](kuberay-raycluster-quickstart) to develop Ray applications are clear recommendations from Ray.
+However, if the use case isn't model serving or prototyping, how do you choose between [RayCluster](kuberay-raycluster-quickstart) and [RayJob](kuberay-rayjob-quickstart)?
 
-### Q: Is downtime acceptable during a cluster upgrade (e.g. Upgrade Ray version)?
+### Q: Is downtime acceptable during a cluster upgrade (for example, Upgrade Ray version)?
 
 If not, use RayJob. RayJob can be configured to automatically delete the RayCluster once the job is completed. You can switch between Ray versions and configurations for each job submission using RayJob.
 
-If yes, use RayCluster. Ray doesn't natively support rolling upgrades; thus, you'll need to manually shut down and create a new RayCluster.
+If yes, use RayCluster. Ray doesn't natively support rolling upgrades; thus, you need to manually shut down and create a new RayCluster.
 
-### Q: Are you deploying on public cloud providers (e.g. AWS, GCP, Azure)?
+### Q: Are you deploying on public cloud providers (for example, AWS, GCP, Azure)?
 
 If yes, use RayJob. It allows automatic deletion of the RayCluster upon job completion, helping you reduce costs.
 

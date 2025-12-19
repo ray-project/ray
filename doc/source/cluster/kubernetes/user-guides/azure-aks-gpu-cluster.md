@@ -7,7 +7,7 @@ The configuration outlined here can be applied to most KubeRay examples found in
 
 You can find the landing page for AKS [here](https://azure.microsoft.com/en-us/services/kubernetes-service/).
 If you have an account set up, you can immediately start experimenting with Kubernetes clusters in the provider's console. Alternatively, check out the [documentation](https://docs.microsoft.com/en-us/azure/aks/) and [quickstart guides](https://docs.microsoft.com/en-us/azure/aks/learn/quick-kubernetes-deploy-portal?tabs=azure-cli).
-To successfully deploy Ray on Kubernetes, you will need to use node pools following the guidance [here](https://docs.microsoft.com/en-us/azure/aks/use-multiple-node-pools).
+To successfully deploy Ray on Kubernetes, you need to use node pools following the guidance [here](https://docs.microsoft.com/en-us/azure/aks/use-multiple-node-pools).
 
 ## Step 1: Create a Resource Group
 
@@ -19,7 +19,7 @@ az group create -l eastus -n kuberay-rg
 
 ## Step 2: Create AKS Cluster
 
-To create an AKS cluster with system nodepool:
+To create an AKS cluster with system `nodepool`:
 ```
 az aks create \
    -g kuberay-rg \
@@ -31,7 +31,7 @@ az aks create \
 
 ## Step 3: Add a GPU node group
 
-To add a GPU nodepool with autoscaling:
+To add a GPU `nodepool` with autoscaling:
 ```
 az aks nodepool add \
    -g kuberay-rg \

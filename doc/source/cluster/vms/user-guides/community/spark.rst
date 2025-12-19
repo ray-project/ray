@@ -12,7 +12,7 @@ This is a spark application example code that starts Ray cluster on spark,
 and then execute ray application code, then shut down initiated ray cluster.
 
 1) Create a python file that contains a spark application code,
-Assuming the python file name is 'ray-on-spark-example1.py'.
+Assuming the python filename is 'ray-on-spark-example1.py'.
 
 .. code-block:: python
 
@@ -33,9 +33,9 @@ Assuming the python file name is 'ray-on-spark-example1.py'.
         setup_ray_cluster(max_worker_nodes=MAX_NUM_WORKER_NODES)
 
         # You can any ray application code here, the ray application will be executed
-        # on the ray cluster setup above.
+        # on the ray cluster setup in the preceding steps.
         # You don't need to set address for `ray.init`,
-        # it will connect to the cluster created above automatically.
+        # it will connect to the cluster created in the preceding steps automatically.
         ray.init()
         ...
 
@@ -44,7 +44,7 @@ Assuming the python file name is 'ray-on-spark-example1.py'.
         # will also be terminated.
         shutdown_ray_cluster()
 
-2) Submit the spark application above to spark standalone cluster.
+2) Submit the spark application from the preceding step to spark standalone cluster.
 
 .. code-block:: bash
 
@@ -60,7 +60,7 @@ This is a spark application example code that starts a long running Ray cluster 
 The created ray cluster can be accessed by remote python processes.
 
 1) Create a python file that contains a spark application code,
-Assuming the python file name is 'long-running-ray-cluster-on-spark.py'.
+Assuming the python filename is 'long-running-ray-cluster-on-spark.py'.
 
 .. code-block:: python
 
@@ -86,7 +86,7 @@ Assuming the python file name is 'long-running-ray-cluster-on-spark.py'.
         while True:
             time.sleep(10)
 
-2) Submit the spark application above to spark standalone cluster.
+2) Submit the spark application from the preceding step to a spark standalone cluster.
 
 .. code-block:: bash
 

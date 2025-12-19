@@ -104,7 +104,7 @@ spec:
 EOF
 ```
 
-The **weight** in the definition above indicates the relative weight of a queue in a cluster resource division. Use this parameter in cases where the total **capability** of all the queues in your cluster exceeds the total available resources, forcing the queues to share among themselves. Queues with higher weight are allocated a proportionally larger share of the total resources.
+The **weight** in the preceding definition indicates the relative weight of a queue in a cluster resource division. Use this parameter in cases where the total **capability** of all the queues in your cluster exceeds the total available resources, forcing the queues to share among themselves. Queues with higher weight are allocated a proportionally larger share of the total resources.
 
 The **capability** is a hard constraint on the maximum resources the queue supports at any given time. You can update it as needed to allow more or fewer workloads to run at a time.
 
@@ -230,9 +230,9 @@ kubectl get podgroup ray-test-cluster-1-pg -o yaml
 #   phase: Pending
 ```
 
-Because the new cluster requires more CPU and RAM than our queue allows, even though one of the pods would fit in the remaining 1 CPU and 2Gi of RAM, none of the cluster's pods are placed until there is enough room for all the pods. Without using Volcano for gang scheduling in this way, one of the pods would ordinarily be placed, leading to the cluster being partially allocated, and some jobs (like [Horovod](https://github.com/horovod/horovod) training) being stuck waiting for resources to become available.
+Because the new cluster requires more CPU and RAM than the queue allows, even though one of the pods would fit in the remaining 1 CPU and 2Gi of RAM, none of the cluster's pods are placed until there is enough room for all the pods. Without using Volcano for gang scheduling in this way, one of the pods would ordinarily be placed, leading to the cluster being partially allocated, and some jobs (like [Horovod](https://github.com/horovod/horovod) training) being stuck waiting for resources to become available.
 
-See the effect this has on scheduling the pods for our new RayCluster, which are listed as `Pending`:
+See the effect this has on scheduling the pods for the new RayCluster, which are listed as `Pending`:
 
 ```shell
 kubectl get pods
@@ -246,7 +246,7 @@ kubectl get pods
 # test-cluster-1-worker-worker-n5g8k              0/1     Pending        0          2m12s
 ```
 
-Look at the pod details to see that Volcano cannot schedule the gang:
+Look at the pod details to see that Volcano can't schedule the gang:
 
 ```shell
 kubectl describe pod test-cluster-1-head-6668q | tail -n 3
@@ -461,7 +461,7 @@ kubectl get pod
 # rayjob-sample-1-tcd4m                            0/1     Completed   0          84s
 ```
 
-Finally, clean up the remaining rayjob, queue and configmap:
+Finally, clean up the remaining rayjob, queue, and configmap:
 ```
 kubectl delete rayjob rayjob-sample-1
 kubectl delete queue kuberay-test-queue

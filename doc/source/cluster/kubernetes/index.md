@@ -15,14 +15,14 @@ references
 (kuberay-index)=
 ## Overview
 
-In this section we cover how to execute your distributed Ray programs on a Kubernetes cluster.
+This section covers how to execute your distributed Ray programs on a Kubernetes cluster.
 
 Using the [KubeRay operator](https://github.com/ray-project/kuberay) is the
 recommended way to do so. The operator provides a Kubernetes-native way to manage Ray clusters.
 Each Ray cluster consists of a head node pod and a collection of worker node pods. Optional
 autoscaling support allows the KubeRay operator to size your Ray clusters according to the
 requirements of your Ray workload, adding and removing Ray pods as needed. KubeRay supports
-heterogenous compute nodes (including GPUs) as well as running multiple Ray clusters with
+heterogeneous compute nodes (including GPUs) as well as running multiple Ray clusters with
 different Ray versions in the same Kubernetes cluster.
 
 ```{eval-rst}

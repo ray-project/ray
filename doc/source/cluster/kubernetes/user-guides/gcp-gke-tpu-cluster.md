@@ -13,9 +13,9 @@ export COMPUTE_ZONE=ZONE
 export CLUSTER_VERSION=CLUSTER_VERSION
 ```
 Replace the following:
-- CLUSTER_NAME: The name of the GKE cluster to be created.
-- ZONE: The zone with available TPU quota, for a list of TPU availability by zones, see the [GKE documentation](https://cloud.google.com/tpu/docs/regions-zones).
-- CLUSTER_VERSION: The GKE version to use. TPU v6e is supported in GKE versions 1.31.2-gke.1115000 or later. See the [GKE documentation](https://cloud.google.com/tpu/docs/tpus-in-gke#tpu-machine-types) for TPU generations and their minimum supported version.
+- `CLUSTER_NAME`: The name of the GKE cluster to be created.
+- `ZONE`: The zone with available TPU quota, for a list of TPU availability by zones, see the [GKE documentation](https://cloud.google.com/tpu/docs/regions-zones).
+- `CLUSTER_VERSION`: The GKE version to use. TPU v6e is supported in GKE versions 1.31.2-GKE.1115000 or later. See the [GKE documentation](https://cloud.google.com/tpu/docs/tpus-in-gke#tpu-machine-types) for TPU generations and their minimum supported version.
 
 Run the following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install).
 
@@ -43,7 +43,7 @@ gcloud container node-pools create v4-4 \
   --machine-type ct4p-hightpu-4t \
   --tpu-topology 2x2x1
 ```
-- For v4 TPUs, ZONE must be `us-central2-b`.
+- For v4 TPUs, `ZONE` must be `us-central2-b`.
 
 Alternatively, create a multi-host node pool as follows:
 
@@ -58,7 +58,7 @@ gcloud container node-pools create v4-8 \
   --machine-type ct4p-hightpu-4t \
   --tpu-topology 2x2x2
 ```
-- For v4 TPUs, ZONE must be `us-central2-b`.
+- For v4 TPUs, `ZONE` must be `us-central2-b`.
 
 The `--tpu-topology` flag specifies the physical topology of the TPU Pod slice. This example uses a v4 TPU slice with either a 2x2x1 or 2x2x2 topology. v4 TPUs have 4 chips per VM host, so a 2x2x2 v4 slice has 8 chips total and 2 TPU hosts, each scheduled on their own node. GKE treats multi-host TPU slices as atomic units, and scales them using node pools rather than singular nodes. Therefore, the number of TPU hosts should always equal the number of nodes in the TPU node pool. For more information about selecting a TPU topology and accelerator, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/concepts/tpus).
 

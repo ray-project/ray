@@ -3,7 +3,7 @@
 Cluster YAML Configuration Options
 ==================================
 
-The cluster configuration is defined within a YAML file that will be used by the Cluster Launcher to launch the head node, and by the Autoscaler to launch worker nodes. Once the cluster configuration is defined, you will need to use the :ref:`Ray CLI <ray-cluster-cli>` to perform any operations such as starting and stopping the cluster.
+The cluster configuration is defined within a YAML file that's used by the Cluster Launcher to launch the head node, and by the Autoscaler to launch worker nodes. Once the cluster configuration is defined, you need to use the :ref:`Ray CLI <ray-cluster-cli>` to perform any operations such as starting and stopping the cluster.
 
 Syntax
 ------
@@ -172,7 +172,7 @@ Security Group
 
 .. _cluster-configuration-vsphere-config-type:
 
-vSphere Config
+vSphere configuration
 ~~~~~~~~~~~~~~
 
 .. tab-set::
@@ -182,11 +182,11 @@ vSphere Config
         .. parsed-literal::
 
             :ref:`credentials <cluster-configuration-vsphere-credentials>`:
-                :ref:`vSphere Credentials <cluster-configuration-vsphere-credentials-type>`
+                :ref:`vSphere credentials <cluster-configuration-vsphere-credentials-type>`
             :ref:`frozen_vm <cluster-configuration-vsphere-frozen-vm>`:
-                :ref:`vSphere Frozen VM Configs <cluster-configuration-vsphere-frozen-vm-configs>`
+                :ref:`vSphere Frozen VM configurations <cluster-configuration-vsphere-frozen-vm-configs>`
             :ref:`gpu_config <cluster-configuration-vsphere-gpu-config>`:
-                :ref:`vSphere GPU Configs <cluster-configuration-vsphere-gpu-configs>`
+                :ref:`vSphere GPU configurations <cluster-configuration-vsphere-gpu-configs>`
 
 .. _cluster-configuration-vsphere-credentials-type:
 
@@ -205,7 +205,7 @@ vSphere Credentials
 
 .. _cluster-configuration-vsphere-frozen-vm-configs:
 
-vSphere Frozen VM Configs
+vSphere frozen VM configurations
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tab-set::
@@ -222,7 +222,7 @@ vSphere Frozen VM Configs
 
 .. _cluster-configuration-vsphere-gpu-configs:
 
-vSphere GPU Configs
+vSphere GPU configurations
 ~~~~~~~~~~~~~~~~~~~
 
 .. tab-set::
@@ -240,9 +240,9 @@ Node types
 
 The ``available_nodes_types`` object's keys represent the names of the different node types.
 
-Deleting a node type from ``available_node_types`` and updating with :ref:`ray up <ray-up-doc>` will cause the autoscaler to scale down all nodes of that type.
-In particular, changing the key of a node type object will
-result in removal of nodes corresponding to the old key; nodes with the new key name will then be
+Deleting a node type from ``available_node_types`` and updating with :ref:`ray up <ray-up-doc>` causes the autoscaler to scale down all nodes of that type.
+In particular, changing the key of a node type object
+results in removal of nodes corresponding to the old key; nodes with the new key name are then
 created according to cluster configuration and Ray resource demands.
 
 .. parsed-literal::
@@ -268,8 +268,8 @@ Node config
 
 Cloud-specific configuration for nodes of a given node type.
 
-Modifying the ``node_config`` and updating with :ref:`ray up <ray-up-doc>` will cause the autoscaler to scale down all existing nodes of the node type;
-nodes with the newly applied ``node_config`` will then be created according to cluster configuration and Ray resource demands.
+Modifying the ``node_config`` and updating with :ref:`ray up <ray-up-doc>` causes the autoscaler to scale down all existing nodes of the node type;
+nodes with the newly applied ``node_config`` are then created according to cluster configuration and Ray resource demands.
 
 .. tab-set::
 
@@ -289,10 +289,10 @@ nodes with the newly applied ``node_config`` will then be created according to c
 
         .. parsed-literal::
 
-            # The resource pool where the head node should live, if unset, will be
+            # The resource pool where the head node should live, if unset, is
             # the frozen VM's resource pool.
             resource_pool: str
-            # The datastore to store the vmdk of the head node vm, if unset, will be
+            # The datastore to store the vmdk of the head node vm, if unset, is
             # the frozen VM's datastore.
             datastore: str
 
@@ -357,7 +357,7 @@ The name of the cluster. This is the namespace of the cluster.
 ``max_workers``
 ~~~~~~~~~~~~~~~
 
-The maximum number of workers the cluster will have at any given time.
+The maximum number of workers the cluster has at any given time.
 
 * **Required:** No
 * **Importance:** High
@@ -371,7 +371,7 @@ The maximum number of workers the cluster will have at any given time.
 ``upscaling_speed``
 ~~~~~~~~~~~~~~~~~~~
 
-The number of nodes allowed to be pending as a multiple of the current number of nodes. For example, if set to 1.0, the cluster can grow in size by at most 100% at any time, so if the cluster currently has 20 nodes, at most 20 pending launches are allowed. Note that although the autoscaler will scale down to `min_workers` (which could be 0), it will always scale up to 5 nodes at a minimum when scaling up.
+The number of nodes allowed to be pending as a multiple of the current number of nodes. For example, if set to 1.0, the cluster can grow in size by at most 100% at any time, so if the cluster currently has 20 nodes, at most 20 pending launches are allowed. Note that although the autoscaler scales down to `min_workers` (which could be 0), it always scales up to 5 nodes at a minimum when scaling up.
 
 * **Required:** No
 * **Importance:** Medium
@@ -406,7 +406,7 @@ Configure Ray to run in Docker containers.
 * **Type:** :ref:`Docker <cluster-configuration-docker-type>`
 * **Default:** ``{}``
 
-In rare cases when Docker is not available on the system by default (e.g., bad AMI), add the following commands to :ref:`initialization_commands <cluster-configuration-initialization-commands>` to install it.
+In rare cases when Docker isn't available on the system by default (for example, bad AMI), add the following commands to :ref:`initialization_commands <cluster-configuration-initialization-commands>` to install it.
 
 .. code-block:: yaml
 
@@ -432,7 +432,7 @@ The cloud provider-specific configuration properties.
 ``auth``
 ~~~~~~~~
 
-Authentication credentials that Ray will use to launch nodes.
+Authentication credentials that Ray uses to launch nodes.
 
 * **Required:** Yes
 * **Importance:** High
@@ -479,11 +479,11 @@ Each node type is identified by a user-specified key.
 ``head_node_type``
 ~~~~~~~~~~~~~~~~~~
 
-The key for one of the node types in :ref:`available_node_types <cluster-configuration-available-node-types>`. This node type will be used to launch the head node.
+The key for one of the node types in :ref:`available_node_types <cluster-configuration-available-node-types>`. This node type is used to launch the head node.
 
-If the field ``head_node_type`` is changed and an update is executed with :ref:`ray up <ray-up-doc>`, the currently running head node will
-be considered outdated. The user will receive a prompt asking to confirm scale-down of the outdated head node, and the cluster will restart with a new
-head node. Changing the :ref:`node_config<cluster-configuration-node-config>` of the :ref:`node_type<cluster-configuration-node-types-type>` with key ``head_node_type`` will also result in cluster restart after a user prompt.
+If the field ``head_node_type`` is changed and an update is executed with :ref:`ray up <ray-up-doc>`, the currently running head node is
+considered outdated. The user receives a prompt asking to confirm scale-down of the outdated head node, and the cluster restarts with a new
+head node. Changing the :ref:`node_config<cluster-configuration-node-config>` of the :ref:`node_type<cluster-configuration-node-types-type>` with key ``head_node_type`` also results in cluster restart after a user prompt.
 
 
 
@@ -509,7 +509,7 @@ The files or directories to copy to the head and worker nodes.
 ``cluster_synced_files``
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-A list of paths to the files or directories to copy from the head node to the worker nodes. The same path on the head node will be copied to the worker node. This behavior is a subset of the file_mounts behavior, so in the vast majority of cases one should just use :ref:`file_mounts <cluster-configuration-file-mounts>`.
+A list of paths to the files or directories to copy from the head node to the worker nodes. The same path on the head node is copied to the worker node. This behavior is a subset of the ``file_mounts`` behavior, so in the vast majority of cases one should just use :ref:`file_mounts <cluster-configuration-file-mounts>`.
 
 * **Required:** No
 * **Importance:** Low
@@ -549,7 +549,7 @@ Example for a pattern in the list: ``.gitignore``.
 ``initialization_commands``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A list of commands that will be run before the :ref:`setup commands <cluster-configuration-setup-commands>`. If Docker is enabled, these commands will run outside the container and before Docker is setup.
+A list of commands that are run before the :ref:`setup commands <cluster-configuration-setup-commands>`. If Docker is enabled, these commands run outside the container and before Docker is setup.
 
 * **Required:** No
 * **Importance:** Medium
@@ -561,7 +561,7 @@ A list of commands that will be run before the :ref:`setup commands <cluster-con
 ``setup_commands``
 ~~~~~~~~~~~~~~~~~~
 
-A list of commands to run to set up nodes. These commands will always run on the head and worker nodes and will be merged with :ref:`head setup commands <cluster-configuration-head-setup-commands>` for head and with :ref:`worker setup commands <cluster-configuration-worker-setup-commands>` for workers.
+A list of commands to run to set up nodes. These commands always run on the head and worker nodes and are merged with :ref:`head setup commands <cluster-configuration-head-setup-commands>` for head and with :ref:`worker setup commands <cluster-configuration-worker-setup-commands>` for workers.
 
 * **Required:** No
 * **Importance:** Medium
@@ -579,11 +579,11 @@ A list of commands to run to set up nodes. These commands will always run on the
               - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
               - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 
-- Setup commands should ideally be *idempotent* (i.e., can be run multiple times without changing the result); this allows Ray to safely update nodes after they have been created. You can usually make commands idempotent with small modifications, e.g. ``git clone foo`` can be rewritten as ``test -e foo || git clone foo`` which checks if the repo is already cloned first.
+- Setup commands should ideally be *idempotent* (can be run multiple times without changing the result); this allows Ray to safely update nodes after they have been created. You can usually make commands idempotent with small modifications, for example, ``git clone foo`` can be rewritten as ``test -e foo || git clone foo`` which checks if the repo is already cloned first.
 
-- Setup commands are run sequentially but separately. For example, if you are using anaconda, you need to run ``conda activate env && pip install -U ray`` because splitting the command into two setup commands will not work.
+- Setup commands are run sequentially but separately. For example, if you are using anaconda, you need to run ``conda activate env && pip install -U ray`` because splitting the command into two setup commands doesn't work.
 
-- Ideally, you should avoid using setup_commands by creating a docker image with all the dependencies preinstalled to minimize startup time.
+- Ideally, you should avoid using ``setup_commands`` by creating a docker image with all the dependencies preinstalled to minimize startup time.
 
 - **Tip**: if you also want to run apt-get commands during setup add the following list of commands:
 
@@ -599,7 +599,7 @@ A list of commands to run to set up nodes. These commands will always run on the
 ``head_setup_commands``
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-A list of commands to run to set up the head node. These commands will be merged with the general :ref:`setup commands <cluster-configuration-setup-commands>`.
+A list of commands to run to set up the head node. These commands are merged with the general :ref:`setup commands <cluster-configuration-setup-commands>`.
 
 * **Required:** No
 * **Importance:** Low
@@ -611,7 +611,7 @@ A list of commands to run to set up the head node. These commands will be merged
 ``worker_setup_commands``
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A list of commands to run to set up the worker nodes. These commands will be merged with the general :ref:`setup commands <cluster-configuration-setup-commands>`.
+A list of commands to run to set up the worker nodes. These commands are merged with the general :ref:`setup commands <cluster-configuration-setup-commands>`.
 
 * **Required:** No
 * **Importance:** Low
@@ -667,7 +667,7 @@ Command to start ray on worker nodes. You don't need to change this.
 ``docker.image``
 ~~~~~~~~~~~~~~~~
 
-The default Docker image to pull in the head and worker nodes. This can be overridden by the :ref:`head_image <cluster-configuration-head-image>` and :ref:`worker_image <cluster-configuration-worker-image>` fields. If neither `image` nor (:ref:`head_image <cluster-configuration-head-image>` and :ref:`worker_image <cluster-configuration-worker-image>`) are specified, Ray will not use Docker.
+The default Docker image to pull in the head and worker nodes. This can be overridden by the :ref:`head_image <cluster-configuration-head-image>` and :ref:`worker_image <cluster-configuration-worker-image>` fields. If neither `image` nor (:ref:`head_image <cluster-configuration-head-image>` and :ref:`worker_image <cluster-configuration-worker-image>`) are specified, Ray doesn't use Docker.
 
 * **Required:** Yes (If Docker is in use.)
 * **Importance:** High
@@ -717,7 +717,7 @@ The name to use when starting the Docker container.
 ``docker.pull_before_run``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If enabled, the latest version of image will be pulled when starting Docker. If disabled, ``docker run`` will only pull the image if no cached version is present.
+If enabled, the latest version of image is pulled when starting Docker. If disabled, ``docker run`` only pulls the image if no cached version is present.
 
 * **Required:** No
 * **Importance:** Medium
@@ -765,7 +765,7 @@ The extra options to pass to ``docker run`` for worker nodes only.
 ``docker.disable_automatic_runtime_detection``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If enabled, Ray will not try to use the NVIDIA Container Runtime if GPUs are present.
+If enabled, Ray doesn't try to use the NVIDIA Container Runtime if GPUs are present.
 
 * **Required:** No
 * **Importance:** Low
@@ -778,8 +778,8 @@ If enabled, Ray will not try to use the NVIDIA Container Runtime if GPUs are pre
 ``docker.disable_shm_size_detection``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If enabled, Ray will not automatically specify the size ``/dev/shm`` for the started container and the runtime's default value (64MiB for Docker) will be used.
-If ``--shm-size=<>`` is manually added to ``run_options``, this is *automatically* set to ``True``, meaning that Ray will defer to the user-provided value.
+If enabled, Ray doesn't automatically specify the size ``/dev/shm`` for the started container and the runtime's default value (64MiB for Docker) is used.
+If ``--shm-size=<>`` is manually added to ``run_options``, this is *automatically* set to ``True``, meaning that Ray defers to the user-provided value.
 
 * **Required:** No
 * **Importance:** Low
@@ -792,7 +792,7 @@ If ``--shm-size=<>`` is manually added to ``run_options``, this is *automaticall
 ``auth.ssh_user``
 ~~~~~~~~~~~~~~~~~
 
-The user that Ray will authenticate with when launching new nodes.
+The user that Ray authenticates with when launching new nodes.
 
 * **Required:** Yes
 * **Importance:** High
@@ -807,7 +807,7 @@ The user that Ray will authenticate with when launching new nodes.
 
     .. tab-item:: AWS
 
-        The path to an existing private key for Ray to use. If not configured, Ray will create a new private keypair (default behavior). If configured, the key must be added to the project-wide metadata and ``KeyName`` has to be defined in the :ref:`node configuration <cluster-configuration-node-config>`.
+        The path to an existing private key for Ray to use. If not configured, Ray creates a new private keypair (default behavior). If configured, the key must be added to the project-wide metadata and ``KeyName`` has to be defined in the :ref:`node configuration <cluster-configuration-node-config>`.
 
         * **Required:** No
         * **Importance:** Low
@@ -825,7 +825,7 @@ The user that Ray will authenticate with when launching new nodes.
 
     .. tab-item:: GCP
 
-        The path to an existing private key for Ray to use. If not configured, Ray will create a new private keypair (default behavior). If configured, the key must be added to the project-wide metadata and ``KeyName`` has to be defined in the :ref:`node configuration <cluster-configuration-node-config>`.
+        The path to an existing private key for Ray to use. If not configured, Ray creates a new private keypair (default behavior). If configured, the key must be added to the project-wide metadata and ``KeyName`` has to be defined in the :ref:`node configuration <cluster-configuration-node-config>`.
 
         * **Required:** No
         * **Importance:** Low
@@ -944,7 +944,7 @@ The user that Ray will authenticate with when launching new nodes.
     .. tab-item:: AWS
 
         A string specifying a comma-separated list of availability zone(s) that nodes may be launched in.
-        Nodes will be launched in the first listed availability zone and will be tried in the following availability
+        Nodes are launched in the first listed availability zone and are tried in the following availability
         zones if launching fails.
 
         * **Required:** No
@@ -973,7 +973,7 @@ The user that Ray will authenticate with when launching new nodes.
           * ``"none"`` - Explicitly disable zones
           * ``"auto"`` or omit - Let Azure automatically pick zones
 
-        See the following example Azure cluster config for more details:
+        See the following example Azure cluster configuration for more details:
 
         .. literalinclude:: ../../../../../python/ray/autoscaler/azure/example-availability-zones.yaml
             :language: yaml
@@ -1060,7 +1060,7 @@ The user that Ray will authenticate with when launching new nodes.
 
     .. tab-item:: Azure
 
-        The subscription ID to use for deployment of the Ray cluster. If not specified, Ray will use the default from the Azure CLI.
+        The subscription ID to use for deployment of the Ray cluster. If not specified, Ray uses the default from the Azure CLI.
 
         * **Required:** No
         * **Importance:** High
@@ -1088,7 +1088,7 @@ The user that Ray will authenticate with when launching new nodes.
 
     .. tab-item:: Azure
 
-        The name of the managed identity to use for deployment of the Ray cluster. If not specified, Ray will create a default user-assigned managed identity.
+        The name of the managed identity to use for deployment of the Ray cluster. If not specified, Ray creates a default user-assigned managed identity.
 
         * **Required:** No
         * **Importance:** Low
@@ -1116,7 +1116,7 @@ The user that Ray will authenticate with when launching new nodes.
 
     .. tab-item:: Azure
 
-        The name of the managed identity's resource group to use for deployment of the Ray cluster, used in conjunction with msi_name. If not specified, Ray will create a default user-assigned managed identity in resource group specified in the provider config.
+        The name of the managed identity's resource group to use for deployment of the Ray cluster, used in conjunction with msi_name. If not specified, Ray creates a default user-assigned managed identity in resource group specified in the provider configuration.
 
         * **Required:** No
         * **Importance:** Low
@@ -1164,7 +1164,7 @@ The user that Ray will authenticate with when launching new nodes.
 ``provider.cache_stopped_nodes``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If enabled, nodes will be *stopped* when the cluster scales down. If disabled, nodes will be *terminated* instead. Stopped nodes launch faster than terminated nodes.
+If enabled, nodes are *stopped* when the cluster scales down. If disabled, nodes are *terminated* instead. Stopped nodes launch faster than terminated nodes.
 
 
 * **Required:** No
@@ -1177,13 +1177,13 @@ If enabled, nodes will be *stopped* when the cluster scales down. If disabled, n
 ``provider.use_internal_ips``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If enabled, Ray will use private IP addresses for communication between nodes.
+If enabled, Ray uses private IP addresses for communication between nodes.
 This should be omitted if your network interfaces use public IP addresses.
 
-If enabled, Ray CLI commands (e.g. ``ray up``) will have to be run from a machine
-that is part of the same VPC as the cluster.
+If enabled, Ray CLI commands (for example, ``ray up``) must be run from a machine
+that's part of the same VPC as the cluster.
 
-This option does not affect the existence of public IP addresses for the nodes, it only
+This option doesn't affect the existence of public IP addresses for the nodes, it only
 affects which IP addresses are used by Ray. The existence of public IP addresses is
 controlled by your cloud provider's configuration.
 
@@ -1206,10 +1206,10 @@ controlled by your cloud provider's configuration.
 
     .. tab-item:: Azure
 
-        If enabled, Ray will provision and use a public IP address for communication with the head node,
+        If enabled, Ray provisions and uses a public IP address for communication with the head node,
         regardless of the value of ``use_internal_ips``. This option can be used in combination with
-        ``use_internal_ips`` to avoid provisioning excess public IPs for worker nodes (i.e., communicate
-        among nodes using private IPs, but provision a public IP for head node communication only). If
+        ``use_internal_ips`` to avoid provisioning excess public IPs for worker nodes (communication
+        among nodes using private IPs, but provisioning a public IP for head node only). If
         ``use_internal_ips`` is ``False``, then this option has no effect.
 
         * **Required:** No
@@ -1274,11 +1274,11 @@ controlled by your cloud provider's configuration.
     .. tab-item:: vSphere
 
         vSphere configurations used to connect vCenter Server. If not configured,
-        the VSPHERE_* environment variables will be used.
+        the VSPHERE_* environment variables are used.
 
         * **Required:** No
         * **Importance:** Low
-        * **Type:** :ref:`vSphere Config <cluster-configuration-vsphere-config-type>`
+        * **Type:** :ref:`vSphere configuration <cluster-configuration-vsphere-config-type>`
 
 .. _cluster-configuration-group-name:
 
@@ -1356,7 +1356,7 @@ The frozen VM related configurations.
 
 If the frozen VM(s) is/are existing, then ``library_item`` should be unset. Either an existing frozen VM should be specified by ``name``, or a resource pool name of frozen VMs on every ESXi (https://docs.vmware.com/en/VMware-vSphere/index.html) host should be specified by ``resource_pool``.
 
-If the frozen VM(s) is/are to be deployed from OVF template, then `library_item` must be set to point to an OVF template (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vm-administration/GUID-AFEDC48B-C96F-4088-9C1F-4F0A30E965DE.html) in the content library. In such a case, ``name`` must be set to indicate the name or the name prefix of the frozen VM(s). Then, either ``resource_pool`` should be set to indicate that a set of frozen VMs will be created on each ESXi host of the resource pool, or ``cluster`` should be set to indicate that creating a single frozen VM in the vSphere cluster. The config ``datastore`` (https://docs.vmware.com/en/VMware-vSphere/7.0/com.vmware.vsphere.storage.doc/GUID-D5AB2BAD-C69A-4B8D-B468-25D86B8D39CE.html) is mandatory in this case.
+If the frozen VM(s) is/are to be deployed from OVF template, then `library_item` must be set to point to an OVF template (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vm-administration/GUID-AFEDC48B-C96F-4088-9C1F-4F0A30E965DE.html) in the content library. In such a case, ``name`` must be set to indicate the name or the name prefix of the frozen VM(s). Then, either ``resource_pool`` should be set to indicate that a set of frozen VMs are created on each ESXi host of the resource pool, or ``cluster`` should be set to indicate that creating a single frozen VM in the vSphere cluster. Configuring ``datastore`` (https://docs.vmware.com/en/VMware-vSphere/7.0/com.vmware.vsphere.storage.doc/GUID-D5AB2BAD-C69A-4B8D-B468-25D86B8D39CE.html) is mandatory in this case.
 
 Valid examples:
 
@@ -1394,11 +1394,11 @@ Valid examples:
         frozen_vm:
             resource_pool: frozen-vm-resource-pool
 
-Other cases not in above examples are invalid.
+Other cases not in the preceding examples are invalid.
 
 * **Required:** Yes
 * **Importance:** High
-* **Type:** :ref:`vSphere Frozen VM Configs <cluster-configuration-vsphere-frozen-vm-configs>`
+* **Type:** :ref:`vSphere Frozen VM configurations <cluster-configuration-vsphere-frozen-vm-configs>`
 
 .. _cluster-configuration-vsphere-frozen-vm-name:
 
@@ -1418,7 +1418,7 @@ Can only be unset when ``resource_pool`` is set and pointing to an existing reso
 ``vsphere_config.frozen_vm.library_item``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The library item (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vm-administration/GUID-D3DD122F-16A5-4F36-8467-97994A854B16.html#GUID-D3DD122F-16A5-4F36-8467-97994A854B16) of the OVF template of the frozen VM. If set, the frozen VM or a set of frozen VMs will be deployed from an OVF template specified by ``library_item``. Otherwise, frozen VM(s) should be existing.
+The library item (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-vm-administration/GUID-D3DD122F-16A5-4F36-8467-97994A854B16.html#GUID-D3DD122F-16A5-4F36-8467-97994A854B16) of the OVF template of the frozen VM. If set, the frozen VM or a set of frozen VMs are deployed from an OVF template specified by ``library_item``. Otherwise, frozen VM(s) should be existing.
 
 Visit the VM Packer for Ray project (https://github.com/vmware-ai-labs/vm-packer-for-ray) to know how to create an OVF template for frozen VMs.
 
@@ -1431,9 +1431,9 @@ Visit the VM Packer for Ray project (https://github.com/vmware-ai-labs/vm-packer
 ``vsphere_config.frozen_vm.resource_pool``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The resource pool name of the frozen VMs, can point to an existing resource pool of frozen VMs. Otherwise, ``library_item`` must be specified and a set of frozen VMs will be deployed on each ESXi host.
+The resource pool name of the frozen VMs, can point to an existing resource pool of frozen VMs. Otherwise, ``library_item`` must be specified and a set of frozen VMs are deployed on each ESXi host.
 
-The frozen VMs will be named as "{frozen_vm.name}-{the vm's ip address}"
+The frozen VMs are named as "{frozen_vm.name}-{the vm's ip address}"
 
 * **Required:** No
 * **Importance:** Medium
@@ -1457,7 +1457,7 @@ Indicates to deploy a single frozen VM on the vSphere cluster from OVF template.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The target vSphere datastore name for storing the virtual machine files of the frozen VM to be deployed from OVF template.
-Will take effect only when ``library_item`` is set. If ``resource_pool`` is also set, this datastore must be a shared datastore among the ESXi hosts.
+Takes effect only when ``library_item`` is set. If ``resource_pool`` is also set, this datastore must be a shared datastore among the ESXi hosts.
 
 * **Required:** No
 * **Importance:** Low
@@ -1475,7 +1475,7 @@ Will take effect only when ``library_item`` is set. If ``resource_pool`` is also
 
 The switch controlling the way for binding the GPU from ESXi host to the Ray node VM.
 The default value is False, which indicates regular PCI Passthrough.
-If set to True, the Dynamic PCI passthrough (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-esxi-host-client/GUID-2B6D43A6-9598-47C4-A2E7-5924E3367BB6.html) will be enabled for the GPU.
+If set to True, the Dynamic PCI passthrough (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-esxi-host-client/GUID-2B6D43A6-9598-47C4-A2E7-5924E3367BB6.html) is enabled for the GPU.
 The VM with Dynamic PCI passthrough GPU can still support vSphere DRS (https://www.vmware.com/products/vsphere/drs-dpm.html).
 
 * **Required:** No
@@ -1488,7 +1488,7 @@ The VM with Dynamic PCI passthrough GPU can still support vSphere DRS (https://w
 ``available_node_types.<node_type_name>.node_type.node_config``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The configuration to be used to launch the nodes on the cloud service provider. Among other things, this will specify the instance type to be launched.
+The configuration to be used to launch the nodes on the cloud service provider. Among other things, this specifies the instance type to be launched.
 
 * **Required:** Yes
 * **Importance:** High
@@ -1499,14 +1499,14 @@ The configuration to be used to launch the nodes on the cloud service provider. 
 ``available_node_types.<node_type_name>.node_type.resources``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The resources that a node type provides, which enables the autoscaler to automatically select the right type of nodes to launch given the resource demands of the application. The resources specified will be automatically passed to the ``ray start`` command for the node via an environment variable. If not provided, Autoscaler can automatically detect them only for AWS/Kubernetes cloud providers. For more information, see also the `resource demand scheduler <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/resource_demand_scheduler.py>`_
+The resources that a node type provides, which enables the autoscaler to automatically select the right type of nodes to launch given the resource demands of the application. The resources specified are automatically passed to the ``ray start`` command for the node using an environment variable. If not provided, Autoscaler can automatically detect them only for AWS/Kubernetes cloud providers. For more information, see also the `resource demand scheduler <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/resource_demand_scheduler.py>`_
 
 * **Required:** Yes (except for AWS/K8s)
 * **Importance:** High
 * **Type:** :ref:`Resources <cluster-configuration-resources-type>`
 * **Default:** ``{}``
 
-In some cases, adding special nodes without any resources may be desirable. Such nodes can be used as a driver which connects to the cluster to launch jobs. In order to manually add a node to an autoscaled cluster, the *ray-cluster-name* tag should be set and *ray-node-type* tag should be set to unmanaged. Unmanaged nodes can be created by setting the resources to ``{}`` and the :ref:`maximum workers <cluster-configuration-node-min-workers>` to 0. The Autoscaler will not attempt to start, stop, or update unmanaged nodes. The user is responsible for properly setting up and cleaning up unmanaged nodes.
+In some cases, adding special nodes without any resources may be desirable. Such nodes can be used as a driver which connects to the cluster to launch jobs. In order to manually add a node to an autoscaled cluster, the *ray-cluster-name* tag should be set and *ray-node-type* tag should be set to unmanaged. Unmanaged nodes can be created by setting the resources to ``{}`` and the :ref:`maximum workers <cluster-configuration-node-min-workers>` to 0. The Autoscaler doesn't attempt to start, stop, or update unmanaged nodes. The user is responsible for properly setting up and cleaning up unmanaged nodes.
 
 .. _cluster-configuration-node-min-workers:
 
@@ -1543,7 +1543,7 @@ Note, for the nodes of type ``head_node_type`` the default number of max workers
 ``available_node_types.<node_type_name>.node_type.worker_setup_commands``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A list of commands to run to set up worker nodes of this type. These commands will replace the general :ref:`worker setup commands <cluster-configuration-worker-setup-commands>` for the node.
+A list of commands to run to set up worker nodes of this type. These commands replace the general :ref:`worker setup commands <cluster-configuration-worker-setup-commands>` for the node.
 
 * **Required:** No
 * **Importance:** low
@@ -1779,7 +1779,7 @@ Full configuration
 TPU Configuration
 ~~~~~~~~~~~~~~~~~
 
-It is possible to use `TPU VMs <https://cloud.google.com/tpu/docs/users-guide-tpu-vm>`_ on GCP. Currently, `TPU pods <https://cloud.google.com/tpu/docs/system-architecture-tpu-vm#pods>`_ (TPUs other than v2-8, v3-8 and v4-8) are not supported.
+It's possible to use `TPU VMs <https://cloud.google.com/tpu/docs/users-guide-tpu-vm>`_ on GCP. Currently, `TPU pods <https://cloud.google.com/tpu/docs/system-architecture-tpu-vm#pods>`_ (TPUs other than v2-8, v3-8 and v4-8) aren't supported.
 
 Before using a config with TPUs, ensure that the `TPU API is enabled for your GCP project <https://cloud.google.com/tpu/docs/users-guide-tpu-vm#enable_the_cloud_tpu_api>`_.
 

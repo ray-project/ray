@@ -35,12 +35,12 @@ at a large scale.
   connections between worker processes to avoid bottlenecks, so it can quickly
   use a large number of file descriptors.
 * Make sure ``/dev/shm`` is sufficiently large. Most ML/RL applications rely
-  heavily on the plasma store. By default, Ray will try to use ``/dev/shm`` for
-  the object store, but if it is not large enough (i.e. ``--object-store-memory``
-  > size of ``/dev/shm``), Ray will write the plasma store to disk instead, which
+  heavily on the plasma store. By default, Ray tries to use ``/dev/shm`` for
+  the object store, but if it's not large enough (meaning ``--object-store-memory``
+  > size of ``/dev/shm``), Ray writes the plasma store to disk instead, which
   may cause significant performance problems.
 * Use NVMe SSDs (or other high performance storage) if possible. If
-  :ref:`object spilling <object-spilling>` is enabled Ray will spill objects to
+  :ref:`object spilling <object-spilling>` is enabled Ray spills objects to
   disk if necessary. This is most commonly needed for data processing
   workloads.
 
@@ -49,7 +49,7 @@ at a large scale.
 Configuring the head node
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-In addition to the above changes, when deploying a large cluster, Ray's
+In addition to the preceding changes, when deploying a large cluster, Ray's
 architecture means that the head node has extra stress due to
 additional system processes running on it like GCS.
 
@@ -59,14 +59,14 @@ additional system processes running on it like GCS.
   CPU usage, memory usage, and network bandwidth usage.
 * Make sure the head node has sufficient bandwidth. The most heavily stressed
   resource on the head node is outbound bandwidth. For large clusters (see the
-  scalability envelope), we recommend using machines networking characteristics
+  scalability envelope), use machines with networking characteristics
   at least as good as an r5dn.16xlarge on AWS EC2.
 * Set ``resources: {"CPU": 0}`` on the head node.
   (For Ray clusters deployed using KubeRay,
   set ``rayStartParams: {"num-cpus": "0"}``.
   See the :ref:`configuration guide for KubeRay clusters <kuberay-num-cpus>`.)
-  Due to the heavy networking load (and the GCS and dashboard processes), we
-  recommend setting the quantity of logical CPU resources to 0 on the head node
+  Due to the heavy networking load (and the GCS and dashboard processes),
+  set the quantity of logical CPU resources to 0 on the head node
   to avoid scheduling additional tasks on it.
 
 Configuring the autoscaler
@@ -95,7 +95,7 @@ General recommendations with AWS instance types:
 **When to use GPUs**
 
 * If you’re using some RL/ML framework
-* You’re doing something with tensorflow/pytorch/jax (some framework that can
+* You're doing something with TensorFlow/PyTorch/JAX (some framework that can
   leverage GPUs well)
 
 **What type of GPU?**
@@ -116,7 +116,7 @@ General recommendations with AWS instance types:
 * When in doubt use M instances, they have typically have the highest
   availability.
 * If you know your application is memory intensive (memory utilization is full,
-  but cpu is not), go with an R instance
+  but cpu isn't), go with an R instance
 * If you know your application is CPU intensive go with a C instance
 * If you have a big cluster, make the head node an instance with an n (r5dn or
   c5n)
@@ -126,11 +126,11 @@ General recommendations with AWS instance types:
 * Focus on your CPU:GPU ratio first and look at the utilization (Ray dashboard
   should help with this). If your CPU utilization is low add GPUs, or vice
   versa.
-* The exact ratio will be very dependent on your workload.
-* Once you find a good ratio, you should be able to scale up and keep the
+* The exact ratio depends on your workload.
+* Once you find a good ratio, you can scale up and keep the
   same ratio.
-* You can’t infinitely scale forever. Eventually, as you add more machines your
-  performance improvements will become sub-linear/not worth it. There may not
+* You can't infinitely scale forever. Eventually, as you add more machines your
+  performance improvements become sub-linear/not worth it. There may not
   be a good one-size fits all strategy at this point.
 
 .. note::

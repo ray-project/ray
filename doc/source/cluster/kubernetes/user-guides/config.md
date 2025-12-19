@@ -10,7 +10,7 @@ Deployments of Ray on Kubernetes follow the [operator pattern](https://kubernete
 - A [custom resource](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/)
     called a `RayCluster` describing the desired state of a Ray cluster.
 - A [custom controller](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/#custom-controllers),
-    the KubeRay operator, which manages Ray pods in order to match the `RayCluster`'s spec.
+    the KubeRay operator, which manages Ray pods to match the `RayCluster`'s spec.
 
 To deploy a Ray cluster, one creates a `RayCluster` custom resource (CR):
 ```shell
@@ -76,7 +76,7 @@ spec:
     ...
 ```
 
-The rest of this guide will discuss the `RayCluster` CR's config fields.
+The rest of this guide discusses the `RayCluster` CR's config fields.
 See also the [guide](kuberay-autoscaling-config) on configuring Ray autoscaling with KubeRay.
 
 (kuberay-config-ray-version)=
@@ -85,7 +85,7 @@ The field `rayVersion` specifies the version of Ray used in the Ray cluster.
 The `rayVersion` is used to fill default values for certain config fields.
 The Ray container images specified in the RayCluster CR should carry
 the same Ray version as the CR's `rayVersion`. If you are using a nightly or development
-Ray image, it is fine to set `rayVersion` to the latest release version of Ray.
+Ray image, it's fine to set `rayVersion` to the latest release version of Ray.
 
 ## Pod configuration: headGroupSpec and workerGroupSpecs
 
@@ -101,16 +101,16 @@ specialized for running Ray applications. A Ray cluster consists of
   The head pod can also run Ray tasks and actors.
 * Any number of **worker pods**, which run Ray tasks and actors.
   Workers come in **worker groups** of identically configured pods.
-  For each worker group, we must specify **replicas**, the number of
-  pods we want of that group.
+  For each worker group, specify **replicas**, the number of
+  pods for that group.
 
-The head pod’s configuration is
+The head pod's configuration is
 specified under `headGroupSpec`, while configuration for worker pods is
 specified under `workerGroupSpecs`. There may be multiple worker groups,
 each group with its own configuration. The `replicas` field
 of a `workerGroupSpec` specifies the number of worker pods of that group to
 keep in the cluster. Each `workerGroupSpec` also has optional `minReplicas` and
-`maxReplicas` fields; these fields are important if you wish to enable {ref}`autoscaling <kuberay-autoscaling-config>`.
+`maxReplicas` fields; these fields are important if you want to enable {ref}`autoscaling <kuberay-autoscaling-config>`.
 
 ### Pod templates
 The bulk of the configuration for a `headGroupSpec` or
@@ -156,7 +156,7 @@ The pattern of fewer large Ray pods has the following advantages:
 - reduced communication overhead between Ray pods
 - reduced redundancy of per-pod Ray control structures such as Raylets
 
-#### nodeSelector and tolerations
+#### `nodeSelector` and `tolerations`
 You can control the scheduling of worker groups' Ray pods by setting the `nodeSelector` and
 `tolerations` fields of the pod spec. Specifically, these fields determine on which Kubernetes
 nodes the pods may be scheduled.
@@ -186,8 +186,8 @@ you can also use {ref}`Runtime Environments <runtime-environments>`.
 For `kuberay-operator` versions 1.1.0 and later, the Ray container image must have `wget` installed in it.
 
 #### metadata.name and metadata.generateName
-The KubeRay operator will ignore the values of `metadata.name` and `metadata.generateName` set by users.
-The KubeRay operator will generate a `generateName` automatically to avoid name conflicts.
+The KubeRay operator ignores the values of `metadata.name` and `metadata.generateName` set by users.
+The KubeRay operator generates a `generateName` automatically to avoid name conflicts.
 See [KubeRay issue #587](https://github.com/ray-project/kuberay/pull/587) for more details.
 
 (rayStartParams)=
@@ -208,17 +208,17 @@ this parameter by default.)
 (kuberay-num-cpus)=
 ### num-cpus
 This optional field tells the Ray scheduler and autoscaler how many CPUs are
-available to the Ray pod. The CPU count can be autodetected from the
-Kubernetes resource limits specified in the group spec’s pod
-`template`. However, it is sometimes useful to override this autodetected
-value. For example, setting `num-cpus:"0"` for the Ray head pod will prevent Ray
+available to the Ray pod. The CPU count can be auto-detected from the
+Kubernetes resource limits specified in the group spec's pod
+`template`. However, it's sometimes useful to override this auto-detected
+value. For example, setting `num-cpus:"0"` for the Ray head pod prevents Ray
 workloads with non-zero CPU requirements from being scheduled on the head.
 Note that the values of all Ray start parameters, including `num-cpus`,
 must be supplied as **strings**.
 
 ### num-gpus
 This field specifies the number of GPUs available to the Ray container.
-In future KubeRay versions, the number of GPUs will be auto-detected from Ray container resource limits.
+In future KubeRay versions, the number of GPUs can be auto-detected from Ray container resource limits.
 Note that the values of all Ray start parameters, including `num-gpus`,
 must be supplied as **strings**.
 
@@ -231,20 +231,20 @@ must be supplied as **strings**.
 
 ### resources
 This field can be used to specify custom resource capacities for the Ray pod.
-These resource capacities will be advertised to the Ray scheduler and Ray autoscaler.
-For example, the following annotation will mark a Ray pod as having 1 unit of `Custom1` capacity
+These resource capacities are advertised to the Ray scheduler and Ray autoscaler.
+For example, the following annotation marks a Ray pod as having 1 unit of `Custom1` capacity
 and 5 units of `Custom2` capacity.
 ```yaml
 rayStartParams:
     resources: '"{\"Custom1\": 1, \"Custom2\": 5}"'
 ```
 You can then annotate tasks and actors with annotations like `@ray.remote(resources={"Custom2": 1})`.
-The Ray scheduler and autoscaler will take appropriate action to schedule such tasks.
+The Ray scheduler and autoscaler take appropriate action to schedule such tasks.
 
 Note the format used to express the resources string. In particular, note
 that the backslashes are present as actual characters in the string.
 If you are specifying a `RayCluster` programmatically, you may have to
-[escape the backslashes](https://github.com/ray-project/ray/blob/cd9cabcadf1607bcda1512d647d382728055e688/python/ray/tests/kuberay/test_autoscaling_e2e.py#L92) to make sure they are processed as part of the string.
+[escape the backslashes](https://github.com/ray-project/ray/blob/cd9cabcadf1607bcda1512d647d382728055e688/python/ray/tests/kuberay/test_autoscaling_e2e.py#L92) to make sure they're processed as part of the string.
 
 The field `rayStartParams.resources` should only be used for custom resources. The keys
 `CPU`, `GPU`, and `memory` are forbidden. If you need to specify overrides for those resource
@@ -252,7 +252,7 @@ fields, use the Ray start parameters `num-cpus`, `num-gpus`, or `memory`.
 
 (kuberay-networking)=
 ## Services and Networking
-### The Ray head service.
+### The Ray head service
 The KubeRay operator automatically configures a Kubernetes Service exposing the default ports
 for several services of the Ray head pod, including
 - Ray Client (default port 10001)
@@ -263,8 +263,8 @@ for several services of the Ray head pod, including
 
 The name of the configured Kubernetes Service is the name, `metadata.name`, of the RayCluster
 followed by the suffix <nobr>`head-svc`</nobr>. For the example CR given on this page, the name of
-the head service will be
-<nobr>`raycluster-example-head-svc`</nobr>. Kubernetes networking (`kube-dns`) then allows us to address
+the head service is
+<nobr>`raycluster-example-head-svc`</nobr>. Kubernetes networking (`kube-dns`) then allows addressing
 the Ray head's services using the name <nobr>`raycluster-example-head-svc`</nobr>.
 For example, the Ray Client server can be accessed from a pod
 in the same Kubernetes namespace using
@@ -279,7 +279,7 @@ ray.init("ray://raycluster-example-head-svc.default.svc.cluster.local:10001")
 If the Ray cluster is deployed in a non-default namespace, use that namespace in
 place of `default`.)
 
-### Specifying non-default ports.
+### Specifying non-default ports
 If you wish to override the ports exposed by the Ray head service, you may do so by specifying
 the Ray head container's `ports` list, under `headGroupSpec`.
 Here is an example of a list of non-default ports for the Ray head service.
@@ -292,12 +292,12 @@ ports:
 - containerPort: 10002
   name: client
 ```
-If the head container's `ports` list is specified, the Ray head service will expose precisely
-the ports in the list. In the above example, the head service will expose just three ports;
-in particular there will be no port exposed for Ray Serve.
+If the head container's `ports` list is specified, the Ray head service exposes precisely
+the ports in the list. In the preceding example, the head service exposes just three ports;
+in particular there is no port exposed for Ray Serve.
 
 For the Ray head to actually use the non-default ports specified in the ports list,
-you must also specify the relevant `rayStartParams`. For the above example,
+you must also specify the relevant `rayStartParams`. For the preceding example,
 ```yaml
 rayStartParams:
   port: "6380"

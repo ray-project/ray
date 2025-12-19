@@ -2,7 +2,7 @@
 # Configuring and Managing Ray Dashboard
 {ref}`Ray Dashboard<observability-getting-started>` is one of the most important tools to monitor and debug Ray applications and Clusters. This page describes how to configure Ray Dashboard on your Clusters.
 
-Dashboard configurations may differ depending on how you launch Ray Clusters (e.g., local Ray Cluster vs. KubeRay). Integrations with Prometheus and Grafana are optional for enhanced Dashboard experience.
+Dashboard configurations may differ depending on how you launch Ray Clusters (for example, local Ray Cluster vs. KubeRay). Integrations with Prometheus and Grafana are optional for enhanced Dashboard experience.
 
 :::{note}
 Ray Dashboard is useful for interactive development and debugging because when clusters terminate, the dashboard UI and the underlying data are no longer accessible. For production monitoring and debugging, you should rely on [persisted logs](../cluster/kubernetes/user-guides/persist-kuberay-custom-resource-logs.md), [persisted metrics](./metrics.md), [persisted Ray states](../ray-observability/user-guides/cli-sdk.rst), and other observability tools.
@@ -46,7 +46,7 @@ When you start a single-node Ray cluster on your laptop, you can access the dash
 When you start a remote Ray cluster with the {ref}`VM cluster launcher <vm-cluster-quick-start>`, {ref}`KubeRay operator <kuberay-quickstart>`, or manual configuration, the Ray Dashboard launches on the head node but the dashboard port may not be publicly exposed. You need an additional setup to access the Ray Dashboard from outside the head node.
 
 :::{danger}
-For security purposes, do not expose Ray Dashboard publicly without proper authentication in place.
+For security purposes, don't expose Ray Dashboard publicly without proper authentication in place.
 :::
 
 ::::{tab-set}
@@ -65,7 +65,7 @@ The dashboard is now visible at ``http://localhost:8265``.
 
 :::{tab-item} KubeRay
 
-The KubeRay operator makes Dashboard available via a Service targeting the Ray head pod, named ``<RayCluster name>-head-svc``. Access
+The KubeRay operator makes Dashboard available through a Service targeting the Ray head pod, named ``<RayCluster name>-head-svc``. Access
 Dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-svc:8265``.
 
 There are two ways to expose Dashboard outside the Cluster:
@@ -83,7 +83,7 @@ $ kubectl port-forward service/${RAYCLUSTER_NAME}-head-svc 8265:8265
 
 ```{admonition} Note
 :class: note
-Do not use port forwarding for production environment. Follow the instructions above to expose the Dashboard with Ingress.
+Do not use port forwarding for production environment. Follow the preceding instructions to expose the Dashboard with Ingress.
 ```
 
 For more information about configuring network access to a Ray cluster on Kubernetes, see the {ref}`networking notes <kuberay-networking>`.
@@ -94,16 +94,16 @@ For more information about configuring network access to a Ray cluster on Kubern
 
 ## Running behind a reverse proxy
 
-Ray Dashboard should work out-of-the-box when accessed via a reverse proxy. API requests don't need to be proxied individually.
+Ray Dashboard should work out-of-the-box when accessed through a reverse proxy. API requests don't need to be proxied individually.
 
 Always access the dashboard with a trailing ``/`` at the end of the URL.
 For example, if your proxy is set up to handle requests to ``/ray/dashboard``, view the dashboard at ``www.my-website.com/ray/dashboard/``.
 
 The dashboard sends HTTP requests with relative URL paths. Browsers handle these requests as expected when the ``window.location.href`` ends in a trailing ``/``.
 
-This is a peculiarity of how many browsers handle requests with relative URLs, despite what [MDN](https://developer.mozilla.org/en-US/docs/Learn/Common_questions/What_is_a_URL#examples_of_relative_urls) defines as the expected behavior.
+This is a peculiarity of how many browsers handle requests with relative URLs, despite what the [Mozilla Developer Network (MDN)](https://developer.mozilla.org/en-US/docs/Learn/Common_questions/What_is_a_URL#examples_of_relative_urls) defines as the expected behavior.
 
-Make your dashboard visible without a trailing ``/`` by including a rule in your reverse proxy that redirects the user's browser to ``/``, i.e. ``/ray/dashboard`` --> ``/ray/dashboard/``.
+Make your dashboard visible without a trailing ``/`` by including a rule in your reverse proxy that redirects the user's browser to ``/``, such as ``/ray/dashboard --> /ray/dashboard/``.
 
 Below is an example with a [traefik](https://doc.traefik.io/traefik/getting-started/quick-start/) TOML file that accomplishes this:
 
@@ -204,13 +204,13 @@ To view embedded time-series visualizations in Ray Dashboard, the following must
 Configure these settings using the `RAY_GRAFANA_HOST`, `RAY_PROMETHEUS_HOST`, `RAY_PROMETHEUS_NAME`, and `RAY_GRAFANA_IFRAME_HOST` environment variables when you start the Ray Clusters.
 
 * Set `RAY_GRAFANA_HOST` to an address that the head node can use to access Grafana. Head node does health checks on Grafana on the backend.
-* Set `RAY_GRAFANA_ORG_ID` to the organization ID you use in Grafana. Default is "1".
+* Set `RAY_GRAFANA_ORG_ID` to the organization ID you use in Grafana. Default is "1."
 * Set `RAY_PROMETHEUS_HOST` to an address the head node can use to access Prometheus.
-* Set `RAY_PROMETHEUS_NAME` to select a different data source to use for the Grafana dashboard panels to use. Default is "Prometheus".
-* Set `RAY_GRAFANA_IFRAME_HOST` to an address that the user's browsers can use to access Grafana and embed visualizations. If `RAY_GRAFANA_IFRAME_HOST` is not set, Ray Dashboard uses the value of `RAY_GRAFANA_HOST`.
+* Set `RAY_PROMETHEUS_NAME` to select a different data source to use for the Grafana dashboard panels to use. Default is "Prometheus."
+* Set `RAY_GRAFANA_IFRAME_HOST` to an address that the user's browsers can use to access Grafana and embed visualizations. If `RAY_GRAFANA_IFRAME_HOST` isn't set, Ray Dashboard uses the value of `RAY_GRAFANA_HOST`.
 
 For example, if the IP of the head node is 55.66.77.88 and Grafana is hosted on port 3000. Set the value to `RAY_GRAFANA_HOST=http://55.66.77.88:3000`.
-* If you start a single-node Ray Cluster manually, make sure these environment variables are set and accessible before you start the cluster or as a prefix to the `ray start ...` command, e.g., `RAY_GRAFANA_HOST=http://55.66.77.88:3000 ray start ...`
+* If you start a single-node Ray Cluster manually, make sure these environment variables are set and accessible before you start the cluster or as a prefix to the `ray start ...` command, for example, `RAY_GRAFANA_HOST=http://55.66.77.88:3000 ray start ...`
 * If you start a Ray Cluster with {ref}`VM Cluster Launcher <cloud-vm-index>`, the environment variables should be set under `head_start_ray_commands` as a prefix to the `ray start ...` command.
 * If you start a Ray Cluster with {ref}`KubeRay <kuberay-index>`, refer to this {ref}`tutorial <kuberay-prometheus-grafana>`.
 
@@ -223,7 +223,7 @@ If you use a different Prometheus server for each Ray Cluster and use the same G
 #### Alternate Prometheus host location
 By default, Ray Dashboard assumes Prometheus is hosted at `localhost:9090`. You can choose to run Prometheus on a non-default port or on a different machine. In this case, make sure that Prometheus can scrape the metrics from your Ray nodes following instructions {ref}`here <scrape-metrics>`.
 
-Then, configure `RAY_PROMETHEUS_HOST` environment variable properly as stated above. For example, if Prometheus is hosted at port 9000 on a node with ip 55.66.77.88, set `RAY_PROMETHEUS_HOST=http://55.66.77.88:9000`.
+Then, configure `RAY_PROMETHEUS_HOST` environment variable properly as stated in the preceding section. For example, if Prometheus is hosted at port 9000 on a node with ip 55.66.77.88, set `RAY_PROMETHEUS_HOST=http://55.66.77.88:9000`.
 
 
 #### Customize headers for requests from the Ray dashboard to Prometheus
@@ -259,17 +259,17 @@ When the Grafana instance requires user authentication, the following settings h
 
 #### Troubleshooting
 
-##### Dashboard message: either Prometheus or Grafana server is not detected
-If you have followed the instructions above to set up everything, run the connection checks below in your browser:
+##### Dashboard message: either Prometheus or Grafana server isn't detected
+If you have followed the preceding instructions to set up everything, run the connection checks below in your browser:
 * check Head Node connection to Prometheus server: add `api/prometheus_health` to the end of Ray Dashboard URL (for example: http://127.0.0.1:8265/api/prometheus_health)and visit it.
 * check Head Node connection to Grafana server: add `api/grafana_health` to the end of Ray Dashboard URL (for example: http://127.0.0.1:8265/api/grafana_health) and visit it.
 * check browser connection to Grafana server: visit the URL used in `RAY_GRAFANA_IFRAME_HOST`.
 
 
-##### Getting an error that says `RAY_GRAFANA_HOST` is not setup
+##### Getting an error that says `RAY_GRAFANA_HOST` isn't setup
 If you have set up Grafana, check that:
-* You've included the protocol in the URL (e.g., `http://your-grafana-url.com` instead of `your-grafana-url.com`).
-* The URL doesn't have a trailing slash (e.g., `http://your-grafana-url.com` instead of `http://your-grafana-url.com/`).
+* You've included the protocol in the URL (for example, `http://your-grafana-url.com` instead of `your-grafana-url.com`).
+* The URL doesn't have a trailing slash (for example, `http://your-grafana-url.com` instead of `http://your-grafana-url.com/`).
 
 ##### Certificate Authority (CA error)
 You may see a CA error if your Grafana instance is hosted behind HTTPS. Contact the Grafana service owner to properly enable HTTPS traffic.
@@ -277,7 +277,7 @@ You may see a CA error if your Grafana instance is hosted behind HTTPS. Contact 
 
 ## Viewing built-in Dashboard API metrics
 
-Dashboard is powered by a server that serves both the UI code and the data about the cluster via API endpoints.
+Dashboard is powered by a server that serves both the UI code and the data about the cluster through API endpoints.
 Ray emits basic Prometheus metrics for each API endpoint:
 
 `ray_dashboard_api_requests_count_requests_total`: Collects the total count of requests. This is tagged by endpoint, method, and http_status.
@@ -291,4 +291,4 @@ For example, you can view the p95 duration of all requests with this query:
 histogram_quantile(0.95, sum(rate(ray_dashboard_api_requests_duration_seconds_bucket[5m])) by (le))
 ```
 
-You can query these metrics from the Prometheus or Grafana UI. Find instructions above for how to set these tools up.
+You can query these metrics from the Prometheus or Grafana UI. Find instructions in the preceding sections for how to set these tools up.

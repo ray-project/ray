@@ -3,20 +3,20 @@
 # Ray Train XGBoostTrainer on VMs
 
 :::{note}
-To learn the basics of Ray on VMs, we recommend taking a look
+To learn the basics of Ray on VMs, take a look
 at the {ref}`introductory guide <vm-cluster-quick-start>` first.
 :::
 
 
-In this guide, we show you how to run a sample Ray machine learning
+In this guide, learn how to run a sample Ray machine learning
 workload on AWS. The similar steps can be used to deploy on GCP or Azure as well.
 
-We will run Ray's {ref}`XGBoost training benchmark <xgboost-benchmark>` with a 100 gigabyte training set.
+This guide runs Ray's {ref}`XGBoost training benchmark <xgboost-benchmark>` with a 100 gigabyte training set.
 To learn more about using Ray's XGBoostTrainer, check out {ref}`the XGBoostTrainer documentation <train-xgboost>`.
 
 ## VM cluster setup
 
-For the workload in this guide, it is recommended to use the following setup:
+For the workload in this guide, it's recommended to use the following setup:
 - 10 nodes total
 - A capacity of 16 CPU and 64 Gi memory per node. For the major cloud providers, suitable instance types include
     * m5.4xlarge (Amazon Web Services)
@@ -39,37 +39,37 @@ scale up to accommodate the workload. These nodes will scale back down after the
 
 ## Deploy a Ray cluster
 
-Now we're ready to deploy the Ray cluster with the configuration that's defined above.
-Before running the command, make sure your aws credentials are configured correctly.
+Deploy the Ray cluster with the configuration that's defined in the preceding section.
+Before running the command, make sure your AWS credentials are configured correctly.
 
 ```shell
 ray up -y cluster.yaml
 ```
 
-A Ray head node and 9 Ray worker nodes will be created.
+A Ray head node and 9 Ray worker nodes are created.
 
 ## Run the workload
 
-We will use {ref}`Ray Job Submission <jobs-overview>` to kick off the workload.
+Use {ref}`Ray Job Submission <jobs-overview>` to kick off the workload.
 
 ### Connect to the cluster
 
-First, we connect to the Job server. Run the following blocking command
+First, connect to the Job server. Run the following blocking command
 in a separate shell.
 ```shell
 ray dashboard cluster.yaml
 ```
-This will forward remote port 8265 to port 8265 on localhost.
+This forwards remote port 8265 to port 8265 on localhost.
 
 ### Submit the workload
 
-We'll use the {ref}`Ray Job Python SDK <ray-job-sdk>` to submit the XGBoost workload.
+Use the {ref}`Ray Job Python SDK <ray-job-sdk>` to submit the XGBoost workload.
 
 ```{literalinclude} /cluster/doc_code/xgboost_submit.py
 :language: python
 ```
 
-To submit the workload, run the above Python script.
+To submit the workload, run the preceding Python script.
 The script is available [in the Ray repository][XGBSubmit].
 
 ```shell
@@ -86,7 +86,7 @@ Use the following tools to observe its progress.
 
 #### Job logs
 
-To follow the job's logs, use the command printed by the above submission script.
+To follow the job's logs, use the command printed by the preceding submission script.
 ```shell
 # Substitute the Ray Job's submission id.
 ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --address="http://localhost:8265" --follow
@@ -107,22 +107,21 @@ ray exec cluster.yaml 'ray status'
 
 #### Benchmark results
 
-Once the benchmark is complete, the job log will display the results:
+Once the benchmark is complete, the job log displays the results:
 
 ```
 Results: {'training_time': 1338.488839321999, 'prediction_time': 403.36653568099973}
 ```
 
-The performance of the benchmark is sensitive to the underlying cloud infrastructure --
-you might not match {ref}`the numbers quoted in the benchmark docs <xgboost-benchmark>`.
+The performance of the benchmark is sensitive to the underlying cloud infrastructure — you might not match {ref}`the numbers quoted in the benchmark docs <xgboost-benchmark>`.
 
 #### Model parameters
 The file `model.json` in the Ray head node contains the parameters for the trained model.
-Other result data will be available in the directory `ray_results` in the head node.
+Other result data is available in the directory `ray_results` in the head node.
 Refer to the {ref}`XGBoostTrainer documentation <train-xgboost>` for details.
 
 ```{admonition} Scale-down
-If autoscaling is enabled, Ray worker nodes will scale down after the specified idle timeout.
+If autoscaling is enabled, Ray worker nodes scale down after the specified idle timeout.
 ```
 
 #### Clean-up

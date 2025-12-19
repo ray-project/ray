@@ -54,8 +54,8 @@ To understand the following content better, you should understand the difference
     * `K8sJobMode`: The KubeRay operator creates a submitter Kubernetes Job to submit the Ray job.
     * `HTTPMode`: The KubeRay operator sends a request to the RayCluster to create a Ray job.
     * `InteractiveMode`: The KubeRay operator waits for the user to submit a job to the RayCluster. This mode is currently in alpha and the [KubeRay kubectl plugin](kubectl-plugin) relies on it.
-    * `SidecarMode`: The KubeRay operator injects a container into the Ray head Pod to submit the Ray job. This mode does not support `clusterSelector`, `submitterPodTemplate`, and `submitterConfig`, and requires the head Pod's restart policy to be `Never`.
-  * `submitterPodTemplate` (Optional): Defines the Pod template for the submitter Kubernetes Job. This field is only effective when `submissionMode` is "K8sJobMode".
+    * `SidecarMode`: The KubeRay operator injects a container into the Ray head Pod to submit the Ray job. This mode doesn't support `clusterSelector`, `submitterPodTemplate`, and `submitterConfig`, and requires the head Pod's restart policy to be `Never`.
+  * `submitterPodTemplate` (Optional): Defines the Pod template for the submitter Kubernetes Job. This field is only effective when `submissionMode` is "K8sJobMode."
     * `RAY_DASHBOARD_ADDRESS` - The KubeRay operator injects this environment variable to the submitter Pod. The value is `$HEAD_SERVICE:$DASHBOARD_PORT`.
     * `RAY_JOB_SUBMISSION_ID` - The KubeRay operator injects this environment variable to the submitter Pod. The value is the `RayJob.Status.JobId` of the RayJob.
     * Example: `ray job submit --address=http://$RAY_DASHBOARD_ADDRESS --submission-id=$RAY_JOB_SUBMISSION_ID ...`
@@ -73,10 +73,10 @@ To understand the following content better, you should understand the difference
     * **Rules-based** (Recommended): Define `deletionRules` as a list of deletion actions triggered by specific conditions. Each rule specifies:
       * `policy`: The deletion action to perform — `DeleteCluster` (delete the entire RayCluster and its Pods), `DeleteWorkers` (delete only worker Pods), `DeleteSelf` (delete the RayJob and all associated resources), or `DeleteNone` (no deletion).
       * `condition`: When to trigger the deletion, based on `jobStatus` (`SUCCEEDED` or `FAILED`) and an optional `ttlSeconds` delay.
-      * This approach enables flexible, multi-stage cleanup strategies (e.g., delete workers immediately on success, then delete the cluster after 300 seconds).
+      * This approach enables flexible, multi-stage cleanup strategies (for example, delete workers immediately on success, then delete the cluster after 300 seconds).
       * Rules-based mode is incompatible with `shutdownAfterJobFinishes` and the global `ttlSecondsAfterFinished`. Use per-rule `condition.ttlSeconds` instead.
       * See [ray-job.deletion-rules.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.deletion-rules.yaml) for example configurations.
-    * **Legacy** (Deprecated): Define both `onSuccess` and `onFailure` policies. This approach is deprecated and will be removed in v1.6.0. Migration to `deletionRules` is strongly encouraged.
+    * **Legacy** (Deprecated): Define both `onSuccess` and `onFailure` policies. This approach is deprecated and is removed in v1.6.0. Migration to `deletionRules` is strongly encouraged.
       * Legacy mode can be combined with `shutdownAfterJobFinishes` and the global `ttlSecondsAfterFinished`.
     * For detailed API specifications, see the [KubeRay API Reference](https://ray-project.github.io/kuberay/reference/api/).
 

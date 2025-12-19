@@ -129,26 +129,26 @@ For a production environment, view [Prometheus documentation](https://prometheus
 
 ### Troubleshooting
 #### Using Ray configurations in Prometheus with Homebrew on macOS X
-Homebrew installs Prometheus as a service that is automatically launched for you.
-To configure these services, you cannot simply pass in the config files as command line arguments.
+Homebrew installs Prometheus as a service that's automatically launched for you.
+To configure these services, you can't simply pass in the config files as command line arguments.
 
-Instead, change the --config-file line in `/usr/local/etc/prometheus.args` to read `--config.file /tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
+Instead, change the `--config-file` line in `/usr/local/etc/prometheus.args` to read `--config.file /tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
 
 You can then start or restart the services with `brew services start prometheus`.
 
 
-#### macOS does not trust the developer to install Prometheus
+#### macOS doesn't trust the developer to install Prometheus
 You may receive the following error:
 
 ![trust error](https://raw.githubusercontent.com/ray-project/Images/master/docs/troubleshooting/prometheus-trusted-developer.png)
 
 When downloading binaries from the internet, macOS requires that the binary be signed by a trusted developer ID.
-Many developers are not on macOS's trusted list. Users can manually override this requirement.
+Many developers aren't on macOS's trusted list. Users can manually override this requirement.
 
 See [these instructions](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac) for how to override the restriction and install or run the application.
 
 #### Loading Ray Prometheus configurations with Docker Compose
-In the Ray container, the symbolic link "/tmp/ray/session_latest/metrics" points to the latest active Ray session. However, Docker does not support the mounting of symbolic links on shared volumes and you may fail to load the Prometheus configuration files.
+In the Ray container, the symbolic link "/tmp/ray/session_latest/metrics" points to the latest active Ray session. However, Docker doesn't support the mounting of symbolic links on shared volumes and you may fail to load the Prometheus configuration files.
 
 To fix this issue, employ an automated shell script for seamlessly transferring the Prometheus configurations from the Ray container to a shared volume. To ensure a proper setup, mount the shared volume on the respective path for the container, which contains the recommended configurations to initiate the Prometheus servers.
 
@@ -157,7 +157,7 @@ To fix this issue, employ an automated shell script for seamlessly transferring 
 Ray runs a metrics agent per node to export system and application metrics. Each metrics agent collects metrics from the local
 node and exposes them in a Prometheus format. You can then scrape each endpoint to access the metrics.
 
-To scrape the endpoints, we need to ensure service discovery, which allows Prometheus to find the metrics agents' endpoints on each node.
+To scrape the endpoints, ensure service discovery, which allows Prometheus to find the metrics agents' endpoints on each node.
 
 ### Auto-discovering metrics endpoints
 
@@ -209,7 +209,7 @@ scrape_configs:
 If you know the IP addresses of the nodes in your Ray Cluster, you can configure Prometheus to read metrics from a static list of endpoints.
 Set a fixed port that Ray should use to export metrics. If you're using the VM Cluster Launcher, pass ``--metrics-export-port=<port>`` to ``ray start``.  If you're using KubeRay, specify ``rayStartParams.metrics-export-port`` in the RayCluster configuration file. You must specify the port on all nodes in the cluster.
 
-If you do not know the IP addresses of the nodes in your Ray Cluster, you can also programmatically discover the endpoints by reading the Ray Cluster information. The following example uses a Python script and the {py:obj}`ray.nodes` API to find the metrics agents' URLs, by combining the ``NodeManagerAddress`` with the ``MetricsExportPort``.
+If you don't know the IP addresses of the nodes in your Ray Cluster, you can also programmatically discover the endpoints by reading the Ray Cluster information. The following example uses a Python script and the {py:obj}`ray.nodes` API to find the metrics agents' URLs, by combining the ``NodeManagerAddress`` with the ``MetricsExportPort``.
 
 ```python
 # On a cluster node:
@@ -304,15 +304,15 @@ If this is your first time using Grafana, login with the username: `admin` and p
 **Troubleshooting**
 ***Using Ray configurations in Grafana with Homebrew on macOS X***
 
-Homebrew installs Grafana as a service that is automatically launched for you.
-Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.
+Homebrew installs Grafana as a service that's automatically launched for you.
+Therefore, to configure these services, you can't simply pass in the config files as command line arguments.
 
 Instead, update the `/usr/local/etc/grafana/grafana.ini` file so that it matches the contents of `/tmp/ray/session_latest/metrics/grafana/grafana.ini`.
 
 You can then start or restart the services with `brew services start grafana` and `brew services start prometheus`.
 
 ***Loading Ray Grafana configurations with Docker Compose***
-In the Ray container, the symbolic link "/tmp/ray/session_latest/metrics" points to the latest active Ray session. However, Docker does not support the mounting of symbolic links on shared volumes and you may fail to load the Grafana configuration files and default dashboards.
+In the Ray container, the symbolic link "/tmp/ray/session_latest/metrics" points to the latest active Ray session. However, Docker doesn't support the mounting of symbolic links on shared volumes and you may fail to load the Grafana configuration files and default dashboards.
 
 To fix this issue, employ an automated shell script for seamlessly transferring the necessary Grafana configurations and dashboards from the Ray container to a shared volume. To ensure a proper setup, mount the shared volume on the respective path for the container, which contains the recommended configurations and default dashboards to initiate Grafana servers.
 
@@ -322,7 +322,7 @@ To fix this issue, employ an automated shell script for seamlessly transferring 
 
 After your Grafana server is running, start a Ray Cluster and find the Ray-provided default Grafana dashboard JSONs at `/tmp/ray/session_latest/metrics/grafana/dashboards`. [Copy the JSONs over and import the Grafana dashboards](https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/#import-a-dashboard) to your Grafana.
 
-If Grafana reports that the datasource is not found, [add a datasource variable](https://grafana.com/docs/grafana/latest/dashboards/variables/add-template-variables/?pg=graf&plcmt=data-sources-prometheus-btn-1#add-a-data-source-variable). The datasource's name must be the same as value in the `RAY_PROMETHEUS_NAME` environment. By default, `RAY_PROMETHEUS_NAME` equals `Prometheus`.
+If Grafana reports that the datasource isn't found, [add a datasource variable](https://grafana.com/docs/grafana/latest/dashboards/variables/add-template-variables/?pg=graf&plcmt=data-sources-prometheus-btn-1#add-a-data-source-variable). The datasource's name must be the same as value in the `RAY_PROMETHEUS_NAME` environment. By default, `RAY_PROMETHEUS_NAME` equals `Prometheus`.
 :::
 
 ::::
@@ -330,7 +330,7 @@ If Grafana reports that the datasource is not found, [add a datasource variable]
 
 
 ### Recommended: Use Ray Dashboard with embedded Grafana visualizations
-1. Follow the instructions above to set up Grafana with Ray-provided visualizations
+1. Follow the preceding instructions to set up Grafana with Ray-provided visualizations
 2. View {ref}`configuring and managing Ray Dashboard <embed-grafana-in-dashboard>` for how to embed Grafana visualizations into Dashboard
 3. View {ref}`Dashboard's metrics view<dash-metrics-view>` for how to inspect the metrics in Ray Dashboard.
 

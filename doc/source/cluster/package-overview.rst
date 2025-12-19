@@ -3,7 +3,7 @@
 Ray Cluster Management API
 ==========================
 
-This section contains a reference for the cluster management API. If there is anything missing, please open an issue
+This section contains a reference for the cluster management API. If there is anything missing, open an issue
 on `GitHub`_.
 
 .. _`GitHub`: https://github.com/ray-project/ray/issues

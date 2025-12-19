@@ -84,7 +84,7 @@ Additionally, if you wish to pass headers per HTTP request to the Cluster, use t
 
 To submit the job, use ``ray job submit``.
 Make sure to specify the path to the working directory in the ``--working-dir`` argument.
-For local clusters this argument isn't strictly necessary, but for remote clusters this argument is required in order to upload the working directory to the cluster.
+For local clusters this argument isn't strictly necessary, but for remote clusters this argument is required to upload the working directory to the cluster.
 
 .. code-block:: bash
 
@@ -165,7 +165,7 @@ Now submit the job:
 	#   Request the job to be stopped:
 	# 	ray job stop raysubmit_tUAuCKubPAEXh6CW
 
-We can later get the stdout using the provided ``ray job logs`` command:
+Get the stdout using the provided ``ray job logs`` command:
 
 .. code-block:: shell
 

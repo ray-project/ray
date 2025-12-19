@@ -25,13 +25,13 @@ A Ray cluster is a set of worker nodes connected to a common :ref:`Ray head node
 Ray clusters can be fixed-size, or they may :ref:`autoscale up and down <cluster-autoscaler>` according
 to the resources requested by applications running on the cluster.
 
-Where can I deploy Ray clusters?
---------------------------------
+Where can you deploy Ray clusters?
+-----------------------------------
 
 Ray provides native cluster deployment support on the following technology stacks:
 
 * On :ref:`AWS, GCP, and Azure <cloud-vm-index>`. Community-supported Aliyun and vSphere integrations also exist.
-* On :ref:`Kubernetes <kuberay-index>`, via the officially supported KubeRay project.
+* On :ref:`Kubernetes <kuberay-index>`, through the officially supported KubeRay project.
 * On `Anyscale <https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=ray-cluster-deployment>`_, a fully managed Ray platform by the creators of Ray. You can either bring an existing AWS, GCP, Azure and Kubernetes clusters, or use the Anyscale hosted compute layer.
 
 Advanced users may want to :ref:`deploy Ray manually <on-prem>`
@@ -69,7 +69,7 @@ What's next?
         **I want to run Ray on Kubernetes**
         ^^^
         Deploy a Ray application to a Kubernetes cluster. You can run the tutorial on a
-        Kubernetes cluster or on your laptop via Kind.
+        Kubernetes cluster or on your laptop through Kind.
 
         +++
         .. button-ref:: kuberay-quickstart

@@ -9,13 +9,13 @@ See the :ref:`Cluster Configuration <cluster-config>` docs on how to customize t
 Launching a cluster (``ray up``)
 --------------------------------
 
-This will start up the machines in the cloud, install your dependencies and run
-any setup commands that you have, configure the Ray cluster automatically, and
-prepare you to scale your distributed system. See :ref:`the documentation
+This starts up the machines in the cloud, installs your dependencies and runs
+any setup commands that you have, configures the Ray cluster automatically, and
+prepares you to scale your distributed system. See :ref:`the documentation
 <ray-up-doc>` for ``ray up``. The example config files can be accessed `here <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler>`_.
 
-.. tip:: The worker nodes will start only after the head node has finished
-         starting. To monitor the progress of the cluster setup, you can run
+.. tip:: The worker nodes start only after the head node has finished
+         starting. To monitor the progress of the cluster setup, run
          `ray monitor <cluster yaml>`.
 
 .. code-block:: shell
@@ -37,32 +37,32 @@ If you want to update your cluster configuration (add more files, change depende
 This command checks if the local configuration differs from the applied
 configuration of the cluster. This includes any changes to synced files
 specified in the ``file_mounts`` section of the config. If so, the new files
-and config will be uploaded to the cluster. Following that, Ray
-services/processes will be restarted.
+and config are uploaded to the cluster. Following that, Ray
+services/processes are restarted.
 
-.. tip:: Don't do this for the cloud provider specifications (e.g., change from
+.. tip:: Don't do this for the cloud provider specifications (for example, change from
          AWS to GCP on a running cluster) or change the cluster name (as this
-         will just start a new cluster and orphan the original one).
+         just starts a new cluster and orphans the original one).
 
 
 You can also run ``ray up`` to restart a cluster if it seems to be in a bad
-state (this will restart all Ray services even if there are no config changes).
+state (this restarts all Ray services even if there are no config changes).
 
-Running ``ray up`` on an existing cluster will do all the following:
+Running ``ray up`` on an existing cluster does all the following:
 
-* If the head node matches the cluster specification, the filemounts will be
-  reapplied and the ``setup_commands`` and ``ray start`` commands will be run.
+* If the head node matches the cluster specification, the filemounts are
+  reapplied and the ``setup_commands`` and ``ray start`` commands are run.
   There may be some caching behavior here to skip setup/file mounts.
-* If the head node is out of date from the specified YAML (e.g.,
-  ``head_node_type`` has changed on the YAML), then the out-of-date node will
-  be terminated and a new node will be provisioned to replace it. Setup/file
-  mounts/``ray start`` will be applied.
+* If the head node is out of date from the specified YAML (for example,
+  ``head_node_type`` has changed on the YAML), then the out-of-date node is
+  terminated and a new node is provisioned to replace it. Setup/file
+  mounts/``ray start`` are applied.
 * After the head node reaches a consistent state (after ``ray start`` commands
-  are finished), the same above procedure will be applied to all the worker
+  are finished), the same preceding procedure is applied to all the worker
   nodes. The ``ray start`` commands tend to run a ``ray stop`` + ``ray start``,
-  so this will kill currently working jobs.
+  so this kills currently working jobs.
 
-If you don't want the update to restart services (e.g. because the changes
+If you don't want the update to restart services (for example, because the changes
 don't require a restart), pass ``--no-restart`` to the update call.
 
 If you want to force re-generation of the config to pick up possible changes in
@@ -107,14 +107,14 @@ You can use ``ray exec`` to conveniently run commands on clusters. See :ref:`the
     $ ray exec cluster.yaml 'echo "hello world"' --screen
 
 If you want to run applications on the cluster that are accessible from a web
-browser (e.g., Jupyter notebook), you can use the ``--port-forward``. The local
+browser (for example, Jupyter notebook), you can use the ``--port-forward``. The local
 port opened is the same as the remote port.
 
 .. code-block:: shell
 
     $ ray exec cluster.yaml --port-forward=8899 'source ~/anaconda3/bin/activate tensorflow_p36 && jupyter notebook --port=8899'
 
-.. note:: For Kubernetes clusters, the ``port-forward`` option cannot be used
+.. note:: For Kubernetes clusters, the ``port-forward`` option can't be used
           while executing a command. To port forward and run a command you need
           to call ``ray exec`` twice separately.
 
@@ -122,7 +122,7 @@ Running Ray scripts on the cluster (``ray submit``)
 ---------------------------------------------------
 
 You can also use ``ray submit`` to execute Python scripts on clusters. This
-will ``rsync`` the designated file onto the head node cluster and execute it
+rsyncs the designated file onto the head node cluster and executes it
 with the given arguments. See :ref:`the documentation <ray-submit-doc>` for
 ``ray submit``.
 
@@ -173,7 +173,7 @@ To download or upload files to the cluster head node, use ``ray rsync_down`` or
 Monitoring cluster status (``ray dashboard/status``)
 -----------------------------------------------------
 
-The Ray also comes with an online dashboard. The dashboard is accessible via
+The Ray also comes with an online dashboard. The dashboard is accessible through
 HTTP on the head node (by default it listens on ``localhost:8265``). You can
 also use the built-in ``ray dashboard`` to set up port forwarding
 automatically, making the remote dashboard viewable in your local browser at
@@ -196,7 +196,7 @@ To see live updates to the status:
     $ watch -n 1 ray status
 
 The Ray autoscaler also reports per-node status in the form of instance tags.
-In your cloud provider console, you can click on a Node, go to the "Tags" pane,
+In your cloud provider console, you can click a Node, go to the "Tags" pane,
 and add the ``ray-node-status`` tag as a column. This lets you see per-node
 statuses at a glance:
 
@@ -207,9 +207,9 @@ Common Workflow: Syncing git branches
 
 A common use case is syncing a particular local git branch to all workers of
 the cluster. However, if you just put a `git checkout <branch>` in the setup
-commands, the autoscaler won't know when to rerun the command to pull in
+commands, the autoscaler doesn't know when to rerun the command to pull in
 updates. There is a nice workaround for this by including the git SHA in the
-input (the hash of the file will change if the branch is updated):
+input (the hash of the file changes if the branch is updated):
 
 .. code-block:: yaml
 

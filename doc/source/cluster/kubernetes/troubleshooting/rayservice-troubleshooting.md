@@ -2,8 +2,8 @@
 
 # RayService troubleshooting
 
-RayService is a Custom Resource Definition (CRD) designed for Ray Serve. In KubeRay, creating a RayService will first create a RayCluster and then
-create Ray Serve applications once the RayCluster is ready. If the issue pertains to the data plane, specifically your Ray Serve scripts
+RayService is a Custom Resource Definition (CRD) designed for Ray Serve. In KubeRay, creating a RayService first creates a RayCluster and then
+creates Ray Serve applications once the RayCluster is ready. If the issue pertains to the data plane, specifically your Ray Serve scripts
 or Ray Serve configurations (`serveConfigV2`), troubleshooting may be challenging. This section provides some tips to help you debug these issues.
 
 ## Observability
@@ -14,7 +14,7 @@ or Ray Serve configurations (`serveConfigV2`), troubleshooting may be challengin
 kubectl logs $KUBERAY_OPERATOR_POD -n $YOUR_NAMESPACE | tee operator-log
 ```
 
-The above command will redirect the operator's logs to a file called `operator-log`. You can then search for errors in the file.
+The preceding command redirects the operator's logs to a file called `operator-log`. You can then search for errors in the file.
 
 ### Method 2: Check RayService CR status
 
@@ -134,7 +134,7 @@ and `app` is the name of the variable representing Ray Serve application within 
 ```
 
 (kuberay-raysvc-issue5)=
-### Issue 5: Fail to create / update Serve applications.
+### Issue 5: Fail to create / update Serve applications
 
 You may encounter the following error messages when KubeRay tries to create / update Serve applications:
 
@@ -157,7 +157,7 @@ For more information, you can check the `dashboard.log` and `dashboard_agent.log
 Put "http://${HEAD_SVC_FQDN}:52365/api/serve/applications/": dial tcp $HEAD_IP:52365: i/o timeout"
 ```
 
-One possible cause of this issue could be a Kubernetes NetworkPolicy blocking the traffic between the Ray Pods and the dashboard agent's port (i.e., 52365).
+One possible cause of this issue could be a Kubernetes NetworkPolicy blocking the traffic between the Ray Pods and the dashboard agent's port (specifically, port 52365).
 
 (kuberay-raysvc-issue6)=
 ### Issue 6: `runtime_env`
@@ -165,12 +165,12 @@ One possible cause of this issue could be a Kubernetes NetworkPolicy blocking th
 In `serveConfigV2`, you can specify the runtime environment for the Ray Serve applications using `runtime_env`.
 Some common issues related to `runtime_env`:
 
-* The `working_dir` points to a private AWS S3 bucket, but the Ray Pods do not have the necessary permissions to access the bucket.
+* The `working_dir` points to a private AWS S3 bucket, but the Ray Pods don't have the necessary permissions to access the bucket.
 
 * The NetworkPolicy blocks the traffic between the Ray Pods and the external URLs specified in `runtime_env`.
 
 (kuberay-raysvc-issue7)=
-### Issue 7: Failed to get Serve application statuses.
+### Issue 7: Failed to get Serve application statuses
 
 You may encounter the following error message when KubeRay tries to get Serve application statuses:
 
@@ -179,13 +179,13 @@ Get "http://${HEAD_SVC_FQDN}:52365/api/serve/applications/": dial tcp $HEAD_IP:5
 ```
 
 As mentioned in [Issue 5](#kuberay-raysvc-issue5), the KubeRay operator submits a `Put` request to the RayCluster for creating Serve applications once the head Pod is ready.
-After the successful submission of the `Put` request to the dashboard agent, a `Get` request is sent to the dashboard agent port (i.e., 52365).
+After the successful submission of the `Put` request to the dashboard agent, a `Get` request is sent to the dashboard agent port (specifically, port 52365).
 The successful submission indicates that all the necessary components, including the dashboard agent, are fully operational.
-Therefore, unlike Issue 5, the failure of the `Get` request is not expected.
+Therefore, unlike Issue 5, the failure of the `Get` request isn't expected.
 
 If you consistently encounter this issue, there are several possible causes:
 
-* The dashboard agent process on the head Pod is not running. You can check the `dashboard_agent.log` file located at `/tmp/ray/session_latest/logs/` on the head Pod for more information. In addition, you can also perform an experiment to reproduce this cause by manually killing the dashboard agent process on the head Pod.
+* The dashboard agent process on the head Pod isn't running. You can check the `dashboard_agent.log` file located at `/tmp/ray/session_latest/logs/` on the head Pod for more information. In addition, you can also perform an experiment to reproduce this cause by manually killing the dashboard agent process on the head Pod.
   ```bash
   # Step 1: Log in to the head Pod
   kubectl exec -it $HEAD_POD -n $YOUR_NAMESPACE -- bash
@@ -218,15 +218,15 @@ If you consistently encounter this issue, there are several possible causes:
 (kuberay-raysvc-issue8)=
 ### Issue 8: A loop of restarting the RayCluster occurs when the Kubernetes cluster runs out of resources. (KubeRay v0.6.1 or earlier)
 
-> Note: Currently, the KubeRay operator does not have a clear plan to handle situations where the Kubernetes cluster runs out of resources.
-Therefore, we recommend ensuring that the Kubernetes cluster has sufficient resources to accommodate the serve application.
+> Note: Currently, the KubeRay operator doesn't have a clear plan to handle situations where the Kubernetes cluster runs out of resources.
+Therefore, Ray recommends ensuring that the Kubernetes cluster has sufficient resources to accommodate the serve application.
 
 If the status of a serve application remains non-`RUNNING` for more than `serviceUnhealthySecondThreshold` seconds,
-the KubeRay operator will consider the RayCluster as unhealthy and initiate the preparation of a new RayCluster.
-A common cause of this issue is that the Kubernetes cluster does not have enough resources to accommodate the serve application.
+the KubeRay operator considers the RayCluster as unhealthy and initiates the preparation of a new RayCluster.
+A common cause of this issue is that the Kubernetes cluster doesn't have enough resources to accommodate the serve application.
 In such cases, the KubeRay operator may continue to restart the RayCluster, leading to a loop of restarts.
 
-We can also perform an experiment to reproduce this situation:
+You can also perform an experiment to reproduce this situation:
 
 * A Kubernetes cluster with an 8-CPUs node
 * [ray-service.insufficient-resources.yaml](https://gist.github.com/kevin85421/6a7779308aa45b197db8015aca0c1faf)
@@ -275,7 +275,7 @@ kubectl logs $KUBERAY_OPERATOR_POD -n $YOUR_NAMESPACE | tee operator-log
 ### Issue 9: Upgrade from Ray Serve's single-application API to its multi-application API without downtime
 
 KubeRay v0.6.0 has begun supporting Ray Serve API V2 (multi-application) by exposing `serveConfigV2` in the RayService CRD.
-However, Ray Serve does not support deploying both API V1 and API V2 in the cluster simultaneously.
+However, Ray Serve doesn't support deploying both API V1 and API V2 in the cluster simultaneously.
 Hence, if users want to perform in-place upgrades by replacing `serveConfig` with `serveConfigV2`, they may encounter the following error message:
 
 ```
@@ -287,11 +287,11 @@ the multi-app API endpoint `/api/serve/applications/`.
 ```
 
 To resolve this issue, you can replace `serveConfig` with `serveConfigV2` and modify `rayVersion` which has no effect when the Ray version is 2.0.0 or later to 2.100.0.
-This will trigger a new RayCluster preparation instead of an in-place update.
+This triggers a new RayCluster preparation instead of an in-place update.
 
-If, after following the steps above, you still see the error message and GCS fault tolerance is enabled, it may be due to the `ray.io/external-storage-namespace` annotation being the same for both old and new RayClusters.
-You can remove the annotation and KubeRay will automatically generate a unique key for each RayCluster custom resource.
-See [kuberay#1297](https://github.com/ray-project/kuberay/issues/1297) for more details.
+If, after following the steps in the preceding section, you still see the error message and GCS fault tolerance is enabled, it may be due to the `ray.io/external-storage-namespace` annotation being the same for both old and new RayClusters.
+You can remove the annotation and KubeRay automatically generates a unique key for each RayCluster custom resource.
+See [KubeRay#1297](https://github.com/ray-project/kuberay/issues/1297) for more details.
 
 (kuberay-raysvc-issue10)=
 ### Issue 10: Upgrade RayService with GCS fault tolerance enabled without downtime
@@ -309,7 +309,7 @@ The recommended solution is to remove the `ray.io/external-storage-namespace` an
 If the annotation isn't set, KubeRay automatically uses each RayCluster custom resource's UID as the `RAY_external_storage_namespace` value.
 Hence, both the old and new RayClusters have different `RAY_external_storage_namespace` values, and the new RayCluster is unable to access the old cluster metadata.
 Another solution is to set the `RAY_external_storage_namespace` value manually to a unique value for each RayCluster custom resource.
-See [kuberay#1296](https://github.com/ray-project/kuberay/issues/1296) for more details.
+See [KubeRay#1296](https://github.com/ray-project/kuberay/issues/1296) for more details.
 
 (kuberay-raysvc-issue11)=
 ### Issue 11: RayService stuck in Initializing — use the initializing timeout to fail fast
@@ -317,11 +317,11 @@ See [kuberay#1296](https://github.com/ray-project/kuberay/issues/1296) for more 
 If one or more underlying Pods are scheduled but fail to start (for example, ImagePullBackOff, CrashLoopBackOff, or other container startup errors), a `RayService` can remain in the Initializing state indefinitely. This state consumes cluster resources and makes the root cause harder to diagnose.
 
 #### What to do
-KubeRay exposes a configurable initializing timeout via the annotation `ray.io/initializing-timeout`. When the timeout expires, the operator marks the `RayService` as failed and starts cleanup of associated `RayCluster` resources. Enabling the timeout requires only adding the annotation to the `RayService` metadata — no other CRD changes are necessary.
+KubeRay exposes a configurable initializing timeout through the annotation `ray.io/initializing-timeout`. When the timeout expires, the operator marks the `RayService` as failed and starts cleanup of associated `RayCluster` resources. Enabling the timeout requires only adding the annotation to the `RayService` metadata — no other CRD changes are necessary.
 
 #### Operator behavior after timeout
 - The `RayServiceReady` condition is set to `False` with reason `InitializingTimeout`.
-- The `RayService` is placed into a **terminal (failed)** state; updating the spec will not trigger a retry. Recovery requires deleting and recreating the `RayService`.
+- The `RayService` is placed into a **terminal (failed)** state; updating the spec doesn't trigger a retry. Recovery requires deleting and recreating the `RayService`.
 - Cluster names on the `RayService` CR are cleared, which triggers cleanup of the underlying `RayCluster` resources. Deletions still respect `RayClusterDeletionDelaySeconds`.
 - A `Warning` event is emitted that documents the timeout and the failure reason.
 

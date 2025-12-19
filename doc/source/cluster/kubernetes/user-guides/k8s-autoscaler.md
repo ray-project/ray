@@ -1,6 +1,6 @@
 (ray-k8s-autoscaler-comparison)=
 # (Advanced) Understanding the Ray Autoscaler in the Context of Kubernetes
-We describe the relationship between the Ray autoscaler and other autoscalers in the Kubernetes
+This guide describes the relationship between the Ray autoscaler and other autoscalers in the Kubernetes
 ecosystem.
 
 ## Ray Autoscaler vs. Horizontal Pod Autoscaler
@@ -42,7 +42,7 @@ by the following considerations:
   data from that Ray cluster.
 - **Simplified versioning and compatibility.** The autoscaler and Ray are both developed
   as part of the Ray repository. The interface between the autoscaler and the Ray core is complex.
-  To support multiple Ray clusters running at different Ray versions, it is thus best to match
+  To support multiple Ray clusters running at different Ray versions, it's thus best to match
   Ray and Autoscaler code versions. Running one autoscaler per Ray cluster and matching the code versions
   ensures compatibility.
 
@@ -55,9 +55,9 @@ After the Ray autoscaler decides to create a Ray Pod, the Kubernetes Cluster Aut
 can provision a Kubernetes node so that the Pod can be placed.
 Similarly, after the Ray autoscaler decides to delete an idle Pod, the Kubernetes
 Cluster Autoscaler can clean up the idle Kubernetes node that remains.
-It is recommended to configure your RayCluster so that only one Ray Pod fits per Kubernetes node.
+It's recommended to configure your RayCluster so that only one Ray Pod fits per Kubernetes node.
 If you follow this pattern, Ray Autoscaler Pod scaling events correspond roughly one-to-one with cluster autoscaler
-node scaling events. (We say "roughly" because it is possible for a Ray Pod be deleted and replaced
+node scaling events. (This says "roughly" because it's possible for a Ray Pod be deleted and replaced
 with a new Ray Pod before the underlying Kubernetes node is scaled down.)
 
 
@@ -70,4 +70,4 @@ of manual techniques to decrease the load.
 One method is to schedule fewer tasks/actors per node by increasing the resource
 requirements specified in the `ray.remote` annotation.
 For example, changing `@ray.remote(num_cpus=2)` to `@ray.remote(num_cpus=4)`
-will halve the quantity of that task or actor that can fit in a given Ray Pod.
+halves the quantity of that task or actor that can fit in a given Ray Pod.
