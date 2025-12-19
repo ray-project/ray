@@ -382,7 +382,7 @@ Specifying Concurrency
 You can specify the concurrency of the transformation by using the ``compute`` parameter.
 
 For functions, use ``compute=ray.data.TaskPoolStrategy(size=n)`` to cap the number of concurrent tasks. By default, Ray Data automatically determines the number of concurrent tasks.
-For classes, use ``compute=ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers. If ``compute`` is not specified, an autoscaling actor pool is used by default.
+For classes, use ``compute=ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers. If ``compute`` isn't specified, an autoscaling actor pool is used by default.
 
 .. testcode::
 
