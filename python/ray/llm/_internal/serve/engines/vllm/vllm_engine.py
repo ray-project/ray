@@ -57,37 +57,6 @@ vllm = try_import("vllm")
 logger = get_logger(__name__)
 
 
-class VLLMSleepConfig(BaseModel):
-    """vLLM-specific configuration for sleep operation."""
-
-    level: int = 1
-
-    @field_validator("level")
-    @classmethod
-    def validate_level(cls, v: Any) -> int:
-        if v not in (1, 2):
-            raise ValueError("level must be 1 or 2")
-        return v
-
-
-class VLLMWakeupConfig(BaseModel):
-    """vLLM-specific configuration for wakeup operation."""
-
-    tags: Optional[List[str]] = None
-
-    @field_validator("tags")
-    @classmethod
-    def validate_tags(cls, v: Any) -> Optional[List[str]]:
-        if v is not None:
-            valid_tags = {"weights", "kv_cache"}
-            for tag in v:
-                if tag not in valid_tags:
-                    raise ValueError(
-                        f"Invalid tag '{tag}'. Must be one of: {valid_tags}"
-                    )
-        return v
-
-
 def _get_vllm_engine_config(
     llm_config: LLMConfig,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
@@ -146,6 +115,60 @@ def _clear_current_platform_cache():
     if hasattr(current_platform.get_device_capability, "cache_clear"):
         logger.info("Clearing the current platform cache ...")
         current_platform.get_device_capability.cache_clear()
+
+
+class VLLMSleepConfig(BaseModel):
+    """vLLM-specific configuration for sleep operation."""
+
+    level: int = 1
+    """Sleep level:
+    - Level 1: Offload weights to CPU RAM, discard KV cache
+    - Level 2: Discard both model weights and KV cache (deeper sleep)
+    """
+
+    @field_validator("level")
+    @classmethod
+    def validate_level(cls, v: Any) -> int:
+        if v not in (1, 2):
+            raise ValueError("level must be 1 or 2")
+        return v
+
+
+class VLLMWakeupConfig(BaseModel):
+    """vLLM-specific configuration for wakeup operation."""
+
+    tags: Optional[List[str]] = None
+    """Optional tags to selectively wake up components:
+    - "weights": Restore model weights only
+    - "kv_cache": Restore KV cache only
+    - None: Restore everything
+    """
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, v: Any) -> Optional[List[str]]:
+        if v is not None:
+            valid_tags = {"weights", "kv_cache"}
+            for tag in v:
+                if tag not in valid_tags:
+                    raise ValueError(
+                        f"Invalid tag '{tag}'. Must be one of: {valid_tags}"
+                    )
+        return v
+
+
+class VLLMPauseConfig(BaseModel):
+    """vLLM-specific configuration for pause operation."""
+
+    wait_for_inflight_requests: bool = False
+    """When True, waits for in-flight requests to finish before pausing.
+    When False (default), aborts in-flight requests immediately.
+    """
+
+    clear_cache: bool = True
+    """Whether to clear KV and prefix caches after draining.
+    Set to False to preserve cache for faster resume.
+    """
 
 
 class VLLMEngine(LLMEngine):
@@ -543,6 +566,74 @@ class VLLMEngine(LLMEngine):
         assert self._engine_client is not None, "engine_client is not initialized"
         await self._engine_client.reset_prefix_cache()
 
+    async def sleep(self, **kwargs: Any) -> None:
+        """Put the vLLM engine to sleep.
+
+        Args:
+            **kwargs: Options parsed into VLLMSleepConfig.
+                - level (int): Sleep level (1 or 2). Default 1.
+        """
+        assert self._engine_client is not None, "engine_client is not initialized"
+        config = VLLMSleepConfig(**kwargs)
+        await self._engine_client.sleep(level=config.level)
+
+    async def wakeup(self, **kwargs: Any) -> None:
+        """Wake up the vLLM engine from sleep mode.
+
+        Args:
+            **kwargs: Options parsed into VLLMWakeupConfig.
+                - tags (List[str], optional): Components to wake up.
+        """
+        assert self._engine_client is not None, "engine_client is not initialized"
+        config = VLLMWakeupConfig(**kwargs)
+        await self._engine_client.wake_up(tags=config.tags)
+
+    async def is_sleeping(self) -> bool:
+        """Check whether the vLLM engine is currently sleeping.
+
+        Returns:
+            True if the engine is sleeping, False otherwise.
+        """
+        assert self._engine_client is not None, "engine_client is not initialized"
+        return await self._engine_client.is_sleeping()
+
+    async def pause(self, **kwargs: Any) -> None:
+        """Pause generation on the vLLM engine.
+
+        This halts generation/encoding requests while keeping model weights
+        in GPU memory. New requests are blocked until resume is called.
+
+        Args:
+            **kwargs: Options parsed into VLLMPauseConfig.
+                - wait_for_inflight_requests (bool): Wait for in-flight requests
+                  to finish. Default False.
+                - clear_cache (bool): Clear KV cache after draining. Default True.
+        """
+        assert self._engine_client is not None, "engine_client is not initialized"
+        config = VLLMPauseConfig(**kwargs)
+        await self._engine_client.pause_generation(
+            wait_for_inflight_requests=config.wait_for_inflight_requests,
+            clear_cache=config.clear_cache,
+        )
+
+    async def resume(self, **kwargs: Any) -> None:
+        """Resume generation on the vLLM engine after pause.
+
+        Args:
+            **kwargs: Reserved for future options.
+        """
+        assert self._engine_client is not None, "engine_client is not initialized"
+        await self._engine_client.resume_generation()
+
+    async def is_paused(self) -> bool:
+        """Check whether the vLLM engine is currently paused.
+
+        Returns:
+            True if the engine is paused, False otherwise.
+        """
+        assert self._engine_client is not None, "engine_client is not initialized"
+        return await self._engine_client.is_paused()
+
     async def start_profile(self) -> None:
         assert self._engine_client is not None, "engine_client is not initialized"
         await self._engine_client.start_profile()
@@ -550,34 +641,3 @@ class VLLMEngine(LLMEngine):
     async def stop_profile(self) -> None:
         assert self._engine_client is not None, "engine_client is not initialized"
         await self._engine_client.stop_profile()
-
-    async def sleep(self, **kwargs: Any) -> None:
-        """Put the engine to sleep.
-
-        Args:
-            **kwargs: Engine-specific sleep options. See VLLMSleepConfig for
-                available options.
-        """
-        assert self._engine_client is not None, "engine_client is not initialized"
-        config = VLLMSleepConfig(**kwargs)
-        await self._engine_client.sleep(level=config.level)
-
-    async def wakeup(self, **kwargs: Any) -> None:
-        """Wake up the engine from sleep mode.
-
-        Args:
-            **kwargs: Engine-specific wakeup options. See VLLMWakeupConfig for
-                available options.
-        """
-        assert self._engine_client is not None, "engine_client is not initialized"
-        config = VLLMWakeupConfig(**kwargs)
-        await self._engine_client.wake_up(tags=config.tags)
-
-    async def is_sleeping(self) -> bool:
-        """Check whether the engine is currently sleeping.
-
-        Returns:
-            True if the engine is sleeping, False otherwise.
-        """
-        assert self._engine_client is not None, "engine_client is not initialized"
-        return await self._engine_client.is_sleeping()

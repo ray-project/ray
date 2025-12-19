@@ -46,7 +46,7 @@ class RayDatasetShardProvider:
         return self._dataset_iterators[dataset_info.dataset_name]
 
 
-class DatasetsSetupCallback(WorkerGroupCallback, ControllerCallback):
+class DatasetsCallback(WorkerGroupCallback, ControllerCallback):
     """A callback for managing Ray Datasets for the worker group."""
 
     def __init__(self, train_run_context: TrainRunContext):

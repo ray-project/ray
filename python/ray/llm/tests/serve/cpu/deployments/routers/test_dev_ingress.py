@@ -1,17 +1,14 @@
 """Tests for DevIngress control plane endpoints.
 
 This module tests the HTTP endpoints exposed by DevIngress:
-- POST /sleep
-- POST /wakeup
-- POST /is_sleeping
+- POST /sleep, POST /wakeup, GET /is_sleeping
+- POST /pause, POST /resume, GET /is_paused
 - POST /reset_prefix_cache
-
-All endpoints accept JSON body with Pydantic models.
 
 These tests verify:
 1. Endpoints are correctly registered and accessible
-2. Dispatch API correctly broadcasts to replicas
-3. Sleep/wakeup isolation between different models
+2. Broadcast API correctly broadcasts to replicas
+3. Sleep/wakeup and pause/resume isolation between different models
 """
 
 import sys
@@ -124,9 +121,8 @@ class TestDevIngressEndpoints:
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             # Initial state - should not be sleeping
-            response = await client.post(
-                "http://localhost:8000/is_sleeping",
-                json={"model": model_id},
+            response = await client.get(
+                f"http://localhost:8000/is_sleeping?model={model_id}",
             )
             assert response.status_code == 200
             assert response.json().get("is_sleeping") is False
@@ -139,9 +135,8 @@ class TestDevIngressEndpoints:
             assert response.status_code == 200
 
             # Check is_sleeping - should be True
-            response = await client.post(
-                "http://localhost:8000/is_sleeping",
-                json={"model": model_id},
+            response = await client.get(
+                f"http://localhost:8000/is_sleeping?model={model_id}",
             )
             assert response.status_code == 200
             assert response.json().get("is_sleeping") is True
@@ -154,12 +149,52 @@ class TestDevIngressEndpoints:
             assert response.status_code == 200
 
             # Check is_sleeping - should be False again
-            response = await client.post(
-                "http://localhost:8000/is_sleeping",
-                json={"model": model_id},
+            response = await client.get(
+                f"http://localhost:8000/is_sleeping?model={model_id}",
             )
             assert response.status_code == 200
             assert response.json().get("is_sleeping") is False
+
+    @pytest.mark.asyncio
+    async def test_pause_resume_cycle(self, single_model_dev_ingress):
+        """Test full pause -> is_paused -> resume -> is_paused cycle."""
+        model_id = single_model_dev_ingress
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            # Initial state - should not be paused
+            response = await client.get(
+                f"http://localhost:8000/is_paused?model={model_id}",
+            )
+            assert response.status_code == 200
+            assert response.json().get("is_paused") is False
+
+            # Pause the engine
+            response = await client.post(
+                "http://localhost:8000/pause",
+                json={"model": model_id, "options": {"clear_cache": True}},
+            )
+            assert response.status_code == 200
+
+            # Check is_paused - should be True
+            response = await client.get(
+                f"http://localhost:8000/is_paused?model={model_id}",
+            )
+            assert response.status_code == 200
+            assert response.json().get("is_paused") is True
+
+            # Resume the engine
+            response = await client.post(
+                "http://localhost:8000/resume",
+                json={"model": model_id, "options": {}},
+            )
+            assert response.status_code == 200
+
+            # Check is_paused - should be False again
+            response = await client.get(
+                f"http://localhost:8000/is_paused?model={model_id}",
+            )
+            assert response.status_code == 200
+            assert response.json().get("is_paused") is False
 
 
 class TestDevIngressModelIsolation:
@@ -172,15 +207,13 @@ class TestDevIngressModelIsolation:
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             # Both models should start awake
-            response = await client.post(
-                "http://localhost:8000/is_sleeping",
-                json={"model": model_1},
+            response = await client.get(
+                f"http://localhost:8000/is_sleeping?model={model_1}",
             )
             assert response.json().get("is_sleeping") is False
 
-            response = await client.post(
-                "http://localhost:8000/is_sleeping",
-                json={"model": model_2},
+            response = await client.get(
+                f"http://localhost:8000/is_sleeping?model={model_2}",
             )
             assert response.json().get("is_sleeping") is False
 
@@ -192,16 +225,14 @@ class TestDevIngressModelIsolation:
             assert response.status_code == 200
 
             # model_1 should be sleeping
-            response = await client.post(
-                "http://localhost:8000/is_sleeping",
-                json={"model": model_1},
+            response = await client.get(
+                f"http://localhost:8000/is_sleeping?model={model_1}",
             )
             assert response.json().get("is_sleeping") is True
 
             # model_2 should NOT be sleeping
-            response = await client.post(
-                "http://localhost:8000/is_sleeping",
-                json={"model": model_2},
+            response = await client.get(
+                f"http://localhost:8000/is_sleeping?model={model_2}",
             )
             assert response.json().get("is_sleeping") is False
 
@@ -213,17 +244,69 @@ class TestDevIngressModelIsolation:
             assert response.status_code == 200
 
             # Both should now be awake
-            response = await client.post(
-                "http://localhost:8000/is_sleeping",
-                json={"model": model_1},
+            response = await client.get(
+                f"http://localhost:8000/is_sleeping?model={model_1}",
             )
             assert response.json().get("is_sleeping") is False
 
-            response = await client.post(
-                "http://localhost:8000/is_sleeping",
-                json={"model": model_2},
+            response = await client.get(
+                f"http://localhost:8000/is_sleeping?model={model_2}",
             )
             assert response.json().get("is_sleeping") is False
+
+    @pytest.mark.asyncio
+    async def test_pause_resume_isolation(self, two_model_dev_ingress):
+        """Test that pausing model_1 does NOT affect model_2."""
+        model_1, model_2 = two_model_dev_ingress
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            # Both models should start unpaused
+            response = await client.get(
+                f"http://localhost:8000/is_paused?model={model_1}",
+            )
+            assert response.json().get("is_paused") is False
+
+            response = await client.get(
+                f"http://localhost:8000/is_paused?model={model_2}",
+            )
+            assert response.json().get("is_paused") is False
+
+            # Pause model_1 only
+            response = await client.post(
+                "http://localhost:8000/pause",
+                json={"model": model_1, "options": {"clear_cache": True}},
+            )
+            assert response.status_code == 200
+
+            # model_1 should be paused
+            response = await client.get(
+                f"http://localhost:8000/is_paused?model={model_1}",
+            )
+            assert response.json().get("is_paused") is True
+
+            # model_2 should NOT be paused
+            response = await client.get(
+                f"http://localhost:8000/is_paused?model={model_2}",
+            )
+            assert response.json().get("is_paused") is False
+
+            # Resume model_1
+            response = await client.post(
+                "http://localhost:8000/resume",
+                json={"model": model_1, "options": {}},
+            )
+            assert response.status_code == 200
+
+            # Both should now be unpaused
+            response = await client.get(
+                f"http://localhost:8000/is_paused?model={model_1}",
+            )
+            assert response.json().get("is_paused") is False
+
+            response = await client.get(
+                f"http://localhost:8000/is_paused?model={model_2}",
+            )
+            assert response.json().get("is_paused") is False
 
 
 if __name__ == "__main__":

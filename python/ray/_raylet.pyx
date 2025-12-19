@@ -3757,6 +3757,26 @@ cdef class CoreWorker:
         if not status.ok():
             raise TypeError(status.message().decode())
 
+    def is_canceled(self):
+        """Check if the current task has been canceled.
+
+        Returns:
+            True if the current task has been canceled, False otherwise.
+        """
+        cdef:
+            CTaskID c_task_id
+            c_bool is_canceled
+            TaskID task_id
+
+        # Get the current task ID
+        task_id = self.get_current_task_id()
+        c_task_id = task_id.native()
+
+        with nogil:
+            is_canceled = CCoreWorkerProcess.GetCoreWorker().IsTaskCanceled(c_task_id)
+
+        return is_canceled
+
     def resource_ids(self):
         cdef:
             ResourceMappingType resource_mapping = (

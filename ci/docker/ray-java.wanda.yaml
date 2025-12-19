@@ -1,5 +1,5 @@
 name: ray-java-build$ARCH_SUFFIX
-froms: ["cr.ray.io/rayproject/manylinux$ARCH_SUFFIX"]
+froms: ["rayproject/manylinux2014:$MANYLINUX_VERSION-jdk-$HOSTTYPE"]
 dockerfile: ci/docker/ray-java.Dockerfile
 srcs:
   - .bazelversion
@@ -17,5 +17,7 @@ srcs:
 build_args:
   - ARCH_SUFFIX
   - BUILDKITE_BAZEL_CACHE_URL
+  - HOSTTYPE
+  - MANYLINUX_VERSION=251216.3835fc5
 build_hint_args:
   - BUILDKITE_CACHE_READONLY
