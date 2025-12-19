@@ -105,6 +105,7 @@ def _make_user_callable_wrapper(
         run_user_code_in_separate_thread=run_user_code_in_separate_thread,
         local_testing_mode=False,
         deployment_config=DeploymentConfig(max_ongoing_requests=100),
+        actor_id="test-actor-id",
     )
 
 

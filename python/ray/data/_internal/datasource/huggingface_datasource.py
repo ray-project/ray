@@ -10,6 +10,8 @@ from ray.data.datasource import Datasource, ReadTask
 if TYPE_CHECKING:
     import datasets
 
+    from ray.data.context import DataContext
+
 
 TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
 
@@ -166,6 +168,7 @@ class HuggingFaceDatasource(Datasource):
         self,
         parallelism: int,
         per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         # Note: `parallelism` arg is currently not used by HuggingFaceDatasource.
         # We always generate a single ReadTask to perform the read.
