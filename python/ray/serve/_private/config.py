@@ -710,6 +710,13 @@ class ReplicaConfig:
                         f"Got: {type(strategy)}."
                     )
 
+        if self.bundle_label_selector is not None:
+            if self.placement_group_bundles is None:
+                raise ValueError(
+                    "If `bundle_label_selector` is provided, "
+                    "`placement_group_bundles` must also be provided."
+                )
+
         if self.placement_group_bundles is not None:
             validate_placement_group(
                 bundles=self.placement_group_bundles,
