@@ -25,6 +25,8 @@ For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0 --num-learners=0`
 which should allow you to set breakpoints anywhere in the RLlib code and
 have the execution stop there for inspection and debugging.
+By setting `--num-learners=0` and `--num-env-runners=0` will make them run locally
+instead of remote Ray Actor where breakpoints aren't possible.
 
 For logging to your WandB account, use:
 `--wandb-key=[your WandB API key] --wandb-project=[some project name]
@@ -34,12 +36,6 @@ Results to expect
 -----------------
 Training should show all agents learning to swing up their pendulums within 500k
 timesteps.
-
-+--------------------------------------------+------------+--------+------------------+
-| Trial name                                 | status     |   iter |   total time (s) |
-|--------------------------------------------+------------+--------+------------------+
-| SAC_multi_agent_pendulum_xxxxx_00000       | TERMINATED |    XXX |          XXXX.XX |
-+--------------------------------------------+------------+--------+------------------+
 """
 from torch import nn
 
@@ -88,9 +84,9 @@ config = (
         num_steps_sampled_before_learning_starts=256,
     )
     .multi_agent(
-            policy_mapping_fn=lambda aid, *arg, **kw: f"p{aid}",
-            policies={f"p{i}" for i in range(args.num_agents)},
-        )
+        policy_mapping_fn=lambda aid, *arg, **kw: f"p{aid}",
+        policies={f"p{i}" for i in range(args.num_agents)},
+    )
     .rl_module(
         model_config=DefaultModelConfig(
             fcnet_hiddens=[256, 256],

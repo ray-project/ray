@@ -23,6 +23,8 @@ For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0 --num-learners=0`
 which should allow you to set breakpoints anywhere in the RLlib code and
 have the execution stop there for inspection and debugging.
+By setting `--num-learners=0` and `--num-env-runners=0` will make them run locally
+instead of remote Ray Actor where breakpoints aren't possible.
 
 For logging to your WandB account, use:
 `--wandb-key=[your WandB API key] --wandb-project=[some project name]
@@ -31,12 +33,6 @@ For logging to your WandB account, use:
 Results to expect
 -----------------
 Training should reach a reward of ~20 (winning most games) within 10M timesteps.
-
-+-----------------------------+------------+--------+------------------+
-| Trial name                  | status     |   iter |   total time (s) |
-|-----------------------------+------------+--------+------------------+
-| SAC_env_xxxxx_00000         | TERMINATED |   XXXX |         XXXXX.XX |
-+-----------------------------+------------+--------+------------------+
 """
 import gymnasium as gym
 

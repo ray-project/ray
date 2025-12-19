@@ -14,15 +14,17 @@ This example:
 
 How to run this script
 ----------------------
-`python halfcheetah_sac.py`
+`python mujoco_sac.py`
 
 For faster training with multiple learners:
-`python halfcheetah_sac.py --num-learners=2 --num-env-runners=8`
+`python mujoco_sac.py --num-learners=2 --num-env-runners=8`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0 --num-learners=0`
 which should allow you to set breakpoints anywhere in the RLlib code and
 have the execution stop there for inspection and debugging.
+By setting `--num-learners=0` and `--num-env-runners=0` will make them run locally
+instead of remote Ray Actor where breakpoints aren't possible.
 
 For logging to your WandB account, use:
 `--wandb-key=[your WandB API key] --wandb-project=[some project name]
