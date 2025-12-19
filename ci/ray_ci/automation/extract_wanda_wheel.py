@@ -96,7 +96,7 @@ def _extract_wheel(image_tag: str, image_name: str, output_dir: Path) -> None:
                 wheel_count += 1
 
             if wheel_count == 0:
-                logger.warning(f"  No wheel files found in {image_name}")
+                raise WheelExtractionError(f"No wheel files found in {image_name}")
             else:
                 logger.info(f"Extracted {wheel_count} wheel(s) from {image_name}")
 
@@ -105,6 +105,7 @@ def _extract_wheel(image_tag: str, image_name: str, output_dir: Path) -> None:
         subprocess.run(
             ["docker", "rm", container_id],
             capture_output=True,
+            check=True,
         )
 
 
