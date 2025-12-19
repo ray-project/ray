@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import sys
 from collections import defaultdict
 from threading import Lock
@@ -1008,7 +1007,7 @@ def actors(
 
 @DeveloperAPI
 @client_mode_hook
-def timeline(filename=None, store_in_ray_temp=False):
+def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
 
     Ray profiling must be enabled by setting the RAY_PROFILING=1 environment
@@ -1019,58 +1018,21 @@ def timeline(filename=None, store_in_ray_temp=False):
     chrome://tracing in the Chrome web browser and load the dumped file.
 
     Args:
-        filename: If a filename is provided, the timeline is written to the
-            specified file name.
-        store_in_ray_temp: If True, the timeline is written to the user's ray temp directory.
-            If False, the timeline is written to the path specified by filename.
-
+        filename: If a filename is provided, the timeline is dumped to that
+            file.
 
     Returns:
         If filename is not provided, this returns a list of profiling events.
             Each profile event is a dictionary.
+
+    Raises:
+        RuntimeError: An exception is raised if ray.init() has not been called yet.
     """
-
-    if store_in_ray_temp and filename is not None:
-        # try to fetch gcs address and node id
-        if ray.is_initialized():
-            node_id = ray.get_runtime_context().node_id
-            resolved_filename = os.path.join(
-                ray._common.utils.resolve_user_ray_temp_dir(
-                    ray.get_gcs_client(), node_id
-                ),
-                filename,
-            )
-        else:
-            resolved_filename = os.path.join(
-                ray._common.utils.get_default_ray_temp_dir(), filename
-            )
-    else:
-        resolved_filename = filename
-
-    return timeline_internal(resolved_filename)
-
-
-def timeline_internal(file_path: str = None):
-    """Return a list of profiling events that can viewed as a timeline.
-
-    Ray profiling must be enabled by setting the RAY_PROFILING=1 environment
-    variable prior to starting Ray, and set RAY_task_events_report_interval_ms=0
-
-    To view this information as a timeline, simply dump it as a json file by
-    passing in "file_path" or using json.dump, and then load go to
-    chrome://tracing in the Chrome web browser and load the dumped file.
-
-    Args:
-        file_path: The exact file path to write the timeline to.
-            If a file path is provided, the timeline is dumped to that
-            file path.
-
-    Returns:
-        If filename is not provided, this returns a list of profiling events.
-            Each profile event is a dictionary.
-    """
-
-    return state.chrome_tracing_dump(file_path)
+    if not ray.is_initialized():
+        raise RuntimeError(
+            "Ray has not been started yet. Timeline requires Ray to be initialized first."
+        )
+    return state.chrome_tracing_dump(filename=filename)
 
 
 def object_transfer_timeline(filename=None):

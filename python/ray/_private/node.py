@@ -278,13 +278,13 @@ class Node:
                     "Head node not found in GCS when trying to get temp dir, did GCS start successfully?"
                 )
             node_info = next(iter(node_infos))
-            self._head_temp_dir = node_info.temp_dir
+            self._head_temp_dir = getattr(node_info, "temp_dir", None)
             if self._head_temp_dir is None:
                 raise Exception(
                     "Head node temp_dir not found in NodeInfo, "
                     "either GCS or head node's raylet may not have started successfully."
                 )
-            self._head_session_dir = node_info.session_dir
+            self._head_session_dir = getattr(node_info, "session_dir", None)
             if self._head_session_dir is None:
                 raise Exception(
                     "Head node session dir not found in NodeInfo, "
@@ -527,21 +527,10 @@ class Node:
                 self.temp_dir = node_to_connect_info.temp_dir
             else:
                 if self.head:
-                    # fallback to head node's default
                     self.temp_dir = ray._common.utils.get_default_ray_temp_dir()
                 else:
-                    # fallback to head node's temp dir if no node info is found for the given node ip address
                     assert not self._default_worker
                     self.temp_dir = self._head_temp_dir
-        else:
-            if (
-                node_to_connect_info is not None
-                and node_to_connect_info.temp_dir != self.temp_dir
-            ):
-                raise ValueError(
-                    f"Given temp dir {self.temp_dir} does not match the temp dir "
-                    f"{node_to_connect_info.temp_dir} on the node to connect to."
-                )
 
         # Assumes session_name is resolved before _init_temp is called
         self._session_dir = os.path.join(self.temp_dir, self._session_name)
@@ -1425,11 +1414,12 @@ class Node:
                         fetched_config_directory_path = config["params"][
                             "directory_path"
                         ]
+                        head_spill_directory_path = None
                         if isinstance(fetched_config_directory_path, list):
-                            directory_path = fetched_config_directory_path[0]
+                            head_spill_directory_path = fetched_config_directory_path[0]
                         elif isinstance(fetched_config_directory_path, str):
-                            directory_path = fetched_config_directory_path
-                        if directory_path is None:
+                            head_spill_directory_path = fetched_config_directory_path
+                        if head_spill_directory_path is None:
                             raise ValueError(
                                 f"Failed to obtain spill directory path from "
                                 f"object spilling config: {fetched_config_directory_path}"
@@ -1437,14 +1427,14 @@ class Node:
 
                         if (
                             self._fallback_directory != self._session_dir
-                            or directory_path == self._head_session_dir
+                            or head_spill_directory_path == self._head_session_dir
                         ):
                             config["params"][
                                 "directory_path"
                             ] = self._fallback_directory
                             new_config["object_spilling_config"] = json.dumps(config)
                         else:
-                            self._fallback_directory = directory_path
+                            self._fallback_directory = head_spill_directory_path
 
                         try_to_create_directory(self._fallback_directory)
                 self._config = new_config

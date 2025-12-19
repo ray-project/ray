@@ -1,6 +1,7 @@
 import datetime
 import functools
 import logging
+import os
 import time
 from typing import List, Tuple
 
@@ -112,5 +113,8 @@ class ProgressTracker:
 def export_timeline():
     timestr = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     filename = f"ray-timeline-{timestr}.json"
-    ray.timeline(filename=filename, store_in_ray_temp=True)
-    logging.info(f"Exported Ray timeline to {filename}")
+
+    temp_dir = ray.get_runtime_context().get_temp_dir()
+    filepath = os.path.join(temp_dir, filename)
+    ray.timeline(filename=filepath)
+    logging.info(f"Exported Ray timeline to {filepath}")

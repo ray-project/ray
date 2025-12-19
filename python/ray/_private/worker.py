@@ -1577,10 +1577,6 @@ def init(
             thrown.
         _plasma_directory: Override the plasma mmap file directory.
         _node_ip_address: The IP address of the node that we are on.
-            Note: If attempting to connect a driver process to a non-head
-            node with a custom node ip address, the custom node ip address must
-            be specified in the _node_ip_address argument. Otherwise, the behavior
-            is unsupported.
         _driver_object_store_memory: Deprecated.
         _memory: Amount of reservable memory resource in bytes rounded
             down to the nearest integer.
@@ -1592,9 +1588,6 @@ def init(
             directory for the Ray process. Must be an absolute path. Defaults to an
             OS-specific conventional location, e.g., "/tmp/ray" for head node, and
             head node's temp dir for worker node.
-            Note: If attempting to connect a driver process to a non-head
-            node with a custom temp dir, the custom temp dir must be specified
-            in the _temp_dir argument. Otherwise, the behavior is unsupported.
         _metrics_export_port: Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
