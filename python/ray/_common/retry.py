@@ -2,20 +2,29 @@ import functools
 import logging
 import random
 import time
-from typing import Any, Callable, List, Optional
+from collections.abc import Sequence
+from typing import Callable, Optional, TypeVar
+
+try:
+    from typing import ParamSpec
+except ImportError:
+    from typing_extensions import ParamSpec
 
 logger = logging.getLogger(__name__)
 
+R = TypeVar("R")
+P = ParamSpec("P")
+
 
 def call_with_retry(
-    f: Callable,
+    f: Callable[P, R],
     description: str,
-    match: Optional[List[str]] = None,
+    match: Optional[Sequence[str]] = None,
     max_attempts: int = 10,
     max_backoff_s: int = 32,
-    *args,
-    **kwargs,
-) -> Any:
+    *args: P.args,
+    **kwargs: P.kwargs,
+) -> R:
     """Retry a function with exponential backoff.
 
     Args:
@@ -64,15 +73,15 @@ def call_with_retry(
 
 def retry(
     description: str,
-    match: Optional[List[str]] = None,
+    match: Optional[Sequence[str]] = None,
     max_attempts: int = 10,
     max_backoff_s: int = 32,
-) -> Callable:
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Decorator-based version of call_with_retry."""
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
         @functools.wraps(func)
-        def inner(*args, **kwargs):
+        def inner(*args: P.args, **kwargs: P.kwargs) -> R:
             return call_with_retry(
                 func, description, match, max_attempts, max_backoff_s, *args, **kwargs
             )
