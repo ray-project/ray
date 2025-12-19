@@ -150,12 +150,12 @@ class RuntimeContext(object):
             "session_2025-01-01_00-00-00_000000_1234").
 
         Raises:
-            AssertionError: If not called in a driver or worker. Generally,
-                this means that ray.init() was not called.
+            RuntimeError: If Ray has not been initialized.
         """
-        assert (
-            ray.is_initialized()
-        ), "Session name is not available because Ray has not been initialized."
+        if not ray.is_initialized():
+            raise RuntimeError(
+                "Session name is not available because Ray has not been initialized."
+            )
         return self.worker.node.session_name
 
     def get_worker_id(self) -> str:
