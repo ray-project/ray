@@ -4,6 +4,7 @@ from pathlib import Path
 import pydantic
 import pytest
 
+from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     LoraConfig,
@@ -208,6 +209,31 @@ class TestModelConfig:
                 engine_kwargs={"disable_log_stats": True},
             )
 
+    @pytest.mark.parametrize(
+        "load_format,expected_download_model",
+        [
+            ("runai_streamer", NodeModelDownloadable.NONE),
+            ("runai_streamer_sharded", NodeModelDownloadable.NONE),
+            ("tensorizer", NodeModelDownloadable.NONE),
+            (None, NodeModelDownloadable.MODEL_AND_TOKENIZER),
+        ],
+    )
+    def test_load_format_callback_context(self, load_format, expected_download_model):
+        """Test that different load_format values set correct worker_node_download_model in callback context."""
+        engine_kwargs = {"load_format": load_format} if load_format is not None else {}
+
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            engine_kwargs=engine_kwargs,
+        )
+
+        # Get the callback instance which should trigger the context setup
+        callback = llm_config.get_or_create_callback()
+
+        # Check that the callback context has the correct worker_node_download_model value
+        assert hasattr(callback, "ctx"), "Callback should have ctx attribute"
+        assert callback.ctx.worker_node_download_model == expected_download_model
+
 
 class TestFieldValidators:
     """Test the field validators for dict validation."""
@@ -265,6 +291,41 @@ class TestFieldValidators:
             )
 
         assert "Invalid lora_config" in str(exc_info.value)
+
+
+class TestUseCpuLogic:
+    """Test the use_cpu logic and its interaction with accelerator_type."""
+
+    def test_use_cpu_field_basic(self):
+        """Test that use_cpu field works with basic values."""
+        # Test use_cpu=True
+        llm_config_cpu = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            use_cpu=True,
+        )
+        assert llm_config_cpu.use_cpu is True
+        engine_config = llm_config_cpu.get_engine_config()
+        assert engine_config.use_gpu is False
+
+        # Test use_cpu=False
+        llm_config_gpu = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            use_cpu=False,
+        )
+        assert llm_config_gpu.use_cpu is False
+        engine_config_gpu = llm_config_gpu.get_engine_config()
+        assert engine_config_gpu.use_gpu is True
+
+    def test_use_cpu_precedence_over_accelerator_type(self):
+        """Test that explicit use_cpu setting takes precedence over accelerator_type."""
+        # use_cpu=True should override GPU accelerator_type
+        llm_config_cpu_override = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            use_cpu=True,
+            accelerator_type="L4",  # GPU type but use_cpu=True should take precedence
+        )
+        engine_config = llm_config_cpu_override.get_engine_config()
+        assert engine_config.use_gpu is False  # use_cpu=True takes precedence
 
 
 if __name__ == "__main__":

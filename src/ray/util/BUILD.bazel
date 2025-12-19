@@ -99,14 +99,6 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "function_traits",
-    hdrs = ["function_traits.h"],
-    deps = [
-        "@boost//:functional",
-    ],
-)
-
-ray_cc_library(
     name = "counter_map",
     hdrs = ["counter_map.h"],
     deps = [
@@ -217,6 +209,7 @@ ray_cc_library(
         ":filesystem",
         ":string_utils",
         "@boost//:asio",
+        "@com_github_gflags_gflags//:gflags",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -348,25 +341,6 @@ ray_cc_library(
     hdrs = ["scoped_dup2_wrapper.h"],
     deps = [
         ":compat",
-        ":logging",
-    ],
-)
-
-ray_cc_library(
-    name = "process_cleaner",
-    srcs = ["process_cleaner.cc"],
-    hdrs = ["process_cleaner.h"],
-    deps = [":invoke_once_token"] +
-           select({
-               "@platforms//os:windows": [],
-               "//conditions:default": ["//src/ray/util:logging"],
-           }),
-)
-
-ray_cc_library(
-    name = "invoke_once_token",
-    hdrs = ["invoke_once_token.h"],
-    deps = [
         ":logging",
     ],
 )

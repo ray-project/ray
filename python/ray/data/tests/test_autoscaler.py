@@ -52,7 +52,7 @@ def test_actor_pool_scaling():
         num_free_task_slots=MagicMock(return_value=5),
         num_tasks_in_flight=MagicMock(return_value=15),
         per_actor_resource_usage=MagicMock(return_value=ExecutionResources(cpu=1)),
-        _max_actor_concurrency=1,
+        max_actor_concurrency=MagicMock(return_value=1),
         get_pool_util=MagicMock(
             # NOTE: Unittest mocking library doesn't support proxying to actual
             #       non-mocked methods so we have emulate it by directly binding existing
@@ -66,9 +66,12 @@ def test_actor_pool_scaling():
         completed=MagicMock(return_value=False),
         _inputs_complete=False,
         input_dependencies=[MagicMock()],
-        internal_queue_size=MagicMock(return_value=1),
+        internal_input_queue_num_blocks=MagicMock(return_value=1),
+        metrics=MagicMock(average_num_inputs_per_task=1),
     )
-    op_state = OpState(op, inqueues=[MagicMock(__len__=MagicMock(return_value=10))])
+    op_state = OpState(
+        op, inqueues=[MagicMock(__len__=MagicMock(return_value=10), num_blocks=10)]
+    )
     op_state._scheduling_status = MagicMock(under_resource_limits=True)
 
     @contextmanager
@@ -97,6 +100,15 @@ def test_actor_pool_scaling():
         delta=1,
         expected_reason="utilization of 1.5 >= 1.0",
     )
+
+    # Should scale up immediately when the actor pool has no running actors.
+    with patch(actor_pool, "num_running_actors", 0):
+        with patch(actor_pool, "num_free_task_slots", 0):
+            with patch(actor_pool, "get_pool_util", float("inf")):
+                assert_autoscaling_action(
+                    delta=1,
+                    expected_reason="no running actors, scale up immediately",
+                )
 
     # Should be no-op since the util is below the threshold.
     with patch(actor_pool, "num_tasks_in_flight", 9):
@@ -148,8 +160,8 @@ def test_actor_pool_scaling():
 
     # Should scale down only once all inputs have been already dispatched AND
     # no new inputs ar expected
-    with patch(op_state.input_queues[0], "__len__", 0):
-        with patch(op, "internal_queue_size", 0):
+    with patch(op_state.input_queues[0], "num_blocks", 0, is_method=False):
+        with patch(op, "internal_input_queue_num_blocks", 0):
             with patch(op, "_inputs_complete", True, is_method=False):
                 assert_autoscaling_action(
                     delta=-1,
@@ -157,11 +169,10 @@ def test_actor_pool_scaling():
                     expected_reason="consumed all inputs",
                 )
 
-            # If the input queue is empty but inputs did not complete,
-            # allow to scale up still
+            # Should be no-op since the op has enough free task slots to consume the existing inputs (which is 0).
             assert_autoscaling_action(
-                delta=1,
-                expected_reason="utilization of 1.5 >= 1.0",
+                delta=0,
+                expected_reason="enough free task slots to consume the existing inputs",
             )
 
     # Should be no-op since the op doesn't have enough resources.
@@ -205,6 +216,86 @@ def test_actor_pool_scaling():
             delta=0,
             expected_reason="exceeded resource limits",
         )
+
+
+@pytest.fixture
+def autoscaler_max_upscaling_delta_setup():
+    resource_manager = MagicMock(
+        spec=ResourceManager, get_budget=MagicMock(return_value=None)
+    )
+
+    actor_pool = MagicMock(
+        spec=_ActorPool,
+        min_size=MagicMock(return_value=5),
+        max_size=MagicMock(return_value=20),
+        current_size=MagicMock(return_value=10),
+        get_current_size=MagicMock(return_value=10),
+        num_pending_actors=MagicMock(return_value=0),
+        num_free_task_slots=MagicMock(return_value=0),
+        get_pool_util=MagicMock(return_value=2.0),
+    )
+
+    op = MagicMock(
+        spec=InternalQueueOperatorMixin,
+        completed=MagicMock(return_value=False),
+        _inputs_complete=False,
+        metrics=MagicMock(average_num_inputs_per_task=1),
+    )
+    op_state = MagicMock(
+        spec=OpState,
+        total_enqueued_input_blocks=MagicMock(return_value=1),
+    )
+    op_state._scheduling_status = MagicMock(under_resource_limits=True)
+    return resource_manager, actor_pool, op, op_state
+
+
+def test_actor_pool_scaling_respects_small_max_upscaling_delta(
+    autoscaler_max_upscaling_delta_setup,
+):
+    resource_manager, actor_pool, op, op_state = autoscaler_max_upscaling_delta_setup
+    autoscaler = DefaultActorAutoscaler(
+        topology=MagicMock(),
+        resource_manager=resource_manager,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
+            actor_pool_max_upscaling_delta=3,
+        ),
+    )
+    request = autoscaler._derive_target_scaling_config(
+        actor_pool=actor_pool,
+        op=op,
+        op_state=op_state,
+    )
+    # With current_size=10, util=2.0, threshold=1.0:
+    # plan_delta = ceil(10 * (2.0/1.0 - 1)) = ceil(10) = 10
+    # However, delta is limited by max_upscaling_delta=3, so delta = min(10, 3) = 3
+    assert request.delta == 3
+
+
+def test_actor_pool_scaling_respects_large_max_upscaling_delta(
+    autoscaler_max_upscaling_delta_setup,
+):
+    resource_manager, actor_pool, op, op_state = autoscaler_max_upscaling_delta_setup
+    autoscaler = DefaultActorAutoscaler(
+        topology=MagicMock(),
+        resource_manager=resource_manager,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
+            actor_pool_max_upscaling_delta=100,
+        ),
+    )
+    request = autoscaler._derive_target_scaling_config(
+        actor_pool=actor_pool,
+        op=op,
+        op_state=op_state,
+    )
+    # With current_size=10, util=2.0, threshold=1.0:
+    # plan_delta = ceil(10 * (2.0/1.0 - 1)) = ceil(10) = 10
+    # max_upscaling_delta=100 is large enough, but delta is limited by max_size:
+    # max_size(20) - current_size(10) = 10, so delta = min(10, 100, 10) = 10
+    assert request.delta == 10
 
 
 def test_cluster_scaling():
@@ -327,6 +418,187 @@ def test_actor_pool_respects_max_size(ray_start_10_cpus_shared, restore_data_con
             fn_constructor_args=(barrier,),
             compute=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
         ).take_all()
+
+
+def test_autoscaling_config_validation_warnings(
+    ray_start_10_cpus_shared, restore_data_context
+):
+    """Test that validation warnings are emitted when actor pool config won't allow scaling up."""
+    from unittest.mock import patch
+
+    class SimpleMapper:
+        """Simple callable class for testing autoscaling validation."""
+
+        def __call__(self, row):
+            # Map operates on rows which are dicts
+            return {"value": row["id"] * 2}
+
+    # Test #1: Invalid config (should warn)
+    #   - max_tasks_in_flight / max_concurrency == 1
+    #   - Default upscaling threshold (200%)
+    with patch(
+        "ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning"
+    ) as mock_warning:
+        ds = ray.data.range(2, override_num_blocks=2).map_batches(
+            SimpleMapper,
+            compute=ray.data.ActorPoolStrategy(
+                max_tasks_in_flight_per_actor=1,
+            ),
+            max_concurrency=1,
+        )
+        # Take just one item to minimize execution time
+        ds.take_all()
+
+    # Check that warning was called with expected message
+    warn_log_args_str = str(mock_warning.call_args_list)
+    expected_message = (
+        "⚠️  Actor Pool configuration of the "
+        "ActorPoolMapOperator[MapBatches(SimpleMapper)] will not allow it to scale up: "
+        "configured utilization threshold (200.0%) couldn't be reached with "
+        "configured max_concurrency=1 and max_tasks_in_flight_per_actor=1 "
+        "(max utilization will be max_tasks_in_flight_per_actor / max_concurrency = 100%)"
+    )
+
+    assert expected_message in warn_log_args_str
+
+    # Test #2: Provided config is valid (no warnings)
+    #   - max_tasks_in_flight / max_concurrency == 2 (default)
+    #   - Default upscaling threshold (200%)
+    with patch(
+        "ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning"
+    ) as mock_warning:
+        ds = ray.data.range(2, override_num_blocks=2).map_batches(
+            SimpleMapper,
+            compute=ray.data.ActorPoolStrategy(
+                max_tasks_in_flight_per_actor=2,
+            ),
+            max_concurrency=1,
+        )
+        ds.take_all()
+
+    # Check that this warning hasn't been emitted
+    warn_log_args_str = str(mock_warning.call_args_list)
+    expected_message = (
+        "⚠️  Actor Pool configuration of the "
+        "ActorPoolMapOperator[MapBatches(SimpleMapper)] will not allow it to scale up: "
+    )
+
+    assert expected_message not in warn_log_args_str
+
+    # Test #3: Default config is valid (no warnings)
+    #   - max_tasks_in_flight / max_concurrency == 4 (default)
+    #   - Default upscaling threshold (200%)
+    with patch(
+        "ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning"
+    ) as mock_warning:
+        ds = ray.data.range(2, override_num_blocks=2).map_batches(
+            SimpleMapper, compute=ray.data.ActorPoolStrategy()
+        )
+        ds.take_all()
+
+    # Check that this warning hasn't been emitted
+    warn_log_args_str = str(mock_warning.call_args_list)
+    expected_message = (
+        "⚠️  Actor Pool configuration of the "
+        "ActorPoolMapOperator[MapBatches(SimpleMapper)] will not allow it to scale up: "
+    )
+
+    assert expected_message not in warn_log_args_str
+
+
+@pytest.fixture
+def autoscaler_config_mocks():
+    resource_manager = MagicMock(spec=ResourceManager)
+    topology = MagicMock()
+    topology.items = MagicMock(return_value=[])
+    return resource_manager, topology
+
+
+def test_autoscaling_config_validation_zero_delta(autoscaler_config_mocks):
+    resource_manager, topology = autoscaler_config_mocks
+
+    with pytest.raises(
+        ValueError, match="actor_pool_max_upscaling_delta must be positive"
+    ):
+        DefaultActorAutoscaler(
+            topology=topology,
+            resource_manager=resource_manager,
+            config=AutoscalingConfig(
+                actor_pool_util_upscaling_threshold=1.0,
+                actor_pool_util_downscaling_threshold=0.5,
+                actor_pool_max_upscaling_delta=0,
+            ),
+        )
+
+
+def test_autoscaling_config_validation_negative_delta(autoscaler_config_mocks):
+    resource_manager, topology = autoscaler_config_mocks
+
+    with pytest.raises(
+        ValueError, match="actor_pool_max_upscaling_delta must be positive"
+    ):
+        DefaultActorAutoscaler(
+            topology=topology,
+            resource_manager=resource_manager,
+            config=AutoscalingConfig(
+                actor_pool_util_upscaling_threshold=1.0,
+                actor_pool_util_downscaling_threshold=0.5,
+                actor_pool_max_upscaling_delta=-1,
+            ),
+        )
+
+
+def test_autoscaling_config_validation_positive_delta(autoscaler_config_mocks):
+    resource_manager, topology = autoscaler_config_mocks
+
+    autoscaler = DefaultActorAutoscaler(
+        topology=topology,
+        resource_manager=resource_manager,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
+            actor_pool_max_upscaling_delta=5,
+        ),
+    )
+    assert autoscaler._actor_pool_max_upscaling_delta == 5
+
+
+def test_autoscaling_config_validation_zero_upscaling_threshold(
+    autoscaler_config_mocks,
+):
+    resource_manager, topology = autoscaler_config_mocks
+
+    with pytest.raises(
+        ValueError, match="actor_pool_util_upscaling_threshold must be positive"
+    ):
+        DefaultActorAutoscaler(
+            topology=topology,
+            resource_manager=resource_manager,
+            config=AutoscalingConfig(
+                actor_pool_util_upscaling_threshold=0,
+                actor_pool_util_downscaling_threshold=0.5,
+                actor_pool_max_upscaling_delta=5,
+            ),
+        )
+
+
+def test_autoscaling_config_validation_negative_upscaling_threshold(
+    autoscaler_config_mocks,
+):
+    resource_manager, topology = autoscaler_config_mocks
+
+    with pytest.raises(
+        ValueError, match="actor_pool_util_upscaling_threshold must be positive"
+    ):
+        DefaultActorAutoscaler(
+            topology=topology,
+            resource_manager=resource_manager,
+            config=AutoscalingConfig(
+                actor_pool_util_upscaling_threshold=-1.0,
+                actor_pool_util_downscaling_threshold=0.5,
+                actor_pool_max_upscaling_delta=5,
+            ),
+        )
 
 
 if __name__ == "__main__":

@@ -30,6 +30,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
+from ray._common.network_utils import is_ipv6
 from ray._common.pydantic_compat import IS_PYDANTIC_2
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import RequestMetadata
@@ -448,7 +449,16 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         # NOTE(simon): we can't use `route.endpoint in inspect.getmembers(cls)`
         # because the FastAPI supports different routes for the methods with
         # same name. See #17559.
-        and (cls.__qualname__ in route.endpoint.__qualname__)
+        # NOTE: We check against all classes in the MRO to handle inherited
+        # methods. When a method is inherited, its __qualname__ still references
+        # the parent class (e.g., "ParentClass.method" not "ChildClass.method").
+        # We use "ClassName." prefix matching (not substring) to avoid false
+        # positives where class "A" would incorrectly match routes from "AA".
+        and any(
+            route.endpoint.__qualname__.startswith(base.__qualname__ + ".")
+            for base in cls.__mro__
+            if base is not object
+        )
     ]
 
     # Modify these routes and mount it to a new APIRouter.
@@ -698,7 +708,10 @@ async def start_asgi_http_server(
     """
     app = _apply_middlewares(app, http_options.middlewares)
 
-    sock = socket.socket()
+    sock = socket.socket(
+        socket.AF_INET6 if is_ipv6(http_options.host) else socket.AF_INET,
+        socket.SOCK_STREAM,
+    )
     if enable_so_reuseport:
         set_socket_reuse_port(sock)
 

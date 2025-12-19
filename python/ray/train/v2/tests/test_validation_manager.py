@@ -49,7 +49,6 @@ def test_before_controller_shutdown(mock_wait, monkeypatch):
     # Call before_controller_shutdown
     vm.before_controller_shutdown()
     assert mock_wait.call_count == 2
-    # modoru: interesting test 2 levels
     assert checkpoint_manager.update_checkpoints_with_metrics.mock_calls == [
         unittest.mock.call({checkpoint1: {"score": 1}}),
         unittest.mock.call({checkpoint2: {"score": 1}, checkpoint3: {"score": 1}}),
@@ -70,7 +69,7 @@ def test_checkpoint_validation_management_reordering(tmp_path):
         ),
     )
 
-    # Start validation tasks and wait for them to complete
+    # Enqueue validation tasks
     vm.after_report(
         training_report=_TrainingReport(
             metrics=low_initial_high_final_training_result.metrics,
@@ -93,19 +92,25 @@ def test_checkpoint_validation_management_reordering(tmp_path):
         ),
         metrics={},
     )
-    ray.wait(
-        list(vm._pending_validations.keys()),
-        num_returns=2,
-        # Pick high timeout to guarantee completion but ray.wait should finish much earlier
-        timeout=100,
-    )
 
     # Assert ValidationManager state after each poll
     assert vm._poll_validations() == 0
+    assert vm._kick_off_validations() == 1
+    ray.wait(
+        list(vm._pending_validations.keys()),
+        num_returns=1,
+    )
+    assert vm._poll_validations() == 0
+    assert vm._kick_off_validations() == 1
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
         {low_initial_high_final_training_result.checkpoint: {"score": 200}}
     )
+    ray.wait(
+        list(vm._pending_validations.keys()),
+        num_returns=1,
+    )
     assert vm._poll_validations() == 0
+    assert vm._kick_off_validations() == 0
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_with(
         {high_initial_low_final_training_result.checkpoint: {"score": 100}}
     )
@@ -136,12 +141,14 @@ def test_checkpoint_validation_management_failure(tmp_path):
         ),
         metrics={},
     )
+    assert vm._poll_validations() == 0
+    assert vm._kick_off_validations() == 1
     ray.wait(
         list(vm._pending_validations.keys()),
         num_returns=1,
-        timeout=100,
     )
     assert vm._poll_validations() == 0
+    assert vm._kick_off_validations() == 0
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
         {failing_training_result.checkpoint: {}}
     )
@@ -173,7 +180,8 @@ def test_checkpoint_validation_management_slow_validate_fn(tmp_path):
         ),
         metrics={},
     )
-    assert vm._poll_validations() == 1
+    assert vm._poll_validations() == 0
+    assert vm._kick_off_validations() == 1
 
     # Finish the task by cancelling it
     timing_out_task = next(iter(vm._pending_validations))
@@ -183,6 +191,7 @@ def test_checkpoint_validation_management_slow_validate_fn(tmp_path):
 
     # Verify that poll processes finished task
     assert vm._poll_validations() == 0
+    assert vm._kick_off_validations() == 0
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
         {
             timing_out_training_result.checkpoint: {},

@@ -1,6 +1,6 @@
 import warnings
 
-from ray.util.accelerators import tpu
+from ray.util import tpu
 from ray.util.accelerators.accelerators import (
     AMD_INSTINCT_MI100,
     AMD_INSTINCT_MI210,
@@ -17,6 +17,8 @@ from ray.util.accelerators.accelerators import (
     INTEL_GAUDI,
     INTEL_MAX_1100,
     INTEL_MAX_1550,
+    METAX_C500,
+    METAX_C550,
     NVIDIA_A100,
     NVIDIA_H100,
     NVIDIA_L4,
@@ -60,6 +62,8 @@ __all__ = [
     "GOOGLE_TPU_V5P",
     "GOOGLE_TPU_V5LITEPOD",
     "GOOGLE_TPU_V6E",
+    "METAX_C500",
+    "METAX_C550",
     # Deprecated
     "NVIDIA_TESLA_A100",
 ]

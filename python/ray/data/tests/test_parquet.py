@@ -1,9 +1,11 @@
 import os
+import pathlib
 import shutil
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union
 
+import fsspec
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -11,9 +13,11 @@ import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
 from packaging.version import parse as parse_version
+from pyarrow.fs import FSSpecHandler, PyFileSystem
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorType,
     ArrowTensorTypeV2,
@@ -21,7 +25,6 @@ from ray.air.util.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data import FileShuffleConfig, Schema
-from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data._internal.datasource.parquet_datasource import (
     ParquetDatasource,
 )
@@ -31,7 +34,6 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource import DefaultFileMetadataProvider
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
@@ -102,7 +104,7 @@ def test_write_parquet_partition_cols(
 def test_include_paths(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
-    path = os.path.join(tmp_path, "test.txt")
+    path = os.path.join(tmp_path, "test.parquet")
     table = pa.Table.from_pydict({"animals": ["cat", "dog"]})
     pq.write_table(table, path)
 
@@ -229,153 +231,6 @@ def test_parquet_read_random_shuffle(
     # Check when shuffle is enabled, output order has at least one different
     # case.
     assert not all(all_rows_matched)
-
-
-@pytest.mark.parametrize(
-    "fs,data_path",
-    [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
-        (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
-        ),  # Path contains space.
-        (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
-        ),
-    ],
-)
-def test_parquet_read_bulk(
-    ray_start_regular_shared, fs, data_path, target_max_block_size_infinite_or_default
-):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    table = pa.Table.from_pandas(df1)
-    setup_data_path = _unwrap_protocol(data_path)
-    path1 = os.path.join(setup_data_path, "test1.parquet")
-    pq.write_table(table, path1, filesystem=fs)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    table = pa.Table.from_pandas(df2)
-    path2 = os.path.join(setup_data_path, "test2.parquet")
-    pq.write_table(table, path2, filesystem=fs)
-
-    # Expect directory path expansion to fail due to default format-based path
-    # filtering: The filter will not match any of the files.
-    with pytest.raises(ValueError):
-        ray.data.read_parquet_bulk(data_path, filesystem=fs)
-
-    # Expect directory path expansion to fail with OS error if default format-based path
-    # filtering is turned off.
-    with pytest.raises(OSError):
-        ds = ray.data.read_parquet_bulk(data_path, filesystem=fs, file_extensions=None)
-        ds.schema()
-
-    paths = [path1, path2]
-    ds = ray.data.read_parquet_bulk(paths, filesystem=fs)
-
-    # Expect to lazily compute all metadata correctly.
-    input_files = ds.input_files()
-    assert len(input_files) == 2, input_files
-    assert "test1.parquet" in str(input_files)
-    assert "test2.parquet" in str(input_files)
-    assert not ds._plan.has_started_execution
-    assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
-
-    # Schema isn't available, so we do a partial read.
-    assert not ds._plan.has_computed_output()
-
-    # Forces a data read.
-    values = [[s["one"], s["two"]] for s in ds.take()]
-    assert sorted(values) == [
-        [1, "a"],
-        [2, "b"],
-        [3, "c"],
-        [4, "e"],
-        [5, "f"],
-        [6, "g"],
-    ]
-
-    # Add a file with a non-matching file extension. This file should be ignored.
-    txt_path = os.path.join(data_path, "foo.txt")
-    txt_df = pd.DataFrame({"foobar": [4, 5, 6]})
-    txt_table = pa.Table.from_pandas(txt_df)
-    pq.write_table(txt_table, _unwrap_protocol(txt_path), filesystem=fs)
-
-    ds = ray.data.read_parquet_bulk(paths + [txt_path], filesystem=fs)
-    assert ds._plan.initial_num_blocks() == 2
-    assert not ds._plan.has_started_execution
-
-    # Forces a data read.
-    values = [[s["one"], s["two"]] for s in ds.take()]
-    assert sorted(values) == [
-        [1, "a"],
-        [2, "b"],
-        [3, "c"],
-        [4, "e"],
-        [5, "f"],
-        [6, "g"],
-    ]
-
-
-@pytest.mark.parametrize(
-    "fs,data_path",
-    [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
-        (
-            lazy_fixture("s3_fs_with_space"),
-            lazy_fixture("s3_path_with_space"),
-        ),  # Path contains space.
-        (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
-        ),
-    ],
-)
-def test_parquet_read_bulk_meta_provider(
-    ray_start_regular_shared, fs, data_path, target_max_block_size_infinite_or_default
-):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    table = pa.Table.from_pandas(df1)
-    setup_data_path = _unwrap_protocol(data_path)
-    path1 = os.path.join(setup_data_path, "test1.parquet")
-    pq.write_table(table, path1, filesystem=fs)
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    table = pa.Table.from_pandas(df2)
-    path2 = os.path.join(setup_data_path, "test2.parquet")
-    pq.write_table(table, path2, filesystem=fs)
-
-    # Expect directory path expansion to succeed with the default metadata provider.
-    ds = ray.data.read_parquet_bulk(
-        data_path,
-        filesystem=fs,
-        meta_provider=DefaultFileMetadataProvider(),
-    )
-
-    # Expect to lazily compute all metadata correctly.
-    input_files = ds.input_files()
-    assert len(input_files) == 2, input_files
-    assert "test1.parquet" in str(input_files)
-    assert "test2.parquet" in str(input_files)
-    assert not ds._plan.has_started_execution
-
-    assert ds.count() == 6
-    assert ds.size_bytes() > 0
-    assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
-    assert not ds._plan.has_started_execution
-
-    # Forces a data read.
-    values = [[s["one"], s["two"]] for s in ds.take()]
-    assert sorted(values) == [
-        [1, "a"],
-        [2, "b"],
-        [3, "c"],
-        [4, "e"],
-        [5, "f"],
-        [6, "g"],
-    ]
 
 
 @pytest.mark.parametrize(
@@ -619,9 +474,14 @@ def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir)
 
     assert ds._plan.explain().strip() == (
         "-------- Logical Plan --------\n"
-        "Project\n"
-        "+- ReadParquet\n"
-        "-------- Physical Plan --------\n"
+        "Project[Project]\n"
+        "+- Read[ReadParquet]\n"
+        "\n-------- Logical Plan (Optimized) --------\n"
+        "Read[ReadParquet]\n"
+        "\n-------- Physical Plan --------\n"
+        "TaskPoolMapOperator[ReadParquet]\n"
+        "+- InputDataBuffer[Input]\n"
+        "\n-------- Physical Plan (Optimized) --------\n"
         "TaskPoolMapOperator[ReadParquet]\n"
         "+- InputDataBuffer[Input]"
     )
@@ -1111,7 +971,6 @@ def test_parquet_datasource_names(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "data.parquet")
     df.to_parquet(path)
 
-    assert ParquetBulkDatasource(path).get_name() == "ParquetBulk"
     assert ParquetDatasource(path).get_name() == "Parquet"
 
 
@@ -1210,14 +1069,6 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path, restore_data_context):
     for block in block_refs:
         locations.extend(location_data[block]["node_ids"])
     assert set(locations) == {node1_id, node2_id}, set(locations)
-
-
-def test_parquet_bulk_columns(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    ds = ray.data.read_parquet_bulk("example://iris.parquet", columns=["variety"])
-
-    assert ds.columns() == ["variety"]
 
 
 @pytest.mark.parametrize("shuffle", [True, False, "file"])
@@ -1446,12 +1297,116 @@ def test_seed_file_shuffle(
         write_parquet_file(path, i)
 
     # Read with deterministic shuffling
-    shuffle_config = FileShuffleConfig(seed=42)
+    shuffle_config = FileShuffleConfig(seed=42, reseed_after_execution=False)
     ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
     ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
 
     # Verify deterministic behavior
     assert ds1.take_all() == ds2.take_all()
+
+
+def test_seed_file_shuffle_with_execution_update(
+    restore_data_context, tmp_path, target_max_block_size_infinite_or_default
+):
+    def write_parquet_file(path, file_index):
+        """Write a dummy Parquet file with test data."""
+        # Create a dummy dataset with unique data for each file
+        data = {
+            "col1": range(10 * file_index, 10 * (file_index + 1)),
+            "col2": ["foo", "bar"] * 5,
+        }
+        table = pa.Table.from_pydict(data)
+        pq.write_table(table, path)
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+
+    # Create temporary Parquet files for testing in the current directory
+    paths = [os.path.join(tmp_path, f"test_file_{i}.parquet") for i in range(15)]
+    for i, path in enumerate(paths):
+        # Write dummy Parquet files
+        write_parquet_file(path, i)
+
+    shuffle_config = FileShuffleConfig(seed=42)
+    ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+    ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+
+    ds1_epoch_results = []
+    ds2_epoch_results = []
+    for i in range(5):
+        ds1_epoch = ds1.to_pandas()
+        ds2_epoch = ds2.to_pandas()
+        ds1_epoch_results.append(ds1_epoch)
+        ds2_epoch_results.append(ds2_epoch)
+        # For the same epoch, ds1 and ds2 should produce identical results
+        pd.testing.assert_frame_equal(ds1_epoch, ds2_epoch)
+
+    # Convert results to hashable format for comparison
+    def make_hashable(df):
+        """Convert a DataFrame to a hashable string representation."""
+        return df.to_csv()
+
+    ds1_hashable_results = {make_hashable(result) for result in ds1_epoch_results}
+    ds2_hashable_results = {make_hashable(result) for result in ds2_epoch_results}
+
+    assert (
+        len(ds1_hashable_results) == 5
+    ), "ds1 should produce different results across epochs"
+    assert (
+        len(ds2_hashable_results) == 5
+    ), "ds2 should produce different results across epochs"
+
+
+def test_seed_file_shuffle_with_execution_no_effect(
+    restore_data_context, tmp_path, target_max_block_size_infinite_or_default
+):
+    def write_parquet_file(path, file_index):
+        """Write a dummy Parquet file with test data."""
+        # Create a dummy dataset with unique data for each file
+        data = {
+            "col1": range(10 * file_index, 10 * (file_index + 1)),
+            "col2": ["foo", "bar"] * 5,
+        }
+        table = pa.Table.from_pydict(data)
+        pq.write_table(table, path)
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+
+    # Create temporary Parquet files for testing in the current directory
+    paths = [os.path.join(tmp_path, f"test_file_{i}.parquet") for i in range(5)]
+    for i, path in enumerate(paths):
+        # Write dummy Parquet files
+        write_parquet_file(path, i)
+
+    shuffle_config = FileShuffleConfig(seed=42, reseed_after_execution=False)
+    ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+    ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+
+    ds1_execution_results = []
+    ds2_execution_results = []
+    for i in range(5):
+        ds1_execution = ds1.to_pandas()
+        ds2_execution = ds2.to_pandas()
+        ds1_execution_results.append(ds1_execution)
+        ds2_execution_results.append(ds2_execution)
+        # For the same execution, ds1 and ds2 should produce identical results
+        pd.testing.assert_frame_equal(ds1_execution, ds2_execution)
+
+    # Convert results to hashable format for comparison
+    def make_hashable(df):
+        """Convert a DataFrame to a hashable string representation."""
+        return df.to_csv()
+
+    ds1_hashable_results = {make_hashable(result) for result in ds1_execution_results}
+    ds2_hashable_results = {make_hashable(result) for result in ds2_execution_results}
+
+    assert (
+        len(ds1_hashable_results) == 1
+    ), "ds1 should produce the same results across executions"
+    assert (
+        len(ds2_hashable_results) == 1
+    ), "ds2 should produce the same results across executions"
 
 
 def test_read_file_with_partition_values(
@@ -1475,8 +1430,12 @@ def test_read_null_data_in_first_file(
     # The `read_parquet` implementation might infer the schema from the first file.
     # This test ensures that implementation handles the case where the first file has no
     # data and the inferred type is `null`.
-    pq.write_table(pa.Table.from_pydict({"data": [None, None, None]}), tmp_path / "1")
-    pq.write_table(pa.Table.from_pydict({"data": ["spam", "ham"]}), tmp_path / "2")
+    pq.write_table(
+        pa.Table.from_pydict({"data": [None, None, None]}), tmp_path / "1.parquet"
+    )
+    pq.write_table(
+        pa.Table.from_pydict({"data": ["spam", "ham"]}), tmp_path / "2.parquet"
+    )
 
     ds = ray.data.read_parquet(tmp_path)
 
@@ -1488,16 +1447,6 @@ def test_read_null_data_in_first_file(
         {"data": "ham"},
         {"data": "spam"},
     ]
-
-
-def test_read_invalid_file_extensions_emits_warning(
-    tmp_path, ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    table = pa.Table.from_pydict({})
-    pq.write_table(table, tmp_path / "no_extension")
-
-    with pytest.warns(FutureWarning, match="file_extensions"):
-        ray.data.read_parquet(tmp_path)
 
 
 def test_parquet_row_group_size_001(ray_start_regular_shared, tmp_path):
@@ -2188,6 +2137,430 @@ def test_read_parquet_with_columns_selectivity(
         f"Column selection {columns} with batch_size={batch_size} "
         f"returned columns {ds.schema().names}"
     )
+
+
+def test_get_parquet_dataset_fs_serialization_fallback(
+    ray_start_regular_shared, tmp_path: pathlib.Path
+):
+    """Test that the fallback mechanism for serializing the filesystem works."""
+    # 1) Local parquet file
+    local_file = tmp_path / "test.parquet"
+    pq.write_table(
+        pa.Table.from_pandas(pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})), local_file
+    )
+
+    # 2) Problematic fsspec FS wrapped as a *PyArrow* FS so ParquetDataset accepts it
+    class BadFSSpec(fsspec.AbstractFileSystem):
+        protocol = "file"
+
+        def info(self, path, **kwargs):
+            # Wrong shape → fsspec/pyarrow will later blow up with TypeError
+            return ["not", "a", "dict"]
+
+        def ls(self, path, **kwargs):
+            return [{"name": str(path), "type": "file", "size": os.path.getsize(path)}]
+
+        def open(self, path, mode="rb", **kwargs):
+            return open(path, mode)
+
+    problematic_fs = PyFileSystem(FSSpecHandler(BadFSSpec()))
+
+    # 3) Direct ParquetDataset in worker → should raise (TypeError/ArrowException)
+    @ray.remote
+    def direct_parquet_usage(paths, fs, kwargs):
+        import pyarrow.parquet as pq
+
+        return pq.ParquetDataset(paths, filesystem=fs, **(kwargs or {}))
+
+    with pytest.raises(Exception) as exc_info:
+        ray.get(direct_parquet_usage.remote([str(local_file)], problematic_fs, {}))
+
+    msg = str(exc_info.value).lower()
+    assert any(
+        k in msg
+        for k in ["typeerror", "filesystem", "cannot wrap", "pickle", "serialize"]
+    )
+
+    # 4) Helper should succeed (fallback re-resolves to LocalFileSystem inside worker)
+    @ray.remote
+    def call_helper(paths, fs, kwargs):
+        from ray.data._internal.datasource.parquet_datasource import get_parquet_dataset
+
+        return get_parquet_dataset(paths, fs, kwargs)
+
+    ds = ray.get(call_helper.remote([str(local_file)], problematic_fs, {}))
+    assert ds is not None
+
+
+@pytest.fixture
+def hive_partitioned_dataset(tmp_path):
+    """Create a Hive-partitioned Parquet dataset for testing."""
+    # Create test data with multiple partitions
+    num_partitions = 3
+    rows_per_partition = 10
+    data = []
+    for partition_val in range(num_partitions):
+        for i in range(rows_per_partition):
+            data.append(
+                {
+                    "id": partition_val * rows_per_partition + i,
+                    "value": f"val_{partition_val}_{i}",
+                    "score": partition_val * 10 + i,
+                    "country": f"country_{partition_val % 2}",
+                    "year": 2020 + partition_val,
+                }
+            )
+
+    # Create base DataFrame
+    base_df = pd.DataFrame(data)
+
+    # Write as Hive-partitioned Parquet
+    partitioned_path = os.path.join(tmp_path, "partitioned_data")
+    table = pa.Table.from_pandas(base_df)
+    pq.write_to_dataset(
+        table,
+        root_path=partitioned_path,
+        partition_cols=["country", "year"],
+        existing_data_behavior="overwrite_or_ignore",
+    )
+
+    return partitioned_path, base_df
+
+
+@pytest.mark.parametrize(
+    "operations",
+    [
+        # Single operations
+        ("select",),
+        ("select_partition_and_data",),
+        ("select_data_only",),
+        ("rename_partition",),
+        ("rename_data",),
+        ("rename_partition_and_data",),
+        ("filter_partition",),
+        ("filter_data",),
+        ("filter_partition_and_data",),
+        ("with_column",),
+        # Two-operation combinations
+        ("select", "rename_partition"),
+        ("select", "rename_data"),
+        ("select", "rename_partition_and_data"),
+        ("select", "filter_partition"),
+        ("select", "filter_data"),
+        # Test narrowing projection: select all columns, then narrow to exclude some partition columns
+        ("select", "select_partition_and_data"),
+        ("select", "select_data_only"),
+        ("rename_partition", "filter_partition"),
+        ("rename_partition", "filter_data"),
+        ("rename_data", "filter_partition"),
+        ("rename_data", "filter_data"),
+        ("rename_partition_and_data", "filter_partition_and_data"),
+        ("with_column", "rename_partition"),
+        ("with_column", "rename_data"),
+        ("with_column", "filter_data"),
+        # Three-operation combinations
+        ("select", "rename_partition", "filter_partition"),
+        ("select", "rename_data", "filter_data"),
+        ("select", "rename_partition_and_data", "filter_partition_and_data"),
+        ("rename_partition", "filter_partition", "with_column"),
+        ("rename_data", "filter_data", "with_column"),
+        # Four-operation combinations
+        (
+            "select",
+            "rename_partition_and_data",
+            "filter_partition_and_data",
+            "with_column",
+        ),
+    ],
+    ids=lambda ops: "_".join(ops) if isinstance(ops, tuple) else ops,
+)
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="Hive partitioned parquet operations require pyarrow >= 14.0.0",
+)
+def test_hive_partitioned_parquet_operations(
+    ray_start_regular_shared,
+    hive_partitioned_dataset,
+    operations,
+):
+    """Test various operations on Hive-partitioned Parquet datasets.
+
+    This test verifies that select_columns, rename_columns, filter, and with_column
+    work correctly with Hive-partitioned datasets, including combinations of operations.
+    All operations are tested without materializing to ensure projection pushdown works.
+    """
+    from ray.data.expressions import col
+
+    partitioned_path, base_df = hive_partitioned_dataset
+
+    # Define operations with their implementations for both pandas and Ray
+    class ColumnTracker:
+        """Helper to track column names as they get renamed."""
+
+        def __init__(self, columns: list[str]) -> None:
+            """Initialize tracker with column names.
+
+            Args:
+                columns: List of column names to track (identity mapping initially).
+            """
+            self.names: dict[str, str] = {col: col for col in columns}
+
+        def __getitem__(self, key: str) -> str:
+            return self.names[key]
+
+        def rename(self, rename_map: dict[str, str]) -> None:
+            """Update column names based on rename map."""
+            self.names.update(rename_map)
+
+    def _apply_rename(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+        base_rename_map: dict[str, str],
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply rename operation to pandas DataFrame or Ray Dataset."""
+        rename_map = {cols[k]: v for k, v in base_rename_map.items()}
+        cols.rename(rename_map)
+        return (
+            data.rename_columns(rename_map)
+            if is_ray_ds
+            else data.rename(columns=rename_map)
+        )
+
+    def _apply_select(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply select operation."""
+        selected_cols = [
+            cols["id"],
+            cols["value"],
+            cols["score"],
+            cols["country"],
+            cols["year"],
+        ]
+        return data.select_columns(selected_cols) if is_ray_ds else data[selected_cols]
+
+    def _apply_select_partition_and_data(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply select partition and data operation (selects only country and id)."""
+        selected_cols = [
+            cols["country"],
+            cols["id"],
+        ]
+        return data.select_columns(selected_cols) if is_ray_ds else data[selected_cols]
+
+    def _apply_select_data_only(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply select data only operation (selects only data columns, no partition columns)."""
+        selected_cols = [
+            cols["id"],
+            cols["value"],
+            cols["score"],
+        ]
+        return data.select_columns(selected_cols) if is_ray_ds else data[selected_cols]
+
+    def _apply_rename_partition(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply rename partition operation."""
+        base_rename_map = {"country": "country_renamed", "year": "year_renamed"}
+        return _apply_rename(data, cols, is_ray_ds, base_rename_map)
+
+    def _apply_rename_data(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply rename data operation."""
+        base_rename_map = {"id": "id_renamed", "value": "value_renamed"}
+        return _apply_rename(data, cols, is_ray_ds, base_rename_map)
+
+    def _apply_rename_partition_and_data(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply rename partition and data operation."""
+        base_rename_map = {
+            "country": "country_renamed",
+            "year": "year_renamed",
+            "id": "id_renamed",
+            "value": "value_renamed",
+        }
+        return _apply_rename(data, cols, is_ray_ds, base_rename_map)
+
+    def _apply_filter_partition(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply filter partition operation."""
+        if is_ray_ds:
+            return data.filter(expr=(col(cols["country"]) == "country_0"))
+        else:
+            return data[data[cols["country"]] == "country_0"]
+
+    def _apply_filter_data(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply filter data operation."""
+        if is_ray_ds:
+            return data.filter(expr=(col(cols["score"]) >= 10))
+        else:
+            return data[data[cols["score"]] >= 10]
+
+    def _apply_filter_partition_and_data(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply filter partition and data operation."""
+        if is_ray_ds:
+            return data.filter(
+                expr=(col(cols["country"]) == "country_0") & (col(cols["score"]) >= 10)
+            )
+        else:
+            return data[
+                (data[cols["country"]] == "country_0") & (data[cols["score"]] >= 10)
+            ]
+
+    def _apply_with_column(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        cols: ColumnTracker,
+        is_ray_ds: bool,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply with_column operation."""
+        if is_ray_ds:
+            return data.with_column("new_col", col(cols["score"]) * 2)
+        else:
+            data = data.copy()
+            data["new_col"] = data[cols["score"]] * 2
+            return data
+
+    # Dispatch dictionary mapping operation names to their handlers
+    op_handlers = {
+        "select": _apply_select,
+        "select_partition_and_data": _apply_select_partition_and_data,
+        "select_data_only": _apply_select_data_only,
+        "rename_partition": _apply_rename_partition,
+        "rename_data": _apply_rename_data,
+        "rename_partition_and_data": _apply_rename_partition_and_data,
+        "filter_partition": _apply_filter_partition,
+        "filter_data": _apply_filter_data,
+        "filter_partition_and_data": _apply_filter_partition_and_data,
+        "with_column": _apply_with_column,
+    }
+
+    def apply_operation(
+        data: Union[pd.DataFrame, "ray.data.Dataset"],
+        op: str,
+        cols: ColumnTracker,
+        is_ray_ds: bool = False,
+    ) -> Union[pd.DataFrame, "ray.data.Dataset"]:
+        """Apply a single operation to pandas DataFrame or Ray Dataset."""
+        handler = op_handlers[op]
+        return handler(data, cols, is_ray_ds)
+
+    # Apply operations to pandas DataFrame for expected results
+    expected_df = base_df.copy()
+    expected_cols = ColumnTracker(list(base_df.columns))
+    for op in operations:
+        expected_df = apply_operation(expected_df, op, expected_cols, is_ray_ds=False)
+
+    # Apply operations to Ray Dataset
+    ds = ray.data.read_parquet(partitioned_path)
+    ds_cols = ColumnTracker(list(base_df.columns))
+    for op in operations:
+        ds = apply_operation(ds, op, ds_cols, is_ray_ds=True)
+
+    # Convert to pandas and normalize for comparison
+    actual_df = ds.to_pandas()
+
+    # Normalize column types (partition columns are strings in Parquet)
+    for col_name in ["country", "country_renamed", "year", "year_renamed"]:
+        if col_name in expected_df.columns:
+            expected_df[col_name] = expected_df[col_name].astype(str)
+        if col_name in actual_df.columns:
+            actual_df[col_name] = actual_df[col_name].astype(str)
+
+    # Sort both DataFrames for consistent comparison
+    sort_cols = sorted(set(expected_df.columns) & set(actual_df.columns))
+    expected_df = expected_df.sort_values(by=sort_cols).reset_index(drop=True)
+    actual_df = actual_df.sort_values(by=sort_cols).reset_index(drop=True)
+
+    # Ensure column order matches
+    actual_df = actual_df[expected_df.columns]
+
+    # Verify results match
+    assert rows_same(actual_df, expected_df), (
+        f"Operations {operations} produced different results.\n"
+        f"Expected columns: {list(expected_df.columns)}\n"
+        f"Actual columns: {list(actual_df.columns)}\n"
+        f"Expected shape: {expected_df.shape}\n"
+        f"Actual shape: {actual_df.shape}\n"
+        f"Expected head:\n{expected_df.head()}\n"
+        f"Actual head:\n{actual_df.head()}"
+    )
+
+
+@pytest.mark.parametrize("choice", ["default", "hive", "filename", "ray_default"])
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="Hive partitioned parquet operations require pyarrow >= 14.0.0",
+)
+def test_write_parquet_partitioning(choice, tmp_path):
+
+    # Ray's default is "hive", while pyarrow's default is "directory" (when None).
+    kwargs = {
+        "default": (
+            {"partitioning_flavor": None},
+            pds.partitioning(field_names=["grp"], flavor=None),
+        ),
+        "hive": ({"partitioning_flavor": "hive"}, pds.partitioning(flavor="hive")),
+        "filename": (
+            {"partitioning_flavor": "filename"},
+            pds.partitioning(
+                pa.schema([pa.field("grp", pa.int64())]), flavor="filename"
+            ),
+        ),
+        "ray_default": (
+            {},
+            "hive",
+        ),
+    }
+
+    parquet_kwargs, partitioning = kwargs[choice]
+
+    ds = ray.data.range(1000).add_column("grp", lambda x: x["id"] % 10)
+
+    ds.write_parquet(
+        tmp_path,
+        partition_cols=["grp"],
+        **parquet_kwargs,
+        mode="overwrite",
+    )
+
+    pq_ds = pq.ParquetDataset(
+        tmp_path,
+        partitioning=partitioning,
+    )
+    df = pq_ds.read_pandas().to_pandas()
+
+    assert len(df) == 1000
+    assert df["grp"].nunique() == 10
+    assert set(df.columns.tolist()) == {"id", "grp"}
 
 
 if __name__ == "__main__":

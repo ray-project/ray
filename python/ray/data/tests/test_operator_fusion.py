@@ -337,7 +337,7 @@ def test_map_batches_batch_size_fusion(
         LogicalPlan(input_op, context),
     )
 
-    mapped_ds = ds.map_batches(lambda x: x, batch_size=2,).map_batches(
+    mapped_ds = ds.map_batches(lambda x: x, batch_size=2).map_batches(
         lambda x: x,
         batch_size=5,
     )
@@ -740,6 +740,82 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
             BatchMapTransformFn,
         ],
     )
+
+
+@pytest.mark.parametrize(
+    "order,target_num_rows,batch_size,should_fuse",
+    [
+        # map_batches -> streaming_repartition: fuse when batch_size == target_num_rows
+        ("map_then_sr", 20, 20, True),
+        ("map_then_sr", 20, 10, False),
+        ("map_then_sr", 20, None, False),
+        # streaming_repartition -> map_batches: not fused
+        ("sr_then_map", 20, 20, False),
+    ],
+)
+def test_streaming_repartition_map_batches_fusion_order_and_params(
+    ray_start_regular_shared_2_cpus,
+    order,
+    target_num_rows,
+    batch_size,
+    should_fuse,
+):
+    """Test fusion of streaming_repartition and map_batches with different orders
+    and different target_num_rows/batch_size values."""
+    n = 100
+    ds = ray.data.range(n, override_num_blocks=2)
+
+    if order == "map_then_sr":
+        ds = ds.map_batches(lambda x: x, batch_size=batch_size)
+        ds = ds.repartition(target_num_rows_per_block=target_num_rows)
+        expected_fused_name = f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_num_rows}]"
+    else:  # sr_then_map
+        ds = ds.repartition(target_num_rows_per_block=target_num_rows)
+        ds = ds.map_batches(lambda x: x, batch_size=batch_size)
+        expected_fused_name = f"StreamingRepartition[num_rows_per_block={target_num_rows}]->MapBatches(<lambda>)"
+
+    assert len(ds.take_all()) == n
+
+    stats = ds.stats()
+    if should_fuse:
+        assert (
+            expected_fused_name in stats
+        ), f"Expected '{expected_fused_name}' in stats: {stats}"
+    else:
+        assert (
+            expected_fused_name not in stats
+        ), f"Did not expect '{expected_fused_name}' in stats: {stats}"
+
+
+def test_streaming_repartition_no_further_fuse(
+    ray_start_regular_shared_2_cpus,
+):
+    """Test that fused streaming_repartition operators don't fuse further.
+
+    Case 1: map_batches -> map_batches -> streaming_repartition -> map_batches -> map_batches
+            Result: map -> (map -> s_r)-> (map -> map)
+            The fused (map -> s_r) doesn't fuse further with surrounding maps.
+    """
+    n = 100
+    target_rows = 20
+
+    # Case 1: map_batches -> map_batches -> streaming_repartition -> map_batches -> map_batches
+    # Result: map -> (map -> s_r)-> (map -> map)
+    ds1 = ray.data.range(n, override_num_blocks=2)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
+    ds1 = ds1.repartition(target_num_rows_per_block=target_rows)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
+
+    assert len(ds1.take_all()) == n
+    stats1 = ds1.stats()
+
+    assert (
+        f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows}]"
+        in stats1
+    ), stats1
+    assert "MapBatches(<lambda>)->MapBatches(<lambda>)" in stats1
 
 
 if __name__ == "__main__":

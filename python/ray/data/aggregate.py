@@ -1,24 +1,61 @@
 import abc
+import enum
 import math
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+import pickle
+import re
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Collection,
+    Dict,
+    Generic,
+    List,
+    Optional,
+    Protocol,
+    Set,
+    TypeVar,
+    Union,
+)
 
 import numpy as np
 import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
 from ray.data.block import (
-    AggType,
     Block,
     BlockAccessor,
+    BlockColumn,
     BlockColumnAccessor,
     KeyType,
-    T,
-    U,
 )
 from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.dataset import Schema
+
+
+class _SupportsRichComparison(Protocol):
+    def __lt__(self, other: Any) -> bool:
+        ...
+
+    def __le__(self, other: Any) -> bool:
+        ...
+
+    def __gt__(self, other: Any) -> bool:
+        ...
+
+    def __ge__(self, other: Any) -> bool:
+        ...
+
+
+AccumulatorType = TypeVar("AccumulatorType")
+SupportsRichComparisonType = TypeVar(
+    "SupportsRichComparisonType", bound=_SupportsRichComparison
+)
+AggOutputType = TypeVar("AggOutputType")
+
+_AGGREGATION_NAME_PATTERN = re.compile(r"^([^(]+)(?:\(.*\))?$")
 
 
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
@@ -73,12 +110,14 @@ class AggregateFn:
 
     def __init__(
         self,
-        init: Callable[[KeyType], AggType],
-        merge: Callable[[AggType, AggType], AggType],
+        init: Callable[[KeyType], AccumulatorType],
+        merge: Callable[[AccumulatorType, AccumulatorType], AccumulatorType],
         name: str,
-        accumulate_row: Callable[[AggType, T], AggType] = None,
-        accumulate_block: Callable[[AggType, Block], AggType] = None,
-        finalize: Optional[Callable[[AggType], U]] = None,
+        accumulate_row: Callable[
+            [AccumulatorType, Dict[str, Any]], AccumulatorType
+        ] = None,
+        accumulate_block: Callable[[AccumulatorType, Block], AccumulatorType] = None,
+        finalize: Optional[Callable[[AccumulatorType], AggOutputType]] = None,
     ):
         if (accumulate_row is None and accumulate_block is None) or (
             accumulate_row is not None and accumulate_block is not None
@@ -89,7 +128,7 @@ class AggregateFn:
 
         if accumulate_block is None:
 
-            def accumulate_block(a: AggType, block: Block) -> AggType:
+            def accumulate_block(a: AccumulatorType, block: Block) -> AccumulatorType:
                 block_acc = BlockAccessor.for_block(block)
                 for r in block_acc.iter_rows(public_row_format=False):
                     a = accumulate_row(a, r)
@@ -113,7 +152,7 @@ class AggregateFn:
 
 
 @PublicAPI(stability="alpha")
-class AggregateFnV2(AggregateFn, abc.ABC):
+class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType]):
     """Provides an interface to implement efficient aggregations to be applied
     to the dataset.
 
@@ -153,7 +192,7 @@ class AggregateFnV2(AggregateFn, abc.ABC):
     def __init__(
         self,
         name: str,
-        zero_factory: Callable[[], AggType],
+        zero_factory: Callable[[], AccumulatorType],
         *,
         on: Optional[str],
         ignore_nulls: bool,
@@ -165,6 +204,14 @@ class AggregateFnV2(AggregateFn, abc.ABC):
 
         self._target_col_name = on
         self._ignore_nulls = ignore_nulls
+
+        # Extract and store the agg name (e.g., "sum" from "sum(col)")
+        # This avoids string parsing later
+        match = _AGGREGATION_NAME_PATTERN.match(name)
+        if match:
+            self._agg_name = match.group(1)
+        else:
+            self._agg_name = name
 
         _safe_combine = _null_safe_combine(self.combine, ignore_nulls)
         _safe_aggregate = _null_safe_aggregate(self.aggregate_block, ignore_nulls)
@@ -183,8 +230,18 @@ class AggregateFnV2(AggregateFn, abc.ABC):
     def get_target_column(self) -> Optional[str]:
         return self._target_col_name
 
+    def get_agg_name(self) -> str:
+        """Return the agg name (e.g., 'sum', 'mean', 'count').
+
+        Returns the aggregation type extracted from the name during initialization.
+        For example, returns 'sum' for an aggregator named 'sum(col)'.
+        """
+        return self._agg_name
+
     @abc.abstractmethod
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+    def combine(
+        self, current_accumulator: AccumulatorType, new: AccumulatorType
+    ) -> AccumulatorType:
         """Combines a new partial aggregation result with the current accumulator.
 
         This method defines how two intermediate aggregation states are merged.
@@ -204,7 +261,7 @@ class AggregateFnV2(AggregateFn, abc.ABC):
         ...
 
     @abc.abstractmethod
-    def aggregate_block(self, block: Block) -> AggType:
+    def aggregate_block(self, block: Block) -> AccumulatorType:
         """Aggregates data within a single block.
 
         This method processes all rows in a given `Block` and returns a partial
@@ -222,7 +279,7 @@ class AggregateFnV2(AggregateFn, abc.ABC):
         """
         ...
 
-    def finalize(self, accumulator: AggType) -> Optional[U]:
+    def finalize(self, accumulator: AccumulatorType) -> Optional[AggOutputType]:
         """Transforms the final accumulated state into the desired output.
 
         This method is called once per group after all blocks have been processed
@@ -254,7 +311,7 @@ class AggregateFnV2(AggregateFn, abc.ABC):
 
 
 @PublicAPI
-class Count(AggregateFnV2):
+class Count(AggregateFnV2[int, int]):
     """Defines count aggregation.
 
     Example:
@@ -303,7 +360,7 @@ class Count(AggregateFnV2):
             zero_factory=lambda: 0,
         )
 
-    def aggregate_block(self, block: Block) -> AggType:
+    def aggregate_block(self, block: Block) -> int:
         block_accessor = BlockAccessor.for_block(block)
 
         if self._target_col_name is None:
@@ -314,12 +371,12 @@ class Count(AggregateFnV2):
             self._target_col_name, ignore_nulls=self._ignore_nulls
         )
 
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+    def combine(self, current_accumulator: int, new: int) -> int:
         return current_accumulator + new
 
 
 @PublicAPI
-class Sum(AggregateFnV2):
+class Sum(AggregateFnV2[Union[int, float], Union[int, float]]):
     """Defines sum aggregation.
 
     Example:
@@ -359,17 +416,19 @@ class Sum(AggregateFnV2):
             zero_factory=lambda: 0,
         )
 
-    def aggregate_block(self, block: Block) -> AggType:
+    def aggregate_block(self, block: Block) -> Union[int, float]:
         return BlockAccessor.for_block(block).sum(
             self._target_col_name, self._ignore_nulls
         )
 
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+    def combine(
+        self, current_accumulator: Union[int, float], new: Union[int, float]
+    ) -> Union[int, float]:
         return current_accumulator + new
 
 
 @PublicAPI
-class Min(AggregateFnV2):
+class Min(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]):
     """Defines min aggregation.
 
     Example:
@@ -397,6 +456,9 @@ class Min(AggregateFnV2):
                       the group is null (for most data types, or follow type-specific
                       comparison rules with nulls).
         alias_name: Optional name for the resulting column.
+        zero_factory: A callable that returns the initial "zero" value for the
+                      accumulator. For example, for a float column, this would be
+                      `lambda: float("+inf")`. Default is `lambda: float("+inf")`.
     """
 
     def __init__(
@@ -404,25 +466,30 @@ class Min(AggregateFnV2):
         on: Optional[str] = None,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
+        zero_factory: Callable[[], SupportsRichComparisonType] = lambda: float("+inf"),
     ):
         super().__init__(
             alias_name if alias_name else f"min({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
-            zero_factory=lambda: float("+inf"),
+            zero_factory=zero_factory,
         )
 
-    def aggregate_block(self, block: Block) -> AggType:
+    def aggregate_block(self, block: Block) -> SupportsRichComparisonType:
         return BlockAccessor.for_block(block).min(
             self._target_col_name, self._ignore_nulls
         )
 
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+    def combine(
+        self,
+        current_accumulator: SupportsRichComparisonType,
+        new: SupportsRichComparisonType,
+    ) -> SupportsRichComparisonType:
         return min(current_accumulator, new)
 
 
 @PublicAPI
-class Max(AggregateFnV2):
+class Max(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]):
     """Defines max aggregation.
 
     Example:
@@ -450,6 +517,9 @@ class Max(AggregateFnV2):
                       the group is null (for most data types, or follow type-specific
                       comparison rules with nulls).
         alias_name: Optional name for the resulting column.
+        zero_factory: A callable that returns the initial "zero" value for the
+                      accumulator. For example, for a float column, this would be
+                      `lambda: float("-inf")`. Default is `lambda: float("-inf")`.
     """
 
     def __init__(
@@ -457,26 +527,30 @@ class Max(AggregateFnV2):
         on: Optional[str] = None,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
+        zero_factory: Callable[[], SupportsRichComparisonType] = lambda: float("-inf"),
     ):
-
         super().__init__(
             alias_name if alias_name else f"max({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
-            zero_factory=lambda: float("-inf"),
+            zero_factory=zero_factory,
         )
 
-    def aggregate_block(self, block: Block) -> AggType:
+    def aggregate_block(self, block: Block) -> SupportsRichComparisonType:
         return BlockAccessor.for_block(block).max(
             self._target_col_name, self._ignore_nulls
         )
 
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+    def combine(
+        self,
+        current_accumulator: SupportsRichComparisonType,
+        new: SupportsRichComparisonType,
+    ) -> SupportsRichComparisonType:
         return max(current_accumulator, new)
 
 
 @PublicAPI
-class Mean(AggregateFnV2):
+class Mean(AggregateFnV2[List[Union[int, float]], float]):
     """Defines mean (average) aggregation.
 
     Example:
@@ -521,7 +595,7 @@ class Mean(AggregateFnV2):
             zero_factory=lambda: list([0, 0]),  # noqa: C410
         )
 
-    def aggregate_block(self, block: Block) -> AggType:
+    def aggregate_block(self, block: Block) -> Optional[List[Union[int, float]]]:
         block_acc = BlockAccessor.for_block(block)
         count = block_acc.count(self._target_col_name, self._ignore_nulls)
 
@@ -539,10 +613,12 @@ class Mean(AggregateFnV2):
 
         return [sum_, count]
 
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+    def combine(
+        self, current_accumulator: List[Union[int, float]], new: List[Union[int, float]]
+    ) -> List[Union[int, float]]:
         return [current_accumulator[0] + new[0], current_accumulator[1] + new[1]]
 
-    def finalize(self, accumulator: AggType) -> Optional[U]:
+    def finalize(self, accumulator: List[Union[int, float]]) -> Optional[float]:
         # The final accumulator for a group is [total_sum, total_count].
         if accumulator[1] == 0:
             # If total_count is 0 (e.g., group was empty or all nulls ignored),
@@ -553,7 +629,7 @@ class Mean(AggregateFnV2):
 
 
 @PublicAPI
-class Std(AggregateFnV2):
+class Std(AggregateFnV2[List[Union[int, float]], float]):
     """Defines standard deviation aggregation.
 
     Uses Welford's online algorithm for numerical stability. This method computes
@@ -610,7 +686,7 @@ class Std(AggregateFnV2):
 
         self._ddof = ddof
 
-    def aggregate_block(self, block: Block) -> AggType:
+    def aggregate_block(self, block: Block) -> List[Union[int, float]]:
         block_acc = BlockAccessor.for_block(block)
         count = block_acc.count(self._target_col_name, ignore_nulls=self._ignore_nulls)
         if count == 0 or count is None:
@@ -627,7 +703,9 @@ class Std(AggregateFnV2):
         )
         return [M2, mean, count]
 
-    def combine(self, current_accumulator: List[float], new: List[float]) -> AggType:
+    def combine(
+        self, current_accumulator: List[float], new: List[float]
+    ) -> List[float]:
         # Merges two accumulators [M2, mean, count] using a parallel algorithm.
         # See: https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
         M2_a, mean_a, count_a = current_accumulator
@@ -643,7 +721,7 @@ class Std(AggregateFnV2):
         M2 = M2_a + M2_b + (delta**2) * count_a * count_b / count
         return [M2, mean, count]
 
-    def finalize(self, accumulator: List[float]) -> Optional[U]:
+    def finalize(self, accumulator: List[float]) -> Optional[float]:
         # Compute the final standard deviation from the accumulated
         # sum of squared differences from current mean and the count.
         # Final accumulator: [M2, mean, count]
@@ -658,7 +736,7 @@ class Std(AggregateFnV2):
 
 
 @PublicAPI
-class AbsMax(AggregateFnV2):
+class AbsMax(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]):
     """Defines absolute max aggregation.
 
     Example:
@@ -683,6 +761,9 @@ class AbsMax(AggregateFnV2):
         on: The name of the column to calculate absolute maximum on. Must be provided.
         ignore_nulls: Whether to ignore null values. Default is True.
         alias_name: Optional name for the resulting column.
+        zero_factory: A callable that returns the initial "zero" value for the
+                      accumulator. For example, for a float column, this would be
+                      `lambda: 0`. Default is `lambda: 0`.
     """
 
     def __init__(
@@ -690,6 +771,7 @@ class AbsMax(AggregateFnV2):
         on: Optional[str] = None,
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
+        zero_factory: Callable[[], SupportsRichComparisonType] = lambda: 0,
     ):
         if on is None or not isinstance(on, str):
             raise ValueError(f"Column to aggregate on has to be provided (got {on})")
@@ -698,10 +780,10 @@ class AbsMax(AggregateFnV2):
             alias_name if alias_name else f"abs_max({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
-            zero_factory=lambda: 0,
+            zero_factory=zero_factory,
         )
 
-    def aggregate_block(self, block: Block) -> AggType:
+    def aggregate_block(self, block: Block) -> Optional[SupportsRichComparisonType]:
         block_accessor = BlockAccessor.for_block(block)
 
         max_ = block_accessor.max(self._target_col_name, self._ignore_nulls)
@@ -710,17 +792,18 @@ class AbsMax(AggregateFnV2):
         if is_null(max_) or is_null(min_):
             return None
 
-        return max(
-            abs(max_),
-            abs(min_),
-        )
+        return max(abs(max_), abs(min_))
 
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+    def combine(
+        self,
+        current_accumulator: SupportsRichComparisonType,
+        new: SupportsRichComparisonType,
+    ) -> SupportsRichComparisonType:
         return max(current_accumulator, new)
 
 
 @PublicAPI
-class Quantile(AggregateFnV2):
+class Quantile(AggregateFnV2[List[Any], List[Any]]):
     """Defines Quantile aggregation.
 
     Example:
@@ -790,7 +873,7 @@ class Quantile(AggregateFnV2):
 
         return ls
 
-    def aggregate_block(self, block: Block) -> AggType:
+    def aggregate_block(self, block: Block) -> List[Any]:
         block_acc = BlockAccessor.for_block(block)
         ls = []
 
@@ -799,7 +882,7 @@ class Quantile(AggregateFnV2):
 
         return ls
 
-    def finalize(self, accumulator: List[Any]) -> Optional[U]:
+    def finalize(self, accumulator: List[Any]) -> Optional[Any]:
         if self._ignore_nulls:
             accumulator = [v for v in accumulator if not is_null(v)]
         else:
@@ -831,7 +914,7 @@ class Quantile(AggregateFnV2):
 
 
 @PublicAPI
-class Unique(AggregateFnV2):
+class Unique(AggregateFnV2[Set[Any], List[Any]]):
     """Defines unique aggregation.
 
     Example:
@@ -855,13 +938,30 @@ class Unique(AggregateFnV2):
         ignore_nulls: Whether to ignore null values when collecting unique items.
                       Default is True (nulls are excluded).
         alias_name: Optional name for the resulting column.
+        encode_lists: If `True`, encode list elements.  If `False`, encode
+            whole lists (i.e., the entire list is considered as a single object).
+            `False` by default. Note that this is a top-level flatten (not a recursive
+            flatten) operation.
     """
+
+    class ListEncodingMode(str, enum.Enum):
+        """Controls how to encode individual elements inside the list column:
+
+        - NONE: no encoding applied, elements (lists) are stored as is and
+                unique ones are returned.
+        - FLATTEN: column of element lists is flattened into a single list.
+        - HASH: each list element is hashed, a list of unique hashes is returned.
+        """
+
+        FLATTEN = "FLATTEN"
+        HASH = "HASH"
 
     def __init__(
         self,
         on: Optional[str] = None,
-        ignore_nulls: bool = True,
+        ignore_nulls: bool = False,
         alias_name: Optional[str] = None,
+        encode_lists: Union[bool, ListEncodingMode, None] = None,
     ):
         super().__init__(
             alias_name if alias_name else f"unique({str(on)})",
@@ -870,23 +970,66 @@ class Unique(AggregateFnV2):
             zero_factory=set,
         )
 
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        if isinstance(encode_lists, Unique.ListEncodingMode):
+            self._list_encoding_mode = encode_lists
+        elif isinstance(encode_lists, bool) and encode_lists:
+            self._list_encoding_mode = Unique.ListEncodingMode.FLATTEN
+        else:
+            self._list_encoding_mode = None
+
+    def combine(self, current_accumulator: Set[Any], new: Set[Any]) -> Set[Any]:
         return self._to_set(current_accumulator) | self._to_set(new)
 
-    def aggregate_block(self, block: Block) -> AggType:
-        import pyarrow.compute as pac
+    def _compute_unique(self, block: Block) -> BlockColumn:
+        column = block[self._target_col_name]
+        column_accessor = BlockColumnAccessor.for_column(column)
 
-        col = BlockAccessor.for_block(block).to_arrow().column(self._target_col_name)
-        return pac.unique(col).to_pylist()
+        if (
+            column_accessor.is_composed_of_lists()
+            and self._list_encoding_mode is not None
+        ):
+            if self._list_encoding_mode == Unique.ListEncodingMode.FLATTEN:
+                column_accessor = BlockColumnAccessor.for_column(
+                    column_accessor.flatten()
+                )
+            elif self._list_encoding_mode == Unique.ListEncodingMode.HASH:
+                column_accessor = BlockColumnAccessor.for_column(column_accessor.hash())
+            else:
+                raise ValueError(
+                    f"list encoding mode not supported: {self._list_encoding_mode}"
+                )
+
+        if self._ignore_nulls:
+            column_accessor = BlockColumnAccessor.for_column(column_accessor.dropna())
+
+        return column_accessor.unique()
+
+    def aggregate_block(self, block: Block) -> List[Any]:
+        column = self._compute_unique(block)
+        return BlockColumnAccessor.for_column(column).to_pylist()
 
     @staticmethod
     def _to_set(x):
         if isinstance(x, set):
-            return x
+            return Unique._normalize_nans(x)
+
         elif isinstance(x, list):
-            return set(x)
+            if len(x) > 0 and isinstance(x[0], list):
+                # necessary because pyarrow converts all tuples to
+                # list internally.
+                x = map(lambda v: None if v is None else tuple(v), x)
+
+            return Unique._normalize_nans(x)
         else:
             return {x}
+
+    @staticmethod
+    def _normalize_nans(x: Collection) -> Set:
+        # NOTE: Pandas when converting to Python objects instantiates
+        #       new `float('nan')` objects which are incomparable b/w each
+        #       other. Here we canonicalize any nan instances replacing them
+        #       w/ `np.nan`
+        return {v if not (isinstance(v, float) and np.isnan(v)) else np.nan for v in x}
 
 
 @PublicAPI
@@ -1017,10 +1160,10 @@ def _null_safe_zero_factory(zero_factory, ignore_nulls: bool):
 
 
 def _null_safe_aggregate(
-    aggregate: Callable[[Block], AggType],
+    aggregate: Callable[[Block], AccumulatorType],
     ignore_nulls: bool,
-) -> Callable[[Block], Optional[AggType]]:
-    def _safe_aggregate(block: Block) -> Optional[AggType]:
+) -> Callable[[Block], Optional[AccumulatorType]]:
+    def _safe_aggregate(block: Block) -> Optional[AccumulatorType]:
         result = aggregate(block)
         # NOTE: If `ignore_nulls=True`, aggregation will only be returning
         #       null if the block does NOT contain any non-null elements
@@ -1033,9 +1176,9 @@ def _null_safe_aggregate(
 
 
 def _null_safe_finalize(
-    finalize: Callable[[AggType], AggType]
-) -> Callable[[Optional[AggType]], AggType]:
-    def _safe_finalize(acc: Optional[AggType]) -> AggType:
+    finalize: Callable[[AccumulatorType], AccumulatorType],
+) -> Callable[[Optional[AccumulatorType]], AccumulatorType]:
+    def _safe_finalize(acc: Optional[AccumulatorType]) -> AccumulatorType:
         # If accumulator container is not null, finalize.
         # Otherwise, return as is.
         return acc if is_null(acc) else finalize(acc)
@@ -1044,8 +1187,11 @@ def _null_safe_finalize(
 
 
 def _null_safe_combine(
-    combine: Callable[[AggType, AggType], AggType], ignore_nulls: bool
-) -> Callable[[Optional[AggType], Optional[AggType]], Optional[AggType]]:
+    combine: Callable[[AccumulatorType, AccumulatorType], AccumulatorType],
+    ignore_nulls: bool,
+) -> Callable[
+    [Optional[AccumulatorType], Optional[AccumulatorType]], Optional[AccumulatorType]
+]:
     """Null-safe combination have to be an associative operation
     with an identity element (zero) or in other words implement a monoid.
 
@@ -1068,9 +1214,8 @@ def _null_safe_combine(
     if ignore_nulls:
 
         def _safe_combine(
-            cur: Optional[AggType], new: Optional[AggType]
-        ) -> Optional[AggType]:
-
+            cur: Optional[AccumulatorType], new: Optional[AccumulatorType]
+        ) -> Optional[AccumulatorType]:
             if is_null(cur):
                 return new
             elif is_null(new):
@@ -1081,9 +1226,8 @@ def _null_safe_combine(
     else:
 
         def _safe_combine(
-            cur: Optional[AggType], new: Optional[AggType]
-        ) -> Optional[AggType]:
-
+            cur: Optional[AccumulatorType], new: Optional[AccumulatorType]
+        ) -> Optional[AccumulatorType]:
             if is_null(new):
                 return new
             elif is_null(cur):
@@ -1095,7 +1239,7 @@ def _null_safe_combine(
 
 
 @PublicAPI(stability="alpha")
-class MissingValuePercentage(AggregateFnV2):
+class MissingValuePercentage(AggregateFnV2[List[int], float]):
     """Calculates the percentage of null values in a column.
 
     This aggregation computes the percentage of null (missing) values in a dataset column.
@@ -1176,7 +1320,7 @@ class MissingValuePercentage(AggregateFnV2):
 
 
 @PublicAPI(stability="alpha")
-class ZeroPercentage(AggregateFnV2):
+class ZeroPercentage(AggregateFnV2[List[int], float]):
     """Calculates the percentage of zero values in a numeric column.
 
     This aggregation computes the percentage of zero values in a numeric dataset column.
@@ -1369,3 +1513,122 @@ class ApproximateQuantile(AggregateFnV2):
 
     def finalize(self, accumulator: bytes) -> List[float]:
         return self._sketch_cls.deserialize(accumulator).get_quantiles(self._quantiles)
+
+
+@PublicAPI(stability="alpha")
+class ApproximateTopK(AggregateFnV2):
+    def _require_datasketches(self):
+        try:
+            from datasketches import frequent_strings_sketch
+        except ImportError as exc:
+            raise ImportError(
+                "ApproximateTopK requires the `datasketches` package. "
+                "Install it with `pip install datasketches`."
+            ) from exc
+        return frequent_strings_sketch
+
+    def __init__(
+        self,
+        on: str,
+        k: int,
+        log_capacity: int = 15,
+        alias_name: Optional[str] = None,
+        encode_lists: bool = False,
+    ):
+        """
+        Computes the approximate top k items in a column by using a datasketches frequent_strings_sketch.
+        https://datasketches.apache.org/docs/Frequency/FrequentItemsOverview.html
+
+        Guarantees:
+            - Any item with true frequency > N / (2^log_capacity) is guaranteed to appear in the results
+            - Reported counts may have an error of at most ± N / (2^log_capacity).
+
+
+        If log_capacity is too small for your data:
+            - Low-frequency items may be evicted from the sketch, potentially causing the top-k
+              results to miss items that should appear in the output.
+            - The error bounds increase, reducing the accuracy of the reported counts.
+
+        Example:
+
+            .. testcode::
+
+                import ray
+                from ray.data.aggregate import ApproximateTopK
+
+                ds = ray.data.from_items([
+                    {"word": "apple"}, {"word": "banana"}, {"word": "apple"},
+                    {"word": "cherry"}, {"word": "apple"}
+                ])
+
+                result = ds.aggregate(ApproximateTopK(on="word", k=2))
+                # Result: {'approx_topk(word)': [{'word': 'apple', 'count': 3}, {'word': 'banana', 'count': 1}]}
+
+        Args:
+            on: The name of the column to aggregate.
+            k: The number of top items to return.
+            log_capacity: Base 2 logarithm of the maximum size of the internal hash map.
+                Higher values increase accuracy but use more memory. Defaults to 15.
+            alias_name: The name of the aggregate. Defaults to None.
+            encode_lists: If `True`, encode list elements.  If `False`, encode
+                whole lists (i.e., the entire list is considered as a single object).
+                `False` by default. Note that this is a top-level flatten (not a recursive
+                flatten) operation.
+        """
+
+        self.k = k
+        self._log_capacity = log_capacity
+        self._frequent_strings_sketch = self._require_datasketches()
+        self._encode_lists = encode_lists
+
+        super().__init__(
+            alias_name if alias_name else f"approx_topk({str(on)})",
+            on=on,
+            ignore_nulls=True,
+            zero_factory=lambda: self.zero(log_capacity).serialize(),
+        )
+
+    def zero(self, log_capacity: int):
+        return self._frequent_strings_sketch(lg_max_k=log_capacity)
+
+    def aggregate_block(self, block: Block) -> bytes:
+        # Note: The datasketches Python bindings only expose frequent_strings_sketch
+        # (not type-specific variants like frequent_ints_sketch). We use pickle
+        # serialization as a workaround, which is less performant than native
+        # type-specific sketches. Revisit if type-specific bindings are added.
+        block_acc = BlockAccessor.for_block(block)
+        table = block_acc.to_arrow()
+        column = table.column(self.get_target_column())
+        sketch = self.zero(self._log_capacity)
+        for value in column:
+            py_value = value.as_py()
+            if self._encode_lists and isinstance(py_value, list):
+                for item in py_value:
+                    if item is None:
+                        continue
+                    dump = pickle.dumps(item).hex()
+                    sketch.update(dump)
+            elif py_value is not None:
+                dump = pickle.dumps(py_value).hex()
+                sketch.update(dump)
+        return sketch.serialize()
+
+    def combine(self, current_accumulator: bytes, new: bytes) -> bytes:
+        combined = self.zero(self._log_capacity)
+        combined.merge(self._frequent_strings_sketch.deserialize(current_accumulator))
+        combined.merge(self._frequent_strings_sketch.deserialize(new))
+        return combined.serialize()
+
+    def finalize(self, accumulator: bytes) -> List[Dict[str, Any]]:
+        from datasketches import frequent_items_error_type
+
+        column = self.get_target_column()
+
+        frequent_items = self._frequent_strings_sketch.deserialize(
+            accumulator
+        ).get_frequent_items(frequent_items_error_type.NO_FALSE_NEGATIVES)
+
+        return [
+            {column: pickle.loads(bytes.fromhex(item[0])), "count": int(item[1])}
+            for item in frequent_items[: self.k]
+        ]

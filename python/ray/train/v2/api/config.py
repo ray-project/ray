@@ -2,12 +2,11 @@ import logging
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
 
 import pyarrow.fs
 
 from ray.air.config import (
-    CheckpointConfig,
     FailureConfig as FailureConfigV1,
     ScalingConfig as ScalingConfigV1,
 )
@@ -49,6 +48,9 @@ class ScalingConfig(ScalingConfigV1):
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
+        label_selector: A list of label selectors for Ray Train worker placement.
+            If a single label selector is provided, it will be applied to all Ray Train workers.
+            If a list is provided, it must be the same length as the max number of Ray Train workers.
         accelerator_type: [Experimental] If specified, Ray Train will launch the
             training coordinator and workers on the nodes with the specified type
             of accelerators.
@@ -70,6 +72,7 @@ class ScalingConfig(ScalingConfigV1):
     trainer_resources: Optional[dict] = None
     use_tpu: Union[bool] = False
     topology: Optional[str] = None
+    label_selector: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None
 
     def __post_init__(self):
         if self.trainer_resources is not None:
@@ -104,6 +107,20 @@ class ScalingConfig(ScalingConfigV1):
                     "`accelerator_type` must be specified in ScalingConfig when "
                     "`use_tpu=True` and `num_workers` > 1."
                 )
+            if self.label_selector:
+                raise ValueError(
+                    "Cannot set `label_selector` when `use_tpu=True` because "
+                    "Ray Train automatically reserves a TPU slice with a predefined label."
+                )
+
+        if (
+            isinstance(self.label_selector, list)
+            and isinstance(self.num_workers, int)
+            and len(self.label_selector) != self.num_workers
+        ):
+            raise ValueError(
+                "If `label_selector` is a list, it must be the same length as `num_workers`."
+            )
 
         if self.num_workers == 0:
             logger.info(
@@ -130,6 +147,66 @@ class ScalingConfig(ScalingConfigV1):
     def num_tpus_per_worker(self):
         """The number of TPUs to set per worker."""
         return self._resources_per_worker_not_none.get("TPU", 0)
+
+
+@dataclass
+@PublicAPI(stability="stable")
+class CheckpointConfig:
+    """Configuration for checkpointing.
+
+    Default behavior is to persist all checkpoints reported with
+    :meth:`ray.train.report` to disk. If ``num_to_keep`` is set,
+    the default retention policy is to keep the most recent checkpoints.
+
+    Args:
+        num_to_keep: The maximum number of checkpoints to keep.
+            If you report more checkpoints than this, the oldest
+            (or lowest-scoring, if ``checkpoint_score_attribute`` is set)
+            checkpoint will be deleted.
+            If this is ``None`` then all checkpoints will be kept. Must be >= 1.
+        checkpoint_score_attribute: The attribute that will be used to
+            score checkpoints to determine which checkpoints should be kept.
+            This attribute must be a key from the metrics dictionary
+            attached to the checkpoint. This attribute must have a numerical value.
+        checkpoint_score_order: Either "max" or "min".
+            If "max"/"min", then checkpoints with highest/lowest values of
+            the ``checkpoint_score_attribute`` will be kept. Defaults to "max".
+        checkpoint_frequency: [Deprecated]
+        checkpoint_at_end: [Deprecated]
+    """
+
+    num_to_keep: Optional[int] = None
+    checkpoint_score_attribute: Optional[str] = None
+    checkpoint_score_order: Literal["max", "min"] = "max"
+    checkpoint_frequency: Union[Optional[int], Literal[_DEPRECATED]] = _DEPRECATED
+    checkpoint_at_end: Union[Optional[bool], Literal[_DEPRECATED]] = _DEPRECATED
+
+    def __post_init__(self):
+        if self.checkpoint_frequency != _DEPRECATED:
+            raise DeprecationWarning(
+                "`checkpoint_frequency` is deprecated since it does not "
+                "apply to user-defined training functions. "
+                "Please remove this argument from your CheckpointConfig."
+            )
+
+        if self.checkpoint_at_end != _DEPRECATED:
+            raise DeprecationWarning(
+                "`checkpoint_at_end` is deprecated since it does not "
+                "apply to user-defined training functions. "
+                "Please remove this argument from your CheckpointConfig."
+            )
+
+        if self.num_to_keep is not None and self.num_to_keep <= 0:
+            raise ValueError(
+                f"Received invalid num_to_keep: {self.num_to_keep}. "
+                "Must be None or an integer >= 1."
+            )
+
+        if self.checkpoint_score_order not in ("max", "min"):
+            raise ValueError(
+                f"Received invalid checkpoint_score_order: {self.checkpoint_score_order}. "
+                "Must be 'max' or 'min'."
+            )
 
 
 @dataclass
@@ -162,12 +239,12 @@ class RunConfig:
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced
             from the Trainable.
-        storage_path: [Beta] Path where all results and checkpoints are persisted.
+        storage_path: Path where all results and checkpoints are persisted.
             Can be a local directory or a destination on cloud storage.
             For multi-node training/tuning runs, this must be set to a
             shared storage location (e.g., S3, NFS).
             This defaults to the local ``~/ray_results`` directory.
-        storage_filesystem: [Beta] A custom filesystem to use for storage.
+        storage_filesystem: A custom filesystem to use for storage.
             If this is provided, `storage_path` should be a path with its
             prefix stripped (e.g., `s3://bucket/path` -> `bucket/path`).
         failure_config: Failure mode configuration.
@@ -244,7 +321,6 @@ class RunConfig:
                 "https://github.com/ray-project/ray/issues/49454"
             )
 
-        # TODO: Create a separate V2 CheckpointConfig class.
         if not isinstance(self.checkpoint_config, CheckpointConfig):
             raise ValueError(
                 f"Invalid `CheckpointConfig` type: {self.checkpoint_config.__class__}. "

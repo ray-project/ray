@@ -293,7 +293,7 @@ message CancelTaskReply {
   bool attempt_succeeded = 2;
 }
 
-message CancelRemoteTaskRequest {
+message RequestOwnerToCancelTaskRequest {
   // Object ID of the remote task that should be killed.
   bytes remote_object_id = 1;
   // Whether to kill the worker.
@@ -302,7 +302,7 @@ message CancelRemoteTaskRequest {
   bool recursive = 3;
 }
 
-message CancelRemoteTaskReply {}
+message RequestOwnerToCancelTaskReply {}
 
 message GetCoreWorkerStatsRequest {
   // The ID of the worker this message is intended for.
@@ -338,10 +338,7 @@ message GetCoreWorkerStatsReply {
   int64 tasks_total = 4;
 }
 
-message LocalGCRequest {
-  // Whether this is triggered by a global gc.
-  bool triggered_by_global_gc = 1;
-}
+message LocalGCRequest {}
 
 message LocalGCReply {}
 
@@ -426,9 +423,8 @@ message NumPendingTasksReply {
 }
 
 message ReportGeneratorItemReturnsRequest {
-  // The intermediate return object that's dynamically
-  // generated from the executor side.
-  repeated ReturnObject dynamic_return_objects = 1;
+  // Object returned from the executor (can be inlined or in plasma).
+  ReturnObject returned_object = 1;
   // The address of the executor.
   Address worker_addr = 2;
   // The index of the task return. It is used to
@@ -524,18 +520,20 @@ service CoreWorkerService {
   rpc GetObjectLocationsOwner(GetObjectLocationsOwnerRequest)
       returns (GetObjectLocationsOwnerReply);
 
-  // Request from the GCS actor manager or actor scheduler that the worker shut down
-  // without completing outstanding work.
-  // Failure: TODO: Never retries
+  // Request from the Raylet that the actor shut down without completing outstanding work.
+  // Failure: Idempotent, does not retry. However requests should only be sent via
+  // KillLocalActor from the raylet which does implement retries
   rpc KillActor(KillActorRequest) returns (KillActorReply);
 
-  // Request from owner worker to executor worker to cancel a task.
-  // Failure: Will retry, TODO: Needs tests for failure behavior.
+  // Request from local raylet to executor worker to cancel a task.
+  // Failure: Idempotent, does not retry. However requests should only be sent via
+  // CancelLocalTask from the raylet which does implement retries
   rpc CancelTask(CancelTaskRequest) returns (CancelTaskReply);
 
   // Request from a worker to the owner worker to issue a cancellation.
   // Failure: Retries, it's idempotent.
-  rpc CancelRemoteTask(CancelRemoteTaskRequest) returns (CancelRemoteTaskReply);
+  rpc RequestOwnerToCancelTask(RequestOwnerToCancelTaskRequest)
+      returns (RequestOwnerToCancelTaskReply);
 
   // From raylet to get metrics from its workers.
   // Failure: Should not fail, always from local raylet.

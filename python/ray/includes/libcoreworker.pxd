@@ -163,6 +163,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_bool no_restart)
         CRayStatus CancelTask(const CObjectID &object_id, c_bool force_kill,
                               c_bool recursive)
+        c_bool IsTaskCanceled(const CTaskID &task_id) const
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)
@@ -409,7 +410,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (void(const CObjectID &) nogil) free_actor_object_callback
         (function[void()]() nogil) initialize_thread_callback
         (CRayStatus() nogil) check_signals
-        (void(c_bool) nogil) gc_collect
+        (void() nogil) gc_collect
         (c_vector[c_string](
             const c_vector[CObjectReference] &) nogil) spill_objects
         (int64_t(

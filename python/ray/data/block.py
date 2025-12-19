@@ -703,8 +703,9 @@ class BlockColumnAccessor:
         Internally, Polars is used to compute row-level hashes even when the original column
         is backed by Pandas or PyArrow.
 
-        :return: A column of 64-bit integer hashes, returned in the same format as the underlying backend
-             (e.g., Pandas Series or PyArrow Array).
+        Returns:
+            A column of 64-bit integer hashes, returned in the same format as the
+            underlying backend (e.g., Pandas Series or PyArrow Array).
         """
         raise NotImplementedError()
 
@@ -716,14 +717,12 @@ class BlockColumnAccessor:
     def dropna(self) -> BlockColumn:
         raise NotImplementedError()
 
-    def is_composed_of_lists(self, types: Optional[Tuple] = None) -> bool:
+    def is_composed_of_lists(self) -> bool:
         """
         Checks whether the column is composed of list-like elements.
 
-        :param types: Optional tuple of backend-specific types to check against.
-                      If not provided, defaults to list-like types appropriate
-                      for the underlying backend (e.g., PyArrow list types).
-        :return: True if the column is made up of list-like values; False otherwise.
+        Returns:
+            True if the column is made up of list-like values; False otherwise.
         """
         raise NotImplementedError()
 

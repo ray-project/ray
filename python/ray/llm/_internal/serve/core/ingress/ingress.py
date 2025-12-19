@@ -2,7 +2,9 @@ import asyncio
 import json
 import sys
 from contextlib import asynccontextmanager
+from enum import Enum
 from typing import (
+    Annotated,
     Any,
     AsyncGenerator,
     Awaitable,
@@ -16,7 +18,7 @@ from typing import (
     Union,
 )
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, Form, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
@@ -29,6 +31,7 @@ from ray.llm._internal.common.utils.lora_utils import (
 from ray.llm._internal.serve.constants import (
     DEFAULT_LLM_ROUTER_HTTP_TIMEOUT,
     DEFAULT_MAX_ONGOING_REQUESTS,
+    DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
 )
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -45,18 +48,22 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     LLMCompletionsResponse,
     LLMEmbeddingsResponse,
     LLMScoreResponse,
+    LLMTranscriptionResponse,
     ModelCard,
     ModelList,
     OpenAIHTTPException,
     ScoreRequest,
     ScoreResponse,
+    TranscriptionRequest,
+    TranscriptionResponse,
+    TranscriptionStreamResponse,
     to_model_metadata,
 )
 from ray.llm._internal.serve.core.ingress.middleware import (
     SetRequestIdMiddleware,
     add_exception_handling_middleware,
 )
-from ray.llm._internal.serve.core.protocol import DeploymentProtocol
+from ray.llm._internal.serve.core.protocol import DeploymentProtocol, RawRequestInfo
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.metrics.fast_api_metrics import (
     add_http_metrics_middleware,
@@ -81,7 +88,23 @@ T = TypeVar("T")
 
 DEFAULT_INGRESS_OPTIONS = {
     "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
+    "autoscaling_config": {
+        "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
+    },
 }
+
+# These methods correspond to functions defined in the LLMEngine class in python/ray/llm/_internal/serve/deployments/llm/llm_engine.py
+class CallMethod(Enum):
+    CHAT = "chat"
+    COMPLETIONS = "completions"
+    TRANSCRIPTIONS = "transcriptions"
+
+
+NON_STREAMING_RESPONSE_TYPES = (
+    ChatCompletionResponse,
+    CompletionResponse,
+    TranscriptionResponse,
+)
 
 
 def _sanitize_chat_completion_request(
@@ -100,7 +123,7 @@ def _sanitize_chat_completion_request(
 
     TODO(seiji): Remove when we update to Pydantic v2.11+ with the fix.
     """
-    from vllm.transformers_utils.tokenizers.mistral import maybe_serialize_tool_calls
+    from vllm.tokenizers.mistral import maybe_serialize_tool_calls
 
     maybe_serialize_tool_calls(request)
 
@@ -108,8 +131,7 @@ def _sanitize_chat_completion_request(
 
 
 StreamResponseType = Union[
-    ChatCompletionStreamResponse,
-    CompletionStreamResponse,
+    ChatCompletionStreamResponse, CompletionStreamResponse, TranscriptionStreamResponse
 ]
 BatchedStreamResponseType = List[StreamResponseType]
 
@@ -122,6 +144,9 @@ DEFAULT_ENDPOINTS = {
     "completions": lambda app: app.post("/v1/completions"),
     "chat": lambda app: app.post("/v1/chat/completions"),
     "embeddings": lambda app: app.post("/v1/embeddings"),
+    "transcriptions": lambda app: app.post(
+        "/v1/audio/transcriptions",
+    ),
     "score": lambda app: app.post("/v1/score"),
 }
 
@@ -216,9 +241,8 @@ def make_fastapi_ingress(
         class_dict[method_name] = decorated_method
 
     # Create new class with the decorated methods in its __dict__.
-    # IMPORTANT: We keep the same __name__ and __qualname__ as the original
-    # class so that make_fastapi_class_based_view can properly identify the routes
-    # (it checks if cls.__qualname__ is in route.endpoint.__qualname__).
+    # We keep the same __name__ and __qualname__ as the original class
+    # so that the new class properly represents the input class.
     new_cls = type(cls.__name__, (cls,), class_dict)
     new_cls.__qualname__ = cls.__qualname__
 
@@ -227,7 +251,7 @@ def make_fastapi_ingress(
 
 
 def _apply_openai_json_format(
-    response: Union[StreamResponseType, BatchedStreamResponseType]
+    response: Union[StreamResponseType, BatchedStreamResponseType],
 ) -> str:
     """Converts the stream response to OpenAI format.
 
@@ -256,7 +280,7 @@ def _apply_openai_json_format(
 
 
 async def _peek_at_generator(
-    gen: AsyncGenerator[T, None]
+    gen: AsyncGenerator[T, None],
 ) -> Tuple[T, AsyncGenerator[T, None]]:
     # Peek at the first element
     first_item = await gen.__anext__()
@@ -399,24 +423,18 @@ class OpenAiIngress(DeploymentProtocol):
 
         return self._configured_serve_handles[model_id]
 
-    async def _get_response(
-        self,
-        *,
-        body: Union[
-            CompletionRequest, ChatCompletionRequest, EmbeddingRequest, ScoreRequest
-        ],
-        call_method: str,
-    ) -> AsyncGenerator[
-        Union[
-            LLMChatResponse,
-            LLMCompletionsResponse,
-            LLMEmbeddingsResponse,
-            LLMScoreResponse,
-        ],
-        None,
-    ]:
-        """Calls the model deployment and returns the stream."""
-        model: str = body.model
+    async def _get_model_id(self, model: Optional[str]) -> str:
+        # Default to the only configured model if no model specified
+        if model is None:
+            if len(self._llm_configs) == 1:
+                model = next(iter(self._llm_configs.keys()))
+            else:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    "Model parameter is required when multiple models are configured. "
+                    f"Available models: {list(self._llm_configs.keys())}",
+                )
+
         base_model_id = get_base_model_id(model)
         if base_model_id not in self._llm_configs:
             raise HTTPException(
@@ -425,14 +443,48 @@ class OpenAiIngress(DeploymentProtocol):
                 f'Could not find base model with ID "{base_model_id}".',
             )
 
-        model_handle = self._get_configured_serve_handle(model)
+        # Return original model ID so multiplexed routing works correctly.
+        return model
+
+    async def _get_response(
+        self,
+        *,
+        body: Union[
+            CompletionRequest,
+            ChatCompletionRequest,
+            EmbeddingRequest,
+            TranscriptionRequest,
+            ScoreRequest,
+        ],
+        call_method: str,
+        raw_request: Optional[Request] = None,
+    ) -> AsyncGenerator[
+        Union[
+            LLMChatResponse,
+            LLMCompletionsResponse,
+            LLMEmbeddingsResponse,
+            LLMTranscriptionResponse,
+            LLMScoreResponse,
+        ],
+        None,
+    ]:
+        """Calls the model deployment and returns the stream."""
+        model_id = await self._get_model_id(body.model)
+        model_handle = self._get_configured_serve_handle(model_id)
 
         # TODO(seiji): Remove when we update to Pydantic v2.11+ with the fix
         # for tool calling ValidatorIterator serialization issue.
         if isinstance(body, ChatCompletionRequest):
             body = _sanitize_chat_completion_request(body)
 
-        async for response in getattr(model_handle, call_method).remote(body):
+        # Convert Starlette request to serializable RawRequestInfo
+        raw_request_info: Optional[RawRequestInfo] = None
+        if raw_request is not None:
+            raw_request_info = RawRequestInfo.from_starlette_request(raw_request)
+
+        async for response in getattr(model_handle, call_method).remote(
+            body, raw_request_info
+        ):
             yield response
 
     async def model(self, model_id: str) -> Optional[ModelCard]:
@@ -497,16 +549,17 @@ class OpenAiIngress(DeploymentProtocol):
         return model_data
 
     async def _process_llm_request(
-        self, body: Union[CompletionRequest, ChatCompletionRequest], is_chat: bool
+        self,
+        body: Union[CompletionRequest, ChatCompletionRequest, TranscriptionRequest],
+        call_method: str,
+        raw_request: Optional[Request] = None,
     ) -> Response:
-        NoneStreamingResponseType = (
-            ChatCompletionResponse if is_chat else CompletionResponse
-        )
-        call_method = "chat" if is_chat else "completions"
 
         async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
 
-            gen = self._get_response(body=body, call_method=call_method)
+            gen = self._get_response(
+                body=body, call_method=call_method, raw_request=raw_request
+            )
 
             # In streaming with batching enabled, this first response can be a list of chunks.
             initial_response, gen = await _peek_at_generator(gen)
@@ -523,7 +576,7 @@ class OpenAiIngress(DeploymentProtocol):
                     type=first_chunk.error.type,
                 )
 
-            if isinstance(first_chunk, NoneStreamingResponseType):
+            if isinstance(first_chunk, NON_STREAMING_RESPONSE_TYPES):
                 # Not streaming, first chunk should be a single response
                 return JSONResponse(content=first_chunk.model_dump())
 
@@ -534,42 +587,50 @@ class OpenAiIngress(DeploymentProtocol):
                 openai_stream_generator, media_type="text/event-stream"
             )
 
-    async def completions(self, body: CompletionRequest) -> Response:
+    async def completions(self, body: CompletionRequest, request: Request) -> Response:
         """Given a prompt, the model will return one or more predicted completions,
         and can also return the probabilities of alternative tokens at each position.
 
         Args:
-            body: The CompletionRequest object.
+            body: The completion request.
+            request: The raw FastAPI request object.
 
         Returns:
             A response object with completions.
         """
-        return await self._process_llm_request(body, is_chat=False)
+        return await self._process_llm_request(
+            body, call_method=CallMethod.COMPLETIONS.value, raw_request=request
+        )
 
-    async def chat(self, body: ChatCompletionRequest) -> Response:
+    async def chat(self, body: ChatCompletionRequest, request: Request) -> Response:
         """Given a prompt, the model will return one or more predicted completions,
         and can also return the probabilities of alternative tokens at each position.
 
         Args:
-            body: The ChatCompletionRequest object.
+            body: The chat completion request.
+            request: The raw FastAPI request object.
 
         Returns:
             A response object with completions.
         """
+        return await self._process_llm_request(
+            body, call_method=CallMethod.CHAT.value, raw_request=request
+        )
 
-        return await self._process_llm_request(body, is_chat=True)
-
-    async def embeddings(self, body: EmbeddingRequest) -> Response:
+    async def embeddings(self, body: EmbeddingRequest, request: Request) -> Response:
         """Create embeddings for the provided input.
 
         Args:
-            body: The EmbeddingRequest object.
+            body: The embedding request.
+            request: The raw FastAPI request object.
 
         Returns:
             A response object with embeddings.
         """
         async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
-            results = self._get_response(body=body, call_method="embeddings")
+            results = self._get_response(
+                body=body, call_method="embeddings", raw_request=request
+            )
             result = await results.__anext__()
             if isinstance(result, ErrorResponse):
                 raise OpenAIHTTPException(
@@ -581,20 +642,42 @@ class OpenAiIngress(DeploymentProtocol):
             if isinstance(result, EmbeddingResponse):
                 return JSONResponse(content=result.model_dump())
 
-    async def score(self, body: ScoreRequest) -> Response:
+    # Annotated[..., Form()] is wrapper that is used to handle multiple form data, which is how audio is sent in transcription requests.
+    # vLLM implementation for handling transcription requests: https://github.com/vllm-project/vllm/blob/0825197bee8dea547f2ab25f48afd8aea0cd2578/vllm/entrypoints/openai/api_server.py#L839.
+    async def transcriptions(
+        self, body: Annotated[TranscriptionRequest, Form()], request: Request
+    ) -> Response:
+        """Create transcription for the provided audio input.
+
+        Args:
+            body: The TranscriptionRequest object.
+            request: The raw FastAPI request object.
+
+        Returns:
+            A response object with transcriptions.
+        """
+
+        return await self._process_llm_request(
+            body, call_method=CallMethod.TRANSCRIPTIONS.value, raw_request=request
+        )
+
+    async def score(self, body: ScoreRequest, request: Request) -> Response:
         """Create scores for the provided text pairs.
 
         Note: This is a vLLM specific endpoint.
 
         Args:
             body: The score request containing input text pairs to score.
+            request: The raw FastAPI request object.
 
         Returns:
             A response object with scores.
         """
 
         async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
-            results = self._get_response(body=body, call_method="score")
+            results = self._get_response(
+                body=body, call_method="score", raw_request=request
+            )
             result = await results.__anext__()
             if isinstance(result, ErrorResponse):
                 raise OpenAIHTTPException(

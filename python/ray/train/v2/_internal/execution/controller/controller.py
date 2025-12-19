@@ -9,6 +9,7 @@ import pandas as pd
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray.exceptions import AsyncioActorExit
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
@@ -42,6 +43,7 @@ from ray.train.v2._internal.execution.controller.state import (
     RestartingState,
     RunningState,
     SchedulingState,
+    ShuttingDownState,
     TrainControllerState,
 )
 from ray.train.v2._internal.execution.failure_handling import (
@@ -67,6 +69,7 @@ from ray.train.v2.api.exceptions import (
     ControllerError,
     TrainingFailedError,
 )
+from ray.train.v2.api.report_config import CheckpointConsistencyMode
 from ray.train.v2.api.result import Result
 
 if TYPE_CHECKING:
@@ -251,8 +254,10 @@ class TrainController:
                 ),
             )
         elif failure_decision == FailureDecision.RAISE:
-            next_state = ErroredState(
-                training_failed_error=training_failed_error,
+            next_state = ShuttingDownState(
+                next_state=ErroredState(
+                    training_failed_error=training_failed_error,
+                ),
             )
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
@@ -271,6 +276,12 @@ class TrainController:
                 self._health_check_interval_s - time_since_last_poll, 0
             )
             await asyncio.sleep(remaining_time)
+            if self.get_state().is_terminal():
+                logger.debug(
+                    f"Controller is unexpectedly in terminal state {self.get_state()} after "
+                    "sleeping and before polling workers. Exiting actor."
+                )
+                ray.actor.exit_actor()
 
         status = self._worker_group.poll_status(timeout=self._health_check_interval_s)
         self._latest_poll_time = time_monotonic()
@@ -292,15 +303,26 @@ class TrainController:
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
         scaling_config = self._train_run_context.scaling_config
 
-        # Check for `bundle_label_selector` to influence WorkerGroup scheduling.
-        bundle_label_selector = None
+        # Check for `label_selector` to influence WorkerGroup scheduling.
+        label_selector = None
+        if isinstance(scaling_config.label_selector, list):
+            label_selector = scaling_config.label_selector[:num_workers]
+        elif isinstance(scaling_config.label_selector, dict):
+            label_selector = [
+                scaling_config.label_selector.copy() for _ in range(num_workers)
+            ]
         try:
             for callback in self._controller_callbacks:
                 selector = callback.on_controller_start_worker_group(
                     scaling_config=scaling_config, num_workers=num_workers
                 )
                 if selector:
-                    bundle_label_selector = selector
+                    if label_selector:
+                        logger.warning(
+                            f"Overriding `ScalingConfig.label_selector` {label_selector} "
+                            f"with label_selector returned by user-specified callback {selector}"
+                        )
+                    label_selector = [selector.copy() for _ in range(num_workers)]
                     break
         except Exception as e:
             return ControllerError(e)
@@ -311,7 +333,7 @@ class TrainController:
             num_workers=num_workers,
             resources_per_worker=resources_per_worker,
             placement_strategy=placement_strategy,
-            bundle_label_selector=bundle_label_selector,
+            label_selector=label_selector,
         )
         try:
             self._worker_group = self.worker_group_cls.create(
@@ -410,6 +432,8 @@ class TrainController:
         elif isinstance(controller_state, RunningState):
             try:
                 worker_group_status: WorkerGroupPollStatus = await self._poll_workers()
+            except AsyncioActorExit:
+                raise
             except Exception as e:
                 training_failed_error = ControllerError(e)
                 failure_decision = self._failure_policy.make_decision(
@@ -423,7 +447,9 @@ class TrainController:
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
                     previous_state=controller_state,
-                    next_state=FinishedState(),
+                    next_state=ShuttingDownState(
+                        next_state=FinishedState(),
+                    ),
                 )
             if worker_group_status.errors:
                 worker_group_error = worker_group_status.get_worker_group_error()
@@ -461,6 +487,14 @@ class TrainController:
                     scaling_decision=controller_state.scaling_decision
                 ),
             )
+        elif isinstance(controller_state, ShuttingDownState):
+            # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
+            self._shutdown()
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=controller_state,
+                next_state=controller_state.next_state,
+            )
         else:
             raise ValueError(f"Unexpected controller state: {controller_state}")
 
@@ -497,9 +531,6 @@ class TrainController:
         """Run the main control loop. Exits when training is finished or errored."""
         while not self.get_state().is_terminal():
             await self._run_control_loop_iteration()
-
-        # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
-        self._shutdown()
 
         # Call after_controller_finish with the final result
         result = self._build_result()
@@ -573,8 +604,10 @@ class TrainController:
         return None
 
     async def get_all_reported_checkpoints(
-        self, current_report_index: int
+        self,
+        current_report_index: int,
+        consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
     ) -> List["ReportedCheckpoint"]:
         return await self._checkpoint_manager.get_all_reported_checkpoints(
-            current_report_index
+            current_report_index, consistency_mode
         )

@@ -1,10 +1,11 @@
 import abc
-from typing import TYPE_CHECKING, AsyncGenerator, Union
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Optional, Union
 
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
     LLMConfig,
 )
+from ray.llm._internal.serve.core.protocol import RawRequestInfo
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -15,6 +16,8 @@ if TYPE_CHECKING:
         EmbeddingRequest,
         EmbeddingResponse,
         ErrorResponse,
+        TranscriptionRequest,
+        TranscriptionResponse,
     )
 
 
@@ -37,12 +40,10 @@ class LLMEngine(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def reset_prefix_cache(self) -> None:
-        """Reset the prefix cache of the underlying engine"""
-
-    @abc.abstractmethod
     async def chat(
-        self, request: "ChatCompletionRequest"
+        self,
+        request: "ChatCompletionRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, "ChatCompletionResponse", "ErrorResponse"], None]:
         """Run a ChatCompletion with the engine.
 
@@ -56,6 +57,8 @@ class LLMEngine(abc.ABC):
 
         Args:
             request: The chat completion request.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
 
         Yields:
             Union[str, ChatCompletionResponse, ErrorResponse]: A string representing a chunk of the response, a ChatCompletionResponse object, or an ErrorResponse object.
@@ -67,7 +70,9 @@ class LLMEngine(abc.ABC):
 
     @abc.abstractmethod
     async def completions(
-        self, request: "CompletionRequest"
+        self,
+        request: "CompletionRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, "CompletionResponse", "ErrorResponse"], None]:
         """Run a Completion with the engine.
 
@@ -85,6 +90,8 @@ class LLMEngine(abc.ABC):
 
         Args:
             request: The completion request.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
 
         Yields:
             Union[str, CompletionResponse, ErrorResponse]: A string
@@ -98,7 +105,9 @@ class LLMEngine(abc.ABC):
 
     @abc.abstractmethod
     async def embeddings(
-        self, request: "EmbeddingRequest"
+        self,
+        request: "EmbeddingRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union["EmbeddingResponse", "ErrorResponse"], None]:
         """Run an Embedding with the engine.
 
@@ -112,9 +121,44 @@ class LLMEngine(abc.ABC):
 
         Args:
             request: The embedding request.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
 
         Returns:
             An async generator that yields EmbeddingResponse objects or ErrorResponse objects, and returns None when the generator is done.
+        """
+        pass
+
+    @abc.abstractmethod
+    async def transcriptions(
+        self,
+        request: "TranscriptionRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[str, "TranscriptionResponse", "ErrorResponse"], None]:
+        """Run a Transcription with the engine.
+
+        Similar to chat and completion, this method is an async generator,
+        so it yields chunks of response and when it is done, it returns None.
+        We have the following convention:
+
+        * In case of streaming, yield a string representing data:
+        <json_str>\n\n for each chunk. This should be already openAI compatible,
+        so the higher level can just yield it to the client.
+        * In case of non-streaming, yield a single object of type TranscriptionResponse.
+        * In case of error, yield a single object of type ErrorResponse.
+
+        Args:
+            request: The transcription request.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
+
+        Yields:
+            Union[str, TranscriptionResponse, ErrorResponse]: A string
+            representing a chunk of the response, a TranscriptionResponse object,
+            or an ErrorResponse object.
+
+        Returns:
+            None when the generator is done.
         """
         pass
 
@@ -134,14 +178,63 @@ class LLMEngine(abc.ABC):
     # to sleep during training and wake up during rollouts.
     ##############################################################
 
-    async def sleep(self):
-        """Puts the engine to sleep"""
+    @abc.abstractmethod
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the underlying engine"""
+
+    async def sleep(self, **kwargs: Any) -> None:
+        """Put the engine to sleep.
+
+        The caller should guarantee that no requests are being processed
+        during the sleep period, before `wakeup` is called.
+
+        Args:
+            **kwargs: Engine-specific sleep options. See the concrete engine
+                implementation for available options.
+        """
         pass
 
-    async def wakeup(self):
-        """Wakes up the engine"""
+    async def wakeup(self, **kwargs: Any) -> None:
+        """Wake up the engine from sleep mode.
+
+        Args:
+            **kwargs: Engine-specific wakeup options. See the concrete engine
+                implementation for available options.
+        """
         pass
 
-    def shutdown(self):
+    async def is_sleeping(self) -> bool:
+        """Check whether the engine is currently sleeping.
+
+        Returns:
+            True if the engine is sleeping, False otherwise.
+        """
+        return False
+
+    async def pause(self, **kwargs: Any) -> None:
+        """Pause the engine.
+
+        Args:
+            **kwargs: Engine-specific pause options. Passed through to the engine.
+        """
+        pass
+
+    async def resume(self, **kwargs: Any) -> None:
+        """Resume the engine.
+
+        Args:
+            **kwargs: Engine-specific resume options. Passed through to the engine.
+        """
+        pass
+
+    async def is_paused(self) -> bool:
+        """Check whether the engine is currently paused.
+
+        Returns:
+            True if the engine is paused, False otherwise.
+        """
+        return False
+
+    def shutdown(self) -> None:
         """Shuts down the engine"""
         pass

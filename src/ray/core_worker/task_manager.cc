@@ -561,7 +561,9 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
     // will choose the right raylet for any queued dependent tasks.
     reference_counter_.UpdateObjectPinnedAtRaylet(object_id, worker_node_id);
     // Mark it as in plasma with a dummy object.
-    in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id);
+    in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                         object_id,
+                         reference_counter_.HasReference(object_id));
   } else {
     // NOTE(swang): If a direct object was promoted to plasma, then we do not
     // record the node ID that it was pinned at, which means that we will not
@@ -595,7 +597,7 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
         return s;
       }
     } else {
-      in_memory_store_.Put(object, object_id);
+      in_memory_store_.Put(object, object_id, reference_counter_.HasReference(object_id));
       direct_return = true;
     }
   }
@@ -764,7 +766,8 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
     // Put a dummy object at the end of the stream. We don't need to check if
     // the object should be stored in plasma because the end of the stream is a
     // fake ObjectRef that should never be read by the application.
-    in_memory_store_.Put(error, last_object_id);
+    in_memory_store_.Put(
+        error, last_object_id, reference_counter_.HasReference(last_object_id));
   }
 }
 
@@ -808,11 +811,11 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     execution_signal_callback(Status::NotFound("Stream is already deleted"), -1);
     return false;
   }
-
-  // TODO(sang): Support the regular return values as well.
   size_t num_objects_written = 0;
-  for (const auto &return_object : request.dynamic_return_objects()) {
-    const auto object_id = ObjectID::FromBinary(return_object.object_id());
+
+  if (request.has_returned_object()) {
+    const rpc::ReturnObject &returned_object = request.returned_object();
+    const auto object_id = ObjectID::FromBinary(returned_object.object_id());
 
     RAY_LOG(DEBUG) << "Write an object " << object_id
                    << " to the object ref stream of id " << generator_id;
@@ -829,7 +832,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     reference_counter_.UpdateObjectPendingCreation(object_id, false);
     StatusOr<bool> put_res =
         HandleTaskReturn(object_id,
-                         return_object,
+                         returned_object,
                          NodeID::FromBinary(request.worker_addr().node_id()),
                          /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
     if (!put_res.ok()) {
@@ -1159,7 +1162,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
         const auto node_info =
             gcs_client_->Nodes().GetNodeAddressAndLiveness(task_entry.GetNodeId(),
                                                            /*filter_dead_nodes=*/false);
-        is_preempted = node_info != nullptr && node_info->has_death_info() &&
+        is_preempted = node_info && node_info->has_death_info() &&
                        node_info->death_info().reason() ==
                            rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED;
       }
@@ -1513,6 +1516,15 @@ void TaskManager::MarkTaskNoRetry(const TaskID &task_id) {
   MarkTaskNoRetryInternal(task_id, /*canceled=*/false);
 }
 
+bool TaskManager::IsTaskCanceled(const TaskID &task_id) const {
+  absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return false;
+  }
+  return it->second.is_canceled_;
+}
+
 absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
     const TaskID &task_id, bool *first_execution_out) const {
   bool first_execution = false;
@@ -1552,10 +1564,11 @@ void TaskManager::MarkTaskReturnObjectsFailed(
       if (!s.ok()) {
         RAY_LOG(WARNING).WithField(object_id)
             << "Failed to put error object in plasma: " << s;
-        in_memory_store_.Put(error, object_id);
+        in_memory_store_.Put(
+            error, object_id, reference_counter_.HasReference(object_id));
       }
     } else {
-      in_memory_store_.Put(error, object_id);
+      in_memory_store_.Put(error, object_id, reference_counter_.HasReference(object_id));
     }
   }
   if (spec.ReturnsDynamic()) {
@@ -1565,10 +1578,13 @@ void TaskManager::MarkTaskReturnObjectsFailed(
         if (!s.ok()) {
           RAY_LOG(WARNING).WithField(dynamic_return_id)
               << "Failed to put error object in plasma: " << s;
-          in_memory_store_.Put(error, dynamic_return_id);
+          in_memory_store_.Put(error,
+                               dynamic_return_id,
+                               reference_counter_.HasReference(dynamic_return_id));
         }
       } else {
-        in_memory_store_.Put(error, dynamic_return_id);
+        in_memory_store_.Put(
+            error, dynamic_return_id, reference_counter_.HasReference(dynamic_return_id));
       }
     }
   }
@@ -1595,10 +1611,14 @@ void TaskManager::MarkTaskReturnObjectsFailed(
         if (!s.ok()) {
           RAY_LOG(WARNING).WithField(generator_return_id)
               << "Failed to put error object in plasma: " << s;
-          in_memory_store_.Put(error, generator_return_id);
+          in_memory_store_.Put(error,
+                               generator_return_id,
+                               reference_counter_.HasReference(generator_return_id));
         }
       } else {
-        in_memory_store_.Put(error, generator_return_id);
+        in_memory_store_.Put(error,
+                             generator_return_id,
+                             reference_counter_.HasReference(generator_return_id));
       }
     }
   }
@@ -1781,7 +1801,7 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
 
 void TaskManager::RecordMetrics() {
   absl::MutexLock lock(&mu_);
-  ray::stats::STATS_total_lineage_bytes.Record(total_lineage_footprint_bytes_);
+  total_lineage_bytes_gauge_.Record(total_lineage_footprint_bytes_);
   task_counter_.FlushOnChangeCallbacks();
 }
 

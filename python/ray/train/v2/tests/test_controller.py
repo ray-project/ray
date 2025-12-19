@@ -20,6 +20,7 @@ from ray.train.v2._internal.execution.controller.state import (
     RestartingState,
     RunningState,
     SchedulingState,
+    ShuttingDownState,
     TrainControllerState,
 )
 from ray.train.v2._internal.execution.failure_handling import FailureDecision
@@ -172,6 +173,8 @@ async def test_failure_handling():
 
     DummyWorkerGroup.set_poll_failure(RuntimeError("Simulated poll failure"))
     failure_policy.queue_decision(FailureDecision.RAISE)
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), ShuttingDownState)
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), ErroredState)
 
@@ -328,9 +331,11 @@ async def test_controller_callback():
     await controller._run_control_loop_iteration()
     assert callback.failure_decision_called
     assert isinstance(callback.latest_state_update[0], RunningState)
-    assert isinstance(callback.latest_state_update[1], ErroredState)
+    assert isinstance(callback.latest_state_update[1], ShuttingDownState)
 
-    controller._shutdown()
+    await controller._run_control_loop_iteration()
+    assert isinstance(callback.latest_state_update[0], ShuttingDownState)
+    assert isinstance(callback.latest_state_update[1], ErroredState)
     assert callback.shutdown_called
 
 

@@ -26,7 +26,10 @@ from ray.llm._internal.common.utils.cloud_utils import (
     CloudMirrorConfig,
     is_remote_path,
 )
-from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
+from ray.llm._internal.common.utils.download_utils import (
+    STREAMING_LOAD_FORMATS,
+    NodeModelDownloadable,
+)
 from ray.llm._internal.common.utils.import_utils import load_class, try_import
 from ray.llm._internal.serve.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
@@ -169,6 +172,13 @@ class LLMConfig(BaseModelExtended):
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
     )
 
+    use_cpu: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Whether to use CPU for model inference. If not set, Ray will try to infer based on the available GPU resources. If set to True the model will run on CPU."
+        ),
+    )
+
     placement_group_config: Optional[Dict[str, Any]] = Field(
         default=None,
         description=(
@@ -297,6 +307,10 @@ class LLMConfig(BaseModelExtended):
         assert engine_config is not None
         pg = engine_config.get_or_create_pg()
         runtime_env = engine_config.get_runtime_env_with_local_env_vars()
+        if self.engine_kwargs.get("load_format", None) in STREAMING_LOAD_FORMATS:
+            worker_node_download_model = NodeModelDownloadable.NONE
+        else:
+            worker_node_download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
 
         # Create new instance
         if isinstance(self.callback_config.callback_class, str):
@@ -308,7 +322,7 @@ class LLMConfig(BaseModelExtended):
             raise_error_on_callback=self.callback_config.raise_error_on_callback,
             llm_config=self,
             ctx_kwargs={
-                "worker_node_download_model": NodeModelDownloadable.MODEL_AND_TOKENIZER,
+                "worker_node_download_model": worker_node_download_model,
                 "placement_group": pg,
                 "runtime_env": runtime_env,
             },

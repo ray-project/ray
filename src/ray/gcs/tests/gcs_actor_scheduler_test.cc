@@ -31,6 +31,7 @@
 #include "ray/gcs/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
@@ -111,6 +112,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         NodeResources(),
         /*is_node_available_fn=*/
         [](auto) { return true; },
+        fake_resource_usage_gauge_,
         /*is_local_node_with_raylet=*/false);
     counter.reset(
         new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
@@ -148,6 +150,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         },
         *raylet_client_pool_,
         *worker_client_pool_,
+        fake_scheduler_placement_time_ms_histogram_,
         /*normal_task_resources_changed_callback=*/
         [gcs_resource_manager](const NodeID &node_id,
                                const rpc::ResourcesData &resources) {
@@ -210,6 +213,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   observability::FakeRayEventRecorder fake_ray_event_recorder_;
+  ray::observability::FakeGauge fake_resource_usage_gauge_;
   std::unique_ptr<raylet::LocalLeaseManagerInterface> local_lease_manager_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::shared_ptr<ClusterLeaseManager> cluster_lease_manager_;
@@ -221,6 +225,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
+  ray::observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
   NodeID local_node_id_;
 };
 

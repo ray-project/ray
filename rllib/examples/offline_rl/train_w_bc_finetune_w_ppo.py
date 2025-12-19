@@ -74,8 +74,8 @@ from torch import nn
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import (
-    COMPONENT_LEARNER_GROUP,
     COMPONENT_LEARNER,
+    COMPONENT_LEARNER_GROUP,
     COMPONENT_RL_MODULE,
 )
 from ray.rllib.core.columns import Columns
@@ -84,15 +84,15 @@ from ray.rllib.core.models.configs import MLPEncoderConfig, MLPHeadConfig
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.core.rl_module.torch import TorchRLModule
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
-)
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    run_rllib_example_script_experiment,
 )
 
 parser = add_rllib_example_script_args()
@@ -191,7 +191,7 @@ if __name__ == "__main__":
     # Define the data paths for our CartPole large dataset.
     base_path = Path(__file__).parents[2]
     assert base_path.is_dir(), base_path
-    data_path = base_path / "tests/data/cartpole/cartpole-v1_large"
+    data_path = base_path / "offline/tests/data/cartpole/cartpole-v1_large"
     assert data_path.is_dir(), data_path
     print(f"data_path={data_path}")
 

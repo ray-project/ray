@@ -4,7 +4,6 @@ steps:
     label: "wanda: core binary parts py{{matrix}} (x86_64)"
     wanda: ci/docker/ray-core.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -12,14 +11,17 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: ""
+      HOSTTYPE: "x86_64"
+      MANYLINUX_VERSION: "251216.3835fc5"
     tags: release_wheels
-    depends_on: manylinux
 
   - name: ray-dashboard-build
     label: "wanda: dashboard"
     wanda: ci/docker/ray-dashboard.wanda.yaml
+    env:
+      HOSTTYPE: "x86_64"
+      MANYLINUX_VERSION: "251216.3835fc5"
     tags: release_wheels
-    depends_on: manylinux
 
   - name: ray-java-build
     label: "wanda: java build (x86_64)"
@@ -30,7 +32,8 @@ steps:
       - oss
     env:
       ARCH_SUFFIX: ""
-    depends_on: manylinux
+      HOSTTYPE: "x86_64"
+      MANYLINUX_VERSION: "251216.3835fc5"
 
   - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
     key: linux_wheels
@@ -42,13 +45,12 @@ steps:
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64 --upload
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
       - "3.13"
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
 
   - label: ":tapioca: build: jar"
@@ -61,20 +63,8 @@ steps:
       - ./ci/build/build-manylinux-ray.sh
       - ./ci/build/build-manylinux-jar.sh
       - ./ci/build/copy_build_artifacts.sh jar
-    depends_on: manylinux
-    job_env: manylinux
-
-  - label: ":tapioca: build: doc"
-    key: doc_build
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci/doc:cmd_build
-    depends_on: docbuild
-    job_env: docbuild-py3.12
-    tags:
-      - oss
-      - doc
-      - skip-on-premerge
+    depends_on: manylinux-x86_64
+    job_env: manylinux-x86_64
 
   - label: ":tapioca: build: ray py{{matrix}} docker (x86_64)"
     key: ray_images
@@ -89,15 +79,15 @@ steps:
         --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
         --platform cu12.4.1-cudnn --platform cu12.5.1-cudnn
         --platform cu12.6.3-cudnn --platform cu12.8.1-cudnn
+        --platform cu12.9.1-cudnn
         --platform cpu
         --image-type ray --upload
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
       - raycudabase
       - raycpubase
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -115,15 +105,15 @@ steps:
         --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
         --platform cu12.4.1-cudnn --platform cu12.5.1-cudnn
         --platform cu12.6.3-cudnn --platform cu12.8.1-cudnn
+        --platform cu12.9.1-cudnn
         --platform cpu
         --image-type ray-extra --upload
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
       - raycpubaseextra
       - raycudabaseextra
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -138,7 +128,7 @@ steps:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
         --platform cu12.8.1-cudnn --image-type ray-llm --upload
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
       - ray-llmbase
     matrix:
@@ -154,7 +144,7 @@ steps:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
         --platform cu12.8.1-cudnn --image-type ray-llm-extra --upload
     depends_on:
-      - manylinux
+      - manylinux-x86_64
       - forge
       - ray-llmbaseextra
     matrix:
@@ -168,8 +158,8 @@ steps:
     instance_type: medium
     soft_fail: true
     commands:
-      - export WHEEL_URL="https://files.pythonhosted.org/packages/7e/7c/3544cca730265bb6f7a4900b7b7018c08ce5ec89bf7b6102901fe0bcd67b/ray-2.44.1-cp39-cp39-manylinux2014_x86_64.whl"
-      - export CPP_WHEEL_URL="https://files.pythonhosted.org/packages/50/ae/c094818fd526bfb0a361a76bda5708a73cbc888b51edfc7d6aab9de837cd/ray_cpp-2.44.1-cp39-cp39-manylinux2014_x86_64.whl"
+      - export WHEEL_URL="https://files.pythonhosted.org/packages/93/f1/9108c4f878e3cacb767b7dfbbc3a26537c79ab516d2530b9f63b558ba4bb/ray-2.44.1-cp310-cp310-manylinux2014_x86_64.whl"
+      - export CPP_WHEEL_URL="https://files.pythonhosted.org/packages/d3/cf/ef6d5a9a688001f73e4749c48f840455ecec11acde982eb70f387b0dc445/ray_cpp-2.44.1-cp310-cp310-manylinux2014_x86_64.whl"
       - bash build-docker.sh --progress-plain
       - docker run -ti --rm rayproject/ray:dev python -c "import ray; print(ray.__version__)"
     depends_on:

@@ -548,6 +548,7 @@ def test_cold_start_time(serve_instance):
         autoscaling_config={
             "min_replicas": 0,
             "max_replicas": 1,
+            "metrics_interval_s": 0.1,
             "look_back_period_s": 0.2,
         },
     )
@@ -965,7 +966,7 @@ def test_e2e_preserve_prev_replicas(serve_instance_with_signal):
             downscale_delay_s=600,
             upscale_delay_s=0,
             metrics_interval_s=1,
-            look_back_period_s=1,
+            look_back_period_s=2,
         ),
     )
     def scaler():
@@ -1029,7 +1030,7 @@ def test_e2e_preserve_prev_replicas(serve_instance_with_signal):
             downscale_delay_s=600,
             upscale_delay_s=600,
             metrics_interval_s=1,
-            look_back_period_s=1,
+            look_back_period_s=2,
         )
     )
     handle = serve.run(scaler.bind())
@@ -1080,7 +1081,7 @@ app = g.bind()
                     "downscale_delay_s": 600,
                     "upscale_delay_s": 0,
                     "metrics_interval_s": 1,
-                    "look_back_period_s": 1,
+                    "look_back_period_s": 2,
                 },
             }
         ],
@@ -1919,7 +1920,7 @@ class TestAppLevelAutoscalingPolicy:
         client.deploy_apps(
             ServeDeploySchema.parse_obj({"applications": [config_template]})
         )
-
+        wait_for_condition(check_running, timeout=15)
         wait_for_condition(check_num_replicas_eq, name="A", target=1)
         hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
         results = [hA.remote() for _ in range(120)]

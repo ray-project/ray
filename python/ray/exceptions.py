@@ -138,12 +138,16 @@ class RayTaskError(RayError):
         try:
             pickle.dumps(cause)
         except (pickle.PicklingError, TypeError) as e:
+            err_type = f"{cause.__class__.__module__}.{cause.__class__.__name__}"
+
             err_msg = (
-                "The original cause of the RayTaskError"
-                f" ({self.cause.__class__}) isn't serializable: {e}."
-                " Overwriting the cause to a RayError."
+                f"Exception {err_type} isn't serializable: {e}.\n"
+                f"Original exception details:\n{traceback_str}"
             )
-            logger.warning(err_msg)
+
+            logger.exception(
+                f"The original cause of the RayTaskError ({err_type}) isn't serializable."
+            )
             self.cause = RayError(err_msg)
 
         # BaseException implements a __reduce__ method that returns
@@ -475,6 +479,49 @@ class RaySystemError(RayError):
         if self.traceback_str:
             error_msg += f"\ntraceback: {self.traceback_str}"
         return error_msg
+
+
+@PublicAPI
+class AuthenticationError(RayError):
+    """Indicates that an authentication error occurred.
+
+    Most commonly, this is caused by a missing or mismatching token set on the client
+    (e.g., a Ray CLI command interacting with a remote cluster).
+
+    Only applicable when `RAY_AUTH_MODE` is not set to `disabled`.
+    """
+
+    def __init__(self, message: str):
+        self.message = message
+
+        # Always hide traceback for cleaner output
+        self.__suppress_context__ = True
+        super().__init__(message)
+
+    def __str__(self) -> str:
+        # Check if RAY_AUTH_MODE is set to token and add a heads-up if not
+        auth_mode_note = ""
+
+        from ray._private.authentication.authentication_utils import (
+            get_authentication_mode_name,
+        )
+        from ray._raylet import AuthenticationMode, get_authentication_mode
+
+        current_mode = get_authentication_mode()
+        if current_mode != AuthenticationMode.TOKEN:
+            mode_name = get_authentication_mode_name(current_mode)
+            auth_mode_note = (
+                f" Note: RAY_AUTH_MODE is currently '{mode_name}' (not 'token')."
+            )
+
+        help_text = (
+            " Ensure that the token for the cluster is available in a local file (e.g., ~/.ray/auth_token or via "
+            "RAY_AUTH_TOKEN_PATH) or as the `RAY_AUTH_TOKEN` environment variable. "
+            "To generate a token for local development, use `ray get-auth-token --generate` "
+            "For remote clusters, ensure that the token is propagated to all nodes of the cluster when token authentication is enabled. "
+            "For more information, see: https://docs.ray.io/en/latest/ray-security/token-auth.html"
+        )
+        return self.message + "." + auth_mode_note + help_text
 
 
 @DeveloperAPI
@@ -933,6 +980,24 @@ class UnserializableException(RayError):
         )
 
 
+@DeveloperAPI
+class ActorAlreadyExistsError(ValueError, RayError):
+    """Raised when a named actor already exists.
+
+    Note that this error is not only a subclass of RayError, but also a subclass of ValueError, to maintain backward compatibility.
+
+    Args:
+        error_message: The error message that contains information about the actor name and namespace.
+    """
+
+    def __init__(self, error_message: str):
+        super().__init__(error_message)
+        self.error_message = error_message
+
+    def __str__(self):
+        return self.error_message
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -963,4 +1028,6 @@ RAY_EXCEPTION_TYPES = [
     OufOfBandObjectRefSerializationException,
     RayCgraphCapacityExceeded,
     UnserializableException,
+    ActorAlreadyExistsError,
+    AuthenticationError,
 ]

@@ -16,6 +16,7 @@ from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     handle_num_replicas_auto,
+    prepare_imperative_http_options,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
@@ -32,6 +33,7 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
     Default,
+    copy_class_metadata,
     ensure_serialization_context,
     extract_self_if_method_call,
     validate_route_prefix,
@@ -39,7 +41,6 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import (
     AutoscalingConfig,
-    DeploymentMode,
     HTTPOptions,
     ProxyLocation,
     RequestRouterConfig,
@@ -96,20 +97,7 @@ def start(
         logging_config: logging config options for the serve component (
             controller & proxy).
     """
-    if proxy_location is None:
-        if http_options is None:
-            http_options = HTTPOptions(location=DeploymentMode.EveryNode)
-    else:
-        if http_options is None:
-            http_options = HTTPOptions()
-        elif isinstance(http_options, dict):
-            http_options = HTTPOptions(**http_options)
-
-        if isinstance(proxy_location, str):
-            proxy_location = ProxyLocation(proxy_location)
-
-        http_options.location = ProxyLocation._to_deployment_mode(proxy_location)
-
+    http_options = prepare_imperative_http_options(proxy_location, http_options)
     _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
@@ -322,7 +310,7 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
                     else:
                         cls.__del__(self)
 
-        ASGIIngressWrapper.__name__ = cls.__name__
+        copy_class_metadata(ASGIIngressWrapper, cls)
 
         return ASGIIngressWrapper
 
@@ -536,6 +524,7 @@ class RunTarget:
     name: str = SERVE_DEFAULT_APP_NAME
     route_prefix: Optional[str] = "/"
     logging_config: Optional[Union[Dict, LoggingConfig]] = None
+    external_scaler_enabled: bool = False
 
 
 @DeveloperAPI
@@ -583,6 +572,7 @@ def _run_many(
                 default_runtime_env=ray.get_runtime_context().runtime_env
                 if not _local_testing_mode
                 else None,
+                external_scaler_enabled=t.external_scaler_enabled,
             )
         )
 
@@ -629,6 +619,7 @@ def _run(
     route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
     _local_testing_mode: bool = False,
+    external_scaler_enabled: bool = False,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -642,6 +633,7 @@ def _run(
                 name=name,
                 route_prefix=route_prefix,
                 logging_config=logging_config,
+                external_scaler_enabled=external_scaler_enabled,
             )
         ],
         wait_for_applications_running=_blocking,
@@ -698,6 +690,7 @@ def run(
     route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
     _local_testing_mode: bool = False,
+    external_scaler_enabled: bool = False,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -721,6 +714,8 @@ def run(
             gRPC or a `DeploymentHandle`).
         logging_config: Application logging config. If provided, the config will
             be applied to all deployments which doesn't have logging config.
+        external_scaler_enabled: Whether external autoscaling is enabled for
+            this application.
 
     Returns:
         DeploymentHandle: A handle that can be used to call the application.
@@ -731,6 +726,7 @@ def run(
         route_prefix=route_prefix,
         logging_config=logging_config,
         _local_testing_mode=_local_testing_mode,
+        external_scaler_enabled=external_scaler_enabled,
     )
 
     if blocking:
@@ -894,6 +890,11 @@ def get_multiplexed_model_id() -> str:
     This is used with a function decorated with `@serve.multiplexed`
     to retrieve the model ID for the current request.
 
+    When called from within a batched function (decorated with `@serve.batch`),
+    this returns the multiplexed model ID that is common to all requests in
+    the current batch. This works because batches are automatically split
+    by model ID to ensure all requests in a batch target the same model.
+
     .. code-block:: python
 
             import ray
@@ -915,6 +916,14 @@ def get_multiplexed_model_id() -> str:
             def my_deployment_function(request):
                 assert serve.get_multiplexed_model_id() == "model_1"
     """
+    # First check if we're inside a batch context. If so, get the model ID
+    # from the batch request context. All requests in a batch are guaranteed
+    # to have the same multiplexed_model_id (batches are split by model ID).
+    batch_request_context = ray.serve.context._get_serve_batch_request_context()
+    if batch_request_context:
+        return batch_request_context[0].multiplexed_model_id
+
+    # Fall back to the regular request context
     _request_context = ray.serve.context._get_serve_request_context()
     return _request_context.multiplexed_model_id
 
@@ -1078,4 +1087,15 @@ def get_deployment_handle(
     if _record_telemetry:
         ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
 
-    return client.get_handle(deployment_name, app_name, check_exists=_check_exists)
+    handle: DeploymentHandle = client.get_handle(
+        deployment_name, app_name, check_exists=_check_exists
+    )
+
+    # Track handle creation if called from within a replica
+    if (
+        internal_replica_context is not None
+        and internal_replica_context._handle_registration_callback is not None
+    ):
+        internal_replica_context._handle_registration_callback(handle.deployment_id)
+
+    return handle

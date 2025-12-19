@@ -7,10 +7,47 @@ The :ref:`ray.data.llm <llm-ref>` module integrates with key large language mode
 
 This guide shows you how to use :ref:`ray.data.llm <llm-ref>` to:
 
+* :ref:`Quickstart: vLLM batch inference <vllm_quickstart>`
 * :ref:`Perform batch inference with LLMs <batch_inference_llm>`
 * :ref:`Configure vLLM for LLM inference <vllm_llm>`
 * :ref:`Batch inference with embedding models <embedding_models>`
+* :ref:`Batch inference with classification models <classification_models>`
 * :ref:`Query deployed models with an OpenAI compatible API endpoint <openai_compatible_api_endpoint>`
+
+.. _vllm_quickstart:
+
+Quickstart: vLLM batch inference
+---------------------------------
+
+Get started with vLLM batch inference in just a few steps. This example shows the minimal setup needed to run batch inference on a dataset.
+
+.. note::
+    This quickstart requires a GPU as vLLM is GPU-accelerated.
+
+First, install Ray Data with LLM support:
+
+.. code-block:: bash
+
+    pip install -U "ray[data, llm]>=2.49.1"
+
+Here's a complete minimal example that runs batch inference:
+
+.. literalinclude:: doc_code/working-with-llms/minimal_quickstart.py
+    :language: python
+    :start-after: __minimal_vllm_quickstart_start__
+    :end-before: __minimal_vllm_quickstart_end__
+
+This example:
+
+1. Creates a simple dataset with prompts
+2. Configures a vLLM processor with minimal settings
+3. Builds a processor that handles preprocessing (converting prompts to OpenAI chat format) and postprocessing (extracting generated text)
+4. Runs inference on the dataset
+5. Iterates through results
+
+The processor expects input rows with a ``prompt`` field and outputs rows with both ``prompt`` and ``response`` fields. You can consume results using ``iter_rows()``, ``take()``, ``show()``, or save to files with ``write_parquet()``.
+
+For more configuration options and advanced features, see the sections below.
 
 .. _batch_inference_llm:
 
@@ -20,17 +57,8 @@ Perform batch inference with LLMs
 At a high level, the :ref:`ray.data.llm <llm-ref>` module provides a :class:`Processor <ray.data.llm.Processor>` object which encapsulates
 logic for performing batch inference with LLMs on a Ray Data dataset.
 
-You can use the :func:`build_llm_processor <ray.data.llm.build_llm_processor>` API to construct a processor.
+You can use the :func:`build_processor <ray.data.llm.build_processor>` API to construct a processor.
 The following example uses the :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` to construct a processor for the `unsloth/Llama-3.1-8B-Instruct` model.
-
-To start, install Ray Data + LLMs. This also installs vLLM, which is a popular and optimized LLM inference engine.
-
-.. code-block:: bash
-
-    pip install -U "ray[data, llm]>=2.49.1"
-
-The :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` is a configuration object for the vLLM engine.
-It contains the model name, the number of GPUs to use, and the number of shards to use, along with other vLLM engine configurations.
 Upon execution, the Processor object instantiates replicas of the vLLM engine (using :meth:`map_batches <ray.data.Dataset.map_batches>` under the hood).
 
 .. .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
@@ -52,14 +80,7 @@ The configuration includes detailed comments explaining:
 - **`max_num_batched_tokens`**: Maximum tokens processed simultaneously (reduce if CUDA OOM occurs)
 - **`accelerator_type`**: Specify GPU type for optimal resource allocation
 
-Each processor requires specific input columns based on the model and configuration. The vLLM processor expects input in OpenAI chat format with a 'messages' column.
-
-This basic configuration pattern is used throughout this guide and includes helpful comments explaining key parameters.
-
-This configuration creates a processor that expects:
-
-- **Input**: Dataset with 'messages' column (OpenAI chat format)
-- **Output**: Dataset with 'generated_text' column containing model responses
+The vLLM processor expects input in OpenAI chat format with a 'messages' column and outputs a 'generated_text' column containing model responses.
 
 Some models may require a Hugging Face token to be specified. You can specify the token in the `runtime_env` argument.
 
@@ -146,6 +167,14 @@ Next, configure the VLM processor with the essential settings:
     :start-after: __vlm_config_example_start__
     :end-before: __vlm_config_example_end__
 
+Define preprocessing and postprocessing functions to convert dataset rows into
+the format expected by the VLM and extract model responses:
+
+.. literalinclude:: doc_code/working-with-llms/vlm_example.py
+    :language: python
+    :start-after: __vlm_preprocess_example_start__
+    :end-before: __vlm_preprocess_example_end__
+
 For a more comprehensive VLM configuration with advanced options:
 
 .. literalinclude:: doc_code/working-with-llms/vlm_example.py
@@ -159,7 +188,7 @@ Finally, run the VLM inference:
 .. literalinclude:: doc_code/working-with-llms/vlm_example.py
     :language: python
     :start-after: def run_vlm_example():
-    :end-before: # __vlm_example_end__
+    :end-before: # __vlm_run_example_end__
     :dedent: 0
 
 .. _embedding_models:
@@ -193,6 +222,39 @@ For a complete embedding configuration example, see:
     :start-after: __embedding_config_example_start__
     :end-before: __embedding_config_example_end__
 
+.. _classification_models:
+
+Batch inference with classification models
+------------------------------------------
+
+Ray Data LLM supports batch inference with sequence classification models, such as content classifiers and sentiment analyzers:
+
+.. literalinclude:: doc_code/working-with-llms/classification_example.py
+    :language: python
+    :start-after: __classification_example_start__
+    :end-before: __classification_example_end__
+
+.. testoutput::
+    :options: +MOCK
+
+    {'text': 'lol that was so funny haha', 'edu_score': -0.05}
+    {'text': 'Photosynthesis converts light energy...', 'edu_score': 1.73}
+    {'text': "Newton's laws describe...", 'edu_score': 2.52}
+
+Key differences for classification models:
+
+- Set ``task_type="classify"`` (or ``task_type="score"`` for scoring models)
+- Set ``apply_chat_template=False`` and ``detokenize=False``
+- Use direct ``prompt`` input instead of ``messages``
+- Access classification logits through ``row["embeddings"]``
+
+For a complete classification configuration example, see:
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __classification_config_example_start__
+    :end-before: __classification_config_example_end__
+
 .. _openai_compatible_api_endpoint:
 
 Batch inference with an OpenAI-compatible endpoint
@@ -204,6 +266,51 @@ You can also make calls to deployed models that have an OpenAI compatible API en
     :language: python
     :start-after: __openai_example_start__
     :end-before: __openai_example_end__
+
+Batch inference with serve deployments
+---------------------------------------
+
+You can configure any :ref:`serve deployment <converting-to-ray-serve-application>` for batch inference. This is particularly useful for multi-turn conversations,
+where you can use a shared vLLM engine across conversations. To achieve this, create an :ref:`LLM serve deployment <serving-llms>` and use
+the :class:`ServeDeploymentProcessorConfig <ray.data.llm.ServeDeploymentProcessorConfig>` class to configure the processor.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __shared_vllm_engine_config_example_start__
+    :end-before: __shared_vllm_engine_config_example_end__
+
+Cross-node parallelism
+---------------------------------------
+
+Ray Data LLM supports cross-node parallelism, including tensor parallelism and pipeline parallelism.
+You can configure the parallelism level through the `engine_kwargs` argument in
+:class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>`. Use `ray` as the
+distributed executor backend to enable cross-node parallelism.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __cross_node_parallelism_config_example_start__
+    :end-before: __cross_node_parallelism_config_example_end__
+
+
+In addition, you can customize the placement group strategy to control how Ray places vLLM engine workers across nodes.
+While you can specify the degree of tensor and pipeline parallelism, the specific assignment of model ranks to GPUs is managed by the vLLM engine and you can't directly configure it through the Ray Data LLM API.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __custom_placement_group_strategy_config_example_start__
+    :end-before: __custom_placement_group_strategy_config_example_end__
+
+Besides cross-node parallelism, you can also horizontally scale the LLM stage to multiple nodes.
+Configure the number of replicas with the `concurrency` argument in
+:class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>`.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __concurrent_config_example_start__
+    :end-before: __concurrent_config_example_end__
+
+
 
 Usage Data Collection
 --------------------------
@@ -226,27 +333,6 @@ to turn it off.
 
 Frequently Asked Questions (FAQs)
 --------------------------------------------------
-
-.. TODO(#55491): Rewrite this section once the restriction is lifted.
-.. TODO(#55405): Cross-node TP in progress.
-.. _cross_node_parallelism:
-
-How to configure LLM stage to parallelize across multiple nodes?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-At the moment, Ray Data LLM doesn't support cross-node parallelism (either
-tensor parallelism or pipeline parallelism).
-
-The processing pipeline is designed to run on a single node. The number of
-GPUs is calculated as the product of the tensor parallel size and the pipeline
-parallel size, and apply
-[`STRICT_PACK` strategy](https://docs.ray.io/en/latest/ray-core/scheduling/placement-group.html#pgroup-strategy)
-to ensure that each replica of the LLM stage is executed on a single node.
-
-Nevertheless, you can still horizontally scale the LLM stage to multiple nodes
-as long as each replica (TP * PP) fits into a single node. The number of
-replicas is configured by the `concurrency` argument in
-:class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>`.
 
 .. _gpu_memory_management:
 

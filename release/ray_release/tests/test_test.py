@@ -1,38 +1,36 @@
 import asyncio
 import json
-import sys
 import os
 import platform
-from unittest import mock
+import sys
 from typing import List
-
+from unittest import mock
+from unittest.mock import AsyncMock, patch
 
 import aioboto3
 import boto3
 import pytest
-from unittest.mock import patch, AsyncMock
 
 from ray_release.bazel import bazel_runfile
 from ray_release.configs.global_config import (
-    init_global_config,
     get_global_config,
+    init_global_config,
 )
 from ray_release.test import (
+    DATAPLANE_ECR_ML_REPO,
+    DATAPLANE_ECR_REPO,
+    LINUX_TEST_PREFIX,
+    MACOS_BISECT_DAILY_RATE_LIMIT,
+    MACOS_TEST_PREFIX,
+    WINDOWS_TEST_PREFIX,
+    ResultStatus,
     Test,
     TestResult,
     TestState,
     TestType,
-    ResultStatus,
     _convert_env_list_to_dict,
-    DATAPLANE_ECR_REPO,
-    DATAPLANE_ECR_ML_REPO,
-    MACOS_TEST_PREFIX,
-    LINUX_TEST_PREFIX,
-    WINDOWS_TEST_PREFIX,
-    MACOS_BISECT_DAILY_RATE_LIMIT,
 )
 from ray_release.util import ANYSCALE_RAY_IMAGE_PREFIX, dict_hash
-
 
 init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 
@@ -87,7 +85,7 @@ def test_convert_env_list_to_dict():
 
 
 def test_get_python_version():
-    assert _stub_test({}).get_python_version() == "3.9"
+    assert _stub_test({}).get_python_version() == "3.10"
     assert _stub_test({"python": "3.11"}).get_python_version() == "3.11"
 
 
@@ -98,16 +96,16 @@ def test_get_ray_image():
     assert (
         _stub_test(
             {
-                "python": "3.9",
+                "python": "3.10",
                 "cluster": {"byod": {}},
             }
         ).get_ray_image()
-        == "rayproject/ray:a1b2c3d4-py39-cpu"
+        == "rayproject/ray:a1b2c3d4-py310-cpu"
     )
     assert (
         _stub_test(
             {
-                "python": "3.9",
+                "python": "3.10",
                 "cluster": {
                     "byod": {
                         "type": "gpu",
@@ -115,7 +113,7 @@ def test_get_ray_image():
                 },
             }
         ).get_ray_image()
-        == "rayproject/ray-ml:a1b2c3d4-py39-gpu"
+        == "rayproject/ray-ml:a1b2c3d4-py310-gpu"
     )
     assert (
         _stub_test(
@@ -142,12 +140,12 @@ def test_get_ray_image():
         # Even on release branches, we also use the RAYCI_BUILD_ID.
         assert (
             _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-            == "rayproject/ray:a1b2c3d4-py39-cpu"
+            == "rayproject/ray:a1b2c3d4-py310-cpu"
         )
         with mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST": "123"}):
             assert (
                 _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-                == "rayproject/ray:a1b2c3d4-py39-cpu"
+                == "rayproject/ray:a1b2c3d4-py310-cpu"
             )
 
         # Unless RAY_IMAGE_TAG is set, we use the RAYCI_BUILD_ID.

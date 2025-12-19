@@ -29,6 +29,7 @@
 #include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/publisher_interface.h"
@@ -43,14 +44,22 @@ static const ReferenceCounterInterface::ReferenceTableProto empty_refs;
 class ReferenceCountTest : public ::testing::Test {
  protected:
   std::unique_ptr<ReferenceCounterInterface> rc;
+  std::shared_ptr<ray::observability::FakeGauge> owned_object_count_metric_;
+  std::shared_ptr<ray::observability::FakeGauge> owned_object_size_metric_;
+
   virtual void SetUp() {
     rpc::Address addr;
     publisher_ = std::make_shared<pubsub::MockPublisher>();
     subscriber_ = std::make_shared<pubsub::FakeSubscriber>();
+    owned_object_count_metric_ = std::make_shared<ray::observability::FakeGauge>();
+    owned_object_size_metric_ = std::make_shared<ray::observability::FakeGauge>();
     rc = std::make_unique<ReferenceCounter>(
-        addr, publisher_.get(), subscriber_.get(), [](const NodeID &node_id) {
-          return false;
-        });
+        addr,
+        publisher_.get(),
+        subscriber_.get(),
+        [](const NodeID &node_id) { return false; },
+        *owned_object_count_metric_,
+        *owned_object_size_metric_);
   }
 
   virtual void TearDown() {
@@ -69,15 +78,22 @@ class ReferenceCountTest : public ::testing::Test {
 class ReferenceCountLineageEnabledTest : public ::testing::Test {
  protected:
   std::unique_ptr<ReferenceCounterInterface> rc;
+  std::shared_ptr<ray::observability::FakeGauge> owned_object_count_metric_;
+  std::shared_ptr<ray::observability::FakeGauge> owned_object_size_metric_;
+
   virtual void SetUp() {
     rpc::Address addr;
     publisher_ = std::make_shared<pubsub::MockPublisher>();
     subscriber_ = std::make_shared<pubsub::FakeSubscriber>();
+    owned_object_count_metric_ = std::make_shared<ray::observability::FakeGauge>();
+    owned_object_size_metric_ = std::make_shared<ray::observability::FakeGauge>();
     rc = std::make_unique<ReferenceCounter>(
         addr,
         publisher_.get(),
         subscriber_.get(),
         [](const NodeID &node_id) { return false; },
+        *owned_object_count_metric_,
+        *owned_object_size_metric_,
         /*lineage_pinning_enabled=*/true);
   }
 
@@ -300,11 +316,15 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
             &subscription_failure_callback_map,
             WorkerID::FromBinary(address_.worker_id()),
             client_factory)),
+        owned_object_count_metric_(std::make_shared<ray::observability::FakeGauge>()),
+        owned_object_size_metric_(std::make_shared<ray::observability::FakeGauge>()),
         rc_(
             address_,
             publisher_.get(),
             subscriber_.get(),
             [](const NodeID &node_id) { return true; },
+            *owned_object_count_metric_,
+            *owned_object_size_metric_,
             /*lineage_pinning_enabled=*/false) {}
 
   ~MockWorkerClient() override {
@@ -460,6 +480,8 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
   rpc::Address address_;
   std::shared_ptr<MockDistributedPublisher> publisher_;
   std::shared_ptr<MockDistributedSubscriber> subscriber_;
+  std::shared_ptr<ray::observability::FakeGauge> owned_object_count_metric_;
+  std::shared_ptr<ray::observability::FakeGauge> owned_object_size_metric_;
   // The ReferenceCounter at the "client".
   ReferenceCounter rc_;
   absl::flat_hash_map<int, std::function<void()>> borrower_callbacks_;
@@ -816,21 +838,25 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
 
   auto publisher = std::make_shared<pubsub::MockPublisher>();
   auto subscriber = std::make_shared<pubsub::FakeSubscriber>();
+  auto owned_object_count_metric = std::make_shared<ray::observability::FakeGauge>();
+  auto owned_object_size_metric = std::make_shared<ray::observability::FakeGauge>();
   auto rc = std::make_shared<ReferenceCounter>(
       rpc::Address(),
       publisher.get(),
       subscriber.get(),
-      /*is_node_dead=*/[](const NodeID &) { return false; });
+      /*is_node_dead=*/[](const NodeID &) { return false; },
+      *owned_object_count_metric,
+      *owned_object_size_metric);
   InstrumentedIOContextWithThread io_context("TestSimple");
-  CoreWorkerMemoryStore store(io_context.GetIoService(), rc.get());
+  CoreWorkerMemoryStore store(io_context.GetIoService());
 
   // Tests putting an object with no references is ignored.
-  store.Put(buffer, id2);
+  store.Put(buffer, id2, rc->HasReference(id2));
   ASSERT_EQ(store.Size(), 0);
 
-  // Tests ref counting overrides remove after get option.
+  // Tests that objects with references remain in the store after Get.
   rc->AddLocalReference(id1, "");
-  store.Put(buffer, id1);
+  store.Put(buffer, id1, rc->HasReference(id1));
   ASSERT_EQ(store.Size(), 1);
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
@@ -838,7 +864,6 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
                          /*num_objects*/ 1,
                          /*timeout_ms*/ -1,
                          ctx,
-                         /*remove_after_get*/ true,
                          &results));
   ASSERT_EQ(results.size(), 1);
   ASSERT_EQ(store.Size(), 1);
@@ -2986,6 +3011,150 @@ TEST_F(ReferenceCountTest, TestOwnDynamicStreamingTaskReturnRef) {
   rc->OwnDynamicStreamingTaskReturnRef(object_id_2, generator_id);
   ASSERT_FALSE(rc->GetOwner(object_id_2, &added_address));
   ASSERT_FALSE(rc->HasReference(object_id_2));
+}
+
+TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
+  rpc::Address addr;
+  addr.set_worker_id(WorkerID::FromRandom().Binary());
+
+  // Test 1: Objects in pending creation state
+  ObjectID pending_id1 = ObjectID::FromRandom();
+  ObjectID pending_id2 = ObjectID::FromRandom();
+
+  rc->AddOwnedObject(pending_id1, {}, addr, "", 100, false, /*add_local_ref=*/true);
+  rc->AddOwnedObject(pending_id2, {}, addr, "", 200, false, /*add_local_ref=*/true);
+
+  rc->RecordMetrics();
+
+  // Both should be in pending_creation state initially
+  auto count_metrics = owned_object_count_metric_->GetTagToValue();
+  ASSERT_EQ((count_metrics[{{"State", "PendingCreation"}}]), 2);
+  ASSERT_EQ((count_metrics[{{"State", "InMemory"}}]), 0);
+  ASSERT_EQ((count_metrics[{{"State", "InPlasma"}}]), 0);
+  ASSERT_EQ((count_metrics[{{"State", "Spilled"}}]), 0);
+
+  // Test 2: Transition from pending to in_memory (no pinned_at_node_id, not spilled)
+  rc->UpdateObjectPendingCreation(pending_id1, false);
+  rc->RecordMetrics();
+  count_metrics = owned_object_count_metric_->GetTagToValue();
+  ASSERT_EQ((count_metrics[{{"State", "PendingCreation"}}]), 1);
+  ASSERT_EQ((count_metrics[{{"State", "InMemory"}}]), 1);
+  auto size_metrics = owned_object_size_metric_->GetTagToValue();
+  ASSERT_EQ((size_metrics[{{"State", "InMemory"}}]), 100);
+
+  // Test 3: Transition from pending to in_plasma (has pinned_at_node_id, not spilled)
+  NodeID node1 = NodeID::FromRandom();
+  rc->UpdateObjectPendingCreation(pending_id2, false);
+  rc->UpdateObjectPinnedAtRaylet(pending_id2, node1);
+  rc->RecordMetrics();
+  count_metrics = owned_object_count_metric_->GetTagToValue();
+  ASSERT_EQ((count_metrics[{{"State", "PendingCreation"}}]), 0);
+  ASSERT_EQ((count_metrics[{{"State", "InMemory"}}]), 1);
+  ASSERT_EQ((count_metrics[{{"State", "InPlasma"}}]), 1);
+  size_metrics = owned_object_size_metric_->GetTagToValue();
+  ASSERT_EQ((size_metrics[{{"State", "InPlasma"}}]), 200);
+
+  // Test 4: Object spilling
+  rc->HandleObjectSpilled(pending_id2, "s3://bucket/object", node1);
+  rc->RecordMetrics();
+  count_metrics = owned_object_count_metric_->GetTagToValue();
+  ASSERT_EQ((count_metrics[{{"State", "InPlasma"}}]), 0);
+  ASSERT_EQ((count_metrics[{{"State", "Spilled"}}]), 1);
+  size_metrics = owned_object_size_metric_->GetTagToValue();
+  ASSERT_EQ((size_metrics[{{"State", "Spilled"}}]), 200);
+  ASSERT_EQ((size_metrics[{{"State", "InPlasma"}}]), 0);
+
+  // Test 5: Update object size
+  rc->UpdateObjectSize(pending_id1, 150);
+  rc->RecordMetrics();
+  size_metrics = owned_object_size_metric_->GetTagToValue();
+  ASSERT_EQ((size_metrics[{{"State", "InMemory"}}]), 150);
+
+  // Test 6: Delete objects
+  std::vector<ObjectID> deleted;
+  rc->RemoveLocalReference(pending_id1, &deleted);
+  rc->RecordMetrics();
+  count_metrics = owned_object_count_metric_->GetTagToValue();
+  ASSERT_EQ((count_metrics[{{"State", "InMemory"}}]), 0);
+  size_metrics = owned_object_size_metric_->GetTagToValue();
+  ASSERT_EQ((size_metrics[{{"State", "InMemory"}}]), 0);
+
+  rc->RemoveLocalReference(pending_id2, &deleted);
+  rc->RecordMetrics();
+  count_metrics = owned_object_count_metric_->GetTagToValue();
+  ASSERT_EQ((count_metrics[{{"State", "Spilled"}}]), 0);
+  size_metrics = owned_object_size_metric_->GetTagToValue();
+  ASSERT_EQ((size_metrics[{{"State", "Spilled"}}]), 0);
+
+  // All counters should be zero now
+  count_metrics = owned_object_count_metric_->GetTagToValue();
+  ASSERT_EQ((count_metrics[{{"State", "PendingCreation"}}]), 0);
+  ASSERT_EQ((count_metrics[{{"State", "InMemory"}}]), 0);
+  ASSERT_EQ((count_metrics[{{"State", "InPlasma"}}]), 0);
+  ASSERT_EQ((count_metrics[{{"State", "Spilled"}}]), 0);
+  size_metrics = owned_object_size_metric_->GetTagToValue();
+  ASSERT_EQ((size_metrics[{{"State", "InMemory"}}]), 0);
+  ASSERT_EQ((size_metrics[{{"State", "InPlasma"}}]), 0);
+  ASSERT_EQ((size_metrics[{{"State", "Spilled"}}]), 0);
+}
+
+TEST(DistributedReferenceCountTest, TestAddNestedObjectIdsIdempotency) {
+  auto caller = std::make_shared<MockWorkerClient>("1");
+  auto executor = std::make_shared<MockWorkerClient>(
+      "2", [&](const rpc::Address &addr) { return caller; });
+
+  {
+    // Case 1: ray.put a nested object
+    // object_id_1 = ray.put([object_id_2])
+    auto object_id_1 = ObjectID::FromRandom();
+    auto object_id_2 = ObjectID::FromRandom();
+    executor->rc_.AddOwnedObject(
+        object_id_1, {}, executor->address_, "", 0, false, /*add_local_ref=*/true);
+    executor->rc_.AddNestedObjectIds(object_id_1, {object_id_2}, executor->address_);
+    executor->rc_.AddNestedObjectIds(object_id_1, {object_id_2}, executor->address_);
+    ASSERT_TRUE(executor->rc_.HasReference(object_id_1));
+    ASSERT_TRUE(executor->rc_.HasReference(object_id_2));
+    executor->rc_.RemoveLocalReference(object_id_1, nullptr);
+    executor->rc_.RemoveLocalReference(object_id_2, nullptr);
+    ASSERT_FALSE(executor->rc_.HasReference(object_id_1));
+    ASSERT_FALSE(executor->rc_.HasReference(object_id_2));
+  }
+
+  {
+    // Case 2: task returns an owned nested object
+    auto object_id_3 = ObjectID::FromRandom();
+    auto object_id_4 = ObjectID::FromRandom();
+    executor->rc_.AddOwnedObject(
+        object_id_3, {}, executor->address_, "", 0, false, /*add_local_ref=*/true);
+    executor->rc_.AddNestedObjectIds(object_id_4, {object_id_3}, caller->address_);
+    executor->rc_.AddNestedObjectIds(object_id_4, {object_id_3}, caller->address_);
+    ASSERT_TRUE(executor->rc_.HasReference(object_id_3));
+    // There should be one WaitForRefRemoved call due to idempotency.
+    ASSERT_EQ(caller->num_requests_, 1);
+    executor->rc_.RemoveLocalReference(object_id_3, nullptr);
+    // Caller is still borrowing
+    ASSERT_TRUE(executor->rc_.HasReference(object_id_3));
+    // Caller is no longer borrowing
+    caller->FlushBorrowerCallbacks();
+    ASSERT_FALSE(executor->rc_.HasReference(object_id_3));
+  }
+
+  {
+    // Case 3: task returns a borrowed nested object
+    auto object_id_5 = ObjectID::FromRandom();
+    auto object_id_6 = ObjectID::FromRandom();
+    executor->rc_.AddBorrowedObject(object_id_5, ObjectID::Nil(), caller->address_);
+    executor->rc_.AddNestedObjectIds(object_id_6, {object_id_5}, caller->address_);
+    executor->rc_.AddNestedObjectIds(object_id_6, {object_id_5}, caller->address_);
+    ASSERT_TRUE(executor->rc_.HasReference(object_id_5));
+    // Task finishes and we return the borrower info to the owner.
+    ReferenceCounterInterface::ReferenceTableProto refs;
+    executor->rc_.PopAndClearLocalBorrowers({object_id_5}, &refs, nullptr);
+    ASSERT_EQ(refs.size(), 1);
+    ASSERT_EQ(refs[0].stored_in_objects().size(), 1);
+    ASSERT_EQ(refs[0].stored_in_objects()[0].object_id(), object_id_6.Binary());
+    ASSERT_FALSE(executor->rc_.HasReference(object_id_5));
+  }
 }
 
 }  // namespace core

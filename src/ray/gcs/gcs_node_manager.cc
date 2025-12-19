@@ -240,6 +240,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   absl::flat_hash_set<NodeID> node_ids;
   absl::flat_hash_set<std::string> node_names;
   absl::flat_hash_set<std::string> node_ip_addresses;
+  std::optional<bool> is_head_node_filter;
   bool only_node_id_filters = true;
   for (auto &selector : *request.mutable_node_selectors()) {
     switch (selector.node_selector_case()) {
@@ -252,6 +253,10 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
       break;
     case rpc::GetAllNodeInfoRequest_NodeSelector::kNodeIpAddress:
       node_ip_addresses.insert(std::move(*selector.mutable_node_ip_address()));
+      only_node_id_filters = false;
+      break;
+    case rpc::GetAllNodeInfoRequest_NodeSelector::kIsHeadNode:
+      is_head_node_filter = selector.is_head_node();
       only_node_id_filters = false;
       break;
     case rpc::GetAllNodeInfoRequest_NodeSelector::NODE_SELECTOR_NOT_SET:
@@ -288,6 +293,36 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
     return;
   }
 
+  // Optimized path if request only wants head node
+  if (request.node_selectors_size() == 1 && is_head_node_filter.has_value() &&
+      is_head_node_filter.value()) {
+    auto check_and_add_head_node =
+        [&](const absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>>
+                &nodes) {
+          for (const auto &[node_id, node_info_ptr] : nodes) {
+            if (node_info_ptr->is_head_node()) {
+              *reply->add_node_info_list() = *node_info_ptr;
+              ++num_added;
+              return;
+            }
+          }
+        };
+
+    if (!request.has_state_filter() ||
+        request.state_filter() == rpc::GcsNodeInfo::ALIVE) {
+      check_and_add_head_node(alive_nodes_);
+    }
+    if (num_added == 0 && (!request.has_state_filter() ||
+                           request.state_filter() == rpc::GcsNodeInfo::DEAD)) {
+      check_and_add_head_node(dead_nodes_);
+    }
+    reply->set_total(total_num_nodes);
+    reply->set_num_filtered(total_num_nodes - num_added);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
+    return;
+  }
+
   const bool has_node_selectors = request.node_selectors_size() > 0;
   auto add_to_response =
       [&](const absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>>
@@ -298,7 +333,9 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
           }
           if (!has_node_selectors || node_ids.contains(node_id) ||
               node_names.contains(node_info_ptr->node_name()) ||
-              node_ip_addresses.contains(node_info_ptr->node_manager_address())) {
+              node_ip_addresses.contains(node_info_ptr->node_manager_address()) ||
+              (is_head_node_filter.has_value() &&
+               node_info_ptr->is_head_node() == is_head_node_filter.value())) {
             *reply->add_node_info_list() = *node_info_ptr;
             num_added += 1;
           }
@@ -690,7 +727,14 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
       auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
           node_id, node_info.node_manager_address(), node_info.node_manager_port());
       auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
-      raylet_client->NotifyGCSRestart(nullptr);
+      raylet_client->NotifyGCSRestart(
+          [](const Status &status, const rpc::NotifyGCSRestartReply &reply) {
+            if (!status.ok()) {
+              RAY_LOG(WARNING) << "NotifyGCSRestart failed. This is expected if the "
+                                  "target node has died. Status: "
+                               << status;
+            }
+          });
     } else if (node_info.state() == rpc::GcsNodeInfo::DEAD) {
       dead_nodes_.emplace(node_id, std::make_shared<rpc::GcsNodeInfo>(node_info));
       sorted_dead_node_list_.emplace_back(node_id, node_info.end_time_ms());

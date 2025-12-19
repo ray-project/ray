@@ -26,6 +26,8 @@
 #include "ray/common/bundle_location_index.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
+#include "ray/observability/metric_interface.h"
+#include "ray/raylet/metrics.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
 #include "ray/util/container_util.h"
 #include "ray/util/logging.h"
@@ -135,6 +137,9 @@ class ClusterResourceManager {
   std::string DebugString(
       std::optional<size_t> max_num_nodes_to_include = std::nullopt) const;
 
+  /// Record metrics for the cluster resource manager.
+  void RecordMetrics() const;
+
   BundleLocationIndex &GetBundleLocationIndex();
 
   void SetNodeLabels(const scheduling::NodeID &node_id,
@@ -178,6 +183,8 @@ class ClusterResourceManager {
   /// Timer to revert local changes to the resources periodically.
   std::shared_ptr<PeriodicalRunner> timer_;
 
+  mutable ray::stats::Gauge local_resource_view_node_count_gauge_;
+
   friend class ClusterResourceSchedulerTest;
   friend struct ClusterResourceManagerTest;
   friend class raylet::ClusterLeaseManagerTest;
@@ -204,6 +211,13 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorHardNodeAffinityTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, ScheduleWithFallbackStrategyTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, FallbackStrategyWithUnavailableNodesTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest,
+              FallbackSchedulesAvailableNodeOverUnavailablePrimary);
+  FRIEND_TEST(ClusterResourceSchedulerTest, FallbackWaitsOnUnavailableHighestPriority);
+  FRIEND_TEST(ClusterResourceSchedulerTest,
+              FallbackReturnsNilForGCSIfAllNodesUnavailable);
 
   friend class raylet::SchedulingPolicyTest;
   friend class raylet_scheduling_policy::HybridSchedulingPolicyTest;

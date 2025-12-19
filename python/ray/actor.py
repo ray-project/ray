@@ -49,7 +49,7 @@ from ray._raylet import (
     PythonFunctionDescriptor,
     raise_sys_exit_with_custom_error_message,
 )
-from ray.exceptions import AsyncioActorExit
+from ray.exceptions import ActorAlreadyExistsError, AsyncioActorExit
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import (
@@ -302,13 +302,6 @@ class _RemoteMethod9(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, 
 
 @overload
 def method(
-    __method: Callable[[Any], _Ret],
-) -> _RemoteMethodNoArgs[_Ret]:
-    ...
-
-
-@overload
-def method(
     __method: Callable[[Any, _T0], _Ret],
 ) -> _RemoteMethod0[_Ret, _T0]:
     ...
@@ -374,6 +367,13 @@ def method(
 def method(
     __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9], _Ret],
 ) -> _RemoteMethod9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any], _Ret],
+) -> _RemoteMethodNoArgs[_Ret]:
     ...
 
 
@@ -473,9 +473,14 @@ def method(*args, **kwargs):
         if "enable_task_events" in kwargs and kwargs["enable_task_events"] is not None:
             method.__ray_enable_task_events__ = kwargs["enable_task_events"]
         if "tensor_transport" in kwargs:
-            method.__ray_tensor_transport__ = TensorTransportEnum.from_str(
-                kwargs["tensor_transport"]
+            tensor_transport = kwargs["tensor_transport"]
+            from ray.experimental.gpu_object_manager.util import (
+                normalize_and_validate_tensor_transport,
             )
+
+            tensor_transport = normalize_and_validate_tensor_transport(tensor_transport)
+            method.__ray_tensor_transport__ = tensor_transport
+
         return method
 
     # Check if decorator is called without parentheses (args[0] would be the function)
@@ -521,7 +526,7 @@ class _ActorMethodMetadata:
         enable_task_events: bool,
         decorator: Optional[Any] = None,
         signature: Optional[List[inspect.Parameter]] = None,
-        tensor_transport: Optional[TensorTransportEnum] = None,
+        tensor_transport: Optional[str] = None,
     ):
         """Initialize an _ActorMethodMetadata.
 
@@ -599,7 +604,7 @@ class ActorMethod:
         enable_task_events: bool,
         decorator=None,
         signature: Optional[List[inspect.Parameter]] = None,
-        tensor_transport: Optional[TensorTransportEnum] = None,
+        tensor_transport: Optional[str] = None,
     ):
         """Initialize an ActorMethod.
 
@@ -649,10 +654,10 @@ class ActorMethod:
         # and return the resulting ObjectRefs.
         self._decorator = decorator
 
-        # If the task call doesn't specify a tensor transport option, use `_tensor_transport`
+        # If the task call doesn't specify a tensor transport option, use `OBJECT_STORE`
         # as the default transport for this actor method.
         if tensor_transport is None:
-            tensor_transport = TensorTransportEnum.OBJECT_STORE
+            tensor_transport = TensorTransportEnum.OBJECT_STORE.name
         self._tensor_transport = tensor_transport
 
     def __call__(self, *args, **kwargs):
@@ -695,7 +700,12 @@ class ActorMethod:
 
         tensor_transport = options.get("tensor_transport", None)
         if tensor_transport is not None:
-            options["tensor_transport"] = TensorTransportEnum.from_str(tensor_transport)
+            from ray.experimental.gpu_object_manager.util import (
+                normalize_and_validate_tensor_transport,
+            )
+
+            tensor_transport = normalize_and_validate_tensor_transport(tensor_transport)
+            options["tensor_transport"] = tensor_transport
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
@@ -800,7 +810,7 @@ class ActorMethod:
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
         enable_task_events=None,
-        tensor_transport: Optional[TensorTransportEnum] = None,
+        tensor_transport: Optional[str] = None,
     ):
         if num_returns is None:
             num_returns = self._num_returns
@@ -820,15 +830,15 @@ class ActorMethod:
         if tensor_transport is None:
             tensor_transport = self._tensor_transport
 
-        if tensor_transport != TensorTransportEnum.OBJECT_STORE:
+        if tensor_transport != TensorTransportEnum.OBJECT_STORE.name:
             if num_returns != 1:
                 raise ValueError(
-                    f"Currently, methods with tensor_transport={tensor_transport.name} only support 1 return value. "
+                    f"Currently, methods with tensor_transport={tensor_transport} only support 1 return value. "
                     "Please make sure the actor method is decorated with `@ray.method(num_returns=1)` (the default)."
                 )
             if not self._actor._ray_enable_tensor_transport:
                 raise ValueError(
-                    f'Currently, methods with .options(tensor_transport="{tensor_transport.name}") are not supported when enable_tensor_transport=False. '
+                    f'Currently, methods with .options(tensor_transport="{tensor_transport}") are not supported when enable_tensor_transport=False. '
                     "Please set @ray.remote(enable_tensor_transport=True) on the actor class definition."
                 )
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
@@ -836,7 +846,7 @@ class ActorMethod:
                 self._actor, tensor_transport
             ):
                 raise ValueError(
-                    f'{self._actor} does not have tensor transport {tensor_transport.name} available. If using a collective-based transport ("nccl" or "gloo"), please create a communicator with '
+                    f'{self._actor} does not have tensor transport {tensor_transport} available. If using a collective-based transport ("nccl" or "gloo"), please create a communicator with '
                     "`ray.experimental.collective.create_collective_group` "
                     "before calling actor tasks with non-default tensor_transport."
                 )
@@ -876,7 +886,7 @@ class ActorMethod:
             invocation = self._decorator(invocation)
 
         object_refs = invocation(args, kwargs)
-        if tensor_transport != TensorTransportEnum.OBJECT_STORE:
+        if tensor_transport != TensorTransportEnum.OBJECT_STORE.name:
             # Currently, we only support transfer tensor out-of-band when
             # num_returns is 1.
             assert isinstance(object_refs, ObjectRef)
@@ -979,14 +989,16 @@ class _ActorClassMethodMetadata(object):
         self.enable_task_events = {}
         self.generator_backpressure_num_objects = {}
         self.concurrency_group_for_methods = {}
-        self.method_name_to_tensor_transport: Dict[str, TensorTransportEnum] = {}
+        self.method_name_to_tensor_transport: Dict[str, str] = {}
 
         # Check whether any actor methods specify a non-default tensor transport.
         self.has_tensor_transport_methods = any(
             getattr(
-                method, "__ray_tensor_transport__", TensorTransportEnum.OBJECT_STORE
+                method,
+                "__ray_tensor_transport__",
+                TensorTransportEnum.OBJECT_STORE.name,
             )
-            != TensorTransportEnum.OBJECT_STORE
+            != TensorTransportEnum.OBJECT_STORE.name
             for _, method in actor_methods
         )
 
@@ -1180,6 +1192,7 @@ def _process_option_dict(actor_options, has_tensor_transport_methods):
         if _filled_options.get("concurrency_groups", None) is None:
             _filled_options["concurrency_groups"] = {}
         _filled_options["concurrency_groups"]["_ray_system"] = 1
+        _filled_options["concurrency_groups"]["_ray_system_error"] = 1
 
     return _filled_options
 
@@ -1531,9 +1544,10 @@ class ActorClass(Generic[T]):
                 updated_options["get_if_exists"] = False  # prevent infinite loop
                 try:
                     return self._remote(args, kwargs, **updated_options)
-                except ValueError:
-                    # We lost the creation race, ignore.
+                except ActorAlreadyExistsError:
                     pass
+                # The actor was created between the first and second get_actor calls.
+                # Try to get it again to see if it's there.
                 return ray.get_actor(name, namespace=namespace)
 
         # We pop the "concurrency_groups" coming from "@ray.remote" here. We no longer
@@ -1605,7 +1619,7 @@ class ActorClass(Generic[T]):
             except ValueError:  # Name is not taken.
                 pass
             else:
-                raise ValueError(
+                raise ActorAlreadyExistsError(
                     f"The name {name} (namespace={namespace}) is already "
                     "taken. Please use "
                     "a different name or get the existing actor using "
@@ -1684,6 +1698,20 @@ class ActorClass(Generic[T]):
         else:
             function_signature = meta.method_meta.signatures["__init__"]
             creation_args = signature.flatten_args(function_signature, args, kwargs)
+
+        use_placement_group = scheduling_strategy is not None and isinstance(
+            scheduling_strategy, PlacementGroupSchedulingStrategy
+        )
+        is_restartable = max_restarts > 0 or max_restarts == -1
+        if use_placement_group and detached and is_restartable:
+            # TODO(kevin85421): Checking `max_restarts > 0` is because Ray Serve currently schedules detached actors with
+            # placement groups. Adding the check avoids printing this warning for all Ray Serve applications. In the future,
+            # we should consider raising an error instead of a warning, but this is a breaking change.
+            logger.warning(
+                "Scheduling a restartable detached actor with a placement group is not recommended "
+                "because Ray will kill the actor when the placement group is removed and the actor will "
+                "not be able to be restarted."
+            )
 
         if scheduling_strategy is None or isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
@@ -1807,6 +1835,7 @@ class ActorClass(Generic[T]):
             enable_task_events=enable_task_events,
             labels=actor_options.get("_labels"),
             label_selector=actor_options.get("label_selector"),
+            fallback_strategy=actor_options.get("fallback_strategy"),
             allow_out_of_order_execution=allow_out_of_order_execution,
             enable_tensor_transport=meta.enable_tensor_transport,
         )
@@ -1924,7 +1953,7 @@ class ActorHandle(Generic[T]):
         method_generator_backpressure_num_objects: Dict[str, int],
         method_enable_task_events: Dict[str, bool],
         enable_tensor_transport: bool,
-        method_name_to_tensor_transport: Dict[str, TensorTransportEnum],
+        method_name_to_tensor_transport: Dict[str, str],
         actor_method_cpus: int,
         actor_creation_function_descriptor,
         cluster_and_job,
@@ -1951,7 +1980,7 @@ class ActorHandle(Generic[T]):
                 this actor. If True, then methods can be called with
                 .options(tensor_transport=...) to specify a non-default tensor
                 transport.
-            method_name_to_tensor_transport: Dictionary mapping method names to their tensor transport settings.
+            method_name_to_tensor_transport: Dictionary mapping method names to their tensor transport type.
             actor_method_cpus: The number of CPUs required by actor methods.
             actor_creation_function_descriptor: The function descriptor for actor creation.
             cluster_and_job: The cluster and job information.
@@ -2062,7 +2091,7 @@ class ActorHandle(Generic[T]):
         concurrency_group_name: Optional[str] = None,
         generator_backpressure_num_objects: Optional[int] = None,
         enable_task_events: Optional[bool] = None,
-        tensor_transport: Optional[TensorTransportEnum] = None,
+        tensor_transport: Optional[str] = None,
     ):
         """Method execution stub for an actor handle.
 
@@ -2140,6 +2169,12 @@ class ActorHandle(Generic[T]):
         if generator_backpressure_num_objects is None:
             generator_backpressure_num_objects = -1
 
+        tensor_transport_enum = TensorTransportEnum.OBJECT_STORE
+        if (
+            tensor_transport is not None
+            and tensor_transport != TensorTransportEnum.OBJECT_STORE.name
+        ):
+            tensor_transport_enum = TensorTransportEnum.DIRECT_TRANSPORT
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,
             self._ray_actor_id,
@@ -2154,7 +2189,7 @@ class ActorHandle(Generic[T]):
             concurrency_group_name if concurrency_group_name is not None else b"",
             generator_backpressure_num_objects,
             enable_task_events,
-            tensor_transport.value,
+            tensor_transport_enum.value,
         )
 
         if num_returns == STREAMING_GENERATOR_RETURN:

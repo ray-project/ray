@@ -13,7 +13,7 @@ from ray.serve._private import default_impl
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
-    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
 )
 from ray.serve._private.deployment_scheduler import (
     DeploymentDownscaleRequest,
@@ -583,6 +583,34 @@ def test_schedule_replica():
     operator = scheduler._launching_replicas[d_id][r3_id].target_labels["abc"]
     assert isinstance(operator, In) and operator.values == ["xyz"]
 
+    # internal implicit resource with max_replicas_per_node
+    r4_id = ReplicaID(unique_id="r4", deployment_id=d_id)
+    scheduling_request = ReplicaSchedulingRequest(
+        replica_id=r4_id,
+        actor_def=MockActorClass(),
+        actor_resources={"my_rs": 1, "CPU": 1},
+        placement_group_bundles=None,
+        placement_group_strategy=None,
+        actor_options={"name": "r4", "num_cpus": 1, "resources": {"my_rs": 1}},
+        actor_init_args=(),
+        on_scheduled=set_scheduling_strategy,
+        max_replicas_per_node=10,
+    )
+    scheduler._pending_replicas[d_id][r4_id] = scheduling_request
+    scheduler._schedule_replica(
+        scheduling_request=scheduling_request,
+        default_scheduling_strategy="some_default",
+        target_node_id=None,
+        target_labels=None,
+    )
+    assert scheduling_strategy == "some_default"
+    assert len(scheduler._launching_replicas[d_id]) == 5
+    assert scheduling_request.actor_options == {
+        "name": "r4",
+        "num_cpus": 1,
+        "resources": {"my_rs": 1},
+    }
+
 
 def test_downscale_multiple_deployments():
     """Test to make sure downscale prefers replicas without node id
@@ -646,7 +674,7 @@ def test_downscale_multiple_deployments():
     # but it has more replicas of all deployments so
     # we should stop replicas from node2.
     assert len(deployment_to_replicas_to_stop[d1_id]) == 1
-    assert deployment_to_replicas_to_stop[d1_id] < {d1_r2_id, d1_r3_id}
+    assert deployment_to_replicas_to_stop[d1_id].issubset({d1_r2_id, d1_r3_id})
 
     scheduler.on_replica_stopping(d1_r3_id)
     scheduler.on_replica_stopping(d2_r3_id)
@@ -709,7 +737,7 @@ def test_downscale_head_node():
         },
     )
     assert len(deployment_to_replicas_to_stop) == 1
-    assert deployment_to_replicas_to_stop[dep_id] < {r2_id, r3_id}
+    assert deployment_to_replicas_to_stop[dep_id].issubset({r2_id, r3_id})
     scheduler.on_replica_stopping(deployment_to_replicas_to_stop[dep_id].pop())
 
     deployment_to_replicas_to_stop = scheduler.schedule(
@@ -833,16 +861,16 @@ def test_downscale_single_deployment():
         },
     )
     assert len(deployment_to_replicas_to_stop) == 1
-    assert deployment_to_replicas_to_stop[dep_id] == {r1_id, r2_id}
+    assert deployment_to_replicas_to_stop[dep_id] <= {r1_id, r2_id}
     scheduler.on_replica_stopping(r1_id)
     scheduler.on_replica_stopping(r2_id)
     scheduler.on_deployment_deleted(dep_id)
 
 
 @pytest.mark.skipif(
-    not RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY, reason="Needs compact strategy."
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
 )
-class TestCompactScheduling:
+class TestPackScheduling:
     def test_basic(self):
         d_id1 = DeploymentID(name="deployment1")
         d_id2 = DeploymentID(name="deployment2")

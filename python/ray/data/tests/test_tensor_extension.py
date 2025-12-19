@@ -1,4 +1,6 @@
 import itertools
+import threading
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -23,7 +25,9 @@ from ray.air.util.tensor_extensions.arrow import (
     unify_tensor_arrays,
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
-from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
+from ray.air.util.tensor_extensions.utils import (
+    create_ragged_ndarray,
+)
 from ray.data import DataContext
 
 
@@ -58,14 +62,53 @@ def test_tensor_array_validation():
     with pytest.raises(TypeError):
         TensorArray([object(), object()])
 
+    # First, convert Pandas serise w/ nulls to numpy
+    array = pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype).to_numpy().reshape((2, 2))
 
-@pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])
+    # First, check on singular tensor of shape (2, 2, 2)
+    input_tensor = np.stack([array, array])
+
+    pa_tensor = ArrowTensorArray.from_numpy(input_tensor)
+    res_tensor = pa_tensor.to_numpy()
+
+    np.testing.assert_array_equal(res_tensor, np.stack([array.astype(np.float64)] * 2))
+
+    # Next, check "ragged" tensor
+    #   - Outermost ndarray is of shape (2,) (dtype='O')
+    #   - Internal ndarrays are homogeneously shaped (2, 2) (dtype='O')
+    input_tensor = create_ragged_ndarray([array, array])
+
+    pa_tensor = ArrowTensorArray.from_numpy(input_tensor)
+    res_tensor = pa_tensor.to_numpy()
+    np.testing.assert_array_equal(res_tensor, np.stack([array.astype(np.float64)] * 2))
+
+
+def test_pandas_to_arrow_var_shape_tensor_conversion():
+    # First, convert Pandas series w/ nulls to numpy
+    array = pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype).to_numpy()
+
+    input_tensor = create_ragged_ndarray([array.reshape(1, 4), array.reshape((2, 2))])
+
+    # For ragged arrays, we need to convert each element individually
+    expected_np_tensor = create_ragged_ndarray(
+        [t.astype(np.float64) for t in input_tensor]
+    )
+
+    pa_tensor = ArrowVariableShapedTensorArray.from_numpy(input_tensor)
+    res_tensor = pa_tensor.to_numpy()
+
+    assert len(res_tensor) == len(expected_np_tensor)
+    for actual, expected in zip(res_tensor, expected_np_tensor):
+        np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
 def test_arrow_scalar_tensor_array_roundtrip(restore_data_context, tensor_format):
     ctx = DataContext.get_current()
     ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == "arrow_native"
     ctx.use_arrow_tensor_v2 = tensor_format == "v2"
 
-    arr = np.arange(10)
+    arr = np.arange(1000).reshape((10, 1, 100))
     ata = ArrowTensorArray.from_numpy(arr)
     assert isinstance(ata.type, pa.DataType)
     assert len(ata) == len(arr)
@@ -97,7 +140,7 @@ def test_scalar_tensor_array_roundtrip(restore_data_context, tensor_format):
     ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == "arrow_native"
     ctx.use_arrow_tensor_v2 = tensor_format == "v2"
 
-    arr = np.arange(10)
+    arr = np.arange(1000).reshape(10, 1, 100)
     ta = TensorArray(arr)
     assert isinstance(ta.dtype, TensorDtype)
     assert len(ta) == len(arr)
@@ -164,37 +207,26 @@ def test_arrow_variable_shaped_tensor_array_validation(
         )
 
 
-@pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])
-def test_arrow_variable_shaped_tensor_array_roundtrip(
-    restore_data_context, tensor_format
-):
-    ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == "arrow_native"
-    ctx.use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_variable_shaped_tensor_array_roundtrip(restore_data_context):
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
         np.arange(offset, offset + np.prod(shape)).reshape(shape)
         for offset, shape in zip(cumsum_sizes, shapes)
     ]
-    arr = np.array(arrs, dtype=object)
+
+    arr = create_ragged_ndarray(arrs)
     ata = ArrowVariableShapedTensorArray.from_numpy(arr)
+
     assert isinstance(ata.type, ArrowVariableShapedTensorType)
     assert len(ata) == len(arr)
+
     out = ata.to_numpy()
     for o, a in zip(out, arr):
         np.testing.assert_array_equal(o, a)
 
 
-@pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])
-def test_arrow_variable_shaped_tensor_array_roundtrip_boolean(
-    restore_data_context, tensor_format
-):
-    ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == "arrow_native"
-    ctx.use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_variable_shaped_tensor_array_roundtrip_boolean(restore_data_context):
     arr = np.array(
         [[True, False], [False, False, True], [False], [True, True, False, True]],
         dtype=object,
@@ -207,14 +239,9 @@ def test_arrow_variable_shaped_tensor_array_roundtrip_boolean(
         np.testing.assert_array_equal(o, a)
 
 
-@pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])
 def test_arrow_variable_shaped_tensor_array_roundtrip_contiguous_optimization(
-    restore_data_context, tensor_format
+    restore_data_context,
 ):
-    ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == "arrow_native"
-    ctx.use_arrow_tensor_v2 = tensor_format == "v2"
-
     # Test that a roundtrip on slices of an already-contiguous 1D base array does not
     # create any unnecessary copies.
     base = np.arange(6)
@@ -230,12 +257,7 @@ def test_arrow_variable_shaped_tensor_array_roundtrip_contiguous_optimization(
         np.testing.assert_array_equal(o, a)
 
 
-@pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])
-def test_arrow_variable_shaped_tensor_array_slice(restore_data_context, tensor_format):
-    ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == "arrow_native"
-    ctx.use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_variable_shaped_tensor_array_slice(restore_data_context):
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
@@ -269,14 +291,7 @@ def test_arrow_variable_shaped_tensor_array_slice(restore_data_context, tensor_f
             np.testing.assert_array_equal(o, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])
-def test_arrow_variable_shaped_bool_tensor_array_slice(
-    restore_data_context, tensor_format
-):
-    ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == "arrow_native"
-    ctx.use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_variable_shaped_bool_tensor_array_slice(restore_data_context):
     arr = np.array(
         [
             [True],
@@ -312,14 +327,7 @@ def test_arrow_variable_shaped_bool_tensor_array_slice(
             np.testing.assert_array_equal(o, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])
-def test_arrow_variable_shaped_string_tensor_array_slice(
-    restore_data_context, tensor_format
-):
-    ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == "arrow_native"
-    ctx.use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_variable_shaped_string_tensor_array_slice(restore_data_context):
     arr = np.array(
         [
             ["Philip", "J", "Fry"],
@@ -359,12 +367,7 @@ def test_arrow_variable_shaped_string_tensor_array_slice(
             np.testing.assert_array_equal(o, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])
-def test_variable_shaped_tensor_array_roundtrip(restore_data_context, tensor_format):
-    ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == "arrow_native"
-    ctx.use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_variable_shaped_tensor_array_roundtrip(restore_data_context):
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
@@ -388,12 +391,7 @@ def test_variable_shaped_tensor_array_roundtrip(restore_data_context, tensor_for
         np.testing.assert_array_equal(o, a)
 
 
-@pytest.mark.parametrize("tensor_format", ["arrow_native", "v1", "v2"])
-def test_variable_shaped_tensor_array_slice(restore_data_context, tensor_format):
-    ctx = DataContext.get_current()
-    ctx.use_arrow_native_fixed_shape_tensor_type = tensor_format == "arrow_native"
-    ctx.use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_variable_shaped_tensor_array_slice(restore_data_context):
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
@@ -1294,6 +1292,257 @@ def test_concat_ndarrays_strided_views():
     np.testing.assert_array_equal(result, expected)
     # Should have created a copy
     assert not np.shares_memory(result, base)
+
+
+def test_arrow_extension_serialize_deserialize_cache():
+    """Test caching behavior of ArrowExtensionSerializeDeserializeCache."""
+    # Test 1: Serialization cache is instance-level
+    # Create a fresh test instance
+    tensor_type = ArrowTensorType(shape=(2, 3), dtype=pa.int64())
+
+    # Clear the instance's serialization cache to ensure fresh test
+    tensor_type._serialize_cache = None
+
+    # Track calls to _arrow_ext_serialize_compute to verify caching
+    with patch.object(
+        tensor_type,
+        "_arrow_ext_serialize_compute",
+        wraps=tensor_type._arrow_ext_serialize_compute,
+    ) as mock_serialize:
+        # First serialization should call compute function
+        serialized1 = tensor_type.__arrow_ext_serialize__()
+        assert mock_serialize.call_count == 1
+        assert serialized1 is not None
+        assert isinstance(serialized1, bytes)
+
+        # Second serialization should use cache (no additional call)
+        serialized2 = tensor_type.__arrow_ext_serialize__()
+        assert mock_serialize.call_count == 1  # Still 1, proving cache hit
+        assert serialized1 == serialized2
+
+    # Test 2: Deserialization cache is class-level (shared across instances)
+    # Clear the lru_cache to ensure fresh test
+    ArrowTensorType._arrow_ext_deserialize_cache.cache_clear()
+    storage_type = pa.list_(pa.int64())
+
+    # Track calls to _arrow_ext_deserialize_compute to verify caching
+    with patch.object(
+        ArrowTensorType,
+        "_arrow_ext_deserialize_compute",
+        wraps=ArrowTensorType._arrow_ext_deserialize_compute,
+    ) as mock_deserialize:
+        # First deserialization should call compute function
+        deserialized1 = ArrowTensorType.__arrow_ext_deserialize__(
+            storage_type, serialized1
+        )
+        assert mock_deserialize.call_count == 1
+        assert deserialized1.shape == (2, 3)
+        assert deserialized1.scalar_type == pa.int64()
+
+        # Second deserialization with same key should use cache (no additional call)
+        deserialized2 = ArrowTensorType.__arrow_ext_deserialize__(
+            storage_type, serialized1
+        )
+        assert mock_deserialize.call_count == 1  # Still 1, proving cache hit
+        assert deserialized1.shape == deserialized2.shape
+        assert deserialized1.scalar_type == deserialized2.scalar_type
+        assert deserialized1.extension_name == deserialized2.extension_name
+
+    # Test 3: Different serialized data produces different cache entries
+    tensor_type2 = ArrowTensorType(shape=(3, 4), dtype=pa.int32())
+    tensor_type2._serialize_cache = None
+    different_serialized = tensor_type2.__arrow_ext_serialize__()
+    storage_type2 = pa.list_(pa.int32())
+
+    deserialized3 = ArrowTensorType.__arrow_ext_deserialize__(
+        storage_type2, different_serialized
+    )
+    # Should be different from previous deserialization
+    assert deserialized3.shape == (3, 4)
+    assert deserialized3.scalar_type == pa.int32()
+    assert deserialized3.shape != deserialized1.shape
+
+    # Test 4: Cache parameter generation works correctly
+    param1 = ArrowTensorType._get_deserialize_parameter(storage_type, serialized1)
+    param2 = ArrowTensorType._get_deserialize_parameter(storage_type, serialized1)
+    assert param1 == param2  # Same inputs should produce same parameters
+
+    param3 = ArrowTensorType._get_deserialize_parameter(
+        storage_type2, different_serialized
+    )
+    assert param1 != param3  # Different inputs should produce different parameters
+
+    # Test 5: Multiple instances have separate serialization caches
+    tensor_type_a = ArrowTensorType(shape=(2, 3), dtype=pa.int64())
+    tensor_type_b = ArrowTensorType(shape=(2, 3), dtype=pa.int64())
+
+    # Clear caches
+    tensor_type_a._serialize_cache = None
+    tensor_type_b._serialize_cache = None
+
+    # Track calls to verify separate caches
+    with patch.object(
+        tensor_type_a,
+        "_arrow_ext_serialize_compute",
+        wraps=tensor_type_a._arrow_ext_serialize_compute,
+    ) as mock_a, patch.object(
+        tensor_type_b,
+        "_arrow_ext_serialize_compute",
+        wraps=tensor_type_b._arrow_ext_serialize_compute,
+    ) as mock_b:
+        # Serialize both instances
+        serialized_a = tensor_type_a.__arrow_ext_serialize__()
+        serialized_b = tensor_type_b.__arrow_ext_serialize__()
+
+        # Each should have been called once (separate caches)
+        assert mock_a.call_count == 1
+        assert mock_b.call_count == 1
+        # Both should produce the same serialized data (same shape and dtype)
+        assert serialized_a == serialized_b
+
+        # Second calls should use respective caches (no additional calls)
+        assert tensor_type_a.__arrow_ext_serialize__() == serialized_a
+        assert tensor_type_b.__arrow_ext_serialize__() == serialized_b
+        assert mock_a.call_count == 1  # Cache hit
+        assert mock_b.call_count == 1  # Cache hit
+
+    # Test 6: Deserialization cache is shared (class-level)
+    # The cache is class-level, so all instances share it
+    # Note: deserialized1 and deserialized2 were already created in Test 2,
+    # so the cache should already have this entry. Let's verify it's reused.
+    with patch.object(
+        ArrowTensorType,
+        "_arrow_ext_deserialize_compute",
+        wraps=ArrowTensorType._arrow_ext_deserialize_compute,
+    ) as mock_deserialize_shared:
+        # These should use the cache from Test 2 (no new compute calls)
+        deserialized_a = ArrowTensorType.__arrow_ext_deserialize__(
+            storage_type, serialized1
+        )
+        deserialized_b = ArrowTensorType.__arrow_ext_deserialize__(
+            storage_type, serialized1
+        )
+        # Should not call compute again (cache hit from Test 2)
+        assert mock_deserialize_shared.call_count == 0
+        # Both should be equal (cache hit)
+        assert deserialized_a.shape == deserialized_b.shape
+        assert deserialized_a.scalar_type == deserialized_b.scalar_type
+        assert deserialized_a.extension_name == deserialized_b.extension_name
+
+
+def test_arrow_extension_deserialize_cache_per_class():
+    """Test that different classes have separate deserialization caches."""
+    # Create instances of different classes with the same shape and dtype
+    tensor_type_v1 = ArrowTensorType(shape=(2, 3), dtype=pa.int64())
+    tensor_type_v2 = ArrowTensorTypeV2(shape=(2, 3), dtype=pa.int64())
+
+    # Serialize both (they should produce the same serialized data since shape is the same)
+    serialized_v1 = tensor_type_v1.__arrow_ext_serialize__()
+    serialized_v2 = tensor_type_v2.__arrow_ext_serialize__()
+    # They should have the same serialized representation (same shape)
+    assert serialized_v1 == serialized_v2
+
+    # Clear both caches to ensure fresh test
+    ArrowTensorType._arrow_ext_deserialize_cache.cache_clear()
+    ArrowTensorTypeV2._arrow_ext_deserialize_cache.cache_clear()
+
+    # Get storage types for each class
+    storage_type_v1 = pa.list_(pa.int64())  # ArrowTensorType uses list_
+    storage_type_v2 = pa.large_list(pa.int64())  # ArrowTensorTypeV2 uses large_list
+
+    # Track calls to verify each class has its own cache
+    with patch.object(
+        ArrowTensorType,
+        "_arrow_ext_deserialize_compute",
+        wraps=ArrowTensorType._arrow_ext_deserialize_compute,
+    ) as mock_v1, patch.object(
+        ArrowTensorTypeV2,
+        "_arrow_ext_deserialize_compute",
+        wraps=ArrowTensorTypeV2._arrow_ext_deserialize_compute,
+    ) as mock_v2:
+        # Deserialize using ArrowTensorType
+        deserialized_v1_1 = ArrowTensorType.__arrow_ext_deserialize__(
+            storage_type_v1, serialized_v1
+        )
+        assert mock_v1.call_count == 1
+        assert mock_v2.call_count == 0  # V2 cache not affected
+
+        # Deserialize using ArrowTensorTypeV2 with compatible parameters
+        # Note: We use the same serialized data but different storage type
+        deserialized_v2_1 = ArrowTensorTypeV2.__arrow_ext_deserialize__(
+            storage_type_v2, serialized_v2
+        )
+        assert mock_v1.call_count == 1  # V1 cache not affected
+        assert mock_v2.call_count == 1
+
+        # Verify they are different instances (different classes)
+        assert type(deserialized_v1_1) is not type(deserialized_v2_1)
+        assert isinstance(deserialized_v1_1, ArrowTensorType)
+        assert isinstance(deserialized_v2_1, ArrowTensorTypeV2)
+        assert not isinstance(deserialized_v1_1, ArrowTensorTypeV2)
+        assert not isinstance(deserialized_v2_1, ArrowTensorType)
+
+        # Verify they have the same shape and dtype (same logical content)
+        assert deserialized_v1_1.shape == deserialized_v2_1.shape
+        assert deserialized_v1_1.scalar_type == deserialized_v2_1.scalar_type
+
+        # But different extension names (different classes)
+        assert deserialized_v1_1.extension_name != deserialized_v2_1.extension_name
+        assert deserialized_v1_1.extension_name == "ray.data.arrow_tensor"
+        assert deserialized_v2_1.extension_name == "ray.data.arrow_tensor_v2"
+
+        # Verify each class uses its own cache (second calls should hit cache)
+        deserialized_v1_2 = ArrowTensorType.__arrow_ext_deserialize__(
+            storage_type_v1, serialized_v1
+        )
+        deserialized_v2_2 = ArrowTensorTypeV2.__arrow_ext_deserialize__(
+            storage_type_v2, serialized_v2
+        )
+
+        # Both should use cache (no additional compute calls)
+        assert mock_v1.call_count == 1  # Cache hit for V1
+        assert mock_v2.call_count == 1  # Cache hit for V2
+
+        # Verify cache returns same instances for same class
+        assert deserialized_v1_1 is deserialized_v1_2  # Same instance from V1 cache
+        assert deserialized_v2_1 is deserialized_v2_2  # Same instance from V2 cache
+
+        # But instances from different classes are different
+        assert deserialized_v1_1 is not deserialized_v2_1
+        assert deserialized_v1_2 is not deserialized_v2_2
+
+
+def test_arrow_extension_serialize_deserialize_cache_thread_safety():
+    """Test that ArrowExtensionSerializeDeserializeCache is thread-safe."""
+    tensor_type = ArrowTensorType(shape=(2, 3), dtype=pa.int64())
+    storage_type = pa.list_(pa.int64())
+    serialized = tensor_type.__arrow_ext_serialize__()
+
+    results = []
+    errors = []
+
+    def deserialize_worker():
+        try:
+            result = ArrowTensorType.__arrow_ext_deserialize__(storage_type, serialized)
+            results.append(result)
+        except Exception as e:
+            errors.append(e)
+
+    # Create multiple threads that deserialize simultaneously
+    threads = [threading.Thread(target=deserialize_worker) for _ in range(10)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    # Should have no errors
+    assert len(errors) == 0, f"Errors occurred: {errors}"
+
+    # All results should be equal (same deserialized type)
+    assert len(results) == 10
+    for result in results[1:]:
+        assert result.shape == results[0].shape
+        assert result.scalar_type == results[0].scalar_type
 
 
 if __name__ == "__main__":
