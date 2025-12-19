@@ -44,3 +44,12 @@ py_test_run_all_notebooks(
     ],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
 )
+
+filegroup(
+    name = "tune_examples_ci_configs",
+    srcs = glob([
+        "**/ci/aws.yaml",
+        "**/ci/gce.yaml",
+    ]),
+    visibility = ["//doc:__pkg__"],
+)
