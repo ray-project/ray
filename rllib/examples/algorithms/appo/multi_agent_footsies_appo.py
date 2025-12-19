@@ -33,7 +33,6 @@ from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.examples.envs.classes.multi_agent.footsies.fixed_rlmodules import (
     BackFixedRLModule,
     NoopFixedRLModule,
-    platform_for_binary_to_download,
 )
 from ray.rllib.examples.envs.classes.multi_agent.footsies.footsies_env import (
     env_creator,
@@ -43,9 +42,10 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.utils import (
     Matchup,
     MetricsLoggerCallback,
     MixManagerCallback,
+    platform_for_binary_to_download,
 )
 from ray.rllib.examples.rl_modules.classes.lstm_containing_rlm import (
-    LSTMContainingRLModule,
+    LSTMContainingRLModuleWithTargetNetwork,
 )
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.rllib.utils.test_utils import (
@@ -185,7 +185,7 @@ config = (
         rl_module_spec=MultiRLModuleSpec(
             rl_module_specs={
                 main_policy: RLModuleSpec(
-                    module_class=LSTMContainingRLModule,
+                    module_class=LSTMContainingRLModuleWithTargetNetwork,
                     model_config={
                         "lstm_cell_size": 128,
                         "dense_layers": [128, 128],

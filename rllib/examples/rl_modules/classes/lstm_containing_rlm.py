@@ -1,13 +1,21 @@
-from typing import Any, Dict, Optional
+import abc
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.learner.utils import make_target_network
+from ray.rllib.core.rl_module.apis import (
+    TARGET_NETWORK_ACTION_DIST_INPUTS,
+    TargetNetworkAPI,
+)
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import (
+    override,
+)
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import NetworkType, TensorType
 
 torch, nn = try_import_torch()
 
@@ -150,3 +158,75 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
         embeddings = self._fc_net(embeddings)
         # Squeeze the layer dim (we only have 1 LSTM layer).
         return embeddings, {"h": h.squeeze(0), "c": c.squeeze(0)}
+
+
+class LSTMContainingRLModuleWithTargetNetwork(
+    LSTMContainingRLModule, TargetNetworkAPI, abc.ABC
+):
+    """LSTMContainingRLModule with TargetNetworkAPI support for use with APPO.
+
+    This class extends LSTMContainingRLModule to add target network functionality,
+    which is required by algorithms like APPO that use target networks for
+    importance sampling and policy updates.
+
+    Example usage:
+
+    .. testcode::
+
+        from ray.rllib.algorithms.appo import APPOConfig
+        from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+        from ray.rllib.examples.rl_modules.classes.lstm_containing_rlm import (
+            LSTMContainingRLModuleWithTargetNetwork,
+        )
+
+        config = (
+            APPOConfig()
+            .environment("CartPole-v1")
+            .rl_module(
+                rl_module_spec=RLModuleSpec(
+                    module_class=LSTMContainingRLModuleWithTargetNetwork,
+                    model_config={"lstm_cell_size": 256, "dense_layers": [128, 128]},
+                )
+            )
+        )
+    """
+
+    @override(TargetNetworkAPI)
+    def make_target_networks(self):
+        """Creates target networks for LSTM, FC net, and policy head."""
+        self._old_lstm = make_target_network(self._lstm)
+        self._old_fc_net = make_target_network(self._fc_net)
+        self._old_pi_head = make_target_network(self._pi_head)
+
+    @override(TargetNetworkAPI)
+    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
+        """Returns pairs of (main_net, target_net) for target network updates."""
+        return [
+            (self._lstm, self._old_lstm),
+            (self._fc_net, self._old_fc_net),
+            (self._pi_head, self._old_pi_head),
+        ]
+
+    @override(TargetNetworkAPI)
+    def forward_target(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+        """Forward pass through target networks to get action distribution inputs."""
+        # Compute embeddings using target networks (similar to _compute_embeddings_and_state_outs)
+        obs = batch[Columns.OBS]
+        state_in = batch[Columns.STATE_IN]
+        h, c = state_in["h"], state_in["c"]
+        # Unsqueeze the layer dim (we only have 1 LSTM layer) and forward through target LSTM
+        embeddings, (h, c) = self._old_lstm(obs, (h.unsqueeze(0), c.unsqueeze(0)))
+        # Push through target FC net
+        embeddings = self._old_fc_net(embeddings)
+        # Forward through target policy head to get action distribution inputs
+        old_action_dist_logits = self._old_pi_head(embeddings)
+
+        return {TARGET_NETWORK_ACTION_DIST_INPUTS: old_action_dist_logits}
+
+    def get_non_inference_attributes(self) -> List[str]:
+        """Returns attributes that should not be included in inference-only mode."""
+        # LSTMContainingRLModule doesn't implement InferenceOnlyAPI, so we start with empty list
+        ret = []
+        # Add target network attributes (not needed in inference-only mode)
+        ret += ["_old_lstm", "_old_fc_net", "_old_pi_head"]
+        return ret
