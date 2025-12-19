@@ -16,8 +16,9 @@
 
 #pragma once
 
-#include <string>
 #include <zstd.h>
+
+#include <string>
 
 namespace ray {
 
