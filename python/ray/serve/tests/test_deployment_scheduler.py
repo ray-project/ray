@@ -400,7 +400,7 @@ class TestSchedulerUnit:
         assert set(filtered.keys()) == {"n1", "n2"}
 
     @mock.patch(
-        "ray.serve._private.deployment_scheduler.RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY",
+        "ray.serve._private.deployment_scheduler.RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY",
         True,
     )
     def test_compact_schedule_respects_labels_and_fallback(self):
