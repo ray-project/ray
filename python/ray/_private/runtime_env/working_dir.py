@@ -38,6 +38,12 @@ def upload_working_dir_if_needed(
     """Uploads the working_dir and replaces it with a URI.
 
     If the working_dir is already a URI, this is a no-op.
+
+    Excludes are combined from:
+      - .gitignore and .rayignore files in the working_dir
+      - runtime_env["excludes"] field
+      - RAY_RUNTIME_ENV_DEFAULT_EXCLUDES constant, overridable via
+        RAY_OVERRIDE_RUNTIME_ENV_DEFAULT_EXCLUDES environment variable
     """
     working_dir = runtime_env.get("working_dir")
     if working_dir is None:
@@ -63,7 +69,9 @@ def upload_working_dir_if_needed(
             raise ValueError("Only .zip files supported for remote URIs.")
         return runtime_env
 
-    excludes = runtime_env.get("excludes", None)
+    default_excludes = ray_constants.get_runtime_env_default_excludes()
+    user_excludes = runtime_env.get("excludes", [])
+    excludes = default_excludes + list(user_excludes)
     try:
         working_dir_uri = get_uri_for_directory(
             working_dir,
