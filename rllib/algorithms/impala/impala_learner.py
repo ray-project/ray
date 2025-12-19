@@ -277,8 +277,8 @@ class IMPALALearner(Learner):
             except queue.Empty:
                 result = {}
 
-        # Return the module state, if requested.
-        if return_state:
+        # Return the module state, if requested and existent.
+        if return_state and self._learner_state:
             result["_rl_module_state_after_update"] = self._learner_state
 
         return result
@@ -591,19 +591,5 @@ class _LearnerThread(threading.Thread):
         batch_with_ts,
         metrics: MetricsLogger,
     ):
-        try:
-            # Put the batch into the queue (blocking if thread is updating).
-            learner_queue.put(batch_with_ts, block=True)
-        except queue.Full:
-            # TODO (simon): Write mechanism to drop the oldest batch.
-            batch, _ = batch_with_ts
-            try:
-                env_steps = batch.env_steps() if hasattr(batch, "env_steps") else 0
-                metrics.log_value(
-                    (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
-                    env_steps,
-                    reduce="sum",
-                )
-            except Exception:
-                pass
-            return
+        # Put the batch into the queue (blocking if thread is updating).
+        learner_queue.put(batch_with_ts, block=True)
