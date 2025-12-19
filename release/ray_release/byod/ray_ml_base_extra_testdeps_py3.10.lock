@@ -3705,14 +3705,14 @@ opencensus-context==0.1.3 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   opencensus
-opencv-python-headless==4.9.0.80 \
-    --hash=sha256:11e3849d83e6651d4e7699aadda9ec7ed7c38957cbbcb99db074f2a2d2de9670 \
-    --hash=sha256:2ea8a2edc4db87841991b2fbab55fc07b97ecb602e0f47d5d485bd75cee17c1a \
-    --hash=sha256:57ce2865e8fec431c6f97a81e9faaf23fa5be61011d0a75ccf47a3c0d65fa73d \
-    --hash=sha256:71a4cd8cf7c37122901d8e81295db7fb188730e33a0e40039a4e59c1030b0958 \
-    --hash=sha256:976656362d68d9f40a5c66f83901430538002465f7db59142784f3893918f3df \
-    --hash=sha256:a8056c2cb37cd65dfcdf4153ca16f7362afcf3a50d600d6bb69c660fc61ee29c \
-    --hash=sha256:e0ee54e27be493e8f7850847edae3128e18b540dac1d7b2e4001b8944e11e1c6
+opencv-python-headless==4.10.0.84 \
+    --hash=sha256:377d08a7e48a1405b5e84afcbe4798464ce7ee17081c1c23619c8b398ff18295 \
+    --hash=sha256:46071015ff9ab40fccd8a163da0ee14ce9846349f06c6c8c0f2870856ffa45db \
+    --hash=sha256:5ae454ebac0eb0a0b932e3406370aaf4212e6a3fdb5038cc86c7aea15a6851da \
+    --hash=sha256:9092404b65458ed87ce932f613ffbb1106ed2c843577501e5768912360fc50ec \
+    --hash=sha256:a4f4bcb07d8f8a7704d9c8564c224c8b064c63f430e95b61ac0bffaa374d330e \
+    --hash=sha256:afcf28bd1209dd58810d33defb622b325d3cbe49dcd7a43a902982c33e5fad05 \
+    --hash=sha256:f2017c6101d7c2ef8d7bc3b414c37ff7f54d64413a1847d89970b6b7069b4e1a
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
