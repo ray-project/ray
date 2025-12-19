@@ -4186,7 +4186,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: pytest -vs test_llm_serve_rlhf.py
+    script: python test_llm_serve_rlhf.py
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_1p1d
   frequency: nightly
