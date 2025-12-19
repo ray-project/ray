@@ -16,6 +16,9 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/deadline_timer.hpp>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
@@ -23,40 +26,70 @@
 
 namespace ray {
 
+/// \class PeriodicalRunnerInterface
+/// Interface for periodical runner functionality.
+class PeriodicalRunnerInterface {
+ public:
+  virtual ~PeriodicalRunnerInterface() = default;
+
+  virtual void RunFnPeriodically(std::function<void()> fn,
+                                 uint64_t period_ms,
+                                 std::string name) = 0;
+
+ protected:
+  virtual void DoRunFnPeriodically(
+      std::function<void()> fn,
+      boost::posix_time::milliseconds period,
+      std::shared_ptr<boost::asio::deadline_timer> timer) = 0;
+
+  virtual void DoRunFnPeriodicallyInstrumented(
+      std::function<void()> fn,
+      boost::posix_time::milliseconds period,
+      std::shared_ptr<boost::asio::deadline_timer> timer,
+      std::string name) = 0;
+};
+
 /// \class PeriodicalRunner
 /// A periodical runner attached with an io_context.
 /// It can run functions with specified period. Each function is triggered by its timer.
 /// To run a function, call `RunFnPeriodically(fn, period_ms)`.
 /// All registered functions will stop running once this object is destructed.
-class PeriodicalRunner {
+//
+// Lifetime: once a PeriodicalRunner is destructed, all its timers are cancelled. The
+// scheduled asio tasks keep a weak_ptr to the PeriodicalRunner, and they won't run after
+// the PeriodicalRunner is destructed.
+class PeriodicalRunner : public PeriodicalRunnerInterface,
+                         public std::enable_shared_from_this<PeriodicalRunner> {
  public:
-  PeriodicalRunner(instrumented_io_context &io_service);
+  static std::shared_ptr<PeriodicalRunner> Create(instrumented_io_context &io_service) {
+    // Sadly we can't use std::make_shared because the constructor is private.
+    return std::shared_ptr<PeriodicalRunner>(new PeriodicalRunner(io_service));
+  }
 
   ~PeriodicalRunner();
 
-  void Clear();
-
   void RunFnPeriodically(std::function<void()> fn,
                          uint64_t period_ms,
-                         const std::string name) ABSL_LOCKS_EXCLUDED(mutex_);
+                         std::string name) override ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
-  void DoRunFnPeriodically(const std::function<void()> &fn,
+  explicit PeriodicalRunner(instrumented_io_context &io_service);
+
+  void DoRunFnPeriodically(std::function<void()> fn,
                            boost::posix_time::milliseconds period,
-                           std::shared_ptr<boost::asio::deadline_timer> timer)
+                           std::shared_ptr<boost::asio::deadline_timer> timer) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void DoRunFnPeriodicallyInstrumented(const std::function<void()> &fn,
+  void DoRunFnPeriodicallyInstrumented(std::function<void()> fn,
                                        boost::posix_time::milliseconds period,
                                        std::shared_ptr<boost::asio::deadline_timer> timer,
-                                       const std::string name)
+                                       std::string name) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   instrumented_io_context &io_service_;
   mutable absl::Mutex mutex_;
   std::vector<std::shared_ptr<boost::asio::deadline_timer>> timers_
       ABSL_GUARDED_BY(mutex_);
-  std::shared_ptr<bool> stopped_;
 };
 
 }  // namespace ray

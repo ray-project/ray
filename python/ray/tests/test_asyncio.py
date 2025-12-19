@@ -8,13 +8,13 @@ import time
 import pytest
 
 import ray
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.test_utils import (
-    SignalActor,
     kill_actor_and_wait_for_failure,
-    wait_for_condition,
     wait_for_pid_to_exit,
 )
+from ray.util.state import get_actor
 
 
 def test_asyncio_actor(ray_start_regular_shared):
@@ -106,7 +106,7 @@ def test_asyncio_actor_high_concurrency(ray_start_regular_shared):
                 await self.event.wait()
             return sorted(self.batch)
 
-    batch_size = sys.getrecursionlimit() * 4
+    batch_size = sys.getrecursionlimit()
     actor = AsyncConcurrencyBatcher.options(max_concurrency=batch_size * 2).remote(
         batch_size
     )
@@ -130,7 +130,7 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
 
     @ray.remote
     def task_throws():
-        1 / 0
+        _ = 1 / 0
 
     with pytest.raises(ray.exceptions.RayTaskError):
         await task_throws.remote().as_future()
@@ -148,7 +148,7 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
             return "a" * (str_len)
 
         def throw_error(self):
-            1 / 0
+            _ = 1 / 0
 
     actor = Actor.remote()
 
@@ -209,6 +209,11 @@ async def test_asyncio_double_await(ray_start_regular_shared):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ray_start_regular_shared",
+    [{"include_dashboard": True}],
+    indirect=True,
+)
 async def test_asyncio_exit_actor(ray_start_regular_shared):
     # https://github.com/ray-project/ray/issues/12649
     # The test should just hang without the fix.
@@ -241,7 +246,7 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
     @ray.remote
     def check_actor_gone_now():
         def cond():
-            return ray._private.state.actors()[a._ray_actor_id.hex()]["State"] != 2
+            return get_actor(id=a._ray_actor_id.hex()).state != "ALIVE"
 
         wait_for_condition(cond)
 
@@ -429,9 +434,4 @@ def test_asyncio_actor_argument_collision(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

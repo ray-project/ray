@@ -3,9 +3,9 @@ import sys
 import threading
 
 import pytest
-import ray
 
-from ray.exceptions import RayTaskError, RayActorError
+import ray
+from ray.exceptions import RayActorError, RayTaskError, UnserializableException
 
 """This module tests stacktrace of Ray.
 
@@ -31,18 +31,18 @@ def scrub_traceback(ex):
     print(ex)
     ex = ex.strip("\n")
     ex = re.sub("pid=[0-9]+,", "pid=XXX,", ex)
-    ex = re.sub("ip=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+", "ip=YYY", ex)
-    ex = re.sub("repr=.*\)", "repr=ZZZ)", ex)
+    ex = re.sub(r"ip=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+", "ip=YYY", ex)
+    ex = re.sub(r"repr=.*\)", "repr=ZZZ)", ex)
     ex = re.sub("line .*,", "line ZZ,", ex)
     ex = re.sub('".*"', '"FILE"', ex)
     # These are used to coloring the string.
-    ex = re.sub("\\x1b\[36m", "", ex)
-    ex = re.sub("\\x1b\[39m", "", ex)
+    ex = re.sub(r"\x1b\[36m", "", ex)
+    ex = re.sub(r"\x1b\[39m", "", ex)
     # When running bazel test with pytest 6.x, the module name becomes
     # "python.ray.tests.test_traceback" instead of just "test_traceback"
-    # Also remove the "com_github_ray_project_ray" prefix, which may appear on Windows.
+    # Also remove the "io_ray" prefix, which may appear on Windows.
     ex = re.sub(
-        r"(com_github_ray_project_ray.)?python\.ray\.tests\.test_traceback",
+        r"(io_ray.)?python\.ray\.tests\.test_traceback",
         "test_traceback",
         ex,
     )
@@ -50,7 +50,16 @@ def scrub_traceback(ex):
     ex = re.sub("object at .*?>", "object at ADDRESS>", ex)
     # This is from ray.util.inspect_serializability()
     ex = re.sub(
-        "=[\s\S]*Checking Serializability of[\s\S]*=", "INSPECT_SERIALIZABILITY", ex
+        r"=[\s\S]*Checking Serializability of[\s\S]*=", "INSPECT_SERIALIZABILITY", ex
+    )
+    # Clean up underscore in stack trace, which is new in python 3.12
+    ex = re.sub("^\\s+~*\\^+~*\n", "", ex, flags=re.MULTILINE)
+    # Remove internal Cython frames from ray._raylet that can appear on Windows.
+    ex = re.sub(
+        r"^\s*File \"FILE\", line ZZ, in ray\._raylet\.[^\n]+\n",
+        "",
+        ex,
+        flags=re.MULTILINE,
     )
     return ex
 
@@ -292,24 +301,14 @@ def test_actor_repr_in_traceback(ray_start_regular):
 
 
 def test_unpickleable_stacktrace(shutdown_only):
-    expected_output = """System error: Failed to unpickle serialized exception
-traceback: Traceback (most recent call last):
-  File "FILE", line ZZ, in from_ray_exception
-    return pickle.loads(ray_exception.serialized_exception)
-TypeError: __init__() missing 1 required positional argument: 'arg'
-
-The above exception was the direct cause of the following exception:
-
-Traceback (most recent call last):
-  File "FILE", line ZZ, in deserialize_objects
-    obj = self._deserialize_object(data, metadata, object_ref)
-  File "FILE", line ZZ, in _deserialize_object
-    return RayError.from_bytes(obj)
-  File "FILE", line ZZ, in from_bytes
-    return RayError.from_ray_exception(ray_exception)
-  File "FILE", line ZZ, in from_ray_exception
-    raise RuntimeError(msg) from e
-RuntimeError: Failed to unpickle serialized exception"""
+    expected_output = """Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#custom-serializers-for-exceptions for more information.
+Original exception:
+ray.exceptions.RayTaskError: ray::f() (pid=XXX, ip=YYY)
+  File "FILE", line ZZ, in f
+    return g(c)
+  File "FILE", line ZZ, in g
+    raise NoPickleError("FILE")
+test_traceback.NoPickleError"""
 
     class NoPickleError(OSError):
         def __init__(self, arg):
@@ -325,13 +324,47 @@ RuntimeError: Failed to unpickle serialized exception"""
         c = a + b
         return g(c)
 
-    try:
+    with pytest.raises(UnserializableException) as excinfo:
         ray.get(f.remote())
-    except Exception as ex:
-        python310_extra_exc_msg = "test_unpickleable_stacktrace.<locals>.NoPickleError."
-        assert clean_noqa(expected_output) == scrub_traceback(str(ex)).replace(
-            f"TypeError: {python310_extra_exc_msg}", "TypeError: "
+
+    assert clean_noqa(expected_output) == scrub_traceback(str(excinfo.value))
+
+
+def test_exception_with_registered_serializer(shutdown_only):
+    class NoPickleError(OSError):
+        def __init__(self, msg):
+            self.msg = msg
+
+        def __str__(self):
+            return f"message: {self.msg}"
+
+    def _serializer(e: NoPickleError):
+        return {"msg": e.msg}
+
+    def _deserializer(state):
+        return NoPickleError(state["msg"] + " deserialized")
+
+    @ray.remote
+    def raise_custom_exception():
+        ray.util.register_serializer(
+            NoPickleError, serializer=_serializer, deserializer=_deserializer
         )
+        raise NoPickleError("message")
+
+    try:
+        with pytest.raises(NoPickleError) as exc_info:
+            ray.get(raise_custom_exception.remote())
+
+        # Ensure dual-typed exception and message propagation
+        assert isinstance(exc_info.value, RayTaskError)
+        # if custom serializer was not registered, this would be an instance of UnserializableException()
+        assert isinstance(exc_info.value, NoPickleError)
+        assert "message" in str(exc_info.value)
+        # modified message should not be in the exception string, only in the cause
+        assert "deserialized" not in str(exc_info.value)
+        assert "message deserialized" in str(exc_info.value.cause)
+    finally:
+        ray.util.deregister_serializer(NoPickleError)
 
 
 def test_serialization_error_message(shutdown_only):
@@ -402,11 +435,4 @@ def test_serialization_error_message(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

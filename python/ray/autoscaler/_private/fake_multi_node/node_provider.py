@@ -13,6 +13,7 @@ import yaml
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.network_utils import build_address
 from ray.autoscaler._private.fake_multi_node.command_runner import (
     FakeDockerCommandRunner,
 )
@@ -41,7 +42,6 @@ FAKE_DOCKER_DEFAULT_OBJECT_MANAGER_PORT = 18076
 FAKE_DOCKER_DEFAULT_CLIENT_PORT = 10002
 
 DOCKER_COMPOSE_SKELETON = {
-    "version": "3.9",
     "services": {},
     "networks": {"ray_local": {}},
 }
@@ -345,6 +345,9 @@ class FakeMultiNodeProvider(NodeProvider):
     def _create_node_with_resources_and_labels(
         self, node_config, tags, count, resources, labels
     ):
+        # This function calls `pop`. To avoid side effects, we make a
+        # copy of `resources`.
+        resources = copy.deepcopy(resources)
         with self.lock:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
             next_id = self._next_hex_node_id()
@@ -357,13 +360,13 @@ class FakeMultiNodeProvider(NodeProvider):
                 object_store_memory=resources.pop("object_store_memory", None),
                 resources=resources,
                 labels=labels,
-                redis_address="{}:6379".format(
-                    ray._private.services.get_node_ip_address()
+                redis_address=build_address(
+                    ray._private.services.get_node_ip_address(), 6379
                 )
                 if not self._gcs_address
                 else self._gcs_address,
-                gcs_address="{}:6379".format(
-                    ray._private.services.get_node_ip_address()
+                gcs_address=build_address(
+                    ray._private.services.get_node_ip_address(), 6379
                 )
                 if not self._gcs_address
                 else self._gcs_address,
@@ -468,7 +471,7 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
         if not self.in_docker_container:
             # Create private key
             if not os.path.exists(self._private_key_path):
-                subprocess.check_output(
+                subprocess.check_call(
                     f'ssh-keygen -b 2048 -t rsa -q -N "" '
                     f"-f {self._private_key_path}",
                     shell=True,
@@ -476,7 +479,7 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
 
             # Create public key
             if not os.path.exists(self._public_key_path):
-                subprocess.check_output(
+                subprocess.check_call(
                     f"ssh-keygen -y "
                     f"-f {self._private_key_path} "
                     f"> {self._public_key_path}",

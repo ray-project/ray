@@ -8,15 +8,13 @@ import zipfile
 from typing import Dict, Iterable, List
 from unittest import mock
 
+import httpx
 import pytest
-import requests
 
 import ray
-import ray.util.state as state_api
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import (
-    ApplicationStatus,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusTrigger,
@@ -34,11 +32,13 @@ from ray.serve._private.test_utils import (
     check_num_replicas_eq,
     check_num_replicas_gte,
     check_num_replicas_lte,
+    check_running,
     get_num_alive_replicas,
+    tlog,
 )
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, AutoscalingContext, AutoscalingPolicy
 from ray.serve.handle import DeploymentHandle
-from ray.serve.schema import ServeDeploySchema
+from ray.serve.schema import ApplicationStatus, ServeDeploySchema
 from ray.util.state import list_actors
 
 
@@ -56,6 +56,13 @@ def get_deployment_start_time(controller: ServeController, name: str):
     deployments = ray.get(controller.list_deployments_internal.remote())
     deployment_info, _ = deployments[DeploymentID(name=name)]
     return deployment_info.start_time_ms
+
+
+def check_num_queued_requests_eq(handle: DeploymentHandle, expected: int):
+    assert (
+        handle._router._asyncio_router._metrics_manager.num_queued_requests == expected
+    )
+    return True
 
 
 def assert_no_replicas_deprovisioned(
@@ -105,10 +112,10 @@ def test_assert_no_replicas_deprovisioned():
 
 
 def get_num_requests(client, dep_id: DeploymentID):
-    ref = client._controller._dump_autoscaling_metrics_for_testing.remote()
-    total_num_requests = ray.get(ref)[dep_id]
-    print("total num requests", total_num_requests)
-    return total_num_requests
+    ref = client._controller._get_total_num_requests_for_deployment_for_testing.remote(
+        dep_id
+    )
+    return ray.get(ref)
 
 
 def check_num_requests_eq(client, id: DeploymentID, expected: int):
@@ -122,50 +129,28 @@ def check_num_requests_ge(client, id: DeploymentID, expected: int):
 
 
 class TestAutoscalingMetrics:
-    @pytest.mark.parametrize(
-        "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
-        [(True, True), (True, False), (False, True)],
-    )
-    def test_basic(
-        self,
-        serve_instance,
-        use_target_num_ongoing_requests_per_replica,
-        use_target_ongoing_requests,
-    ):
+    @pytest.mark.parametrize("aggregation_function", ["mean", "max"])
+    def test_basic(self, serve_instance, aggregation_function):
         """Test that request metrics are sent correctly to the controller."""
 
         client = serve_instance
         signal = SignalActor.remote()
 
-        autoscaling_config = {
-            "metrics_interval_s": 0.1,
-            "min_replicas": 1,
-            "max_replicas": 10,
-            "upscale_delay_s": 0,
-            "downscale_delay_s": 0,
-            "look_back_period_s": 1,
-        }
-        if (
-            use_target_ongoing_requests
-            and not use_target_num_ongoing_requests_per_replica
-        ):
-            autoscaling_config["target_ongoing_requests"] = 10
-        elif (
-            use_target_ongoing_requests and use_target_num_ongoing_requests_per_replica
-        ):
-            autoscaling_config["target_ongoing_requests"] = 10
-            # Random setting, should get ignored
-            autoscaling_config["target_num_ongoing_requests_per_replica"] = 234
-        else:
-            autoscaling_config["target_num_ongoing_requests_per_replica"] = 10
-
         @serve.deployment(
-            autoscaling_config=autoscaling_config,
-            # We will send many requests. This will make sure replicas are
-            # killed quickly during cleanup.
-            graceful_shutdown_timeout_s=1,
+            autoscaling_config={
+                "metrics_interval_s": 0.1,
+                "min_replicas": 1,
+                "max_replicas": 10,
+                "target_ongoing_requests": 10,
+                "upscale_delay_s": 0,
+                "downscale_delay_s": 5,
+                "look_back_period_s": 1,
+                "aggregation_function": aggregation_function,
+            },
             max_ongoing_requests=25,
             version="v1",
+            # To make the test run faster, we set the graceful_shutdown_timeout_s to 0.1
+            graceful_shutdown_timeout_s=0.1,
         )
         class A:
             async def __call__(self):
@@ -177,32 +162,38 @@ class TestAutoscalingMetrics:
 
         # Wait for metrics to propagate
         wait_for_condition(check_num_requests_ge, client=client, id=dep_id, expected=1)
-        print("Autoscaling metrics started recording on controller.")
+        tlog("Autoscaling metrics started recording on controller.")
 
         # Many queries should be inflight.
         wait_for_condition(check_num_requests_ge, client=client, id=dep_id, expected=45)
-        print("Confirmed many queries are inflight.")
+        tlog("Confirmed many queries are inflight.")
+
+        wait_for_condition(check_num_queued_requests_eq, handle=handle, expected=0)
+        tlog("Confirmed all requests are assigned to replicas.")
 
         wait_for_condition(check_num_replicas_eq, name="A", target=5)
-        print("Confirmed deployment scaled to 5 replicas.")
-        print("Releasing signal.")
+        tlog("Confirmed deployment scaled to 5 replicas.")
+        tlog("Releasing signal.")
         signal.send.remote()
 
         # After traffic stops, num replica should drop to 1
         wait_for_condition(check_num_replicas_eq, name="A", target=1, timeout=15)
-        print("Num replicas dropped to 1.")
+        tlog("Num replicas dropped to 1.")
 
         # Request metrics should drop to 0
         wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=0)
-        print("Queued and ongoing requests dropped to 0.")
+        tlog("Queued and ongoing requests dropped to 0.")
 
+    @pytest.mark.skipif(
+        not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+        reason="Needs metric collection at handle.",
+    )
     @pytest.mark.parametrize("use_generator", [True, False])
-    def test_replicas_die(self, serve_instance, use_generator):
+    def test_replicas_die(self, serve_instance_with_signal, use_generator):
         """If replicas die while requests are still executing, that
         should be tracked correctly."""
 
-        client = serve_instance
-        signal = SignalActor.remote()
+        client, signal = serve_instance_with_signal
 
         config = {
             "autoscaling_config": {
@@ -254,7 +245,8 @@ class TestAutoscalingMetrics:
 
         # Num requests should still drop to 0 despite all requests failing.
         def check_handle_metrics(handle):
-            num_requests = handle._router._metrics_manager.num_requests_sent_to_replicas
+            metrics_manager = handle._router._asyncio_router._metrics_manager
+            num_requests = metrics_manager.num_requests_sent_to_replicas
             for replica_id, num in num_requests.items():
                 assert (
                     num == 0
@@ -270,15 +262,14 @@ class TestAutoscalingMetrics:
     )
     @pytest.mark.parametrize("use_get_handle_api", [True, False])
     def test_handle_deleted_on_crashed_replica(
-        self, serve_instance, use_get_handle_api
+        self, serve_instance_with_signal, use_get_handle_api
     ):
         """If a Serve replica crashes, the metrics from handles living on that replica
         should be dropped.
         """
 
-        client = serve_instance
+        client, signal = serve_instance_with_signal
         dep_id = DeploymentID(name="A")
-        signal = SignalActor.remote()
 
         @serve.deployment(
             autoscaling_config={
@@ -288,7 +279,11 @@ class TestAutoscalingMetrics:
                 "max_replicas": 10,
                 "upscale_delay_s": 1,
                 "downscale_delay_s": 1,
-                "look_back_period_s": 10,
+                # Keep this value smaller than the wait_for_condition timeout to ensure the
+                # autoscaler remains responsive to metric changes. If it’s larger, the test
+                # may become flaky because the autoscaler might not have stabilized within
+                # the wait window.
+                "look_back_period_s": 5,
             },
             graceful_shutdown_timeout_s=0.1,
             health_check_period_s=1,
@@ -299,7 +294,7 @@ class TestAutoscalingMetrics:
                 await signal.wait.remote()
                 return "sup"
 
-        @serve.deployment(graceful_shutdown_timeout_s=1)
+        @serve.deployment(graceful_shutdown_timeout_s=1, max_ongoing_requests=50)
         class Router:
             def __init__(self, handle: DeploymentHandle):
                 if use_get_handle_api:
@@ -314,8 +309,8 @@ class TestAutoscalingMetrics:
         handle = serve.run(app)
         [handle.remote() for _ in range(20)]
 
-        # Wait for deployment A to scale up
         wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=20)
+        # Wait for deployment A to scale up
         wait_for_condition(check_num_replicas_eq, name="A", target=5)
         print("Confirmed deployment scaled to 5 replicas.")
 
@@ -333,20 +328,27 @@ class TestAutoscalingMetrics:
         wait_for_condition(check_num_replicas_eq, name="A", target=0)
         wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=0)
 
+        # Wait for new Router replica to start, so we avoid potential
+        # race conditions during test shutdown.
+        # (Ex: controller starts a new Router replica, before the replica
+        # initializes the test shutdown procedure deletes the Router
+        # deployment, replica initializes and tries to get deployment
+        # handle to `A` and fails.)
+        wait_for_condition(check_num_replicas_eq, name="Router", target=1)
+
     @pytest.mark.skipif(
         not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
         reason="Needs metric collection at handle.",
     )
-    def test_handle_deleted_on_non_serve_actor(self, serve_instance):
+    def test_handle_deleted_on_non_serve_actor(self, serve_instance_with_signal):
         """If handles are deleted while requests are still inflight, the
         metrics should be invalidated after a certain time so the info
         doesn't become stale. This is the fallback for handles that don't
         live on serve actors.
         """
 
-        client = serve_instance
+        client, signal = serve_instance_with_signal
         dep_id = DeploymentID(name="A")
-        signal = SignalActor.remote()
 
         @serve.deployment(
             autoscaling_config={
@@ -356,7 +358,11 @@ class TestAutoscalingMetrics:
                 "max_replicas": 10,
                 "upscale_delay_s": 1,
                 "downscale_delay_s": 1,
-                "look_back_period_s": 10,
+                # Keep this value smaller than the wait_for_condition timeout to ensure the
+                # autoscaler remains responsive to metric changes. If it’s larger, the test
+                # may become flaky because the autoscaler might not have stabilized within
+                # the wait window.
+                "look_back_period_s": 5,
             },
             graceful_shutdown_timeout_s=0.1,
             health_check_period_s=1,
@@ -395,10 +401,13 @@ class TestAutoscalingMetrics:
 
 
 @pytest.mark.parametrize("min_replicas", [1, 2])
-def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
+@pytest.mark.parametrize("aggregation_function", ["mean", "max", "min"])
+def test_e2e_scale_up_down_basic(
+    min_replicas, serve_instance_with_signal, aggregation_function
+):
     """Send 100 requests and check that we autoscale up, and then back down."""
 
-    signal = SignalActor.remote()
+    client, signal = serve_instance_with_signal
 
     @serve.deployment(
         autoscaling_config={
@@ -408,6 +417,7 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
             "look_back_period_s": 0.2,
             "downscale_delay_s": 0.5,
             "upscale_delay_s": 0,
+            "aggregation_function": aggregation_function,
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
@@ -415,14 +425,14 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
         max_ongoing_requests=1000,
     )
     class A:
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
     wait_for_condition(
         check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
     )
-    start_time = get_deployment_start_time(serve_instance._controller, "A")
+    start_time = get_deployment_start_time(client._controller, "A")
 
     [handle.remote() for _ in range(100)]
 
@@ -432,25 +442,26 @@ def test_e2e_scale_up_down_basic(min_replicas, serve_instance):
     signal.send.remote()
 
     # As the queue is drained, we should scale back down.
-    wait_for_condition(check_num_replicas_lte, name="A", target=min_replicas)
+    wait_for_condition(
+        check_num_replicas_lte, name="A", target=min_replicas, timeout=20
+    )
 
     # Make sure start time did not change for the deployment
-    assert get_deployment_start_time(serve_instance._controller, "A") == start_time
+    assert get_deployment_start_time(client._controller, "A") == start_time
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("scaling_factor", [1, 0.2])
 @pytest.mark.parametrize("use_upscale_downscale_config", [True, False])
-@mock.patch("ray.serve._private.router.HANDLE_METRIC_PUSH_INTERVAL_S", 1)
 def test_e2e_scale_up_down_with_0_replica(
-    serve_instance,
+    serve_instance_with_signal,
     scaling_factor,
     use_upscale_downscale_config,
 ):
     """Send 100 requests and check that we autoscale up, and then back down."""
 
-    controller = serve_instance._controller
-    signal = SignalActor.remote()
+    client, signal = serve_instance_with_signal
+    controller = client._controller
 
     autoscaling_config = {
         "metrics_interval_s": 0.1,
@@ -537,6 +548,7 @@ def test_cold_start_time(serve_instance):
         autoscaling_config={
             "min_replicas": 0,
             "max_replicas": 1,
+            "metrics_interval_s": 0.1,
             "look_back_period_s": 0.2,
         },
     )
@@ -552,11 +564,14 @@ def test_cold_start_time(serve_instance):
 
     wait_for_condition(check_running)
 
+    assert httpx.post("http://localhost:8000/-/healthz").status_code == 200
+    assert httpx.post("http://localhost:8000/-/routes").status_code == 200
+
     start = time.time()
     result = handle.remote().result()
     cold_start_time = time.time() - start
     if sys.platform == "win32":
-        timeout = 5  # Windows has a longer tail.
+        timeout = 10  # Windows has a longer tail.
     else:
         timeout = 3
     assert cold_start_time < timeout
@@ -568,13 +583,14 @@ def test_cold_start_time(serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_e2e_bursty(serve_instance):
+@pytest.mark.parametrize("aggregation_function", ["mean", "max", "min"])
+def test_e2e_bursty(serve_instance_with_signal, aggregation_function):
     """
     Sends 100 requests in bursts. Uses delays for smooth provisioning.
     """
 
-    controller = serve_instance._controller
-    signal = SignalActor.remote()
+    client, signal = serve_instance_with_signal
+    controller = client._controller
 
     @serve.deployment(
         autoscaling_config={
@@ -584,6 +600,7 @@ def test_e2e_bursty(serve_instance):
             "look_back_period_s": 0.5,
             "downscale_delay_s": 0.5,
             "upscale_delay_s": 0.5,
+            "aggregation_function": aggregation_function,
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
@@ -595,8 +612,8 @@ def test_e2e_bursty(serve_instance):
         def __init__(self):
             logging.getLogger("ray.serve").setLevel(logging.ERROR)
 
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
     wait_for_condition(
@@ -633,14 +650,13 @@ def test_e2e_bursty(serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@mock.patch("ray.serve._private.router.HANDLE_METRIC_PUSH_INTERVAL_S", 1)
-def test_e2e_intermediate_downscaling(serve_instance):
+def test_e2e_intermediate_downscaling(serve_instance_with_signal):
     """
     Scales up, then down, and up again.
     """
 
-    controller = serve_instance._controller
-    signal = SignalActor.remote()
+    client, signal = serve_instance_with_signal
+    controller = client._controller
 
     @serve.deployment(
         autoscaling_config={
@@ -657,8 +673,8 @@ def test_e2e_intermediate_downscaling(serve_instance):
         max_ongoing_requests=1000,
     )
     class A:
-        def __call__(self):
-            ray.get(signal.wait.remote())
+        async def __call__(self):
+            await signal.wait.remote()
 
     handle = serve.run(A.bind())
     wait_for_condition(
@@ -688,11 +704,11 @@ def test_e2e_intermediate_downscaling(serve_instance):
 @pytest.mark.parametrize("initial_replicas", [2, 3])
 @pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
 def test_downscaling_with_fractional_scaling_factor(
-    serve_instance,
+    serve_instance_with_signal,
     initial_replicas: int,
     use_deprecated_smoothing_factor: bool,
 ):
-    signal = SignalActor.options(name="signal123").remote()
+    client, signal = serve_instance_with_signal
     signal.send.remote(clear=True)
 
     app_config = {
@@ -721,7 +737,7 @@ def test_downscaling_with_fractional_scaling_factor(
         app_config["deployments"][0]["autoscaling_config"]["downscaling_factor"] = 0.5
 
     # Deploy with initial replicas = 2+, smoothing factor = 0.5
-    serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
     wait_for_condition(
         check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
     )
@@ -751,11 +767,11 @@ def test_downscaling_with_fractional_scaling_factor(
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.skip(reason="Currently failing with undefined behavior")
-def test_e2e_update_autoscaling_deployment(serve_instance):
+def test_e2e_update_autoscaling_deployment(serve_instance_with_signal):
     # See https://github.com/ray-project/ray/issues/21017 for details
 
-    controller = serve_instance._controller
-    signal = SignalActor.options(name="signal123").remote()
+    client, signal = serve_instance_with_signal
+    controller = client._controller
 
     app_config = {
         "import_path": "ray.serve.tests.test_config_files.get_signal.app",
@@ -776,7 +792,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
         ],
     }
 
-    serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
     print("Deployed A with min_replicas 1 and max_replicas 10.")
     wait_for_condition(
         check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
@@ -800,7 +816,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
 
     app_config["deployments"][0]["autoscaling_config"]["min_replicas"] = 2
     app_config["deployments"][0]["autoscaling_config"]["max_replicas"] = 20
-    serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
     print("Redeployed A.")
 
     wait_for_condition(check_num_replicas_gte, name="A", target=20)
@@ -823,7 +839,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
 
     # scale down to 0
     app_config["deployments"][0]["autoscaling_config"]["min_replicas"] = 0
-    serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
     print("Redeployed A.")
     wait_for_condition(
         check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
@@ -840,11 +856,11 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_e2e_raise_min_replicas(serve_instance):
+def test_e2e_raise_min_replicas(serve_instance_with_signal):
     """Raise min replicas from 0 to 2."""
 
-    controller = serve_instance._controller
-    signal = SignalActor.options(name="signal123").remote()
+    client, signal = serve_instance_with_signal
+    controller = client._controller
 
     app_config = {
         "import_path": "ray.serve.tests.test_config_files.get_signal.app",
@@ -865,27 +881,28 @@ def test_e2e_raise_min_replicas(serve_instance):
         ],
     }
 
-    serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-    print("Deployed A.")
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+    tlog("Deployed A.")
     wait_for_condition(
         check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
     )
     start_time = get_deployment_start_time(controller, "A")
+    tlog(f"Deployment A is healthy, {start_time=}")
 
     check_num_replicas_eq("A", 0)
 
     handle = serve.get_deployment_handle("A", "default")
     handle.remote()
-    print("Issued one request.")
+    tlog("Issued one request.")
 
-    wait_for_condition(check_num_replicas_eq, name="A", target=1, timeout=2)
-    print("Scaled up to 1 replica.")
+    wait_for_condition(check_num_replicas_eq, name="A", target=1, timeout=5)
+    tlog("Scaled up to 1 replica.")
 
     first_deployment_replicas = get_running_replica_ids("A", controller)
 
     app_config["deployments"][0]["autoscaling_config"]["min_replicas"] = 2
-    serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-    print("Redeployed A with min_replicas set to 2.")
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+    tlog("Redeployed A with min_replicas set to 2.")
     wait_for_condition(
         check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
     )
@@ -893,7 +910,7 @@ def test_e2e_raise_min_replicas(serve_instance):
     # Confirm that autoscaler doesn't scale above 2 even after waiting
     with pytest.raises(RuntimeError, match="timeout"):
         wait_for_condition(check_num_replicas_gte, name="A", target=3, timeout=5)
-    print("Autoscaled to 2 without issuing any new requests.")
+    tlog("Autoscaled to 2 without issuing any new requests.")
 
     second_deployment_replicas = get_running_replica_ids("A", controller)
 
@@ -904,12 +921,12 @@ def test_e2e_raise_min_replicas(serve_instance):
 
     signal.send.remote()
     time.sleep(1)
-    print("Completed request.")
+    tlog("Completed request.")
 
     # As the queue is drained, we should scale back down.
     wait_for_condition(check_num_replicas_lte, name="A", target=2)
     check_num_replicas_gte("A", 2)
-    print("Stayed at 2 replicas.")
+    tlog("Stayed at 2 replicas.")
 
     # Make sure start time did not change for the deployment
     assert get_deployment_start_time(controller, "A") == start_time
@@ -936,8 +953,8 @@ def test_e2e_initial_replicas(serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_e2e_preserve_prev_replicas(serve_instance):
-    signal = SignalActor.remote()
+def test_e2e_preserve_prev_replicas(serve_instance_with_signal):
+    _, signal = serve_instance_with_signal
 
     @serve.deployment(
         max_ongoing_requests=5,
@@ -949,7 +966,7 @@ def test_e2e_preserve_prev_replicas(serve_instance):
             downscale_delay_s=600,
             upscale_delay_s=0,
             metrics_interval_s=1,
-            look_back_period_s=1,
+            look_back_period_s=2,
         ),
     )
     def scaler():
@@ -959,12 +976,13 @@ def test_e2e_preserve_prev_replicas(serve_instance):
 
     handle = serve.run(scaler.bind())
     dep_id = DeploymentID(name="scaler")
-    responses = [handle.remote() for _ in range(10)]
+    responses = [handle.remote() for _ in range(20)]
 
     wait_for_condition(
         check_num_replicas_eq,
         name="scaler",
         target=2,
+        use_controller=True,
         retry_interval_ms=1000,
         timeout=20,
     )
@@ -982,13 +1000,13 @@ def test_e2e_preserve_prev_replicas(serve_instance):
     assert len(pids) == 2
 
     def check_num_replicas(live: int, dead: int):
-        live_actors = state_api.list_actors(
+        live_actors = list_actors(
             filters=[
                 ("class_name", "=", dep_id.to_replica_actor_class_name()),
                 ("state", "=", "ALIVE"),
             ]
         )
-        dead_actors = state_api.list_actors(
+        dead_actors = list_actors(
             filters=[
                 ("class_name", "=", dep_id.to_replica_actor_class_name()),
                 ("state", "=", "DEAD"),
@@ -1012,7 +1030,7 @@ def test_e2e_preserve_prev_replicas(serve_instance):
             downscale_delay_s=600,
             upscale_delay_s=600,
             metrics_interval_s=1,
-            look_back_period_s=1,
+            look_back_period_s=2,
         )
     )
     handle = serve.run(scaler.bind())
@@ -1026,9 +1044,8 @@ def test_e2e_preserve_prev_replicas(serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_e2e_preserve_prev_replicas_rest_api(serve_instance):
-    client = serve_instance
-    signal = SignalActor.options(name="signal", namespace="serve").remote()
+def test_e2e_preserve_prev_replicas_rest_api(serve_instance_with_signal):
+    client, signal = serve_instance_with_signal
 
     # Step 1: Prepare the script in a zip file so it can be submitted via REST API.
     with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_path:
@@ -1041,9 +1058,9 @@ import ray
 import os
 
 @serve.deployment
-def g():
-    signal = ray.get_actor("signal", namespace="serve")
-    ray.get(signal.wait.remote())
+async def g():
+    signal = ray.get_actor("signal123")
+    await signal.wait.remote()
     return os.getpid()
 
 
@@ -1064,7 +1081,7 @@ app = g.bind()
                     "downscale_delay_s": 600,
                     "upscale_delay_s": 0,
                     "metrics_interval_s": 1,
-                    "look_back_period_s": 1,
+                    "look_back_period_s": 2,
                 },
             }
         ],
@@ -1078,7 +1095,7 @@ app = g.bind()
     # Step 3: Verify that it can scale from 0 to 1.
     @ray.remote
     def send_request():
-        return requests.get("http://localhost:8000/").text
+        return httpx.get("http://localhost:8000/").text
 
     ref = send_request.remote()
 
@@ -1087,7 +1104,7 @@ app = g.bind()
     )
 
     signal.send.remote()
-    existing_pid = ray.get(ref)
+    existing_pid = int(ray.get(ref))
 
     # Step 4: Change the max replicas to 2
     app_config["deployments"][0]["autoscaling_config"]["max_replicas"] = 2
@@ -1101,7 +1118,7 @@ app = g.bind()
 
     # Step 5: Make sure it is the same replica (lightweight change).
     for _ in range(10):
-        other_pid = ray.get(send_request.remote())
+        other_pid = int(ray.get(send_request.remote()))
         assert other_pid == existing_pid
 
     # Step 6: Make sure initial_replicas overrides previous replicas
@@ -1117,9 +1134,7 @@ app = g.bind()
     )
 
     # Step 7: Make sure original replica is still running (lightweight change)
-    pids = set()
-    for _ in range(15):
-        pids.add(ray.get(send_request.remote()))
+    pids = {int(pid) for pid in ray.get([send_request.remote() for _ in range(20)])}
     assert existing_pid in pids
 
 
@@ -1128,25 +1143,21 @@ app = g.bind()
     not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     reason="Only works when collecting request metrics at handle.",
 )
-@pytest.mark.parametrize(
-    "use_max_concurrent_queries,use_max_ongoing_requests",
-    [(True, True), (True, False), (False, True)],
-)
-def test_max_ongoing_requests_set_to_one(
-    serve_instance, use_max_concurrent_queries, use_max_ongoing_requests
-):
+def test_max_ongoing_requests_set_to_one(serve_instance_with_signal):
     assert RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
-    signal = SignalActor.remote()
+    _, signal = serve_instance_with_signal
 
     @serve.deployment(
         autoscaling_config=AutoscalingConfig(
+            target_ongoing_requests=1.0,
             min_replicas=1,
-            max_replicas=5,
+            max_replicas=3,
             upscale_delay_s=0.5,
             downscale_delay_s=0.5,
             metrics_interval_s=0.5,
             look_back_period_s=2,
         ),
+        max_ongoing_requests=1,
         graceful_shutdown_timeout_s=1,
         ray_actor_options={"num_cpus": 0},
     )
@@ -1154,10 +1165,6 @@ def test_max_ongoing_requests_set_to_one(
         await signal.wait.remote()
         return os.getpid()
 
-    if use_max_concurrent_queries:
-        f = f.options(max_concurrent_queries=1)
-    if use_max_ongoing_requests:
-        f = f.options(max_ongoing_requests=1)
     h = serve.run(f.bind())
 
     check_num_replicas_eq("f", 1)
@@ -1167,11 +1174,12 @@ def test_max_ongoing_requests_set_to_one(
     # 2. Wait for the number of waiters on signal to increase by 1.
     # 3. Assert the number of replicas has increased by 1.
     refs = []
-    for i in range(5):
+    for i in range(3):
         refs.append(h.remote())
 
         def check_num_waiters(target: int):
-            assert ray.get(signal.cur_num_waiters.remote()) == target
+            num_waiters = ray.get(signal.cur_num_waiters.remote())
+            assert num_waiters == target
             return True
 
         wait_for_condition(check_num_waiters, target=i + 1)
@@ -1521,6 +1529,405 @@ def test_autoscaling_status_changes(serve_instance):
     )
 
     print("Statuses are as expected.")
+
+
+def custom_autoscaling_policy(ctx: AutoscalingContext):
+    if ctx.total_num_requests > 50:
+        return 3, {}
+    else:
+        return 2, {}
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {
+            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
+        },
+        AutoscalingPolicy(
+            policy_function="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
+        ),
+        AutoscalingPolicy(policy_function=custom_autoscaling_policy),
+    ],
+)
+def test_e2e_scale_up_down_basic_with_custom_policy(serve_instance_with_signal, policy):
+    """Send 100 requests and check that we autoscale up, and then back down."""
+
+    _, signal = serve_instance_with_signal
+
+    @serve.deployment(
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 4,
+            "downscale_delay_s": 0.5,
+            "upscale_delay_s": 0,
+            "policy": policy,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 1,
+        },
+        # We will send over a lot of queries. This will make sure replicas are
+        # killed quickly during cleanup.
+        graceful_shutdown_timeout_s=1,
+        max_ongoing_requests=1000,
+    )
+    class A:
+        async def __call__(self):
+            await signal.wait.remote()
+
+    handle = serve.run(A.bind())
+    wait_for_condition(
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
+    )
+
+    [handle.remote() for _ in range(40)]
+
+    # scale up one more replica from min_replicas
+    wait_for_condition(check_num_replicas_eq, name="A", target=2)
+    print("Scaled up to 2 replicas.")
+
+    ray.get(signal.send.remote())
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
+    ray.get(signal.send.remote(clear=True))
+    [handle.remote() for _ in range(70)]
+    wait_for_condition(check_num_replicas_eq, name="A", target=3)
+    ray.get(signal.send.remote())
+    wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 0)
+
+
+def app_level_custom_autoscaling_policy(ctxs: Dict[DeploymentID, AutoscalingContext]):
+    decisions: Dict[DeploymentID, int] = {}
+    for deployment_id, ctx in ctxs.items():
+        if deployment_id.name == "A":
+            if ctx.total_num_requests > 50:
+                decisions[deployment_id] = 4
+            else:
+                decisions[deployment_id] = 2
+        elif deployment_id.name == "B":
+            if ctx.total_num_requests > 60:
+                decisions[deployment_id] = 5
+            else:
+                decisions[deployment_id] = 3
+        else:
+            raise RuntimeWarning(f"Unknown deployment: {deployment_id}")
+
+    return decisions, {}
+
+
+class TestAppLevelAutoscalingPolicy:
+    @pytest.fixture
+    def serve_instance_with_two_signal(self, serve_instance):
+        client = serve_instance
+
+        signal_a = SignalActor.options(name="signal_A").remote()
+        signal_b = SignalActor.options(name="signal_B").remote()
+
+        yield client, signal_a, signal_b
+
+        # Delete signal actors so there is no conflict between tests
+        ray.kill(signal_a)
+        ray.kill(signal_b)
+
+    def verify_scaling_decisions(self, signal_A, signal_B):
+
+        hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
+        hB = serve.get_deployment_handle("B", app_name=SERVE_DEFAULT_APP_NAME)
+
+        # ---- Deployment A ----
+        ray.get(signal_A.send.remote(clear=True))
+        results = [hA.remote() for _ in range(40)]
+        wait_for_condition(lambda: ray.get(signal_A.cur_num_waiters.remote()) == 40)
+        wait_for_condition(check_num_replicas_eq, name="A", target=2)
+
+        ray.get(signal_A.send.remote(clear=True))
+        assert all(result.result(timeout_s=10) for result in results)
+        results = [hA.remote() for _ in range(70)]
+        wait_for_condition(lambda: ray.get(signal_A.cur_num_waiters.remote()) == 70)
+        wait_for_condition(check_num_replicas_eq, name="A", target=4)
+        ray.get(signal_A.send.remote())
+        assert all(result.result(timeout_s=10) for result in results)
+
+        # ---- Deployment B ----
+        ray.get(signal_B.send.remote(clear=True))
+        results = [hB.remote() for _ in range(50)]
+        wait_for_condition(lambda: ray.get(signal_B.cur_num_waiters.remote()) == 50)
+        wait_for_condition(check_num_replicas_eq, name="B", target=3)
+
+        ray.get(signal_B.send.remote(clear=True))
+        assert all(result.result(timeout_s=10) for result in results)
+        results = [hB.remote() for _ in range(120)]
+        wait_for_condition(lambda: ray.get(signal_B.cur_num_waiters.remote()) == 120)
+        wait_for_condition(check_num_replicas_eq, name="B", target=5)
+        ray.get(signal_B.send.remote())
+        assert all(result.result(timeout_s=10) for result in results)
+
+    @pytest.mark.parametrize(
+        "policy",
+        [
+            {
+                "policy_function": "ray.serve.tests.test_autoscaling_policy.app_level_custom_autoscaling_policy"
+            },
+            AutoscalingPolicy(
+                policy_function="ray.serve.tests.test_autoscaling_policy.app_level_custom_autoscaling_policy"
+            ),
+            AutoscalingPolicy(policy_function=app_level_custom_autoscaling_policy),
+        ],
+    )
+    def test_application_autoscaling_policy(
+        self, serve_instance_with_two_signal, policy
+    ):
+        client, signal_A, signal_B = serve_instance_with_two_signal
+
+        config_template = {
+            "import_path": "ray.serve.tests.test_config_files.get_multi_deployment_signal_app.app",
+            "autoscaling_policy": policy,
+            "deployments": [
+                {
+                    "name": "A",
+                    "max_ongoing_requests": 1000,
+                    "autoscaling_config": {
+                        "min_replicas": 1,
+                        "max_replicas": 10,
+                        "metrics_interval_s": 0.1,
+                        "upscale_delay_s": 0.1,
+                        "downscale_delay_s": 0.5,
+                        "look_back_period_s": 1,
+                    },
+                    "graceful_shutdown_timeout_s": 0.1,
+                },
+                {
+                    "name": "B",
+                    "max_ongoing_requests": 1000,
+                    "autoscaling_config": {
+                        "min_replicas": 1,
+                        "max_replicas": 10,
+                        "metrics_interval_s": 0.1,
+                        "upscale_delay_s": 0.1,
+                        "downscale_delay_s": 0.5,
+                        "look_back_period_s": 1,
+                    },
+                    "graceful_shutdown_timeout_s": 0.1,
+                },
+            ],
+        }
+
+        print(time.ctime(), "Deploying application with deployments A and B.")
+        client.deploy_apps(
+            ServeDeploySchema.parse_obj({"applications": [config_template]})
+        )
+        wait_for_condition(check_running, timeout=15)
+        print(time.ctime(), "Application is RUNNING.")
+        self.verify_scaling_decisions(signal_A, signal_B)
+
+    def test_autoscaling_policy_switchback(self, serve_instance_with_two_signal):
+        client, signal_A, signal_B = serve_instance_with_two_signal
+
+        config_template = {
+            "import_path": "ray.serve.tests.test_config_files.get_multi_deployment_signal_app.app",
+            "deployments": [
+                {
+                    "name": "A",
+                    "max_ongoing_requests": 1000,
+                    "autoscaling_config": {
+                        "min_replicas": 1,
+                        "max_replicas": 10,
+                        "metrics_interval_s": 0.1,
+                        "upscale_delay_s": 0.1,
+                        "downscale_delay_s": 0.5,
+                        "look_back_period_s": 1,
+                        "policy": {
+                            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
+                        },
+                    },
+                    "graceful_shutdown_timeout_s": 0.1,
+                },
+            ],
+        }
+
+        client.deploy_apps(
+            ServeDeploySchema.parse_obj({"applications": [config_template]})
+        )
+        wait_for_condition(check_running, timeout=15)
+
+        hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
+        results = [hA.remote() for _ in range(60)]
+        wait_for_condition(lambda: ray.get(signal_A.cur_num_waiters.remote()) == 60)
+        wait_for_condition(check_num_replicas_eq, name="A", target=3)
+        ray.get(signal_A.send.remote())
+        assert all(result.result(timeout_s=10) for result in results)
+        ray.get(signal_A.send.remote(clear=True))
+
+        # Switch to app-level policy
+        config_template = {
+            "import_path": "ray.serve.tests.test_config_files.get_multi_deployment_signal_app.app",
+            "autoscaling_policy": {
+                "policy_function": "ray.serve.tests.test_autoscaling_policy.app_level_custom_autoscaling_policy"
+            },
+            "deployments": [
+                {
+                    "name": "A",
+                    "max_ongoing_requests": 1000,
+                    "autoscaling_config": {
+                        "min_replicas": 1,
+                        "max_replicas": 10,
+                        "metrics_interval_s": 0.1,
+                        "upscale_delay_s": 0.1,
+                        "downscale_delay_s": 0.5,
+                        "look_back_period_s": 1,
+                    },
+                    "graceful_shutdown_timeout_s": 0.1,
+                },
+                {
+                    "name": "B",
+                    "max_ongoing_requests": 1000,
+                    "autoscaling_config": {
+                        "min_replicas": 1,
+                        "max_replicas": 10,
+                        "metrics_interval_s": 0.1,
+                        "upscale_delay_s": 0.1,
+                        "downscale_delay_s": 0.5,
+                        "look_back_period_s": 1,
+                    },
+                    "graceful_shutdown_timeout_s": 0.1,
+                },
+            ],
+        }
+
+        client.deploy_apps(
+            ServeDeploySchema.parse_obj({"applications": [config_template]})
+        )
+        wait_for_condition(check_running, timeout=15)
+
+        hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
+        results = [hA.remote() for _ in range(120)]
+        wait_for_condition(lambda: ray.get(signal_A.cur_num_waiters.remote()) == 120)
+        wait_for_condition(check_num_replicas_eq, name="A", target=4)
+        ray.get(signal_A.send.remote())
+        assert all(result.result(timeout_s=10) for result in results)
+        ray.get(signal_A.send.remote(clear=True))
+
+        hB = serve.get_deployment_handle("B", app_name=SERVE_DEFAULT_APP_NAME)
+        results = [hB.remote() for _ in range(120)]
+        wait_for_condition(lambda: ray.get(signal_B.cur_num_waiters.remote()) == 120)
+        wait_for_condition(check_num_replicas_eq, name="B", target=5)
+        ray.get(signal_B.send.remote())
+        assert all(result.result(timeout_s=10) for result in results)
+        ray.get(signal_B.send.remote(clear=True))
+
+        # switch back to deployment-level policy
+        config_template = {
+            "import_path": "ray.serve.tests.test_config_files.get_multi_deployment_signal_app.app",
+            "deployments": [
+                {
+                    "name": "A",
+                    "max_ongoing_requests": 1000,
+                    "autoscaling_config": {
+                        "min_replicas": 1,
+                        "max_replicas": 10,
+                        "metrics_interval_s": 0.1,
+                        "upscale_delay_s": 0.1,
+                        "downscale_delay_s": 0.5,
+                        "look_back_period_s": 1,
+                        "policy": {
+                            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
+                        },
+                    },
+                    "graceful_shutdown_timeout_s": 0.1,
+                },
+            ],
+        }
+        print(time.ctime(), "Deploying application with deployments A and B.")
+        client.deploy_apps(
+            ServeDeploySchema.parse_obj({"applications": [config_template]})
+        )
+        wait_for_condition(check_running, timeout=15)
+
+        hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
+        results = [hA.remote() for _ in range(120)]
+        wait_for_condition(lambda: ray.get(signal_A.cur_num_waiters.remote()) == 120)
+        wait_for_condition(check_num_replicas_eq, name="A", target=3)
+        ray.get(signal_A.send.remote())
+        assert all(result.result(timeout_s=10) for result in results)
+
+    def test_autoscaling_policy_enable_disable(self, serve_instance_with_two_signal):
+        client, signal_A, _ = serve_instance_with_two_signal
+
+        config_template = {
+            "import_path": "ray.serve.tests.test_config_files.get_multi_deployment_signal_app.app",
+            "deployments": [
+                {
+                    "name": "A",
+                    "max_ongoing_requests": 1000,
+                    "num_replicas": 1,
+                },
+            ],
+        }
+        client.deploy_apps(
+            ServeDeploySchema.parse_obj({"applications": [config_template]})
+        )
+        wait_for_condition(check_running, timeout=15)
+
+        hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
+        results = [hA.remote() for _ in range(120)]
+        wait_for_condition(lambda: ray.get(signal_A.cur_num_waiters.remote()) == 120)
+        wait_for_condition(check_num_replicas_eq, name="A", target=1)
+        ray.get(signal_A.send.remote(clear=True))
+        assert all(result.result(timeout_s=10) for result in results)
+
+        config_template = {
+            "import_path": "ray.serve.tests.test_config_files.get_multi_deployment_signal_app.app",
+            "autoscaling_policy": {
+                "policy_function": "ray.serve.tests.test_autoscaling_policy.app_level_custom_autoscaling_policy"
+            },
+            "deployments": [
+                {
+                    "name": "A",
+                    "max_ongoing_requests": 1000,
+                    "num_replicas": "auto",
+                    "autoscaling_config": {
+                        "min_replicas": 1,
+                        "max_replicas": 10,
+                        "metrics_interval_s": 0.1,
+                        "upscale_delay_s": 0.1,
+                        "downscale_delay_s": 0.5,
+                        "look_back_period_s": 1,
+                    },
+                },
+            ],
+        }
+        client.deploy_apps(
+            ServeDeploySchema.parse_obj({"applications": [config_template]})
+        )
+        wait_for_condition(check_running, timeout=15)
+
+        hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
+        results = [hA.remote() for _ in range(120)]
+        wait_for_condition(lambda: ray.get(signal_A.cur_num_waiters.remote()) == 120)
+        wait_for_condition(check_num_replicas_eq, name="A", target=4)
+        ray.get(signal_A.send.remote(clear=True))
+        assert all(result.result(timeout_s=10) for result in results)
+
+        # turn off app-level autoscaling policy
+        config_template = {
+            "import_path": "ray.serve.tests.test_config_files.get_multi_deployment_signal_app.app",
+            "deployments": [
+                {
+                    "name": "A",
+                    "max_ongoing_requests": 1000,
+                    "num_replicas": 1,
+                },
+            ],
+        }
+        client.deploy_apps(
+            ServeDeploySchema.parse_obj({"applications": [config_template]})
+        )
+        wait_for_condition(check_running, timeout=15)
+        wait_for_condition(check_num_replicas_eq, name="A", target=1)
+        hA = serve.get_deployment_handle("A", app_name=SERVE_DEFAULT_APP_NAME)
+        results = [hA.remote() for _ in range(120)]
+        wait_for_condition(lambda: ray.get(signal_A.cur_num_waiters.remote()) == 120)
+        wait_for_condition(check_num_replicas_eq, name="A", target=1)
+        ray.get(signal_A.send.remote(clear=True))
+        assert all(result.result(timeout_s=10) for result in results)
 
 
 if __name__ == "__main__":

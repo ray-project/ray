@@ -8,7 +8,7 @@ To build the documentation, make sure you have `ray` installed first.
 For building the documentation locally install the following dependencies:
 
 ```bash
-pip install -r requirements-doc.txt
+pip install -r requirements-doc.lock.txt
 ```
 
 ## Building the documentation
@@ -84,7 +84,7 @@ The benefits of working with notebooks for examples are that you don't separate 
 
 ## Adding Markdown docs from external (ecosystem) repositories
 
-In order to avoid a situation where duplicate documentation files live in both the docs folder
+In order to avoid a situation where duplicate documentation files live in both the `doc/` folder
 in this repository and in external repositories of ecosystem libraries (eg. xgboost-ray), you can
 specify Markdown files that will be downloaded from other GitHub repositories during the build process.
 

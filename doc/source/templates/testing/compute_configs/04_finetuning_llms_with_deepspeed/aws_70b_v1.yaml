@@ -5,7 +5,7 @@ head_node_type:
   name: head_node_type
   instance_type: g5.48xlarge
   resources:
-    custom_resources: 
+    custom_resources:
       large_cpu_mem: 1
 
 worker_node_types:
@@ -15,7 +15,7 @@ worker_node_types:
     max_workers: 3
     use_spot: false
 
-aws:
+advanced_configurations_json:
   TagSpecifications:
     - ResourceType: "instance"
       Tags:

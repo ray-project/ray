@@ -4,7 +4,7 @@ region: us-west-2
 
 # NFS needs to be disabled for this test, since the test spawns too many nodes
 # and may hit the limit on the # of clients.
-aws:
+advanced_configurations_json:
   TagSpecifications:
     - ResourceType: "instance"
       Tags:
@@ -23,7 +23,7 @@ head_node_type:
 
 worker_node_types:
   - name: worker_node
-    instance_type: m5.large
+    instance_type: m6i.large
     min_workers: 500
     max_workers: 2000
     use_spot: false

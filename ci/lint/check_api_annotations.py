@@ -39,7 +39,9 @@ def _fullname(attr):
 def _ignore(attr, extra_ignore):
     """Whether an attr should be ignored from annotation checking."""
     attr = _fullname(attr)
-    if "ray." not in attr or "._" in attr:
+    # We exclude ray.ObjectRef here since it is a C extension type and
+    # cannot have annotations
+    if "ray." not in attr or "._" in attr or attr == "ray.ObjectRef":
         return True
     for path in IGNORE_PATHS:
         if path in attr:
@@ -87,7 +89,6 @@ if __name__ == "__main__":
     import ray.serve
     import ray.train
     import ray.tune
-    import ray.workflow
 
     output = set()
     ok = set()
@@ -104,13 +105,12 @@ if __name__ == "__main__":
         set(),
         ok,
         output,
-        ignore=["ray.workflow", "ray.tune", "ray.serve"],
+        ignore=["ray.tune", "ray.serve"],
     )
     verify(ray.serve, set(), ok, output)
     assert len(ok) >= 500, len(ok)
     # TODO(ekl) enable it for all modules.
     #    verify(ray.tune, set(), ok, output)
-    #    verify(ray.workflow, set(), ok, output)
 
     print("Num ok", len(ok))
     print("Num bad", len(output))

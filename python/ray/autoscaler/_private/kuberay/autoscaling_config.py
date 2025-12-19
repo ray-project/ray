@@ -2,16 +2,19 @@ import decimal
 import json
 import logging
 import time
+from itertools import chain
 from typing import Any, Dict, Optional
 
 import requests
 
+from ray._private.label_utils import (
+    validate_node_label_syntax,
+)
 from ray.autoscaler._private.constants import (
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
     WORKER_LIVENESS_CHECK_KEY,
-    WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.kuberay import node_provider, utils
 from ray.autoscaler._private.util import validate_config
@@ -28,9 +31,12 @@ UPSCALING_VALUE_CONSERVATIVE = "Conservative"
 MAX_RAYCLUSTER_FETCH_TRIES = 5
 RAYCLUSTER_FETCH_RETRY_S = 5
 
+GKE_TPU_TOPOLOGY_LABEL = "cloud.google.com/gke-tpu-topology"
+GKE_TPU_ACCELERATOR_LABEL = "cloud.google.com/gke-tpu-accelerator"
+
 # Logical group name for the KubeRay head group.
 # Used as the name of the "head node type" by the autoscaler.
-_HEAD_GROUP_NAME = "head-group"
+_HEAD_GROUP_NAME = "headgroup"
 
 
 class AutoscalingConfigProducer:
@@ -49,10 +55,10 @@ class AutoscalingConfigProducer:
     """
 
     def __init__(self, ray_cluster_name, ray_cluster_namespace):
-        self._headers, self._verify = node_provider.load_k8s_secrets()
-        self._ray_cr_url = node_provider.url_from_resource(
-            namespace=ray_cluster_namespace, path=f"rayclusters/{ray_cluster_name}"
+        self.kubernetes_api_client = node_provider.KubernetesHttpApiClient(
+            namespace=ray_cluster_namespace
         )
+        self._ray_cr_path = f"rayclusters/{ray_cluster_name}"
 
     def __call__(self):
         ray_cr = self._fetch_ray_cr_from_k8s_with_retries()
@@ -67,7 +73,7 @@ class AutoscalingConfigProducer:
         """
         for i in range(1, MAX_RAYCLUSTER_FETCH_TRIES + 1):
             try:
-                return self._fetch_ray_cr_from_k8s()
+                return self.kubernetes_api_client.get(self._ray_cr_path)
             except requests.HTTPError as e:
                 if i < MAX_RAYCLUSTER_FETCH_TRIES:
                     logger.exception(
@@ -79,15 +85,6 @@ class AutoscalingConfigProducer:
 
         # This branch is inaccessible. Raise to satisfy mypy.
         raise AssertionError
-
-    def _fetch_ray_cr_from_k8s(self) -> Dict[str, Any]:
-        result = requests.get(
-            self._ray_cr_url, headers=self._headers, verify=self._verify
-        )
-        if not result.status_code == 200:
-            result.raise_for_status()
-        ray_cr = result.json()
-        return ray_cr
 
 
 def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, Any]:
@@ -156,15 +153,6 @@ def _generate_provider_config(ray_cluster_namespace: str) -> Dict[str, Any]:
         DISABLE_LAUNCH_CONFIG_CHECK_KEY: True,
         FOREGROUND_NODE_LAUNCH_KEY: True,
         WORKER_LIVENESS_CHECK_KEY: False,
-        # For the time being we are letting the autoscaler drain nodes,
-        # hence the following setting is set to True (the default value).
-        # This is because we are observing that with the flag set to false,
-        # The GCS may not be properly notified of node downscaling.
-        # TODO Solve this issue, flip the key back to false -- else we may have
-        # a race condition in which the autoscaler kills the Ray container
-        # Kubernetes recreates it,
-        # and then KubeRay deletes the pod, killing the container again.
-        WORKER_RPC_DRAIN_KEY: True,
     }
 
 
@@ -185,7 +173,7 @@ def _generate_legacy_autoscaling_config_fields() -> Dict[str, Any]:
 
 
 def _generate_available_node_types_from_ray_cr_spec(
-    ray_cr_spec: Dict[str, Any]
+    ray_cr_spec: Dict[str, Any],
 ) -> Dict[str, Any]:
     """Formats autoscaler "available_node_types" field based on the Ray CR's group
     specs.
@@ -210,46 +198,57 @@ def _node_type_from_group_spec(
         # The head node type has no workers because the head is not a worker.
         min_workers = max_workers = 0
     else:
-        # `minReplicas` and `maxReplicas` are required fields for each workerGroupSpec
-        min_workers = group_spec["minReplicas"]
-        max_workers = group_spec["maxReplicas"]
+        # `minReplicas` and `maxReplicas` are required fields for each workerGroupSpec.
+        # numOfHosts specifies the number of workers per replica in KubeRay v1.1+.
+        min_workers = group_spec["minReplicas"] * group_spec.get("numOfHosts", 1)
+        max_workers = group_spec["maxReplicas"] * group_spec.get("numOfHosts", 1)
 
     resources = _get_ray_resources_from_group_spec(group_spec, is_head)
+    labels = _get_labels_from_group_spec(group_spec)
 
-    return {
+    node_type = {
         "min_workers": min_workers,
         "max_workers": max_workers,
         # `node_config` is a legacy field required for compatibility.
         # Pod config data is required by the operator but not by the autoscaler.
         "node_config": {},
         "resources": resources,
+        "labels": labels,
     }
+
+    idle_timeout_s = group_spec.get(IDLE_SECONDS_KEY)
+    if idle_timeout_s is not None:
+        node_type["idle_timeout_s"] = float(idle_timeout_s)
+
+    return node_type
 
 
 def _get_ray_resources_from_group_spec(
     group_spec: Dict[str, Any], is_head: bool
 ) -> Dict[str, int]:
     """
-    Infers Ray resources from rayStartCommands and K8s limits.
+    Infers Ray resources from group `Resources` field, rayStartCommands, or K8s limits.
     The resources extracted are used in autoscaling calculations.
-
-    TODO: Expose a better interface in the RayCluster CRD for Ray resource annotations.
-    For now, we take the rayStartParams as the primary source of truth.
     """
-    ray_start_params = group_spec["rayStartParams"]
-    # This assumes the Ray container is the first.
-    # TODO. Clearly warn users to put the Ray container first when using sidecars.
-    k8s_resource_limits = (
-        group_spec["template"]["spec"]["containers"][0]
-        .get("resources", {})
-        .get("limits", {})
-    )
+    # Set resources from top-level group 'Resources' field if it exists.
+    group_resources = group_spec.get("resources", {})
+
+    ray_start_params = group_spec.get("rayStartParams", {})
+    # In KubeRay, Ray container is always the first application container of a Ray Pod.
+    k8s_resources = group_spec["template"]["spec"]["containers"][0].get("resources", {})
     group_name = _HEAD_GROUP_NAME if is_head else group_spec["groupName"]
 
-    num_cpus = _get_num_cpus(ray_start_params, k8s_resource_limits, group_name)
-    num_gpus = _get_num_gpus(ray_start_params, k8s_resource_limits, group_name)
-    custom_resource_dict = _get_custom_resources(ray_start_params, group_name)
-    memory = _get_memory(ray_start_params, k8s_resource_limits)
+    num_cpus = _get_num_cpus(
+        group_resources, ray_start_params, k8s_resources, group_name
+    )
+    num_gpus = _get_num_gpus(
+        group_resources, ray_start_params, k8s_resources, group_name
+    )
+    custom_resource_dict = _get_custom_resources(
+        group_resources, ray_start_params, group_name
+    )
+    num_tpus = _get_num_tpus(group_resources, custom_resource_dict, k8s_resources)
+    memory = _get_memory(group_resources, ray_start_params, k8s_resources)
 
     # It's not allowed to use object store memory as a resource request, so we don't
     # add that to the autoscaler's resources annotations.
@@ -262,6 +261,45 @@ def _get_ray_resources_from_group_spec(
     if num_gpus is not None:
         resources["GPU"] = num_gpus
 
+    if num_tpus is not None:
+        # Add TPU Ray resource if not already added by ray_start_params,
+        # but specified in k8s_resource_limits.
+        if "TPU" not in custom_resource_dict:
+            resources["TPU"] = num_tpus
+
+        """Add TPU head resource, similar to the GCP node_provider.
+        Sets the Ray resource TPU-{...}-head to ensure the Ray autoscaler
+        has sufficient resources to make scaling decisions.
+        TPU worker groups treat each TPU podslice as a replica, with `NumOfHosts`
+        specifying the number of workers per slice. Each replica of a TPU worker
+        group has one TPU head.
+
+        For example, a v4-16 worker group with 2 replicas should have the following
+        resource labels on worker 0 of each replica:
+            worker 0: resources = {"TPU": 4, "TPU-v4-16-head": 1}
+        """
+        if (
+            "nodeSelector" in group_spec["template"]["spec"]
+            and GKE_TPU_TOPOLOGY_LABEL in group_spec["template"]["spec"]["nodeSelector"]
+            and GKE_TPU_ACCELERATOR_LABEL
+            in group_spec["template"]["spec"]["nodeSelector"]
+        ):
+            topology = group_spec["template"]["spec"]["nodeSelector"][
+                GKE_TPU_TOPOLOGY_LABEL
+            ]
+            accelerator = group_spec["template"]["spec"]["nodeSelector"][
+                GKE_TPU_ACCELERATOR_LABEL
+            ]
+            accelerator_type = utils.tpu_node_selectors_to_type(topology, accelerator)
+            if accelerator_type:
+                resources[f"TPU-{accelerator_type}-head"] = 1
+        else:
+            logger.error(
+                f"Pods using TPUs require both `{GKE_TPU_TOPOLOGY_LABEL}` and `{GKE_TPU_ACCELERATOR_LABEL}` node selectors. "
+                "See https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/tpu.html#configuring-ray-pods-for-tpu-usage "
+                "and https://cloud.google.com/kubernetes-engine/docs/how-to/tpus."
+            )
+
     if memory is not None:
         resources["memory"] = memory
 
@@ -270,18 +308,54 @@ def _get_ray_resources_from_group_spec(
     return resources
 
 
+def _get_labels_from_group_spec(group_spec: Dict[str, Any]) -> Dict[str, str]:
+    """
+    Parses Ray node labels for the autoscaling config based on the following
+    priority:
+    1. Top-level `labels` field in the group spec.
+    2. `labels` field in `rayStartParams`.
+    """
+    labels_dict = {}
+
+    ray_start_params = group_spec.get("rayStartParams", {})
+    labels_str = ray_start_params.get("labels")
+    if labels_str:
+        logger.warning(
+            f"Ignoring labels: {labels_str} set in rayStartParams. Group labels are supported in the top-level Labels field starting in KubeRay v1.5"
+        )
+
+    # Check for top-level structured Labels field.
+    if "labels" in group_spec and isinstance(group_spec.get("labels"), dict):
+        labels_dict = group_spec.get("labels")
+        # Validate node labels follow expected Kubernetes label syntax.
+        validate_node_label_syntax(labels_dict)
+
+    return labels_dict
+
+
 def _get_num_cpus(
+    group_resources: Dict[str, str],
     ray_start_params: Dict[str, str],
-    k8s_resource_limits: Dict[str, str],
+    k8s_resources: Dict[str, Dict[str, str]],
     group_name: str,
 ) -> int:
-    """Get CPU annotation from ray_start_params or k8s_resource_limits,
-    with priority for ray_start_params.
+    """Get CPU annotation from `resources` field, ray_start_params or k8s_resources,
+    with priority for `resources` field.
     """
+    if "CPU" in group_resources:
+        if "num-cpus" in ray_start_params:
+            logger.warning(
+                f"'CPU' specified in both the top-level 'resources' field and in 'rayStartParams'. "
+                f"Using the value from 'resources': {group_resources['CPU']}."
+            )
+        return _round_up_k8s_quantity(group_resources["CPU"])
     if "num-cpus" in ray_start_params:
         return int(ray_start_params["num-cpus"])
-    elif "cpu" in k8s_resource_limits:
-        cpu_quantity: str = k8s_resource_limits["cpu"]
+    elif "cpu" in k8s_resources.get("limits", {}):
+        cpu_quantity: str = k8s_resources["limits"]["cpu"]
+        return _round_up_k8s_quantity(cpu_quantity)
+    elif "cpu" in k8s_resources.get("requests", {}):
+        cpu_quantity: str = k8s_resources["requests"]["cpu"]
         return _round_up_k8s_quantity(cpu_quantity)
     else:
         # Getting the number of CPUs is important, so raise an error if we can't do it.
@@ -293,43 +367,89 @@ def _get_num_cpus(
 
 
 def _get_memory(
-    ray_start_params: Dict[str, str], k8s_resource_limits: Dict[str, Any]
+    group_resources: Dict[str, str],
+    ray_start_params: Dict[str, str],
+    k8s_resources: Dict[str, Dict[str, str]],
 ) -> Optional[int]:
-    """Get memory resource annotation from ray_start_params or k8s_resource_limits,
-    with priority for ray_start_params.
+    """Get memory resource annotation from `resources` field, ray_start_params or k8s_resources,
+    with priority for `resources` field.
     """
+    if "memory" in group_resources:
+        if "memory" in ray_start_params:
+            logger.warning(
+                f"'memory' specified in both the top-level 'resources' field and in 'rayStartParams'. "
+                f"Using the value from 'resources': {group_resources['memory']}."
+            )
+        return _round_up_k8s_quantity(group_resources["memory"])
     if "memory" in ray_start_params:
         return int(ray_start_params["memory"])
-    elif "memory" in k8s_resource_limits:
-        memory_quantity: str = k8s_resource_limits["memory"]
+    elif "memory" in k8s_resources.get("limits", {}):
+        memory_quantity: str = k8s_resources["limits"]["memory"]
+        return _round_up_k8s_quantity(memory_quantity)
+    elif "memory" in k8s_resources.get("requests", {}):
+        memory_quantity: str = k8s_resources["requests"]["memory"]
         return _round_up_k8s_quantity(memory_quantity)
     return None
 
 
 def _get_num_gpus(
+    group_resources: Dict[str, str],
     ray_start_params: Dict[str, str],
-    k8s_resource_limits: Dict[str, Any],
+    k8s_resources: Dict[str, Dict[str, str]],
     group_name: str,
 ) -> Optional[int]:
-    """Get memory resource annotation from ray_start_params or k8s_resource_limits,
-    with priority for ray_start_params.
+    """Get GPU resource annotation from `resources` field, ray_start_params or k8s_resources,
+    with priority for `resources` field.
     """
-
-    if "num-gpus" in ray_start_params:
+    if "GPU" in group_resources:
+        if "num-gpus" in ray_start_params:
+            logger.warning(
+                f"'GPU' specified in both the top-level 'resources' field and in 'rayStartParams'. "
+                f"Using the value from 'resources': {group_resources['GPU']}."
+            )
+        return _round_up_k8s_quantity(group_resources["GPU"])
+    elif "num-gpus" in ray_start_params:
         return int(ray_start_params["num-gpus"])
     else:
-        for key in k8s_resource_limits:
+        for key, resource_quantity in chain(
+            k8s_resources.get("limits", {}).items(),
+            k8s_resources.get("requests", {}).items(),
+        ):
             # e.g. nvidia.com/gpu
             if key.endswith("gpu"):
                 # Typically, this is a string representing an interger, e.g. "1".
-                gpu_resource_quantity = k8s_resource_limits[key]
-                # Convert to int, making no assumptions on the gpu_resource_quantity,
+                # Convert to int, making no assumptions on the resource_quantity,
                 # besides that it's valid as a K8s resource quantity.
-                num_gpus = _round_up_k8s_quantity(gpu_resource_quantity)
+                num_gpus = _round_up_k8s_quantity(resource_quantity)
                 if num_gpus > 0:
                     # Only one GPU type supported for now, break out on first
                     # "/gpu" match.
                     return num_gpus
+    return None
+
+
+def _get_num_tpus(
+    group_resources: Dict[str, str],
+    custom_resource_dict: Dict[str, int],
+    k8s_resources: Dict[str, Dict[str, str]],
+) -> Optional[int]:
+    """Get TPU custom resource annotation from `resources` field, custom_resource_dict in ray_start_params,
+    or k8s_resources, with priority for `resources` field.
+    """
+    if "TPU" in group_resources:
+        return _round_up_k8s_quantity(group_resources["TPU"])
+    elif "TPU" in custom_resource_dict:
+        return custom_resource_dict["TPU"]
+    else:
+        for typ in ["limits", "requests"]:
+            tpu_resource_quantity = k8s_resources.get(typ, {}).get("google.com/tpu")
+            if tpu_resource_quantity is not None:
+                # Typically, this is a string representing an integer, e.g. "1".
+                # Convert to int, making no assumptions on the tpu_resource_quantity,
+                # besides that it's valid as a K8s resource quantity.
+                num_tpus = _round_up_k8s_quantity(tpu_resource_quantity)
+                if num_tpus > 0:
+                    return num_tpus
     return None
 
 
@@ -348,17 +468,42 @@ def _round_up_k8s_quantity(quantity: str) -> int:
 
 
 def _get_custom_resources(
-    ray_start_params: Dict[str, Any], group_name: str
+    group_resources: Dict[str, str], ray_start_params: Dict[str, Any], group_name: str
 ) -> Dict[str, int]:
-    """Format custom resources based on the `resources` Ray start param.
+    """Format custom resources based on the group `resources` field or `resources` Ray start param.
 
-    Currently, the value of the `resources` field must
+    Currently, the value of the rayStartParam `resources` field must
     be formatted as follows:
     '"{\"Custom1\": 1, \"Custom2\": 5}"'.
 
     This method first converts the input to a correctly formatted
     json string and then loads that json string to a dict.
     """
+    # If the top-level `resources` field is defined, use it as the exclusive source.
+    if group_resources:
+        if "resources" in ray_start_params:
+            logger.warning(
+                f"custom resources specified in both the top-level 'resources' field and in 'rayStartParams'. "
+                f"Using the values from 'resources': {group_resources}."
+            )
+        standard_keys = {"CPU", "GPU", "TPU", "memory"}
+        try:
+            custom_resources = {
+                k: _round_up_k8s_quantity(v)
+                for k, v in group_resources.items()
+                if k not in standard_keys
+            }
+        except Exception as e:
+            logger.error(
+                f"Error reading `resource` for group {group_name}."
+                " For the correct format, refer to example configuration at "
+                "https://github.com/ray-project/ray/blob/master/python/"
+                "ray/autoscaler/kuberay/ray-cluster.complete.yaml."
+            )
+            raise e
+        return custom_resources
+
+    # Otherwise, check rayStartParams.
     if "resources" not in ray_start_params:
         return {}
     resources_string = ray_start_params["resources"]

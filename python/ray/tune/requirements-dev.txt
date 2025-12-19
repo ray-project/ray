@@ -1,5 +1,3 @@
-flake8==3.9.1
-flake8-quotes
 gym>=0.21.0,<0.24.0
 scikit-image
 pandas

@@ -173,6 +173,6 @@ if __name__ == "__main__":
     result = trainer.fit()
 
     # Retrieve the best checkponints from results
-    result.best_checkpoints
+    _ = result.best_checkpoints
 
 # __deepspeed_torch_basic_example_no_raydata_end__

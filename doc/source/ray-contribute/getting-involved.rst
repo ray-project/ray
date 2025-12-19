@@ -10,6 +10,7 @@ Getting Involved / Contributing
     :hidden:
 
     development
+    ci
     docs
     writing-code-snippets
     fake-autoscaler
@@ -24,7 +25,7 @@ researchers, and folks that love machine learning.
   community is extremely active in helping people succeed in building their
   Ray applications.
 
-You can join (and Star!) us on `on GitHub`_.
+You can join (and Star!) us `on GitHub`_.
 
 .. _`on GitHub`: https://github.com/ray-project/ray
 
@@ -46,7 +47,7 @@ What can I work on?
 -------------------
 
 We use Github to track issues, feature requests, and bugs. Take a look at the
-ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22>`__ for a place to start.
+ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good-first-issue%22>`__ for a place to start.
 
 Setting up your development environment
 ---------------------------------------
@@ -238,15 +239,17 @@ We also have tests for code formatting and linting that need to pass before merg
 
 .. code-block:: shell
 
-  pip install -r python/requirements/lint-requirements.txt
+  pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
 
-* If developing for C++, you will need `clang-format <https://www.kernel.org/doc/html/latest/process/clang-format.html>`_ version ``12`` (download this version of Clang from `here <http://releases.llvm.org/download.html>`_)
+* If developing for C++, you will need `clang-format <https://docs.kernel.org/dev-tools/clang-format.html>`_ version ``12`` (download this version of Clang from `here <http://releases.llvm.org/download.html>`_)
 
 You can run the following locally:
 
 .. code-block:: shell
 
-    scripts/format.sh
+    pip install -U pre-commit==3.5.0
+    pre-commit install  # automatic checks before committing
+    pre-commit run ruff -a
 
 An output like the following indicates failure:
 
@@ -257,7 +260,7 @@ An output like the following indicates failure:
    * branch                master     -> FETCH_HEAD
   python/ray/util/sgd/tf/tf_runner.py:4:1: F401 'numpy as np' imported but unused  # Below is the failure
 
-In addition, there are other formatting and semantic checkers for components like the following (not included in ``scripts/format.sh``):
+In addition, there are other formatting and semantic checkers for components like the following (not included in ``pre-commit``):
 
 * Python README format:
 
@@ -284,7 +287,6 @@ In addition, there are other formatting and semantic checkers for components lik
 
     ./ci/lint/check-git-clang-tidy-output.sh
 
-You can run ``setup_hooks.sh`` to create a git hook that will run the linter before you push your changes.
 
 Understanding CI test jobs
 --------------------------

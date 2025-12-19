@@ -171,7 +171,7 @@ class Predictor(abc.ABC):
         Args:
             data: A batch of input data of type ``DataBatchType``.
             kwargs: Arguments specific to predictor implementations. These are passed
-            directly to ``_predict_numpy`` or ``_predict_pandas``.
+                directly to ``_predict_numpy`` or ``_predict_pandas``.
 
         Returns:
             DataBatchType:

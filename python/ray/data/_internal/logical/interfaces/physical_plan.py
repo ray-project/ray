@@ -5,14 +5,19 @@ from .plan import Plan
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import PhysicalOperator
+    from ray.data.context import DataContext
 
 
 class PhysicalPlan(Plan):
     """The plan with a DAG of physical operators."""
 
     def __init__(
-        self, dag: "PhysicalOperator", op_map: Dict["PhysicalOperator", LogicalOperator]
+        self,
+        dag: "PhysicalOperator",
+        op_map: Dict["PhysicalOperator", LogicalOperator],
+        context: "DataContext",
     ):
+        super().__init__(context)
         self._dag = dag
         self._op_map = op_map
 

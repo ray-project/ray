@@ -5,11 +5,12 @@ import subprocess
 import sys
 import time
 
-import psutil
 import pytest
 
 import ray
 from ray._private import ray_constants
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +69,5 @@ def test_healthcheck_ray_client_server():
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

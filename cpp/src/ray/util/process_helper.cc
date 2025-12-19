@@ -18,8 +18,9 @@
 #include <string>
 
 #include "ray/common/ray_config.h"
+#include "ray/util/cmd_line_utils.h"
+#include "ray/util/network_util.h"
 #include "ray/util/process.h"
-#include "ray/util/util.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -30,6 +31,7 @@ using ray::core::WorkerType;
 
 void ProcessHelper::StartRayNode(const std::string node_id_address,
                                  const int port,
+                                 const std::string redis_username,
                                  const std::string redis_password,
                                  const std::vector<std::string> &head_args) {
   std::vector<std::string> cmdargs({"ray",
@@ -37,6 +39,8 @@ void ProcessHelper::StartRayNode(const std::string node_id_address,
                                     "--head",
                                     "--port",
                                     std::to_string(port),
+                                    "--redis-username",
+                                    redis_username,
                                     "--redis-password",
                                     redis_password,
                                     "--node-ip-address",
@@ -61,8 +65,12 @@ void ProcessHelper::StopRayNode() {
 }
 
 std::unique_ptr<ray::gcs::GlobalStateAccessor> ProcessHelper::CreateGlobalStateAccessor(
-    const std::string &gcs_address) {
-  ray::gcs::GcsClientOptions client_options(gcs_address);
+    const std::string &gcs_ip, int gcs_port) {
+  ray::gcs::GcsClientOptions client_options(gcs_ip,
+                                            gcs_port,
+                                            ray::ClusterID::Nil(),
+                                            /*allow_cluster_id_nil=*/true,
+                                            /*fetch_cluster_id_if_nil=*/false);
   auto global_state_accessor =
       std::make_unique<ray::gcs::GlobalStateAccessor>(client_options);
   RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
@@ -75,25 +83,26 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
 
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER &&
       bootstrap_ip.empty()) {
-    bootstrap_ip = GetNodeIpAddress();
+    bootstrap_ip = ray::GetNodeIpAddressFromPerspective();
     StartRayNode(bootstrap_ip,
                  bootstrap_port,
+                 ConfigInternal::Instance().redis_username,
                  ConfigInternal::Instance().redis_password,
                  ConfigInternal::Instance().head_args);
   }
 
-  std::string bootstrap_address = bootstrap_ip + ":" + std::to_string(bootstrap_port);
+  std::string bootstrap_address = BuildAddress(bootstrap_ip, bootstrap_port);
   std::string node_ip = ConfigInternal::Instance().node_ip_address;
   if (node_ip.empty()) {
     if (!bootstrap_ip.empty()) {
-      node_ip = GetNodeIpAddress(bootstrap_address);
+      node_ip = ray::GetNodeIpAddressFromPerspective(bootstrap_address);
     } else {
-      node_ip = GetNodeIpAddress();
+      node_ip = ray::GetNodeIpAddressFromPerspective();
     }
   }
 
   std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor =
-      CreateGlobalStateAccessor(bootstrap_address);
+      CreateGlobalStateAccessor(bootstrap_ip, bootstrap_port);
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER) {
     std::string node_to_connect;
     auto status =
@@ -115,7 +124,12 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     ConfigInternal::Instance().UpdateSessionDir(session_dir);
   }
 
-  gcs::GcsClientOptions gcs_options = gcs::GcsClientOptions(bootstrap_address);
+  gcs::GcsClientOptions gcs_options =
+      gcs::GcsClientOptions(bootstrap_ip,
+                            bootstrap_port,
+                            ClusterID::Nil(),
+                            /*allow_cluster_id_nil=*/true,
+                            /*fetch_cluster_id_if_nil=*/false);
 
   CoreWorkerOptions options;
   options.worker_type = ConfigInternal::Instance().worker_type;
@@ -135,7 +149,6 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.install_failure_signal_handler = true;
   options.node_ip_address = node_ip;
   options.node_manager_port = ConfigInternal::Instance().node_manager_port;
-  options.raylet_ip_address = node_ip;
   options.driver_name = "cpp_worker";
   options.metrics_agent_port = -1;
   options.task_execution_callback = callback;

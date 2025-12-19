@@ -1,26 +1,22 @@
-from typing import Optional
-
 import tree
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import (
-    Encoder,
-    ActorCriticEncoder,
-    StatefulActorCriticEncoder,
     ENCODER_OUT,
+    ActorCriticEncoder,
+    Encoder,
+    Model,
+    StatefulActorCriticEncoder,
+    tokenize,
 )
-from ray.rllib.core.models.base import Model, tokenize
 from ray.rllib.core.models.configs import (
     ActorCriticEncoderConfig,
     CNNEncoderConfig,
     MLPEncoderConfig,
     RecurrentEncoderConfig,
 )
-from ray.rllib.core.models.specs.specs_base import Spec
-from ray.rllib.core.models.specs.specs_base import TensorSpec
-from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.torch.base import TorchModel
-from ray.rllib.core.models.torch.primitives import TorchMLP, TorchCNN
+from ray.rllib.core.models.torch.primitives import TorchCNN, TorchMLP
 from ray.rllib.models.utils import get_initializer_fn
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -80,26 +76,6 @@ class TorchMLPEncoder(TorchModel, Encoder):
         )
 
     @override(Model)
-    def get_input_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                Columns.OBS: TensorSpec(
-                    "b, d", d=self.config.input_dims[0], framework="torch"
-                ),
-            }
-        )
-
-    @override(Model)
-    def get_output_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                ENCODER_OUT: TensorSpec(
-                    "b, d", d=self.config.output_dims[0], framework="torch"
-                ),
-            }
-        )
-
-    @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
         return {ENCODER_OUT: self.net(inputs[Columns.OBS])}
 
@@ -132,38 +108,6 @@ class TorchCNNEncoder(TorchModel, Encoder):
         self.net = nn.Sequential(*layers)
 
     @override(Model)
-    def get_input_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                Columns.OBS: TensorSpec(
-                    "b, w, h, c",
-                    w=self.config.input_dims[0],
-                    h=self.config.input_dims[1],
-                    c=self.config.input_dims[2],
-                    framework="torch",
-                ),
-            }
-        )
-
-    @override(Model)
-    def get_output_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                ENCODER_OUT: (
-                    TensorSpec("b, d", d=self.config.output_dims[0], framework="torch")
-                    if self.config.flatten_at_end
-                    else TensorSpec(
-                        "b, w, h, c",
-                        w=self.config.output_dims[0],
-                        h=self.config.output_dims[1],
-                        d=self.config.output_dims[2],
-                        framework="torch",
-                    )
-                )
-            }
-        )
-
-    @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
         return {ENCODER_OUT: self.net(inputs[Columns.OBS])}
 
@@ -174,7 +118,6 @@ class TorchGRUEncoder(TorchModel, Encoder):
     This encoder has...
     - Zero or one tokenizers.
     - One or more GRU layers.
-    - One linear output layer.
     """
 
     def __init__(self, config: RecurrentEncoderConfig) -> None:
@@ -220,45 +163,6 @@ class TorchGRUEncoder(TorchModel, Encoder):
             )
 
     @override(Model)
-    def get_input_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                # b, t for batch major; t, b for time major.
-                Columns.OBS: TensorSpec(
-                    "b, t, d",
-                    d=self.config.input_dims[0],
-                    framework="torch",
-                ),
-                Columns.STATE_IN: {
-                    "h": TensorSpec(
-                        "b, l, h",
-                        h=self.config.hidden_dim,
-                        l=self.config.num_layers,
-                        framework="torch",
-                    ),
-                },
-            }
-        )
-
-    @override(Model)
-    def get_output_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                ENCODER_OUT: TensorSpec(
-                    "b, t, d", d=self.config.output_dims[0], framework="torch"
-                ),
-                Columns.STATE_OUT: {
-                    "h": TensorSpec(
-                        "b, l, h",
-                        h=self.config.hidden_dim,
-                        l=self.config.num_layers,
-                        framework="torch",
-                    ),
-                },
-            }
-        )
-
-    @override(Model)
     def get_initial_state(self):
         return {
             "h": torch.zeros(self.config.num_layers, self.config.hidden_dim),
@@ -297,7 +201,6 @@ class TorchLSTMEncoder(TorchModel, Encoder):
     This encoder has...
     - Zero or one tokenizers.
     - One or more LSTM layers.
-    - One linear output layer.
     """
 
     def __init__(self, config: RecurrentEncoderConfig) -> None:
@@ -347,44 +250,6 @@ class TorchLSTMEncoder(TorchModel, Encoder):
                 lstm_bias_initializer(
                     layer[3], **config.hidden_bias_initializer_config or {}
                 )
-
-        self._state_in_out_spec = {
-            "h": TensorSpec(
-                "b, l, d",
-                d=self.config.hidden_dim,
-                l=self.config.num_layers,
-                framework="torch",
-            ),
-            "c": TensorSpec(
-                "b, l, d",
-                d=self.config.hidden_dim,
-                l=self.config.num_layers,
-                framework="torch",
-            ),
-        }
-
-    @override(Model)
-    def get_input_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                # b, t for batch major; t, b for time major.
-                Columns.OBS: TensorSpec(
-                    "b, t, d", d=self.config.input_dims[0], framework="torch"
-                ),
-                Columns.STATE_IN: self._state_in_out_spec,
-            }
-        )
-
-    @override(Model)
-    def get_output_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                ENCODER_OUT: TensorSpec(
-                    "b, t, d", d=self.config.output_dims[0], framework="torch"
-                ),
-                Columns.STATE_OUT: self._state_in_out_spec,
-            }
-        )
 
     @override(Model)
     def get_initial_state(self):

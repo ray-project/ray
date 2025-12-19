@@ -1,8 +1,8 @@
-import os
 import json
+import os
 from collections import defaultdict
-from dataclasses import dataclass, asdict
-from typing import List, Dict, Union
+from dataclasses import asdict, dataclass
+from typing import Dict, List, Union
 
 import ray
 

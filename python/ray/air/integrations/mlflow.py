@@ -9,6 +9,7 @@ from ray.air.constants import TRAINING_ITERATION
 from ray.tune.experiment import Trial
 from ray.tune.logger import LoggerCallback
 from ray.tune.result import TIMESTEPS_TOTAL
+from ray.tune.trainable.trainable_fn_utils import _in_tune_session
 from ray.util.annotations import PublicAPI
 
 try:
@@ -58,7 +59,7 @@ def setup_mlflow(
     mlflow. All other workers will return a noop client, so that logging is not
     duplicated in a distributed run. This can be disabled by passing
     ``rank_zero_only=False``, which will then initialize mlflow in every training
-    worker.
+    worker. Note: for Ray Tune, there's no concept of worker ranks, so the `rank_zero_only` is ignored.
 
     This function will return the ``mlflow`` module or a noop module for
     non-rank zero workers ``if rank_zero_only=True``. By using
@@ -146,16 +147,18 @@ def setup_mlflow(
             "mlflow was not found - please install with `pip install mlflow`"
         )
 
+    default_trial_id = None
+    default_trial_name = None
+
     try:
-        train_context = ray.train.get_context()
-
-        # Do a try-catch here if we are not in a train session
-        if rank_zero_only and train_context.get_world_rank() != 0:
-            return _NoopModule()
-
-        default_trial_id = train_context.get_trial_id()
-        default_trial_name = train_context.get_trial_name()
-
+        if _in_tune_session():
+            context: ray.tune.TuneContext = ray.tune.get_context()
+            default_trial_id = context.get_trial_id()
+            default_trial_name = context.get_trial_name()
+        else:
+            context: ray.train.TrainContext = ray.train.get_context()
+            if rank_zero_only and context.get_world_rank() != 0:
+                return _NoopModule()
     except RuntimeError:
         default_trial_id = None
         default_trial_name = None
@@ -201,7 +204,8 @@ class MLflowLoggerCallback(LoggerCallback):
     Keep in mind that the callback will open an MLflow session on the driver and
     not on the trainable. Therefore, it is not possible to call MLflow functions
     like ``mlflow.log_figure()`` inside the trainable as there is no MLflow session
-    on the trainable. For more fine grained control, use :func:`setup_mlflow`.
+    on the trainable. For more fine grained control, use
+    :func:`ray.air.integrations.mlflow.setup_mlflow`.
 
     Args:
         tracking_uri: The tracking URI for where to manage experiments
@@ -221,6 +225,8 @@ class MLflowLoggerCallback(LoggerCallback):
         save_artifact: If set to True, automatically save the entire
             contents of the Tune local_dir as an artifact to the
             corresponding run in MlFlow.
+        log_params_on_trial_end: If set to True, log parameters to MLflow
+            at the end of the trial instead of at the beginning
 
     Example:
 
@@ -241,7 +247,8 @@ class MLflowLoggerCallback(LoggerCallback):
             callbacks=[MLflowLoggerCallback(
                 experiment_name="experiment1",
                 tags=tags,
-                save_artifact=True)])
+                save_artifact=True,
+                log_params_on_trial_end=True)])
 
     """
 
@@ -254,6 +261,7 @@ class MLflowLoggerCallback(LoggerCallback):
         tags: Optional[Dict] = None,
         tracking_token: Optional[str] = None,
         save_artifact: bool = False,
+        log_params_on_trial_end: bool = False,
     ):
 
         self.tracking_uri = tracking_uri
@@ -262,6 +270,7 @@ class MLflowLoggerCallback(LoggerCallback):
         self.tags = tags
         self.tracking_token = tracking_token
         self.should_save_artifact = save_artifact
+        self.log_params_on_trial_end = log_params_on_trial_end
 
         self.mlflow_util = _MLflowLoggerUtil()
 
@@ -305,7 +314,8 @@ class MLflowLoggerCallback(LoggerCallback):
 
         # Log the config parameters.
         config = trial.config
-        self.mlflow_util.log_params(run_id=run_id, params_to_log=config)
+        if not self.log_params_on_trial_end:
+            self.mlflow_util.log_params(run_id=run_id, params_to_log=config)
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
         step = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
@@ -321,4 +331,10 @@ class MLflowLoggerCallback(LoggerCallback):
 
         # Stop the run once trial finishes.
         status = "FINISHED" if not failed else "FAILED"
+
+        # Log the config parameters.
+        config = trial.config
+        if self.log_params_on_trial_end:
+            self.mlflow_util.log_params(run_id=run_id, params_to_log=config)
+
         self.mlflow_util.end_run(run_id=run_id, status=status)

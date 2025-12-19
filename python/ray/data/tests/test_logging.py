@@ -124,6 +124,90 @@ def test_custom_config(reset_logging, monkeypatch, tmp_path):
     assert isinstance(logger.handlers[0], logging.StreamHandler)
 
 
+def test_json_logging_configuration(
+    capsys, reset_logging, monkeypatch, shutdown_only, propagate_logs
+):
+    import json
+
+    monkeypatch.setenv("RAY_DATA_LOG_ENCODING", "JSON")
+    ray.init()
+
+    configure_logging()
+
+    logger = logging.getLogger("ray.data")
+
+    # Ensure handlers correctly setup
+    handlers = logger.handlers
+    assert sum(handler.name == "file_json" for handler in handlers) == 1
+    assert sum(handler.name == "console" for handler in handlers) == 1
+
+    logger.info("ham")
+    logger.debug("turkey")
+
+    log_path = os.path.join(get_log_directory(), "ray-data.log")
+    with open(log_path) as file:
+        log_contents = file.read()
+
+    # Validate the log is in JSON format (a basic check for JSON)
+    messages = []
+    for log_line in log_contents.splitlines():
+        log_dict = json.loads(log_line)  # will error if not a json line
+        messages.append(log_dict["message"])
+
+    assert "ham" in messages
+    assert "turkey" in messages
+
+    # Validate console logs are in text mode
+    console_log_output = capsys.readouterr().err
+    for log_line in console_log_output.splitlines():
+        with pytest.raises(json.JSONDecodeError):
+            json.loads(log_line)
+
+    assert "ham" in console_log_output
+    assert "turkey" not in console_log_output
+
+
+def test_configure_logging_preserves_existing_handlers(reset_logging, shutdown_only):
+    """Test that configure_logging() preserves existing handlers.
+
+    When configure_logging() is called, it should not remove existing handlers
+    like MemoryHandler that were added to loggers before configuration.
+    """
+    ray.init()
+
+    # Create a logger and add a MemoryHandler with a target before configuring Ray Data logging
+    test_logger = logging.getLogger("ray.serve.test_preserve")
+    target_handler = logging.StreamHandler()
+    memory_handler = logging.handlers.MemoryHandler(capacity=100, target=target_handler)
+    test_logger.addHandler(memory_handler)
+
+    try:
+        # Verify the memory handler is there and target is set
+        assert memory_handler in test_logger.handlers
+        assert memory_handler.target is not None
+        assert memory_handler.target is target_handler
+
+        # Configure Ray Data logging
+        configure_logging()
+
+        # Verify the memory handler is still present after configuration
+        assert memory_handler in test_logger.handlers
+
+        # Verify the target is still set (would be None if handler was closed/recreated)
+        assert memory_handler.target is not None
+        assert memory_handler.target is target_handler
+
+        # Verify the memory handler still works
+        test_logger.info("test message")
+        assert len(memory_handler.buffer) == 1
+        assert "test message" in memory_handler.buffer[0].getMessage()
+    finally:
+        # Clean up handlers to avoid logging errors during teardown
+        test_logger.removeHandler(memory_handler)
+        memory_handler.close()
+        target_handler.close()
+
+
 if __name__ == "__main__":
     import sys
 

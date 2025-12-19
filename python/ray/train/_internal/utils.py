@@ -3,7 +3,7 @@ import functools
 import inspect
 import logging
 import os
-from pathlib import Path
+import socket
 from typing import (
     Any,
     Callable,
@@ -17,8 +17,12 @@ from typing import (
 )
 
 import ray
+from ray._common.network_utils import find_free_port, is_ipv6
 from ray.actor import ActorHandle
-from ray.air._internal.util import StartTraceback, find_free_port
+from ray.air._internal.util import (
+    StartTraceback,
+    StartTracebackWithWorkerRank,
+)
 from ray.exceptions import RayActorError
 from ray.types import ObjectRef
 
@@ -57,7 +61,10 @@ def check_for_failure(
                 return False, exc
             except Exception as exc:
                 # Other (e.g. training) errors should be directly raised
-                raise StartTraceback from exc
+                failed_worker_rank = remote_values.index(object_ref)
+                raise StartTracebackWithWorkerRank(
+                    worker_rank=failed_worker_rank
+                ) from exc
 
     return True, None
 
@@ -65,24 +72,8 @@ def check_for_failure(
 def get_address_and_port() -> Tuple[str, int]:
     """Returns the IP address and a free port on this node."""
     addr = ray.util.get_node_ip_address()
-    port = find_free_port()
-
+    port = find_free_port(socket.AF_INET6 if is_ipv6(addr) else socket.AF_INET)
     return addr, port
-
-
-def construct_path(path: Path, parent_path: Path) -> Path:
-    """Constructs a path relative to a parent.
-
-    Args:
-        path: A relative or absolute path.
-        parent_path: A relative path or absolute path.
-
-    Returns: An absolute path.
-    """
-    if path.expanduser().is_absolute():
-        return path.expanduser().resolve()
-    else:
-        return parent_path.joinpath(path).expanduser().resolve()
 
 
 def update_env_vars(env_vars: Dict[str, Any]):

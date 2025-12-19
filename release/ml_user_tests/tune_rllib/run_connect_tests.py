@@ -11,9 +11,9 @@ import time
 
 import ray
 
-from ray import air, tune
+from ray import tune
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.tune import CLIReporter
+from ray.tune import CLIReporter, RunConfig
 
 logging.basicConfig(level=logging.WARN)
 logger = logging.getLogger("tune_framework")
@@ -26,16 +26,20 @@ def run(smoke_test=False, storage_path: str = None):
 
     config = (
         APPOConfig()
-        .environment("ALE/Pong-v5", clip_rewards=True)
+        .api_stack(
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
+        )
+        .environment("ale_py:ALE/Pong-v5", clip_rewards=True)
         .framework(tune.grid_search(["tf", "torch"]))
-        .rollouts(
+        .env_runners(
             rollout_fragment_length=50,
-            num_rollout_workers=num_workers,
-            num_envs_per_worker=1,
+            num_env_runners=num_workers,
+            num_envs_per_env_runner=1,
         )
         .training(
             train_batch_size=750,
-            num_sgd_iter=2,
+            num_epochs=2,
             vf_loss_coeff=1.0,
             clip_param=0.3,
             grad_clip=10,
@@ -51,7 +55,7 @@ def run(smoke_test=False, storage_path: str = None):
     return tune.Tuner(
         "APPO",
         param_space=config,
-        run_config=air.RunConfig(
+        run_config=RunConfig(
             stop=stop,
             verbose=1,
             progress_reporter=CLIReporter(

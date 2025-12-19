@@ -7,13 +7,10 @@ Ray Train provides a way to snapshot training progress with :class:`Checkpoints 
 
 This is useful for:
 
-1. **Storing the best-performing model weights:** Save your model to persistent storage, and use it for downstream serving/inference.
-2. **Fault tolerance:** Handle node failures in a long-running training job on a cluster of pre-emptible machines/pods.
-3. **Distributed checkpointing:** When doing *model-parallel training*, Ray Train checkpointing provides an easy way to
-   :ref:`upload model shards from each worker in parallel <train-distributed-checkpointing>`,
-   without needing to gather the full model to a single node.
-4. **Integration with Ray Tune:** Checkpoint saving and loading is required by certain :ref:`Ray Tune schedulers <tune-schedulers>`.
-
+1. **Storing the best-performing model weights:** Save your model to persistent storage, and use it for downstream serving or inference.
+2. **Fault tolerance:** Handle worker process and node failures in a long-running training job and leverage pre-emptible machines.
+3. **Distributed checkpointing:** Ray Train checkpointing can be used to
+   :ref:`upload model shards from multiple workers in parallel. <train-distributed-checkpointing>`
 
 .. _train-dl-saving-checkpoints:
 
@@ -69,8 +66,8 @@ Then, the local temporary directory can be safely cleaned up to free up disk spa
         :start-after: __checkpoint_from_single_worker_start__
         :end-before: __checkpoint_from_single_worker_end__
 
-    If using parallel training strategies such as DeepSpeed Zero-3 and FSDP, where
-    each worker only has a shard of the full-model, you should save and report a checkpoint
+    If using parallel training strategies such as DeepSpeed Zero and FSDP, where
+    each worker only has a shard of the full training state, you can save and report a checkpoint
     from each worker. See :ref:`train-distributed-checkpointing` for an example.
 
 
@@ -108,8 +105,8 @@ Here are a few examples of saving checkpoints with different training frameworks
             :start-after: __lightning_save_example_start__
             :end-before: __lightning_save_example_end__
 
-        You can always get the saved checkpoint path from :attr:`result.checkpoint <ray.train.Result.checkpoint>` and
-        :attr:`result.best_checkpoints <ray.train.Result.best_checkpoints>`.
+        You can always get the saved checkpoint path from :attr:`result.checkpoint <ray.train.Result>` and
+        :attr:`result.best_checkpoints <ray.train.Result>`.
 
         For more advanced usage (e.g. reporting at different frequency, reporting
         customized checkpoint files), you can implement your own customized callback.
@@ -123,7 +120,7 @@ Here are a few examples of saving checkpoints with different training frameworks
 
     .. tab-item:: Hugging Face Transformers
 
-        Ray Train leverages HuggingFace Transformers Trainer's ``Callback`` interface
+        Ray Train leverages Hugging Face Transformers Trainer's ``Callback`` interface
         to report metrics and checkpoints.
 
         **Option 1: Use Ray Train's default report callback**
@@ -236,6 +233,101 @@ Here is an example of distributed checkpointing with PyTorch:
     rank-specific filenames already, so you usually do not need to worry about this.
 
 
+.. _train-checkpoint-upload-modes:
+
+Checkpoint upload modes
+-----------------------
+
+By default, when you call :func:`~ray.train.report`, Ray Train synchronously pushes
+your checkpoint from ``checkpoint.path`` on local disk to ``checkpoint_dir_name`` on
+your ``storage_path``. This is equivalent to calling :func:`~ray.train.report` with
+:class:`~ray.train.CheckpointUploadMode` set to ``ray.train.CheckpointUploadMode.SYNC``.
+
+.. literalinclude:: ../doc_code/checkpoints.py
+    :language: python
+    :start-after: __checkpoint_upload_mode_sync_start__
+    :end-before: __checkpoint_upload_mode_sync_end__
+
+.. _train-checkpoint-upload-mode-async:
+
+Asynchronous checkpoint uploading
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You may want to upload your checkpoint asynchronously instead so that
+the next training step can start in parallel. If so, you should use
+``ray.train.CheckpointUploadMode.ASYNC``, which kicks off a new thread
+to upload the checkpoint. This is helpful for larger
+checkpoints that might take longer to upload, but might add unnecessary
+complexity (see below) if you want to immediately upload only a small checkpoint.
+
+Each ``report`` blocks until the previous ``report``\'s checkpoint
+upload completes before starting a new checkpoint upload thread. Ray Train does this
+to avoid accumulating too many upload threads and potentially running out of memory.
+
+Because ``report`` returns without waiting for the checkpoint upload to complete,
+you must ensure that the local checkpoint directory stays alive until the checkpoint
+upload completes. This means you can't use a temporary directory that Ray Train may
+delete before the upload finishes, for example from ``tempfile.TemporaryDirectory``.
+``report`` also exposes the ``delete_local_checkpoint_after_upload`` parameter, which
+defaults to ``True`` if ``checkpoint_upload_mode`` is ``ray.train.CheckpointUploadMode.ASYNC``.
+
+.. literalinclude:: ../doc_code/checkpoints.py
+    :language: python
+    :start-after: __checkpoint_upload_mode_async_start__
+    :end-before: __checkpoint_upload_mode_async_end__
+
+.. figure:: ../images/sync_vs_async_checkpointing.png
+
+    This figure illustrates the difference between synchronous and asynchronous
+    checkpoint uploading.
+
+Custom checkpoint uploading
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:func:`~ray.train.report` defaults to uploading from disk to the remote ``storage_path``
+with the PyArrow filesystem copying utilities before reporting the checkpoint to Ray Train.
+If you would rather upload the checkpoint manually or with a third-party library
+such as `Torch Distributed Checkpointing <https://docs.pytorch.org/docs/stable/distributed.checkpoint.html>`_,
+you have the following options:
+
+.. tab-set::
+
+    .. tab-item:: Synchronous
+
+        If you want to upload the checkpoint synchronously, you can first upload the checkpoint
+        to the ``storage_path``and then report a reference to the uploaded checkpoint with
+        ``ray.train.CheckpointUploadMode.NO_UPLOAD``.
+
+        .. literalinclude:: ../doc_code/checkpoints.py
+            :language: python
+            :start-after: __checkpoint_upload_mode_no_upload_start__
+            :end-before: __checkpoint_upload_mode_no_upload_end__
+
+    .. tab-item:: Asynchronous
+
+        If you want to upload the checkpoint asynchronously, you can set ``checkpoint_upload_mode``
+        to ``ray.train.CheckpointUploadMode.ASYNC`` and pass a ``checkpoint_upload_fn`` to
+        ``ray.train.report``. This function takes the ``Checkpoint`` and ``checkpoint_dir_name``
+        passed to ``ray.train.report`` and returns the persisted ``Checkpoint``.
+
+        .. literalinclude:: ../doc_code/checkpoints.py
+            :language: python
+            :start-after: __checkpoint_upload_function_start__
+            :end-before: __checkpoint_upload_function_end__
+
+        .. warning::
+
+            In your ``checkpoint_upload_fn``, you should not call ``ray.train.report``, which may
+            lead to unexpected behavior. You should also avoid collective operations, such as
+            :func:`~ray.train.report` or ``model.state_dict()``, which can cause deadlocks.
+
+        .. note::
+
+            Do not pass a ``checkpoint_upload_fn`` with ``checkpoint_upload_mode=ray.train.CheckpointUploadMode.NO_UPLOAD``
+            because Ray Train will simply ignore ``checkpoint_upload_fn``. You can pass a ``checkpoint_upload_fn`` with
+            ``checkpoint_upload_mode=ray.train.CheckpointUploadMode.SYNC``, but this is equivalent to uploading the
+            checkpoint yourself and reporting the checkpoint with ``ray.train.CheckpointUploadMode.NO_UPLOAD``.
+
 .. _train-dl-configure-checkpoints:
 
 Configure checkpointing
@@ -257,14 +349,38 @@ Lower-performing checkpoints are deleted to save storage space. By default, all 
     :py:class:`~ray.train.CheckpointConfig`,
     please ensure that the metric is always reported together with the checkpoints.
 
+Using checkpoints during training
+----------------------------------
+
+During training, you may want to access checkpoints you've reported and their associated metrics
+from training workers for a variety of reasons, such as
+reporting the best checkpoint so far to an experiment tracker. You can do this by calling
+:func:`~ray.train.get_all_reported_checkpoints` from within your training function. This function returns
+a list of :class:`~ray.train.ReportedCheckpoint` objects that represent all the
+:class:`~ray.train.Checkpoint`\s and their associated metrics that you've reported so far
+and have been kept based on the :ref:`checkpoint configuration <train-dl-configure-checkpoints>`.
+
+This function supports two consistency modes:
+
+- ``CheckpointConsistencyMode.COMMITTED``: Block until the checkpoint from the latest ``ray.train.report``
+  has been uploaded to persistent storage and committed.
+- ``CheckpointConsistencyMode.VALIDATED``: Block until the checkpoint from the latest ``ray.train.report``
+  has been uploaded to persistent storage, committed, and validated (see :ref:`train-validating-checkpoints`).
+  This is the default consistency mode and has the same behavior as ``CheckpointConsistencyMode.COMMITTED``
+  if your report did not kick off validation.
+
+.. literalinclude:: ../doc_code/checkpoints.py
+    :language: python
+    :start-after: __get_all_reported_checkpoints_example_start__
+    :end-before: __get_all_reported_checkpoints_example_end__
 
 
 Using checkpoints after training
 --------------------------------
 
-The latest saved checkpoint can be accessed with :attr:`Result.checkpoint <ray.train.Result.checkpoint>`.
+The latest saved checkpoint can be accessed with :attr:`Result.checkpoint <ray.train.Result>`.
 
-The full list of persisted checkpoints can be accessed with :attr:`Result.best_checkpoints <ray.train.Result.best_checkpoints>`.
+The full list of persisted checkpoints can be accessed with :attr:`Result.best_checkpoints <ray.train.Result>`.
 If :class:`CheckpointConfig(num_to_keep) <ray.train.CheckpointConfig>` is set, this list will contain the best ``num_to_keep`` checkpoints.
 
 See :ref:`train-inspect-results` for a full guide on inspecting training results.
@@ -279,7 +395,7 @@ are the two main APIs to interact with Train checkpoints:
     :end-before: __inspect_checkpoint_example_end__
 
 
-For Lightning and Transformers, if you are using the default `RayTrainReportCallback` for checkpoint saving in your training function, 
+For Lightning and Transformers, if you are using the default `RayTrainReportCallback` for checkpoint saving in your training function,
 you can retrieve the original checkpoint files as below:
 
 .. tab-set::
@@ -290,7 +406,7 @@ you can retrieve the original checkpoint files as below:
             :language: python
             :start-after: __inspect_lightning_checkpoint_example_start__
             :end-before: __inspect_lightning_checkpoint_example_end__
-    
+
     .. tab-item:: Transformers
 
         .. literalinclude:: ../doc_code/checkpoints.py
@@ -310,12 +426,10 @@ training state from a :class:`~ray.train.Checkpoint`.
 The :class:`Checkpoint <ray.train.Checkpoint>` to restore from can be accessed in the
 training function with :func:`ray.train.get_checkpoint <ray.train.get_checkpoint>`.
 
-The checkpoint returned by :func:`ray.train.get_checkpoint <ray.train.get_checkpoint>` is populated in two ways:
+The checkpoint returned by :func:`ray.train.get_checkpoint <ray.train.get_checkpoint>` is populated
+as the latest reported checkpoint during :ref:`automatic failure recovery <train-fault-tolerance>`.
 
-1. It can be auto-populated as the latest reported checkpoint, e.g. during :ref:`automatic failure recovery <train-fault-tolerance>` or :ref:`on manual restoration <train-restore-guide>`.
-2. It can be manually populated by passing a checkpoint to the ``resume_from_checkpoint`` argument of a Ray :class:`Trainer <ray.train.trainer.BaseTrainer>`.
-   This is useful for initializing a new training run with a previous run's checkpoint.
-
+See :ref:`train-fault-tolerance` for more details on restoration and fault tolerance.
 
 .. tab-set::
 

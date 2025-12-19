@@ -1,19 +1,20 @@
 import collections
 import logging
+from typing import TYPE_CHECKING, List, Optional
+
 import numpy as np
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import GradInfoDict, LearnerStatsDict, ResultDict
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation.worker_set import WorkerSet
+    from ray.rllib.env.env_runner_group import EnvRunnerGroup
 
 logger = logging.getLogger(__name__)
 
-RolloutMetrics = DeveloperAPI(
+RolloutMetrics = OldAPIStack(
     collections.namedtuple(
         "RolloutMetrics",
         [
@@ -32,20 +33,7 @@ RolloutMetrics = DeveloperAPI(
 RolloutMetrics.__new__.__defaults__ = (0, 0, {}, {}, {}, {}, {}, False, {})
 
 
-def _extract_stats(stats: Dict, key: str) -> Dict[str, Any]:
-    if key in stats:
-        return stats[key]
-
-    multiagent_stats = {}
-    for k, v in stats.items():
-        if isinstance(v, dict):
-            if key in v:
-                multiagent_stats[k] = v[key]
-
-    return multiagent_stats
-
-
-@DeveloperAPI
+@OldAPIStack
 def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
     """Return optimization stats reported from the policy.
 
@@ -74,9 +62,9 @@ def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
     return multiagent_stats
 
 
-@DeveloperAPI
+@OldAPIStack
 def collect_metrics(
-    workers: "WorkerSet",
+    workers: "EnvRunnerGroup",
     remote_worker_ids: Optional[List[int]] = None,
     timeout_seconds: int = 180,
     keep_custom_metrics: bool = False,
@@ -84,7 +72,7 @@ def collect_metrics(
     """Gathers episode metrics from rollout worker set.
 
     Args:
-        workers: WorkerSet.
+        workers: EnvRunnerGroup.
         remote_worker_ids: Optional list of IDs of remote workers to collect
             metrics from.
         timeout_seconds: Timeout in seconds for collecting metrics from remote workers.
@@ -103,16 +91,16 @@ def collect_metrics(
     return metrics
 
 
-@DeveloperAPI
+@OldAPIStack
 def collect_episodes(
-    workers: "WorkerSet",
+    workers: "EnvRunnerGroup",
     remote_worker_ids: Optional[List[int]] = None,
     timeout_seconds: int = 180,
 ) -> List[RolloutMetrics]:
     """Gathers new episodes metrics tuples from the given RolloutWorkers.
 
     Args:
-        workers: WorkerSet.
+        workers: EnvRunnerGroup.
         remote_worker_ids: Optional list of IDs of remote workers to collect
             metrics from.
         timeout_seconds: Timeout in seconds for collecting metrics from remote workers.
@@ -123,9 +111,9 @@ def collect_episodes(
     # This will drop get_metrics() calls that are too slow.
     # We can potentially make this an asynchronous call if this turns
     # out to be a problem.
-    metric_lists = workers.foreach_worker(
+    metric_lists = workers.foreach_env_runner(
         lambda w: w.get_metrics(),
-        local_worker=True,
+        local_env_runner=True,
         remote_worker_ids=remote_worker_ids,
         timeout_seconds=timeout_seconds,
     )
@@ -139,7 +127,7 @@ def collect_episodes(
     return episodes
 
 
-@DeveloperAPI
+@OldAPIStack
 def summarize_episodes(
     episodes: List[RolloutMetrics],
     new_episodes: List[RolloutMetrics] = None,
@@ -186,8 +174,12 @@ def summarize_episodes(
         episode_rewards.append(episode.episode_reward)
         for k, v in episode.custom_metrics.items():
             custom_metrics[k].append(v)
-        for (_, policy_id), reward in episode.agent_rewards.items():
-            if policy_id != DEFAULT_POLICY_ID:
+        is_multi_agent = (
+            len(episode.agent_rewards) > 1
+            or DEFAULT_POLICY_ID not in episode.agent_rewards
+        )
+        if is_multi_agent:
+            for (_, policy_id), reward in episode.agent_rewards.items():
                 policy_rewards[policy_id].append(reward)
         for k, v in episode.hist_data.items():
             hist_stats[k] += v
@@ -255,7 +247,6 @@ def summarize_episodes(
         episode_reward_mean=avg_reward,
         episode_len_mean=avg_length,
         episode_media=dict(episode_media),
-        episodes_this_iter=len(new_episodes),
         episodes_timesteps_total=sum(episode_lengths),
         policy_reward_min=policy_reward_min,
         policy_reward_max=policy_reward_max,
@@ -265,4 +256,12 @@ def summarize_episodes(
         sampler_perf=dict(perf_stats),
         num_faulty_episodes=num_faulty_episodes,
         connector_metrics=mean_connector_metrics,
+        # Added these (duplicate) values here for forward compatibility with the new API
+        # stack's metrics structure. This allows us to unify our test cases and keeping
+        # the new API stack clean of backward-compatible keys.
+        num_episodes=len(new_episodes),
+        episode_return_max=max_reward,
+        episode_return_min=min_reward,
+        episode_return_mean=avg_reward,
+        episodes_this_iter=len(new_episodes),  # deprecate in favor of `num_epsodes_...`
     )

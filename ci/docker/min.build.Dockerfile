@@ -1,16 +1,11 @@
 # syntax=docker/dockerfile:1.3-labs
 
-ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build
+ARG PYTHON_VERSION=3.10
+ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_test-py$PYTHON_VERSION
 FROM $DOCKER_IMAGE_BASE_BUILD
 
 ARG PYTHON_VERSION
 ARG EXTRA_DEPENDENCY
-
-# Unset dind settings; we are using the host's docker daemon.
-ENV DOCKER_TLS_CERTDIR=
-ENV DOCKER_HOST=
-ENV DOCKER_TLS_VERIFY=
-ENV DOCKER_CERT_PATH=
 
 SHELL ["/bin/bash", "-ice"]
 
@@ -22,28 +17,31 @@ RUN <<EOF
 set -euo pipefail
 
 # minimal dependencies
-MINIMAL_INSTALL=1 PYTHON=${PYTHON_VERSION} ci/env/install-dependencies.sh
+BUILD=1 MINIMAL_INSTALL=1 PYTHON=${PYTHON_VERSION} ./ci/ci.sh init
 rm -rf python/ray/thirdparty_files
 
 # install test requirements
-python -m pip install -U pytest==7.0.1 pip-tools==7.3.0
+python -m pip install -U pytest==7.4.4 pip-tools==7.4.1
 
 # install extra dependencies
 if [[ "${EXTRA_DEPENDENCY}" == "core" ]]; then
-  ./ci/env/install-core-prerelease-dependencies.sh
+  pip-compile -o min_requirements.txt python/setup.py
 elif [[ "${EXTRA_DEPENDENCY}" == "ml" ]]; then
   pip-compile -o min_requirements.txt python/setup.py --extra tune
 elif [[ "${EXTRA_DEPENDENCY}" == "default" ]]; then
   pip-compile -o min_requirements.txt python/setup.py --extra default
 elif [[ "${EXTRA_DEPENDENCY}" == "serve" ]]; then
-  pip-compile -o min_requirements.txt python/setup.py --extra serve
+  echo "httpx==0.27.2" >> /tmp/min_build_requirements.txt
+  echo "pytest-asyncio==1.1.0" >> /tmp/min_build_requirements.txt
+  pip-compile -o min_requirements.txt /tmp/min_build_requirements.txt python/setup.py --extra "serve-grpc"
+  rm /tmp/min_build_requirements.txt
 fi
 
-if [[ -f min_requirements.txt ]]; then
-  pip install -r min_requirements.txt
+pip install -r min_requirements.txt
+
+# Core wants to eagerly be tested with some of its prerelease dependencies.
+if [[ "${EXTRA_DEPENDENCY}" == "core" ]]; then
+  ./ci/env/install-core-prerelease-dependencies.sh
 fi
 
 EOF
-
-
-

@@ -1,11 +1,14 @@
 import logging
+import re
+import warnings
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-from typing import Dict, Any, List, Optional, Tuple, Union
-
+from ray._private.ray_constants import env_bool
 from ray._raylet import (
-    Sum as CythonCount,
-    Histogram as CythonHistogram,
+    Count as CythonCount,
     Gauge as CythonGauge,
+    Histogram as CythonHistogram,
+    Sum as CythonSum,
 )  # noqa: E402
 
 # Sum is used for CythonCount because it allows incrementing by positive
@@ -13,6 +16,26 @@ from ray._raylet import (
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
+
+# Copied from Prometheus Python Client. While the regex is not part of the public API
+# for Prometheus, it's not expected to change.
+# https://github.com/prometheus/client_python/blob/46eae7bae88f76951f7246d9f359f2dd5eeff110/prometheus_client/validation.py#L4
+_VALID_METRIC_NAME_RE = re.compile(r"^[a-zA-Z_:][a-zA-Z0-9_:]*$")
+
+
+def _is_invalid_metric_name(name: str) -> bool:
+    if len(name) == 0:
+        raise ValueError("Empty name is not allowed. Please provide a metric name.")
+    if not _VALID_METRIC_NAME_RE.match(name):
+        warnings.warn(
+            f"Invalid metric name: {name}. Metric will be discarded "
+            "and data will not be collected or published. "
+            "Metric names can only contain letters, numbers, _, and :. "
+            "Metric names cannot start with numbers.",
+            UserWarning,
+        )
+        return True
+    return False
 
 
 @DeveloperAPI
@@ -29,8 +52,9 @@ class Metric:
         description: str = "",
         tag_keys: Optional[Tuple[str, ...]] = None,
     ):
-        if len(name) == 0:
-            raise ValueError("Empty name is not allowed. Please provide a metric name.")
+        # Metrics with invalid names will be discarded and will not be collected
+        # by Prometheus.
+        self._discard_metric = _is_invalid_metric_name(name)
         self._name = name
         self._description = description
         # The default tags key-value pair.
@@ -48,6 +72,14 @@ class Metric:
         for key in self._tag_keys:
             if not isinstance(key, str):
                 raise TypeError(f"Tag keys must be str, got {type(key)}.")
+
+        if ":" in self._name:
+            warnings.warn(
+                f"Metric name {self._name} contains a : character, which is no longer allowed. "
+                f"Please migrate to the new metric name format. "
+                f"This will be an error in the future.",
+                FutureWarning,
+            )
 
     def set_default_tags(self, default_tags: Dict[str, str]):
         """Set default tags of metrics.
@@ -89,6 +121,9 @@ class Metric:
         Args:
             value: The value to be recorded as a metric point.
         """
+        if self._discard_metric:
+            return
+
         assert self._metric is not None
 
         final_tags = self._get_final_tags(tags)
@@ -112,6 +147,7 @@ class Metric:
             if tag_key not in final_tags:
                 missing_tags.append(tag_key)
 
+        # Strict validation: if any required tag_keys are missing, raise error
         if missing_tags:
             raise ValueError(f"Missing value for tag key(s): {','.join(missing_tags)}.")
 
@@ -159,7 +195,24 @@ class Counter(Metric):
         tag_keys: Optional[Tuple[str, ...]] = None,
     ):
         super().__init__(name, description, tag_keys)
-        self._metric = CythonCount(self._name, self._description, self._tag_keys)
+        if self._discard_metric:
+            self._metric = None
+        else:
+            if env_bool("RAY_enable_open_telemetry", True):
+                """
+                For the new opentelemetry implementation, we'll correctly use Counter
+                rather than Sum.
+                """
+                self._metric = CythonCount(
+                    self._name, self._description, self._tag_keys
+                )
+            else:
+                """
+                For the previous opencensus implementation, we used Sum to support
+                exporting Counter as a gauge metric. We'll drop that feature in the
+                new opentelemetry implementation.
+                """
+                self._metric = CythonSum(self._name, self._description, self._tag_keys)
 
     def __reduce__(self):
         deserializer = self.__class__
@@ -222,9 +275,12 @@ class Histogram(Metric):
                 )
 
         self.boundaries = boundaries
-        self._metric = CythonHistogram(
-            self._name, self._description, self.boundaries, self._tag_keys
-        )
+        if self._discard_metric:
+            self._metric = None
+        else:
+            self._metric = CythonHistogram(
+                self._name, self._description, self.boundaries, self._tag_keys
+            )
 
     def observe(self, value: Union[int, float], tags: Dict[str, str] = None):
         """Observe a given `value` and add it to the appropriate bucket.
@@ -280,17 +336,24 @@ class Gauge(Metric):
         tag_keys: Optional[Tuple[str, ...]] = None,
     ):
         super().__init__(name, description, tag_keys)
-        self._metric = CythonGauge(self._name, self._description, self._tag_keys)
+        if self._discard_metric:
+            self._metric = None
+        else:
+            self._metric = CythonGauge(self._name, self._description, self._tag_keys)
 
-    def set(self, value: Union[int, float], tags: Dict[str, str] = None):
+    def set(self, value: Optional[Union[int, float]], tags: Dict[str, str] = None):
         """Set the gauge to the given `value`.
 
         Tags passed in will take precedence over the metric's default tags.
 
         Args:
-            value(int, float): Value to set the gauge to.
+            value(int, float): Value to set the gauge to. If `None`, this method is a
+                no-op.
             tags(Dict[str, str]): Tags to set or override for this gauge.
         """
+        if value is None:
+            return
+
         if not isinstance(value, (int, float)):
             raise TypeError(f"value must be int or float, got {type(value)}.")
 

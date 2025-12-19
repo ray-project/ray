@@ -1,8 +1,4 @@
--r dl-cpu-requirements.txt
-
-aim==3.17.5
-
-gpy==1.13.1
+aim==3.23.0; python_version < "3.12"
 
 jupyterlab==3.6.1
 matplotlib!=3.4.3

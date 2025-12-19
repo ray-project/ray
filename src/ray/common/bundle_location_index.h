@@ -44,11 +44,11 @@ class BundleLocationIndex {
   ///
   /// \param bundle_id
   /// \param node_id
-  /// \param bundle_specialication
+  /// \param bundle_specification
   void AddOrUpdateBundleLocation(
       const BundleID &bundle_id,
       const NodeID &node_id,
-      std::shared_ptr<const BundleSpecification> bundle_specialication = nullptr);
+      std::shared_ptr<const BundleSpecification> bundle_specification = nullptr);
 
   /// Erase bundle locations associated with a given node id.
   ///
@@ -66,23 +66,24 @@ class BundleLocationIndex {
   ///
   /// \param placement_group_id Placement group id of this bundle locations.
   /// \return Bundle locations that are associated with a given placement group id.
-  const absl::optional<std::shared_ptr<BundleLocations> const> GetBundleLocations(
+  const std::optional<std::shared_ptr<BundleLocations> const> GetBundleLocations(
       const PlacementGroupID &placement_group_id) const;
 
   /// Get BundleLocation of node id.
   ///
   /// \param node_id Node id of this bundle locations.
   /// \return Bundle locations that are associated with a given node id.
-  const absl::optional<std::shared_ptr<BundleLocations> const> GetBundleLocationsOnNode(
+  const std::optional<std::shared_ptr<BundleLocations> const> GetBundleLocationsOnNode(
       const NodeID &node_id) const;
 
   std::optional<NodeID> GetBundleLocation(const BundleID &bundle_id) const;
   /// Update the index to contain new node information. Should be used only when new node
   /// is added to the cluster.
   ///
-  /// \param alive_nodes map of alive nodes.
+  /// \param map of alive nodes.
   void AddNodes(
-      const absl::flat_hash_map<NodeID, std::shared_ptr<ray::rpc::GcsNodeInfo>> &nodes);
+      const absl::flat_hash_map<NodeID, std::shared_ptr<const ray::rpc::GcsNodeInfo>>
+          &nodes);
 
   /// get bundle_locations debug string info
   std::string GetBundleLocationDebugString(const BundleLocations &bundle_locations) const;

@@ -95,7 +95,10 @@ class TaskExecutor {
       bool is_reattempt,
       bool is_streaming_generator,
       bool retry_exception,
-      int64_t generator_backpressure_num_objects);
+      int64_t generator_backpressure_num_objects,
+      /* This is used by the in-actor GPU object store. However, it is only supported in
+       * the Python frontend. */
+      const rpc::TensorTransport &tensor_transport);
 
   virtual ~TaskExecutor(){};
 

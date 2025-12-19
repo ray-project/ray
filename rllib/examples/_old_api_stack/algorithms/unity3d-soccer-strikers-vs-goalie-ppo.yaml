@@ -1,0 +1,46 @@
+# @OldAPIStack
+# NOTE: This example will not run w/o a proper config.multiagent setup,
+#       which currently cannot be done in yaml.
+
+# This setup should learn a decent (not perfect) policy within 100k timesteps
+# on a single GPU machine (16 CPUS) using 10 workers (collecting data from
+# 10 compiled game binaries in parallel).
+# Reported rewards will be the sum of both strikers (+1 if goal) plus the
+# goalie's reward (-1 if goal) across all within-scene parallelized playing
+# fields (8 fields with each 2 strikers + 1 goalie, for the soccer env).
+unity3d-soccer-strikers-vs-goalie-ppo:
+    env: ray.rllib.env.wrappers.unity3d_env.Unity3DEnv
+    run: PPO
+    stop:
+        timesteps_total: 1000000
+    config:
+        # NOTE: This example will not run w/o the following multiagent setup:
+        # Multi-agent setup for SoccerStrikersVsGoalie Unity3D Env.
+        # multiagent:
+        #    policies: [policies list]
+        #    policy_mapping_fn: [agent-to-policy mapping function]
+
+        # Works for both torch and tf.
+        framework: torch
+        env_config:
+          # Put the path to your compiled game executable here.
+          file_name: /home/ubuntu/soccer_strikers_vs_goalie_linux.x86_64
+          # Timesteps after which a hard-reset will happen (all agents).
+          episode_horizon: 3000
+        lr: 0.0003
+        lambda: 0.95
+        gamma: 0.99
+        minibatch_size: 256
+        train_batch_size: 4000
+        clip_param: 0.2
+        # For running in editor, just use one Worker (we only have
+        # one Unity running)!
+        num_env_runners: 10
+        num_epochs: 20
+        rollout_fragment_length: 200
+        model:
+          fcnet_hiddens: [512, 512]
+        # If no executable is provided (use Unity3D editor), do not evaluate,
+        # b/c the editor only allows one connection at a time.
+        evaluation_interval: null
+        evaluation_duration: 1

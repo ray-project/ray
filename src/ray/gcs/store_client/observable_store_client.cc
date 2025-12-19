@@ -14,148 +14,135 @@
 
 #include "ray/gcs/store_client/observable_store_client.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/time/time.h"
-#include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace gcs {
 
-using namespace ray::stats;
-
-Status ObservableStoreClient::AsyncPut(const std::string &table_name,
-                                       const std::string &key,
-                                       const std::string &data,
-                                       bool overwrite,
-                                       std::function<void(bool)> callback) {
+void ObservableStoreClient::AsyncPut(const std::string &table_name,
+                                     const std::string &key,
+                                     std::string data,
+                                     bool overwrite,
+                                     Postable<void(bool)> callback) {
   auto start = absl::GetCurrentTimeNanos();
-  STATS_gcs_storage_operation_count.Record(1, "Put");
-  return delegate_->AsyncPut(table_name,
-                             key,
-                             data,
-                             overwrite,
-                             [start, callback = std::move(callback)](auto result) {
-                               auto end = absl::GetCurrentTimeNanos();
-                               STATS_gcs_storage_operation_latency_ms.Record(
-                                   absl::Nanoseconds(end - start) / absl::Milliseconds(1),
-                                   "Put");
-                               if (callback) {
-                                 callback(std::move(result));
-                               }
-                             });
+  storage_operation_count_counter_.Record(1, {{"Operation", "Put"}});
+  delegate_->AsyncPut(table_name,
+                      key,
+                      std::move(data),
+                      overwrite,
+                      std::move(callback).OnInvocation([this, start]() {
+                        auto end = absl::GetCurrentTimeNanos();
+                        storage_operation_latency_in_ms_histogram_.Record(
+                            absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
+                            {{"Operation", "Put"}});
+                      }));
 }
 
-Status ObservableStoreClient::AsyncGet(
+void ObservableStoreClient::AsyncGet(
     const std::string &table_name,
     const std::string &key,
-    const OptionalItemCallback<std::string> &callback) {
+    ToPostable<OptionalItemCallback<std::string>> callback) {
   auto start = absl::GetCurrentTimeNanos();
-  STATS_gcs_storage_operation_count.Record(1, "Get");
-  return delegate_->AsyncGet(
-      table_name, key, [start, callback](auto status, auto result) {
-        auto end = absl::GetCurrentTimeNanos();
-        STATS_gcs_storage_operation_latency_ms.Record(
-            absl::Nanoseconds(end - start) / absl::Milliseconds(1), "Get");
-        if (callback) {
-          callback(status, std::move(result));
-        }
-      });
+  storage_operation_count_counter_.Record(1, {{"Operation", "Get"}});
+  delegate_->AsyncGet(table_name, key, std::move(callback).OnInvocation([this, start]() {
+    auto end = absl::GetCurrentTimeNanos();
+    storage_operation_latency_in_ms_histogram_.Record(
+        absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
+        {{"Operation", "Get"}});
+  }));
 }
 
-Status ObservableStoreClient::AsyncGetAll(
+void ObservableStoreClient::AsyncGetAll(
     const std::string &table_name,
-    const MapCallback<std::string, std::string> &callback) {
+    Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   auto start = absl::GetCurrentTimeNanos();
-  STATS_gcs_storage_operation_count.Record(1, "GetAll");
-  return delegate_->AsyncGetAll(table_name, [start, callback](auto result) {
+  storage_operation_count_counter_.Record(1, {{"Operation", "GetAll"}});
+  delegate_->AsyncGetAll(table_name, std::move(callback).OnInvocation([this, start]() {
     auto end = absl::GetCurrentTimeNanos();
-    STATS_gcs_storage_operation_latency_ms.Record(
-        absl::Nanoseconds(end - start) / absl::Milliseconds(1), "GetAll");
-    if (callback) {
-      callback(std::move(result));
-    }
-  });
+    storage_operation_latency_in_ms_histogram_.Record(
+        absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
+        {{"Operation", "GetAll"}});
+  }));
 }
-Status ObservableStoreClient::AsyncMultiGet(
+
+void ObservableStoreClient::AsyncMultiGet(
     const std::string &table_name,
     const std::vector<std::string> &keys,
-    const MapCallback<std::string, std::string> &callback) {
+    Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   auto start = absl::GetCurrentTimeNanos();
-  STATS_gcs_storage_operation_count.Record(1, "MultiGet");
-  return delegate_->AsyncMultiGet(table_name, keys, [start, callback](auto result) {
-    auto end = absl::GetCurrentTimeNanos();
-    STATS_gcs_storage_operation_latency_ms.Record(
-        absl::Nanoseconds(end - start) / absl::Milliseconds(1), "MultiGet");
-    if (callback) {
-      callback(std::move(result));
-    }
-  });
-}
-
-Status ObservableStoreClient::AsyncDelete(const std::string &table_name,
-                                          const std::string &key,
-                                          std::function<void(bool)> callback) {
-  auto start = absl::GetCurrentTimeNanos();
-  STATS_gcs_storage_operation_count.Record(1, "Delete");
-  return delegate_->AsyncDelete(
-      table_name, key, [start, callback = std::move(callback)](auto result) {
+  storage_operation_count_counter_.Record(1, {{"Operation", "MultiGet"}});
+  delegate_->AsyncMultiGet(
+      table_name, keys, std::move(callback).OnInvocation([this, start]() {
         auto end = absl::GetCurrentTimeNanos();
-        STATS_gcs_storage_operation_latency_ms.Record(
-            absl::Nanoseconds(end - start) / absl::Milliseconds(1), "Delete");
-        if (callback) {
-          callback(std::move(result));
-        }
-      });
+        storage_operation_latency_in_ms_histogram_.Record(
+            absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
+            {{"Operation", "MultiGet"}});
+      }));
 }
 
-Status ObservableStoreClient::AsyncBatchDelete(const std::string &table_name,
-                                               const std::vector<std::string> &keys,
-                                               std::function<void(int64_t)> callback) {
+void ObservableStoreClient::AsyncDelete(const std::string &table_name,
+                                        const std::string &key,
+                                        Postable<void(bool)> callback) {
   auto start = absl::GetCurrentTimeNanos();
-  STATS_gcs_storage_operation_count.Record(1, "BatchDelete");
-  return delegate_->AsyncBatchDelete(
-      table_name, keys, [start, callback = std::move(callback)](auto result) {
+  storage_operation_count_counter_.Record(1, {{"Operation", "Delete"}});
+  delegate_->AsyncDelete(
+      table_name, key, std::move(callback).OnInvocation([this, start]() {
         auto end = absl::GetCurrentTimeNanos();
-        STATS_gcs_storage_operation_latency_ms.Record(
-            absl::Nanoseconds(end - start) / absl::Milliseconds(1), "BatchDelete");
-        if (callback) {
-          callback(std::move(result));
-        }
-      });
+        storage_operation_latency_in_ms_histogram_.Record(
+            absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
+            {{"Operation", "Delete"}});
+      }));
 }
 
-int ObservableStoreClient::GetNextJobID() { return delegate_->GetNextJobID(); }
+void ObservableStoreClient::AsyncBatchDelete(const std::string &table_name,
+                                             const std::vector<std::string> &keys,
+                                             Postable<void(int64_t)> callback) {
+  auto start = absl::GetCurrentTimeNanos();
+  storage_operation_count_counter_.Record(1, {{"Operation", "BatchDelete"}});
+  delegate_->AsyncBatchDelete(
+      table_name, keys, std::move(callback).OnInvocation([this, start]() {
+        auto end = absl::GetCurrentTimeNanos();
+        storage_operation_latency_in_ms_histogram_.Record(
+            absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
+            {{"Operation", "BatchDelete"}});
+      }));
+}
 
-Status ObservableStoreClient::AsyncGetKeys(
+void ObservableStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
+  delegate_->AsyncGetNextJobID(std::move(callback));
+}
+
+void ObservableStoreClient::AsyncGetKeys(
     const std::string &table_name,
     const std::string &prefix,
-    std::function<void(std::vector<std::string>)> callback) {
+    Postable<void(std::vector<std::string>)> callback) {
   auto start = absl::GetCurrentTimeNanos();
-  STATS_gcs_storage_operation_count.Record(1, "GetKeys");
-  return delegate_->AsyncGetKeys(
-      table_name, prefix, [start, callback = std::move(callback)](auto result) {
+  storage_operation_count_counter_.Record(1, {{"Operation", "GetKeys"}});
+  delegate_->AsyncGetKeys(
+      table_name, prefix, std::move(callback).OnInvocation([this, start]() {
         auto end = absl::GetCurrentTimeNanos();
-        STATS_gcs_storage_operation_latency_ms.Record(
-            absl::Nanoseconds(end - start) / absl::Milliseconds(1), "GetKeys");
-        if (callback) {
-          callback(std::move(result));
-        }
-      });
+        storage_operation_latency_in_ms_histogram_.Record(
+            absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
+            {{"Operation", "GetKeys"}});
+      }));
 }
 
-Status ObservableStoreClient::AsyncExists(const std::string &table_name,
-                                          const std::string &key,
-                                          std::function<void(bool)> callback) {
+void ObservableStoreClient::AsyncExists(const std::string &table_name,
+                                        const std::string &key,
+                                        Postable<void(bool)> callback) {
   auto start = absl::GetCurrentTimeNanos();
-  STATS_gcs_storage_operation_count.Record(1, "Exists");
-  return delegate_->AsyncExists(
-      table_name, key, [start, callback = std::move(callback)](auto result) {
+  storage_operation_count_counter_.Record(1, {{"Operation", "Exists"}});
+  delegate_->AsyncExists(
+      table_name, key, std::move(callback).OnInvocation([this, start]() {
         auto end = absl::GetCurrentTimeNanos();
-        STATS_gcs_storage_operation_latency_ms.Record(
-            absl::Nanoseconds(end - start) / absl::Milliseconds(1), "Exists");
-        if (callback) {
-          callback(std::move(result));
-        }
-      });
+        storage_operation_latency_in_ms_histogram_.Record(
+            absl::ToDoubleMilliseconds(absl::Nanoseconds(end - start)),
+            {{"Operation", "Exists"}});
+      }));
 }
 
 }  // namespace gcs

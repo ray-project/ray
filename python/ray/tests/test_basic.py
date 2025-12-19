@@ -3,6 +3,7 @@ import logging
 import os
 import pickle
 import random
+import re
 import sys
 import time
 
@@ -10,12 +11,14 @@ import pytest
 
 import ray
 import ray.cluster_utils
+from ray._common.test_utils import SignalActor
 from ray._private.test_utils import (
-    SignalActor,
     client_test_enabled,
     run_string_as_driver,
 )
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -89,15 +92,11 @@ def test_release_cpu_resources(shutdown_only):
 
 # https://github.com/ray-project/ray/issues/16025
 def test_release_resources_race(shutdown_only):
-    # This test fails with the flag set to false.
-    ray.init(
-        num_cpus=2,
-        object_store_memory=700e6,
-        _system_config={"inline_object_status_in_refs": True},
-    )
+    ray.init(num_cpus=2)
+
     refs = []
     for _ in range(10):
-        refs.append(ray.put(bytearray(20 * 1024 * 1024)))
+        refs.append(ray.put(bytearray(1024 * 1024)))
 
     @ray.remote
     def consume(refs):
@@ -105,7 +104,7 @@ def test_release_resources_race(shutdown_only):
         ray.get(refs)
         return os.getpid()
 
-    pids = set(ray.get([consume.remote(refs) for _ in range(1000)]))
+    pids = set(ray.get([consume.remote(refs) for _ in range(10)]))
     # Should not have started multiple workers.
     assert len(pids) <= 2, pids
 
@@ -235,10 +234,45 @@ def test_default_worker_import_dependency(shutdown_only):
     ray.get(f.remote())
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="Windows/OSX thread count not policed yet."
+)
+def test_worker_thread_count(monkeypatch, shutdown_only):
+    """This test will fail if the number of threads spawned by a worker process
+    increases. If you find that a patch is now causing this test to fail,
+    consider if this thread count change is expected and adjust the test
+    (or your patch) accordingly!
+    """
+
+    @ray.remote
+    class Actor:
+        def get_thread_count(self):
+            try:
+                process = psutil.Process(os.getpid())
+                return process.num_threads()
+            except ImportError:
+                return None
+
+    # Set the environment variables used by the raylet and worker
+    monkeypatch.setenv("RAY_worker_num_grpc_internal_threads", "1")
+    monkeypatch.setenv("RAY_num_server_call_thread", "1")
+    monkeypatch.setenv("RAY_core_worker_num_server_call_thread", "1")
+
+    # TODO(#55215): The for loop and the 'assert ... in {..,..}' complicates this
+    # test unnecessarily. We should only need to call the assert after
+    # a single call to the worker.  However, because the thread count
+    # per worker today isn't entirely static, we need to allow for this
+    # flexibility.  https://github.com/ray-project/ray/issues/55215
+    actor = Actor.remote()
+    for _ in range(5):
+        ray.get(actor.get_thread_count.remote())
+    # Lowering these numbers in this assert should be celebrated,
+    # increasing these numbers should be scrutinized
+    assert ray.get(actor.get_thread_count.remote()) in {21, 22, 23}
+
+
 # https://github.com/ray-project/ray/issues/7287
 def test_omp_threads_set(ray_start_cluster, monkeypatch):
-    import os
-
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
@@ -381,8 +415,6 @@ def test_submit_api(shutdown_only):
 
 
 def test_invalid_arguments():
-    import re
-
     def f():
         return 1
 
@@ -424,7 +456,7 @@ def test_invalid_arguments():
             ValueError,
             match=f"The keyword '{keyword}' only accepts None, "
             "a non-negative integer, "
-            "'streaming' \(for generators\), or 'dynamic'",
+            r"'streaming' \(for generators\), or 'dynamic'",
         ):
             ray.remote(**{keyword: v})(f)
 
@@ -440,16 +472,6 @@ def test_invalid_arguments():
     for keyword in ("max_restarts", "max_task_retries"):
         with pytest.raises(ValueError, match=template2.format(keyword)):
             ray.remote(**{keyword: random.randint(-100, -2)})(A)
-
-    metadata_type_err = (
-        "The type of keyword '_metadata' "
-        + f"must be {(dict, type(None))}, but received type {float}"
-    )
-    with pytest.raises(TypeError, match=re.escape(metadata_type_err)):
-        ray.remote(_metadata=3.14)(A)
-
-    ray.remote(_metadata={"data": 1})(f)
-    ray.remote(_metadata={"data": 1})(A)
 
     # Check invalid resource quantity
     with pytest.raises(
@@ -473,9 +495,7 @@ def test_invalid_arguments():
 
 def test_options():
     """General test of option keywords in Ray."""
-    import re
-
-    from ray._private import ray_option_utils
+    from ray._common import ray_option_utils
 
     def f():
         return 1
@@ -522,92 +542,24 @@ def test_options():
         with pytest.raises(TypeError):
             v.validate(k, unique_object)
 
-    # test updating each namespace of "_metadata" independently
-    assert ray_option_utils.update_options(
-        {
-            "_metadata": {"ns1": {"a1": 1, "b1": 2, "c1": 3}, "ns2": {"a2": 1}},
-            "num_cpus": 1,
-            "xxx": {"x": 2},
-            "zzz": 42,
-        },
-        {
-            "_metadata": {"ns1": {"b1": 22}, "ns3": {"b3": 2}},
-            "num_cpus": 2,
-            "xxx": {"y": 2},
-            "yyy": 3,
-        },
-    ) == {
-        "_metadata": {
-            "ns1": {"a1": 1, "b1": 22, "c1": 3},
-            "ns2": {"a2": 1},
-            "ns3": {"b3": 2},
-        },
-        "num_cpus": 2,
-        "xxx": {"y": 2},
-        "yyy": 3,
-        "zzz": 42,
-    }
-
-    # test options for other Ray libraries.
-    namespace = "namespace"
-
-    class mock_options:
-        def __init__(self, **options):
-            self.options = {"_metadata": {namespace: options}}
-
-        def keys(self):
-            return ("_metadata",)
-
-        def __getitem__(self, key):
-            return self.options[key]
-
-        def __call__(self, f):
-            f._default_options.update(self.options)
-            return f
-
-    @mock_options(a=1, b=2)
     @ray.remote(num_gpus=2)
     def foo():
         pass
 
     assert foo._default_options == {
-        "_metadata": {"namespace": {"a": 1, "b": 2}},
         "max_calls": 1,
         "num_gpus": 2,
     }
 
-    f2 = foo.options(num_cpus=1, num_gpus=1, **mock_options(a=11, c=3))
+    f2 = foo.options(num_cpus=1, num_gpus=1)
 
     # TODO(suquark): The current implementation of `.options()` is so bad that we
     # cannot even access its options from outside. Here we hack the closures to
     # achieve our goal. Need futher efforts to clean up the tech debt.
-    assert f2.remote.__closure__[1].cell_contents == {
-        "_metadata": {"namespace": {"a": 11, "b": 2, "c": 3}},
+    assert f2.remote.__closure__[2].cell_contents == {
         "num_cpus": 1,
         "num_gpus": 1,
     }
-
-    class mock_options2(mock_options):
-        def __init__(self, **options):
-            self.options = {"_metadata": {namespace + "2": options}}
-
-    f3 = foo.options(num_cpus=1, num_gpus=1, **mock_options2(a=11, c=3))
-
-    assert f3.remote.__closure__[1].cell_contents == {
-        "_metadata": {"namespace": {"a": 1, "b": 2}, "namespace2": {"a": 11, "c": 3}},
-        "num_cpus": 1,
-        "num_gpus": 1,
-    }
-
-    with pytest.raises(TypeError):
-        # Ensure only a single "**option" per ".options()".
-        # Otherwise it would be confusing.
-        foo.options(
-            num_cpus=1,
-            num_gpus=1,
-            **mock_options(a=11, c=3),
-            **mock_options2(a=11, c=3),
-        )
 
 
 # https://github.com/ray-project/ray/issues/17842
@@ -627,6 +579,59 @@ print("remote", ray.get(check.remote()))
     run_string_as_driver(
         script, dict(os.environ, **{"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1"})
     )
+
+
+# https://github.com/ray-project/ray/issues/54868
+def test_not_override_accelerator_ids_when_num_accelerators_is_zero():
+    not_override_check_script = """
+import ray
+ray.init()
+
+
+@ray.remote(num_gpus=0)
+def check():
+    import os
+    assert "CUDA_VISIBLE_DEVICES" not in os.environ
+
+@ray.remote(num_gpus=0)
+class Actor:
+    def check(self):
+        import os
+        assert "CUDA_VISIBLE_DEVICES" not in os.environ
+
+print("task check", ray.get(check.remote()))
+print("actor check", ray.get(Actor.options(num_gpus=0).remote().check.remote()))
+"""
+
+    run_string_as_driver(
+        not_override_check_script,
+        dict(
+            os.environ,
+            **{"RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO": "0"},
+        ),
+    )
+
+    override_check_script = """
+import ray
+ray.init()
+
+
+@ray.remote(num_gpus=0)
+def check():
+    import os
+    assert os.environ.get("CUDA_VISIBLE_DEVICES") == ""
+
+@ray.remote(num_gpus=0)
+class Actor:
+    def check(self):
+        import os
+        assert os.environ.get("CUDA_VISIBLE_DEVICES") == ""
+
+print("task check", ray.get(check.remote()))
+print("actor check", ray.get(Actor.options(num_gpus=0).remote().check.remote()))
+"""
+
+    run_string_as_driver(override_check_script)
 
 
 def test_put_get(shutdown_only):
@@ -655,22 +660,6 @@ def test_put_get(shutdown_only):
         object_ref = ray.put(value_before)
         value_after = ray.get(object_ref)
         assert value_before == value_after
-
-
-def test_wait_timing(shutdown_only):
-    ray.init(num_cpus=2)
-
-    @ray.remote
-    def f():
-        time.sleep(1)
-
-    future = f.remote()
-
-    start = time.time()
-    ready, not_ready = ray.wait([future], timeout=0.2)
-    assert 0.2 < time.time() - start < 0.3
-    assert len(ready) == 0
-    assert len(not_ready) == 1
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal _raylet")
@@ -866,9 +855,9 @@ def test_passing_arguments_by_value_out_of_the_box(ray_start_shared_local_modes)
     assert ray.get(f.remote(s)) == s
 
     # Test types.
-    assert ray.get(f.remote(int)) == int
-    assert ray.get(f.remote(float)) == float
-    assert ray.get(f.remote(str)) == str
+    assert ray.get(f.remote(int)) is int
+    assert ray.get(f.remote(float)) is float
+    assert ray.get(f.remote(str)) is str
 
     class Foo:
         def __init__(self):
@@ -888,7 +877,7 @@ def test_putting_object_that_closes_over_object_ref(ray_start_shared_local_modes
             self.val = ray.put(0)
 
         def method(self):
-            f
+            _ = f
 
     f = Foo()
     ray.put(f)
@@ -1180,6 +1169,16 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
         assert False
 
 
+def test_base_exception_raised(ray_start_shared_local_modes):
+    @ray.remote
+    def f():
+        raise BaseException("rip")
+        return 1
+
+    with pytest.raises(BaseException):
+        ray.get(f.remote())
+
+
 def test_import_ray_does_not_import_grpc():
     # First unload grpc and ray
     if "grpc" in sys.modules:
@@ -1202,7 +1201,4 @@ def test_import_ray_does_not_import_grpc():
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

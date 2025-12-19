@@ -155,14 +155,6 @@ trainer = TorchTrainer(
     run_config=train.RunConfig(failure_config=train.FailureConfig(max_failures=1)),
 )
 result = trainer.fit()
-
-# Seed a training run with a checkpoint using `resume_from_checkpoint`
-trainer = TorchTrainer(
-    train_func,
-    train_loop_config={"num_epochs": 5},
-    scaling_config=ScalingConfig(num_workers=2),
-    resume_from_checkpoint=result.checkpoint,
-)
 # __pytorch_restore_end__
 
 # __checkpoint_from_single_worker_start__
@@ -182,7 +174,7 @@ def train_fn(config):
         if train.get_context().get_world_rank() == 0:
             ...  # Save checkpoint to temp_checkpoint_dir
 
-            checkpoint = Checkpoint.from_directory(tmpdir)
+            checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
 
         train.report(metrics, checkpoint=checkpoint)
 
@@ -249,7 +241,7 @@ class CustomRayTrainReportCallback(Callback):
         should_checkpoint = trainer.current_epoch % 3 == 0
 
         with TemporaryDirectory() as tmpdir:
-            # Fetch metrics
+            # Fetch metrics from `self.log(..)` in the LightningModule
             metrics = trainer.callback_metrics
             metrics = {k: v.item() for k, v in metrics.items()}
 
@@ -289,21 +281,18 @@ def train_func():
     checkpoint = train.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as ckpt_dir:
-            ckpt_path = os.path.join(ckpt_dir, "checkpoint.ckpt")
+            ckpt_path = os.path.join(ckpt_dir, RayTrainReportCallback.CHECKPOINT_NAME)
             trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path)
     else:
         trainer.fit(model, datamodule=datamodule)
 
 
-# Build a Ray Train Checkpoint
-# Suppose we have a Lightning checkpoint at `s3://bucket/ckpt_dir/checkpoint.ckpt`
-checkpoint = Checkpoint("s3://bucket/ckpt_dir")
-
-# Resume training from checkpoint file
 ray_trainer = TorchTrainer(
     train_func,
     scaling_config=train.ScalingConfig(num_workers=2),
-    resume_from_checkpoint=checkpoint,
+    run_config=train.RunConfig(
+        checkpoint_config=train.CheckpointConfig(num_to_keep=2),
+    ),
 )
 # __lightning_restore_example_end__
 
@@ -446,3 +435,142 @@ checkpoint = result.checkpoint
 with checkpoint.as_directory() as checkpoint_dir:
     lightning_checkpoint_path = f"{checkpoint_dir}/checkpoint.ckpt"
 # __inspect_lightning_checkpoint_example_end__
+
+# __checkpoint_upload_mode_sync_start__
+def train_fn(config):
+    ...
+    metrics = {...}
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ...  # Save checkpoint to tmpdir
+        checkpoint = Checkpoint.from_directory(tmpdir)
+        train.report(
+            metrics,
+            checkpoint=checkpoint,
+            checkpoint_upload_mode=train.CheckpointUploadMode.SYNC,
+        )
+
+
+# __checkpoint_upload_mode_sync_end__
+
+# __checkpoint_upload_mode_async_start__
+def train_fn(config):
+    ...
+    metrics = {...}
+    tmpdir = tempfile.mkdtemp()
+    ...  # Save checkpoint to tmpdir
+    checkpoint = Checkpoint.from_directory(tmpdir)
+    train.report(
+        metrics,
+        checkpoint=checkpoint,
+        checkpoint_upload_mode=train.CheckpointUploadMode.ASYNC,
+    )
+
+
+# __checkpoint_upload_mode_async_end__
+
+# __checkpoint_upload_mode_no_upload_start__
+from s3torchconnector.dcp import S3StorageWriter
+from torch.distributed.checkpoint.state_dict_saver import save
+from torch.distributed.checkpoint.state_dict import get_state_dict
+
+
+def train_fn(config):
+    ...
+    for epoch in range(config["num_epochs"]):
+        # Directly upload checkpoint to s3 with Torch
+        model, optimizer = ...
+        storage_context = ray.train.get_context().get_storage()
+        checkpoint_path = (
+            f"s3://{storage_context.build_checkpoint_path_from_name(str(epoch))}"
+        )
+        storage_writer = S3StorageWriter(region="us-west-2", path=checkpoint_path)
+        model_dict, opt_dict = get_state_dict(model=model, optimizers=optimizer)
+        save(
+            {"model": model_dict, "opt": opt_dict},
+            storage_writer=storage_writer,
+        )
+
+        # Report that checkpoint to Ray Train
+        metrics = {...}
+        checkpoint = Checkpoint(checkpoint_path)
+        train.report(
+            metrics,
+            checkpoint=checkpoint,
+            checkpoint_upload_mode=train.CheckpointUploadMode.NO_UPLOAD,
+        )
+
+
+# __checkpoint_upload_mode_no_upload_end__
+
+
+# __checkpoint_upload_function_start__
+
+from torch.distributed.checkpoint.state_dict_saver import async_save
+from s3torchconnector.dcp import S3StorageWriter
+from torch.distributed.checkpoint.state_dict import get_state_dict
+
+from ray import train
+from ray.train import Checkpoint
+
+
+def train_fn(config):
+    ...
+    for epoch in config["num_epochs"]:
+        # Start async checkpoint upload to s3 with Torch
+        model, optimizer = ...
+        storage_context = train.get_context().get_storage()
+        checkpoint_path = (
+            f"s3://{storage_context.build_checkpoint_path_from_name(str(epoch))}"
+        )
+        storage_writer = S3StorageWriter(region="us-west-2", path=checkpoint_path)
+        model_dict, opt_dict = get_state_dict(model=model, optimizers=optimizer)
+        ckpt_ref = async_save(
+            {"model": model_dict, "opt": opt_dict},
+            storage_writer=storage_writer,
+        )
+
+        def wait_async_save(checkpoint, checkpoint_dir_name):
+            # This function waits for checkpoint to be finalized before returning it as is
+            ckpt_ref.result()
+            return checkpoint
+
+        # Ray Train kicks off a thread that waits for the async checkpoint upload to complete
+        # before reporting the checkpoint
+        metrics = {...}
+        checkpoint = Checkpoint(checkpoint_path)
+        train.report(
+            metrics=metrics,
+            checkpoint=checkpoint,
+            checkpoint_upload_mode=train.CheckpointUploadMode.ASYNC,
+            checkpoint_upload_function=wait_async_save,
+        )
+
+
+# __checkpoint_upload_function_end__
+
+# __get_all_reported_checkpoints_example_start__
+
+import ray.train
+from ray.train import CheckpointConsistencyMode
+
+def train_fn():
+    for epoch in range(2):
+        metrics = {"train/loss": 0.1}
+        checkpoint = ...
+        ray.train.report(
+            metrics,
+            checkpoint=checkpoint,
+            validate_fn=...,
+            validate_config=...,
+        )
+
+    # Get committed checkpoints which may still have ongoing validations.
+    committed_checkpoints = ray.train.get_all_reported_checkpoints(
+        consistency_mode=CheckpointConsistencyMode.COMMITTED)
+
+    # Wait for all pending validations to finish to access reported checkpoints
+    # with validation metrics attached.
+    validated_checkpoints = ray.train.get_all_reported_checkpoints()
+    ...
+
+# __get_all_reported_checkpoints_example_end__

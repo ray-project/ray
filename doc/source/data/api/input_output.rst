@@ -32,7 +32,6 @@ Parquet
    :toctree: doc/
 
    read_parquet
-   read_parquet_bulk
    Dataset.write_parquet
 
 CSV
@@ -63,6 +62,15 @@ Text
    :toctree: doc/
 
    read_text
+
+Audio
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_audio
 
 Avro
 ----
@@ -101,7 +109,7 @@ TFRecords
 
    read_tfrecords
    Dataset.write_tfrecords
-
+   TFXReadOptions
 
 Pandas
 ------
@@ -177,6 +185,101 @@ Databricks
 
    read_databricks_tables
 
+Snowflake
+---------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_snowflake
+   Dataset.write_snowflake
+
+Unity Catalog
+-------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_unity_catalog
+
+Delta Sharing
+-------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_delta_sharing_tables
+
+Hudi
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_hudi
+
+Iceberg
+-------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_iceberg
+   Dataset.write_iceberg
+
+Delta Lake
+----------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_delta
+
+Lance
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_lance
+   Dataset.write_lance
+
+MCAP (Message Capture)
+----------------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_mcap
+
+ClickHouse
+----------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_clickhouse
+   Dataset.write_clickhouse
+
+Daft
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   from_daft
+   Dataset.to_daft
+
 Dask
 ----
 
@@ -244,6 +347,15 @@ TensorFlow
 
    from_tf
 
+Video
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_videos
+
 WebDataset
 ----------
 
@@ -254,6 +366,15 @@ WebDataset
    read_webdataset
 
 .. _data_source_api:
+
+Kafka
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_kafka
 
 Datasource API
 --------------
@@ -279,6 +400,8 @@ Datasink API
    datasource.RowBasedFileDatasink
    datasource.BlockBasedFileDatasink
    datasource.FileBasedDatasource
+   datasource.WriteResult
+   datasource.WriteReturnType
 
 Partitioning API
 ----------------
@@ -303,9 +426,14 @@ MetadataProvider API
 
    datasource.FileMetadataProvider
    datasource.BaseFileMetadataProvider
-   datasource.ParquetMetadataProvider
    datasource.DefaultFileMetadataProvider
-   datasource.DefaultParquetMetadataProvider
    datasource.FastFileMetadataProvider
 
-   
+Shuffling API
+-------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   FileShuffleConfig

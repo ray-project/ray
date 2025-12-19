@@ -1,0 +1,32 @@
+load("//bazel:ray.bzl", "ray_cc_binary")
+
+ray_cc_binary(
+    name = "libcore_worker_library_java.so",
+    srcs = glob([
+        "*.h",
+        "*.cc",
+    ]),
+    # Export ray ABI symbols, which can then be used by libstreaming_java.so. see `//:_raylet`
+    linkopts = select({
+        "@platforms//os:osx": [
+            "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
+        ],
+        "@platforms//os:windows": [],
+        "//conditions:default": [
+            "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
+        ],
+    }),
+    linkshared = 1,
+    linkstatic = 1,
+    visibility = ["//java:__subpackages__"],
+    deps = [
+        "//:exported_internal",
+        "//:src/ray/ray_exported_symbols.lds",
+        "//:src/ray/ray_version_script.lds",
+        "//src/ray/core_worker:core_worker_lib",
+        "//src/ray/gcs_rpc_client:global_state_accessor_lib",
+        "//src/ray/stats:stats_lib",
+        "//src/ray/util:time",
+        "@bazel_tools//tools/jdk:jni",
+    ],
+)

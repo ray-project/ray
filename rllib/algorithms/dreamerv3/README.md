@@ -5,7 +5,7 @@
 ## Overview
 An RLlib-based implementation of the
 [DreamerV3 model-based reinforcement learning algorithm](https://arxiv.org/pdf/2301.04104v1.pdf)
-by D. Hafner et al. (Google DeepMind) 2023, in TensorFlow/Keras. 
+by D. Hafner et al. (Google DeepMind) 2023, in PyTorch.
 
 This implementation allows scaling up training by using multi-GPU machines for
 neural network updates (see below for tips and tricks, example configs, and command lines).
@@ -34,8 +34,7 @@ All you need is a simple "model size" setting (from "XS" to "XL") and a value fo
 specifies how many steps to replay from the buffer for a training update vs how many
 steps to take in the actual environment.
 
-For examples on how to set these config settings within your `DreamerV3Config` objects,
-see below.
+Here are some examples on how to set these config settings within your `DreamerV3Config` objects:
 
 ## Example Configs and Command Lines
 
@@ -43,19 +42,19 @@ see below.
 [documentation page here](https://docs.ray.io/en/latest/rllib/index.html#rllib-in-60-seconds).
 
 Use the config examples and templates in the
-[tuned_examples folder](../../tuned_examples/dreamerv3)
+[examples folder](../../examples/algorithms/dreamerv3)
 in combination with the following scripts and command lines in order to run RLlib's DreamerV3 algorithm in your experiments:
 
-### [Atari100k](../../tuned_examples/dreamerv3/atari_100k.py)
+### [Atari100k](../../examples/algorithms/dreamerv3/atari_100k_dreamerv3.py)
 ```shell
-$ cd ray/rllib
-$ rllib train file tuned_examples/dreamerv3/atari_100k.py --env ALE/Pong-v5 
+$ cd ray/rllib/examples/algorithms/dreamerv3/
+$ python atari_100k_dreamerv3.py --env ale_py:ALE/Pong-v5
 ```
 
-### [DeepMind Control Suite (vision)](../../tuned_examples/dreamerv3/dm_control_suite_vision.py)
+### [DeepMind Control Suite (vision)](../../examples/algorithms/dreamerv3/dm_control_suite_vision_dreamerv3.py)
 ```shell
-$ cd ray/rllib
-$ rllib train file tuned_examples/dreamerv3/dm_control_suite_vision.py --env DMC/cartpole/swingup 
+$ cd ray/rllib/examples/algorithms/dreamerv3/
+$ python dm_control_suite_vision_dreamerv3.py --env DMC/cartpole/swingup
 ```
 Other `--env` options for the DM Control Suite would be `--env DMC/hopper/hop`, `--env DMC/walker/walk`, etc..
 Note that you can also switch on WandB logging with the above script via the options
@@ -73,7 +72,7 @@ space into a new ``Box(-1, 1, (64, 64, 3), f32)``.
 
 First we quickly install ``flappy_bird_gymnasium`` in our dev environment:
 ```shell
-$ pip install flappy_bird_gymnasium 
+$ pip install flappy_bird_gymnasium
 ```
 
 Now, let's create a new python file for this RLlib experiment and call it ``flappy_bird.py``:
@@ -87,7 +86,7 @@ def _env_creator(ctx):
     import flappy_bird_gymnasium  # doctest: +SKIP
     import gymnasium as gym
     from supersuit.generic_wrappers import resize_v1
-    from ray.rllib.algorithms.dreamerv3.utils.env_runner import NormalizedImageEnv
+    from ray.rllib.env.wrappers.atari_wrappers import NormalizedImageEnv
 
     return NormalizedImageEnv(
         resize_v1(  # resize to 64x64 and normalize images
@@ -105,7 +104,7 @@ config = (
     DreamerV3Config()
     # set the env to the pre-registered string
     .environment("flappy-bird")
-    # play around with the insanely high number of hyperparameters for DreamerV3 ;) 
+    # play around with the insanely high number of hyperparameters for DreamerV3 ;)
     .training(
         model_size="S",
         training_ratio=1024,
@@ -123,8 +122,8 @@ $ python flappy_bird.py
 ```
 
 This should be it. Feel free to try out running this on multiple GPUs using these
-more advanced config examples [here (Atari100k)](../../tuned_examples/dreamerv3/atari_100k.py) and
-[here (DM Control Suite)](../../tuned_examples/dreamerv3/dm_control_suite_vision.py).
+more advanced config examples [here (Atari100k)](../../examples/algorithms/dreamerv3/atari_100k_dreamerv3.py) and
+[here (DM Control Suite)](../../examples/algorithms/dreamerv3/dm_control_suite_vision_dreamerv3.py).
 Also see the notes below on good recipes for running on multiple GPUs.
 
 <b>IMPORTANT:</b> DreamerV3 out-of-the-box only supports image observation spaces of
@@ -135,12 +134,12 @@ subclass [DreamerV3's catalog class](dreamerv3_catalog.py) and then configure th
 new catalog via your ``DreamerV3Config`` object as follows:
 
 ```python
-from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_rl_module import DreamerV3TfRLModule
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec 
+from ray.rllib.algorithms.dreamerv3.torch.dreamerv3_torch_rl_module import DreamerV3TorchRLModule
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
 config.rl_module(
-    rl_module_spec=SingleAgentRLModuleSpec(
-        module_class=DreamerV3TfRLModule,
+    rl_module_spec=RLModuleSpec(
+        module_class=DreamerV3TorchRLModule,
         catalog_class=[your DreamerV3Catalog subclass],
     )
 )
@@ -155,7 +154,7 @@ adjustments should be made on top of the default config.
   Use the `DreamerV3Config.training(batch_size_B=..)` API for this. For example, for 2 GPUs,
   use a batch size of `B=32`.
 - Multiply the number of environments you sample from in parallel by the number of GPUs you are using.
-  Use the `DreamerV3Config.rollouts(num_envs_per_worker=..)` for this.
+  Use the `DreamerV3Config.env_runners(num_envs_per_env_runner=..)` for this.
   For example, for 4 GPUs and a default environment count of 8 (the single-GPU default for
   this setting depends on the benchmark you are running), use 32
   parallel environments instead.

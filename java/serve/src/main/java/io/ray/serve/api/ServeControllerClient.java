@@ -13,6 +13,7 @@ import io.ray.serve.controller.ServeController;
 import io.ray.serve.deployment.Deployment;
 import io.ray.serve.deployment.DeploymentRoute;
 import io.ray.serve.exception.RayServeException;
+import io.ray.serve.generated.ApplicationArgs;
 import io.ray.serve.generated.ApplicationStatus;
 import io.ray.serve.generated.DeploymentArgs;
 import io.ray.serve.generated.EndpointInfo;
@@ -160,11 +161,22 @@ public class ServeControllerClient {
   /**
    * Deployment an application with deployment list.
    *
-   * @param name application name
-   * @param deployments deployment list
+   * @param name application name.
+   * @param routePrefix route prefix for the application.
+   * @param deployments deployment list.
+   * @param ingressDeploymentName name of the ingress deployment (the one that is exposed over
+   *     HTTP).
    * @param blocking Wait for the applications to be deployed or not.
+   * @param externalScalerEnabled If true, indicates that an external autoscaler will manage replica
+   *     scaling for this application.
    */
-  public void deployApplication(String name, List<Deployment> deployments, boolean blocking) {
+  public void deployApplication(
+      String name,
+      String routePrefix,
+      List<Deployment> deployments,
+      String ingressDeploymentName,
+      boolean blocking,
+      boolean externalScalerEnabled) {
 
     Object[] deploymentArgsArray = new Object[deployments.size()];
 
@@ -178,14 +190,19 @@ public class ServeControllerClient {
                   ByteString.copyFrom(deployment.getDeploymentConfig().toProtoBytes()))
               .setIngress(deployment.isIngress())
               .setDeployerJobId(Ray.getRuntimeContext().getCurrentJobId().toString());
-      if (deployment.getRoutePrefix() != null) {
-        deploymentArgs.setRoutePrefix(deployment.getRoutePrefix());
+      if (deployment.getName() == ingressDeploymentName) {
+        deploymentArgs.setRoutePrefix(routePrefix);
       }
       deploymentArgsArray[i] = deploymentArgs.build().toByteArray();
     }
 
+    ApplicationArgs.Builder applicationArgs =
+        ApplicationArgs.newBuilder().setExternalScalerEnabled(externalScalerEnabled);
+    byte[] applicationArgsBytes = applicationArgs.build().toByteArray();
+
     ((PyActorHandle) controller)
-        .task(PyActorMethod.of("deploy_application"), name, deploymentArgsArray)
+        .task(
+            PyActorMethod.of("deploy_application"), name, deploymentArgsArray, applicationArgsBytes)
         .remote()
         .get();
 
@@ -195,7 +212,6 @@ public class ServeControllerClient {
         logDeploymentReady(
             deployment.getName(),
             deployment.getVersion(),
-            deployment.getUrl(),
             "component=serve deployment=" + deployment.getName());
       }
     }
@@ -238,13 +254,11 @@ public class ServeControllerClient {
             "Application {} did not become RUNNING after {}s.", name, timeoutS));
   }
 
-  private void logDeploymentReady(String name, String version, String url, String tag) {
-    String urlPart = url != null ? MessageFormatter.format(" at `{}`", url) : "";
+  private void logDeploymentReady(String name, String version, String tag) {
     LOGGER.info(
-        "Deployment '{}{}' is ready {}. {}",
+        "Deployment '{}{}' is ready. {}",
         name,
         StringUtils.isNotBlank(version) ? "':'" + version : "",
-        urlPart,
         tag);
   }
 

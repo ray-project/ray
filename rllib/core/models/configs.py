@@ -1,7 +1,7 @@
 import abc
-from dataclasses import dataclass, field
 import functools
-from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -14,7 +14,7 @@ from ray.rllib.models.utils import get_activation_fn, get_initializer_fn
 from ray.rllib.utils.annotations import ExperimentalAPI
 
 if TYPE_CHECKING:
-    from ray.rllib.core.models.base import Model, Encoder
+    from ray.rllib.core.models.base import Encoder, Model
 
 
 @ExperimentalAPI
@@ -77,7 +77,7 @@ class ModelConfig(abc.ABC):
             a slow-down and should only be used for debugging.
     """
 
-    input_dims: Union[List[int], Tuple[int]] = None
+    input_dims: Union[List[int], Tuple[int, ...]] = None
     always_check_shapes: bool = False
 
     @abc.abstractmethod
@@ -90,7 +90,7 @@ class ModelConfig(abc.ABC):
         raise NotImplementedError
 
     @property
-    def output_dims(self) -> Optional[Tuple[int]]:
+    def output_dims(self) -> Optional[Tuple[int, ...]]:
         """Read-only `output_dims` are inferred automatically from other settings."""
         return None
 
@@ -160,9 +160,15 @@ class _MLPConfig(ModelConfig):
             "_" are allowed.
         output_layer_bias_initializer_config: Configuration to pass into the
             initializer defined in `output_layer_bias_initializer`.
+        clip_log_std: If log std should be clipped by `log_std_clip_param`. This applies
+            only to the action distribution parameters that encode the log standard
+            deviation of a `DiagGaussian` distribution.
+        log_std_clip_param: The clipping parameter for the log std, if clipping should
+            be applied - i.e. `clip_log_std=True`. The default value is 20, i.e. log
+            stds are clipped in between -20 and 20.
     """
 
-    hidden_layer_dims: Union[List[int], Tuple[int]] = (256, 256)
+    hidden_layer_dims: Union[List[int], Tuple[int, ...]] = (256, 256)
     hidden_layer_use_bias: bool = True
     hidden_layer_activation: str = "relu"
     hidden_layer_use_layernorm: bool = False
@@ -181,6 +187,11 @@ class _MLPConfig(ModelConfig):
     output_layer_bias_initializer: Optional[Union[str, Callable]] = None
     output_layer_bias_initializer_config: Optional[Dict] = None
 
+    # Optional clipping of log standard deviation.
+    clip_log_std: bool = False
+    # Optional clip parameter for the log standard deviation.
+    log_std_clip_param: float = 20.0
+
     @property
     def output_dims(self):
         if self.output_layer_dim is None and not self.hidden_layer_dims:
@@ -190,7 +201,7 @@ class _MLPConfig(ModelConfig):
             )
 
         # Infer `output_dims` automatically.
-        return (self.output_layer_dim or self.hidden_layer_dims[-1],)
+        return (int(self.output_layer_dim or self.hidden_layer_dims[-1]),)
 
     def _validate(self, framework: str = "torch"):
         """Makes sure that settings are valid."""
@@ -204,6 +215,11 @@ class _MLPConfig(ModelConfig):
                 f"`output_dims` ({self.output_dims}) of _MLPConfig must be "
                 "1D, e.g. `[32]`! This is an inferred value, hence other settings might"
                 " be wrong."
+            )
+        if self.log_std_clip_param is None:
+            raise ValueError(
+                "`log_std_clip_param` of _MLPConfig must be a float value, but is "
+                "`None`."
             )
 
         # Call these already here to catch errors early on.
@@ -282,10 +298,6 @@ class MLPHeadConfig(_MLPConfig):
             from ray.rllib.core.models.torch.heads import TorchMLPHead
 
             return TorchMLPHead(self)
-        else:
-            from ray.rllib.core.models.tf.heads import TfMLPHead
-
-            return TfMLPHead(self)
 
 
 @ExperimentalAPI
@@ -370,10 +382,6 @@ class FreeLogStdMLPHeadConfig(_MLPConfig):
             from ray.rllib.core.models.torch.heads import TorchFreeLogStdMLPHead
 
             return TorchFreeLogStdMLPHead(self)
-        else:
-            from ray.rllib.core.models.tf.heads import TfFreeLogStdMLPHead
-
-            return TfFreeLogStdMLPHead(self)
 
 
 @ExperimentalAPI
@@ -559,8 +567,8 @@ class CNNTransposeHeadConfig(ModelConfig):
         # )
     """
 
-    input_dims: Union[List[int], Tuple[int]] = None
-    initial_image_dims: Union[List[int], Tuple[int]] = field(
+    input_dims: Union[List[int], Tuple[int, ...]] = None
+    initial_image_dims: Union[List[int], Tuple[int, ...]] = field(
         default_factory=lambda: [4, 4, 96]
     )
     initial_dense_weights_initializer: Optional[Union[str, Callable]] = None
@@ -625,11 +633,6 @@ class CNNTransposeHeadConfig(ModelConfig):
             from ray.rllib.core.models.torch.heads import TorchCNNTransposeHead
 
             return TorchCNNTransposeHead(self)
-
-        elif framework == "tf2":
-            from ray.rllib.core.models.tf.heads import TfCNNTransposeHead
-
-            return TfCNNTransposeHead(self)
 
 
 @ExperimentalAPI
@@ -730,7 +733,7 @@ class CNNEncoderConfig(ModelConfig):
             different activation and bias settings).
     """
 
-    input_dims: Union[List[int], Tuple[int]] = None
+    input_dims: Union[List[int], Tuple[int, ...]] = None
     cnn_filter_specifiers: List[List[Union[int, List[int]]]] = field(
         default_factory=lambda: [[16, [4, 4], 2], [32, [4, 4], 2], [64, [8, 8], 2]]
     )
@@ -807,11 +810,6 @@ class CNNEncoderConfig(ModelConfig):
 
             return TorchCNNEncoder(self)
 
-        elif framework == "tf2":
-            from ray.rllib.core.models.tf.encoder import TfCNNEncoder
-
-            return TfCNNEncoder(self)
-
 
 @ExperimentalAPI
 @dataclass
@@ -872,10 +870,6 @@ class MLPEncoderConfig(_MLPConfig):
             from ray.rllib.core.models.torch.encoder import TorchMLPEncoder
 
             return TorchMLPEncoder(self)
-        else:
-            from ray.rllib.core.models.tf.encoder import TfMLPEncoder
-
-            return TfMLPEncoder(self)
 
 
 @ExperimentalAPI
@@ -887,7 +881,6 @@ class RecurrentEncoderConfig(ModelConfig):
     - Zero or one tokenizers
     - N LSTM/GRU layers stacked on top of each other and feeding
     their outputs as inputs to the respective next layer.
-    - One linear output layer
 
     This makes for the following flow of tensors:
 
@@ -900,8 +893,6 @@ class RecurrentEncoderConfig(ModelConfig):
     (...)
     |
     LSTM layer n
-    |
-    Linear output layer
     |
     Outputs
 
@@ -979,12 +970,8 @@ class RecurrentEncoderConfig(ModelConfig):
             underscore "_" are allowed.
         hidden_bias_initializer_config: Configuration to pass into the initializer
             defined in `hidden_bias_initializer`.
-        view_requirements_dict: The view requirements to use if anything else than
-            observation_space or action_space is to be encoded. This signifies an
-            advanced use case.
         tokenizer_config: A ModelConfig to build tokenizers for observations,
-            actions and other spaces that might be present in the
-            view_requirements_dict.
+            actions and other spaces.
     """
 
     recurrent_layer_type: str = "lstm"
@@ -1028,11 +1015,6 @@ class RecurrentEncoderConfig(ModelConfig):
                 TorchGRUEncoder as GRU,
                 TorchLSTMEncoder as LSTM,
             )
-        else:
-            from ray.rllib.core.models.tf.encoder import (
-                TfGRUEncoder as GRU,
-                TfLSTMEncoder as LSTM,
-            )
 
         if self.recurrent_layer_type == "lstm":
             return LSTM(self)
@@ -1053,10 +1035,14 @@ class ActorCriticEncoderConfig(ModelConfig):
     Attributes:
         base_encoder_config: The configuration for the wrapped encoder(s).
         shared: Whether the base encoder is shared between the actor and critic.
+        inference_only: Whether the configured encoder will only ever be used as an
+            actor-encoder, never as a value-function encoder. Thus, if True and `shared`
+            is False, will only build the actor-related components.
     """
 
     base_encoder_config: ModelConfig = None
     shared: bool = True
+    inference_only: bool = False
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> "Encoder":
@@ -1070,13 +1056,3 @@ class ActorCriticEncoderConfig(ModelConfig):
                 return TorchStatefulActorCriticEncoder(self)
             else:
                 return TorchActorCriticEncoder(self)
-        else:
-            from ray.rllib.core.models.tf.encoder import (
-                TfActorCriticEncoder,
-                TfStatefulActorCriticEncoder,
-            )
-
-            if isinstance(self.base_encoder_config, RecurrentEncoderConfig):
-                return TfStatefulActorCriticEncoder(self)
-            else:
-                return TfActorCriticEncoder(self)

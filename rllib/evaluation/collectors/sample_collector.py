@@ -2,14 +2,13 @@ import logging
 from abc import ABCMeta, abstractmethod
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, TensorType
 
 if TYPE_CHECKING:
-    from ray.rllib.algorithms.callbacks import DefaultCallbacks
+    from ray.rllib.callbacks.callbacks import RLlibCallback
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +32,7 @@ class SampleCollector(metaclass=ABCMeta):
     def __init__(self,
                  policy_map: PolicyMap,
                  clip_rewards: Union[bool, float],
-                 callbacks: "DefaultCallbacks",
+                 callbacks: "RLlibCallback",
                  multiple_episodes_in_batch: bool = True,
                  rollout_fragment_length: int = 200,
                  count_steps_by: str = "env_steps"):
@@ -61,7 +60,7 @@ class SampleCollector(metaclass=ABCMeta):
     def add_init_obs(
         self,
         *,
-        episode: Episode,
+        episode,
         agent_id: AgentID,
         policy_id: PolicyID,
         init_obs: TensorType,
@@ -160,7 +159,7 @@ class SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def episode_step(self, episode: Episode) -> None:
+    def episode_step(self, episode) -> None:
         """Increases the episode step counter (across all agents) by one.
 
         Args:
@@ -240,7 +239,7 @@ class SampleCollector(metaclass=ABCMeta):
     @abstractmethod
     def postprocess_episode(
         self,
-        episode: Episode,
+        episode,
         is_done: bool = False,
         check_dones: bool = False,
         build: bool = False,

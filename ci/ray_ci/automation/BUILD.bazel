@@ -1,10 +1,44 @@
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
-load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+
+py_library(
+    name = "automation",
+    srcs = glob(
+        ["*.py"],
+        exclude = [
+            "test_*.py",
+        ],
+    ),
+    visibility = ["//ci/ray_ci/automation:__subpackages__"],
+    deps = [
+        "//ci/ray_ci:ray_ci_lib",
+    ],
+)
+
+py_binary(
+    name = "determine_microcheck_tests",
+    srcs = ["determine_microcheck_tests.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ci_require("click"),
+        ":automation",
+    ],
+)
+
+py_binary(
+    name = "determine_microcheck_step_ids",
+    srcs = ["determine_microcheck_step_ids.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ci_require("click"),
+        "//ci/ray_ci:ray_ci_lib",
+    ],
+)
 
 py_binary(
     name = "test_db_bot",
     srcs = ["test_db_bot.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py3"],
     deps = [
         ci_require("click"),
         "//ci/ray_ci:ray_ci_lib",
@@ -14,7 +48,7 @@ py_binary(
 py_binary(
     name = "weekly_green_metric",
     srcs = ["weekly_green_metric.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py3"],
     deps = [
         ci_require("boto3"),
         ci_require("click"),
@@ -25,7 +59,7 @@ py_binary(
 py_binary(
     name = "filter_tests",
     srcs = ["filter_tests.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py3"],
     deps = [
         ci_require("click"),
         "//ci/ray_ci:ray_ci_lib",
@@ -44,7 +78,7 @@ py_test(
     name = "test_update_version_lib",
     size = "small",
     srcs = ["test_update_version_lib.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py3"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -58,7 +92,7 @@ py_test(
 py_binary(
     name = "update_version",
     srcs = ["update_version.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py3"],
     deps = [
         ci_require("click"),
         ":update_version_lib",
@@ -66,16 +100,64 @@ py_binary(
 )
 
 py_library(
-    name = "docker_tags_lib",
-    srcs = ["docker_tags_lib.py"],
+    name = "crane_lib",
+    srcs = ["crane_lib.py"],
     data = [
         "@crane_linux_x86_64//:file",
     ],
+    visibility = [
+        "//ci/ray_ci/automation:__subpackages__",
+        "//ci/ray_ci/base_images:__subpackages__",
+    ],
+    deps = [
+        "//ci/ray_ci:ray_ci_lib",
+    ],
+)
+
+py_library(
+    name = "test_utils",
+    srcs = ["test_utils.py"],
+    data = [
+        "@registry_x86_64//:file",
+    ],
     visibility = ["//ci/ray_ci/automation:__subpackages__"],
     deps = [
+        ci_require("pytest"),
         ci_require("requests"),
-        "//ci/ray_ci:ray_ci_lib",
         ci_require("bazel-runfiles"),
+    ],
+)
+
+py_test(
+    name = "test_crane_lib",
+    size = "small",
+    srcs = ["test_crane_lib.py"],
+    data = [
+        "@crane_linux_x86_64//:file",
+        "@registry_x86_64//:file",
+    ],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ci_require("requests"),
+        ":crane_lib",
+        ":test_utils",
+    ],
+)
+
+py_library(
+    name = "docker_tags_lib",
+    srcs = ["docker_tags_lib.py"],
+    visibility = ["//ci/ray_ci/automation:__subpackages__"],
+    deps = [
+        ":crane_lib",
+        "//ci/ray_ci:ray_ci_lib",
+        ci_require("docker"),
+        ci_require("requests"),
     ],
 )
 
@@ -83,15 +165,18 @@ py_test(
     name = "test_docker_tags_lib",
     size = "small",
     srcs = ["test_docker_tags_lib.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    data = [
+        "@registry_x86_64//:file",
+    ],
+    exec_compatible_with = ["//bazel:py3"],
     tags = [
         "ci_unit",
         "team:ci",
     ],
     deps = [
         ci_require("pytest"),
-        ci_require("docker"),
         ":docker_tags_lib",
+        ":test_utils",
     ],
 )
 
@@ -108,7 +193,7 @@ py_library(
 py_test(
     name = "test_ray_wheels_lib",
     srcs = ["test_ray_wheels_lib.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py3"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -132,7 +217,7 @@ py_library(
 py_test(
     name = "test_pypi_lib",
     srcs = ["test_pypi_lib.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py3"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -146,7 +231,7 @@ py_test(
 py_binary(
     name = "upload_wheels_pypi",
     srcs = ["upload_wheels_pypi.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py3"],
     deps = [
         ":pypi_lib",
         ":ray_wheels_lib",
@@ -157,7 +242,17 @@ py_binary(
 py_binary(
     name = "list_docker_tags",
     srcs = ["list_docker_tags.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ":docker_tags_lib",
+        ci_require("click"),
+    ],
+)
+
+py_binary(
+    name = "generate_index",
+    srcs = ["generate_index.py"],
+    exec_compatible_with = ["//bazel:py3"],
     deps = [
         ":docker_tags_lib",
         ci_require("click"),
@@ -167,10 +262,46 @@ py_binary(
 py_binary(
     name = "check_nightly_ray_commit",
     srcs = ["check_nightly_ray_commit.py"],
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py3"],
     deps = [
         ":docker_tags_lib",
         ci_require("click"),
         ci_require("docker"),
+    ],
+)
+
+py_test(
+    name = "test_determine_microcheck_tests",
+    srcs = ["test_determine_microcheck_tests.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ":automation",
+    ],
+)
+
+py_binary(
+    name = "get_contributors",
+    srcs = ["get_contributors.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ci_require("click"),
+        ci_require("pygithub"),
+        ci_require("tqdm"),
+    ],
+)
+
+py_binary(
+    name = "copy_wanda_image",
+    srcs = ["copy_wanda_image.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ":crane_lib",
+        "//ci/ray_ci:ray_ci_lib",
+        ci_require("click"),
     ],
 )

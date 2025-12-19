@@ -5,38 +5,37 @@ Adapted from VTraceTFPolicy to use the PPO surrogate loss.
 Keep in sync with changes to VTraceTFPolicy.
 """
 
-import numpy as np
 import logging
-import gymnasium as gym
 from typing import Dict, List, Optional, Type, Union
+
+import gymnasium as gym
+import numpy as np
 
 from ray.rllib.algorithms.appo.utils import make_appo_models
 from ray.rllib.algorithms.impala import vtrace_tf as vtrace
 from ray.rllib.algorithms.impala.impala_tf_policy import (
-    _make_time_major,
     VTraceClipGradients,
     VTraceOptimizer,
+    _make_time_major,
 )
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
+    Postprocessing,
     compute_bootstrap_value,
     compute_gae_for_sample_batch,
-    Postprocessing,
-)
-from ray.rllib.models.tf.tf_action_dist import Categorical
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
-from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
-from ray.rllib.policy.tf_mixins import (
-    EntropyCoeffSchedule,
-    LearningRateSchedule,
-    KLCoeffMixin,
-    ValueNetworkMixin,
-    GradStatsMixin,
-    TargetNetworkMixin,
 )
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
+from ray.rllib.models.tf.tf_action_dist import Categorical, TFActionDistribution
+from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
+from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.tf_mixins import (
+    EntropyCoeffSchedule,
+    GradStatsMixin,
+    KLCoeffMixin,
+    LearningRateSchedule,
+    TargetNetworkMixin,
+    ValueNetworkMixin,
+)
 from ray.rllib.utils.annotations import (
     override,
 )
@@ -82,15 +81,10 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            # If Learner API is used, we don't need any loss-specific mixins.
-            # However, we also would like to avoid creating special Policy-subclasses
-            # for this as the entire Policy concept will soon not be used anymore with
-            # the new Learner- and RLModule APIs.
-            if not config.get("_enable_new_api_stack", False):
-                # Although this is a no-op, we call __init__ here to make it clear
-                # that base.__init__ will use the make_model() call.
-                VTraceClipGradients.__init__(self)
-                VTraceOptimizer.__init__(self)
+            # Although this is a no-op, we call __init__ here to make it clear
+            # that base.__init__ will use the make_model() call.
+            VTraceClipGradients.__init__(self)
+            VTraceOptimizer.__init__(self)
 
             # Initialize base class.
             base.__init__(
@@ -111,8 +105,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             ValueNetworkMixin.__init__(self, config)
             KLCoeffMixin.__init__(self, config)
 
-            if not config.get("_enable_new_api_stack", False):
-                GradStatsMixin.__init__(self)
+            GradStatsMixin.__init__(self)
 
             # Note: this is a bit ugly, but loss and optimizer initialization must
             # happen after all the MixIns are initialized.
@@ -368,7 +361,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             self,
             sample_batch: SampleBatch,
             other_agent_batches: Optional[SampleBatch] = None,
-            episode: Optional["Episode"] = None,
+            episode=None,
         ):
             # Call super's postprocess_trajectory first.
             # sample_batch = super().postprocess_trajectory(

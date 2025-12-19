@@ -19,6 +19,10 @@
 #include <boost/range/adaptor/filtered.hpp>
 #include <boost/range/adaptor/transformed.hpp>
 #include <boost/range/join.hpp>
+#include <deque>
+#include <utility>
+
+#include "ray/common/ray_config.h"
 
 namespace ray {
 namespace raylet {
@@ -26,17 +30,17 @@ namespace raylet {
 SchedulerResourceReporter::SchedulerResourceReporter(
     const absl::flat_hash_map<SchedulingClass,
                               std::deque<std::shared_ptr<internal::Work>>>
-        &tasks_to_schedule,
+        &leases_to_schedule,
     const absl::flat_hash_map<SchedulingClass,
                               std::deque<std::shared_ptr<internal::Work>>>
-        &infeasible_tasks,
-    const ILocalTaskManager &local_task_manager)
+        &infeasible_leases,
+    const LocalLeaseManagerInterface &local_lease_manager)
     : max_resource_shapes_per_load_report_(
           RayConfig::instance().max_resource_shapes_per_load_report()),
-      tasks_to_schedule_(tasks_to_schedule),
-      tasks_to_dispatch_(local_task_manager.GetTaskToDispatch()),
-      infeasible_tasks_(infeasible_tasks),
-      backlog_tracker_(local_task_manager.GetBackLogTracker()) {}
+      leases_to_schedule_(leases_to_schedule),
+      leases_to_grant_(local_lease_manager.GetLeasesToGrant()),
+      infeasible_leases_(infeasible_leases),
+      backlog_tracker_(local_lease_manager.GetBackLogTracker()) {}
 
 int64_t SchedulerResourceReporter::TotalBacklogSize(
     SchedulingClass scheduling_class) const {
@@ -69,14 +73,14 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
     for (auto [scheduling_class, count] : range) {
       if (num_reported++ >= max_resource_shapes_per_load_report_ &&
           max_resource_shapes_per_load_report_ >= 0) {
-        // TODO (Alex): It's possible that we skip a different scheduling key which
+        // TODO(Alex): It's possible that we skip a different scheduling key which
         // contains the same resources.
         skipped_requests++;
         break;
       }
 
       const auto &scheduling_class_descriptor =
-          TaskSpecification::GetSchedulingClassDescriptor(scheduling_class);
+          SchedulingClassToIds::GetSchedulingClassDescriptor(scheduling_class);
       if ((scheduling_class_descriptor.scheduling_strategy.scheduling_strategy_case() ==
            rpc::SchedulingStrategy::SchedulingStrategyCase::
                kNodeAffinitySchedulingStrategy) &&
@@ -94,6 +98,7 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
       }
 
       const auto &resources = scheduling_class_descriptor.resource_set.GetResourceMap();
+      const auto &label_selectors = scheduling_class_descriptor.label_selector;
       auto by_shape_entry = resource_load_by_shape->Add();
 
       for (const auto &resource : resources) {
@@ -107,6 +112,9 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
         // Add to `resource_load_by_shape`.
         (*by_shape_entry->mutable_shape())[label] = quantity;
       }
+
+      // Add label selectors
+      label_selectors.ToProto(by_shape_entry->add_label_selectors());
 
       if (is_infeasible) {
         by_shape_entry->set_num_infeasible_requests_queued(count);
@@ -127,22 +135,23 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
   };
 
   fill_resource_usage_helper(
-      tasks_to_schedule_ | boost::adaptors::transformed(transform_func), false);
-  auto tasks_to_dispatch_range =
-      tasks_to_dispatch_ | boost::adaptors::transformed([](const auto &pair) {
+      leases_to_schedule_ | boost::adaptors::transformed(transform_func), false);
+  auto leases_to_grant_range =
+      leases_to_grant_ | boost::adaptors::transformed([](const auto &pair) {
         auto cnt = pair.second.size();
-        // We should only report dispatching tasks that do not have resources allocated.
-        for (const auto &task : pair.second) {
-          if (task->allocated_instances) {
+        // We should only report leases to be granted that do not have resources
+        // allocated.
+        for (const auto &lease : pair.second) {
+          if (lease->allocated_instances_) {
             cnt--;
           }
         }
         return std::make_pair(pair.first, cnt);
       });
-  fill_resource_usage_helper(tasks_to_dispatch_range, false);
+  fill_resource_usage_helper(leases_to_grant_range, false);
 
   fill_resource_usage_helper(
-      infeasible_tasks_ | boost::adaptors::transformed(transform_func), true);
+      infeasible_leases_ | boost::adaptors::transformed(transform_func), true);
   auto backlog_tracker_range = backlog_tracker_ |
                                boost::adaptors::transformed([](const auto &pair) {
                                  return std::make_pair(pair.first, 0);
@@ -154,30 +163,29 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
   fill_resource_usage_helper(backlog_tracker_range, false);
 
   if (skipped_requests > 0) {
-    RAY_LOG(INFO) << "More than " << max_resource_shapes_per_load_report_
-                  << " scheduling classes. Some resource loads may not be reported to "
-                     "the autoscaler.";
+    RAY_LOG(WARNING) << "There are more than " << max_resource_shapes_per_load_report_
+                     << " scheduling classes. Some resource loads may not be reported to "
+                        "the autoscaler.";
   }
 }
 
 void SchedulerResourceReporter::FillPendingActorCountByShape(
     rpc::ResourcesData &data) const {
   absl::flat_hash_map<SchedulingClass, std::pair<int, int>> pending_count_by_shape;
-  for (const auto &[scheduling_class, queue] : infeasible_tasks_) {
+  for (const auto &[scheduling_class, queue] : infeasible_leases_) {
     pending_count_by_shape[scheduling_class].first = queue.size();
   }
-  for (const auto &[scheduling_class, queue] : tasks_to_schedule_) {
+  for (const auto &[scheduling_class, queue] : leases_to_schedule_) {
     pending_count_by_shape[scheduling_class].second = queue.size();
   }
 
   if (!pending_count_by_shape.empty()) {
-    data.set_cluster_full_of_actors_detected(true);
     auto resource_load_by_shape =
         data.mutable_resource_load_by_shape()->mutable_resource_demands();
     for (const auto &shape_entry : pending_count_by_shape) {
       auto by_shape_entry = resource_load_by_shape->Add();
       for (const auto &resource_entry :
-           TaskSpecification::GetSchedulingClassDescriptor(shape_entry.first)
+           SchedulingClassToIds::GetSchedulingClassDescriptor(shape_entry.first)
                .resource_set.GetResourceMap()) {
         (*by_shape_entry->mutable_shape())[resource_entry.first] = resource_entry.second;
       }

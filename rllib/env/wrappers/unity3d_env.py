@@ -1,34 +1,21 @@
-from gymnasium.spaces import Box, MultiDiscrete, Tuple as TupleSpace
 import logging
-import numpy as np
 import random
 import time
 from typing import Callable, Optional, Tuple
 
+import numpy as np
+from gymnasium.spaces import Box, MultiDiscrete, Tuple as TupleSpace
+
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.policy.policy import PolicySpec
-from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.typing import MultiAgentDict, PolicyID, AgentID
+from ray.rllib.utils.annotations import OldAPIStack
+from ray.rllib.utils.typing import AgentID, MultiAgentDict, PolicyID
 
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI
+@OldAPIStack
 class Unity3DEnv(MultiAgentEnv):
-    """A MultiAgentEnv representing a single Unity3D game instance.
-
-    For an example on how to use this Env with a running Unity3D editor
-    or with a compiled game, see:
-    `rllib/examples/unity3d_env_local.py`
-    For an example on how to use it inside a Unity game client, which
-    connects to an RLlib Policy server, see:
-    `rllib/examples/envs/external_envs/unity3d_[client|server].py`
-
-    Supports all Unity3D (MLAgents) examples, multi- or single-agent and
-    gets converted automatically into an ExternalMultiAgentEnv, when used
-    inside an RLlib PolicyClient for cloud/distributed training of Unity games.
-    """
-
     # Default base port when connecting directly to the Editor
     _BASE_PORT_EDITOR = 5004
     # Default base port when connecting to a compiled environment
@@ -45,29 +32,6 @@ class Unity3DEnv(MultiAgentEnv):
         timeout_wait: int = 300,
         episode_horizon: int = 1000,
     ):
-        """Initializes a Unity3DEnv object.
-
-        Args:
-            file_name (Optional[str]): Name of the Unity game binary.
-                If None, will assume a locally running Unity3D editor
-                to be used, instead.
-            port (Optional[int]): Port number to connect to Unity environment.
-            seed: A random seed value to use for the Unity3D game.
-            no_graphics: Whether to run the Unity3D simulator in
-                no-graphics mode. Default: False.
-            timeout_wait: Time (in seconds) to wait for connection from
-                the Unity3D instance.
-            episode_horizon: A hard horizon to abide to. After at most
-                this many steps (per-agent episode `step()` calls), the
-                Unity3D game is reset and will start again (finishing the
-                multi-agent episode that the game represents).
-                Note: The game itself may contain its own episode length
-                limits, which are always obeyed (on top of this value here).
-        """
-        # Skip env checking as the nature of the agent IDs depends on the game
-        # running in the connected Unity editor.
-        self._skip_env_checking = True
-
         super().__init__()
 
         if file_name is None:
@@ -84,7 +48,7 @@ class Unity3DEnv(MultiAgentEnv):
         port_ = None
         while True:
             # Sleep for random time to allow for concurrent startup of many
-            # environments (num_workers >> 1). Otherwise, would lead to port
+            # environments (num_env_runners >> 1). Otherwise, would lead to port
             # conflicts sometimes.
             if port_ is not None:
                 time.sleep(random.randint(1, 10))
@@ -124,24 +88,6 @@ class Unity3DEnv(MultiAgentEnv):
     ) -> Tuple[
         MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict
     ]:
-        """Performs one multi-agent step through the game.
-
-        Args:
-            action_dict: Multi-agent action dict with:
-                keys=agent identifier consisting of
-                [MLagents behavior name, e.g. "Goalie?team=1"] + "_" +
-                [Agent index, a unique MLAgent-assigned index per single agent]
-
-        Returns:
-            tuple:
-                - obs: Multi-agent observation dict.
-                    Only those observations for which to get new actions are
-                    returned.
-                - rewards: Rewards dict matching `obs`.
-                - dones: Done dict with only an __all__ multi-agent entry in
-                    it. __all__=True, if episode is done for all agents.
-                - infos: An (empty) info dict.
-        """
         from mlagents_envs.base_env import ActionTuple
 
         # Set only the required actions (from the DecisionSteps) in Unity3D.
@@ -203,18 +149,6 @@ class Unity3DEnv(MultiAgentEnv):
         return obs, infos
 
     def _get_step_results(self):
-        """Collects those agents' obs/rewards that have to act in next `step`.
-
-        Returns:
-            Tuple:
-                obs: Multi-agent observation dict.
-                    Only those observations for which to get new actions are
-                    returned.
-                rewards: Rewards dict matching `obs`.
-                dones: Done dict with only an __all__ multi-agent entry in it.
-                    __all__=True, if episode is done for all agents.
-                infos: An (empty) info dict.
-        """
         obs = {}
         rewards = {}
         infos = {}

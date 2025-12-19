@@ -17,191 +17,24 @@
 #include <google/protobuf/util/message_differencer.h>
 
 #include <cstddef>
+#include <memory>
 #include <string>
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
-#include "absl/synchronization/mutex.h"
 #include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
+#include "ray/common/scheduling/fallback_strategy.h"
+#include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/resource_set.h"
+#include "ray/common/scheduling/scheduling_class_util.h"
 #include "ray/common/task/task_common.h"
-#include "ray/util/container_util.h"
+#include "ray/observability/metric_interface.h"
 
 extern "C" {
 #include "ray/thirdparty/sha256.h"
 }
-
-namespace ray {
-inline bool operator==(const ray::rpc::SchedulingStrategy &lhs,
-                       const ray::rpc::SchedulingStrategy &rhs) {
-  if (lhs.scheduling_strategy_case() != rhs.scheduling_strategy_case()) {
-    return false;
-  }
-
-  switch (lhs.scheduling_strategy_case()) {
-  case ray::rpc::SchedulingStrategy::kNodeAffinitySchedulingStrategy: {
-    return (lhs.node_affinity_scheduling_strategy().node_id() ==
-            rhs.node_affinity_scheduling_strategy().node_id()) &&
-           (lhs.node_affinity_scheduling_strategy().soft() ==
-            rhs.node_affinity_scheduling_strategy().soft()) &&
-           (lhs.node_affinity_scheduling_strategy().spill_on_unavailable() ==
-            rhs.node_affinity_scheduling_strategy().spill_on_unavailable()) &&
-           (lhs.node_affinity_scheduling_strategy().fail_on_unavailable() ==
-            rhs.node_affinity_scheduling_strategy().fail_on_unavailable());
-  }
-  case ray::rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy: {
-    return (lhs.placement_group_scheduling_strategy().placement_group_id() ==
-            rhs.placement_group_scheduling_strategy().placement_group_id()) &&
-           (lhs.placement_group_scheduling_strategy().placement_group_bundle_index() ==
-            rhs.placement_group_scheduling_strategy().placement_group_bundle_index()) &&
-           (lhs.placement_group_scheduling_strategy()
-                .placement_group_capture_child_tasks() ==
-            rhs.placement_group_scheduling_strategy()
-                .placement_group_capture_child_tasks());
-  }
-  case ray::rpc::SchedulingStrategy::kNodeLabelSchedulingStrategy: {
-    return google::protobuf::util::MessageDifferencer::Equivalent(
-        lhs.node_label_scheduling_strategy(), rhs.node_label_scheduling_strategy());
-  }
-  default:
-    return true;
-  }
-}
-
-typedef int SchedulingClass;
-
-struct SchedulingClassDescriptor {
- public:
-  explicit SchedulingClassDescriptor(ResourceSet rs,
-                                     FunctionDescriptor fd,
-                                     int64_t d,
-                                     rpc::SchedulingStrategy scheduling_strategy)
-      : resource_set(std::move(rs)),
-        function_descriptor(std::move(fd)),
-        depth(d),
-        scheduling_strategy(std::move(scheduling_strategy)) {}
-  ResourceSet resource_set;
-  FunctionDescriptor function_descriptor;
-  int64_t depth;
-  rpc::SchedulingStrategy scheduling_strategy;
-
-  bool operator==(const SchedulingClassDescriptor &other) const {
-    return depth == other.depth && resource_set == other.resource_set &&
-           function_descriptor == other.function_descriptor &&
-           scheduling_strategy == other.scheduling_strategy;
-  }
-
-  std::string DebugString() const {
-    std::stringstream buffer;
-    buffer << "{"
-           << "depth=" << depth << " "
-           << "function_descriptor=" << function_descriptor->ToString() << " "
-           << "scheduling_strategy=" << scheduling_strategy.DebugString() << " "
-           << "resource_set="
-           << "{";
-    for (const auto &pair : resource_set.GetResourceMap()) {
-      buffer << pair.first << " : " << pair.second << ", ";
-    }
-    buffer << "}}";
-    return buffer.str();
-  }
-};
-}  // namespace ray
-
-namespace std {
-template <>
-struct hash<ray::rpc::LabelOperator> {
-  size_t operator()(const ray::rpc::LabelOperator &label_operator) const {
-    size_t hash = std::hash<size_t>()(label_operator.label_operator_case());
-    if (label_operator.has_label_in()) {
-      for (const auto &value : label_operator.label_in().values()) {
-        hash ^= std::hash<std::string>()(value);
-      }
-    } else if (label_operator.has_label_not_in()) {
-      for (const auto &value : label_operator.label_not_in().values()) {
-        hash ^= std::hash<std::string>()(value);
-      }
-    }
-    return hash;
-  }
-};
-
-template <>
-struct hash<ray::rpc::LabelMatchExpression> {
-  size_t operator()(const ray::rpc::LabelMatchExpression &expression) const {
-    size_t hash = std::hash<std::string>()(expression.key());
-    hash ^= std::hash<ray::rpc::LabelOperator>()(expression.operator_());
-    return hash;
-  }
-};
-
-template <>
-struct hash<ray::rpc::LabelMatchExpressions> {
-  size_t operator()(const ray::rpc::LabelMatchExpressions &expressions) const {
-    size_t hash = 0;
-    for (const auto &expression : expressions.expressions()) {
-      hash ^= std::hash<ray::rpc::LabelMatchExpression>()(expression);
-    }
-    return hash;
-  }
-};
-
-template <>
-struct hash<ray::rpc::SchedulingStrategy> {
-  size_t operator()(const ray::rpc::SchedulingStrategy &scheduling_strategy) const {
-    size_t hash = std::hash<size_t>()(scheduling_strategy.scheduling_strategy_case());
-    if (scheduling_strategy.scheduling_strategy_case() ==
-        ray::rpc::SchedulingStrategy::kNodeAffinitySchedulingStrategy) {
-      hash ^= std::hash<std::string>()(
-          scheduling_strategy.node_affinity_scheduling_strategy().node_id());
-      // soft returns a bool
-      hash ^= static_cast<size_t>(
-          scheduling_strategy.node_affinity_scheduling_strategy().soft());
-      hash ^= static_cast<size_t>(
-          scheduling_strategy.node_affinity_scheduling_strategy().spill_on_unavailable());
-      hash ^= static_cast<size_t>(
-          scheduling_strategy.node_affinity_scheduling_strategy().fail_on_unavailable());
-    } else if (scheduling_strategy.scheduling_strategy_case() ==
-               ray::rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy) {
-      hash ^= std::hash<std::string>()(
-          scheduling_strategy.placement_group_scheduling_strategy().placement_group_id());
-      hash ^= scheduling_strategy.placement_group_scheduling_strategy()
-                  .placement_group_bundle_index();
-      // placement_group_capture_child_tasks returns a bool
-      hash ^=
-          static_cast<size_t>(scheduling_strategy.placement_group_scheduling_strategy()
-                                  .placement_group_capture_child_tasks());
-    } else if (scheduling_strategy.has_node_label_scheduling_strategy()) {
-      if (scheduling_strategy.node_label_scheduling_strategy().hard().expressions_size() >
-          0) {
-        hash ^= std::hash<std::string>()("hard");
-        hash ^= std::hash<ray::rpc::LabelMatchExpressions>()(
-            scheduling_strategy.node_label_scheduling_strategy().hard());
-      }
-      if (scheduling_strategy.node_label_scheduling_strategy().soft().expressions_size() >
-          0) {
-        hash ^= std::hash<std::string>()("soft");
-        hash ^= std::hash<ray::rpc::LabelMatchExpressions>()(
-            scheduling_strategy.node_label_scheduling_strategy().soft());
-      }
-    }
-    return hash;
-  }
-};
-
-template <>
-struct hash<ray::SchedulingClassDescriptor> {
-  size_t operator()(const ray::SchedulingClassDescriptor &sched_cls) const {
-    size_t hash = std::hash<ray::ResourceSet>()(sched_cls.resource_set);
-    hash ^= sched_cls.function_descriptor->Hash();
-    hash ^= sched_cls.depth;
-    hash ^= std::hash<ray::rpc::SchedulingStrategy>()(sched_cls.scheduling_strategy);
-    return hash;
-  }
-};
-}  // namespace std
 
 namespace ray {
 
@@ -209,25 +42,27 @@ namespace ray {
 /// a executing thread pool.
 struct ConcurrencyGroup {
   // Name of this group.
-  std::string name;
+  std::string name_;
   // Max concurrency of this group.
-  uint32_t max_concurrency;
+  uint32_t max_concurrency_;
   // Function descriptors of the actor methods in this group.
-  std::vector<ray::FunctionDescriptor> function_descriptors;
+  std::vector<ray::FunctionDescriptor> function_descriptors_;
 
   ConcurrencyGroup() = default;
 
-  ConcurrencyGroup(const std::string &name,
+  ConcurrencyGroup(std::string name,
                    uint32_t max_concurrency,
-                   const std::vector<ray::FunctionDescriptor> &fds)
-      : name(name), max_concurrency(max_concurrency), function_descriptors(fds) {}
+                   std::vector<ray::FunctionDescriptor> fds)
+      : name_(std::move(name)),
+        max_concurrency_(max_concurrency),
+        function_descriptors_(std::move(fds)) {}
 
-  std::string GetName() const { return name; }
+  std::string GetName() const { return name_; }
 
-  uint32_t GetMaxConcurrency() const { return max_concurrency; }
+  uint32_t GetMaxConcurrency() const { return max_concurrency_; }
 
   std::vector<ray::FunctionDescriptor> GetFunctionDescriptors() const {
-    return function_descriptors;
+    return function_descriptors_;
   }
 };
 
@@ -253,12 +88,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// The input message will be copied/moved into this object.
   ///
   /// \param message The protobuf message.
-  explicit TaskSpecification(rpc::TaskSpec &&message)
-      : MessageWrapper(std::move(message)) {
-    ComputeResources();
-  }
-
-  explicit TaskSpecification(const rpc::TaskSpec &message) : MessageWrapper(message) {
+  explicit TaskSpecification(rpc::TaskSpec message) : MessageWrapper(std::move(message)) {
     ComputeResources();
   }
 
@@ -266,7 +96,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ///
   /// \param message The protobuf message.
   explicit TaskSpecification(std::shared_ptr<rpc::TaskSpec> message)
-      : MessageWrapper(message) {
+      : MessageWrapper(std::move(message)) {
     ComputeResources();
   }
 
@@ -281,11 +111,19 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // TODO(swang): Finalize and document these methods.
   TaskID TaskId() const;
 
+  // Get the task id in binary format.
+  std::string TaskIdBinary() const;
+
   JobID JobId() const;
 
   const rpc::JobConfig &JobConfig() const;
 
   TaskID ParentTaskId() const;
+
+  // Get the parent task id in binary format.
+  std::string ParentTaskIdBinary() const;
+
+  ActorID RootDetachedActorId() const;
 
   TaskID SubmitterTaskId() const;
 
@@ -293,17 +131,17 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ray::FunctionDescriptor FunctionDescriptor() const;
 
-  [[nodiscard]] rpc::RuntimeEnvInfo RuntimeEnvInfo() const;
+  [[nodiscard]] const rpc::RuntimeEnvInfo &RuntimeEnvInfo() const;
 
-  std::string SerializedRuntimeEnv() const;
+  const std::string &SerializedRuntimeEnv() const;
 
-  rpc::RuntimeEnvConfig RuntimeEnvConfig() const;
+  const rpc::RuntimeEnvConfig &RuntimeEnvConfig() const;
 
   bool HasRuntimeEnv() const;
 
   int GetRuntimeEnvHash() const;
 
-  uint64_t AttemptNumber() const;
+  int32_t AttemptNumber() const;
 
   bool IsRetry() const;
 
@@ -319,11 +157,33 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   void SetNumStreamingGeneratorReturns(uint64_t num_streaming_generator_returns);
 
+  /// Return true if the argument is passed by reference.
   bool ArgByRef(size_t arg_index) const;
 
-  ObjectID ArgId(size_t arg_index) const;
+  /// Get the ID of the argument at the given index.
+  ///
+  /// \param arg_index The index of the argument.
+  /// \return The ID of the argument.
+  ObjectID ArgObjectId(size_t arg_index) const;
 
+  /// Get the raw object ID of the argument at the given index.
+  ///
+  /// \param arg_index The index of the argument.
+  /// \return The raw object ID string of the argument.
+  std::string ArgObjectIdBinary(size_t arg_index) const;
+
+  /// Get the reference of the argument at the given index.
+  ///
+  /// \param arg_index The index of the argument.
+  /// \return The reference of the argument.
   const rpc::ObjectReference &ArgRef(size_t arg_index) const;
+
+  /// Get the tensor transport of the argument at the given index.
+  ///
+  /// \param arg_index The index of the argument.
+  /// \return The tensor transport used to transfer the argument to the task
+  /// executor.
+  rpc::TensorTransport ArgTensorTransport(size_t arg_index) const;
 
   ObjectID ReturnId(size_t return_index) const;
 
@@ -364,6 +224,17 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The resources that will be acquired during the execution of this
   /// task.
   const ResourceSet &GetRequiredResources() const;
+
+  /// Return the labels that are required for the node to execute
+  /// this task on.
+  ///
+  /// \return The labels that are required for the execution of this task on a node.
+  const LabelSelector &GetLabelSelector() const;
+
+  /// Return the list of fallback strategies for scheduling.
+  ///
+  /// \return Fallback strategies to fall back on when scheduling a task on a node.
+  const std::vector<FallbackOption> &GetFallbackStrategy() const;
 
   const rpc::SchedulingStrategy &GetSchedulingStrategy() const;
 
@@ -430,6 +301,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::vector<std::string> DynamicWorkerOptions() const;
 
+  std::vector<std::string> DynamicWorkerOptionsOrEmpty() const;
+
+  absl::flat_hash_map<std::string, std::string> GetLabels() const;
+
   // Methods specific to actor tasks.
 
   ActorID ActorId() const;
@@ -442,7 +317,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   WorkerID CallerWorkerId() const;
 
-  uint64_t ActorCounter() const;
+  std::string CallerWorkerIdBinary() const;
+
+  NodeID CallerNodeId() const;
+
+  uint64_t SequenceNumber() const;
 
   ObjectID ActorCreationDummyObjectId() const;
 
@@ -451,8 +330,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   bool IsAsyncioActor() const;
 
   bool IsDetachedActor() const;
-
-  ObjectID ActorDummyObject() const;
 
   std::string DebugString() const;
 
@@ -478,19 +355,24 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // Concurrency groups of the actor.
   std::vector<ConcurrencyGroup> ConcurrencyGroups() const;
 
-  std::string ConcurrencyGroupName() const;
+  const std::string &ConcurrencyGroupName() const;
 
-  bool ExecuteOutOfOrder() const;
+  bool AllowOutOfOrderExecution() const;
 
   bool IsSpreadSchedulingStrategy() const;
 
   /// \return true if the task or actor is retriable.
   bool IsRetriable() const;
 
-  void EmitTaskMetrics() const;
+  void EmitTaskMetrics(
+      ray::observability::MetricInterface &scheduler_placement_time_ms_histogram) const;
 
   /// \return true if task events from this task should be reported.
   bool EnableTaskEvents() const;
+
+  TaskAttempt GetTaskAttempt() const;
+
+  const rpc::TensorTransport TensorTransport() const;
 
  private:
   void ComputeResources();
@@ -503,70 +385,14 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   std::shared_ptr<ResourceSet> required_placement_resources_;
   /// Cached scheduling class of this task.
   SchedulingClass sched_cls_id_ = 0;
+  int runtime_env_hash_ = 0;
 
-  /// Below static fields could be mutated in `ComputeResources` concurrently due to
-  /// multi-threading, we need a mutex to protect it.
-  static absl::Mutex mutex_;
-  /// Keep global static id mappings for SchedulingClass for performance.
-  static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
-      ABSL_GUARDED_BY(mutex_);
-  static absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
-      ABSL_GUARDED_BY(mutex_);
-  static int next_sched_id_ ABSL_GUARDED_BY(mutex_);
-};
-
-/// \class WorkerCacheKey
-///
-/// Class used to cache workers, keyed by runtime_env.
-class WorkerCacheKey {
- public:
-  /// Create a cache key with the given environment variable overrides and serialized
-  /// runtime_env.
-  ///
-  /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
-  /// worker. \param required_resources The required resouce.
-  /// worker. \param is_actor Whether the worker will be an actor. This is set when
-  ///         task type isolation between workers is enabled.
-  /// worker. \param iis_gpu Whether the worker will be using GPUs. This is set when
-  ///         resource type isolation between workers is enabled.
-  WorkerCacheKey(const std::string serialized_runtime_env,
-                 const absl::flat_hash_map<std::string, double> &required_resources,
-                 bool is_actor,
-                 bool is_gpu);
-
-  bool operator==(const WorkerCacheKey &k) const;
-
-  /// Check if this worker's environment is empty (the default).
-  ///
-  /// \return true if there are no environment variables set and the runtime env is the
-  /// empty string (protobuf default) or a JSON-serialized empty dict.
-  bool EnvIsEmpty() const;
-
-  /// Get the hash for this worker's environment.
-  ///
-  /// \return The hash of the serialized runtime_env.
-  std::size_t Hash() const;
-
-  /// Get the int-valued hash for this worker's environment, useful for portability in
-  /// flatbuffers.
-  ///
-  /// \return The hash truncated to an int.
-  int IntHash() const;
-
- private:
-  std::size_t CalculateHash() const;
-
-  /// The JSON-serialized runtime env for this worker.
-  const std::string serialized_runtime_env;
-  /// The required resources for this worker.
-  const absl::flat_hash_map<std::string, double> required_resources;
-  /// Whether the worker is for an actor.
-  const bool is_actor;
-  /// Whether the worker is to use a GPU.
-  const bool is_gpu;
-  /// The hash of the worker's environment.  This is set to 0
-  /// for unspecified or empty environments.
-  const std::size_t hash_ = 0;
+  // Field storing label selector for scheduling Task on a node. Initialized in constuctor
+  // in ComputeResources() call.
+  std::shared_ptr<LabelSelector> label_selector_;
+  // Field storing the fallback scheduling strategy. This is a list of
+  // strategies to try in-order.
+  std::shared_ptr<std::vector<FallbackOption>> fallback_strategy_;
 };
 
 }  // namespace ray

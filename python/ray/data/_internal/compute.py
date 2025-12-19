@@ -1,19 +1,8 @@
 import logging
-import math
-from typing import Any, Callable, Iterable, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Iterable, Optional, TypeVar, Union
 
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data.block import (
-    Block,
-    BlockAccessor,
-    BlockExecStats,
-    BlockMetadata,
-    BlockPartition,
-    UserDefinedFunction,
-)
-from ray.data.context import DataContext
-from ray.types import ObjectRef
+from ray.data.block import Block, UserDefinedFunction
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -39,8 +28,16 @@ class ComputeStrategy:
     pass
 
 
-@DeveloperAPI
+@PublicAPI
 class TaskPoolStrategy(ComputeStrategy):
+    """Specify the task-based compute strategy for a Dataset transform.
+
+    TaskPoolStrategy executes dataset transformations using Ray tasks that are
+    scheduled through a pool. Provide ``size`` to cap the number of concurrent
+    tasks; leave it unset to allow Ray Data to scale the task count
+    automatically.
+    """
+
     def __init__(
         self,
         size: Optional[int] = None,
@@ -60,23 +57,53 @@ class TaskPoolStrategy(ComputeStrategy):
             other == "tasks" and self.size is None
         )
 
+    def __repr__(self) -> str:
+        return f"TaskPoolStrategy(size={self.size})"
+
 
 @PublicAPI
 class ActorPoolStrategy(ComputeStrategy):
-    """Specify the compute strategy for a Dataset transform.
+    """Specify the actor-based compute strategy for a Dataset transform.
 
     ActorPoolStrategy specifies that an autoscaling pool of actors should be used
     for a given Dataset transform. This is useful for stateful setup of callable
     classes.
 
-    For a fixed-sized pool of size ``n``, specify ``compute=ActorPoolStrategy(size=n)``.
-    To autoscale from ``m`` to ``n`` actors, specify
+    For a fixed-sized pool of size ``n``, use ``ActorPoolStrategy(size=n)``.
+
+    To autoscale from ``m`` to ``n`` actors, use
     ``ActorPoolStrategy(min_size=m, max_size=n)``.
+
+    To autoscale from ``m`` to ``n`` actors, with an initial size of ``initial``, use
+    ``ActorPoolStrategy(min_size=m, max_size=n, initial_size=initial)``.
 
     To increase opportunities for pipelining task dependency prefetching with
     computation and avoiding actor startup delays, set max_tasks_in_flight_per_actor
     to 2 or greater; to try to decrease the delay due to queueing of tasks on the worker
     actors, set max_tasks_in_flight_per_actor to 1.
+
+    The `enable_true_multi_threading` argument primarily exists to prevent GPU OOM issues with multi-threaded actors.
+    The life cycle of an actor task involves 3 main steps:
+
+        1. Batching Inputs
+        2. Running actor UDF
+        3. Batching Outputs
+
+    The `enable_true_multi_threading` flag affects step 2. If set to `True`, then the UDF can be run concurrently.
+    By default, it is set to `False`, so at most 1 actor UDF is running at a time per actor. The `max_concurrency`
+    flag on `ray.remote` affects steps 1 and 3. Below is a matrix summary:
+
+    - [`enable_true_multi_threading=False or True`, `max_concurrency=1`] = 1 actor task running per actor. So at most 1
+        of steps 1, 2, or 3 is running at any point in time.
+    - [`enable_true_multi_threading=False`, `max_concurrency>1`] = multiple tasks running per actor
+      (respecting GIL) but UDF runs 1 at a time. This is useful for doing CPU and GPU work,
+      where you want to use a large batch size but want to hide the overhead of *batching*
+      the inputs. In this case, CPU *batching* is done concurrently, while GPU *inference*
+      is done 1 at a time. Concretely, steps 1 and 3 can have multiple threads, while step 2 is done serially.
+    - [`enable_true_multi_threading=True`, `max_concurrency>1`] = multiple tasks running per actor.
+      Unlike bullet #3 ^, the UDF runs concurrently (respecting GIL). No restrictions on steps 1, 2, or 3
+
+    NOTE: `enable_true_multi_threading` does not apply to async actors
     """
 
     def __init__(
@@ -85,30 +112,37 @@ class ActorPoolStrategy(ComputeStrategy):
         size: Optional[int] = None,
         min_size: Optional[int] = None,
         max_size: Optional[int] = None,
+        initial_size: Optional[int] = None,
         max_tasks_in_flight_per_actor: Optional[int] = None,
+        enable_true_multi_threading: bool = False,
     ):
         """Construct ActorPoolStrategy for a Dataset transform.
 
         Args:
             size: Specify a fixed size actor pool of this size. It is an error to
                 specify both `size` and `min_size` or `max_size`.
-            min_size: The minimize size of the actor pool.
+            min_size: The minimum size of the actor pool.
             max_size: The maximum size of the actor pool.
+            initial_size: The initial number of actors to start with. If not specified,
+                defaults to min_size. Must be between min_size and max_size.
             max_tasks_in_flight_per_actor: The maximum number of tasks to concurrently
                 send to a single actor worker. Increasing this will increase
                 opportunities for pipelining task dependency prefetching with
                 computation and avoiding actor startup delays, but will also increase
                 queueing delay.
+            enable_true_multi_threading: If enable_true_multi_threading=True, no more than 1 actor task
+                runs per actor. Otherwise, respects the `max_concurrency` argument.
         """
-        if size:
+        if size is not None:
             if size < 1:
                 raise ValueError("size must be >= 1", size)
-            if max_size is not None or min_size is not None:
+            if max_size is not None or min_size is not None or initial_size is not None:
                 raise ValueError(
-                    "min_size and max_size cannot be set at the same time as `size`"
+                    "min_size, max_size, and initial_size cannot be set at the same time as `size`"
                 )
             min_size = size
             max_size = size
+            initial_size = size
         if min_size is not None and min_size < 1:
             raise ValueError("min_size must be >= 1", min_size)
         if max_size is not None:
@@ -124,18 +158,46 @@ class ActorPoolStrategy(ComputeStrategy):
                 "max_tasks_in_flight_per_actor must be >= 1, got: ",
                 max_tasks_in_flight_per_actor,
             )
+
         self.min_size = min_size or 1
         self.max_size = max_size or float("inf")
+
+        # Validate and set initial_size
+        if initial_size is not None:
+            if initial_size < self.min_size:
+                raise ValueError(
+                    f"initial_size ({initial_size}) must be >= min_size ({self.min_size})"
+                )
+            if self.max_size != float("inf") and initial_size > self.max_size:
+                raise ValueError(
+                    f"initial_size ({initial_size}) must be <= max_size ({self.max_size})"
+                )
+
+        self.initial_size = initial_size or self.min_size
         self.max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
         self.num_workers = 0
         self.ready_to_total_workers_ratio = 0.8
+        self.enable_true_multi_threading = enable_true_multi_threading
 
     def __eq__(self, other: Any) -> bool:
         return isinstance(other, ActorPoolStrategy) and (
             self.min_size == other.min_size
             and self.max_size == other.max_size
+            and self.initial_size == other.initial_size
+            and self.enable_true_multi_threading == other.enable_true_multi_threading
             and self.max_tasks_in_flight_per_actor
             == other.max_tasks_in_flight_per_actor
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"ActorPoolStrategy(min_size={self.min_size}, "
+            f"max_size={self.max_size}, "
+            f"initial_size={self.initial_size}, "
+            f"max_tasks_in_flight_per_actor={self.max_tasks_in_flight_per_actor})"
+            f"num_workers={self.num_workers}, "
+            f"enable_true_multi_threading={self.enable_true_multi_threading}, "
+            f"ready_to_total_workers_ratio={self.ready_to_total_workers_ratio})"
         )
 
 
@@ -143,7 +205,7 @@ def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
     if not isinstance(compute_spec, (TaskPoolStrategy, ActorPoolStrategy)):
         raise ValueError(
             "In Ray 2.5, the compute spec must be either "
-            f"TaskPoolStrategy or ActorPoolStategy, was: {compute_spec}."
+            f"TaskPoolStrategy or ActorPoolStrategy, was: {compute_spec}."
         )
     elif not compute_spec or compute_spec == "tasks":
         return TaskPoolStrategy()
@@ -153,125 +215,3 @@ def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
         return compute_spec
     else:
         raise ValueError("compute must be one of [`tasks`, `actors`, ComputeStrategy]")
-
-
-def is_task_compute(compute_spec: Union[str, ComputeStrategy]) -> bool:
-    return (
-        not compute_spec
-        or compute_spec == "tasks"
-        or isinstance(compute_spec, TaskPoolStrategy)
-    )
-
-
-def _map_block_split(
-    block_fn: BlockTransform,
-    input_files: List[str],
-    fn: Optional[UserDefinedFunction],
-    num_blocks: int,
-    *blocks_and_fn_args: Union[Block, Any],
-    **fn_kwargs,
-) -> BlockPartition:
-    stats = BlockExecStats.builder()
-    blocks, fn_args = blocks_and_fn_args[:num_blocks], blocks_and_fn_args[num_blocks:]
-    if fn is not None:
-        fn_args = (fn,) + fn_args
-    new_metas = []
-    for new_block in block_fn(blocks, *fn_args, **fn_kwargs):
-        accessor = BlockAccessor.for_block(new_block)
-        new_meta = BlockMetadata(
-            num_rows=accessor.num_rows(),
-            size_bytes=accessor.size_bytes(),
-            schema=accessor.schema(),
-            input_files=input_files,
-            exec_stats=stats.build(),
-        )
-        yield new_block
-        new_metas.append(new_meta)
-        stats = BlockExecStats.builder()
-    yield new_metas
-
-
-def _map_block_nosplit(
-    block_fn: BlockTransform,
-    input_files: List[str],
-    fn: Optional[UserDefinedFunction],
-    num_blocks: int,
-    *blocks_and_fn_args: Union[Block, Any],
-    **fn_kwargs,
-) -> Tuple[Block, BlockMetadata]:
-    stats = BlockExecStats.builder()
-    builder = DelegatingBlockBuilder()
-    blocks, fn_args = blocks_and_fn_args[:num_blocks], blocks_and_fn_args[num_blocks:]
-    if fn is not None:
-        fn_args = (fn,) + fn_args
-    for new_block in block_fn(blocks, *fn_args, **fn_kwargs):
-        builder.add_block(new_block)
-    new_block = builder.build()
-    accessor = BlockAccessor.for_block(new_block)
-    return new_block, accessor.get_metadata(
-        input_files=input_files, exec_stats=stats.build()
-    )
-
-
-def _bundle_blocks_up_to_size(
-    blocks: List[Tuple[ObjectRef[Block], BlockMetadata]],
-    target_size: int,
-) -> List[Tuple[Tuple[ObjectRef[Block]], Tuple[BlockMetadata]]]:
-    """Group blocks into bundles that are up to (but not exceeding) the provided target
-    size.
-    """
-    block_bundles: List[List[Tuple[ObjectRef[Block], BlockMetadata]]] = []
-    curr_bundle: List[Tuple[ObjectRef[Block], BlockMetadata]] = []
-    curr_bundle_size = 0
-    for b, m in blocks:
-        num_rows = m.num_rows
-        if num_rows is None:
-            num_rows = float("inf")
-        if curr_bundle_size > 0 and curr_bundle_size + num_rows > target_size:
-            block_bundles.append(curr_bundle)
-            curr_bundle = []
-            curr_bundle_size = 0
-        curr_bundle.append((b, m))
-        curr_bundle_size += num_rows
-    if curr_bundle:
-        block_bundles.append(curr_bundle)
-    if len(blocks) / len(block_bundles) >= 10:
-        logger.warning(
-            f"`batch_size` is set to {target_size}, which reduces parallelism from "
-            f"{len(blocks)} to {len(block_bundles)}. If the performance is worse than "
-            "expected, this may indicate that the batch size is too large or the "
-            "input block size is too small. To reduce batch size, consider decreasing "
-            "`batch_size` or use the default in `map_batches`. To increase input "
-            "block size, consider decreasing `parallelism` in read."
-        )
-    return [tuple(zip(*block_bundle)) for block_bundle in block_bundles]
-
-
-def _check_batch_size(
-    blocks_and_meta: List[Tuple[ObjectRef[Block], BlockMetadata]],
-    batch_size: int,
-    name: str,
-):
-    """Log a warning if the provided batch size exceeds the configured target max block
-    size.
-    """
-    batch_size_bytes = None
-    for _, meta in blocks_and_meta:
-        if meta.num_rows and meta.size_bytes:
-            batch_size_bytes = math.ceil(batch_size * (meta.size_bytes / meta.num_rows))
-            break
-    context = DataContext.get_current()
-    if (
-        batch_size_bytes is not None
-        and batch_size_bytes > context.target_max_block_size
-    ):
-        logger.warning(
-            f"Requested batch size {batch_size} results in batches of "
-            f"{batch_size_bytes} bytes for {name} tasks, which is larger than the "
-            f"configured target max block size {context.target_max_block_size}. This "
-            "may result in out-of-memory errors for certain workloads, and you may "
-            "want to decrease your batch size or increase the configured target max "
-            "block size, e.g.: "
-            "from ray.data.context import DataContext; "
-            "DataContext.get_current().target_max_block_size = 4_000_000_000"
-        )

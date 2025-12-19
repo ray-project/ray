@@ -1,14 +1,13 @@
-import traceback
-import logging
 import base64
+import logging
 import os
-
-from typing import Dict, Any, Callable, Union, Optional
+import traceback
+from typing import Any, Callable, Dict, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.storage import _load_class
 import ray.cloudpickle as pickle
+from ray._common.utils import load_class
 from ray.runtime_env import RuntimeEnv
 
 logger = logging.getLogger(__name__)
@@ -138,7 +137,7 @@ def load_and_execute_setup_hook_module(
     worker_process_setup_hook_key: str,
 ) -> Optional[str]:
     try:
-        setup_func = _load_class(worker_process_setup_hook_key)
+        setup_func = load_class(worker_process_setup_hook_key)
         setup_func()
         return None
     except Exception:

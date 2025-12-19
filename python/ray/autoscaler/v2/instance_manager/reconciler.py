@@ -5,7 +5,7 @@ import uuid
 from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
-from ray._private.utils import binary_to_hex
+from ray._common.utils import binary_to_hex
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import (
     AutoscalingConfig,
@@ -21,12 +21,17 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     LaunchNodeError,
     TerminateNodeError,
 )
-from ray.autoscaler.v2.instance_manager.ray_installer import RayInstallError
+from ray.autoscaler.v2.instance_manager.subscribers.cloud_resource_monitor import (
+    CloudResourceMonitor,
+)
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopError
+from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer import (
+    RayInstallError,
+)
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingRequest
 from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
-from ray.autoscaler.v2.sdk import is_head_node
+from ray.autoscaler.v2.utils import is_head_node
 from ray.core.generated.autoscaler_pb2 import (
     AutoscalingState,
     ClusterResourceState,
@@ -36,12 +41,10 @@ from ray.core.generated.autoscaler_pb2 import (
     PendingInstance,
     PendingInstanceRequest,
 )
-from ray.core.generated.instance_manager_pb2 import GetInstanceManagerStateRequest
-from ray.core.generated.instance_manager_pb2 import Instance as IMInstance
 from ray.core.generated.instance_manager_pb2 import (
+    GetInstanceManagerStateRequest,
+    Instance as IMInstance,
     InstanceUpdateEvent as IMInstanceUpdateEvent,
-)
-from ray.core.generated.instance_manager_pb2 import (
     NodeKind,
     StatusCode,
     UpdateInstanceManagerStateRequest,
@@ -62,6 +65,7 @@ class Reconciler:
         instance_manager: InstanceManager,
         scheduler: IResourceScheduler,
         cloud_provider: ICloudInstanceProvider,
+        cloud_resource_monitor: CloudResourceMonitor,
         ray_cluster_resource_state: ClusterResourceState,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         autoscaling_config: AutoscalingConfig,
@@ -88,6 +92,8 @@ class Reconciler:
 
         Args:
             instance_manager: The instance manager to reconcile.
+            cloud_resource_monitor: The cloud resource monitor for monitoring resource
+                availability of all node types.
             ray_cluster_resource_state: The ray cluster's resource state.
             non_terminated_cloud_instances: The non-terminated cloud instances from
                 the cloud provider.
@@ -106,6 +112,7 @@ class Reconciler:
         autoscaling_state.last_seen_cluster_resource_state_version = (
             ray_cluster_resource_state.cluster_resource_state_version
         )
+
         Reconciler._sync_from(
             instance_manager=instance_manager,
             ray_nodes=ray_cluster_resource_state.node_states,
@@ -121,6 +128,7 @@ class Reconciler:
             instance_manager=instance_manager,
             scheduler=scheduler,
             cloud_provider=cloud_provider,
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_cluster_resource_state=ray_cluster_resource_state,
             non_terminated_cloud_instances=non_terminated_cloud_instances,
             autoscaling_config=autoscaling_config,
@@ -160,26 +168,30 @@ class Reconciler:
 
         More specifically, we will reconcile status transitions for:
             1.  QUEUED/REQUESTED -> ALLOCATED:
-                When a instance with launch request id (indicating a previous launch
+                When an instance with launch request id (indicating a previous launch
                 request was made) could be assigned to an unassigned cloud instance
                 of the same instance type.
             2.  REQUESTED -> ALLOCATION_FAILED:
                 When there's an error from the cloud provider for launch failure so
                 that the instance becomes ALLOCATION_FAILED.
-            3.  * -> RAY_RUNNING:
+            3. ALLOCATED -> ALLOCATION_TIMEOUT:
+                When an instance has been allocated to a cloud instance, but is stuck in
+                this state. For example, a kubernetes pod remains pending due to
+                insufficient resources.
+            4.  * -> RAY_RUNNING:
                 When a ray node on a cloud instance joins the ray cluster, we will
                 transition the instance to RAY_RUNNING.
-            4.  * -> TERMINATED:
+            5.  * -> TERMINATED:
                 When the cloud instance is already terminated, we will transition the
                 instance to TERMINATED.
-            5.  TERMINATING -> TERMINATION_FAILED:
+            6.  TERMINATING -> TERMINATION_FAILED:
                 When there's an error from the cloud provider for termination failure.
-            6.  * -> RAY_STOPPED:
+            7.  * -> RAY_STOPPED:
                 When ray was stopped on the cloud instance, we will transition the
                 instance to RAY_STOPPED.
-            7.  * -> RAY_INSTALL_FAILED:
+            8.  * -> RAY_INSTALL_FAILED:
                 When there's an error from RayInstaller.
-            8. RAY_STOP_REQUESTED -> RAY_RUNNING:
+            9. RAY_STOP_REQUESTED -> RAY_RUNNING:
                 When requested to stop ray, but failed to stop/drain the ray node
                 (e.g. idle termination drain rejected by the node).
 
@@ -226,6 +238,7 @@ class Reconciler:
         instance_manager: InstanceManager,
         scheduler: IResourceScheduler,
         cloud_provider: ICloudInstanceProvider,
+        cloud_resource_monitor: CloudResourceMonitor,
         ray_cluster_resource_state: ClusterResourceState,
         non_terminated_cloud_instances: Dict[CloudInstanceId, CloudInstance],
         autoscaling_config: AutoscalingConfig,
@@ -257,6 +270,8 @@ class Reconciler:
         Args:
             instance_manager: The instance manager to reconcile.
             scheduler: The resource scheduler to make scaling decisions.
+            cloud_resource_monitor: The cloud resource monitor for monitoring resource
+                availability of all node types.
             ray_cluster_resource_state: The ray cluster's resource state.
             non_terminated_cloud_instances: The non-terminated cloud instances from
                 the cloud provider.
@@ -274,6 +289,7 @@ class Reconciler:
         Reconciler._scale_cluster(
             autoscaling_state=autoscaling_state,
             instance_manager=instance_manager,
+            cloud_resource_monitor=cloud_resource_monitor,
             ray_state=ray_cluster_resource_state,
             scheduler=scheduler,
             autoscaling_config=autoscaling_config,
@@ -320,7 +336,11 @@ class Reconciler:
             instances_with_launch_requests.append(instance)
 
         assigned_cloud_instance_ids: Set[CloudInstanceId] = {
-            instance.cloud_instance_id for instance in im_instances
+            instance.cloud_instance_id
+            for instance in im_instances
+            if instance.cloud_instance_id
+            and instance.status
+            not in [IMInstance.TERMINATED, IMInstance.ALLOCATION_FAILED]
         }
         launch_errors: Dict[str, LaunchNodeError] = {
             error.request_id: error
@@ -652,48 +672,61 @@ class Reconciler:
         updates = {}
 
         im_instances_by_cloud_instance_id = {
-            i.cloud_instance_id: i for i in instances if i.cloud_instance_id
+            instance.cloud_instance_id: instance
+            for instance in instances
+            if instance.cloud_instance_id
+            and instance.status
+            not in [IMInstance.TERMINATED, IMInstance.ALLOCATION_FAILED]
         }
-        ray_nodes_by_cloud_instance_id = {}
-        for n in ray_nodes:
-            if n.instance_id:
-                ray_nodes_by_cloud_instance_id[n.instance_id] = n
+        im_instances_by_ray_node_id = {
+            instance.node_id: instance for instance in instances if instance.node_id
+        }
+
+        for ray_node in ray_nodes:
+            im_instance = None
+            ray_node_id = binary_to_hex(ray_node.node_id)
+            if ray_node_id in im_instances_by_ray_node_id:
+                im_instance = im_instances_by_ray_node_id[ray_node_id]
             else:
                 if autoscaling_config.provider == Provider.READ_ONLY:
                     # We will use the node id as the cloud instance id for read-only
                     # provider.
-                    ray_nodes_by_cloud_instance_id[binary_to_hex(n.node_id)] = n
+                    im_instance = im_instances_by_cloud_instance_id[ray_node_id]
+                elif ray_node.instance_id:
+                    im_instance = im_instances_by_cloud_instance_id[
+                        ray_node.instance_id
+                    ]
                 else:
                     # This should only happen to a ray node that's not managed by us.
                     logger.warning(
-                        f"Ray node {binary_to_hex(n.node_id)} has no instance id. "
+                        f"Ray node {ray_node_id} has no instance id. "
                         "This only happens to a ray node not managed by autoscaler. "
                         "If not, please file a bug at "
                         "https://github.com/ray-project/ray"
                     )
+                    continue
 
-        for cloud_instance_id, ray_node in ray_nodes_by_cloud_instance_id.items():
-            assert cloud_instance_id in im_instances_by_cloud_instance_id, (
-                f"Ray node {binary_to_hex(ray_node.node_id)} has no matching "
-                f"instance with cloud instance id={cloud_instance_id}. We should "
+            assert im_instance is not None, (
+                f"Ray node {ray_node_id} has no matching "
+                f"instance with cloud instance id={ray_node.instance_id}. We should "
                 "not see a ray node with cloud instance id not found in IM since "
                 "we have reconciled all cloud instances, and ray nodes by now."
             )
 
-            im_instance = im_instances_by_cloud_instance_id[cloud_instance_id]
             reconciled_im_status = Reconciler._reconciled_im_status_from_ray_status(
                 ray_node.status, im_instance.status
             )
 
             if reconciled_im_status != im_instance.status:
-                updates[im_instance.instance_id] = IMInstanceUpdateEvent(
+                updates[ray_node_id] = IMInstanceUpdateEvent(
                     instance_id=im_instance.instance_id,
                     new_instance_status=reconciled_im_status,
                     details=(
-                        f"ray node {binary_to_hex(ray_node.node_id)} is "
+                        f"ray node {ray_node_id} is "
                         f"{NodeStatus.Name(ray_node.status)}"
                     ),
-                    ray_node_id=binary_to_hex(ray_node.node_id),
+                    ray_node_id=ray_node_id,
+                    instance_type=im_instance.instance_type,
                 )
 
         Reconciler._update_instance_manager(instance_manager, version, updates)
@@ -743,15 +776,15 @@ class Reconciler:
 
         queued_instances = []
         requested_instances = []
-        allocated_instances = []
+        running_instances = []
 
         for instance in instances:
             if instance.status == IMInstance.QUEUED:
                 queued_instances.append(instance)
             elif instance.status == IMInstance.REQUESTED:
                 requested_instances.append(instance)
-            elif instance.cloud_instance_id:
-                allocated_instances.append(instance)
+            elif instance.status == IMInstance.RAY_RUNNING:
+                running_instances.append(instance)
 
         if not queued_instances:
             # No QUEUED instances
@@ -760,7 +793,7 @@ class Reconciler:
         to_launch = Reconciler._compute_to_launch(
             queued_instances,
             requested_instances,
-            allocated_instances,
+            running_instances,
             autoscaling_config.get_upscaling_speed(),
             autoscaling_config.get_max_concurrent_launches(),
         )
@@ -768,12 +801,13 @@ class Reconciler:
         # Transition the instances to REQUESTED for instance launcher to
         # launch them.
         updates = {}
+        new_launch_request_id = str(uuid.uuid4())
         for instance_type, instances in to_launch.items():
             for instance in instances:
                 # Reuse launch request id for any QUEUED instances that have been
                 # requested before due to retry.
                 launch_request_id = (
-                    str(uuid.uuid4())
+                    new_launch_request_id
                     if len(instance.launch_request_id) == 0
                     else instance.launch_request_id
                 )
@@ -794,7 +828,7 @@ class Reconciler:
     def _compute_to_launch(
         queued_instances: List[IMInstance],
         requested_instances: List[IMInstance],
-        allocated_instances: List[IMInstance],
+        running_instances: List[IMInstance],
         upscaling_speed: float,
         max_concurrent_launches: int,
     ) -> Dict[NodeType, List[IMInstance]]:
@@ -812,8 +846,7 @@ class Reconciler:
             return sorted(queue_times)
 
         queued_instances_by_type = _group_by_type(queued_instances)
-        requested_instances_by_type = _group_by_type(requested_instances)
-        allocated_instances_by_type = _group_by_type(allocated_instances)
+        running_instances_by_type = _group_by_type(running_instances)
 
         total_num_requested_to_launch = len(requested_instances)
         all_to_launch: Dict[NodeType : List[IMInstance]] = defaultdict(list)
@@ -822,22 +855,14 @@ class Reconciler:
             instance_type,
             queued_instances_for_type,
         ) in queued_instances_by_type.items():
-            requested_instances_for_type = requested_instances_by_type.get(
-                instance_type, []
-            )
-            allocated_instances_for_type = allocated_instances_by_type.get(
+            running_instances_for_type = running_instances_by_type.get(
                 instance_type, []
             )
 
+            # Enforce the max allowed pending nodes based on current running nodes
             num_desired_to_upscale = max(
                 1,
-                math.ceil(
-                    upscaling_speed
-                    * (
-                        len(requested_instances_for_type)
-                        + len(allocated_instances_for_type)
-                    )
-                ),
+                math.ceil(upscaling_speed * max(len(running_instances_for_type), 1)),
             )
 
             # Enforce global limit, at most we can launch `max_concurrent_launches`
@@ -923,8 +948,9 @@ class Reconciler:
             update = Reconciler._handle_stuck_instance(
                 instance,
                 reconcile_config.allocate_status_timeout_s,
-                new_status=IMInstance.TERMINATING,
+                new_status=IMInstance.ALLOCATION_TIMEOUT,
                 cloud_instance_id=instance.cloud_instance_id,
+                instance_type=instance.instance_type,
             )
             if update:
                 im_updates[instance.instance_id] = update
@@ -1051,6 +1077,7 @@ class Reconciler:
     def _scale_cluster(
         autoscaling_state: AutoscalingState,
         instance_manager: InstanceManager,
+        cloud_resource_monitor: CloudResourceMonitor,
         ray_state: ClusterResourceState,
         scheduler: IResourceScheduler,
         autoscaling_config: AutoscalingConfig,
@@ -1066,6 +1093,8 @@ class Reconciler:
         Args:
             autoscaling_state: The autoscaling state to reconcile.
             instance_manager: The instance manager to reconcile.
+            cloud_resource_monitor: The cloud resource monitor for monitoring resource
+                availability of all node types.
             ray_state: The ray cluster's resource state.
             scheduler: The resource scheduler to make scaling decisions.
             autoscaling_config: The autoscaling config.
@@ -1075,6 +1104,9 @@ class Reconciler:
         # Get the current instance states.
         im_instances, version = Reconciler._get_im_instances(instance_manager)
 
+        im_instances_by_instance_id = {
+            i.instance_id: i for i in im_instances if i.instance_id
+        }
         autoscaler_instances = []
         ray_nodes_by_id = {
             binary_to_hex(node.node_id): node for node in ray_state.node_states
@@ -1106,6 +1138,9 @@ class Reconciler:
             idle_timeout_s=autoscaling_config.get_idle_timeout_s(),
             disable_launch_config_check=(
                 autoscaling_config.disable_launch_config_check()
+            ),
+            cloud_resource_availabilities=(
+                cloud_resource_monitor.get_resource_availabilities()
             ),
         )
 
@@ -1139,33 +1174,26 @@ class Reconciler:
         to_launch = reply.to_launch
         to_terminate = reply.to_terminate
         updates = {}
-        instances_by_id = {i.instance_id: i for i in im_instances}
         # Add terminating instances.
         for terminate_request in to_terminate:
             instance_id = terminate_request.instance_id
-            instance = instances_by_id[instance_id]
-
-            if autoscaling_config.worker_rpc_drain():
-                # If we would need to stop/drain ray.
+            if terminate_request.instance_status == IMInstance.ALLOCATED:
+                # The instance is not yet running, so we can't request to stop/drain Ray.
+                # Therefore, we can skip the RAY_STOP_REQUESTED state and directly terminate the node.
+                im_instance_to_terminate = im_instances_by_instance_id[instance_id]
+                updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.TERMINATING,
+                    cloud_instance_id=im_instance_to_terminate.cloud_instance_id,
+                    termination_request=terminate_request,
+                    details=f"terminating ray: {terminate_request.details}",
+                )
+            else:
                 updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
                     instance_id=instance_id,
                     new_instance_status=IMInstance.RAY_STOP_REQUESTED,
                     termination_request=terminate_request,
                     details=f"draining ray: {terminate_request.details}",
-                )
-            else:
-                # If we would just terminate the cloud instance.
-                assert (
-                    instance.cloud_instance_id
-                ), f"Cloud instance id is not set on {instance.instance_id}."
-                updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
-                    instance_id=instance_id,
-                    new_instance_status=IMInstance.TERMINATING,
-                    cloud_instance_id=instance.cloud_instance_id,
-                    details=(
-                        "terminating cloud instance without draining ray -"
-                        f"{terminate_request.details}"
-                    ),
                 )
 
         # Add new instances.
@@ -1190,6 +1218,7 @@ class Reconciler:
         """
         Terminate instances with the below statuses:
             - RAY_STOPPED: ray was stopped on the cloud instance.
+            - ALLOCATION_TIMEOUT: cloud provider timed out to allocate a running cloud instance.
             - RAY_INSTALL_FAILED: ray installation failed on the cloud instance,
                 we will not retry.
             - TERMINATION_FAILED: cloud provider failed to terminate the instance
@@ -1204,6 +1233,7 @@ class Reconciler:
         for instance in im_instances:
             if instance.status not in [
                 IMInstance.RAY_STOPPED,
+                IMInstance.ALLOCATION_TIMEOUT,
                 IMInstance.RAY_INSTALL_FAILED,
                 IMInstance.TERMINATION_FAILED,
             ]:
@@ -1386,7 +1416,6 @@ class Reconciler:
                 instance, select_instance_status=IMInstance.REQUESTED
             )
         )
-
         # Fail the allocation if we have tried too many times.
         if len(all_request_times_ns) > max_num_retry_request_to_allocate:
             return IMInstanceUpdateEvent(
@@ -1472,11 +1501,11 @@ class Reconciler:
                 the cloud provider.
             ray_nodes: The ray cluster's states of ray nodes.
         """
-        Reconciler._handle_extra_cloud_instances_from_cloud_provider(
-            instance_manager, non_terminated_cloud_instances
-        )
         Reconciler._handle_extra_cloud_instances_from_ray_nodes(
             instance_manager, ray_nodes
+        )
+        Reconciler._handle_extra_cloud_instances_from_cloud_provider(
+            instance_manager, non_terminated_cloud_instances
         )
 
     @staticmethod
@@ -1501,6 +1530,8 @@ class Reconciler:
             instance.cloud_instance_id
             for instance in instances
             if instance.cloud_instance_id
+            and instance.status
+            not in [IMInstance.TERMINATED, IMInstance.ALLOCATION_FAILED]
         }
 
         # Find the extra cloud instances that are not managed by the instance manager.
@@ -1541,10 +1572,20 @@ class Reconciler:
             instance.cloud_instance_id
             for instance in instances
             if instance.cloud_instance_id
+            and not instance.node_id
+            and instance.status
+            not in [IMInstance.TERMINATED, IMInstance.ALLOCATION_FAILED]
+        }
+        ray_node_ids_managed_by_im = {
+            instance.node_id for instance in instances if instance.node_id
         }
 
         for ray_node in ray_nodes:
             if not ray_node.instance_id:
+                continue
+
+            ray_node_id = binary_to_hex(ray_node.node_id)
+            if ray_node_id in ray_node_ids_managed_by_im:
                 continue
 
             cloud_instance_id = ray_node.instance_id
@@ -1552,15 +1593,16 @@ class Reconciler:
                 continue
 
             is_head = is_head_node(ray_node)
-            updates[cloud_instance_id] = IMInstanceUpdateEvent(
+            updates[ray_node_id] = IMInstanceUpdateEvent(
                 instance_id=InstanceUtil.random_instance_id(),  # Assign a new id.
                 cloud_instance_id=cloud_instance_id,
                 new_instance_status=IMInstance.ALLOCATED,
                 node_kind=NodeKind.HEAD if is_head else NodeKind.WORKER,
+                ray_node_id=ray_node_id,
                 instance_type=ray_node.ray_node_type_name,
                 details=(
                     "allocated unmanaged worker cloud instance from ray node: "
-                    f"{binary_to_hex(ray_node.node_id)}"
+                    f"{ray_node_id}"
                 ),
                 upsert=True,
             )

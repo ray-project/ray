@@ -33,19 +33,19 @@ You can also specify the input argument for `train_func` as a dictionary via the
          def load_dataset():
              # Return a large in-memory dataset
              ...
-         
+
          def load_model():
              # Return a large in-memory model instance
              ...
- 
+
         -config = {"data": load_dataset(), "model": load_model()}
- 
+
          def train_func(config):
         -    data = config["data"]
         -    model = config["model"]
- 
+
         +    data = load_dataset()
         +    model = load_model()
              ...
- 
+
          trainer = ray.train.torch.TorchTrainer(train_func, train_loop_config=config, ...)

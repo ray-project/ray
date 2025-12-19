@@ -1,0 +1,63 @@
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+
+py_binary(
+    name = "bisect_test",
+    srcs = ["bisect_test.py"],
+    data = [":macos_validator"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [":bisect"],
+)
+
+genrule(
+    name = "macos_validator",
+    srcs = ["macos_ci.sh"],
+    outs = ["macos_validator.sh"],
+    cmd = """
+        cat $(location macos_ci.sh) > $@
+    """,
+)
+
+py_library(
+    name = "bisect",
+    srcs = glob(
+        ["*.py"],
+        exclude = [
+            "test_*.py",
+        ],
+    ),
+    visibility = ["//ci/ray_ci/bisect:__subpackages__"],
+    deps = [
+        "//ci/ray_ci:ray_ci_lib",
+    ],
+)
+
+py_test(
+    name = "test_bisector",
+    size = "small",
+    srcs = ["test_bisector.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":bisect",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_generic_validator",
+    size = "small",
+    srcs = ["test_generic_validator.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":bisect",
+        ci_require("pytest"),
+    ],
+)

@@ -8,13 +8,14 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data import Dataset
+from ray._raylet import NodeID
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data.block import BlockAccessor
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
@@ -51,7 +52,27 @@ def test_sort_with_specified_boundaries(ray_start_regular, descending, boundarie
         assert np.all(block["id"] == expected_block)
 
 
-def test_sort_simple(ray_start_regular, use_push_based_shuffle):
+def test_sort_multiple_keys_produces_equally_sized_blocks(ray_start_regular):
+    # Test for https://github.com/ray-project/ray/issues/45303.
+    ds = ray.data.from_items(
+        [{"a": i, "b": j} for i in range(2) for j in range(5)], override_num_blocks=5
+    )
+
+    ds_sorted = ds.sort(["a", "b"], descending=[False, True])
+
+    num_rows_per_block = [
+        bundle.num_rows() for bundle in ds_sorted.iter_internal_ref_bundles()
+    ]
+    # Number of output blocks should be equal to the number of input blocks.
+    assert len(num_rows_per_block) == 5, len(num_rows_per_block)
+    # Ideally we should have 10 rows / 5 blocks = 2 rows per block, but to make this
+    # test less fragile we allow for a small deviation.
+    assert all(
+        1 <= num_rows <= 3 for num_rows in num_rows_per_block
+    ), num_rows_per_block
+
+
+def test_sort_simple(ray_start_regular, configure_shuffle_method):
     num_items = 100
     parallelism = 4
     xs = list(range(num_items))
@@ -77,7 +98,7 @@ def test_sort_simple(ray_start_regular, use_push_based_shuffle):
 
 
 def test_sort_partition_same_key_to_same_block(
-    ray_start_regular, use_push_based_shuffle
+    ray_start_regular, configure_shuffle_method
 ):
     num_items = 100
     xs = [1] * num_items
@@ -95,15 +116,18 @@ def test_sort_partition_same_key_to_same_block(
 
 
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
-@pytest.mark.parametrize("use_polars", [False, True])
 def test_sort_arrow(
-    ray_start_regular, num_items, parallelism, use_push_based_shuffle, use_polars
+    ray_start_regular,
+    num_items,
+    parallelism,
+    configure_shuffle_method,
+    use_polars_sort,
 ):
     ctx = ray.data.context.DataContext.get_current()
 
     try:
-        original_use_polars = ctx.use_polars
-        ctx.use_polars = use_polars
+        original_use_polars = ctx.use_polars_sort
+        ctx.use_polars_sort = use_polars_sort
 
         a = list(reversed(range(num_items)))
         b = [f"{x:03}" for x in range(num_items)]
@@ -119,7 +143,7 @@ def test_sort_arrow(
             offset += shard
         if offset < num_items:
             dfs.append(pd.DataFrame({"a": a[offset:], "b": b[offset:]}))
-        ds = ray.data.from_pandas(dfs).map_batches(
+        ds = ray.data.from_blocks(dfs).map_batches(
             lambda t: t, batch_format="pyarrow", batch_size=None
         )
 
@@ -136,18 +160,38 @@ def test_sort_arrow(
         assert_sorted(ds.sort(key="b"), zip(a, b))
         assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
     finally:
-        ctx.use_polars = original_use_polars
+        ctx.use_polars_sort = original_use_polars
 
 
-@pytest.mark.parametrize("use_polars", [False, True])
+def test_sort(ray_start_regular, use_polars_sort):
+    import random
+
+    import pyarrow as pa
+
+    N = 100
+    r = random.Random(0xDEED)
+
+    ints = [r.randint(0, 10) for _ in range(N)]
+    floats = [r.normalvariate(0, 5) for _ in range(N)]
+    t = pa.Table.from_pydict({"ints": ints, "floats": floats})
+
+    sorted_block = BlockAccessor.for_block(t).sort(SortKey(["ints", "floats"]))
+
+    sorted_tuples = list(zip(*sorted(zip(ints, floats))))
+
+    assert sorted_block == pa.Table.from_pydict(
+        {"ints": sorted_tuples[0], "floats": sorted_tuples[1]}
+    )
+
+
 def test_sort_arrow_with_empty_blocks(
-    ray_start_regular, use_push_based_shuffle, use_polars
+    ray_start_regular, configure_shuffle_method, use_polars_sort
 ):
     ctx = ray.data.context.DataContext.get_current()
 
     try:
-        original_use_polars = ctx.use_polars
-        ctx.use_polars = use_polars
+        original_use_polars = ctx.use_polars_sort
+        ctx.use_polars_sort = use_polars_sort
 
         assert (
             BlockAccessor.for_block(pa.Table.from_pydict({}))
@@ -165,8 +209,8 @@ def test_sort_arrow_with_empty_blocks(
 
         assert (
             BlockAccessor.for_block(pa.Table.from_pydict({}))
-            .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[0]
-            .num_rows
+            .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[1]
+            .metadata.num_rows
             == 0
         )
 
@@ -181,14 +225,14 @@ def test_sort_arrow_with_empty_blocks(
         assert (
             len(
                 SortTaskSpec.sample_boundaries(
-                    ds._plan.execute().get_blocks(), SortKey("id"), 3
+                    ds._plan.execute().block_refs, SortKey("id"), 3
                 )
             )
             == 2
         )
         assert ds.sort("id").count() == 0
     finally:
-        ctx.use_polars = original_use_polars
+        ctx.use_polars_sort = original_use_polars
 
 
 @pytest.mark.parametrize("descending", [False, True])
@@ -208,8 +252,14 @@ def test_sort_with_multiple_keys(ray_start_regular, descending, batch_format):
         batch_format=batch_format,
         batch_size=None,
     )
-    df.sort_values(["a", "b", "c"], inplace=True, ascending=not descending)
-    sorted_ds = ds.repartition(num_blocks).sort(["a", "b", "c"], descending=descending)
+    df.sort_values(
+        ["a", "b", "c"],
+        inplace=True,
+        ascending=[not descending, descending, not descending],
+    )
+    sorted_ds = ds.repartition(num_blocks).sort(
+        ["a", "b", "c"], descending=[descending, not descending, descending]
+    )
 
     # Number of blocks is preserved
     assert len(sorted_ds._block_num_rows()) == num_blocks
@@ -220,7 +270,9 @@ def test_sort_with_multiple_keys(ray_start_regular, descending, batch_format):
 
 
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
-def test_sort_pandas(ray_start_regular, num_items, parallelism, use_push_based_shuffle):
+def test_sort_pandas(
+    ray_start_regular, num_items, parallelism, configure_shuffle_method
+):
     a = list(reversed(range(num_items)))
     b = [f"{x:03}" for x in range(num_items)]
     shard = int(np.ceil(num_items / parallelism))
@@ -235,7 +287,7 @@ def test_sort_pandas(ray_start_regular, num_items, parallelism, use_push_based_s
         offset += shard
     if offset < num_items:
         dfs.append(pd.DataFrame({"a": a[offset:], "b": b[offset:]}))
-    ds = ray.data.from_pandas(dfs)
+    ds = ray.data.from_blocks(dfs)
 
     def assert_sorted(sorted_ds, expected_rows):
         assert [tuple(row.values()) for row in sorted_ds.iter_rows()] == list(
@@ -249,7 +301,7 @@ def test_sort_pandas(ray_start_regular, num_items, parallelism, use_push_based_s
     assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
 
 
-def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle):
+def test_sort_pandas_with_empty_blocks(ray_start_regular, configure_shuffle_method):
     assert (
         BlockAccessor.for_block(pa.Table.from_pydict({}))
         .sample(10, SortKey("A"))
@@ -266,8 +318,8 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
 
     assert (
         BlockAccessor.for_block(pa.Table.from_pydict({}))
-        .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[0]
-        .num_rows
+        .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[1]
+        .metadata.num_rows
         == 0
     )
 
@@ -282,7 +334,7 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
     assert (
         len(
             SortTaskSpec.sample_boundaries(
-                ds._plan.execute().get_blocks(), SortKey("id"), 3
+                ds._plan.execute().block_refs, SortKey("id"), 3
             )
         )
         == 2
@@ -290,7 +342,7 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
     assert ds.sort("id").count() == 0
 
 
-def test_sort_with_one_block(shutdown_only, use_push_based_shuffle):
+def test_sort_with_one_block(shutdown_only, configure_shuffle_method):
     ray.init(num_cpus=8)
     ctx = ray.data.DataContext.get_current()
     ctx.execution_options.verbose_progress = True
@@ -393,21 +445,24 @@ def test_push_based_shuffle_schedule():
             expected {num_reducers_per_merge_idx[i]}."""
             assert num_reducers > 0
 
+    node_id_1 = NodeID.from_random().hex()
+    node_id_2 = NodeID.from_random().hex()
+    node_id_3 = NodeID.from_random().hex()
     for num_cpus in range(1, 20):
-        _test(20, 3, {"node1": num_cpus})
-    _test(20, 3, {"node1": 100})
-    _test(100, 3, {"node1": 10, "node2": 10, "node3": 10})
-    _test(100, 10, {"node1": 10, "node2": 10, "node3": 10})
+        _test(20, 3, {node_id_1: num_cpus})
+    _test(20, 3, {node_id_1: 100})
+    _test(100, 3, {node_id_1: 10, node_id_2: 10, node_id_3: 10})
+    _test(100, 10, {node_id_1: 10, node_id_2: 10, node_id_3: 10})
     # Regression test for https://github.com/ray-project/ray/issues/25863.
-    _test(1000, 2, {f"node{i}": 16 for i in range(20)})
+    _test(1000, 2, {NodeID.from_random().hex(): 16 for i in range(20)})
     # Regression test for https://github.com/ray-project/ray/issues/37754.
-    _test(260, 2, {"node1": 128})
-    _test(1, 2, {"node1": 128})
+    _test(260, 2, {node_id_1: 128})
+    _test(1, 2, {node_id_1: 128})
 
     # Test float merge_factor.
     for cluster_config in [
-        {"node1": 10},
-        {"node1": 10, "node2": 10},
+        {node_id_1: 10},
+        {node_id_1: 10, node_id_2: 10},
     ]:
         _test(100, 1, cluster_config)
         _test(100, 1.3, cluster_config)
@@ -459,7 +514,7 @@ def test_push_based_shuffle_stats(ray_start_cluster):
         ctx.use_push_based_shuffle = original
 
 
-def test_sort_multinode(ray_start_cluster, use_push_based_shuffle):
+def test_sort_multinode(ray_start_cluster, configure_shuffle_method):
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"bar:1": 100},
@@ -507,9 +562,9 @@ def patch_ray_remote(condition, callback):
 def patch_ray_get(callback):
     original_ray_get = ray.get
 
-    def ray_get_override(object_refs):
+    def ray_get_override(object_refs, *args, **kwargs):
         callback(object_refs)
-        return original_ray_get(object_refs)
+        return original_ray_get(object_refs, *args, **kwargs)
 
     ray.get = ray_get_override
     return original_ray_get
@@ -609,15 +664,16 @@ SHUFFLE_ALL_TO_ALL_OPS = [
 ]
 
 
-@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 @pytest.mark.parametrize(
     "shuffle_op",
     SHUFFLE_ALL_TO_ALL_OPS,
 )
 def test_debug_limit_shuffle_execution_to_num_blocks(
-    ray_start_regular, restore_data_context, use_push_based_shuffle, shuffle_op
+    ray_start_regular, restore_data_context, configure_shuffle_method, shuffle_op
 ):
-    DataContext.get_current().use_push_based_shuffle = use_push_based_shuffle
+    if configure_shuffle_method == ShuffleStrategy.HASH_SHUFFLE:
+        pytest.skip("Not supported by hash-shuffle")
+
     shuffle_fn = shuffle_op
 
     parallelism = 100
@@ -626,18 +682,15 @@ def test_debug_limit_shuffle_execution_to_num_blocks(
     shuffled_ds = shuffled_ds.materialize()
     assert shuffled_ds._plan.initial_num_blocks() == parallelism
 
-    DataContext.get_current().set_config(
-        "debug_limit_shuffle_execution_to_num_blocks", 1
-    )
+    ds.context.set_config("debug_limit_shuffle_execution_to_num_blocks", 1)
     shuffled_ds = shuffle_fn(ds).materialize()
     shuffled_ds = shuffled_ds.materialize()
     assert shuffled_ds._plan.initial_num_blocks() == 1
 
 
-@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
-def test_memory_usage(ray_start_regular, restore_data_context, use_push_based_shuffle):
-    DataContext.get_current().use_push_based_shuffle = use_push_based_shuffle
-
+def test_memory_usage(
+    ray_start_regular, restore_data_context, configure_shuffle_method
+):
     parallelism = 2
     ds = ray.data.range(int(1e8), override_num_blocks=parallelism)
     ds = ds.random_shuffle().materialize()
@@ -649,12 +702,11 @@ def test_memory_usage(ray_start_regular, restore_data_context, use_push_based_sh
         assert op_stats.memory["max"] < 2000
 
 
-@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 @pytest.mark.parametrize("under_threshold", [False, True])
 def test_sort_object_ref_warnings(
     ray_start_regular,
     restore_data_context,
-    use_push_based_shuffle,
+    configure_shuffle_method,
     under_threshold,
     propagate_logs,
     caplog,
@@ -665,10 +717,9 @@ def test_sort_object_ref_warnings(
     warning_str = "Execution is estimated to use"
     warning_str_with_bytes = (
         "Execution is estimated to use at least "
-        f"{90 if use_push_based_shuffle else 300}KB"
+        f"{90 if configure_shuffle_method == ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED else 300}KB"
     )
 
-    DataContext.get_current().use_push_based_shuffle = use_push_based_shuffle
     if not under_threshold:
         DataContext.get_current().warn_on_driver_memory_usage_bytes = 10_000
 
@@ -684,12 +735,11 @@ def test_sort_object_ref_warnings(
         assert warning_str_with_bytes in caplog.text
 
 
-@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
 @pytest.mark.parametrize("under_threshold", [False, True])
 def test_sort_inlined_objects_warnings(
     ray_start_regular,
     restore_data_context,
-    use_push_based_shuffle,
+    configure_shuffle_method,
     under_threshold,
     propagate_logs,
     caplog,
@@ -697,7 +747,7 @@ def test_sort_inlined_objects_warnings(
     # Test that we warn iff expected driver memory usage from
     # storing tiny Ray objects on driver heap is higher than
     # the configured threshold.
-    if use_push_based_shuffle:
+    if configure_shuffle_method == ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED:
         warning_strs = [
             "More than 3MB of driver memory used",
             "More than 7MB of driver memory used",
@@ -707,7 +757,6 @@ def test_sort_inlined_objects_warnings(
             "More than 8MB of driver memory used",
         ]
 
-    DataContext.get_current().use_push_based_shuffle = use_push_based_shuffle
     if not under_threshold:
         DataContext.get_current().warn_on_driver_memory_usage_bytes = 3_000_000
 

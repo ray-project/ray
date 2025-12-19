@@ -1,12 +1,14 @@
-from typing import Dict, Iterable, List, Optional, Type, Union
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Type, Union
 
 import numpy as np
 import pandas as pd
 
-from ray.data import Dataset
 from ray.data.aggregate import Max, Min
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.dataset import Dataset
 
 
 class _AbstractKBinsDiscretizer(Preprocessor):
@@ -43,7 +45,9 @@ class _AbstractKBinsDiscretizer(Preprocessor):
                 duplicates=self.duplicates,
             )
 
-        return df.apply(bin_values, axis=0)
+        binned_df = df.apply(bin_values, axis=0)
+        df[self.output_columns] = binned_df[self.columns]
+        return df
 
     def _validate_bins_columns(self):
         if isinstance(self.bins, dict) and not all(
@@ -95,6 +99,23 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         4        2        3
         5        1        3
 
+        :class:`CustomKBinsDiscretizer` can also be used in append mode by providing the
+        name of the output_columns that should hold the encoded values.
+
+        >>> discretizer = CustomKBinsDiscretizer(
+        ...     columns=["value_1", "value_2"],
+        ...     bins=[0, 1, 4, 10, 25],
+        ...     output_columns=["value_1_discretized", "value_2_discretized"]
+        ... )
+        >>> discretizer.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           value_1  value_2  value_1_discretized  value_2_discretized
+        0      0.2       10                    0                    2
+        1      1.4       15                    1                    3
+        2      2.5       13                    1                    3
+        3      6.2       12                    2                    3
+        4      9.7       23                    2                    3
+        5      2.1       25                    1                    3
+
         You can also specify different bin edges per column.
 
         >>> discretizer = CustomKBinsDiscretizer(
@@ -128,6 +149,10 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
             ``pd.CategoricalDtype`` with the categories being mapped to bins.
             You can use ``pd.CategoricalDtype(categories, ordered=True)`` to
             preserve information about bin order.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
 
     .. seealso::
 
@@ -150,6 +175,7 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         dtypes: Optional[
             Dict[str, Union[pd.CategoricalDtype, Type[np.integer]]]
         ] = None,
+        output_columns: Optional[List[str]] = None,
     ):
         self.columns = columns
         self.bins = bins
@@ -157,6 +183,9 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         self.include_lowest = include_lowest
         self.duplicates = duplicates
         self.dtypes = dtypes
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+            columns, output_columns
+        )
 
         self._validate_bins_columns()
 
@@ -191,6 +220,23 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
         3        2        0
         4        3        3
         5        0        3
+
+        :class:`UniformKBinsDiscretizer` can also be used in append mode by providing the
+        name of the output_columns that should hold the encoded values.
+
+        >>> discretizer = UniformKBinsDiscretizer(
+        ...     columns=["value_1", "value_2"],
+        ...     bins=4,
+        ...     output_columns=["value_1_discretized", "value_2_discretized"]
+        ... )
+        >>> discretizer.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           value_1  value_2  value_1_discretized  value_2_discretized
+        0      0.2       10                    0                    0
+        1      1.4       15                    0                    1
+        2      2.5       13                    0                    0
+        3      6.2       12                    2                    0
+        4      9.7       23                    3                    3
+        5      2.1       25                    0                    3
 
         You can also specify different number of bins per column.
 
@@ -227,6 +273,10 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
             ``pd.CategoricalDtype`` with the categories being mapped to bins.
             You can use ``pd.CategoricalDtype(categories, ordered=True)`` to
             preserve information about bin order.
+        output_columns: The names of the transformed columns. If None, the transformed
+            columns will be the same as the input columns. If not None, the length of
+            ``output_columns`` must match the length of ``columns``, othwerwise an error
+            will be raised.
 
     .. seealso::
 
@@ -245,58 +295,72 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
         dtypes: Optional[
             Dict[str, Union[pd.CategoricalDtype, Type[np.integer]]]
         ] = None,
+        output_columns: Optional[List[str]] = None,
     ):
+        super().__init__()
         self.columns = columns
         self.bins = bins
         self.right = right
         self.include_lowest = include_lowest
         self.duplicates = duplicates
         self.dtypes = dtypes
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+            columns, output_columns
+        )
 
-    def _fit(self, dataset: Dataset) -> Preprocessor:
+    def _fit(self, dataset: "Dataset") -> Preprocessor:
         self._validate_on_fit()
-        stats = {}
-        aggregates = []
+
         if isinstance(self.bins, dict):
             columns = self.bins.keys()
         else:
             columns = self.columns
 
         for column in columns:
-            aggregates.extend(
-                self._fit_uniform_covert_bin_to_aggregate_if_needed(column)
-            )
-
-        aggregate_stats = dataset.aggregate(*aggregates)
-        mins = {}
-        maxes = {}
-        for key, value in aggregate_stats.items():
-            column_name = key[4:-1]  # min(column) -> column
-            if key.startswith("min"):
-                mins[column_name] = value
-            if key.startswith("max"):
-                maxes[column_name] = value
-
-        for column in mins.keys():
             bins = self.bins[column] if isinstance(self.bins, dict) else self.bins
-            stats[column] = _translate_min_max_number_of_bins_to_bin_edges(
-                mins[column], maxes[column], bins, self.right
-            )
+            if not isinstance(bins, int):
+                raise TypeError(
+                    f"`bins` must be an integer or a dict of integers, got {bins}"
+                )
 
-        self.stats_ = stats
+        self.stat_computation_plan.add_aggregator(
+            aggregator_fn=Min,
+            columns=columns,
+        )
+        self.stat_computation_plan.add_aggregator(
+            aggregator_fn=Max,
+            columns=columns,
+        )
+
         return self
 
     def _validate_on_fit(self):
         self._validate_bins_columns()
 
-    def _fit_uniform_covert_bin_to_aggregate_if_needed(self, column: str):
-        bins = self.bins[column] if isinstance(self.bins, dict) else self.bins
-        if isinstance(bins, int):
-            return (Min(column), Max(column))
-        else:
-            raise TypeError(
-                f"`bins` must be an integer or a dict of integers, got {bins}"
-            )
+    def _fit_execute(self, dataset: "Dataset"):
+        stats = self.stat_computation_plan.compute(dataset)
+        self.stats_ = post_fit_processor(stats, self.bins, self.right)
+        return self
+
+
+def post_fit_processor(aggregate_stats: dict, bins: Union[str, Dict], right: bool):
+    mins, maxes, stats = {}, {}, {}
+    for key, value in aggregate_stats.items():
+        column_name = key[4:-1]  # min(column) -> column
+        if key.startswith("min"):
+            mins[column_name] = value
+        if key.startswith("max"):
+            maxes[column_name] = value
+
+    for column in mins.keys():
+        stats[column] = _translate_min_max_number_of_bins_to_bin_edges(
+            mn=mins[column],
+            mx=maxes[column],
+            bins=bins[column] if isinstance(bins, dict) else bins,
+            right=right,
+        )
+
+    return stats
 
 
 # Copied from

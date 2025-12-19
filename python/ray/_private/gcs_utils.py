@@ -2,9 +2,6 @@ import logging
 from typing import Optional
 
 from ray._private import ray_constants
-
-import ray._private.gcs_aio_client
-
 from ray.core.generated.common_pb2 import ErrorType, JobConfig
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
@@ -13,7 +10,6 @@ from ray.core.generated.gcs_pb2 import (
     GcsEntry,
     GcsNodeInfo,
     JobTableData,
-    ObjectTableData,
     PlacementGroupTableData,
     PubSubMessage,
     ResourceDemand,
@@ -23,6 +19,7 @@ from ray.core.generated.gcs_pb2 import (
     TablePrefix,
     TablePubsub,
     TaskEvents,
+    TotalResources,
     WorkerTableData,
 )
 
@@ -32,6 +29,7 @@ __all__ = [
     "ActorTableData",
     "GcsNodeInfo",
     "AvailableResources",
+    "TotalResources",
     "JobTableData",
     "JobConfig",
     "ErrorTableData",
@@ -39,7 +37,6 @@ __all__ = [
     "GcsEntry",
     "ResourceUsageBatchData",
     "ResourcesData",
-    "ObjectTableData",
     "TablePrefix",
     "TablePubsub",
     "TaskEvents",
@@ -82,7 +79,7 @@ def create_gcs_channel(address: str, aio=False):
     Returns:
         grpc.Channel or grpc.aio.Channel to GCS
     """
-    from ray._private.utils import init_grpc_channel
+    from ray._private.grpc_utils import init_grpc_channel
 
     return init_grpc_channel(address, options=_GRPC_OPTIONS, asynchronous=aio)
 
@@ -106,29 +103,36 @@ class GcsChannel:
         return self._channel
 
 
-# re-export
-GcsAioClient = ray._private.gcs_aio_client.GcsAioClient
-
-
 def cleanup_redis_storage(
-    host: str, port: int, password: str, use_ssl: bool, storage_namespace: str
+    host: str,
+    port: int,
+    password: str,
+    use_ssl: bool,
+    storage_namespace: str,
+    username: Optional[str] = None,
 ):
-    """This function is used to cleanup the storage. Before we having
-    a good design for storage backend, it can be used to delete the old
-    data. It support redis cluster and non cluster mode.
+    """This function is used to cleanup the GCS storage in Redis.
+    It supports Redis in cluster and non-cluster modes.
 
     Args:
-       host: The host address of the Redis.
-       port: The port of the Redis.
-       password: The password of the Redis.
+       host: The Redis host address.
+       port: The Redis port.
+       username: The Redis username.
+       password: The Redis password.
        use_ssl: Whether to encrypt the connection.
        storage_namespace: The namespace of the storage to be deleted.
     """
 
-    from ray._raylet import del_key_from_storage  # type: ignore
+    from ray._raylet import del_key_prefix_from_storage  # type: ignore
 
     if not isinstance(host, str):
         raise ValueError("Host must be a string")
+
+    if username is None:
+        username = ""
+
+    if not isinstance(username, str):
+        raise ValueError("Username must be a string")
 
     if not isinstance(password, str):
         raise ValueError("Password must be a string")
@@ -142,6 +146,10 @@ def cleanup_redis_storage(
     if not isinstance(storage_namespace, str):
         raise ValueError("storage namespace must be a string")
 
-    # Right now, GCS store all data into a hash set key by storage_namespace.
-    # So we only need to delete the specific key to cleanup the cluster.
-    return del_key_from_storage(host, port, password, use_ssl, storage_namespace)
+    # Right now, GCS stores all data in multiple hashes with keys prefixed by
+    # storage_namespace. So we only need to delete the specific key prefix to cleanup
+    # the cluster's data.
+    # Note this deletes all keys with prefix `RAY{key_prefix}@`, not `{key_prefix}`.
+    return del_key_prefix_from_storage(
+        host, port, username, password, use_ssl, storage_namespace
+    )

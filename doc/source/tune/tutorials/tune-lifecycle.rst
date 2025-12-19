@@ -16,8 +16,8 @@ When calling the following:
 
     space = {"x": tune.uniform(0, 1)}
     tuner = tune.Tuner(
-        my_trainable, 
-        param_space=space, 
+        my_trainable,
+        param_space=space,
         tune_config=tune.TuneConfig(num_samples=10),
     )
     results = tuner.fit()
@@ -60,7 +60,7 @@ After each invocation, the driver is notified that a "result dict" is ready.
 The driver will then pull the result via ``ray.get``.
 
 If the trainable is a callable or a function, it will be executed on the Ray actor process on a separate execution thread.
-Whenever ``session.report`` is called, the execution thread is paused and waits for the driver to pull a
+Whenever ``tune.report`` is called, the execution thread is paused and waits for the driver to pull a
 result (see `function_trainable.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/trainable/function_trainable.py>`__.
 After pulling, the actor’s execution thread will automatically resume.
 

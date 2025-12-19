@@ -1,19 +1,22 @@
-import sys
-import pytest
 import logging
 import os
+import sys
 import time
 from typing import List, Tuple
 
+import pytest
+
 import ray
-from ray._private.runtime_env.agent.runtime_env_agent import UriType, ReferenceTable
+from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
+from ray._private.runtime_env.agent.runtime_env_agent import ReferenceTable, UriType
 from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
-    wait_for_condition,
 )
+from ray.core.generated import common_pb2
 from ray.runtime_env import RuntimeEnv
+
 import psutil
 
 logger = logging.getLogger(__name__)
@@ -139,7 +142,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
 
     ray.shutdown()
 
-    ray.init()
+    ray_context = ray.init()
     all_processes = ray._private.worker._global_node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
@@ -153,6 +156,19 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     agent_proc.kill()
     agent_proc.wait()
     raylet_proc.wait(15)
+
+    worker_node_id = ray_context.address_info["node_id"]
+    worker_node_info = [
+        node for node in ray.nodes() if node["NodeID"] == worker_node_id
+    ][0]
+    assert not worker_node_info["Alive"]
+    assert worker_node_info["DeathReason"] == common_pb2.NodeDeathInfo.Reason.Value(
+        "UNEXPECTED_TERMINATION"
+    )
+    assert (
+        "failed and raylet fate-shares with it."
+        in worker_node_info["DeathReasonMessage"]
+    )
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="no fate sharing for windows")

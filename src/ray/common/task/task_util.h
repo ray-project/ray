@@ -14,8 +14,16 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
+#include "ray/common/scheduling/fallback_strategy.h"
+#include "ray/common/scheduling/label_selector.h"
 #include "ray/common/task/task_spec.h"
 #include "src/ray/protobuf/common.pb.h"
 
@@ -24,17 +32,17 @@ namespace ray {
 /// Stores the task failure reason.
 struct TaskFailureEntry {
   /// The task failure details.
-  rpc::RayErrorInfo ray_error_info;
+  rpc::RayErrorInfo ray_error_info_;
 
   /// The creation time of this entry.
-  std::chrono::steady_clock::time_point creation_time;
+  std::chrono::steady_clock::time_point creation_time_;
 
   /// Whether this task should be retried.
-  bool should_retry;
+  bool should_retry_;
   TaskFailureEntry(const rpc::RayErrorInfo &ray_error_info, bool should_retry)
-      : ray_error_info(ray_error_info),
-        creation_time(std::chrono::steady_clock::now()),
-        should_retry(should_retry) {}
+      : ray_error_info_(ray_error_info),
+        creation_time_(std::chrono::steady_clock::now()),
+        should_retry_(should_retry) {}
 };
 
 /// Argument of a task.
@@ -50,16 +58,22 @@ class TaskArgByReference : public TaskArg {
   ///
   /// \param[in] object_id Id of the argument.
   /// \return The task argument.
-  TaskArgByReference(const ObjectID &object_id,
-                     const rpc::Address &owner_address,
-                     const std::string &call_site)
-      : id_(object_id), owner_address_(owner_address), call_site_(call_site) {}
+  TaskArgByReference(
+      const ObjectID &object_id,
+      const rpc::Address &owner_address,
+      const std::string &call_site,
+      const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::OBJECT_STORE)
+      : id_(object_id),
+        owner_address_(owner_address),
+        call_site_(call_site),
+        tensor_transport_(tensor_transport) {}
 
   void ToProto(rpc::TaskArg *arg_proto) const {
     auto ref = arg_proto->mutable_object_ref();
     ref->set_object_id(id_.Binary());
     ref->mutable_owner_address()->CopyFrom(owner_address_);
     ref->set_call_site(call_site_);
+    ref->set_tensor_transport(tensor_transport_);
   }
 
  private:
@@ -67,6 +81,7 @@ class TaskArgByReference : public TaskArg {
   const ObjectID id_;
   const rpc::Address owner_address_;
   const std::string call_site_;
+  const rpc::TensorTransport tensor_transport_;
 };
 
 class TaskArgByValue : public TaskArg {
@@ -103,8 +118,11 @@ class TaskSpecBuilder {
  public:
   TaskSpecBuilder() : message_(std::make_shared<rpc::TaskSpec>()) {}
 
-  /// Build the `TaskSpecification` object.
-  TaskSpecification Build() { return TaskSpecification(message_); }
+  /// Consume the `message_` data member and construct `TaskSpecification`.
+  /// NOTICE: Builder is invalidated after this function.
+  TaskSpecification ConsumeAndBuild() && {
+    return TaskSpecification(std::move(message_));
+  }
 
   /// Get a reference to the internal protobuf message object.
   const rpc::TaskSpec &GetMessage() const { return *message_; }
@@ -133,9 +151,15 @@ class TaskSpecBuilder {
       const std::string &debugger_breakpoint,
       int64_t depth,
       const TaskID &submitter_task_id,
+      const std::string &call_site,
       const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr,
       const std::string &concurrency_group_name = "",
-      bool enable_task_events = true) {
+      bool enable_task_events = true,
+      const std::unordered_map<std::string, std::string> &labels = {},
+      const LabelSelector &label_selector = {},
+      const std::vector<FallbackOption> &fallback_strategy =
+          std::vector<FallbackOption>(),
+      const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::OBJECT_STORE) {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
     message_->set_language(language);
@@ -160,11 +184,16 @@ class TaskSpecBuilder {
         required_placement_resources.begin(), required_placement_resources.end());
     message_->set_debugger_breakpoint(debugger_breakpoint);
     message_->set_depth(depth);
+    message_->set_call_site(call_site);
     if (runtime_env_info) {
       message_->mutable_runtime_env_info()->CopyFrom(*runtime_env_info);
     }
     message_->set_concurrency_group_name(concurrency_group_name);
     message_->set_enable_task_events(enable_task_events);
+    message_->mutable_labels()->insert(labels.begin(), labels.end());
+    label_selector.ToProto(message_->mutable_label_selector());
+    *message_->mutable_fallback_strategy() = SerializeFallbackStrategy(fallback_strategy);
+    message_->set_tensor_transport(tensor_transport);
     return *this;
   }
 
@@ -172,12 +201,16 @@ class TaskSpecBuilder {
       int max_retries,
       bool retry_exceptions,
       const std::string &serialized_retry_exception_allowlist,
-      const rpc::SchedulingStrategy &scheduling_strategy) {
+      const rpc::SchedulingStrategy &scheduling_strategy,
+      const ActorID root_detached_actor_id) {
     message_->set_max_retries(max_retries);
     message_->set_retry_exceptions(retry_exceptions);
     message_->set_serialized_retry_exception_allowlist(
         serialized_retry_exception_allowlist);
     message_->mutable_scheduling_strategy()->CopyFrom(scheduling_strategy);
+    if (!root_detached_actor_id.IsNil()) {
+      message_->set_root_detached_actor_id(root_detached_actor_id.Binary());
+    }
     return *this;
   }
 
@@ -230,7 +263,8 @@ class TaskSpecBuilder {
       bool is_asyncio = false,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       const std::string &extension_data = "",
-      bool execute_out_of_order = false) {
+      bool allow_out_of_order_execution = false,
+      ActorID root_detached_actor_id = ActorID::Nil()) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
     actor_creation_spec->set_actor_id(actor_id.Binary());
@@ -248,16 +282,19 @@ class TaskSpecBuilder {
     actor_creation_spec->set_serialized_actor_handle(serialized_actor_handle);
     for (const auto &concurrency_group : concurrency_groups) {
       rpc::ConcurrencyGroup *group = actor_creation_spec->add_concurrency_groups();
-      group->set_name(concurrency_group.name);
-      group->set_max_concurrency(concurrency_group.max_concurrency);
+      group->set_name(concurrency_group.name_);
+      group->set_max_concurrency(concurrency_group.max_concurrency_);
       // Fill into function descriptor.
-      for (auto &item : concurrency_group.function_descriptors) {
+      for (auto &item : concurrency_group.function_descriptors_) {
         rpc::FunctionDescriptor *fd = group->add_function_descriptors();
         *fd = item->GetMessage();
       }
     }
-    actor_creation_spec->set_execute_out_of_order(execute_out_of_order);
+    actor_creation_spec->set_allow_out_of_order_execution(allow_out_of_order_execution);
     message_->mutable_scheduling_strategy()->CopyFrom(scheduling_strategy);
+    if (!root_detached_actor_id.IsNil()) {
+      message_->set_root_detached_actor_id(root_detached_actor_id.Binary());
+    }
     return *this;
   }
 
@@ -271,7 +308,7 @@ class TaskSpecBuilder {
       int max_retries,
       bool retry_exceptions,
       const std::string &serialized_retry_exception_allowlist,
-      uint64_t actor_counter) {
+      uint64_t sequence_number) {
     message_->set_type(TaskType::ACTOR_TASK);
     message_->set_max_retries(max_retries);
     message_->set_retry_exceptions(retry_exceptions);
@@ -281,7 +318,7 @@ class TaskSpecBuilder {
     actor_spec->set_actor_id(actor_id.Binary());
     actor_spec->set_actor_creation_dummy_object_id(
         actor_creation_dummy_object_id.Binary());
-    actor_spec->set_actor_counter(actor_counter);
+    actor_spec->set_sequence_number(sequence_number);
     return *this;
   }
 

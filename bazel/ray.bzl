@@ -1,50 +1,55 @@
-load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
-load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
+load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
-COPTS_WITHOUT_LOG = select({
+COPTS_TESTS = select({
     "//:opt": ["-DBAZEL_OPT"],
     "//conditions:default": [],
 }) + select({
-    "@bazel_tools//src/conditions:windows": [
+    "@platforms//os:windows": [
         # TODO(mehrdadn): (How to) support dynamic linking?
         "-DRAY_STATIC",
     ],
     "//conditions:default": [
+        "-Wunused-result",
+        "-Wconversion-null",
+        "-Wno-misleading-indentation",
+        "-Wimplicit-fallthrough",
     ],
 }) + select({
     "//:clang-cl": [
         "-Wno-builtin-macro-redefined",  # To get rid of warnings caused by deterministic build macros (e.g. #define __DATE__ "redacted")
         "-Wno-microsoft-unqualified-friend",  # This shouldn't normally be enabled, but otherwise we get: google/protobuf/map_field.h: warning: unqualified friend declaration referring to type outside of the nearest enclosing namespace is a Microsoft extension; add a nested name specifier (for: friend class DynamicMessage)
     ],
-    "//conditions:default": [
-    ],
+    "//conditions:default": [],
 })
 
-COPTS = COPTS_WITHOUT_LOG
+COPTS = COPTS_TESTS + select({
+    "@platforms//os:windows": [""],
+    "//conditions:default": ["-Wshadow"],
+})
 
 PYX_COPTS = select({
-    "//:msvc-cl": [
-    ],
+    "//:msvc-cl": [],
     "//conditions:default": [
         # Ignore this warning since CPython and Cython have issue removing deprecated tp_print on MacOS
         "-Wno-deprecated-declarations",
+        "-Wno-shadow",
+        "-Wno-implicit-fallthrough",
     ],
 }) + select({
-    "@bazel_tools//src/conditions:windows": [
+    "@platforms//os:windows": [
         "/FI" + "src/shims/windows/python-nondebug.h",
     ],
-    "//conditions:default": [
-    ],
+    "//conditions:default": [],
 })
 
 PYX_SRCS = [] + select({
-    "@bazel_tools//src/conditions:windows": [
+    "@platforms//os:windows": [
         "src/shims/windows/python-nondebug.h",
     ],
-    "//conditions:default": [
-    ],
+    "//conditions:default": [],
 })
 
 def flatbuffer_py_library(name, srcs, outs, out_prefix, includes = [], include_paths = []):
@@ -66,6 +71,18 @@ def define_java_module(
         define_test_lib = False,
         test_deps = [],
         **kwargs):
+    """
+    Defines a ray Java module with a pom file.
+
+    Args:
+        name: The base name of the module.
+        additional_srcs: Additional source files to include in the module.
+        exclude_srcs: Source files to exclude from the module.
+        additional_resources: Additional resources to include in the module.
+        define_test_lib: Whether to define a test library for the module.
+        test_deps: Dependencies for the test library; only used if define_test_lib is True.
+        **kwargs: Additional arguments to pass to the java_library rule.
+    """
     lib_name = "io_ray_ray_" + name
     pom_file_targets = [lib_name]
     native.java_library(
@@ -94,59 +111,6 @@ def define_java_module(
         },
     )
 
-def copy_to_workspace(name, srcs, dstdir = ""):
-    if dstdir.startswith("/") or dstdir.startswith("\\"):
-        fail("Subdirectory must be a relative path: " + dstdir)
-    src_locations = " ".join(["$(locations %s)" % (src,) for src in srcs])
-    native.genrule(
-        name = name,
-        srcs = srcs,
-        outs = [name + ".out"],
-        cmd = r"""
-            mkdir -p -- {dstdir}
-            for f in {locations}; do
-                rm -f -- {dstdir}$${{f##*/}}
-                cp -f -- "$$f" {dstdir}
-            done
-            date > $@
-        """.format(
-            locations = src_locations,
-            dstdir = "." + ("/" + dstdir.replace("\\", "/")).rstrip("/") + "/",
-        ),
-        local = 1,
-        tags = ["no-cache"],
-    )
-
-def native_java_binary(module_name, name, native_binary_name):
-    """Copy native binary file to different path based on operating systems"""
-    copy_file(
-        name = name + "_darwin",
-        src = native_binary_name,
-        out = module_name + "/src/main/resources/native/darwin/" + name,
-    )
-
-    copy_file(
-        name = name + "_linux",
-        src = native_binary_name,
-        out = module_name + "/src/main/resources/native/linux/" + name,
-    )
-
-    copy_file(
-        name = name + "_windows",
-        src = native_binary_name,
-        out = module_name + "/src/main/resources/native/windows/" + name,
-    )
-
-    native.filegroup(
-        name = name,
-        srcs = select({
-            "@bazel_tools//src/conditions:darwin": [name + "_darwin"],
-            "@bazel_tools//src/conditions:windows": [name + "_windows"],
-            "//conditions:default": [name + "_linux"],
-        }),
-        visibility = ["//visibility:public"],
-    )
-
 def native_java_library(module_name, name, native_library_name):
     """Copy native library file to different path based on operating systems"""
     copy_file(
@@ -164,26 +128,26 @@ def native_java_library(module_name, name, native_library_name):
     native.filegroup(
         name = name,
         srcs = select({
-            "@bazel_tools//src/conditions:darwin": [name + "_darwin"],
-            "@bazel_tools//src/conditions:windows": [],
+            "@platforms//os:osx": [name + "_darwin"],
+            "@platforms//os:windows": [],
             "//conditions:default": [name + "_linux"],
         }),
         visibility = ["//visibility:public"],
     )
 
-def ray_cc_library(name, strip_include_prefix = "/src", copts = [], **kwargs):
+def ray_cc_library(name, strip_include_prefix = "/src", copts = [], visibility = ["//visibility:public"], **kwargs):
     cc_library(
         name = name,
         strip_include_prefix = strip_include_prefix,
         copts = COPTS + copts,
-        visibility = ["//visibility:public"],
+        visibility = visibility,
         **kwargs
     )
 
 def ray_cc_test(name, linkopts = [], copts = [], **kwargs):
     cc_test(
         name = name,
-        copts = COPTS + copts,
+        copts = COPTS_TESTS + copts,
         linkopts = linkopts + ["-pie"],
         **kwargs
     )
@@ -213,3 +177,10 @@ filter_files_with_suffix = rule(
         "suffix": attr.string(),
     },
 )
+
+# It will be passed to the FlatBuffers compiler when defining flatbuffer_cc_library
+FLATC_ARGS = [
+    "--gen-object-api",
+    "--gen-mutable",
+    "--scoped-enums",
+]

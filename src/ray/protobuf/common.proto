@@ -13,15 +13,16 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.rpc;
 
-import "src/ray/protobuf/runtime_env_common.proto";
+import "src/ray/protobuf/public/runtime_environment.proto";
 
 option java_package = "io.ray.runtime.generated";
 
 // Language of a task or worker.
+// Note: The Language enum is used in the export API so it is public
+// and any modifications must be backward compatible.
 enum Language {
   PYTHON = 0;
   JAVA = 1;
@@ -123,7 +124,7 @@ message SchedulingStrategy {
 
 // Address of a worker or node manager.
 message Address {
-  bytes raylet_id = 1;
+  bytes node_id = 1;
   string ip_address = 2;
   int32 port = 3;
   // Optional unique id for the worker.
@@ -178,6 +179,8 @@ message ConcurrencyGroup {
 // TODO(hchen): We may want to make these errors more specific. E.g., we may
 // want to distinguish between intentional and expected actor failures, and
 // between worker process failure and node failure.
+// Note: The ErrorType enum is used in the export API so it is public
+// and any modifications must be backward compatible.
 enum ErrorType {
   // Indicates that a task failed because the worker died unexpectedly while
   // executing it.
@@ -253,6 +256,17 @@ enum ErrorType {
   // ACTOR_DIED is that the actor may still be alive and may become available again
   // after some retries.
   ACTOR_UNAVAILABLE = 25;
+  // An executing generator needed to be resubmitted because an object that dependended on
+  // an intermediate value needed to be recovered.
+  GENERATOR_TASK_FAILED_FOR_OBJECT_RECONSTRUCTION = 26;
+}
+
+// The user error information.
+message UserErrorInfo {
+  // The name of the exception class.
+  string exception_name = 1;
+  // The message associated with the exception.
+  string exception_message = 2;
 }
 
 /// The information per ray error type.
@@ -299,6 +313,8 @@ message NodeDiedErrorContext {
 /// execution exceptions. This should be used by the frontend
 /// to represent a user application error. Errors originating from the
 /// backend such as from the raylet should be propagated as RayErrorInfo.
+// Note: RayException is used in the export API and state API so it is public.
+// Any modifications must be backward compatible.
 message RayException {
   // Language of this exception.
   Language language = 1;
@@ -308,6 +324,22 @@ message RayException {
   string formatted_exception_string = 3;
 }
 
+message NodeDeathInfo {
+  // TODO(sang): Update drain reason
+  enum Reason {
+    UNSPECIFIED = 0;
+    EXPECTED_TERMINATION = 1;
+    UNEXPECTED_TERMINATION = 2;
+    AUTOSCALER_DRAIN_PREEMPTED = 3;
+    AUTOSCALER_DRAIN_IDLE = 4;
+  }
+  Reason reason = 1;
+  // A message describing the reason for the node death.
+  string reason_message = 2;
+}
+
+// Note: ActorDeathCause is used in the export API and state API so it is public.
+// Any modifications must be backward compatible.
 message ActorDeathCause {
   oneof context {
     // Indicates that this actor is marked as DEAD due to actor creation task failure.
@@ -320,16 +352,32 @@ message ActorDeathCause {
 }
 // ---Actor death contexts start----
 // Indicates that this actor is marked as DEAD due to runtime environment setup failure.
+// Note: RuntimeEnvFailedContext is used in the export API and state API so it is public.
+// Any modifications must be backward compatible.
 message RuntimeEnvFailedContext {
   // TODO(sang,lixin) Get this error message from agent.
   string error_message = 1;
 }
 
+// Note: ActorUnschedulableContext is used in the export API and state API so it is
+// public. Any modifications must be backward compatible.
 message ActorUnschedulableContext {
   string error_message = 1;
 }
 
+// Note: ActorDiedErrorContext is used in the export API and state API so it is public.
+// Any modifications must be backward compatible.
 message ActorDiedErrorContext {
+  enum Reason {
+    UNSPECIFIED = 0;
+    WORKER_DIED = 1;
+    OWNER_DIED = 2;
+    NODE_DIED = 3;
+    RAY_KILL = 4;
+    OUT_OF_SCOPE = 5;
+    REF_DELETED = 6;
+  }
+
   string error_message = 1;
   // The id of owner of the actor.
   bytes owner_id = 2;
@@ -350,11 +398,14 @@ message ActorDiedErrorContext {
   // Whether the actor had never started running before it died, i.e. it was cancelled
   // before scheduling had completed.
   bool never_started = 10;
-  // Whether the actor was on a preempted node.
-  bool preempted = 11;
+  // The node death info, if node death is the cause of actor death.
+  optional NodeDeathInfo node_death_info = 11;
+  Reason reason = 12;
 }
 
 // Context for task OOM.
+// Note: OomContext is used in the export API and state API so it is public.
+// Any modifications must be backward compatible.
 message OomContext {
   // The error message
   string error_message = 1;
@@ -394,6 +445,8 @@ message JobConfig {
   // System paths of the driver scripts. Python workers need to search
   // these paths to load modules.
   repeated string py_driver_sys_path = 8;
+  // Python logging configurations that will be passed to Ray tasks/actors.
+  bytes serialized_py_logging_config = 9;
 }
 
 message StreamingGeneratorReturnIdInfo {
@@ -401,6 +454,32 @@ message StreamingGeneratorReturnIdInfo {
   bytes object_id = 1;
   // Whether or not if the object is in plasma store.
   bool is_plasma_object = 2;
+}
+
+message LeaseSpec {
+  bytes lease_id = 1;
+  bytes job_id = 2;
+  Address caller_address = 3;
+  TaskType type = 4;
+  bytes actor_id = 5;
+  bool is_detached_actor = 6;
+  bytes root_detached_actor_id = 7;
+  int64 max_actor_restarts = 8;
+  map<string, double> required_resources = 9;
+  map<string, double> required_placement_resources = 10;
+  SchedulingStrategy scheduling_strategy = 11;
+  LabelSelector label_selector = 12;
+  int64 depth = 13;
+  RuntimeEnvInfo runtime_env_info = 14;
+  repeated ObjectReference dependencies = 15;
+  bytes parent_task_id = 16;
+  Language language = 17;
+  FunctionDescriptor function_descriptor = 18;
+  repeated string dynamic_worker_options = 19;
+  int32 max_retries = 20;
+  uint64 attempt_number = 21;
+  string task_name = 22;
+  FallbackStrategy fallback_strategy = 23;
 }
 
 /// The task specification encapsulates all immutable information about the
@@ -418,7 +497,10 @@ message TaskSpec {
   bytes job_id = 5;
   // Task ID of the task.
   bytes task_id = 6;
-  // Task ID of the parent task.
+  // Task ID of the parent task. If the parent is a normal task, it will be the task's ID.
+  // If the parent runs in a concurrent actor (async actor or threaded actor),
+  // it will be the actor's creation task ID.
+  // See https://github.com/ray-project/ray/pull/32157 for more context.
   bytes parent_task_id = 7;
   // A count of the number of tasks submitted by the parent task before this one.
   uint64 parent_counter = 8;
@@ -444,10 +526,6 @@ message TaskSpec {
   ActorTaskSpec actor_task_spec = 16;
   // Number of times this task may be retried on worker failure.
   int32 max_retries = 17;
-  // Whether or not to skip the execution of this task. When it's true,
-  // the receiver will not execute the task. This field is used by async actors
-  // to guarantee task submission order after restart.
-  bool skip_execution = 21;
   // Breakpoint if this task should drop into the debugger when it starts executing
   // and "" if the task should not drop into the debugger.
   bytes debugger_breakpoint = 22;
@@ -467,7 +545,7 @@ message TaskSpec {
   SchedulingStrategy scheduling_strategy = 28;
   // A count of the number of times this task has been attempted so far. 0
   // means this is the first execution.
-  uint64 attempt_number = 29;
+  int32 attempt_number = 29;
   // This task returns a dynamic number of objects.
   bool returns_dynamic = 30;
   // A list of ObjectIDs that were created by this task but that should be
@@ -509,6 +587,22 @@ message TaskSpec {
   int64 generator_backpressure_num_objects = 38;
   // Boolean if task events enabled, i.e tasks events would be reported.
   bool enable_task_events = 39;
+  // If this task is originated from a detached actor,
+  // this field contains the detached actor id.
+  // Otherwise it's empty and is originated from a driver.
+  bytes root_detached_actor_id = 40;
+  // The key-value labels for task and actor.
+  map<string, string> labels = 41;
+  // Human readable stacktrace of the task invocation, or actor creation. The exact data
+  // format depends on the language. Only populated if environment variable
+  // `RAY_record_task_actor_creation_sites` is set to `true`.
+  optional string call_site = 42;
+  // The key-value label constraints of the node to schedule this task or actor on.
+  LabelSelector label_selector = 43;
+  // The tensor transport type for this task.
+  TensorTransport tensor_transport = 44;
+  // A list of fallback options defining the fallback strategy for scheduling.
+  FallbackStrategy fallback_strategy = 45;
 }
 
 message TaskInfoEntry {
@@ -542,6 +636,18 @@ message TaskInfoEntry {
   // If the task/actor is created within a placement group,
   // this value is configured.
   optional bytes placement_group_id = 26;
+  // Human readable stacktrace of the task invocation, or actor creation. The exact data
+  // format depends on the language. Only populated if the flag is enabled.
+  optional string call_site = 27;
+  // The key-value label constraints of the node to schedule this task or actor on.
+  map<string, string> label_selector = 28;
+}
+
+message TaskAttempt {
+  // The task id of the task attempt.
+  bytes task_id = 1;
+  // The attempt number of the task attempt.
+  int32 attempt_number = 2;
 }
 
 message Bundle {
@@ -553,6 +659,9 @@ message Bundle {
   map<string, double> unit_resources = 2;
   // The location of this bundle.
   bytes node_id = 3;
+  // Label selector associated with this bundle.
+  // Populated from bundle_label_selector if provided.
+  map<string, string> label_selector = 4;
 }
 
 message PlacementGroupSpec {
@@ -574,8 +683,6 @@ message PlacementGroupSpec {
   bool creator_actor_dead = 8;
   // Whether the placement group is persistent.
   bool is_detached = 9;
-  // The maximum fraction of CPU cores that this placement group can use on each node.
-  double max_cpu_fraction_per_node = 10;
   // Binary ID of the target node where bundles should be placed
   // iff the target node has enough available resources and alive.
   // Otherwise, the bundles can be placed elsewhere.
@@ -592,6 +699,9 @@ message ObjectReference {
   // Used to print debugging information if there is an error retrieving the
   // object.
   string call_site = 3;
+  // The tensor transport to use for this object. If not specified, then use the
+  // default object store.
+  optional TensorTransport tensor_transport = 4;
 }
 
 message ObjectReferenceCount {
@@ -619,6 +729,13 @@ message ObjectReferenceCount {
   repeated bytes contains = 6;
 }
 
+enum TensorTransport {
+  // Use the default object store for tensor transport.
+  OBJECT_STORE = 0;
+  // Use Ray Direct Transport to transfer tensors directly between workers.
+  DIRECT_TRANSPORT = 1;
+}
+
 // Argument in the task.
 message TaskArg {
   // A pass-by-ref argument.
@@ -629,6 +746,12 @@ message TaskArg {
   bytes metadata = 3;
   // ObjectIDs that were nested in the inlined arguments of the data field.
   repeated ObjectReference nested_inlined_refs = 4;
+  // `is_inlined` is true if the argument is an ObjectRef, but it is small enough
+  // to be inlined in the task spec instead of being pushed to the object store.
+  bool is_inlined = 5;
+  // The tensor transport to use for this object. If not specified, then use the
+  // default object store.
+  optional TensorTransport tensor_transport = 6;
 }
 
 message ReturnObject {
@@ -650,40 +773,41 @@ message ReturnObject {
 // Task spec of an actor creation task.
 message ActorCreationTaskSpec {
   // ID of the actor that will be created by this task.
-  bytes actor_id = 2;
+  bytes actor_id = 1;
   // The max number of times this actor should be restarted.
   // If this number is 0 the actor won't be restarted.
   // If this number is -1 the actor will be restarted indefinitely.
-  int64 max_actor_restarts = 3;
+  int64 max_actor_restarts = 2;
   // The max number of times tasks submitted on this actor should be retried
   // if the actor fails and is restarted.
   // If this number is 0 the tasks won't be resubmitted.
   // If this number is -1 the tasks will be resubmitted indefinitely.
-  int64 max_task_retries = 4;
+  int64 max_task_retries = 3;
   // The dynamic options used in the worker command when starting a worker process for
   // an actor creation task. If the list isn't empty, the options will be used to replace
   // the placeholder string `RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER` in the worker command.
-  repeated string dynamic_worker_options = 5;
+  // Used by Java workers for JVM options.
+  repeated string dynamic_worker_options = 4;
   // The max number of concurrent calls for default concurrency group of this actor.
-  int32 max_concurrency = 6;
+  int32 max_concurrency = 5;
   // Whether the actor is persistent.
-  bool is_detached = 7;
+  bool is_detached = 6;
   // Globally-unique name of the actor. Should only be populated when is_detached is true.
-  string name = 8;
+  string name = 7;
   // The namespace of the actor. Should only be populated when is_detached is true.
-  string ray_namespace = 9;
+  string ray_namespace = 8;
   // Whether the actor use async actor calls.
-  bool is_asyncio = 10;
+  bool is_asyncio = 9;
   // Field used for storing application-level extensions to the actor definition.
-  string extension_data = 11;
+  string extension_data = 10;
   // Serialized bytes of the Handle to the actor that will be created by this task.
-  bytes serialized_actor_handle = 12;
+  bytes serialized_actor_handle = 11;
   // The concurrency groups of this actor.
-  repeated ConcurrencyGroup concurrency_groups = 13;
+  repeated ConcurrencyGroup concurrency_groups = 12;
   // Whether to enable out of order execution.
-  bool execute_out_of_order = 14;
+  bool allow_out_of_order_execution = 13;
   // The max number of pending actor calls.
-  int32 max_pending_calls = 15;
+  int32 max_pending_calls = 14;
 }
 
 // Task spec of an actor task.
@@ -693,7 +817,7 @@ message ActorTaskSpec {
   // The dummy object ID of the actor creation task.
   bytes actor_creation_dummy_object_id = 4;
   // Number of tasks that have been submitted to this actor so far.
-  uint64 actor_counter = 5;
+  uint64 sequence_number = 5;
 }
 
 // Represents a task, including task spec.
@@ -779,18 +903,26 @@ enum TaskStatus {
   // to the worker. It will be executed shortly. For actor tasks, execution may be
   // delayed to satisfy ordering constraints or argument fetching.
   SUBMITTED_TO_WORKER = 5;
+  // The actor task is fetching arguments. This happens after the actor worker
+  // receives the task and the actor task has object refs as arguments.
+  PENDING_ACTOR_TASK_ARGS_FETCH = 6;
+  // The actor task is waiting due to ordering or concurrency constraints.
+  PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY = 7;
   // The task is running on a worker.
-  RUNNING = 6;
+  RUNNING = 8;
   // The task is running on a worker, but is blocked in a ray.get() call.
   // This state is a sub-state of RUNNING and used for metrics only.
-  RUNNING_IN_RAY_GET = 7;
+  RUNNING_IN_RAY_GET = 9;
   // The task is running on a worker, but is blocked in a ray.wait() call.
   // This state is a sub-state of RUNNING and used for metrics only.
-  RUNNING_IN_RAY_WAIT = 8;
+  RUNNING_IN_RAY_WAIT = 10;
   // The task has finished.
-  FINISHED = 9;
+  FINISHED = 11;
   // The task has finished but failed with an Exception or system error.
-  FAILED = 10;
+  FAILED = 12;
+  // The task is attempting to pin args and fetch them for execution, used for metrics
+  // only and is a sub state of RUNNING
+  GETTING_AND_PINNING_ARGS = 13;
 }
 
 // Debug info for a referenced object.
@@ -829,53 +961,54 @@ message ResourceAllocations {
 
 // Debug info returned from the core worker.
 message CoreWorkerStats {
-  reserved 1;
   // Number of pending normal and actor tasks.
-  int32 num_pending_tasks = 2;
+  int32 num_pending_tasks = 1;
   // Number of object refs in local scope.
-  int32 num_object_refs_in_scope = 3;
+  int32 num_object_refs_in_scope = 2;
   // IP address of the core worker.
-  string ip_address = 7;
+  string ip_address = 3;
   // Port of the core worker.
-  int64 port = 8;
+  int64 port = 4;
   // Actor ID.
-  bytes actor_id = 9;
+  bytes actor_id = 5;
   // A map from the resource name (e.g. "CPU") to its allocation.
-  map<string, ResourceAllocations> used_resources = 10;
+  map<string, ResourceAllocations> used_resources = 6;
   // A string displayed on Dashboard.
-  map<string, string> webui_display = 11;
+  map<string, string> webui_display = 7;
   // Number of objects that are IN_PLASMA_ERROR in the local memory store.
-  int32 num_in_plasma = 12;
+  int32 num_in_plasma = 8;
   // Number of objects stored in local memory.
-  int32 num_local_objects = 13;
+  int32 num_local_objects = 9;
   // Used local object store memory.
-  int64 used_object_store_memory = 14;
+  int64 used_object_store_memory = 10;
   // Length of the task queue.
-  int32 task_queue_length = 15;
+  int32 task_queue_length = 11;
   // Number of executed tasks.
-  int32 num_executed_tasks = 16;
-  // Actor constructor.
-  string actor_title = 17;
+  int32 num_executed_tasks = 12;
   // Local reference table.
-  repeated ObjectRefInfo object_refs = 18;
+  repeated ObjectRefInfo object_refs = 13;
   // Job ID.
-  bytes job_id = 19;
+  bytes job_id = 14;
   // Worker id of core worker.
-  bytes worker_id = 20;
+  bytes worker_id = 15;
   // Language
-  Language language = 21;
+  Language language = 16;
   // PID of the worker process.
-  uint32 pid = 22;
+  uint32 pid = 17;
   // The worker type.
-  WorkerType worker_type = 23;
+  WorkerType worker_type = 18;
   // Length of the number of objects without truncation.
-  int64 objects_total = 24;
+  int64 objects_total = 19;
   // Number of objects owned by the worker.
-  int64 num_owned_objects = 25;
+  int64 num_owned_objects = 20;
   // Number of actors owned by the worker.
-  int64 num_owned_actors = 26;
+  int64 num_owned_actors = 21;
   // Number of running tasks
-  int64 num_running_tasks = 27;
+  int64 num_running_tasks = 22;
+  // Number of in flight arg pinning requests
+  int64 num_in_flight_arg_pinning_requests = 23;
+  // Number of failed arg pinning requests
+  int64 num_of_failed_arg_pinning_requests = 24;
 }
 
 // Resource usage reported by the node reporter.
@@ -923,10 +1056,59 @@ enum PlacementStrategy {
   // The group is not allowed to deploy more than one bundle on a node.
   STRICT_SPREAD = 3;
 }
+
+// The type of operator to use for the label constraint.
+enum LabelSelectorOperator {
+  LABEL_OPERATOR_UNSPECIFIED = 0;
+  // This is to support equality or in semantics.
+  LABEL_OPERATOR_IN = 1;
+  // This is to support not equal or not in semantics.
+  LABEL_OPERATOR_NOT_IN = 2;
+}
+
+// A node label constraint with a key, one or a list of values and an operator.
+message LabelSelectorConstraint {
+  // The key of the label
+  string label_key = 1;
+  // The operator to use for the label constraint.
+  LabelSelectorOperator operator = 2;
+  // The values to check against.
+  repeated string label_values = 3;
+}
+
+// A list of node label constraints to specify the label requirements in a
+// resource request.
+message LabelSelector {
+  // The list of node label constraints with AND semantics.
+  repeated LabelSelectorConstraint label_constraints = 1;
+}
+
+// A single fallback option. Defines requirements for a Task or Actor to use for
+// scheduling.
+message FallbackOption {
+  LabelSelector label_selector = 1;
+}
+
+// Fallback strategy is a list of fallback options to try in-order when scheduling on a
+// node.
+message FallbackStrategy {
+  repeated FallbackOption options = 1;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 // Info about a named actor.
 message NamedActorInfo {
   string ray_namespace = 1;
   string name = 2;
+}
+
+message LineageReconstructionTask {
+  string name = 1;
+  TaskStatus status = 2;
+  // If the task is a normal task,
+  // this has the labels of the normal task.
+  // If the task is an actor task,
+  // this has the labels of the corresponding actor.
+  map<string, string> labels = 3;
 }

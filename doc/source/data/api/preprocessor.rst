@@ -28,6 +28,7 @@ Fit/Transform APIs
     ~preprocessor.Preprocessor.fit_transform
     ~preprocessor.Preprocessor.transform
     ~preprocessor.Preprocessor.transform_batch
+    ~preprocessor.PreprocessorNotFittedException
 
 
 Generic Preprocessors
@@ -39,6 +40,7 @@ Generic Preprocessors
 
     ~preprocessors.Concatenator
     ~preprocessors.SimpleImputer
+    ~preprocessors.Chain
 
 Categorical Encoders
 --------------------
@@ -76,3 +78,23 @@ K-Bins Discretizers
 
     ~preprocessors.CustomKBinsDiscretizer
     ~preprocessors.UniformKBinsDiscretizer
+
+Feature Hashers and Vectorizers
+-------------------------------
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~preprocessors.FeatureHasher
+    ~preprocessors.CountVectorizer
+    ~preprocessors.HashingVectorizer
+
+Specialized Preprocessors
+-------------------------
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~preprocessors.TorchVisionPreprocessor

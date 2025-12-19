@@ -1,18 +1,19 @@
 import asyncio
-from typing import Optional, Any, List, Dict
+import queue
 from collections.abc import Iterable
+from typing import Any, Dict, List, Optional
 
 import ray
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="beta")
-class Empty(Exception):
+class Empty(queue.Empty):
     pass
 
 
 @PublicAPI(stability="beta")
-class Full(Exception):
+class Full(queue.Full):
     pass
 
 
@@ -52,7 +53,7 @@ class Queue:
     """
 
     def __init__(self, maxsize: int = 0, actor_options: Optional[Dict] = None) -> None:
-        from ray._private.usage.usage_lib import record_library_usage
+        from ray._common.usage.usage_lib import record_library_usage
 
         record_library_usage("util.Queue")
 

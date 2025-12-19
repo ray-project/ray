@@ -1,0 +1,144 @@
+load("//bazel:ray.bzl", "ray_cc_library")
+
+ray_cc_library(
+    name = "fiber",
+    hdrs = ["fiber.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        "//src/ray/util:logging",
+        "@boost//:fiber",
+    ],
+)
+
+ray_cc_library(
+    name = "thread_pool",
+    srcs = ["thread_pool.cc"],
+    hdrs = ["thread_pool.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        "//src/ray/util:logging",
+        "@boost//:asio",
+        "@boost//:thread",
+    ],
+)
+
+ray_cc_library(
+    name = "concurrency_group_manager",
+    srcs = ["concurrency_group_manager.cc"],
+    hdrs = ["concurrency_group_manager.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":fiber",
+        ":thread_pool",
+        "//src/ray/common:task_common",
+    ],
+)
+
+ray_cc_library(
+    name = "scheduling_util",
+    srcs = ["scheduling_util.cc"],
+    hdrs = ["scheduling_util.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/rpc:rpc_callback_types",
+    ],
+)
+
+ray_cc_library(
+    name = "scheduling_queue",
+    hdrs = ["scheduling_queue.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//src/ray/common:task_common",
+        "//src/ray/rpc:rpc_callback_types",
+    ],
+)
+
+ray_cc_library(
+    name = "normal_scheduling_queue",
+    srcs = ["normal_scheduling_queue.cc"],
+    hdrs = ["normal_scheduling_queue.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        "scheduling_queue",
+        ":scheduling_util",
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/rpc:rpc_callback_types",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "actor_scheduling_queue",
+    srcs = ["actor_scheduling_queue.cc"],
+    hdrs = ["actor_scheduling_queue.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":concurrency_group_manager",
+        ":fiber",
+        ":scheduling_queue",
+        ":scheduling_util",
+        ":thread_pool",
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/core_worker:task_event_buffer",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/rpc:rpc_callback_types",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "out_of_order_actor_scheduling_queue",
+    srcs = ["out_of_order_actor_scheduling_queue.cc"],
+    hdrs = ["out_of_order_actor_scheduling_queue.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":concurrency_group_manager",
+        ":fiber",
+        ":scheduling_queue",
+        ":scheduling_util",
+        ":thread_pool",
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/core_worker:task_event_buffer",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/rpc:rpc_callback_types",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "task_receiver",
+    srcs = ["task_receiver.cc"],
+    hdrs = ["task_receiver.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker:__pkg__",
+    ],
+    deps = [
+        ":actor_scheduling_queue",
+        ":concurrency_group_manager",
+        ":fiber",
+        ":normal_scheduling_queue",
+        ":out_of_order_actor_scheduling_queue",
+        ":thread_pool",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_object",
+        "//src/ray/common:task_common",
+        "//src/ray/core_worker:common",
+        "//src/ray/protobuf:core_worker_cc_proto",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)

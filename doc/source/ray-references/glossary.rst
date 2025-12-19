@@ -23,7 +23,7 @@ documentation, sorted alphabetically.
         essentially a stateful service. :ref:`Learn more about Ray actors<actor-guide>`.
 
     Actor task
-        An invocation of an Ray actor method. Sometimes we just call it a task.
+        An invocation of a Ray actor method. Sometimes we just call it a task.
 
     Ray Agent
         Daemon process running on each Ray node. It has several functionalities like
@@ -38,7 +38,7 @@ documentation, sorted alphabetically.
     Algorithm
         A class that holds the who/when/where/how for training one or more RL agent(s).
         The user interacts with an Algorithm instance directly to train their agents
-        (it is the top-most user facing API or RLlib).
+        (it is the top-most user facing API of RLlib).
 
     Asynchronous execution
         An execution model where a later task can begin executing in parallel,
@@ -66,11 +66,13 @@ documentation, sorted alphabetically.
 
     Backend
         A class containing the initialization and teardown logic for a specific deep
-        learning framework (eg. Torch, TensorFlow), used to set up distributed
+        learning framework (e.g., Torch, TensorFlow), used to set up distributed
         data-parallel training for :ref:`Ray Train’s built-in trainers<train-api>`.
 
     Batch format
-        The way Ray Data represents batches of data.
+        The way Ray Data represents batches of data. The batch format is independent
+        from how Ray Data stores the underlying blocks, so you can use any batch format
+        regardless of the internal block representation.
 
         Set ``batch_format`` in methods like
         :meth:`Dataset.iter_batches() <ray.data.Dataset.iter_batches>` and
@@ -80,7 +82,7 @@ documentation, sorted alphabetically.
         .. doctest::
 
             >>> import ray
-            >>> dataset = ray.data.range(10)
+            >>> dataset = ray.data.range(15)
             >>> next(iter(dataset.iter_batches(batch_format="numpy", batch_size=5)))
             {'id': array([0, 1, 2, 3, 4])}
             >>> next(iter(dataset.iter_batches(batch_format="pandas", batch_size=5)))
@@ -90,6 +92,11 @@ documentation, sorted alphabetically.
             2   2
             3   3
             4   4
+            >>> next(iter(dataset.iter_batches(batch_format="pyarrow", batch_size=5)))
+            pyarrow.Table
+            id: int64
+            ----
+            id: [[0],[1],...,[3],[4]]
 
         To learn more about batch formats, read
         :ref:`Configuring batch formats <configure_batch_format>`.
@@ -116,7 +123,7 @@ documentation, sorted alphabetically.
         different Ray components and libraries. A Checkpoint can have its data
         represented as a directory on local (on-disk) storage, as a directory on an
         external storage (e.g., cloud storage), and as an in-memory dictionary.
-        :class:`Learn more <ray.train.Checkpoint>`,
+        :class:`Learn more <ray.train.Checkpoint>`.
 
         .. TODO: How does this relate to RLlib checkpoints etc.? Be clear here
 
@@ -197,7 +204,7 @@ documentation, sorted alphabetically.
 
     Environment
         The world or simulation, in which one or more reinforcement learning agents
-        have to learn to behave optimally in wrt. a given reward function. An
+        have to learn to behave optimally with respect to a given reward function. An
         environment consists of an observation space, a reward function, an action
         space, a state transition function, and a distribution over initial states
         (after a reset).
@@ -219,7 +226,7 @@ documentation, sorted alphabetically.
     Trial Executor
         An internal :ref:`Ray Tune component<raytrialexecutor-docstring>` that manages
         the resource management and execution of each trial’s corresponding remote
-        Trainable actor. The trial  executor’s responsibilities include launching
+        Trainable actor. The trial executor’s responsibilities include launching
         training, checkpointing, and restoring remote tasks.
 
     Experiment
@@ -266,7 +273,7 @@ documentation, sorted alphabetically.
     .. TODO: Inference
 
     Job
-        A ray job is a packaged ray application that can be executed on a
+        A Ray job is a packaged Ray application that can be executed on a
         (remote) Ray cluster. :ref:`Learn more<jobs-overview>`.
 
     Lineage
@@ -375,7 +382,7 @@ documentation, sorted alphabetically.
     On-Policy
         A type of RL Algorithm. In an on-policy algorithm, the policy used to compute
         the actions inside an RL environment (to generate the training data) must be the
-        exact same (matching NN weights at all times) than the one that is being
+        exact same (matching NN weights at all times) as the one that's being
         optimized. Examples for on-policy Algorithms are PPO, APPO, and IMPALA.
 
     OOM (Out of Memory)
@@ -459,13 +466,13 @@ documentation, sorted alphabetically.
         RolloutWorkers are used as ``@ray.remote`` actors to collect and return samples
         from environments or offline files in parallel. An RLlib
         :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` usually has
-        ``num_workers`` :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker`s plus a
-        single "local" :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` (not ``@ray.remote``) in
-        its :py:class:`~ray.rllib.evaluation.worker_set.WorkerSet` under ``self.workers``.
+        ``num_workers`` :py:class:`~ray.rllib.env.env_runner.EnvRunner` instances plus a
+        single "local" :py:class:`~ray.rllib.env.env_runner.EnvRunner` (not ``@ray.remote``) in
+        its :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` under ``self.workers``.
 
         Depending on its evaluation config settings, an additional
-        :py:class:`~ray.rllib.evaluation.worker_set.WorkerSet` with
-        :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker`s for evaluation may be present in the
+        :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` with
+        :py:class:`~ray.rllib.env.env_runner.EnvRunner` instances for evaluation may be present in the
         :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
         under ``self.evaluation_workers``.
 

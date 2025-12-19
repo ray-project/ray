@@ -5,10 +5,16 @@ End-to-end: Offline Batch Inference
 
 Offline batch inference is a process for generating model predictions on a fixed set of input data. Ray Data offers an efficient and scalable solution for batch inference, providing faster execution and cost-effectiveness for deep learning applications.
 
-For an overview on why you should use Ray Data for offline batch inference, and how it compares to alternatives, see the :ref:`Ray Data Overview <data_overview>`.
+..
+ https://docs.google.com/presentation/d/1l03C1-4jsujvEFZUM4JVNy8Ju8jnY5Lc_3q7MBWi2PQ/edit#slide=id.g230eb261ad2_0_0
 
-.. figure:: images/batch_inference.png
+.. image:: images/stream-example.png
+   :width: 650px
+   :align: center
 
+.. note::
+    This guide is primarily focused on batch inference with deep learning frameworks.
+    For more information on batch inference with LLMs, see :ref:`Working with LLMs <working-with-llms>`.
 
 .. _batch_inference_quickstart:
 
@@ -49,7 +55,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
 
             # Step 2: Define a Predictor class for inference.
             # Use a class to initialize the model just once in `__init__`
-            # and re-use it for inference across multiple batches.
+            # and reuse it for inference across multiple batches.
             class HuggingFacePredictor:
                 def __init__(self):
                     from transformers import pipeline
@@ -70,7 +76,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
             # Step 2: Map the Predictor over the Dataset to get predictions.
             # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
-            predictions = ds.map_batches(HuggingFacePredictor, concurrency=2)
+            predictions = ds.map_batches(HuggingFacePredictor, compute=ray.data.ActorPoolStrategy(size=2))
             # Step 3: Show one prediction output.
             predictions.show(limit=1)
 
@@ -99,7 +105,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
 
             # Step 2: Define a Predictor class for inference.
             # Use a class to initialize the model just once in `__init__`
-            # and re-use it for inference across multiple batches.
+            # and reuse it for inference across multiple batches.
             class TorchPredictor:
                 def __init__(self):
                     # Load a dummy neural network.
@@ -120,7 +126,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
             # Step 2: Map the Predictor over the Dataset to get predictions.
             # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
-            predictions = ds.map_batches(TorchPredictor, concurrency=2)
+            predictions = ds.map_batches(TorchPredictor, compute=ray.data.ActorPoolStrategy(size=2))
             # Step 3: Show one prediction output.
             predictions.show(limit=1)
 
@@ -146,7 +152,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
 
             # Step 2: Define a Predictor class for inference.
             # Use a class to initialize the model just once in `__init__`
-            # and re-use it for inference across multiple batches.
+            # and reuse it for inference across multiple batches.
             class TFPredictor:
                 def __init__(self):
                     from tensorflow import keras
@@ -165,7 +171,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
             # Step 2: Map the Predictor over the Dataset to get predictions.
             # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
-            predictions = ds.map_batches(TFPredictor, concurrency=2)
+            predictions = ds.map_batches(TFPredictor, compute=ray.data.ActorPoolStrategy(size=2))
              # Step 3: Show one prediction output.
             predictions.show(limit=1)
 
@@ -173,6 +179,55 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
             :options: +MOCK
 
             {'output': array([0.625576], dtype=float32)}
+
+    .. tab-item:: LLM Inference
+        :sync: vLLM
+
+        Ray Data offers native integration with vLLM, a high-performance inference engine for large language models (LLMs).
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+            from ray.data.llm import vLLMEngineProcessorConfig, build_processor
+            import numpy as np
+
+            config = vLLMEngineProcessorConfig(
+                model="unsloth/Llama-3.1-8B-Instruct",
+                engine_kwargs={
+                    "enable_chunked_prefill": True,
+                    "max_num_batched_tokens": 4096,
+                    "max_model_len": 16384,
+                },
+                concurrency=1,
+                batch_size=64,
+            )
+            processor = build_processor(
+                config,
+                preprocess=lambda row: dict(
+                    messages=[
+                        {"role": "system", "content": "You are a bot that responds with haikus."},
+                        {"role": "user", "content": row["item"]}
+                    ],
+                    sampling_params=dict(
+                        temperature=0.3,
+                        max_tokens=250,
+                    )
+                ),
+                postprocess=lambda row: dict(
+                    answer=row["generated_text"]
+                ),
+            )
+
+            ds = ray.data.from_items(["Start of the haiku is: Complete this for me..."])
+
+            ds = processor(ds)
+            ds.show(limit=1)
+
+        .. testoutput::
+            :options: +MOCK
+
+            {'answer': 'Snowflakes gently fall\nBlanketing the winter scene\nFrozen peaceful hush'}
 
 .. _batch_inference_configuration:
 
@@ -225,7 +280,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
                 # Increase this for larger datasets.
                 batch_size=1,
                 # Set the concurrency to the number of GPUs in your cluster.
-                concurrency=2,
+                compute=ray.data.ActorPoolStrategy(size=2),
                 )
             predictions.show(limit=1)
 
@@ -273,7 +328,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
                 # Increase this for larger datasets.
                 batch_size=1,
                 # Set the concurrency to the number of GPUs in your cluster.
-                concurrency=2,
+                compute=ray.data.ActorPoolStrategy(size=2),
                 )
             predictions.show(limit=1)
 
@@ -320,7 +375,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
                 # Increase this for larger datasets.
                 batch_size=1,
                 # Set the concurrency to the number of GPUs in your cluster.
-                concurrency=2,
+                compute=ray.data.ActorPoolStrategy(size=2),
             )
             predictions.show(limit=1)
 
@@ -360,9 +415,9 @@ Increasing batch size results in faster execution because inference is a vectori
 Handling GPU out-of-memory failures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you run into CUDA out-of-memory issues, your batch size is likely too large. Decrease 
-the batch size by following :ref:`these steps <batch_inference_batch_size>`. If your 
-batch size is already set to 1, then use either a smaller model or GPU devices with more 
+If you run into CUDA out-of-memory issues, your batch size is likely too large. Decrease
+the batch size by following :ref:`these steps <batch_inference_batch_size>`. If your
+batch size is already set to 1, then use either a smaller model or GPU devices with more
 memory.
 
 For advanced users working with large models, you can use model parallelism to shard the model across multiple GPUs.
@@ -410,6 +465,6 @@ Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most
         # Require 5 CPUs per actor (so at most 3 can fit per 16 CPU node).
         num_cpus=5,
         # 3 actors per node, with 4 nodes in the cluster means concurrency of 12.
-        concurrency=12,
+        compute=ray.data.ActorPoolStrategy(size=12),
         )
     predictions.show(limit=1)

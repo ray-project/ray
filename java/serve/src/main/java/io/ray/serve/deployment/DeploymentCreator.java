@@ -43,16 +43,6 @@ public class DeploymentCreator {
    */
   private Object[] initArgs;
 
-  /**
-   * Requests to paths under this HTTP path prefix will be routed to this deployment. Defaults to
-   * '/{name}'. When set to 'None', no HTTP endpoint will be created. Routing is done based on
-   * longest-prefix match, so if you have deployment A with a prefix of '/a' and deployment B with a
-   * prefix of '/a/b', requests to '/a', '/a/', and '/a/c' go to A and requests to '/a/b', '/a/b/',
-   * and '/a/b/c' go to B. Routes must not end with a '/' unless they're the root (just '/'), which
-   * acts as a catch-all.
-   */
-  @Deprecated private String routePrefix;
-
   /** Options to be passed to the Ray actor constructor such as resource requirements. */
   private Map<String, Object> rayActorOptions;
 
@@ -66,7 +56,7 @@ public class DeploymentCreator {
    * The maximum number of queries that will be sent to a replica of this deployment without
    * receiving a response. Defaults to 100.
    */
-  private Integer maxConcurrentQueries;
+  private Integer maxOngoingRequests;
 
   private AutoscalingConfig autoscalingConfig;
 
@@ -97,15 +87,11 @@ public class DeploymentCreator {
       LOGGER.warn(
           "DeprecationWarning: `version` in `@serve.deployment` has been deprecated. Explicitly specifying version will raise an error in the future!");
     }
-    if (routePrefix != null) {
-      LOGGER.warn(
-          "DeprecationWarning: `route_prefix` in `@serve.deployment` has been deprecated. To specify a route prefix for an application, pass it into `serve.run` instead.");
-    }
 
     DeploymentConfig deploymentConfig =
         new DeploymentConfig()
             .setNumReplicas(numReplicas != null ? numReplicas : 1)
-            .setMaxConcurrentQueries(maxConcurrentQueries)
+            .setMaxOngoingRequests(maxOngoingRequests)
             .setUserConfig(userConfig)
             .setAutoscalingConfig(autoscalingConfig)
             .setGracefulShutdownWaitLoopS(gracefulShutdownWaitLoopS)
@@ -120,8 +106,7 @@ public class DeploymentCreator {
         StringUtils.isNotBlank(name) ? name : CommonUtil.getDeploymentName(deploymentDef),
         deploymentConfig,
         replicaConfig,
-        version,
-        routePrefix);
+        version);
   }
 
   public Deployment create() {
@@ -177,15 +162,6 @@ public class DeploymentCreator {
     return this;
   }
 
-  public String getRoutePrefix() {
-    return routePrefix;
-  }
-
-  public DeploymentCreator setRoutePrefix(String routePrefix) {
-    this.routePrefix = routePrefix;
-    return this;
-  }
-
   public Map<String, Object> getRayActorOptions() {
     return rayActorOptions;
   }
@@ -204,12 +180,12 @@ public class DeploymentCreator {
     return this;
   }
 
-  public Integer getMaxConcurrentQueries() {
-    return maxConcurrentQueries;
+  public Integer getMaxOngoingRequests() {
+    return maxOngoingRequests;
   }
 
-  public DeploymentCreator setMaxConcurrentQueries(Integer maxConcurrentQueries) {
-    this.maxConcurrentQueries = maxConcurrentQueries;
+  public DeploymentCreator setMaxOngoingRequests(Integer maxOngoingRequests) {
+    this.maxOngoingRequests = maxOngoingRequests;
     return this;
   }
 

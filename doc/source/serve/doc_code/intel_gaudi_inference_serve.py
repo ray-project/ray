@@ -4,7 +4,8 @@ from functools import partial
 from queue import Empty
 from typing import Dict, Any
 
-from starlette.responses import Request, StreamingResponse
+from starlette.requests import Request
+from starlette.responses import StreamingResponse
 import torch
 
 from ray import serve

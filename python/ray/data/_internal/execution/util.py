@@ -14,6 +14,7 @@ def make_ref_bundles(simple_data: List[List[Any]]) -> List["RefBundle"]:
     One bundle is created for each input block.
     """
     import pandas as pd
+    import pyarrow as pa
 
     from ray.data._internal.execution.interfaces import RefBundle
 
@@ -25,16 +26,17 @@ def make_ref_bundles(simple_data: List[List[Any]]) -> List["RefBundle"]:
                 [
                     (
                         ray.put(block),
-                        BlockAccessor.for_block(block).get_metadata([], None),
+                        BlockAccessor.for_block(block).get_metadata(),
                     )
                 ],
                 owns_blocks=True,
+                schema=pa.lib.Schema.from_pandas(block, preserve_index=False),
             )
         )
     return output
 
 
-memory_units = ["B", "KB", "MB", "GB", "TB", "PB"]
+memory_units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]
 
 
 def memory_string(num_bytes: float) -> str:
@@ -53,7 +55,7 @@ def locality_string(locality_hits: int, locality_misses) -> str:
     return f"[{locality_hits}/{locality_hits + locality_misses} objects local]"
 
 
-def make_callable_class_concurrent(callable_cls: CallableClass) -> CallableClass:
+def make_callable_class_single_threaded(callable_cls: CallableClass) -> CallableClass:
     """Returns a thread-safe CallableClass with the same logic as the provided
     `callable_cls`.
 
@@ -64,7 +66,7 @@ def make_callable_class_concurrent(callable_cls: CallableClass) -> CallableClass
     user provided UDF.
     """
 
-    class _Wrapper(callable_cls):
+    class _SingleThreadedWrapper(callable_cls):
         def __init__(self, *args, **kwargs):
             self.thread_pool_executor = ThreadPoolExecutor(max_workers=1)
             super().__init__(*args, **kwargs)
@@ -77,4 +79,4 @@ def make_callable_class_concurrent(callable_cls: CallableClass) -> CallableClass
             future = self.thread_pool_executor.submit(super().__call__, *args, **kwargs)
             return future.result()
 
-    return _Wrapper
+    return _SingleThreadedWrapper

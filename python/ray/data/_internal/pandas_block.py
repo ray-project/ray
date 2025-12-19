@@ -1,12 +1,13 @@
 import collections
-import heapq
+import logging
+import sys
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     Dict,
     Iterator,
     List,
+    Mapping,
     Optional,
     Tuple,
     TypeVar,
@@ -14,29 +15,39 @@ from typing import (
 )
 
 import numpy as np
+import pandas as pd
+from pandas.api.types import is_object_dtype, is_scalar, is_string_dtype
 
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.data._internal.row import TableRow
+from ray.air.util.tensor_extensions.utils import _should_convert_to_tensor
+from ray.data._internal.numpy_support import convert_to_numpy
+from ray.data._internal.row import row_repr, row_repr_pretty, row_str
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import find_partitions
+from ray.data._internal.util import is_null
 from ray.data.block import (
     Block,
     BlockAccessor,
+    BlockColumn,
+    BlockColumnAccessor,
     BlockExecStats,
-    BlockMetadata,
-    KeyType,
+    BlockType,
     U,
 )
 from ray.data.context import DataContext
+from ray.data.expressions import Expr
 
 if TYPE_CHECKING:
     import pandas
     import pyarrow
 
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-    from ray.data.aggregate import AggregateFn
+    from ray.data.block import BlockMetadataWithSchema
 
 T = TypeVar("T")
+# Max number of samples used to estimate the Pandas block size.
+_PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT = 200
+
+logger = logging.getLogger(__name__)
 
 _pandas = None
 
@@ -50,15 +61,16 @@ def lazy_import_pandas():
     return _pandas
 
 
-class PandasRow(TableRow):
+class PandasRow(Mapping):
     """
     Row of a tabular Dataset backed by a Pandas DataFrame block.
     """
 
+    def __init__(self, row: Any):
+        self._row = row
+
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
         from ray.data.extensions import TensorArrayElement
-
-        pd = lazy_import_pandas()
 
         def get_item(keys: List[str]) -> Any:
             col = self._row[keys]
@@ -69,14 +81,16 @@ class PandasRow(TableRow):
             if isinstance(items.iloc[0], TensorArrayElement):
                 # Getting an item in a Pandas tensor column may return
                 # a TensorArrayElement, which we have to convert to an ndarray.
-                return pd.Series(item.to_numpy() for item in items)
+                return tuple(item.to_numpy() for item in items)
 
             try:
                 # Try to interpret this as a numpy-type value.
                 # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
-                return pd.Series(item.as_py() for item in items)
+                return tuple(item for item in items)
 
-            except (AttributeError, ValueError):
+            except (AttributeError, ValueError) as e:
+                logger.warning(f"Failed to convert {items} to a tuple", exc_info=e)
+
                 # Fallback to the original form.
                 return items
 
@@ -87,8 +101,9 @@ class PandasRow(TableRow):
 
         if items is None:
             return None
+
         elif is_single_item:
-            return items.iloc[0]
+            return items[0]
         else:
             return items
 
@@ -99,6 +114,182 @@ class PandasRow(TableRow):
     def __len__(self):
         return self._row.shape[1]
 
+    def as_pydict(self) -> Dict[str, Any]:
+        pydict: Dict[str, Any] = {}
+        for key, value in self.items():
+            # Convert NA to None for consistency across block formats. `pd.isna`
+            # returns True for both NA and NaN, but since we want to preserve NaN
+            # values, we check for identity instead.
+            if is_scalar(value) and value is pd.NA:
+                pydict[key] = None
+            else:
+                pydict[key] = value
+
+        return pydict
+
+    def __str__(self):
+        return row_str(self)
+
+    def __repr__(self):
+        return row_repr(self)
+
+    def _repr_pretty_(self, p, cycle):
+        return row_repr_pretty(self, p, cycle)
+
+
+class PandasBlockColumnAccessor(BlockColumnAccessor):
+    def __init__(self, col: "pandas.Series"):
+        super().__init__(col)
+
+    def count(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        return self._column.count() if ignore_nulls else len(self._column)
+
+    def sum(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        # NOTE: Pandas ``Series`` isn't able to properly handle the case with
+        #       all-null/NaN values in the column, hence we have to handle it here
+        if self._is_all_null():
+            return None
+
+        # NOTE: We pass `min_count=1` to workaround quirky Pandas behavior,
+        #       where (by default) when min_count=0 it will return 0.0 for
+        #       all-null/NaN series
+        return self._column.sum(skipna=ignore_nulls, min_count=1)
+
+    def min(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        # NOTE: Pandas ``Series`` isn't able to properly handle the case with
+        #       all-null/NaN values in the column, hence we have to handle it here
+        if self._is_all_null():
+            return None
+
+        return self._column.min(skipna=ignore_nulls)
+
+    def max(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        # NOTE: Pandas ``Series`` isn't able to properly handle the case with
+        #       all-null/NaN values in the column, hence we have to handle it here
+        if self._is_all_null():
+            return None
+
+        return self._column.max(skipna=ignore_nulls)
+
+    def mean(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        # NOTE: We manually implement mean here to keep implementation consistent
+        #       with behavior of ``sum`` method returning null if the series
+        #       contains exclusively null values
+        sum_ = self.sum(ignore_nulls=ignore_nulls)
+
+        return (
+            sum_ / self.count(ignore_nulls=ignore_nulls) if not is_null(sum_) else sum_
+        )
+
+    def quantile(
+        self, *, q: float, ignore_nulls: bool, as_py: bool = True
+    ) -> Optional[U]:
+        return self._column.quantile(q=q)
+
+    def value_counts(self) -> Optional[Dict[str, List]]:
+        value_counts = self._column.value_counts()
+        if len(value_counts) == 0:
+            return None
+        return {
+            "values": value_counts.index.tolist(),
+            "counts": value_counts.values.tolist(),
+        }
+
+    def hash(self) -> BlockColumn:
+
+        from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+
+        first_non_null = next((x for x in self._column if x is not None), None)
+        if isinstance(first_non_null, TensorArrayElement):
+            self._column = self._column.apply(lambda x: x.to_numpy())
+
+        import polars as pl
+
+        df = pl.from_pandas(self._column.to_frame())
+        hashes = df.hash_rows().cast(pl.Int64, wrap_numerical=True)
+        return hashes.to_pandas()
+
+    def unique(self) -> BlockColumn:
+
+        pd = lazy_import_pandas()
+
+        try:
+            if self.is_composed_of_lists():
+                # NOTE: Pandas uses hashing internally to compute unique values,
+                #       and hence we have to convert lists into tuples to make
+                #       them hashable
+                col = self._column.map(lambda l: l if l is None else tuple(l))
+            else:
+                col = self._column
+
+            return pd.Series(col.unique())
+        except ValueError as e:
+            if "buffer source array is read-only" in str(e):
+                # NOTE: Pandas < 2.0 somehow tries to update the underlying buffer
+                #       when computing unique values hence failing
+                return pd.Series(self._column.copy().unique())
+            else:
+                raise
+
+    def flatten(self) -> BlockColumn:
+        from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+
+        first_non_null = next((x for x in self._column if x is not None), None)
+        if not isinstance(first_non_null, TensorArrayElement):
+            column = self._column
+        else:
+            column = self._column.apply(
+                lambda x: x.to_numpy() if isinstance(x, TensorArrayElement) else x
+            )
+
+        # NOTE: `Series.explode` explodes empty lists into NaNs, necessitating
+        #       filtering out of empty lists first
+        if self.is_composed_of_lists():
+            mask = column.apply(lambda x: x is not None and len(x) > 0)
+            column = column[mask]
+
+        return column.explode(ignore_index=True)
+
+    def dropna(self) -> BlockColumn:
+        return self._column.dropna()
+
+    def sum_of_squared_diffs_from_mean(
+        self,
+        ignore_nulls: bool,
+        mean: Optional[U] = None,
+        as_py: bool = True,
+    ) -> Optional[U]:
+        if mean is None:
+            mean = self.mean(ignore_nulls=ignore_nulls)
+
+        if is_null(mean):
+            return mean
+
+        return ((self._column - mean) ** 2).sum(skipna=ignore_nulls)
+
+    def to_pylist(self) -> List[Any]:
+        return self._column.to_list()
+
+    def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
+        """NOTE: Unlike Arrow, specifying `zero_copy_only=True` isn't a guarantee
+        that no copy will be made
+        """
+
+        return self._column.to_numpy(copy=not zero_copy_only)
+
+    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+        return self.to_pylist()
+
+    def _is_all_null(self):
+        return not self._column.notna().any()
+
+    def is_composed_of_lists(self) -> bool:
+        from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+
+        types = (list, np.ndarray, TensorArrayElement)
+        first_non_null = next((x for x in self._column if x is not None), None)
+        return isinstance(first_non_null, types)
+
 
 class PandasBlockBuilder(TableBlockBuilder):
     def __init__(self):
@@ -107,18 +298,24 @@ class PandasBlockBuilder(TableBlockBuilder):
 
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
-        pandas = lazy_import_pandas()
-        for key, value in columns.items():
-            if key == TENSOR_COLUMN_NAME or isinstance(
-                next(iter(value), None), np.ndarray
-            ):
-                from ray.data.extensions.tensor_extension import TensorArray
+        from ray.data.extensions.tensor_extension import TensorArray
 
-                columns[key] = TensorArray(value)
-        return pandas.DataFrame(columns)
+        pandas = lazy_import_pandas()
+
+        return pandas.DataFrame(
+            {
+                column_name: (
+                    TensorArray(convert_to_numpy(column_values))
+                    if len(column_values) > 0
+                    and _should_convert_to_tensor(column_values, column_name)
+                    else column_values
+                )
+                for column_name, column_values in columns.items()
+            }
+        )
 
     @staticmethod
-    def _concat_tables(tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
+    def _combine_tables(tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         from ray.air.util.data_batch_conversion import (
             _cast_ndarray_columns_to_tensor_extension,
@@ -129,9 +326,11 @@ class PandasBlockBuilder(TableBlockBuilder):
             df.reset_index(drop=True, inplace=True)
         else:
             df = tables[0]
+
         ctx = DataContext.get_current()
         if ctx.enable_tensor_extension_casting:
             df = _cast_ndarray_columns_to_tensor_extension(df)
+
         return df
 
     @staticmethod
@@ -142,6 +341,9 @@ class PandasBlockBuilder(TableBlockBuilder):
     def _empty_table() -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         return pandas.DataFrame()
+
+    def block_type(self) -> BlockType:
+        return BlockType.PANDAS
 
 
 # This is to be compatible with pyarrow.lib.schema
@@ -155,27 +357,25 @@ class PandasBlockAccessor(TableBlockAccessor):
     def __init__(self, table: "pandas.DataFrame"):
         super().__init__(table)
 
+    def _get_row(self, index: int) -> PandasRow:
+        base_row = self.slice(index, index + 1, copy=False)
+        return PandasRow(base_row)
+
     def column_names(self) -> List[str]:
         return self._table.columns.tolist()
 
-    def append_column(self, name: str, data: Any) -> Block:
-        assert name not in self._table.columns
-
-        if any(isinstance(item, np.ndarray) for item in data):
-            raise NotImplementedError(
-                f"`{self.__class__.__name__}.append_column()` doesn't support "
-                "array-like data."
-            )
-
-        table = self._table.copy()
-        table[name] = data
-        return table
+    def fill_column(self, name: str, value: Any) -> Block:
+        # Check if value is array-like - if so, use upsert_column logic
+        if isinstance(value, (pd.Series, np.ndarray)):
+            return self.upsert_column(name, value)
+        # Scalar value - use original fill_column logic
+        return self._table.assign(**{name: value})
 
     @staticmethod
-    def _build_tensor_row(row: PandasRow) -> np.ndarray:
+    def _build_tensor_row(row: PandasRow, row_idx: int) -> np.ndarray:
         from ray.data.extensions import TensorArrayElement
 
-        tensor = row[TENSOR_COLUMN_NAME].iloc[0]
+        tensor = row[TENSOR_COLUMN_NAME].iloc[row_idx]
         if isinstance(tensor, TensorArrayElement):
             # Getting an item in a Pandas tensor column may return a TensorArrayElement,
             # which we have to convert to an ndarray.
@@ -194,6 +394,9 @@ class PandasBlockAccessor(TableBlockAccessor):
         table.reset_index(drop=True, inplace=True)
         return table
 
+    def drop(self, columns: List[str]) -> Block:
+        return self._table.drop(columns, axis="columns")
+
     def select(self, columns: List[str]) -> "pandas.DataFrame":
         if not all(isinstance(col, str) for col in columns):
             raise ValueError(
@@ -201,6 +404,19 @@ class PandasBlockAccessor(TableBlockAccessor):
                 f"Pandas blocks, but got: {columns}."
             )
         return self._table[columns]
+
+    def rename_columns(self, columns_rename: Dict[str, str]) -> "pandas.DataFrame":
+        return self._table.rename(columns=columns_rename, inplace=False, copy=False)
+
+    def upsert_column(
+        self, column_name: str, column_data: BlockColumn
+    ) -> "pandas.DataFrame":
+        import pyarrow
+
+        if isinstance(column_data, (pyarrow.Array, pyarrow.ChunkedArray)):
+            column_data = column_data.to_pandas()
+
+        return self._table.assign(**{column_name: column_data})
 
     def random_shuffle(self, random_seed: Optional[int]) -> "pandas.DataFrame":
         table = self._table.sample(frac=1, random_state=random_seed)
@@ -243,8 +459,9 @@ class PandasBlockAccessor(TableBlockAccessor):
             columns = [columns]
             should_be_single_ndarray = True
 
+        column_names_set = set(self._table.columns)
         for column in columns:
-            if column not in self._table.columns:
+            if column not in column_names_set:
                 raise ValueError(
                     f"Cannot find column {column}, available columns: "
                     f"{self._table.columns.tolist()}"
@@ -261,15 +478,149 @@ class PandasBlockAccessor(TableBlockAccessor):
         return arrays
 
     def to_arrow(self) -> "pyarrow.Table":
-        import pyarrow
+        import pyarrow as pa
 
-        return pyarrow.table(self._table)
+        from ray.air.util.tensor_extensions.pandas import TensorDtype
+
+        # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
+        # column to the resulting table.
+        arrow_table = pa.Table.from_pandas(self._table, preserve_index=False)
+
+        # NOTE: Pandas by default coerces all-null column types (including None,
+        #       NaN, etc) into "double" type by default, which is incorrect in a
+        #       a lot of cases.
+        #
+        #       To fix that, we traverse all the columns after conversion and
+        #       replace all-null ones with the column of null-type that allows
+        #       these columns to be properly combined with the same column
+        #       containing non-null values and carrying appropriate type later.
+        null_coerced_columns = {}
+
+        for idx, col_name in enumerate(self._table.columns):
+            col = self._table[col_name]
+
+            # Skip coercing tensors to null-type to avoid type information loss
+            # See https://github.com/ray-project/ray/issues/59087 for context
+            if isinstance(col.dtype, TensorDtype):
+                continue
+
+            if not col.notna().any():
+                # If there are only null-values, coerce column to Arrow's `NullType`
+                null_coerced_columns[(idx, col_name)] = pa.nulls(
+                    len(col), type=pa.null()
+                )
+
+        # NOTE: We're updating columns in place to preserve any potential metadata
+        #       set from conversion from original Pandas data-frame
+        for (idx, col_name), null_col in null_coerced_columns.items():
+            arrow_table = arrow_table.set_column(idx, col_name, null_col)
+
+        return arrow_table
 
     def num_rows(self) -> int:
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
-        return int(self._table.memory_usage(index=True, deep=True).sum())
+        from ray.air.util.tensor_extensions.pandas import TensorArray
+        from ray.data.extensions import TensorArrayElement, TensorDtype
+
+        pd = lazy_import_pandas()
+
+        def get_deep_size(obj):
+            """Calculates the memory size of objects,
+            including nested objects using an iterative approach."""
+            seen = set()
+            total_size = 0
+            objects = collections.deque([obj])
+            while objects:
+                current = objects.pop()
+
+                # Skip interning-eligible immutable objects
+                if isinstance(current, (str, bytes, int, float)):
+                    size = sys.getsizeof(current)
+                    total_size += size
+                    continue
+
+                # Check if the object has been seen before
+                # i.e. a = np.ndarray([1,2,3]), b = [a,a]
+                # The patten above will have only one memory copy
+                if id(current) in seen:
+                    continue
+                seen.add(id(current))
+
+                try:
+                    size = sys.getsizeof(current)
+                except TypeError:
+                    size = 0
+                total_size += size
+
+                # Handle specific cases
+                if isinstance(current, np.ndarray):
+                    total_size += current.nbytes - size  # Avoid double counting
+                elif isinstance(current, pd.DataFrame):
+                    total_size += (
+                        current.memory_usage(index=True, deep=True).sum() - size
+                    )
+                elif isinstance(current, (list, tuple, set)):
+                    objects.extend(current)
+                elif isinstance(current, dict):
+                    objects.extend(current.keys())
+                    objects.extend(current.values())
+                elif isinstance(current, TensorArrayElement):
+                    objects.extend(current.to_numpy())
+            return total_size
+
+        # Get initial memory usage.
+        # No need for deep inspection here, as we will handle the str, object and
+        # extension columns separately.
+        memory_usage = self._table.memory_usage(index=True, deep=False)
+
+        # TensorDtype for ray.air.util.tensor_extensions.pandas.TensorDtype
+        object_need_check = (TensorDtype,)
+        max_sample_count = _PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT
+
+        # Handle object columns separately
+        for column in self._table.columns:
+            # For str, object and extension dtypes, we calculate the size
+            # by sampling the data.
+            dtype = self._table[column].dtype
+            if (
+                is_string_dtype(dtype)
+                or is_object_dtype(dtype)
+                or isinstance(dtype, object_need_check)
+            ):
+                total_size = len(self._table[column])
+
+                # Determine the sample size based on max_sample_count
+                sample_size = min(total_size, max_sample_count)
+                # Skip size calculation for empty columns
+                if sample_size == 0:
+                    continue
+                # Following codes can also handel case that sample_size == total_size
+                sampled_data = self._table[column].sample(n=sample_size).values
+
+                try:
+                    if isinstance(sampled_data, TensorArray) and np.issubdtype(
+                        sampled_data[0].numpy_dtype, np.number
+                    ):
+                        column_memory_sample = sampled_data.nbytes
+                    else:
+                        vectorized_size_calc = np.vectorize(lambda x: get_deep_size(x))
+                        column_memory_sample = np.sum(
+                            vectorized_size_calc(sampled_data)
+                        )
+                    # Scale back to the full column size if we sampled
+                    column_memory = column_memory_sample * (total_size / sample_size)
+                    # Add the data memory usage on top of the index memory usage.
+                    memory_usage[column] += int(column_memory)
+                except Exception as e:
+                    # Handle or log the exception as needed
+                    logger.warning(f"Error calculating size for column '{column}': {e}")
+
+        # Sum up total memory usage
+        total_memory_usage = memory_usage.sum()
+
+        return int(total_memory_usage)
 
     def _zip(self, acc: BlockAccessor) -> "pandas.DataFrame":
         r = self.to_pandas().copy(deep=False)
@@ -299,187 +650,37 @@ class PandasBlockAccessor(TableBlockAccessor):
     def _sample(self, n_samples: int, sort_key: "SortKey") -> "pandas.DataFrame":
         return self._table[sort_key.get_columns()].sample(n_samples, ignore_index=True)
 
-    def _apply_agg(
-        self, agg_fn: Callable[["pandas.Series", bool], U], on: str
-    ) -> Optional[U]:
-        """Helper providing null handling around applying an aggregation to a column."""
-        pd = lazy_import_pandas()
-        if on is not None and not isinstance(on, str):
-            raise ValueError(
-                "on must be a string or None when aggregating on Pandas blocks, but "
-                f"got: {type(on)}."
-            )
+    def sort(self, sort_key: "SortKey"):
+        assert (
+            sort_key.get_columns()
+        ), f"Sorting columns couldn't be empty (got {sort_key.get_columns()})"
 
-        if self.num_rows() == 0:
-            return None
+        if self._table.shape[0] == 0:
+            return self._empty_table()
 
-        col = self._table[on]
-        try:
-            val = agg_fn(col)
-        except TypeError as e:
-            # Converting an all-null column in an Arrow Table to a Pandas DataFrame
-            # column will result in an all-None column of object type, which will raise
-            # a type error when attempting to do most binary operations. We explicitly
-            # check for this type failure here so we can properly propagate a null.
-            if np.issubdtype(col.dtype, np.object_) and col.isnull().all():
-                return None
-            raise e from None
-        if pd.isnull(val):
-            return None
-        return val
-
-    def count(self, on: str) -> Optional[U]:
-        return self._apply_agg(lambda col: col.count(), on)
-
-    def sum(self, on: str, ignore_nulls: bool) -> Optional[U]:
-        pd = lazy_import_pandas()
-        if on is not None and not isinstance(on, str):
-            raise ValueError(
-                "on must be a string or None when aggregating on Pandas blocks, but "
-                f"got: {type(on)}."
-            )
-
-        if self.num_rows() == 0:
-            return None
-
-        col = self._table[on]
-        if col.isnull().all():
-            # Short-circuit on an all-null column, returning None. This is required for
-            # sum() since it will otherwise return 0 when summing on an all-null column,
-            # which is not what we want.
-            return None
-        val = col.sum(skipna=ignore_nulls)
-        if pd.isnull(val):
-            return None
-        return val
-
-    def min(self, on: str, ignore_nulls: bool) -> Optional[U]:
-        return self._apply_agg(lambda col: col.min(skipna=ignore_nulls), on)
-
-    def max(self, on: str, ignore_nulls: bool) -> Optional[U]:
-        return self._apply_agg(lambda col: col.max(skipna=ignore_nulls), on)
-
-    def mean(self, on: str, ignore_nulls: bool) -> Optional[U]:
-        return self._apply_agg(lambda col: col.mean(skipna=ignore_nulls), on)
-
-    def sum_of_squared_diffs_from_mean(
-        self,
-        on: str,
-        ignore_nulls: bool,
-        mean: Optional[U] = None,
-    ) -> Optional[U]:
-        if mean is None:
-            mean = self.mean(on, ignore_nulls)
-        return self._apply_agg(
-            lambda col: ((col - mean) ** 2).sum(skipna=ignore_nulls),
-            on,
-        )
+        columns, ascending = sort_key.to_pandas_sort_args()
+        return self._table.sort_values(by=columns, ascending=ascending)
 
     def sort_and_partition(
         self, boundaries: List[T], sort_key: "SortKey"
     ) -> List[Block]:
-        if self._table.shape[0] == 0:
+        table = self.sort(sort_key)
+
+        if table.shape[0] == 0:
             # If the pyarrow table is empty we may not have schema
             # so calling sort_indices() will raise an error.
             return [self._empty_table() for _ in range(len(boundaries) + 1)]
-
-        columns, ascending = sort_key.to_pandas_sort_args()
-        table = self._table.sort_values(by=columns, ascending=ascending)
-        if len(boundaries) == 0:
+        elif len(boundaries) == 0:
             return [table]
 
-        return find_partitions(table, boundaries, sort_key)
-
-    def combine(
-        self, key: Union[str, List[str]], aggs: Tuple["AggregateFn"]
-    ) -> "pandas.DataFrame":
-        """Combine rows with the same key into an accumulator.
-
-        This assumes the block is already sorted by key in ascending order.
-
-        Args:
-            key: A column name or list of column names.
-            If this is ``None``, place all rows in a single group.
-
-            aggs: The aggregations to do.
-
-        Returns:
-            A sorted block of [k, v_1, ..., v_n] columns where k is the groupby
-            key and v_i is the partially combined accumulator for the ith given
-            aggregation.
-            If key is None then the k column is omitted.
-        """
-        if key is not None and not isinstance(key, (str, list)):
-            raise ValueError(
-                "key must be a string, list of strings or None when aggregating "
-                "on Pandas blocks, but "
-                f"got: {type(key)}."
-            )
-
-        def iter_groups() -> Iterator[Tuple[KeyType, Block]]:
-            """Creates an iterator over zero-copy group views."""
-            if key is None:
-                # Global aggregation consists of a single "group", so we short-circuit.
-                yield None, self.to_block()
-                return
-
-            start = end = 0
-            iter = self.iter_rows(public_row_format=False)
-            next_row = None
-            while True:
-                try:
-                    if next_row is None:
-                        next_row = next(iter)
-                    next_key = next_row[key]
-                    while np.all(next_row[key] == next_key):
-                        end += 1
-                        try:
-                            next_row = next(iter)
-                        except StopIteration:
-                            next_row = None
-                            break
-                    yield next_key, self.slice(start, end, copy=False)
-                    start = end
-                except StopIteration:
-                    break
-
-        builder = PandasBlockBuilder()
-        for group_key, group_view in iter_groups():
-            # Aggregate.
-            accumulators = [agg.init(group_key) for agg in aggs]
-            for i in range(len(aggs)):
-                accumulators[i] = aggs[i].accumulate_block(accumulators[i], group_view)
-
-            # Build the row.
-            row = {}
-            if key is not None:
-                if isinstance(key, list):
-                    keys = key
-                    group_keys = group_key
-                else:
-                    keys = [key]
-                    group_keys = [group_key]
-
-                for k, gk in zip(keys, group_keys):
-                    row[k] = gk
-
-            count = collections.defaultdict(int)
-            for agg, accumulator in zip(aggs, accumulators):
-                name = agg.name
-                # Check for conflicts with existing aggregation name.
-                if count[name] > 0:
-                    name = self._munge_conflict(name, count[name])
-                count[name] += 1
-                row[name] = accumulator
-
-            builder.add(row)
-
-        return builder.build()
+        return BlockAccessor.for_block(table)._find_partitions_sorted(
+            boundaries, sort_key
+        )
 
     @staticmethod
     def merge_sorted_blocks(
         blocks: List[Block], sort_key: "SortKey"
-    ) -> Tuple["pandas.DataFrame", BlockMetadata]:
+    ) -> Tuple[Block, "BlockMetadataWithSchema"]:
         pd = lazy_import_pandas()
         stats = BlockExecStats.builder()
         blocks = [b for b in blocks if b.shape[0] > 0]
@@ -487,124 +688,39 @@ class PandasBlockAccessor(TableBlockAccessor):
             ret = PandasBlockAccessor._empty_table()
         else:
             # Handle blocks of different types.
-            blocks = TableBlockAccessor.normalize_block_types(blocks, "pandas")
+            blocks = TableBlockAccessor.normalize_block_types(blocks, BlockType.PANDAS)
             ret = pd.concat(blocks, ignore_index=True)
             columns, ascending = sort_key.to_pandas_sort_args()
             ret = ret.sort_values(by=columns, ascending=ascending)
-        return ret, PandasBlockAccessor(ret).get_metadata(
-            None, exec_stats=stats.build()
+        from ray.data.block import BlockMetadataWithSchema
+
+        return ret, BlockMetadataWithSchema.from_block(ret, stats=stats.build())
+
+    def block_type(self) -> BlockType:
+        return BlockType.PANDAS
+
+    def iter_rows(
+        self, public_row_format: bool
+    ) -> Iterator[Union[Mapping, np.ndarray]]:
+        num_rows = self.num_rows()
+        for i in range(num_rows):
+            row = self._get_row(i)
+            if public_row_format:
+                yield row.as_pydict()
+            else:
+                yield row
+
+    def filter(self, predicate_expr: "Expr") -> "pandas.DataFrame":
+        """Filter rows based on a predicate expression."""
+        if self._table.empty:
+            return self._table
+
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            eval_expr,
         )
 
-    @staticmethod
-    def aggregate_combined_blocks(
-        blocks: List["pandas.DataFrame"],
-        key: Union[str, List[str]],
-        aggs: Tuple["AggregateFn"],
-        finalize: bool,
-    ) -> Tuple["pandas.DataFrame", BlockMetadata]:
-        """Aggregate sorted, partially combined blocks with the same key range.
+        # Evaluate the expression to get a boolean mask
+        mask = eval_expr(predicate_expr, self._table)
 
-        This assumes blocks are already sorted by key in ascending order,
-        so we can do merge sort to get all the rows with the same key.
-
-        Args:
-            blocks: A list of partially combined and sorted blocks.
-            key: The column name of key or None for global aggregation.
-            aggs: The aggregations to do.
-            finalize: Whether to finalize the aggregation. This is used as an
-                optimization for cases where we repeatedly combine partially
-                aggregated groups.
-
-        Returns:
-            A block of [k, v_1, ..., v_n] columns and its metadata where k is
-            the groupby key and v_i is the corresponding aggregation result for
-            the ith given aggregation.
-            If key is None then the k column is omitted.
-        """
-
-        stats = BlockExecStats.builder()
-        keys = key if isinstance(key, list) else [key]
-        key_fn = (
-            (lambda r: tuple(r[r._row.columns[: len(keys)]]))
-            if key is not None
-            else (lambda r: (0,))
-        )
-
-        # Handle blocks of different types.
-        blocks = TableBlockAccessor.normalize_block_types(blocks, "pandas")
-
-        iter = heapq.merge(
-            *[
-                PandasBlockAccessor(block).iter_rows(public_row_format=False)
-                for block in blocks
-            ],
-            key=key_fn,
-        )
-        next_row = None
-        builder = PandasBlockBuilder()
-        while True:
-            try:
-                if next_row is None:
-                    next_row = next(iter)
-                next_keys = key_fn(next_row)
-                next_key_names = (
-                    next_row._row.columns[: len(keys)] if key is not None else None
-                )
-
-                def gen():
-                    nonlocal iter
-                    nonlocal next_row
-                    while key_fn(next_row) == next_keys:
-                        yield next_row
-                        try:
-                            next_row = next(iter)
-                        except StopIteration:
-                            next_row = None
-                            break
-
-                # Merge.
-                first = True
-                accumulators = [None] * len(aggs)
-                resolved_agg_names = [None] * len(aggs)
-                for r in gen():
-                    if first:
-                        count = collections.defaultdict(int)
-                        for i in range(len(aggs)):
-                            name = aggs[i].name
-                            # Check for conflicts with existing aggregation
-                            # name.
-                            if count[name] > 0:
-                                name = PandasBlockAccessor._munge_conflict(
-                                    name, count[name]
-                                )
-                            count[name] += 1
-                            resolved_agg_names[i] = name
-                            accumulators[i] = r[name]
-                        first = False
-                    else:
-                        for i in range(len(aggs)):
-                            accumulators[i] = aggs[i].merge(
-                                accumulators[i], r[resolved_agg_names[i]]
-                            )
-                # Build the row.
-                row = {}
-                if key is not None:
-                    for next_key, next_key_name in zip(next_keys, next_key_names):
-                        row[next_key_name] = next_key
-
-                for agg, agg_name, accumulator in zip(
-                    aggs, resolved_agg_names, accumulators
-                ):
-                    if finalize:
-                        row[agg_name] = agg.finalize(accumulator)
-                    else:
-                        row[agg_name] = accumulator
-
-                builder.add(row)
-            except StopIteration:
-                break
-
-        ret = builder.build()
-        return ret, PandasBlockAccessor(ret).get_metadata(
-            None, exec_stats=stats.build()
-        )
+        # Use pandas boolean indexing
+        return self._table[mask]

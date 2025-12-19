@@ -1,24 +1,24 @@
-from collections import defaultdict
-from ray.util.client.server.server_pickler import loads_from_client
-import ray
 import logging
-import grpc
-from queue import Queue
 import sys
-
-from typing import Any, Dict, Iterator, TYPE_CHECKING, Union
-from threading import Event, Lock, Thread
 import time
+from collections import defaultdict
+from queue import Queue
+from threading import Event, Lock, Thread
+from typing import TYPE_CHECKING, Any, Dict, Iterator, Union
 
+import grpc
+
+import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray._private.client_mode_hook import disable_client_hook
 from ray.util.client.common import (
     CLIENT_SERVER_MAX_THREADS,
-    _propagate_error_in_context,
     OrderedResponseCache,
+    _propagate_error_in_context,
 )
+from ray.util.client.server.server_pickler import loads_from_client
 from ray.util.debug import log_once
-from ray._private.client_mode_hook import disable_client_hook
 
 if TYPE_CHECKING:
     from ray.util.client.server.server import RayletServicer
@@ -32,7 +32,7 @@ def _get_reconnecting_from_context(context: Any) -> bool:
     """
     Get `reconnecting` from gRPC metadata, or False if missing.
     """
-    metadata = {k: v for k, v in context.invocation_metadata()}
+    metadata = dict(context.invocation_metadata())
     val = metadata.get("reconnecting")
     if val is None or val not in ("True", "False"):
         logger.error(
@@ -155,7 +155,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         start_time = time.time()
         # set to True if client shuts down gracefully
         cleanup_requested = False
-        metadata = {k: v for k, v in context.invocation_metadata()}
+        metadata = dict(context.invocation_metadata())
         client_id = metadata.get("client_id")
         if client_id is None:
             logger.error("Client connecting with no client_id")
@@ -274,6 +274,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                             req.task, arglist, kwargs, context
                         )
                         resp = ray_client_pb2.DataResponse(task_ticket=resp_ticket)
+                        del arglist
+                        del kwargs
                 elif req_type == "terminate":
                     with self.clients_lock:
                         response = self.basic_service.Terminate(req.terminate, context)

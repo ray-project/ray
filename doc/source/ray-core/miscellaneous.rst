@@ -67,11 +67,11 @@ And specify a name for tasks (and actor methods too) at task submission time:
 
 .. testcode::
 
-   import setproctitle
+   import psutil
 
    @ray.remote
    def f(x):
-      assert setproctitle.getproctitle() == "ray::special_f"
+      assert psutil.Process().cmdline()[0] == "ray::special_f"
       return x + 1
 
    obj = f.options(name="special_f").remote(3)
@@ -246,15 +246,6 @@ Failure to do this will result in the head node hanging. When this happens,
 In Ubuntu, the ARP cache size can be tuned in ``/etc/sysctl.conf`` by increasing
 the value of ``net.ipv4.neigh.default.gc_thresh1`` - ``net.ipv4.neigh.default.gc_thresh3``.
 For more details, please refer to the OS manual.
-
-Tuning Ray Settings
-~~~~~~~~~~~~~~~~~~~
-
-.. note::
-  There is an ongoing `project <https://github.com/ray-project/ray/projects/15>`_ focusing on
-  improving Ray's scalability and stability. Feel free to share your thoughts and use cases.
-
-To run a large cluster, several parameters need to be tuned in Ray.
 
 Benchmark
 ~~~~~~~~~

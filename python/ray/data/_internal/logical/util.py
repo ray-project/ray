@@ -3,7 +3,7 @@ import re
 import threading
 from typing import Dict
 
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
 from ray.data._internal.logical.operators.read_operator import Read
@@ -28,8 +28,14 @@ _op_name_white_list = [
     "ReadNumpy",
     "ReadTFRecord",
     "ReadBinary",
-    "ReadCustom",
     "ReadTorch",
+    "ReadAvro",
+    "ReadWebDataset",
+    "ReadSQL",
+    "ReadDatabricksUC",
+    "ReadLance",
+    "ReadHuggingFace",
+    "ReadCustom",
     # From
     "FromArrow",
     "FromItems",
@@ -43,6 +49,8 @@ _op_name_white_list = [
     "WriteTFRecord",
     "WriteNumpy",
     "WriteMongo",
+    "WriteWebDataset",
+    "WriteSQL",
     "WriteCustom",
     # Map
     "Map",

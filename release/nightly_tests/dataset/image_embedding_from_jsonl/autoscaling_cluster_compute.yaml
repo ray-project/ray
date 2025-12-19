@@ -1,0 +1,24 @@
+# This cluster compute is based on a real user setup.
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+advanced_configurations_json:
+    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+
+head_node_type:
+    name: head-node
+    instance_type: r6a.8xlarge
+    resources:
+      cpu: 0
+
+worker_node_types:
+    - name: cpu-node
+      instance_type: r6a.8xlarge
+      min_workers: 0
+      max_workers: 100
+      use_spot: false
+    - name: gpu-node
+      instance_type: g5.4xlarge
+      min_workers: 0
+      max_workers: 40
+      use_spot: false

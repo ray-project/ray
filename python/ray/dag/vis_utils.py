@@ -1,8 +1,7 @@
-from ray.dag import DAGNode
-
 import os
 import tempfile
 
+from ray.dag import DAGNode
 from ray.dag.utils import _DAGNodeNameGenerator
 from ray.util.annotations import DeveloperAPI
 
@@ -49,7 +48,7 @@ def _check_pydot_and_graphviz():
         import pydot
     except ImportError:
         raise ImportError(
-            "pydot is required to plot DAG, " "install it with `pip install pydot`."
+            "pydot is required to plot DAG, install it with `pip install pydot`."
         )
     try:
         pydot.Dot.create(pydot.Dot())

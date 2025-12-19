@@ -70,7 +70,7 @@ Named actors are only accessible within their namespaces.
                 Ray.init();
                 // This fails because "orange" was defined in the "colors" namespace.
                 Ray.getActor("orange").isPresent(); // return false
-                // This succceeds because the name "orange" is unused in this namespace.
+                // This succeeds because the name "orange" is unused in this namespace.
                 Ray.actor(Actor::new).setName("orange").remote();
                 Ray.actor(Actor::new).setName("watermelon").remote();
             } finally {
@@ -161,7 +161,7 @@ the specified namespace, no matter what namespace of the current job is.
 
     .. tab-item:: C++
 
-        .. code-block::
+        .. code-block:: c++
 
             // `ray start --head` has been run to launch a local cluster.
             ray::RayConfig config;
@@ -169,8 +169,8 @@ the specified namespace, no matter what namespace of the current job is.
             // Create an actor with specified namespace.
             ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetName("my_actor", "actor_namespace").Remote();
             // It is accessible in its namespace.
-            ray::GetActor<Counter>("orange");
-            ray::Shutdown();`
+            ray::GetActor<Counter>("my_actor", "actor_namespace");
+            ray::Shutdown();
 
 
 Anonymous namespaces

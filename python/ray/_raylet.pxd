@@ -31,6 +31,7 @@ from ray.includes.common cimport (
     CConcurrencyGroup,
     CSchedulingStrategy,
     CLabelMatchExpressions,
+    CTensorTransport,
 )
 from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,
@@ -71,10 +72,21 @@ cdef extern from "Python.h":
     ctypedef struct CPyThreadState "PyThreadState":
         int recursion_limit
         int recursion_remaining
+        int c_recursion_remaining
 
     # From Include/ceveal.h#67
     int Py_GetRecursionLimit()
     void Py_SetRecursionLimit(int)
+
+# Note that `functional.pxd` in the Cython repository supports only a limited subset of
+# <functional>. Therefore, `from libcpp.functional cimport function` is not enough, and we
+# still need to expose some functions here.
+cdef extern from "<functional>" namespace "std" nogil:
+    T bind[T, Args](T callable, Args args)
+    # Reference: https://github.com/scipy/scipy/blob/6b56162fa6880b0182faea44af88d6a1587f35a8/scipy/stats/_qmc_cy.pyx#L31-L34
+    cdef cppclass reference_wrapper[T]:
+        pass
+    cdef reference_wrapper[T] ref[T](T&)
 
 cdef class Buffer:
     cdef:
@@ -99,8 +111,11 @@ cdef class ObjectRef(BaseID):
         # it up.
         c_bool in_core_worker
         c_string call_site_data
+        int tensor_transport_val
 
     cdef CObjectID native(self)
+
+    cdef CTensorTransport c_tensor_transport(self)
 
 cdef class ActorID(BaseID):
     cdef CActorID data
@@ -115,7 +130,6 @@ cdef class CoreWorker:
         c_bool is_driver
         object async_thread
         object async_event_loop
-        object plasma_event_handler
         object job_config
         object current_runtime_env
         c_bool is_local_mode
@@ -127,15 +141,8 @@ cdef class CoreWorker:
         object _task_id_to_future_lock
         dict _task_id_to_future
         object event_loop_executor
+        object _gc_thread
 
-    cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
-                            size_t data_size, ObjectRef object_ref,
-                            c_vector[CObjectID] contained_ids,
-                            CObjectID *c_object_id, shared_ptr[CBuffer] *data,
-                            c_bool created_by_worker,
-                            owner_address=*,
-                            c_bool inline_small_object=*,
-                            c_bool is_experimental_channel=*)
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
     cdef store_task_output(
             self, serialized_object,
@@ -150,8 +157,11 @@ cdef class CoreWorker:
             worker, outputs,
             const CAddress &caller_address,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
-            CObjectID ref_generator_id=*)
-    cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle)
+            ref_generator_id=*, # CObjectID
+            CTensorTransport c_tensor_transport=*,
+        )
+    cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle,
+                           c_bool weak_ref)
     cdef c_function_descriptors_to_python(
         self, const c_vector[CFunctionDescriptor] &c_function_descriptors)
     cdef initialize_eventloops_for_actor_concurrency_group(

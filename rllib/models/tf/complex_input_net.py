@@ -1,6 +1,6 @@
-from gymnasium.spaces import Box, Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
+from gymnasium.spaces import Box, Discrete, MultiDiscrete
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2, restore_original_dimensions
@@ -98,7 +98,7 @@ class ComplexInputNetwork(TFModelV2):
                 concat_size += int(self.one_hot[i].num_outputs)
             # Everything else (1D Box).
             else:
-                size = int(np.product(component.shape))
+                size = int(np.prod(component.shape))
                 config = {
                     "fcnet_hiddens": model_config["fcnet_hiddens"],
                     "fcnet_activation": model_config.get("fcnet_activation"),

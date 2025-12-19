@@ -1,12 +1,14 @@
 import abc
-from typing import Dict, Any, Optional, List
+import os
+from typing import Any, Dict, List, Optional
+
+from click.exceptions import ClickException
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.file_manager.file_manager import FileManager
+from ray_release.logger import logger
 from ray_release.reporter.artifacts import DEFAULT_ARTIFACTS_DIR
 from ray_release.util import exponential_backoff_retry
-from ray_release.logger import logger
-from click.exceptions import ClickException
 
 
 class CommandRunner(abc.ABC):
@@ -47,6 +49,7 @@ class CommandRunner(abc.ABC):
             "TEST_OUTPUT_JSON": self._RESULT_OUTPUT_JSON,
             "METRICS_OUTPUT_JSON": self._METRICS_OUTPUT_JSON,
             "USER_GENERATED_ARTIFACT": self._USER_GENERATED_ARTIFACT,
+            "BUILDKITE_BRANCH": os.environ.get("BUILDKITE_BRANCH", ""),
         }
 
     def get_full_command_env(self, env: Optional[Dict] = None):
@@ -56,10 +59,6 @@ class CommandRunner(abc.ABC):
             full_env.update(env)
 
         return full_env
-
-    def prepare_local_env(self, ray_wheels_url: Optional[str] = None):
-        """Prepare local environment, e.g. install dependencies."""
-        raise NotImplementedError
 
     def prepare_remote_env(self):
         """Prepare remote environment, e.g. upload files."""

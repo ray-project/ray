@@ -3,13 +3,12 @@ import os
 import subprocess
 import sys
 import time
+from unittest.mock import MagicMock
 
 import pytest
 
-from mock import MagicMock
-
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler.v2.autoscaler import Autoscaler
@@ -122,7 +121,9 @@ def test_basic_scaling(make_autoscaler):
 
     # Resource requests
     print("=================== Test scaling up constraint 1/2====================")
-    request_cluster_resources(gcs_address, [{"CPU": 1}, {"GPU": 1}])
+    request_cluster_resources(
+        gcs_address, [{"resources": {"CPU": 1}}, {"resources": {"GPU": 1}}]
+    )
 
     def verify():
         autoscaler.update_autoscaling_state()

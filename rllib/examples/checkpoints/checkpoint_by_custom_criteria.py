@@ -1,21 +1,21 @@
 """Example extracting a checkpoint from n trials using one or more custom criteria.
 
 This example:
-- runs a simple CartPole experiment with three different learning rates (three tune
-"trials"). During the experiment, for each trial, we create a checkpoint at each
-iteration.
-- at the end of the experiment, we compare the trials and pick the one that performed
-best, based on the criterion: Lowest episode count per single iteration (for CartPole,
-a low episode count means the episodes are very long and thus the reward is also very
-high).
-- from that best trial (with the lowest episode count), we then pick those checkpoints
-that a) have the lowest policy loss (good) and b) have the highest value function loss
-(bad).
+    - runs a CartPole experiment with three different learning rates (three tune
+    "trials"). During the experiment, for each trial, we create a checkpoint at each
+    iteration.
+    - at the end of the experiment, we compare the trials and pick the one that
+    performed best, based on the criterion: Lowest episode count per single iteration
+    (for CartPole, a low episode count means the episodes are very long and thus the
+    reward is also very high).
+    - from that best trial (with the lowest episode count), we then pick those
+    checkpoints that a) have the lowest policy loss (good) and b) have the highest value
+    function loss (bad).
 
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -58,14 +58,22 @@ rates used here:
 """
 
 from ray import tune
-from ray.rllib.utils.test_utils import (
+from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
+)
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    LEARNER_RESULTS,
 )
 from ray.tune.registry import get_trainable_cls
 
 parser = add_rllib_example_script_args(
-    default_reward=450.0, default_timesteps=100000, default_iters=200
+    default_reward=450.0,
+    default_timesteps=100000,
+    default_iters=200,
 )
 
 
@@ -96,13 +104,13 @@ if __name__ == "__main__":
     # iterations with each other, respectively.
     # Setting scope to "avg" will compare (using `mode`=min|max) the average
     # values over the entire run.
-    metric = "episodes_this_iter"
+    metric = "env_runners/num_episodes"
     # notice here `scope` is `all`, meaning for each trial,
     # all results (not just the last one) will be examined.
     best_result = results.get_best_result(metric=metric, mode="min", scope="all")
     value_best_metric = best_result.metrics_dataframe[metric].min()
     best_return_best = best_result.metrics_dataframe[
-        "sampler_results/episode_reward_mean"
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
     ].max()
     print(
         f"Best trial was the one with lr={best_result.metrics['config']['lr']}. "
@@ -111,12 +119,16 @@ if __name__ == "__main__":
     )
 
     # Confirm, we picked the right trial.
-    assert value_best_metric == results.get_dataframe()[metric].min()
+
+    assert (
+        value_best_metric
+        == results.get_dataframe(filter_metric=metric, filter_mode="min")[metric].min()
+    )
 
     # Get the best checkpoints from the trial, based on different metrics.
     # Checkpoint with the lowest policy loss value:
-    if args.enable_new_api_stack:
-        policy_loss_key = "info/learner/default_policy/policy_loss"
+    if not args.old_api_stack:
+        policy_loss_key = f"{LEARNER_RESULTS}/{DEFAULT_MODULE_ID}/policy_loss"
     else:
         policy_loss_key = "info/learner/default_policy/learner_stats/policy_loss"
     best_result = results.get_best_result(metric=policy_loss_key, mode="min")
@@ -125,8 +137,8 @@ if __name__ == "__main__":
     print(f"Checkpoint w/ lowest policy loss ({lowest_policy_loss}): {ckpt}")
 
     # Checkpoint with the highest value-function loss:
-    if args.enable_new_api_stack:
-        vf_loss_key = "info/learner/default_policy/vf_loss"
+    if not args.old_api_stack:
+        vf_loss_key = f"{LEARNER_RESULTS}/{DEFAULT_MODULE_ID}/vf_loss"
     else:
         vf_loss_key = "info/learner/default_policy/learner_stats/vf_loss"
     best_result = results.get_best_result(metric=vf_loss_key, mode="max")

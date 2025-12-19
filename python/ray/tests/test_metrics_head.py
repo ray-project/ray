@@ -2,31 +2,59 @@
 import json
 import logging
 import os
-import pytest
 import sys
 import tempfile
 
+import pytest
+
+from ray._common.utils import get_ray_temp_dir
+from ray._private.ray_constants import SESSION_LATEST
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
-    DEFAULT_GRAFANA_PANELS,
+    DEFAULT_GRAFANA_ROWS,
+    MAX_PERCENTAGE_EXPRESSION,
 )
 from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
     SERVE_GRAFANA_PANELS,
 )
 from ray.tests.conftest import _ray_start
 
-
 logger = logging.getLogger(__name__)
 
 
-def test_metrics_folder():
+@pytest.mark.parametrize(
+    "is_temp_dir_set, temp_dir_val",
+    [
+        (False, ""),
+        pytest.param(
+            True,
+            "/tmp/test-temp-dir",
+            marks=pytest.mark.skipif(
+                sys.platform == "win32", reason="Path doesn't apply to Windows"
+            ),
+        ),
+    ],
+)
+def test_metrics_folder_and_content(is_temp_dir_set, temp_dir_val):
     """
-    Tests that the default dashboard files get created.
+    Tests that the default dashboard files get created. It also verifies paths in the
+    dashboard config files are set correctly.
+
+    It checks both the default case and the case where the _temp_dir is specified.
     """
-    with _ray_start(include_dashboard=True) as context:
+    with _ray_start(
+        include_dashboard=True, _temp_dir=temp_dir_val if is_temp_dir_set else None
+    ) as context:
         session_dir = context["session_dir"]
+        temp_dir = temp_dir_val if is_temp_dir_set else get_ray_temp_dir()
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml"
         )
+        with open(
+            f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml", "r"
+        ) as f:
+            target_path = os.path.join(session_dir, "metrics", "grafana", "dashboards")
+            assert f"path: {target_path}" in f.read()
+
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/dashboards"
             "/default_grafana_dashboard.json"
@@ -34,8 +62,18 @@ def test_metrics_folder():
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/provisioning/datasources/default.yml"
         )
+
         assert os.path.exists(f"{session_dir}/metrics/grafana/grafana.ini")
+        with open(f"{session_dir}/metrics/grafana/grafana.ini", "r") as f:
+            target_path = os.path.join(
+                temp_dir, SESSION_LATEST, "metrics", "grafana", "provisioning"
+            )
+            assert f"provisioning = {target_path}" in f.read()
+
         assert os.path.exists(f"{session_dir}/metrics/prometheus/prometheus.yml")
+        with open(f"{session_dir}/metrics/prometheus/prometheus.yml", "r") as f:
+            target_path = os.path.join(temp_dir, "prom_metrics_service_discovery.json")
+            assert f"- '{target_path}'" in f.read()
 
 
 @pytest.fixture
@@ -95,7 +133,13 @@ def test_metrics_folder_with_dashboard_override(
             contents = json.loads(f.read())
             assert contents["uid"] == uid
             for panel in contents["panels"]:
+                if panel["type"] == "row":
+                    # Row panels don't have targets
+                    continue
                 for target in panel["targets"]:
+                    if target["expr"] == MAX_PERCENTAGE_EXPRESSION:
+                        # We skip expressions that are constant value targets
+                        continue
                     # Check for standard_global_filters
                     assert 'SessionName=~"$SessionName"' in target["expr"]
                     # Check for custom global_filters
@@ -103,9 +147,34 @@ def test_metrics_folder_with_dashboard_override(
             for variable in contents["templating"]["list"]:
                 if variable["name"] == "datasource":
                     continue
+                if variable["name"] == "RayNodeType":
+                    # RayNodeType uses hardcoded values instead of a query
+                    continue
                 assert global_filters in variable["definition"]
                 assert global_filters in variable["query"]["query"]
             assert "supportsGlobalFilterOverride" in contents["rayMeta"]
+            # Check that panels have some width and height
+            for panel in contents["panels"]:
+                assert panel["gridPos"]["h"] > 0
+                assert panel["gridPos"]["w"] > 0
+            # Check for series overrides for MAX and MAX + PENDING
+            found_max = False
+            found_max_pending = False
+            for panel in contents["panels"]:
+                if panel["type"] == "row":
+                    # Row panels don't have series overrides
+                    continue
+                for override in panel.get("seriesOverrides", []):
+                    if override.get("alias") == "MAX":
+                        assert override["fill"] == 0
+                        assert override["stack"] is False
+                        found_max = True
+                    if override.get("alias") == "MAX + PENDING":
+                        assert override["fill"] == 0
+                        assert override["stack"] is False
+                        found_max_pending = True
+            assert found_max
+            assert found_max_pending
 
         # Serve Dashboard
         with open(f"{override_dashboard_dir}/serve_grafana_dashboard.json") as f:
@@ -151,19 +220,23 @@ def test_metrics_folder_when_dashboard_disabled():
 
 
 def test_default_dashboard_utilizes_global_filters():
-    for panel in DEFAULT_GRAFANA_PANELS:
-        for target in panel.targets:
-            assert "{global_filters}" in target.expr
+    for row in DEFAULT_GRAFANA_ROWS:
+        for panel in row.panels:
+            for target in panel.targets:
+                if target.legend == "MAX" and target.expr == MAX_PERCENTAGE_EXPRESSION:
+                    # We skip expressions that are constant value targets serving as visual aids
+                    continue
+                assert "{global_filters}" in target.expr
 
 
 def test_serve_dashboard_utilizes_global_filters():
     for panel in SERVE_GRAFANA_PANELS:
         for target in panel.targets:
+            if target.legend == "MAX" and target.expr == MAX_PERCENTAGE_EXPRESSION:
+                # We skip expressions that are constant value targets serving as visual aids
+                continue
             assert "{global_filters}" in target.expr
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

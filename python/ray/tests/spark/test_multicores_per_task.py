@@ -1,7 +1,9 @@
-import sys
-import pytest
 import os
+import sys
+
+import pytest
 from pyspark.sql import SparkSession
+
 from ray.tests.spark.test_basic import _setup_ray_on_spark_envs
 from ray.tests.spark.test_GPU import RayOnSparkGPUClusterTestBase
 
@@ -48,7 +50,4 @@ class TestMultiCoresPerTaskCluster(RayOnSparkGPUClusterTestBase):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

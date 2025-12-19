@@ -8,15 +8,14 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from ray._common.utils import binary_to_hex
 from ray._private.ray_constants import env_integer
-from ray._private.utils import binary_to_hex
 from ray._raylet import GcsClient
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     DEFAULT_UPSCALING_SPEED,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
-    WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
 from ray.autoscaler._private.monitor import BASE_READONLY_CONFIG
@@ -128,6 +127,8 @@ class NodeTypeConfig:
     min_worker_nodes: int
     # The maximal number of worker nodes can be launched for this node type.
     max_worker_nodes: int
+    # Idle timeout seconds for worker nodes of this node type.
+    idle_timeout_s: Optional[float] = None
     # The total resources on the node.
     resources: Dict[str, float] = field(default_factory=dict)
     # The labels on the node.
@@ -346,6 +347,7 @@ class AutoscalingConfig:
                 name=node_type,
                 min_worker_nodes=node_config.get("min_workers", 0),
                 max_worker_nodes=max_workers_nodes,
+                idle_timeout_s=node_config.get("idle_timeout_s", None),
                 resources=node_config.get("resources", {}),
                 labels=node_config.get("labels", {}),
                 launch_config_hash=launch_config_hash,
@@ -386,7 +388,7 @@ class AutoscalingConfig:
 
     def disable_node_updaters(self) -> bool:
         provider_config = self._configs.get("provider", {})
-        return provider_config.get(DISABLE_NODE_UPDATERS_KEY, True)
+        return provider_config.get(DISABLE_NODE_UPDATERS_KEY, False)
 
     def get_idle_timeout_s(self) -> Optional[float]:
         """
@@ -398,10 +400,6 @@ class AutoscalingConfig:
     def disable_launch_config_check(self) -> bool:
         provider_config = self.get_provider_config()
         return provider_config.get(DISABLE_LAUNCH_CONFIG_CHECK_KEY, True)
-
-    def worker_rpc_drain(self) -> bool:
-        provider_config = self._configs.get("provider", {})
-        return provider_config.get(WORKER_RPC_DRAIN_KEY, True)
 
     def get_instance_reconcile_config(self) -> InstanceReconcileConfig:
         # TODO(rickyx): we need a way to customize these configs,
@@ -437,10 +435,14 @@ class AutoscalingConfig:
 
     @property
     def runtime_hash(self) -> str:
+        if not hasattr(self, "_runtime_hash"):
+            self._calculate_hashes()
         return self._runtime_hash
 
     @property
     def file_mounts_contents_hash(self) -> str:
+        if not hasattr(self, "_file_mounts_contents_hash"):
+            self._calculate_hashes()
         return self._file_mounts_contents_hash
 
 
@@ -520,16 +522,23 @@ class ReadOnlyProviderConfigReader(IConfigReader):
 
         head_node_type = None
         for node_state in ray_cluster_resource_state.node_states:
-            node_type = format_readonly_node_type(binary_to_hex(node_state.node_id))
+            node_type = node_state.ray_node_type_name
+            if not node_type:
+                node_type = format_readonly_node_type(binary_to_hex(node_state.node_id))
+
             if is_head_node(node_state):
                 head_node_type = node_type
 
-            available_node_types[node_type] = {
-                "resources": dict(node_state.total_resources),
-                "min_workers": 0,
-                "max_workers": 0 if is_head_node(node_state) else 1,
-                "node_config": {},
-            }
+            if node_type not in available_node_types:
+                available_node_types[node_type] = {
+                    "resources": dict(node_state.total_resources),
+                    "min_workers": 0,
+                    "max_workers": 0 if is_head_node(node_state) else 1,
+                    "node_config": {},
+                }
+            elif not is_head_node(node_state):
+                available_node_types[node_type]["max_workers"] += 1
+
         if available_node_types:
             self._configs["available_node_types"].update(available_node_types)
             self._configs["max_workers"] = len(available_node_types)

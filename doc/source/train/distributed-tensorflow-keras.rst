@@ -78,7 +78,7 @@ Create a TensorflowTrainer
 --------------------------
 
 ``Trainer``\s are the primary Ray Train classes for managing state and
-execute training. For distributed Tensorflow,
+execute training. For distributed TensorFlow,
 use a :class:`~ray.train.tensorflow.TensorflowTrainer`
 that you can setup like this:
 
@@ -143,7 +143,7 @@ The main difference is that you may want to convert your Ray Data dataset shard 
 a TensorFlow dataset in your training function so that you can use the Keras
 API for model training.
 
-`See this example <https://github.com/ray-project/ray/blob/master/python/ray/train/examples/tf/tune_tensorflow_autoencoder_example.py>`__
+`See this example <https://github.com/ray-project/ray/blob/master/python/ray/train/examples/tf/tensorflow_autoencoder_example.py>`__
 for distributed data loading. The relevant parts are:
 
 .. testcode::
@@ -338,15 +338,6 @@ Load checkpoints
     )
     result = trainer.fit()
     print(result.checkpoint)
-
-    # Start a new run from a loaded checkpoint
-    trainer = TensorflowTrainer(
-        train_func,
-        train_loop_config={"num_epochs": 5},
-        scaling_config=ScalingConfig(num_workers=2),
-        resume_from_checkpoint=result.checkpoint,
-    )
-    result = trainer.fit()
 
 
 Further reading

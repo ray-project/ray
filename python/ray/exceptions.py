@@ -1,7 +1,8 @@
 import logging
 import os
+import sys
 from traceback import format_exception
-from typing import Optional, Type, Union
+from typing import Optional, Union
 
 import colorama
 
@@ -13,11 +14,10 @@ from ray.core.generated.common_pb2 import (
     ActorDiedErrorContext,
     Address,
     Language,
+    NodeDeathInfo,
     RayException,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
-
-import setproctitle
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +47,16 @@ class RayError(Exception):
         if ray_exception.language == PYTHON:
             try:
                 return pickle.loads(ray_exception.serialized_exception)
-            except Exception as e:
-                msg = "Failed to unpickle serialized exception"
-                raise RuntimeError(msg) from e
+            except Exception:
+                # formatted_exception_string is set in to_bytes() above by calling
+                # traceback.format_exception() on the original exception. It contains
+                # the string representation and stack trace of the original error.
+                original_stacktrace = getattr(
+                    ray_exception,
+                    "formatted_exception_string",
+                    "No formatted exception string available.",
+                )
+                return UnserializableException(original_stacktrace)
         else:
             return CrossLanguageError(ray_exception)
 
@@ -116,37 +123,65 @@ class RayTaskError(RayError):
         """Initialize a RayTaskError."""
         import ray
 
-        # BaseException implements a __reduce__ method that returns
-        # a tuple with the type and the value of self.args.
-        # https://stackoverflow.com/a/49715949/2213289
-        self.args = (function_name, traceback_str, cause, proctitle, pid, ip)
         if proctitle:
             self.proctitle = proctitle
         else:
-            self.proctitle = setproctitle.getproctitle()
+            self.proctitle = ray._raylet.getproctitle()
         self.pid = pid or os.getpid()
         self.ip = ip or ray.util.get_node_ip_address()
         self.function_name = function_name
         self.traceback_str = traceback_str
         self.actor_repr = actor_repr
         self._actor_id = actor_id
-        # TODO(edoakes): should we handle non-serializable exception objects?
         self.cause = cause
+
+        try:
+            pickle.dumps(cause)
+        except (pickle.PicklingError, TypeError) as e:
+            err_type = f"{cause.__class__.__module__}.{cause.__class__.__name__}"
+
+            err_msg = (
+                f"Exception {err_type} isn't serializable: {e}.\n"
+                f"Original exception details:\n{traceback_str}"
+            )
+
+            logger.exception(
+                f"The original cause of the RayTaskError ({err_type}) isn't serializable."
+            )
+            self.cause = RayError(err_msg)
+
+        # BaseException implements a __reduce__ method that returns
+        # a tuple with the type and the value of self.args.
+        # https://stackoverflow.com/a/49715949/2213289
+        self.args = (function_name, traceback_str, self.cause, proctitle, pid, ip)
+
         assert traceback_str is not None
 
-    def make_dual_exception_type(self) -> Type:
-        """Makes a Type that inherits from both RayTaskError and the type of
+    def make_dual_exception_instance(self) -> "RayTaskError":
+        """Makes a object instance that inherits from both RayTaskError and the type of
         `self.cause`. Raises TypeError if the cause class can't be subclassed"""
+        # For normal user Exceptions, we subclass from both
+        # RayTaskError and the user exception. For ExceptionGroup,
+        # we special handle it because it has a different __new__()
+        # signature from Exception.
+        # Ref: https://docs.python.org/3/library/exceptions.html#exception-groups
+        if sys.version_info >= (3, 11) and isinstance(
+            self.cause, ExceptionGroup  # noqa: F821
+        ):
+            return self._make_exceptiongroup_dual_exception_instance()
+        return self._make_normal_dual_exception_instance()
+
+    def _make_normal_dual_exception_instance(self) -> "RayTaskError":
         cause_cls = self.cause.__class__
         error_msg = str(self)
 
         class cls(RayTaskError, cause_cls):
             def __init__(self, cause):
                 self.cause = cause
-                # BaseException implements a __reduce__ method that returns
-                # a tuple with the type and the value of self.args.
-                # https://stackoverflow.com/a/49715949/2213289
                 self.args = (cause,)
+
+            def __reduce__(self):
+                return (cls, self.args)
 
             def __getattr__(self, name):
                 return getattr(self.cause, name)
@@ -158,7 +193,35 @@ class RayTaskError(RayError):
         cls.__name__ = name
         cls.__qualname__ = name
 
-        return cls
+        return cls(self.cause)
+
+    def _make_exceptiongroup_dual_exception_instance(self) -> "RayTaskError":
+        cause_cls = self.cause.__class__
+        error_msg = str(self)
+
+        class cls(RayTaskError, cause_cls):
+            def __new__(cls, cause):
+                self = super().__new__(cls, cause.message, cause.exceptions)
+                return self
+
+            def __init__(self, cause):
+                self.cause = cause
+                self.args = (cause,)
+
+            def __reduce__(self):
+                return (cls, self.args)
+
+            def __getattr__(self, name):
+                return getattr(self.cause, name)
+
+            def __str__(self):
+                return error_msg
+
+        name = f"RayTaskError({cause_cls.__name__})"
+        cls.__name__ = name
+        cls.__qualname__ = name
+
+        return cls(self.cause)
 
     def as_instanceof_cause(self):
         """Returns an exception that's an instance of the cause's class.
@@ -174,7 +237,7 @@ class RayTaskError(RayError):
             return self  # already satisfied
 
         try:
-            dual_cls = self.make_dual_exception_type()
+            return self.make_dual_exception_instance()
         except TypeError as e:
             logger.warning(
                 f"User exception type {type(self.cause)} in RayTaskError can't"
@@ -183,8 +246,6 @@ class RayTaskError(RayError):
                 f" access the user exception. Failure in subclassing: {e}"
             )
             return self
-
-        return dual_cls(self.cause)
 
     def __str__(self):
         """Format a RayTaskError as a string."""
@@ -321,14 +382,16 @@ class ActorDiedError(RayActorError):
         cause: The cause of the actor error. `RayTaskError` type means
             the actor has died because of an exception within `__init__`.
             `ActorDiedErrorContext` means the actor has died because of
-            unexepected system error. None means the cause is not known.
-            Theoretically, this should not happen,
-            but it is there as a safety check.
+            an unexpected system error. None means the cause isn't known.
+            Theoretically, this shouldn't happen,
+            but it's there as a safety check.
     """
 
     BASE_ERROR_MSG = "The actor died unexpectedly before finishing this task."
 
-    def __init__(self, cause: Union[RayTaskError, ActorDiedErrorContext] = None):
+    def __init__(
+        self, cause: Optional[Union[RayTaskError, ActorDiedErrorContext]] = None
+    ):
         """
         Construct a RayActorError by building the arguments.
         """
@@ -369,11 +432,12 @@ class ActorDiedError(RayActorError):
                 error_msg_lines.append(
                     "The actor never ran - it was cancelled before it started running."
                 )
-            if cause.preempted:
+            if (
+                cause.node_death_info
+                and cause.node_death_info.reason
+                == NodeDeathInfo.AUTOSCALER_DRAIN_PREEMPTED
+            ):
                 preempted = True
-                error_msg_lines.append(
-                    "\tThe actor's node was killed by a spot preemption."
-                )
             error_msg = "\n".join(error_msg_lines)
             actor_id = ActorID(cause.actor_id).hex()
         super().__init__(actor_id, error_msg, actor_init_failed, preempted)
@@ -390,8 +454,8 @@ class ActorUnavailableError(RayActorError):
     def __init__(self, error_message: str, actor_id: Optional[bytes]):
         actor_id = ActorID(actor_id).hex() if actor_id is not None else None
         error_msg = (
-            f"The actor {actor_id} is unavailable: {error_message}. The task may or may"
-            "not have been executed on the actor."
+            f"The actor {actor_id} is unavailable: {error_message}. The task may or "
+            "may not have been executed on the actor."
         )
         actor_init_failed = False
         preempted = False
@@ -415,6 +479,49 @@ class RaySystemError(RayError):
         if self.traceback_str:
             error_msg += f"\ntraceback: {self.traceback_str}"
         return error_msg
+
+
+@PublicAPI
+class AuthenticationError(RayError):
+    """Indicates that an authentication error occurred.
+
+    Most commonly, this is caused by a missing or mismatching token set on the client
+    (e.g., a Ray CLI command interacting with a remote cluster).
+
+    Only applicable when `RAY_AUTH_MODE` is not set to `disabled`.
+    """
+
+    def __init__(self, message: str):
+        self.message = message
+
+        # Always hide traceback for cleaner output
+        self.__suppress_context__ = True
+        super().__init__(message)
+
+    def __str__(self) -> str:
+        # Check if RAY_AUTH_MODE is set to token and add a heads-up if not
+        auth_mode_note = ""
+
+        from ray._private.authentication.authentication_utils import (
+            get_authentication_mode_name,
+        )
+        from ray._raylet import AuthenticationMode, get_authentication_mode
+
+        current_mode = get_authentication_mode()
+        if current_mode != AuthenticationMode.TOKEN:
+            mode_name = get_authentication_mode_name(current_mode)
+            auth_mode_note = (
+                f" Note: RAY_AUTH_MODE is currently '{mode_name}' (not 'token')."
+            )
+
+        help_text = (
+            " Ensure that the token for the cluster is available in a local file (e.g., ~/.ray/auth_token or via "
+            "RAY_AUTH_TOKEN_PATH) or as the `RAY_AUTH_TOKEN` environment variable. "
+            "To generate a token for local development, use `ray get-auth-token --generate` "
+            "For remote clusters, ensure that the token is propagated to all nodes of the cluster when token authentication is enabled. "
+            "For more information, see: https://docs.ray.io/en/latest/ray-security/token-auth.html"
+        )
+        return self.message + "." + auth_mode_note + help_text
 
 
 @DeveloperAPI
@@ -814,6 +921,83 @@ class ObjectRefStreamEndOfStreamError(RayError):
     pass
 
 
+@DeveloperAPI
+class OufOfBandObjectRefSerializationException(RayError):
+    """Raised when an `ray.ObjectRef` is out of band serialized by
+    `ray.cloudpickle`. It is an anti pattern.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class RayChannelError(RaySystemError):
+    """Indicates that Ray encountered a system error related
+    to ray.experimental.channel.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class RayChannelTimeoutError(RayChannelError, TimeoutError):
+    """Raised when the Compiled Graph channel operation times out."""
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class RayCgraphCapacityExceeded(RaySystemError):
+    """Raised when the Compiled Graph channel's buffer is at max capacity"""
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class UnserializableException(RayError):
+    """Raised when there is an error deserializing a serialized exception.
+
+    This occurs when deserializing (unpickling) a previously serialized exception
+    fails. In this case, we fall back to raising the string representation of
+    the original exception along with its stack trace that was captured at the
+    time of serialization.
+
+    For more details and how to handle this with custom serializers, :ref:`configuring custom exeception serializers <custom-exception-serializer>`
+
+    Args:
+        original_stack_trace: The string representation and stack trace of the
+            original exception that was captured during serialization.
+    """
+
+    def __init__(self, original_stack_trace: str):
+        self._original_stack_trace = original_stack_trace
+
+    def __str__(self):
+        return (
+            "Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#custom-serializers-for-exceptions for more information.\n"
+            "Original exception:\n"
+            f"{self._original_stack_trace}"
+        )
+
+
+@DeveloperAPI
+class ActorAlreadyExistsError(ValueError, RayError):
+    """Raised when a named actor already exists.
+
+    Note that this error is not only a subclass of RayError, but also a subclass of ValueError, to maintain backward compatibility.
+
+    Args:
+        error_message: The error message that contains information about the actor name and namespace.
+    """
+
+    def __init__(self, error_message: str):
+        super().__init__(error_message)
+        self.error_message = error_message
+
+    def __str__(self):
+        return self.error_message
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -839,4 +1023,11 @@ RAY_EXCEPTION_TYPES = [
     ActorDiedError,
     ActorUnschedulableError,
     ActorUnavailableError,
+    RayChannelError,
+    RayChannelTimeoutError,
+    OufOfBandObjectRefSerializationException,
+    RayCgraphCapacityExceeded,
+    UnserializableException,
+    ActorAlreadyExistsError,
+    AuthenticationError,
 ]

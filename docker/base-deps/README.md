@@ -14,14 +14,14 @@ Images are `tagged` with the format `{Ray version}[-{Python version}][-{Platform
 | `x.y.z`                      | A specific Ray release, e.g. 2.9.3 |
 | `nightly`                    | The most recent Ray development build (a recent commit from GitHub `master`) |
 
-The optional `Python version` tag specifies the Python version in the image. All Python versions supported by Ray are available, e.g. `py38`, `py39` and `py310`. If unspecified, the tag points to an image using `Python 3.8`.
+The optional `Python version` tag specifies the Python version in the image. All Python versions supported by Ray are available, e.g. `py39`, `py310` and `py311`. If unspecified, the tag points to an image using `Python 3.9`.
 
 The optional `Platform` tag specifies the platform where the image is intended for:
 
 | Platform tag | Description |
 | --------------- | ----------- |
 | `-cpu`  | These are based off of an Ubuntu image. |
-| `-cuXX` | These are based off of an NVIDIA CUDA image with the specified CUDA version `xx`. They require the Nvidia Docker Runtime. |
+| `-cuXX` | These are based off of an NVIDIA CUDA image with the specified CUDA version `xx`. They require the NVIDIA Docker Runtime. |
 | `-gpu`  | Aliases to a specific `-cuXX` tagged image. |
 | no tag  | Aliases to `-cpu` tagged images for `ray`, and aliases to ``-gpu`` tagged images for `ray-ml`. |
 
@@ -37,9 +37,6 @@ Please note that suffixes are only used to specify `aarch64` images. No suffix m
 | no tag       | Defaults to `amd64`     |
 
 
-## Other Images
-* [`rayproject/ray`](https://hub.docker.com/repository/docker/rayproject/ray) - Ray and all of its dependencies.
-* [`rayproject/ray-ml`](https://hub.docker.com/repository/docker/rayproject/ray-ml) - This image with common ML libraries to make development & deployment more smooth!
-<br></br><br></br>
+----
 
-* [`rayproject/ray-deps`](https://hub.docker.com/repository/docker/rayproject/ray-deps) - Internal image with python-level dependencies.
+See [`rayproject/ray`](https://hub.docker.com/repository/docker/rayproject/ray) for Ray and all of its dependencies.

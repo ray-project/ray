@@ -26,8 +26,11 @@
 namespace ray {
 namespace internal {
 LocalModeObjectStore::LocalModeObjectStore(LocalModeRayRuntime &local_mode_ray_tuntime)
-    : local_mode_ray_tuntime_(local_mode_ray_tuntime) {
-  memory_store_ = std::make_unique<CoreWorkerMemoryStore>();
+    : io_context_("LocalModeObjectStore"),
+      local_mode_ray_tuntime_(local_mode_ray_tuntime) {
+  memory_store_ =
+      std::make_unique<CoreWorkerMemoryStore>(io_context_.GetIoService(),
+                                              /*reference_counting_enabled=*/false);
 }
 
 void LocalModeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
@@ -40,11 +43,11 @@ void LocalModeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
                                   const ObjectID &object_id) {
   auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
       reinterpret_cast<uint8_t *>(data->data()), data->size(), true);
-  auto status = memory_store_->Put(
-      ::ray::RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()), object_id);
-  if (!status) {
-    throw RayException("Put object error");
-  }
+  // NOTE: you can't have reference when reference counting is disabled in local mode
+  memory_store_->Put(
+      ::ray::RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()),
+      object_id,
+      /*has_reference=*/false);
 }
 
 std::shared_ptr<msgpack::sbuffer> LocalModeObjectStore::GetRaw(const ObjectID &object_id,
@@ -63,7 +66,6 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::GetRaw(
                                             (int)ids.size(),
                                             timeout_ms,
                                             local_mode_ray_tuntime_.GetWorkerContext(),
-                                            false,
                                             &results);
   if (!status.ok()) {
     throw RayException("Get object error: " + status.ToString());
@@ -88,12 +90,14 @@ std::vector<bool> LocalModeObjectStore::Wait(const std::vector<ObjectID> &ids,
   for (const auto &object_id : ids) {
     memory_object_ids.insert(object_id);
   }
-  absl::flat_hash_set<ObjectID> ready;
+  absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
+
   ::ray::Status status = memory_store_->Wait(memory_object_ids,
                                              num_objects,
                                              timeout_ms,
                                              local_mode_ray_tuntime_.GetWorkerContext(),
-                                             &ready);
+                                             &ready,
+                                             &plasma_object_ids);
   if (!status.ok()) {
     throw RayException("Wait object error: " + status.ToString());
   }

@@ -246,26 +246,29 @@ class LocalNodeProvider(NodeProvider):
         return socket.gethostbyname(node_id)
 
     def set_node_tags(self, node_id, tags):
-        with self.state.file_lock:
-            info = self.state.get()[node_id]
-            info["tags"].update(tags)
-            self.state.put(node_id, info)
+        with self.state.lock:
+            with self.state.file_lock:
+                info = self.state.get()[node_id]
+                info["tags"].update(tags)
+                self.state.put(node_id, info)
 
     def create_node(self, node_config, tags, count):
         """Creates min(count, currently available) nodes."""
         node_type = tags[TAG_RAY_NODE_KIND]
-        with self.state.file_lock:
-            workers = self.state.get()
-            for node_id, info in workers.items():
-                if info["state"] == "terminated" and (
-                    self.use_coordinator or info["tags"][TAG_RAY_NODE_KIND] == node_type
-                ):
-                    info["tags"] = tags
-                    info["state"] = "running"
-                    self.state.put(node_id, info)
-                    count = count - 1
-                    if count == 0:
-                        return
+        with self.state.lock:
+            with self.state.file_lock:
+                workers = self.state.get()
+                for node_id, info in workers.items():
+                    if info["state"] == "terminated" and (
+                        self.use_coordinator
+                        or info["tags"][TAG_RAY_NODE_KIND] == node_type
+                    ):
+                        info["tags"] = tags
+                        info["state"] = "running"
+                        self.state.put(node_id, info)
+                        count = count - 1
+                        if count == 0:
+                            return
 
     def terminate_node(self, node_id):
         workers = self.state.get()

@@ -1,26 +1,27 @@
-import logging
 import datetime
+import logging
 import time
 
-import ray
 import cupy
+import torch
 
-from ray.util.collective.const import ENV
+import ray
 from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
-from ray.util.collective.const import get_store_name
+from ray.util.collective.collective_group.cuda_stream import get_stream_pool
+from ray.util.collective.const import ENV, get_store_name
 from ray.util.collective.types import (
-    AllReduceOptions,
-    BarrierOptions,
-    Backend,
-    ReduceOptions,
-    BroadcastOptions,
     AllGatherOptions,
+    AllReduceOptions,
+    Backend,
+    BarrierOptions,
+    BroadcastOptions,
+    RecvOptions,
+    ReduceOptions,
     ReduceScatterOptions,
     SendOptions,
-    RecvOptions,
+    torch_available,
 )
-from ray.util.collective.collective_group.cuda_stream import get_stream_pool
 
 logger = logging.getLogger(__name__)
 
@@ -108,19 +109,12 @@ class Rendezvous:
         """
         if not self._store:
             raise ValueError("Rendezvous store is not setup.")
-        uid = None
-        timeout_delta = datetime.timedelta(seconds=timeout_s)
-        elapsed = datetime.timedelta(seconds=0)
-        start_time = datetime.datetime.now()
-        while elapsed < timeout_delta:
-            uid = ray.get(self._store.get_id.remote())
-            if not uid:
-                time.sleep(1)
-                elapsed = datetime.datetime.now() - start_time
-                continue
-            break
-        if not uid:
-            raise RuntimeError("Unable to get the NCCLUniqueID from the store.")
+        try:
+            uid = ray.get(self._store.wait_and_get_id.remote(), timeout=timeout_s)
+        except ray.exceptions.GetTimeoutError:
+            raise RuntimeError(
+                f"Unable to get the NCCLUniqueID from the store within {timeout_s} seconds."
+            ) from None
         return uid
 
 
@@ -148,7 +142,6 @@ class NCCLGroup(BaseGroup):
     def destroy_group(self):
         """Destroy the group and release NCCL communicators."""
         if len(self._dev_comm_map.keys()) > 0:
-
             # TODO(Hao): check this barrier call
             # self.barrier()
 
@@ -664,7 +657,10 @@ class NCCLGroup(BaseGroup):
         # We have made sure that self.rank != peer_rank during API check.
         peer_p2p_rank = 0 if self.rank > peer_rank else 1
         for i, tensor in enumerate(tensors):
-            p2p_fn(tensors[i], comms[i], streams[i], peer_p2p_rank)
+            p2p_fn(tensor, comms[i], streams[i], peer_p2p_rank)
+            # Record the stream to avoid tensor being freed before the send/recv is completed.
+            torch_stream = torch.cuda.ExternalStream(streams[i].ptr)
+            tensor.record_stream(torch_stream)
 
 
 def _flatten_for_scatter_gather(tensor_list, copy=False):
@@ -680,12 +676,31 @@ def _flatten_for_scatter_gather(tensor_list, copy=False):
     if not tensor_list:
         raise RuntimeError("Received an empty list.")
     t = tensor_list[0]
-    # note we need a cupy dtype here.
-    dtype = nccl_util.get_cupy_tensor_dtype(t)
     buffer_shape = [len(tensor_list)] + nccl_util.get_tensor_shape(t)
-    device = nccl_util.get_tensor_device(t)
-    with nccl_util.Device(device):
-        buffer = cupy.empty(buffer_shape, dtype=dtype)
+
+    # TODO(wuxibin): cupy doesn't support bfloat16 for now,
+    # once it is supported, we can eliminate this if statement.
+    #
+    # Allocate using the same backend as the tensors in `tensor_list`.
+    # Use torch only when the tensors are torch.Tensor; otherwise fall back to CuPy.
+    use_torch = False
+    if torch_available():
+        try:
+            import torch
+
+            use_torch = isinstance(t, torch.Tensor)
+        except ImportError:
+            use_torch = False
+
+    if use_torch:
+        buffer = torch.empty(tuple(buffer_shape), dtype=t.dtype, device=t.device)
+    else:
+        # note we need a cupy dtype here.
+        dtype = nccl_util.get_cupy_tensor_dtype(t)
+        device = nccl_util.get_tensor_device(t)
+        with nccl_util.Device(device):
+            buffer = cupy.empty(buffer_shape, dtype=dtype)
+
     if copy:
         for i, tensor in enumerate(tensor_list):
             nccl_util.copy_tensor(buffer[i], tensor)

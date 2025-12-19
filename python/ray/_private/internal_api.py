@@ -1,11 +1,14 @@
+import warnings
+from typing import List, Tuple
+
 import ray
 import ray._private.profiling as profiling
 import ray._private.services as services
-import ray._private.utils as utils
 import ray._private.worker
-from ray._private import ray_constants
+from ray._common.network_utils import build_address
 from ray._private.state import GlobalState
 from ray._raylet import GcsClientOptions
+from ray.core.generated import common_pb2
 
 __all__ = ["free", "global_gc"]
 MAX_MESSAGE_LENGTH = ray._config.max_grpc_message_size()
@@ -22,14 +25,15 @@ def get_state_from_address(address=None):
     address = services.canonicalize_bootstrap_address_or_die(address)
 
     state = GlobalState()
-    options = GcsClientOptions.from_gcs_address(address)
+    options = GcsClientOptions.create(
+        address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=False
+    )
     state._initialize_global_state(options)
     return state
 
 
 def memory_summary(
     address=None,
-    redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
     group_by="NODE_ADDRESS",
     sort_by="OBJECT_SIZE",
     units="B",
@@ -52,6 +56,7 @@ def memory_summary(
 def get_memory_info_reply(state, node_manager_address=None, node_manager_port=None):
     """Returns global memory info."""
 
+    from ray._private.grpc_utils import init_grpc_channel
     from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
 
     # We can ask any Raylet for the global memory info, that Raylet internally
@@ -64,13 +69,13 @@ def get_memory_info_reply(state, node_manager_address=None, node_manager_port=No
                 raylet = node
                 break
         assert raylet is not None, "Every raylet is dead"
-        raylet_address = "{}:{}".format(
+        raylet_address = build_address(
             raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
         )
     else:
-        raylet_address = "{}:{}".format(node_manager_address, node_manager_port)
+        raylet_address = build_address(node_manager_address, node_manager_port)
 
-    channel = utils.init_grpc_channel(
+    channel = init_grpc_channel(
         raylet_address,
         options=[
             ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
@@ -91,12 +96,13 @@ def node_stats(
 ):
     """Returns NodeStats object describing memory usage in the cluster."""
 
+    from ray._private.grpc_utils import init_grpc_channel
     from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
 
     # We can ask any Raylet for the global memory info.
     assert node_manager_address is not None and node_manager_port is not None
-    raylet_address = "{}:{}".format(node_manager_address, node_manager_port)
-    channel = utils.init_grpc_channel(
+    raylet_address = build_address(node_manager_address, node_manager_port)
+    channel = init_grpc_channel(
         raylet_address,
         options=[
             ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
@@ -164,10 +170,6 @@ def store_stats_summary(reply):
                 ),
             )
         )
-    if reply.store_stats.consumed_bytes > 0:
-        store_summary += "Objects consumed by Ray tasks: {} MiB.\n".format(
-            int(reply.store_stats.consumed_bytes / (1024 * 1024))
-        )
     if reply.store_stats.object_pulls_queued:
         store_summary += "Object fetches queued, waiting for available memory."
 
@@ -175,7 +177,12 @@ def store_stats_summary(reply):
 
 
 def free(object_refs: list, local_only: bool = False):
-    """Free a list of IDs from the in-process and plasma object stores.
+    """
+    DeprecationWarning: `free` is a deprecated API and will be
+    removed in a future version of Ray. If you have a use case
+    for this API, please open an issue on GitHub.
+
+    Free a list of IDs from the in-process and plasma object stores.
 
     This function is a low-level API which should be used in restricted
     scenarios.
@@ -206,6 +213,11 @@ def free(object_refs: list, local_only: bool = False):
         local_only: Whether only deleting the list of objects in local
             object store or all object stores.
     """
+    warnings.warn(
+        "`free` is a deprecated API and will be removed in a future version of Ray. "
+        "If you have a use case for this API, please open an issue on GitHub.",
+        DeprecationWarning,
+    )
     worker = ray._private.worker.global_worker
 
     if isinstance(object_refs, ray.ObjectRef):
@@ -230,3 +242,23 @@ def free(object_refs: list, local_only: bool = False):
             return
 
         worker.core_worker.free_objects(object_refs, local_only)
+
+
+def get_local_ongoing_lineage_reconstruction_tasks() -> List[
+    Tuple[common_pb2.LineageReconstructionTask, int]
+]:
+    """Return the locally submitted ongoing retry tasks
+       triggered by lineage reconstruction.
+
+    NOTE: for the lineage reconstruction task status,
+    this method only returns the status known to the submitter
+    (i.e. it returns SUBMITTED_TO_WORKER instead of RUNNING).
+
+    The return type is a list of pairs where pair.first is the
+    lineage reconstruction task info and pair.second is the number
+    of ongoing lineage reconstruction tasks of this type.
+    """
+
+    worker = ray._private.worker.global_worker
+    worker.check_connected()
+    return worker.core_worker.get_local_ongoing_lineage_reconstruction_tasks()

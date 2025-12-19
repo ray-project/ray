@@ -317,8 +317,11 @@ you can use ``list`` or ``get`` APIs to get more details for an individual abnor
 .. note::
 
     By default, objects are summarized by callsite. However, callsite is not recorded by Ray by default.
-    To get callsite info, set env variable `RAY_record_ref_creation_sites=1` when starting the Ray Cluster
-    RAY_record_ref_creation_sites=1 ray start --head
+    To get callsite info, set env variable `RAY_record_ref_creation_sites=1` when starting the Ray cluster:
+
+    .. code-block:: bash
+
+        RAY_record_ref_creation_sites=1 ray start --head
 
 .. tab-set::
 
@@ -737,7 +740,7 @@ through the APIs because they are already garbage collected.
 API Reference
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- For the CLI Reference, see :ref:`State CLI Refernece <state-api-cli-ref>`.
+- For the CLI Reference, see :ref:`State CLI Reference <state-api-cli-ref>`.
 - For the SDK Reference, see :ref:`State API Reference <state-api-ref>`.
 - For the Log CLI Reference, see :ref:`Log CLI Reference <ray-logs-api-cli-ref>`.
 

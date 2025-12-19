@@ -1,6 +1,6 @@
 import logging
-from typing import Any, List
 from collections import defaultdict
+from typing import Any, List
 
 from ray.rllib.connectors.connector import (
     AgentConnector,
@@ -9,10 +9,9 @@ from ray.rllib.connectors.connector import (
     ConnectorPipeline,
 )
 from ray.rllib.connectors.registry import get_connector, register_connector
-from ray.rllib.utils.typing import ActionConnectorDataType, AgentConnectorDataType
 from ray.rllib.utils.annotations import OldAPIStack
+from ray.rllib.utils.typing import ActionConnectorDataType, AgentConnectorDataType
 from ray.util.timer import _Timer
-
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +55,7 @@ class AgentConnectorPipeline(ConnectorPipeline, AgentConnector):
     @staticmethod
     def from_state(ctx: ConnectorContext, params: List[Any]):
         assert (
-            type(params) == list
+            type(params) is list
         ), "AgentConnectorPipeline takes a list of connector params."
         connectors = []
         for state in params:

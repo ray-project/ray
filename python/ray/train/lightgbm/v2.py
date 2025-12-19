@@ -4,34 +4,10 @@ from typing import Any, Callable, Dict, Optional, Union
 import ray.train
 from ray.train import Checkpoint
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.lightgbm.config import NETWORK_PARAMS_KEY, LightGBMConfig
+from ray.train.lightgbm.config import LightGBMConfig, get_network_params  # noqa: F401
 from ray.train.trainer import GenDataset
 
 logger = logging.getLogger(__name__)
-
-
-def get_network_params() -> dict:
-    from ray.train._internal.session import get_session
-
-    session = get_session()
-    if not session:
-        logger.warning(
-            "`ray.train.lightgbm.get_network_params` was called outside the context "
-            "of a `ray.train.lightgbm.LightGBMTrainer`. "
-            "The current process has no knowledge of the distributed training group, "
-            "so returning an empty dict. Please call this within the training loop "
-            "of a `ray.train.lightgbm.LightGBMTrainer`."
-        )
-        return {}
-
-    network_params = session.get_state(NETWORK_PARAMS_KEY)
-    assert network_params is not None, (
-        f"`LightGBMConfig.backend_cls` must set '{NETWORK_PARAMS_KEY}' "
-        "in the session state in `on_training_start`. "
-        "Please fix this if you provided a custom `LightGBMConfig` subclass."
-        "Otherwise, please file a bug report to the Ray Team."
-    )
-    return network_params.copy()
 
 
 class LightGBMTrainer(DataParallelTrainer):
@@ -41,13 +17,13 @@ class LightGBMTrainer(DataParallelTrainer):
     -------
 
     .. testcode::
+        :skipif: True
 
         import lightgbm as lgb
 
         import ray.data
         import ray.train
-        from ray.train.lightgbm import RayTrainReportCallback
-        from ray.train.lightgbm.v2 import LightGBMTrainer
+        from ray.train.lightgbm import RayTrainReportCallback, LightGBMTrainer
 
 
         def train_fn_per_worker(config: dict):
@@ -74,7 +50,7 @@ class LightGBMTrainer(DataParallelTrainer):
                 "objective": "regression",
                 # Adding the line below is the only change needed
                 # for your `lgb.train` call!
-                **ray.train.lightgbm.v2.get_network_params(),
+                **ray.train.lightgbm.get_network_params(),
             }
             lgb.train(
                 params,
@@ -95,11 +71,6 @@ class LightGBMTrainer(DataParallelTrainer):
         )
         result = trainer.fit()
         booster = RayTrainReportCallback.get_model(result.checkpoint)
-
-    .. testoutput::
-        :hide:
-
-        ...
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.

@@ -26,25 +26,21 @@ class ClusterNodeInfoCache(ABC):
         """
         nodes = self._gcs_client.get_all_node_info(timeout=RAY_GCS_RPC_TIMEOUT_S)
         alive_nodes = [
-            (ray.NodeID.from_binary(node_id).hex(), node["node_name"].decode("utf-8"))
+            (node_id.hex(), node.node_name, node.instance_id)
             for (node_id, node) in nodes.items()
-            if node["state"] == ray.core.generated.gcs_pb2.GcsNodeInfo.ALIVE
+            if node.state == ray.core.generated.gcs_pb2.GcsNodeInfo.ALIVE
         ]
 
         # Sort on NodeID to ensure the ordering is deterministic across the cluster.
         sorted(alive_nodes)
         self._cached_alive_nodes = alive_nodes
         self._cached_node_labels = {
-            ray.NodeID.from_binary(node_id).hex(): {
-                label_name.decode("utf-8"): label_value.decode("utf-8")
-                for label_name, label_value in node["labels"].items()
-            }
-            for (node_id, node) in nodes.items()
+            node_id.hex(): dict(node.labels) for (node_id, node) in nodes.items()
         }
 
         # Node resources
         self._cached_total_resources_per_node = {
-            ray.NodeID.from_binary(node_id).hex(): node["resources"]
+            node_id.hex(): dict(node.resources_total)
             for (node_id, node) in nodes.items()
         }
 
@@ -52,11 +48,11 @@ class ClusterNodeInfoCache(ABC):
             ray._private.state.available_resources_per_node()
         )
 
-    def get_alive_nodes(self) -> List[Tuple[str, str]]:
-        """Get IDs and info for all live nodes in the cluster.
+    def get_alive_nodes(self) -> List[Tuple[str, str, str]]:
+        """Get IDs, IPs, and Instance IDs for all live nodes in the cluster.
 
-        Returns a list of (node_id: str, node_info: Dict). The node_id can be
-        passed into the Ray SchedulingPolicy API.
+        Returns a list of (node_id: str, node_ip: str, instance_id: str).
+        The node_id can be passed into the Ray SchedulingPolicy API.
         """
         return self._cached_alive_nodes
 
@@ -66,7 +62,7 @@ class ClusterNodeInfoCache(ABC):
 
     def get_alive_node_ids(self) -> Set[str]:
         """Get IDs of all live nodes in the cluster."""
-        return {node_id for node_id, _ in self.get_alive_nodes()}
+        return {node_id for node_id, _, _ in self.get_alive_nodes()}
 
     @abstractmethod
     def get_draining_nodes(self) -> Dict[str, int]:

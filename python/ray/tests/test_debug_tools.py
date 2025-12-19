@@ -1,16 +1,14 @@
 import os
 import subprocess
 import sys
-
-import pytest
 from pathlib import Path
 
+import pytest
+
 import ray
-
-import ray._private.services as services
 import ray._private.ray_constants as ray_constants
-
-from ray._private.test_utils import wait_for_condition
+import ray._private.services as services
+from ray._common.test_utils import wait_for_condition
 
 
 @pytest.fixture
@@ -83,6 +81,47 @@ def test_memory_profiler_command_builder(monkeypatch, tmp_path):
             ),  # noqa
             "-q",
         ]
+
+        # Test with explicit -o path
+        m.delenv(services.RAY_MEMRAY_PROFILE_COMPONENT_ENV)
+        m.delenv(services.RAY_MEMRAY_PROFILE_OPTIONS_ENV)
+        m.setenv(services.RAY_MEMRAY_PROFILE_COMPONENT_ENV, "dashboard")
+        m.setenv(services.RAY_MEMRAY_PROFILE_OPTIONS_ENV, "-o,/custom/path.bin,-q")
+        command = services._build_python_executable_command_memory_profileable(
+            ray_constants.PROCESS_TYPE_DASHBOARD, session_dir
+        )
+        assert command == [
+            sys.executable,
+            "-u",
+            "-m",
+            "memray",
+            "run",
+            "-o",
+            "/custom/path.bin",
+            "-q",
+        ]
+
+        # Test with explicit --output path
+        m.delenv(services.RAY_MEMRAY_PROFILE_COMPONENT_ENV)
+        m.delenv(services.RAY_MEMRAY_PROFILE_OPTIONS_ENV)
+        m.setenv(services.RAY_MEMRAY_PROFILE_COMPONENT_ENV, "dashboard")
+        m.setenv(
+            services.RAY_MEMRAY_PROFILE_OPTIONS_ENV, "--output,/custom/path.bin,-q"
+        )
+        command = services._build_python_executable_command_memory_profileable(
+            ray_constants.PROCESS_TYPE_DASHBOARD, session_dir
+        )
+        assert command == [
+            sys.executable,
+            "-u",
+            "-m",
+            "memray",
+            "run",
+            "--output",
+            "/custom/path.bin",
+            "-q",
+        ]
+
         m.delenv(services.RAY_MEMRAY_PROFILE_COMPONENT_ENV)
         m.delenv(services.RAY_MEMRAY_PROFILE_OPTIONS_ENV)
         m.setenv(services.RAY_MEMRAY_PROFILE_COMPONENT_ENV, "dashboard,dashboard_agent")
@@ -96,12 +135,6 @@ def test_memory_profiler_command_builder(monkeypatch, tmp_path):
             "-m",
             "memray",
             "run",
-            "-o",
-            str(
-                Path(tmp_path)
-                / "profile"
-                / f"{Path(tmp_path).name}_memory_dashboard_agent.bin"
-            ),  # noqa
             "-q",
             "--live",
             "--live-port",
@@ -133,12 +166,7 @@ def test_memory_profile_dashboard_and_agent(monkeypatch, shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

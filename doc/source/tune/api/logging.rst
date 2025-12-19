@@ -59,8 +59,10 @@ See the :doc:`tutorial here </tune/examples/tune-mlflow>`.
 
 .. autosummary::
     :nosignatures:
+    :toctree: doc/
 
-    tune.logger.mlflow.MLflowLoggerCallback
+    ~air.integrations.mlflow.MLflowLoggerCallback
+    ~air.integrations.mlflow.setup_mlflow
 
 Wandb Integration
 -----------------
@@ -71,8 +73,10 @@ See the :doc:`tutorial here </tune/examples/tune-wandb>`.
 
 .. autosummary::
     :nosignatures:
+    :toctree: doc/
 
-    tune.logger.wandb.WandbLoggerCallback
+    ~air.integrations.wandb.WandbLoggerCallback
+    ~air.integrations.wandb.setup_wandb
 
 
 Comet Integration
@@ -84,15 +88,16 @@ See the :doc:`tutorial here </tune/examples/tune-comet>`.
 
 .. autosummary::
     :nosignatures:
+    :toctree: doc/
 
-    tune.logger.comet.CometLoggerCallback
+    ~air.integrations.comet.CometLoggerCallback
 
 Aim Integration
 ---------------
 
 Tune also provides a logger for the `Aim <https://aimstack.io/>`_ experiment tracker.
 You can install Aim via ``pip install aim``.
-See the :doc:`tutorial here </tune/examples/tune-aim>`
+See the :doc:`tutorial here </tune/examples/tune-aim>`.
 
 .. autosummary::
     :nosignatures:
@@ -119,4 +124,3 @@ The non-relevant metrics (like timing stats) can be disabled on the left to show
 relevant ones (like accuracy, loss, etc.).
 
 .. image:: ../images/ray-tune-viskit.png
-

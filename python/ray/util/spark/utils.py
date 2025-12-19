@@ -1,12 +1,14 @@
-import subprocess
-import os
-import sys
-import random
-import threading
 import collections
 import logging
+import os
+import random
+import shutil
+import subprocess
+import sys
+import threading
 import time
 
+from ray._common.network_utils import is_ipv6
 
 _logger = logging.getLogger("ray.util.spark.utils")
 
@@ -99,7 +101,11 @@ def is_port_in_use(host, port):
     import socket
     from contextlib import closing
 
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+    with closing(
+        socket.socket(
+            socket.AF_INET6 if is_ipv6(host) else socket.AF_INET, socket.SOCK_STREAM
+        )
+    ) as sock:
         return sock.connect_ex((host, port)) == 0
 
 
@@ -198,8 +204,9 @@ _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET = 0.8
 
 
 def calc_mem_ray_head_node(configured_heap_memory_bytes, configured_object_store_bytes):
-    import psutil
     import shutil
+
+    import psutil
 
     if RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES in os.environ:
         available_physical_mem = int(
@@ -292,13 +299,22 @@ def _calc_mem_per_ray_node(
         )
 
     if object_store_bytes < OBJECT_STORE_MINIMUM_MEMORY_BYTES:
+        if object_store_bytes == available_shared_mem_per_node:
+            warning_msg = (
+                "Your operating system is configured with too small /dev/shm "
+                "size, so `object_store_memory_worker_node` value is configured "
+                f"to minimal size ({OBJECT_STORE_MINIMUM_MEMORY_BYTES} bytes),"
+                f"Please increase system /dev/shm size."
+            )
+        else:
+            warning_msg = (
+                "You configured too small Ray node object store memory size, "
+                "so `object_store_memory_worker_node` value is configured "
+                f"to minimal size ({OBJECT_STORE_MINIMUM_MEMORY_BYTES} bytes),"
+                "Please increase 'object_store_memory_worker_node' argument value."
+            )
+
         object_store_bytes = OBJECT_STORE_MINIMUM_MEMORY_BYTES
-        warning_msg = (
-            "Your operating system is configured with too small /dev/shm "
-            "size, so `object_store_memory_per_node` value is configured "
-            f"to minimal size ({OBJECT_STORE_MINIMUM_MEMORY_BYTES} bytes),"
-            f"Please increase system /dev/shm size."
-        )
 
     object_store_bytes = int(object_store_bytes)
 
@@ -349,6 +365,9 @@ def _get_num_physical_gpus():
         # `RAY_ON_SPARK_WORKER_CPU_CORES` for user.
         return int(os.environ[RAY_ON_SPARK_WORKER_GPU_NUM])
 
+    if shutil.which("nvidia-smi") is None:
+        # GPU driver is not installed.
+        return 0
     try:
         completed_proc = subprocess.run(
             "nvidia-smi --query-gpu=name --format=csv,noheader",
@@ -357,11 +376,13 @@ def _get_num_physical_gpus():
             text=True,
             capture_output=True,
         )
+        return len(completed_proc.stdout.strip().split("\n"))
     except Exception as e:
-        raise RuntimeError(
-            "Running command `nvidia-smi` for inferring GPU devices list failed."
-        ) from e
-    return len(completed_proc.stdout.strip().split("\n"))
+        _logger.info(
+            "'nvidia-smi --query-gpu=name --format=csv,noheader' command execution "
+            f"failed, error: {repr(e)}"
+        )
+        return 0
 
 
 def _get_local_ray_node_slots(
@@ -382,9 +403,9 @@ def _get_local_ray_node_slots(
         if num_gpus_per_node > num_gpus:
             raise ValueError(
                 "gpu number per Ray worker node should be <= spark worker node "
-                "GPU number, you set cpu number per Ray worker node to "
-                f"{num_cpus_per_node} but spark worker node CPU core number "
-                f"is {num_cpus}."
+                "GPU number, you set GPU devices number per Ray worker node to "
+                f"{num_gpus_per_node} but spark worker node GPU devices number "
+                f"is {num_gpus}."
             )
         if num_ray_node_slots > num_gpus // num_gpus_per_node:
             num_ray_node_slots = num_gpus // num_gpus_per_node

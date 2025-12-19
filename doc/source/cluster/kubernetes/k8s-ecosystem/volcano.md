@@ -19,23 +19,23 @@ See [Quick Start Guide](https://github.com/volcano-sh/volcano#quick-start-guide)
 
 ### Step 3: Install the KubeRay Operator with batch scheduling
 
-Deploy the KubeRay Operator with the `--enable-batch-scheduler` flag to enable Volcano batch scheduling support.
+Deploy the KubeRay Operator with the `--batch-scheduler=volcano` flag to enable Volcano batch scheduling support.
 
 When installing KubeRay Operator using Helm, you should use one of these two options:
 
-* Set `batchScheduler.enabled` to `true` in your
+* Set `batchScheduler.name` to `volcano` in your
 [`values.yaml`](https://github.com/ray-project/kuberay/blob/753dc05dbed5f6fe61db3a43b34a1b350f26324c/helm-chart/kuberay-operator/values.yaml#L48)
 file:
 ```shell
 # values.yaml file
 batchScheduler:
-    enabled: true
+    name: volcano
 ```
 
-* Pass the `--set batchScheduler.enabled=true` flag when running on the command line:
+* Pass the `--set batchScheduler.name=volcano` flag when running on the command line:
 ```shell
-# Install the Helm chart with --enable-batch-scheduler flag set to true 
-helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0 --set batchScheduler.enabled=true
+# Install the Helm chart with the --batch-scheduler=volcano flag
+helm install kuberay-operator kuberay/kuberay-operator --version 1.5.1 --set batchScheduler.name=volcano
 ```
 
 ### Step 4: Install a RayCluster with the Volcano scheduler
@@ -45,7 +45,7 @@ The RayCluster custom resource must include the `ray.io/scheduler-name: volcano`
 ```shell
 # Path: kuberay/ray-operator/config/samples
 # Includes label `ray.io/scheduler-name: volcano` in the metadata.labels
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray-cluster.volcano-scheduler.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.5.1/ray-operator/config/samples/ray-cluster.volcano-scheduler.yaml
 kubectl apply -f ray-cluster.volcano-scheduler.yaml
 
 # Check the RayCluster
@@ -79,7 +79,7 @@ For guidance, see [examples](https://github.com/volcano-sh/volcano/tree/master/e
 
 ## Example
 
-Before going through the example, remove any running Ray Clusters to ensure a successful run through of the example below. 
+Before going through the example, remove any running Ray Clusters to ensure a successful run through of the example below.
 ```shell
 kubectl delete raycluster --all
 ```
@@ -113,7 +113,7 @@ Next, create a RayCluster with a head node (1 CPU + 2Gi of RAM) and two workers 
 ```shell
 # Path: kuberay/ray-operator/config/samples
 # Includes  the `ray.io/scheduler-name: volcano` and `volcano.sh/queue-name: kuberay-test-queue` labels in the metadata.labels
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray-cluster.volcano-scheduler-queue.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.5.1/ray-operator/config/samples/ray-cluster.volcano-scheduler-queue.yaml
 kubectl apply -f ray-cluster.volcano-scheduler-queue.yaml
 ```
 
@@ -154,7 +154,7 @@ kubectl get podgroup ray-test-cluster-0-pg -o yaml
 #   phase: Running
 ```
 
-Check the status of the queue to see 1 running job:
+Check the status of the queue to see allocated resources:
 
 ```shell
 kubectl get queue kuberay-test-queue -o yaml
@@ -174,8 +174,11 @@ kubectl get queue kuberay-test-queue -o yaml
 #   reclaimable: true
 #   weight: 1
 # status:
+#   allocated:
+#     cpu: "3"
+#     memory: 4Gi 
+#     pods: "3"
 #   reservation: {}
-#   running: 1
 #   state: Open
 ```
 
@@ -236,10 +239,10 @@ kubectl get pods
 
 # NAME                                            READY   STATUS         RESTARTS   AGE
 # test-cluster-0-worker-worker-ddfbz              1/1     Running        0          7m
-# test-cluster-0-head-vst5j                       1/1     Running        0          7m
+# test-cluster-0-head                             1/1     Running        0          7m
 # test-cluster-0-worker-worker-57pc7              1/1     Running        0          6m59s
 # test-cluster-1-worker-worker-6tzf7              0/1     Pending        0          2m12s
-# test-cluster-1-head-6668q                       0/1     Pending        0          2m12s
+# test-cluster-1-head                             0/1     Pending        0          2m12s
 # test-cluster-1-worker-worker-n5g8k              0/1     Pending        0          2m12s
 ```
 
@@ -311,7 +314,7 @@ kubectl get pods
 
 # NAME                                            READY   STATUS         RESTARTS   AGE
 # test-cluster-1-worker-worker-n5g8k              1/1     Running        0          9m4s
-# test-cluster-1-head-6668q                       1/1     Running        0          9m4s
+# test-cluster-1-head                             1/1     Running        0          9m4s
 # test-cluster-1-worker-worker-6tzf7              1/1     Running        0          9m4s
 ```
 
@@ -320,4 +323,147 @@ Finally, clean up the remaining cluster and queue:
 ```shell
 kubectl delete raycluster test-cluster-1
 kubectl delete queue kuberay-test-queue
+```
+
+### Use Volcano for RayJob gang scheduling
+
+Starting with KubeRay 1.5.1, KubeRay supports gang scheduling for RayJob custom resources.
+
+First, create a queue with a capacity of 4 CPUs and 6Gi of RAM and RayJob a with a head node (1 CPU + 2Gi of RAM), two workers (1 CPU + 1Gi of RAM each) and a submitter pod (0.5 CPU + 200Mi of RAM), for a total of 3500m CPU and 4296Mi of RAM
+
+```shell
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.5.1/ray-operator/config/samples/ray-job.volcano-scheduler-queue.yaml
+kubectl apply -f ray-job.volcano-scheduler-queue.yaml
+```
+
+Wait until all pods are in the Running state.
+```shell
+kubectl get pod
+
+# NAME                                             READY   STATUS      RESTARTS   AGE
+# rayjob-sample-0-k449j-head-rlgxj                 1/1     Running     0          93s
+# rayjob-sample-0-k449j-small-group-worker-c6dt8   1/1     Running     0          93s
+# rayjob-sample-0-k449j-small-group-worker-cq6xn   1/1     Running     0          93s
+# rayjob-sample-0-qmm8s                            0/1     Completed   0          32s
+```
+
+Add an additional RayJob with the same configuration but with a different name
+```shell
+sed 's/rayjob-sample-0/rayjob-sample-1/' ray-job.volcano-scheduler-queue.yaml | kubectl apply -f-
+```
+
+All the pods stuck on pending for new RayJob
+```shell
+# NAME                                             READY   STATUS      RESTARTS   AGE
+# rayjob-sample-0-k449j-head-rlgxj                 1/1     Running     0          3m27s
+# rayjob-sample-0-k449j-small-group-worker-c6dt8   1/1     Running     0          3m27s
+# rayjob-sample-0-k449j-small-group-worker-cq6xn   1/1     Running     0          3m27s
+# rayjob-sample-0-qmm8s                            0/1     Completed   0          2m26s
+# rayjob-sample-1-mvgqf-head-qb7wm                 0/1     Pending     0          21s
+# rayjob-sample-1-mvgqf-small-group-worker-jfzt5   0/1     Pending     0          21s
+# rayjob-sample-1-mvgqf-small-group-worker-ng765   0/1     Pending     0          21s
+```
+
+Check the status of its PodGroup to see that its phase is `Pending` and the last status is `Unschedulable`:
+```shell
+kubectl get podgroup ray-rayjob-sample-1-pg  -o yaml
+
+# apiVersion: scheduling.volcano.sh/v1beta1
+# kind: PodGroup
+# metadata:
+#   creationTimestamp: "2025-10-30T17:10:18Z"
+#   generation: 2
+#   name: ray-rayjob-sample-1-pg
+#   namespace: default
+#   ownerReferences:
+#   - apiVersion: ray.io/v1
+#     blockOwnerDeletion: true
+#     controller: true
+#     kind: RayJob
+#     name: rayjob-sample-1
+#     uid: 5835c896-c75d-4692-b10a-2871a79f141a
+#   resourceVersion: "3226"
+#   uid: 9fd55cbd-ba69-456d-b305-f61ffd6d935d
+# spec:
+#   minMember: 3
+#   minResources:
+#     cpu: 3500m
+#     memory: 4296Mi
+#   queue: kuberay-test-queue
+# status:
+#   conditions:
+#   - lastTransitionTime: "2025-10-30T17:10:18Z"
+#     message: '3/3 tasks in gang unschedulable: pod group is not ready, 3 Pending,
+#       3 minAvailable; Pending: 3 Unschedulable'
+#     reason: NotEnoughResources
+#     status: "True"
+#     transitionID: 7866f533-6590-4a4d-83cf-8f1db0214609
+#     type: Unschedulable
+#   phase: Pending
+```
+
+Delete the first RayJob to make space in the queue.
+```shell
+kubectl delete rayjob rayjob-sample-0
+```
+
+The PodGroup for the second cluster changed to the Running state, because enough resources are now available to schedule the entire set of pods.
+```shell
+kubectl get podgroup ray-rayjob-sample-1-pg  -o yaml
+
+# apiVersion: scheduling.volcano.sh/v1beta1
+# kind: PodGroup
+# metadata:
+#   creationTimestamp: "2025-10-30T17:10:18Z"
+#   generation: 7
+#   name: ray-rayjob-sample-1-pg
+#   namespace: default
+#   ownerReferences:
+#   - apiVersion: ray.io/v1
+#     blockOwnerDeletion: true
+#     controller: true
+#     kind: RayJob
+#     name: rayjob-sample-1
+#     uid: 5835c896-c75d-4692-b10a-2871a79f141a
+#   resourceVersion: "3724"
+#   uid: 9fd55cbd-ba69-456d-b305-f61ffd6d935d
+# spec:
+#   minMember: 3
+#   minResources:
+#     cpu: 3500m
+#     memory: 4296Mi
+#   queue: kuberay-test-queue
+# status:
+#   conditions:
+#   - lastTransitionTime: "2025-10-30T17:10:18Z"
+#     message: '3/3 tasks in gang unschedulable: pod group is not ready, 3 Pending,
+#       3 minAvailable; Pending: 3 Unschedulable'
+#     reason: NotEnoughResources
+#     status: "True"
+#     transitionID: 7866f533-6590-4a4d-83cf-8f1db0214609
+#     type: Unschedulable
+#   - lastTransitionTime: "2025-10-30T17:14:44Z"
+#     reason: tasks in gang are ready to be scheduled
+#     status: "True"
+#     transitionID: 36e0222d-eee3-444a-9889-5b9c255f41af
+#     type: Scheduled
+#   phase: Running
+#   running: 4
+```
+
+Check the pods again to see that the second RayJob is now up and running:
+```shell
+kubectl get pod
+# NAME                                             READY   STATUS      RESTARTS   AGE
+# rayjob-sample-1-mvgqf-head-qb7wm                 1/1     Running     0          5m47s
+# rayjob-sample-1-mvgqf-small-group-worker-jfzt5   1/1     Running     0          5m47s
+# rayjob-sample-1-mvgqf-small-group-worker-ng765   1/1     Running     0          5m47s
+# rayjob-sample-1-tcd4m                            0/1     Completed   0          84s
+```
+
+Finally, clean up the remaining rayjob, queue and configmap:
+```
+kubectl delete rayjob rayjob-sample-1
+kubectl delete queue kuberay-test-queue
+kubectl delete configmap ray-job-code-sample
 ```

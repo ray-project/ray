@@ -38,7 +38,7 @@ class ActorPool:
     """
 
     def __init__(self, actors: list):
-        from ray._private.usage.usage_lib import record_library_usage
+        from ray._common.usage.usage_lib import record_library_usage
 
         record_library_usage("util.ActorPool")
 
@@ -257,7 +257,7 @@ class ActorPool:
             The next result.
 
         Raises:
-            TimeoutError if the timeout is reached.
+            TimeoutError: if the timeout is reached.
 
         Examples:
             .. testcode::
@@ -320,7 +320,7 @@ class ActorPool:
             The next result.
 
         Raises:
-            TimeoutError if the timeout is reached.
+            TimeoutError: if the timeout is reached.
 
         Examples:
             .. testcode::

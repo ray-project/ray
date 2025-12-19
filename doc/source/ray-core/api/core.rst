@@ -9,6 +9,7 @@ Core API
     ray.shutdown
     ray.is_initialized
     ray.job_config.JobConfig
+    ray.LoggingConfig
 
 Tasks
 -----
@@ -29,7 +30,12 @@ Actors
     :toctree: doc/
 
     ray.remote
+    ray.actor.ActorClass
     ray.actor.ActorClass.options
+    ray.actor.ActorMethod
+    ray.actor.ActorHandle
+    ray.actor.ActorClassInheritanceException
+    ray.actor.exit_actor
     ray.method
     ray.get_actor
     ray.kill
@@ -44,6 +50,8 @@ Objects
     ray.get
     ray.wait
     ray.put
+    ray.util.as_completed
+    ray.util.map_unordered
 
 .. _runtime-context-apis:
 

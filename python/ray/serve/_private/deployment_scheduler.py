@@ -1,6 +1,7 @@
 import copy
 import logging
 import sys
+import warnings
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
@@ -10,10 +11,16 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
-from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.common import (
+    CreatePlacementGroupRequest,
+    DeploymentID,
+    ReplicaID,
+)
 from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
+    RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     SERVE_LOGGER_NAME,
 )
 from ray.util.scheduling_strategies import (
@@ -34,6 +41,10 @@ class SpreadDeploymentSchedulingPolicy:
 
 @total_ordering
 class Resources(dict):
+    # Custom resource priority from environment variable
+    CUSTOM_PRIORITY: List[str] = RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES
+    EPSILON = 1e-9
+
     def get(self, key: str):
         val = super().get(key)
         if val is not None:
@@ -48,7 +59,8 @@ class Resources(dict):
 
     def can_fit(self, other):
         keys = set(self.keys()) | set(other.keys())
-        return all(self.get(k) >= other.get(k) for k in keys)
+        # We add a small epsilon to avoid floating point precision issues.
+        return all(self.get(k) + self.EPSILON >= other.get(k) for k in keys)
 
     def __eq__(self, other):
         keys = set(self.keys()) | set(other.keys())
@@ -73,18 +85,23 @@ class Resources(dict):
 
     def __lt__(self, other):
         """Determines priority when sorting a list of SoftResources.
-        1. GPU
-        2. CPU
-        3. memory
-        4. custom resources
-        This means a resource with a larger number of GPUs is always
-        sorted higher than a resource with a smaller number of GPUs,
-        regardless of the values of the other resource types. Similarly
-        for CPU next, memory next, etc.
+        1. Custom resources defined in RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES (sorted by priority)
+        2. GPU
+        3. CPU
+        4. memory
+        5. Other custom resources
+        This means a resource with a larger number of high-priority resources is always
+        sorted higher than one with fewer, regardless of other types.
         """
 
         keys = set(self.keys()) | set(other.keys())
-        keys = keys - {"GPU", "CPU", "memory"}
+        custom_keys = keys - {"GPU", "CPU", "memory"}
+
+        for key in self.CUSTOM_PRIORITY:
+            if self.get(key) < other.get(key):
+                return True
+            elif self.get(key) > other.get(key):
+                return False
 
         if self.get("GPU") < other.get("GPU"):
             return True
@@ -101,7 +118,7 @@ class Resources(dict):
         elif self.get("memory") > other.get("memory"):
             return False
 
-        for key in keys:
+        for key in custom_keys - set(self.CUSTOM_PRIORITY):
             if self.get(key) < other.get(key):
                 return True
             elif self.get(key) > other.get(key):
@@ -115,6 +132,7 @@ class ReplicaSchedulingRequestStatus(str, Enum):
 
     IN_PROGRESS = "IN_PROGRESS"
     SUCCEEDED = "SUCCEEDED"
+    ACTOR_CREATION_FAILED = "ACTOR_CREATION_FAILED"
     PLACEMENT_GROUP_CREATION_FAILED = "PLACEMENT_GROUP_CREATION_FAILED"
 
 
@@ -549,19 +567,19 @@ class DeploymentScheduler(ABC):
             )
             try:
                 pg = self._create_placement_group_fn(
-                    scheduling_request.placement_group_bundles,
-                    placement_group_strategy,
-                    _soft_target_node_id=target_node_id,
-                    lifetime="detached",
-                    name=scheduling_request.actor_options["name"],
+                    CreatePlacementGroupRequest(
+                        bundles=scheduling_request.placement_group_bundles,
+                        strategy=placement_group_strategy,
+                        target_node_id=target_node_id,
+                        name=scheduling_request.actor_options["name"],
+                    )
                 )
             except Exception:
                 # We add a defensive exception here, so the controller can
                 # make progress even if the placement group isn't created.
                 # See https://github.com/ray-project/ray/issues/43888.
                 logger.exception(
-                    "Replica scheduling failed. Failed to create a "
-                    f"placement group for {replica_id}."
+                    f"Failed to create a placement group for {replica_id}."
                 )
                 scheduling_request.status = (
                     ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
@@ -583,7 +601,7 @@ class DeploymentScheduler(ABC):
             )
             target_node_id = None
 
-        actor_options = copy.copy(scheduling_request.actor_options)
+        actor_options = copy.deepcopy(scheduling_request.actor_options)
         if scheduling_request.max_replicas_per_node is not None:
             if "resources" not in actor_options:
                 actor_options["resources"] = {}
@@ -595,10 +613,19 @@ class DeploymentScheduler(ABC):
                 f"{deployment_id.app_name}:{deployment_id.name}"
             ] = (1.0 / scheduling_request.max_replicas_per_node)
 
-        actor_handle = scheduling_request.actor_def.options(
-            scheduling_strategy=scheduling_strategy,
-            **actor_options,
-        ).remote(*scheduling_request.actor_init_args)
+        try:
+            actor_handle = scheduling_request.actor_def.options(
+                scheduling_strategy=scheduling_strategy,
+                **actor_options,
+            ).remote(*scheduling_request.actor_init_args)
+        except Exception:
+            # We add a defensive exception here, so the controller can
+            # make progress even if the actor options are misconfigured.
+            logger.exception(f"Failed to create an actor for {replica_id}.")
+            scheduling_request.status = (
+                ReplicaSchedulingRequestStatus.ACTOR_CREATION_FAILED
+            )
+            return
 
         del self._pending_replicas[deployment_id][replica_id]
         self._on_replica_launching(
@@ -644,7 +671,15 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             d.is_non_strict_pack_pg() for d in self._deployments.values()
         )
         # Schedule replicas using compact strategy.
-        if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY and not non_strict_pack_pgs_exist:
+        if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY:
+            warnings.warn(
+                "The environment variable 'RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY' "
+                "is deprecated and will be removed in a v2.55.0 release. "
+                "Please use 'RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        if RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY and not non_strict_pack_pgs_exist:
             # Flatten dict of deployment replicas into all replicas,
             # then sort by decreasing resource size
             all_scheduling_requests = sorted(
@@ -710,17 +745,25 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         for (
             pending_launching_recovering_replica
         ) in pending_launching_recovering_replicas:
+            replicas_to_stop.add(pending_launching_recovering_replica)
             if len(replicas_to_stop) == max_num_to_stop:
                 return replicas_to_stop
-            else:
-                replicas_to_stop.add(pending_launching_recovering_replica)
 
-        node_to_running_replicas_of_target_deployment = (
-            self._get_node_to_running_replicas(deployment_id)
-        )
         node_to_running_replicas_of_all_deployments = (
             self._get_node_to_running_replicas()
         )
+
+        # _running_replicas preserves insertion order (oldest → newest).
+        # Reverse once so we have newest → oldest, then bucket by node.
+        ordered_running_replicas = list(self._running_replicas[deployment_id].items())
+        ordered_running_replicas.reverse()
+        ordered_running_replicas_of_target_deployment: Dict[
+            str, List[ReplicaID]
+        ] = defaultdict(list)
+        for replica_id, replica_node_id in ordered_running_replicas:
+            ordered_running_replicas_of_target_deployment[replica_node_id].append(
+                replica_id
+            )
 
         # Replicas on the head node has the lowest priority for downscaling
         # since we cannot relinquish the head node.
@@ -735,15 +778,14 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         for node_id, _ in sorted(
             node_to_running_replicas_of_all_deployments.items(), key=key
         ):
-            if node_id not in node_to_running_replicas_of_target_deployment:
+            if node_id not in ordered_running_replicas_of_target_deployment:
                 continue
-            for running_replica in node_to_running_replicas_of_target_deployment[
-                node_id
-            ]:
+
+            # Newest-first list for this node.
+            for replica_id in ordered_running_replicas_of_target_deployment[node_id]:
+                replicas_to_stop.add(replica_id)
                 if len(replicas_to_stop) == max_num_to_stop:
                     return replicas_to_stop
-                else:
-                    replicas_to_stop.add(running_replica)
 
         return replicas_to_stop
 

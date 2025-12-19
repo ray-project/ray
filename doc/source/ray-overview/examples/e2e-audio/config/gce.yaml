@@ -1,0 +1,9 @@
+head_node_type:
+  name: head
+  instance_type: n1-standard-8
+worker_node_types:
+  - name: "gpu-workers"
+    instance_type: "g2-standard-16"
+    min_workers: 5
+    max_workers: 5
+auto_select_worker_config: false

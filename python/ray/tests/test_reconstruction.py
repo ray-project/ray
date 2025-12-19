@@ -7,8 +7,8 @@ import numpy as np
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
-    wait_for_condition,
     wait_for_pid_to_exit,
 )
 
@@ -573,9 +573,4 @@ def test_reconstruction_chain(config, ray_start_cluster, reconstruction_enabled)
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

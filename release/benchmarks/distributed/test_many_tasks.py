@@ -1,16 +1,18 @@
-import click
-import ray
-import ray._private.test_utils as test_utils
 import time
-import tqdm
 
-from ray.util.state import summarize_tasks
-from dashboard_test import DashboardTestAtScale
+import click
+import tqdm
+from many_nodes_tests.dashboard_test import DashboardTestAtScale
+
+import ray
+import ray._common.test_utils
+import ray._private.test_utils as test_utils
 from ray._private.state_api_test_utils import (
     StateAPICallSpec,
     periodic_invoke_state_apis_with_actor,
     summarize_worker_startup_time,
 )
+from ray.util.state import summarize_tasks
 
 sleep_time = 300
 
@@ -69,7 +71,7 @@ def no_resource_leaks():
 def test(num_tasks):
     addr = ray.init(address="auto")
 
-    test_utils.wait_for_condition(no_resource_leaks)
+    ray._common.test_utils.wait_for_condition(no_resource_leaks)
     monitor_actor = test_utils.monitor_memory_usage()
     dashboard_test = DashboardTestAtScale(addr)
 
@@ -93,7 +95,7 @@ def test(num_tasks):
 
     del api_caller
     del monitor_actor
-    test_utils.wait_for_condition(no_resource_leaks)
+    ray._common.test_utils.wait_for_condition(no_resource_leaks)
 
     try:
         summarize_worker_startup_time()
@@ -112,7 +114,6 @@ def test(num_tasks):
         "num_tasks": num_tasks,
         "time": end_time - start_time,
         "used_cpus": used_cpus,
-        "success": "1",
         "_peak_memory": round(used_gb, 2),
         "_peak_process_memory": usage,
         "perf_metrics": [

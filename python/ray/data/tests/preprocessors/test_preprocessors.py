@@ -31,6 +31,7 @@ from ray.data.preprocessors import (
     SimpleImputer,
     StandardScaler,
     Tokenizer,
+    TorchVisionPreprocessor,
 )
 
 
@@ -87,7 +88,7 @@ def create_dummy_preprocessors():
         Categorizer(columns=["X"]),
         CountVectorizer(columns=["X"]),
         Chain(StandardScaler(columns=["X"]), MinMaxScaler(columns=["X"])),
-        FeatureHasher(columns=["X"], num_features=1),
+        FeatureHasher(columns=["X"], num_features=1, output_column="X_transformed"),
         HashingVectorizer(columns=["X"], num_features=1),
         LabelEncoder(label_column="X"),
         MaxAbsScaler(columns=["X"]),
@@ -100,7 +101,7 @@ def create_dummy_preprocessors():
         RobustScaler(columns=["X"]),
         SimpleImputer(columns=["X"]),
         StandardScaler(columns=["X"]),
-        Concatenator(),
+        Concatenator(columns=["X"]),
         Tokenizer(columns=["X"]),
     ],
 )
@@ -117,7 +118,7 @@ def test_fitted_preprocessor_without_stats():
 
     class FittablePreprocessor(Preprocessor):
         def _fit(self, ds):
-            return ds
+            return self
 
     preprocessor = FittablePreprocessor()
     ds = ray.data.from_items([1])
@@ -165,17 +166,27 @@ def test_fit_twice(mocked_warn):
     mocked_warn.assert_called_once_with(msg)
 
 
-def test_transform_config():
-    """Tests that the transform_config of
-    the Preprocessor is respected during transform."""
-
+def test_transform_all_configs():
     batch_size = 2
+    num_cpus = 2
+    concurrency = 2
+    memory = 1024
 
     class DummyPreprocessor(Preprocessor):
         _is_fittable = False
 
+        def _get_transform_config(self):
+            return {"batch_size": batch_size}
+
         def _transform_numpy(self, data):
-            assert len(data["value"]) == batch_size
+            assert ray.get_runtime_context().get_assigned_resources()["CPU"] == num_cpus
+            assert (
+                ray.get_runtime_context().get_assigned_resources()["memory"] == memory
+            )
+            # Read(10 rows) → Limit(5) → Transform(batch_size=2)
+            assert (
+                len(data["value"]) <= batch_size
+            )  # The last batch is size 1, and limit pushdown resulted in the transform occurring for fewer rows.
             return data
 
         def _transform_pandas(self, data):
@@ -183,15 +194,18 @@ def test_transform_config():
                 "Pandas transform should not be called with numpy batch format."
             )
 
-        def _get_transform_config(self):
-            return {"batch_size": 2}
-
         def _determine_transform_to_use(self):
             return "numpy"
 
     prep = DummyPreprocessor()
-    ds = ray.data.from_pandas(pd.DataFrame({"value": list(range(4))}))
-    prep.transform(ds)
+    ds = ray.data.from_pandas(pd.DataFrame({"value": list(range(10))}))
+    ds = prep.transform(
+        ds,
+        num_cpus=num_cpus,
+        memory=memory,
+        concurrency=concurrency,
+    )
+    assert [x["value"] for x in ds.take(5)] == [0, 1, 2, 3, 4]
 
 
 @pytest.mark.parametrize("dataset_format", ["simple", "pandas", "arrow"])
@@ -402,6 +416,81 @@ def test_numpy_pandas_support_transform_batch_tensor(create_dummy_preprocessors)
     assert isinstance(
         with_pandas_and_numpy_preferred.transform_batch(np_multi_column), dict
     )
+
+
+def test_get_input_output_columns():
+    """Tests get_input_columns() and get_output_columns() methods."""
+    # Test with preprocessors that have columns attribute
+    scaler = StandardScaler(columns=["A", "B"])
+    assert scaler.get_input_columns() == ["A", "B"]
+    assert scaler.get_output_columns() == ["A", "B"]
+
+    # Test with output_columns specified
+    scaler_with_output = StandardScaler(
+        columns=["A", "B"], output_columns=["A_scaled", "B_scaled"]
+    )
+    assert scaler_with_output.get_input_columns() == ["A", "B"]
+    assert scaler_with_output.get_output_columns() == ["A_scaled", "B_scaled"]
+
+    # Test with encoders
+    encoder = OneHotEncoder(columns=["X", "Y"])
+    assert encoder.get_input_columns() == ["X", "Y"]
+    assert encoder.get_output_columns() == ["X", "Y"]
+
+    encoder_with_output = OneHotEncoder(
+        columns=["X", "Y"], output_columns=["X_encoded", "Y_encoded"]
+    )
+    assert encoder_with_output.get_input_columns() == ["X", "Y"]
+    assert encoder_with_output.get_output_columns() == ["X_encoded", "Y_encoded"]
+
+    # Test LabelEncoder without output_column (in-place transformation)
+    label_encoder = LabelEncoder(label_column="target")
+    assert label_encoder.get_input_columns() == ["target"]
+    assert label_encoder.get_output_columns() == ["target"]
+
+    # Test LabelEncoder with output_column (append mode)
+    label_encoder = LabelEncoder(label_column="target", output_column="target_encoded")
+    assert label_encoder.get_input_columns() == ["target"]
+    assert label_encoder.get_output_columns() == ["target_encoded"]
+
+    # Test Concatenator (uses output_column_name instead of output_columns)
+    concatenator = Concatenator(columns=["A", "B"])
+    assert concatenator.get_input_columns() == ["A", "B"]
+    assert concatenator.get_output_columns() == ["concat_out"]
+
+    concatenator_with_output = Concatenator(
+        columns=["A", "B"], output_column_name="AB_concat"
+    )
+    assert concatenator_with_output.get_input_columns() == ["A", "B"]
+    assert concatenator_with_output.get_output_columns() == ["AB_concat"]
+
+    # Test FeatureHasher (uses output_column instead of output_columns)
+    feature_hasher = FeatureHasher(
+        columns=["token1", "token2"], num_features=8, output_column="hashed"
+    )
+    assert feature_hasher.get_input_columns() == ["token1", "token2"]
+    assert feature_hasher.get_output_columns() == ["hashed"]
+
+    # Test TorchVisionPreprocessor (uses _columns and _output_columns)
+    torch_preprocessor = TorchVisionPreprocessor(
+        columns=["image"], transform=lambda x: x
+    )
+    assert torch_preprocessor.get_input_columns() == ["image"]
+    assert torch_preprocessor.get_output_columns() == ["image"]
+
+    torch_preprocessor_with_output = TorchVisionPreprocessor(
+        columns=["image"], transform=lambda x: x, output_columns=["image_transformed"]
+    )
+    assert torch_preprocessor_with_output.get_input_columns() == ["image"]
+    assert torch_preprocessor_with_output.get_output_columns() == ["image_transformed"]
+
+    # Test with preprocessor without columns attribute
+    class CustomPreprocessor(Preprocessor):
+        _is_fittable = False
+
+    custom = CustomPreprocessor()
+    assert custom.get_input_columns() == []
+    assert custom.get_output_columns() == []
 
 
 if __name__ == "__main__":

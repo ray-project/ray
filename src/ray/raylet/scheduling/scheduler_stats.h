@@ -14,42 +14,41 @@
 
 #pragma once
 
-#include "absl/container/flat_hash_map.h"
-#include "ray/common/ray_config.h"
-#include "ray/common/task/task_spec.h"
-#include "ray/raylet/scheduling/internal.h"
-#include "ray/raylet/scheduling/local_task_manager_interface.h"
+#include <string>
+
+#include "ray/raylet/scheduling/local_lease_manager_interface.h"
+#include "ray/stats/metric.h"
 
 namespace ray {
 namespace raylet {
-class ClusterTaskManager;
+class ClusterLeaseManager;
 
 // Helper class that collects and reports scheduler's metrics into counters or human
 // readable string.
 class SchedulerStats {
  public:
-  explicit SchedulerStats(const ClusterTaskManager &cluster_task_manager,
-                          const ILocalTaskManager &local_task_manager);
+  explicit SchedulerStats(const ClusterLeaseManager &cluster_lease_manager,
+                          const LocalLeaseManagerInterface &local_lease_manager);
 
   // Report metrics doesn't recompute the stats.
-  void RecordMetrics() const;
+  void RecordMetrics();
 
   // Recompute the stats and report the result as string.
   std::string ComputeAndReportDebugStr();
 
-  // increase the task spilled counter.
-  void TaskSpilled();
+  // increase the lease spilled counter.
+  void LeaseSpilled();
 
  private:
   // recompute the metrics.
   void ComputeStats();
 
-  const ClusterTaskManager &cluster_task_manager_;
-  const ILocalTaskManager &local_task_manager_;
+  const ClusterLeaseManager &cluster_lease_manager_;
+  const LocalLeaseManagerInterface &local_lease_manager_;
 
   /// Number of tasks that are spilled to other
   /// nodes because it cannot be scheduled locally.
-  int64_t metric_tasks_spilled_ = 0;
+  int64_t metric_leases_spilled_ = 0;
   /// Number of tasks that are waiting for
   /// resources to be available locally.
   int64_t num_waiting_for_resource_ = 0;
@@ -63,19 +62,19 @@ class SchedulerStats {
   /// Number of workers that couldn't be started because the worker registration timed
   /// out.
   int64_t num_worker_not_started_by_registration_timeout_ = 0;
-  /// Number of workers that couldn't be started becasue it hits the worker startup rate
+  /// Number of workers that couldn't be started because it hits the worker startup rate
   /// limit.
   int64_t num_worker_not_started_by_process_rate_limit_ = 0;
   /// Number of tasks that are waiting for worker processes to start.
   int64_t num_tasks_waiting_for_workers_ = 0;
-  /// Number of cancelled tasks.
-  int64_t num_cancelled_tasks_ = 0;
-  /// Number of infeasible tasks.
-  int64_t num_infeasible_tasks_ = 0;
-  /// Number of tasks to schedule.
-  int64_t num_tasks_to_schedule_ = 0;
-  /// Number of tasks to dispatch.
-  int64_t num_tasks_to_dispatch_ = 0;
+  /// Number of cancelled leases.
+  int64_t num_cancelled_leases_ = 0;
+  /// Number of infeasible leases.
+  int64_t num_infeasible_leases_ = 0;
+  /// Number of leases to schedule.
+  int64_t num_leases_to_schedule_ = 0;
+  /// Number of leases to grant.
+  int64_t num_leases_to_grant_ = 0;
 };
 
 }  // namespace raylet

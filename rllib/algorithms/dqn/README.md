@@ -3,7 +3,7 @@
 Code in this package is adapted from https://github.com/openai/baselines/tree/master/baselines/deepq.
 
 
-## Overview 
+## Overview
 
 [DQN](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf) is a model-free off-policy RL
 algorithm and one of the first deep RL algorithms developed. DQN proposes using a
@@ -21,18 +21,18 @@ training and is uniformly sampled from to generate gradient updates for the Q-va
 
 [Double DQN](https://arxiv.org/pdf/1509.06461.pdf) - As opposed to learning one Q network in vanilla DQN, Double DQN proposes learning two Q networks akin to double Q-learning. As a solution, Double DQN aims to solve the issue of vanilla DQN's overly-optimistic Q-values, which limits performance.
 
-[Dueling DQN](https://arxiv.org/pdf/1511.06581.pdf) - Dueling DQN proposes splitting learning a Q-value function approximator into learning two networks: a value and advantage approximator. 
+[Dueling DQN](https://arxiv.org/pdf/1511.06581.pdf) - Dueling DQN proposes splitting learning a Q-value function approximator into learning two networks: a value and advantage approximator.
 
-[Distributional DQN](https://arxiv.org/pdf/1707.06887.pdf) - Usually, the Q network outputs the predicted Q-value of a state-action pair. Distributional DQN takes this further by predicting the distribution of Q-values (e.g. mean and std of a normal distribution) of a state-action pair. Doing this captures uncertainty of the Q-value and can improve the performance of DQN algorithms. 
+[Distributional DQN](https://arxiv.org/pdf/1707.06887.pdf) - Usually, the Q network outputs the predicted Q-value of a state-action pair. Distributional DQN takes this further by predicting the distribution of Q-values (e.g. mean and std of a normal distribution) of a state-action pair. Doing this captures uncertainty of the Q-value and can improve the performance of DQN algorithms.
 
-[APEX-DQN](https://arxiv.org/pdf/1803.00933.pdf) - Standard DQN algorithms propose using a experience replay buffer to sample data uniformly and compute gradients from the sampled data. APEX introduces the notion of weighted replay data, where elements in the replay buffer are more or less likely to be sampled depending on the TD-error. 
+[APEX-DQN](https://arxiv.org/pdf/1803.00933.pdf) - Standard DQN algorithms propose using a experience replay buffer to sample data uniformly and compute gradients from the sampled data. APEX introduces the notion of weighted replay data, where elements in the replay buffer are more or less likely to be sampled depending on the TD-error.
 
-[Rainbow](https://arxiv.org/pdf/1710.02298.pdf) - Rainbow DQN, as the word Rainbow suggests, aggregates the many improvements discovered in research to improve DQN performance. This includes a multi-step distributional loss (extended from Distributional DQN), prioritized replay (inspired from APEX-DQN), double Q-networks (inspired from Double DQN), and dueling networks (inspired from Dueling DQN). 
+[Rainbow](https://arxiv.org/pdf/1710.02298.pdf) - Rainbow DQN, as the word Rainbow suggests, aggregates the many improvements discovered in research to improve DQN performance. This includes a multi-step distributional loss (extended from Distributional DQN), prioritized replay (inspired from APEX-DQN), double Q-networks (inspired from Double DQN), and dueling networks (inspired from Dueling DQN).
 
 
 ## Documentation & Implementation:
 
-1) Vanilla DQN (DQN). 
+1) Vanilla DQN (DQN).
 
     **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#dqn)**
 
@@ -55,7 +55,7 @@ training and is uniformly sampled from to generate gradient updates for the Q-va
     **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#dqn)**
 
     **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py)**
-    
+
 4) APEX DQN
 
     **[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#dqn)**

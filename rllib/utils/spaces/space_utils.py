@@ -1,9 +1,10 @@
-import gymnasium as gym
-from gymnasium.spaces import Tuple, Dict
-import numpy as np
-from ray.rllib.utils.annotations import DeveloperAPI
-import tree  # pip install dm_tree
 from typing import Any, List, Optional, Union
+
+import gymnasium as gym
+import numpy as np
+import tree  # pip install dm_tree
+
+from ray.rllib.utils.annotations import DeveloperAPI
 
 
 @DeveloperAPI
@@ -44,6 +45,30 @@ def get_original_space(space: gym.Space) -> gym.Space:
 
 
 @DeveloperAPI
+def is_composite_space(space: gym.Space) -> bool:
+    """Returns true, if the space is composite.
+
+    Note, we follow here the glossary of `gymnasium` by which any spoace
+    that holds other spaces is defined as being 'composite'.
+
+    Args:
+        space: The space to be checked for being composed of other spaces.
+
+    Returns:
+        True, if the space is composed of other spaces, otherwise False.
+    """
+    if type(space) in [
+        gym.spaces.Dict,
+        gym.spaces.Graph,
+        gym.spaces.Sequence,
+        gym.spaces.Tuple,
+    ]:
+        return True
+    else:
+        return False
+
+
+@DeveloperAPI
 def flatten_space(space: gym.Space) -> List[gym.Space]:
     """Flattens a gym.Space into its primitive components.
 
@@ -61,10 +86,10 @@ def flatten_space(space: gym.Space) -> List[gym.Space]:
     def _helper_flatten(space_, return_list):
         from ray.rllib.utils.spaces.flexdict import FlexDict
 
-        if isinstance(space_, Tuple):
+        if isinstance(space_, gym.spaces.Tuple):
             for s in space_:
                 _helper_flatten(s, return_list)
-        elif isinstance(space_, (Dict, FlexDict)):
+        elif isinstance(space_, (gym.spaces.Dict, FlexDict)):
             for k in sorted(space_.spaces):
                 _helper_flatten(space_[k], return_list)
         else:
@@ -101,9 +126,9 @@ def get_base_struct_from_space(space):
     """
 
     def _helper_struct(space_):
-        if isinstance(space_, Tuple):
+        if isinstance(space_, gym.spaces.Tuple):
             return tuple(_helper_struct(s) for s in space_)
-        elif isinstance(space_, Dict):
+        elif isinstance(space_, gym.spaces.Dict):
             return {k: _helper_struct(space_[k]) for k in space_.spaces}
         else:
             return space_
@@ -171,7 +196,7 @@ def get_dummy_batch_for_space(
         elif isinstance(space, gym.spaces.MultiDiscrete):
             space = gym.spaces.Box(0.0, 1.0, (np.sum(space.nvec),), np.float32)
 
-    # Primivite spaces: Box, Discrete, MultiDiscrete.
+    # Primitive spaces: Box, Discrete, MultiDiscrete.
     # Random values: Use gym's sample() method.
     if fill_value == "random":
         if time_size is not None:
@@ -296,11 +321,9 @@ def batch(
         individual_items_already_have_batch_dim = isinstance(flat[0], BatchedNdArray)
 
     np_func = np.concatenate if individual_items_already_have_batch_dim else np.stack
-    try:
-        ret = tree.map_structure(lambda *s: np_func(s, axis=0), *list_of_structs)
-    except Exception as e:
-        print(e)
-        return None
+    ret = tree.map_structure(
+        lambda *s: np.ascontiguousarray(np_func(s, axis=0)), *list_of_structs
+    )
     return ret
 
 

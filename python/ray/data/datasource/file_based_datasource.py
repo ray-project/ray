@@ -1,5 +1,6 @@
 import io
 import logging
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -10,6 +11,8 @@ from typing import (
     List,
     Literal,
     Optional,
+    Tuple,
+    TypeVar,
     Union,
 )
 
@@ -17,9 +20,12 @@ import numpy as np
 
 import ray
 from ray.data._internal.util import (
+    RetryingContextManager,
+    RetryingPyFileSystem,
     _check_pyarrow_version,
     _is_local_scheme,
-    call_with_retry,
+    infer_compression,
+    iterate_with_retry,
     make_async_gen,
 )
 from ray.data.block import Block, BlockAccessor
@@ -38,7 +44,7 @@ from ray.data.datasource.path_util import (
     _has_file_extension,
     _resolve_paths_and_filesystem,
 )
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -54,28 +60,66 @@ FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 16
 # 16 file size fetches from S3 takes ~1.5 seconds with Arrow's S3FileSystem.
 PATHS_PER_FILE_SIZE_FETCH_TASK = 16
 
-# The errors to retry for opening file.
-OPEN_FILE_RETRY_ON_ERRORS = ["AWS Error SLOW_DOWN", "AWS Error ACCESS_DENIED"]
 
-# The max retry backoff in seconds for opening file.
-OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
+@DeveloperAPI
+@dataclass
+class FileShuffleConfig:
+    """Configuration for file shuffling.
 
-# The max number of attempts for opening file.
-OPEN_FILE_MAX_ATTEMPTS = 10
+    This configuration object controls how files are shuffled while reading file-based
+    datasets. The random seed behavior is determined by the combination of ``seed``
+    and ``reseed_after_execution``:
 
+    - If ``seed`` is None, the random seed is always None (non-deterministic shuffling).
+    - If ``seed`` is not None and ``reseed_after_execution`` is False, the random seed is
+      constantly ``seed`` across executions.
+    - If ``seed`` is not None and ``reseed_after_execution`` is True, the random seed is
+      different for each execution.
 
-@Deprecated
-@PublicAPI(stability="beta")
-class FileExtensionFilter(PathPartitionFilter):
-    def __init__(
-        self,
-        file_extensions: Union[str, List[str]],
-        allow_if_no_extension: bool = False,
-    ):
-        raise DeprecationWarning(
-            "`FileExtensionFilter` is deprecated. Instead, set the `file_extensions` "
-            "parameter of `read_xxx()` APIs."
-        )
+    .. note::
+        Even if you provided a seed, you might still observe a non-deterministic row
+        order. This is because tasks are executed in parallel and their completion
+        order might vary. If you need to preserve the order of rows, set
+        ``DataContext.get_current().execution_options.preserve_order``.
+
+    Args:
+        seed: An optional integer seed for the file shuffler. If None, shuffling is
+            non-deterministic. If provided, shuffling is deterministic based on this
+            seed and the ``reseed_after_execution`` setting.
+        reseed_after_execution: If True, the random seed considers both ``seed`` and
+            ``execution_idx``, resulting in different shuffling orders across executions.
+            If False, the random seed is constantly ``seed``, resulting in the same
+            shuffling order across executions. Only takes effect when ``seed`` is not None.
+            Defaults to True.
+
+    Example:
+        >>> import ray
+        >>> from ray.data import FileShuffleConfig
+        >>> # Fixed seed - same shuffle across executions
+        >>> shuffle = FileShuffleConfig(seed=42, reseed_after_execution=False)
+        >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/batoidea", shuffle=shuffle)
+        >>>
+        >>> # Seed with reseed_after_execution - different shuffle per execution
+        >>> shuffle = FileShuffleConfig(seed=42, reseed_after_execution=True)
+        >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/batoidea", shuffle=shuffle)
+    """  # noqa: E501
+
+    seed: Optional[int] = None
+    reseed_after_execution: bool = True
+
+    def __post_init__(self):
+        """Ensure that the seed is either None or an integer."""
+        if self.seed is not None and not isinstance(self.seed, int):
+            raise ValueError("Seed must be an integer or None.")
+
+    def get_seed(self, execution_idx: int = 0) -> Optional[int]:
+        if self.seed is None:
+            return None
+        elif self.reseed_after_execution:
+            # Modulo ensures the result is in valid NumPy seed range [0, 2**32 - 1].
+            return hash((self.seed, execution_idx)) % (2**32)
+        else:
+            return self.seed
 
 
 @DeveloperAPI
@@ -105,10 +149,11 @@ class FileBasedDatasource(Datasource):
         partition_filter: PathPartitionFilter = None,
         partitioning: Partitioning = None,
         ignore_missing_paths: bool = False,
-        shuffle: Union[Literal["files"], None] = None,
+        shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
+        super().__init__()
         _check_pyarrow_version()
 
         self._supports_distributed_reads = not _is_local_scheme(paths)
@@ -120,13 +165,19 @@ class FileBasedDatasource(Datasource):
             )
 
         self._schema = schema
+        self._data_context = DataContext.get_current()
         self._open_stream_args = open_stream_args
         self._meta_provider = meta_provider
         self._partition_filter = partition_filter
         self._partitioning = partitioning
         self._ignore_missing_paths = ignore_missing_paths
         self._include_paths = include_paths
+        # Need this property for lineage tracking
+        self._source_paths = paths
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        self._filesystem = RetryingPyFileSystem.wrap(
+            self._filesystem, retryable_errors=self._data_context.retried_io_errors
+        )
         paths, file_sizes = map(
             list,
             zip(
@@ -167,9 +218,8 @@ class FileBasedDatasource(Datasource):
                     "'file_extensions' field is set properly."
                 )
 
-        self._file_metadata_shuffler = None
-        if shuffle == "files":
-            self._file_metadata_shuffler = np.random.default_rng()
+        _validate_shuffle_arg(shuffle)
+        self._shuffle = shuffle
 
         # Read tasks serialize `FileBasedDatasource` instances, and the list of paths
         # can be large. To avoid slow serialization speeds, we store a reference to
@@ -190,66 +240,70 @@ class FileBasedDatasource(Datasource):
                 total_size += sz
         return total_size
 
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+    def get_read_tasks(
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
+    ) -> List[ReadTask]:
         import numpy as np
 
-        ctx = DataContext.get_current()
         open_stream_args = self._open_stream_args
         partitioning = self._partitioning
 
         paths = self._paths()
         file_sizes = self._file_sizes()
 
-        if self._file_metadata_shuffler is not None:
-            files_metadata = list(zip(paths, file_sizes))
-            shuffled_files_metadata = [
-                files_metadata[i]
-                for i in self._file_metadata_shuffler.permutation(len(files_metadata))
-            ]
-            paths, file_sizes = list(map(list, zip(*shuffled_files_metadata)))
+        execution_idx = data_context._execution_idx if data_context is not None else 0
+        paths, file_sizes = _shuffle_file_metadata(
+            paths, file_sizes, self._shuffle, execution_idx
+        )
 
-        read_stream = self._read_stream
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
 
         if open_stream_args is None:
             open_stream_args = {}
-
-        open_input_source = self._open_input_source
 
         def read_files(
             read_paths: Iterable[str],
         ) -> Iterable[Block]:
             nonlocal filesystem, open_stream_args, partitioning
 
-            DataContext._set_current(ctx)
             fs = _unwrap_s3_serialization_workaround(filesystem)
+
             for read_path in read_paths:
                 partitions: Dict[str, str] = {}
                 if partitioning is not None:
                     parse = PathPartitionParser(partitioning)
                     partitions = parse(read_path)
 
-                with _open_file_with_retry(
-                    read_path,
-                    lambda: open_input_source(fs, read_path, **open_stream_args),
+                with RetryingContextManager(
+                    self._open_input_source(fs, read_path, **open_stream_args),
+                    context=self._data_context,
                 ) as f:
-                    for block in read_stream(f, read_path):
+                    for block in iterate_with_retry(
+                        lambda: self._read_stream(f, read_path),
+                        description="read stream iteratively",
+                        match=self._data_context.retried_io_errors,
+                    ):
                         if partitions:
                             block = _add_partitions(block, partitions)
                         if self._include_paths:
                             block_accessor = BlockAccessor.for_block(block)
-                            block = block_accessor.append_column(
-                                "path", [read_path] * block_accessor.num_rows()
-                            )
+                            block = block_accessor.fill_column("path", read_path)
                         yield block
 
         def create_read_task_fn(read_paths, num_threads):
             def read_task_fn():
                 nonlocal num_threads, read_paths
 
+                # TODO: We should refactor the code so that we can get the results in
+                # order even when using multiple threads.
+                if self._data_context.execution_options.preserve_order:
+                    num_threads = 0
+
                 if num_threads > 0:
-                    if len(read_paths) < num_threads:
-                        num_threads = len(read_paths)
+                    num_threads = min(num_threads, len(read_paths))
 
                     logger.debug(
                         f"Reading {len(read_paths)} files with {num_threads} threads."
@@ -259,6 +313,7 @@ class FileBasedDatasource(Datasource):
                         iter(read_paths),
                         read_files,
                         num_workers=num_threads,
+                        preserve_ordering=True,
                     )
                 else:
                     logger.debug(f"Reading {len(read_paths)} files.")
@@ -270,90 +325,104 @@ class FileBasedDatasource(Datasource):
         parallelism = min(parallelism, len(paths))
 
         read_tasks = []
-        for read_paths, file_sizes in zip(
-            np.array_split(paths, parallelism), np.array_split(file_sizes, parallelism)
-        ):
+        split_paths = np.array_split(paths, parallelism)
+        split_file_sizes = np.array_split(file_sizes, parallelism)
+
+        for read_paths, file_sizes in zip(split_paths, split_file_sizes):
             if len(read_paths) <= 0:
                 continue
 
             meta = self._meta_provider(
                 read_paths,
-                self._schema,
                 rows_per_file=self._rows_per_file(),
                 file_sizes=file_sizes,
             )
 
             read_task_fn = create_read_task_fn(read_paths, self._NUM_THREADS_PER_TASK)
 
-            read_task = ReadTask(read_task_fn, meta)
+            read_task = ReadTask(
+                read_task_fn, meta, per_task_row_limit=per_task_row_limit
+            )
 
             read_tasks.append(read_task)
 
         return read_tasks
 
+    def resolve_compression(
+        self, path: str, open_args: Dict[str, Any]
+    ) -> Optional[str]:
+        """Resolves the compression format for a stream.
+
+        Args:
+            path: The file path to resolve compression for.
+            open_args: kwargs passed to
+                `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html#pyarrow.fs.FileSystem.open_input_stream>`_
+                when opening input files to read.
+
+        Returns:
+            The compression format (e.g., "gzip", "snappy", "bz2") or None if
+            no compression is detected or specified.
+        """
+        compression = open_args.get("compression", None)
+        if compression is None:
+            compression = infer_compression(path)
+        return compression
+
+    def _resolve_buffer_size(self, open_args: Dict[str, Any]) -> Optional[int]:
+        buffer_size = open_args.pop("buffer_size", None)
+        if buffer_size is None:
+            buffer_size = self._data_context.streaming_read_buffer_size
+        return buffer_size
+
+    def _file_to_snappy_stream(
+        self,
+        file: "pyarrow.NativeFile",
+        filesystem: "RetryingPyFileSystem",
+    ) -> "pyarrow.PythonFile":
+        import pyarrow as pa
+        import snappy
+        from pyarrow.fs import HadoopFileSystem
+
+        stream = io.BytesIO()
+        if isinstance(filesystem.unwrap(), HadoopFileSystem):
+            snappy.hadoop_snappy.stream_decompress(src=file, dst=stream)
+        else:
+            snappy.stream_decompress(src=file, dst=stream)
+        stream.seek(0)
+
+        return pa.PythonFile(stream, mode="r")
+
     def _open_input_source(
         self,
-        filesystem: "pyarrow.fs.FileSystem",
+        filesystem: "RetryingPyFileSystem",
         path: str,
         **open_args,
     ) -> "pyarrow.NativeFile":
         """Opens a source path for reading and returns the associated Arrow NativeFile.
 
         The default implementation opens the source path as a sequential input stream,
-        using ctx.streaming_read_buffer_size as the buffer size if none is given by the
-        caller.
+        using self._data_context.streaming_read_buffer_size as the buffer size if none
+        is given by the caller.
 
         Implementations that do not support streaming reads (e.g. that require random
         access) should override this method.
         """
-        import pyarrow as pa
-        from pyarrow.fs import HadoopFileSystem
 
-        compression = open_args.get("compression", None)
-        if compression is None:
-            try:
-                # If no compression manually given, try to detect
-                # compression codec from path.
-                compression = pa.Codec.detect(path).name
-            except (ValueError, TypeError):
-                # Arrow's compression inference on the file path
-                # doesn't work for Snappy, so we double-check ourselves.
-                import pathlib
-
-                suffix = pathlib.Path(path).suffix
-                if suffix and suffix[1:] == "snappy":
-                    compression = "snappy"
-                else:
-                    compression = None
-
-        buffer_size = open_args.pop("buffer_size", None)
-        if buffer_size is None:
-            ctx = DataContext.get_current()
-            buffer_size = ctx.streaming_read_buffer_size
+        compression = self.resolve_compression(path, open_args)
+        buffer_size = self._resolve_buffer_size(open_args)
 
         if compression == "snappy":
             # Arrow doesn't support streaming Snappy decompression since the canonical
             # C++ Snappy library doesn't natively support streaming decompression. We
             # works around this by manually decompressing the file with python-snappy.
             open_args["compression"] = None
-        else:
-            open_args["compression"] = compression
+            file = filesystem.open_input_stream(
+                path, buffer_size=buffer_size, **open_args
+            )
+            return self._file_to_snappy_stream(file, filesystem)
 
-        file = filesystem.open_input_stream(path, buffer_size=buffer_size, **open_args)
-
-        if compression == "snappy":
-            import snappy
-
-            stream = io.BytesIO()
-            if isinstance(filesystem, HadoopFileSystem):
-                snappy.hadoop_snappy.stream_decompress(src=file, dst=stream)
-            else:
-                snappy.stream_decompress(src=file, dst=stream)
-            stream.seek(0)
-
-            file = pa.PythonFile(stream, mode="r")
-
-        return file
+        open_args["compression"] = compression
+        return filesystem.open_input_stream(path, buffer_size=buffer_size, **open_args)
 
     def _rows_per_file(self):
         """Returns the number of rows per file, or None if unknown."""
@@ -447,22 +516,36 @@ def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
     import pyarrow as pa
     import pyarrow.fs
 
-    if isinstance(filesystem, pa.fs.S3FileSystem):
+    base_fs = filesystem
+    if isinstance(filesystem, RetryingPyFileSystem):
+        base_fs = filesystem.unwrap()
+
+    if isinstance(base_fs, pa.fs.S3FileSystem):
         return _S3FileSystemWrapper(filesystem)
+
     return filesystem
 
 
 def _unwrap_s3_serialization_workaround(
-    filesystem: Union["pyarrow.fs.FileSystem", "_S3FileSystemWrapper"]
+    filesystem: Union["pyarrow.fs.FileSystem", "_S3FileSystemWrapper"],
 ):
     if isinstance(filesystem, _S3FileSystemWrapper):
-        return filesystem.unwrap()
-    else:
-        return filesystem
+        filesystem = filesystem.unwrap()
+    return filesystem
 
 
 class _S3FileSystemWrapper:
-    def __init__(self, fs: "pyarrow.fs.S3FileSystem"):
+    """pyarrow.fs.S3FileSystem wrapper that can be deserialized safely.
+
+    Importing pyarrow.fs during reconstruction triggers the pyarrow
+    S3 subsystem initialization.
+
+    NOTE: This is only needed for pyarrow<14.0.0 and should be removed
+        once the minimum supported pyarrow version exceeds that.
+        See https://github.com/apache/arrow/pull/38375 for context.
+    """
+
+    def __init__(self, fs: "pyarrow.fs.FileSystem"):
         self._fs = fs
 
     def unwrap(self):
@@ -480,19 +563,6 @@ class _S3FileSystemWrapper:
         return _S3FileSystemWrapper._reconstruct, self._fs.__reduce__()
 
 
-def _wrap_arrow_serialization_workaround(kwargs: dict) -> dict:
-    if "filesystem" in kwargs:
-        kwargs["filesystem"] = _wrap_s3_serialization_workaround(kwargs["filesystem"])
-
-    return kwargs
-
-
-def _unwrap_arrow_serialization_workaround(kwargs: dict) -> dict:
-    if isinstance(kwargs.get("filesystem"), _S3FileSystemWrapper):
-        kwargs["filesystem"] = kwargs["filesystem"].unwrap()
-    return kwargs
-
-
 def _resolve_kwargs(
     kwargs_fn: Callable[[], Dict[str, Any]], **kwargs
 ) -> Dict[str, Any]:
@@ -502,25 +572,46 @@ def _resolve_kwargs(
     return kwargs
 
 
-def _open_file_with_retry(
-    file_path: str,
-    open_file: Callable[[], "pyarrow.NativeFile"],
-) -> "pyarrow.NativeFile":
-    """Open file with an exponential backoff retry strategy.
-
-    This is to avoid transient task failure with remote storage (such as S3),
-    when the remote storage throttles the requests.
-    """
-    if OPEN_FILE_MAX_ATTEMPTS < 1:
+def _validate_shuffle_arg(
+    shuffle: Union[Literal["files"], FileShuffleConfig, None],
+) -> None:
+    if not (
+        shuffle is None or shuffle == "files" or isinstance(shuffle, FileShuffleConfig)
+    ):
         raise ValueError(
-            "OPEN_FILE_MAX_ATTEMPTS cannot be negative or 0. Get: "
-            f"{OPEN_FILE_MAX_ATTEMPTS}"
+            f"Invalid value for 'shuffle': {shuffle}. "
+            "Valid values are None, 'files', `FileShuffleConfig`."
         )
 
-    return call_with_retry(
-        open_file,
-        description=f"open file {file_path}",
-        match=OPEN_FILE_RETRY_ON_ERRORS,
-        max_attempts=OPEN_FILE_MAX_ATTEMPTS,
-        max_backoff_s=OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS,
+
+FileMetadata = TypeVar("FileMetadata")
+
+
+def _shuffle_file_metadata(
+    paths: List[str],
+    file_metadata: List[FileMetadata],
+    shuffler: Union[Literal["files"], FileShuffleConfig, None],
+    execution_idx: int,
+) -> Tuple[List[str], List[FileMetadata]]:
+    """Shuffle file paths and sizes together using the given shuffler."""
+    if shuffler is None:
+        return paths, file_metadata
+
+    assert len(paths) == len(file_metadata), (
+        "Number of paths and file metadata must match. "
+        f"Got {len(paths)} paths and {len(file_metadata)} file metadata."
     )
+    if len(paths) == 0:
+        return paths, file_metadata
+
+    if shuffler == "files":
+        seed = None
+    else:
+        assert isinstance(shuffler, FileShuffleConfig)
+        seed = shuffler.get_seed(execution_idx)
+
+    file_metadata_shuffler = np.random.default_rng(seed)
+
+    files_metadata = list(zip(paths, file_metadata))
+    file_metadata_shuffler.shuffle(files_metadata)
+    return list(map(list, zip(*files_metadata)))

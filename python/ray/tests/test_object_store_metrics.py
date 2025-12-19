@@ -1,16 +1,19 @@
-from collections import defaultdict
-import pytest
-from typing import Dict
-import numpy as np
 import sys
+from collections import defaultdict
+from typing import Dict
 
+import numpy as np
+import pytest
 import requests
+
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
-    raw_metrics,
-    wait_for_condition,
+    PrometheusTimeseries,
+    raw_metric_timeseries,
 )
 from ray._private.worker import RayContext
+from ray.dashboard.consts import RAY_DASHBOARD_STATS_UPDATING_INTERVAL
 
 KiB = 1 << 10
 MiB = 1 << 20
@@ -24,8 +27,10 @@ _SYSTEM_CONFIG = {
 }
 
 
-def _objects_by_tag(info: RayContext, tag: str) -> Dict:
-    res = raw_metrics(info)
+def _objects_by_tag(
+    info: RayContext, tag: str, timeseries: PrometheusTimeseries
+) -> Dict:
+    res = raw_metric_timeseries(info, timeseries)
     objects_info = defaultdict(int)
     if "ray_object_store_memory" in res:
         for sample in res["ray_object_store_memory"]:
@@ -39,12 +44,12 @@ def _objects_by_tag(info: RayContext, tag: str) -> Dict:
     return objects_info
 
 
-def objects_by_seal_state(info: RayContext) -> Dict:
-    return _objects_by_tag(info, "ObjectState")
+def objects_by_seal_state(info: RayContext, timeseries: PrometheusTimeseries) -> Dict:
+    return _objects_by_tag(info, "ObjectState", timeseries)
 
 
-def objects_by_loc(info: RayContext) -> Dict:
-    return _objects_by_tag(info, "Location")
+def objects_by_loc(info: RayContext, timeseries: PrometheusTimeseries) -> Dict:
+    return _objects_by_tag(info, "Location", timeseries)
 
 
 def approx_eq_dict_in(actual: Dict, expected: Dict, e: int) -> bool:
@@ -77,6 +82,7 @@ def test_shared_memory_and_inline_worker_heap(shutdown_only):
             },
         },
     )
+    timeseries = PrometheusTimeseries()
 
     # Allocate 80MiB data
     objs_in_use = ray.get(
@@ -92,7 +98,7 @@ def test_shared_memory_and_inline_worker_heap(shutdown_only):
 
     wait_for_condition(
         # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 2 * KiB),
+        lambda: approx_eq_dict_in(objects_by_loc(info, timeseries), expected, 2 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -115,7 +121,7 @@ def test_shared_memory_and_inline_worker_heap(shutdown_only):
 
     wait_for_condition(
         # 4 KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 4 * KiB),
+        lambda: approx_eq_dict_in(objects_by_loc(info, timeseries), expected, 4 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -134,7 +140,7 @@ def test_shared_memory_and_inline_worker_heap(shutdown_only):
 
     wait_for_condition(
         # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 2 * KiB),
+        lambda: approx_eq_dict_in(objects_by_loc(info, timeseries), expected, 2 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -156,7 +162,7 @@ def test_spilling(object_spilling_config, shutdown_only):
             **{"object_spilling_config": object_spilling_config},
         },
     )
-
+    timeseries = PrometheusTimeseries()
     # Create and use 100MiB data, which should fit in memory
     objs1 = [ray.put(np.zeros(50 * MiB, dtype=np.uint8)) for _ in range(2)]
 
@@ -169,7 +175,7 @@ def test_spilling(object_spilling_config, shutdown_only):
 
     wait_for_condition(
         # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 1 * KiB),
+        lambda: approx_eq_dict_in(objects_by_loc(info, timeseries), expected, 1 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -185,7 +191,7 @@ def test_spilling(object_spilling_config, shutdown_only):
     }
     wait_for_condition(
         # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 1 * KiB),
+        lambda: approx_eq_dict_in(objects_by_loc(info, timeseries), expected, 1 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -200,7 +206,7 @@ def test_spilling(object_spilling_config, shutdown_only):
     }
     wait_for_condition(
         # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 1 * KiB),
+        lambda: approx_eq_dict_in(objects_by_loc(info, timeseries), expected, 1 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -215,7 +221,7 @@ def test_spilling(object_spilling_config, shutdown_only):
     }
     wait_for_condition(
         # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 1 * KiB),
+        lambda: approx_eq_dict_in(objects_by_loc(info, timeseries), expected, 1 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -237,6 +243,7 @@ def test_fallback_memory(shutdown_only):
         object_store_memory=expected_in_memory * obj_size_mb * MiB + delta_mb * MiB,
         _system_config=_SYSTEM_CONFIG,
     )
+    timeseries = PrometheusTimeseries()
     obj_refs = [
         ray.put(np.zeros(obj_size_mb * MiB, dtype=np.uint8))
         for _ in range(expected_in_memory)
@@ -255,7 +262,7 @@ def test_fallback_memory(shutdown_only):
 
     wait_for_condition(
         # 2KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 3 * KiB),
+        lambda: approx_eq_dict_in(objects_by_loc(info, timeseries), expected, 3 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -283,7 +290,7 @@ def test_fallback_memory(shutdown_only):
 
     wait_for_condition(
         # 3KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 3 * KiB),
+        lambda: approx_eq_dict_in(objects_by_loc(info, timeseries), expected, 3 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -303,7 +310,7 @@ def test_fallback_memory(shutdown_only):
 
     wait_for_condition(
         # 3KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 3 * KiB),
+        lambda: approx_eq_dict_in(objects_by_loc(info, timeseries), expected, 3 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -320,7 +327,7 @@ def test_seal_memory(shutdown_only):
         object_store_memory=100 * MiB,
         _system_config=_SYSTEM_CONFIG,
     )
-
+    timeseries = PrometheusTimeseries()
     # Allocate 80MiB data
     objs_in_use = ray.get(
         [ray.put(np.zeros(20 * MiB, dtype=np.uint8)) for _ in range(4)]
@@ -333,7 +340,9 @@ def test_seal_memory(shutdown_only):
 
     wait_for_condition(
         # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_seal_state(info), expected, 2 * KiB),
+        lambda: approx_eq_dict_in(
+            objects_by_seal_state(info, timeseries), expected, 2 * KiB
+        ),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -347,7 +356,9 @@ def test_seal_memory(shutdown_only):
 
     wait_for_condition(
         # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_seal_state(info), expected, 2 * KiB),
+        lambda: approx_eq_dict_in(
+            objects_by_seal_state(info, timeseries), expected, 2 * KiB
+        ),
         timeout=20,
         retry_interval_ms=500,
     )
@@ -360,9 +371,10 @@ def test_object_store_memory_matches_dashboard_obj_memory(shutdown_only):
     ctx = ray.init(
         object_store_memory=500 * MiB,
     )
+    timeseries = PrometheusTimeseries()
 
     def verify():
-        resources = raw_metrics(ctx)["ray_resources"]
+        resources = raw_metric_timeseries(ctx, timeseries)["ray_resources"]
         object_store_memory_bytes_from_metrics = 0
         for sample in resources:
             # print(sample)
@@ -381,14 +393,8 @@ def test_object_store_memory_matches_dashboard_obj_memory(shutdown_only):
         assert object_store_memory_bytes_from_dashboard == 500 * MiB
         return True
 
-    wait_for_condition(verify)
+    wait_for_condition(verify, timeout=RAY_DASHBOARD_STATS_UPDATING_INTERVAL * 1.5)
 
 
 if __name__ == "__main__":
-    import sys
-    import os
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

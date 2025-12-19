@@ -9,17 +9,17 @@ import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
-from ray.tests.test_object_spilling import assert_no_thrashing, is_dir_empty
+from ray._common.test_utils import wait_for_condition
 from ray._private.external_storage import (
     FileSystemStorage,
-    ExternalStorageRayStorageImpl,
 )
-
+from ray._private.test_utils import run_string_as_driver
+from ray.tests.test_object_spilling import is_dir_empty
 
 # Note: Disk write speed can be as low as 6 MiB/s in AWS Mac instances, so we have to
 # increase the timeout.
 pytestmark = [pytest.mark.timeout(900 if platform.system() == "Darwin" else 180)]
+condition_wait_timeout = 20 if os.getenv("RAY_DEBUG_MODE") == "1" else 10
 
 
 def test_delete_objects(object_spilling_config, shutdown_only):
@@ -49,8 +49,10 @@ def test_delete_objects(object_spilling_config, shutdown_only):
 
     del replay_buffer
     del ref
-    wait_for_condition(lambda: is_dir_empty(temp_folder, ray_context["node_id"]))
-    assert_no_thrashing(ray_context["address"])
+    wait_for_condition(
+        lambda: is_dir_empty(temp_folder, ray_context["node_id"]),
+        timeout=condition_wait_timeout,
+    )
 
 
 def test_delete_objects_delete_while_creating(object_spilling_config, shutdown_only):
@@ -88,8 +90,10 @@ def test_delete_objects_delete_while_creating(object_spilling_config, shutdown_o
     # After all, make sure all objects are killed without race condition.
     del replay_buffer
     del ref
-    wait_for_condition(lambda: is_dir_empty(temp_folder, ray_context["node_id"]))
-    assert_no_thrashing(ray_context["address"])
+    wait_for_condition(
+        lambda: is_dir_empty(temp_folder, ray_context["node_id"]),
+        timeout=condition_wait_timeout,
+    )
 
 
 @pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")
@@ -105,6 +109,9 @@ def test_delete_objects_on_worker_failure(object_spilling_config, shutdown_only)
             "object_store_full_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
             "min_spilling_size": 0,
+            # ↓↓↓ make cleanup fast/consistent in CI
+            "object_timeout_milliseconds": 200,
+            "local_gc_min_interval_s": 1,
         },
     )
 
@@ -146,16 +153,18 @@ def test_delete_objects_on_worker_failure(object_spilling_config, shutdown_only)
             return True
         return False
 
-    wait_for_condition(wait_until_actor_dead)
+    wait_for_condition(wait_until_actor_dead, timeout=condition_wait_timeout)
 
     # After all, make sure all objects are deleted upon worker failures.
-    wait_for_condition(lambda: is_dir_empty(temp_folder, ray_context["node_id"]))
-    assert_no_thrashing(ray_context["address"])
+    wait_for_condition(
+        lambda: is_dir_empty(temp_folder, ray_context["node_id"]),
+        timeout=condition_wait_timeout,
+    )
 
 
 @pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")
 def test_delete_file_non_exists(shutdown_only, tmp_path):
-    ray_context = ray.init(storage=str(tmp_path))
+    ray_context = ray.init()
 
     def create_spilled_files(num_files):
         spilled_files = []
@@ -169,7 +178,6 @@ def test_delete_file_non_exists(shutdown_only, tmp_path):
         return spilled_files, uris
 
     for storage in [
-        ExternalStorageRayStorageImpl(ray_context["node_id"], "session"),
         FileSystemStorage(ray_context["node_id"], "/tmp"),
     ]:
         spilled_files, uris = create_spilled_files(3)
@@ -253,18 +261,25 @@ def test_delete_objects_multi_node(
     # Kill actors to remove all references.
     for actor in actors:
         ray.kill(actor)
-        wait_for_condition(lambda: wait_until_actor_dead(actor))
+        wait_for_condition(
+            lambda: wait_until_actor_dead(actor), timeout=condition_wait_timeout
+        )
     # The multi node deletion should work.
-    wait_for_condition(lambda: is_dir_empty(temp_folder, worker_node1.node_id))
-    wait_for_condition(lambda: is_dir_empty(temp_folder, worker_node2.node_id))
-    assert_no_thrashing(cluster.address)
+    wait_for_condition(
+        lambda: is_dir_empty(temp_folder, worker_node1.node_id),
+        timeout=condition_wait_timeout,
+    )
+    wait_for_condition(
+        lambda: is_dir_empty(temp_folder, worker_node2.node_id),
+        timeout=condition_wait_timeout,
+    )
 
 
 def test_fusion_objects(fs_only_object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = fs_only_object_spilling_config
     min_spilling_size = 10 * 1024 * 1024
-    address = ray.init(
+    ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 3,
@@ -310,13 +325,12 @@ def test_fusion_objects(fs_only_object_spilling_config, shutdown_only):
             if file_size >= min_spilling_size:
                 is_test_passing = True
     assert is_test_passing
-    assert_no_thrashing(address["address"])
 
 
 # https://github.com/ray-project/ray/issues/12912
 def test_release_resource(object_spilling_config, shutdown_only):
     object_spilling_config, temp_folder = object_spilling_config
-    address = ray.init(
+    ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -345,7 +359,6 @@ def test_release_resource(object_spilling_config, shutdown_only):
     canary = sneaky_task_tries_to_steal_released_resources.remote()
     ready, _ = ray.wait([canary], timeout=2)
     assert not ready
-    assert_no_thrashing(address["address"])
 
 
 def test_spill_objects_on_object_transfer(
@@ -402,7 +415,6 @@ def test_spill_objects_on_object_transfer(
     # spilling.
     tasks = [foo.remote(*task_args) for task_args in args]
     ray.get(tasks)
-    assert_no_thrashing(cluster.address)
 
 
 @pytest.mark.skipif(
@@ -456,12 +468,10 @@ os.kill(os.getpid(), sig)
         print(run_string_as_driver(driver.format(temp_dir=str(temp_folder), signum=2)))
     # node_id is not actually used in the following check, so we pass in a dummy one
     wait_for_condition(
-        lambda: is_dir_empty(temp_folder, "dummy_node_id", append_path=False)
+        lambda: is_dir_empty(temp_folder, "dummy_node_id", append_path=False),
+        timeout=condition_wait_timeout,
     )
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

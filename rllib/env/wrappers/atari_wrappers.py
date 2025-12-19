@@ -1,11 +1,12 @@
 from collections import deque
-import gymnasium as gym
-from gymnasium import spaces
-import numpy as np
 from typing import Optional, Union
 
+import gymnasium as gym
+import numpy as np
+from gymnasium import spaces
+
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.images import rgb2gray, resize
+from ray.rllib.utils.images import resize, rgb2gray
 
 
 @PublicAPI
@@ -13,7 +14,8 @@ def is_atari(env: Union[gym.Env, str]) -> bool:
     """Returns, whether a given env object or env descriptor (str) is an Atari env.
 
     Args:
-        env: The gym.Env object or a string descriptor of the env (e.g. "ALE/Pong-v5").
+        env: The gym.Env object or a string descriptor of the env (for example,
+        "ale_py:ALE/Pong-v5").
 
     Returns:
         Whether `env` is an Atari environment.
@@ -28,9 +30,9 @@ def is_atari(env: Union[gym.Env, str]) -> bool:
         ):
             return False
         return "AtariEnv<ALE" in str(env)
-    # If string, check for "ALE/" prefix.
+    # If string, check for "ale_py:ALE/" prefix.
     else:
-        return env.startswith("ALE/")
+        return env.startswith("ALE/") or env.startswith("ale_py:")
 
 
 @PublicAPI
@@ -304,20 +306,30 @@ class NormalizedImageEnv(gym.ObservationWrapper):
 
 
 @PublicAPI
-class WarpFrame(gym.ObservationWrapper):
-    def __init__(self, env, dim):
+class GrayScaleAndResize(gym.ObservationWrapper):
+    def __init__(self, env, dim, grayscale: bool = True):
         """Warp frames to the specified size (dim x dim)."""
         gym.ObservationWrapper.__init__(self, env)
         self.width = dim
         self.height = dim
+        self.grayscale = grayscale
         self.observation_space = spaces.Box(
-            low=0, high=255, shape=(self.height, self.width, 1), dtype=np.uint8
+            low=0,
+            high=255,
+            shape=(self.height, self.width, 1 if grayscale else 3),
+            dtype=np.uint8,
         )
 
     def observation(self, frame):
-        frame = rgb2gray(frame)
-        frame = resize(frame, height=self.height, width=self.width)
-        return frame[:, :, None]
+        if self.grayscale:
+            frame = rgb2gray(frame)
+            frame = resize(frame, height=self.height, width=self.width)
+            return frame[:, :, None]
+        else:
+            return resize(frame, height=self.height, width=self.width)
+
+
+WarpFrame = GrayScaleAndResize
 
 
 @PublicAPI
@@ -326,6 +338,9 @@ def wrap_atari_for_new_api_stack(
     dim: int = 64,
     frameskip: int = 4,
     framestack: Optional[int] = None,
+    grayscale: bool = True,
+    # TODO (sven): Add option to NOT grayscale, in which case framestack must be None
+    #  (b/c we are using the 3 color channels already as stacking frames).
 ) -> gym.Env:
     """Wraps `env` for new-API-stack-friendly RLlib Atari experiments.
 
@@ -334,7 +349,7 @@ def wrap_atari_for_new_api_stack(
     Args:
         env: The env object to wrap.
         dim: Dimension to resize observations to (dim x dim).
-        frameskip: Whether to skip n frames and max over them.
+        frameskip: Whether to skip n frames and max over them (keep brightest pixels).
         framestack: Whether to stack the last n (grayscaled) frames. Note that this
             step happens after(!) a possible frameskip step, meaning that if
             frameskip=4 and framestack=2, we would perform the following over this
@@ -348,8 +363,8 @@ def wrap_atari_for_new_api_stack(
     """
     # Time limit.
     env = gym.wrappers.TimeLimit(env, max_episode_steps=108000)
-    # Grayscale + resize
-    env = WarpFrame(env, dim=dim)
+    # Grayscale + resize.
+    env = WarpFrame(env, dim=dim, grayscale=grayscale)
     # Normalize the image.
     env = NormalizedImageEnv(env)
     # Frameskip: Take max over these n frames.

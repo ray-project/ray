@@ -1,21 +1,25 @@
-import click
 import copy
-import subprocess
-import os
 import json
+import os
+import subprocess
 import time
-from typing import Dict, List, Set, Tuple
 from pathlib import Path
+from typing import Dict, List, Set, Tuple
+
+import click
 
 from ray_release.bazel import bazel_runfile
-from ray_release.logger import logger
 from ray_release.buildkite.step import get_step
 from ray_release.byod.build import (
     build_anyscale_base_byod_images,
     build_anyscale_custom_byod_image,
 )
-from ray_release.config import read_and_validate_release_test_collection
+from ray_release.config import (
+    RELEASE_TEST_CONFIG_FILES,
+    read_and_validate_release_test_collection,
+)
 from ray_release.configs.global_config import init_global_config
+from ray_release.logger import logger
 from ray_release.test import Test
 from ray_release.test_automation.release_state_machine import ReleaseTestStateMachine
 
@@ -175,7 +179,13 @@ def _trigger_test_run(
 ) -> None:
     os.environ["COMMIT_TO_TEST"] = commit
     build_anyscale_base_byod_images([test])
-    build_anyscale_custom_byod_image(test)
+    if test.require_custom_byod_image():
+        build_anyscale_custom_byod_image(
+            test.get_anyscale_byod_image(),
+            test.get_anyscale_base_byod_image(),
+            test.get_byod_post_build_script(),
+            test.get_byod_python_depset(),
+        )
     for run in range(run_per_commit):
         step = get_step(
             copy.deepcopy(test),  # avoid mutating the original test
@@ -241,7 +251,7 @@ def _obtain_test_result(
 
 def _get_test(test_name: str, test_collection_file: Tuple[str]) -> Test:
     test_collection = read_and_validate_release_test_collection(
-        test_collection_file or ["release/release_tests.yaml"],
+        test_collection_file or RELEASE_TEST_CONFIG_FILES,
     )
     return [test for test in test_collection if test["name"] == test_name][0]
 

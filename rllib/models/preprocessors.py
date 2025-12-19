@@ -1,14 +1,15 @@
-from collections import OrderedDict
 import logging
-import numpy as np
-import gymnasium as gym
+from collections import OrderedDict
 from typing import Any, List
 
+import gymnasium as gym
+import numpy as np
+
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray.rllib.utils.spaces.repeated import Repeated
-from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.images import resize
+from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.space_utils import convert_element_to_space_type
+from ray.rllib.utils.typing import TensorType
 
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128,)
@@ -38,7 +39,7 @@ class Preprocessor:
         else:
             self._options = options
         self.shape = self._init_shape(obs_space, self._options)
-        self._size = int(np.product(self.shape))
+        self._size = int(np.prod(self.shape))
         self._i = 0
         self._obs_for_type_matching = self._obs_space.sample()
 
@@ -276,7 +277,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
                 size += preprocessor.size
             else:
                 preprocessor = None
-                size += int(np.product(space.shape))
+                size += int(np.prod(space.shape))
             self.preprocessors.append(preprocessor)
         return (size,)
 
@@ -315,7 +316,7 @@ class DictFlatteningPreprocessor(Preprocessor):
                 size += preprocessor.size
             else:
                 preprocessor = None
-                size += int(np.product(space.shape))
+                size += int(np.prod(space.shape))
             self.preprocessors.append(preprocessor)
         return (size,)
 

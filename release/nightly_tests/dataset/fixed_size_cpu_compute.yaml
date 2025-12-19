@@ -1,0 +1,20 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+advanced_configurations_json:
+    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+
+head_node_type:
+    name: head-node
+    # Default head node type on Anyscale workspaces.
+    instance_type: m5.2xlarge
+    resources:
+      cpu: 0
+
+worker_node_types:
+    - name: worker-node
+      # Default worker node type on Anyscale workspaces.
+      instance_type: m5.2xlarge
+      min_workers: 10
+      max_workers: 10
+      use_spot: false

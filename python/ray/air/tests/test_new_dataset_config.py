@@ -7,7 +7,10 @@ import pytest
 import ray
 from ray import train
 from ray.data import DataIterator
-from ray.data._internal.execution.interfaces.execution_options import ExecutionOptions
+from ray.data._internal.execution.interfaces.execution_options import (
+    ExecutionOptions,
+    ExecutionResources,
+)
 from ray.tests.conftest import *  # noqa
 from ray.train import DataConfig, ScalingConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -142,7 +145,7 @@ def test_configure_execution_options(ray_start_4_cpus):
     ds = ray.data.range(10)
     # Resource limit is too low and will trigger an error.
     options = DataConfig.default_ingest_options()
-    options.resource_limits.cpu = 0
+    options.resource_limits = options.resource_limits.copy(cpu=0)
     test = TestBasic(
         1,
         True,
@@ -171,9 +174,7 @@ def test_configure_execution_options_carryover_context(ray_start_4_cpus):
 
 @pytest.mark.parametrize("enable_locality", [True, False])
 def test_configure_locality(enable_locality):
-    options = DataConfig.default_ingest_options()
-    options.locality_with_output = enable_locality
-    data_config = DataConfig(execution_options=options)
+    data_config = DataConfig(enable_shard_locality=enable_locality)
 
     mock_ds = MagicMock()
     mock_ds.streaming_split = MagicMock()
@@ -290,8 +291,7 @@ def test_materialized_preprocessing(ray_start_4_cpus):
     test.fit()
 
 
-def test_data_config_default_resource_limits(shutdown_only):
-    """Test that DataConfig should exclude training resources from Data."""
+def _run_data_config_resource_test(data_config):
     cluster_cpus, cluster_gpus = 20, 10
     num_workers = 2
     # Resources used by training workers.
@@ -301,8 +301,7 @@ def test_data_config_default_resource_limits(shutdown_only):
     num_train_cpus = num_workers * cpus_per_worker + default_trainer_cpus
     num_train_gpus = num_workers * gpus_per_worker + default_trainer_gpus
 
-    init_exclude_cpus = 2
-    init_exclude_gpus = 1
+    original_execution_options = data_config._get_execution_options("train")
 
     ray.init(num_cpus=cluster_cpus, num_gpus=cluster_gpus)
 
@@ -310,17 +309,38 @@ def test_data_config_default_resource_limits(shutdown_only):
         def __init__(self, **kwargs):
             def train_loop_fn():
                 train_ds = train.get_dataset_shard("train")
-                exclude_resources = (
-                    train_ds._base_dataset.context.execution_options.exclude_resources
-                )
-                assert exclude_resources.cpu == num_train_cpus + init_exclude_cpus
-                assert exclude_resources.gpu == num_train_gpus + init_exclude_gpus
+                new_execution_options = train_ds._base_dataset.context.execution_options
+                if original_execution_options.is_resource_limits_default():
+                    # If the original resource limits are default, the new resource
+                    # limits should be the default as well.
+                    # And the new exclude_resources should be the resources used by
+                    # Train + user-defined exclude_resources.
+                    assert new_execution_options.is_resource_limits_default()
+                    exclude_resources = new_execution_options.exclude_resources
+                    assert (
+                        exclude_resources.cpu
+                        == num_train_cpus
+                        + original_execution_options.exclude_resources.cpu
+                    )
+                    assert (
+                        exclude_resources.gpu
+                        == num_train_gpus
+                        + original_execution_options.exclude_resources.gpu
+                    )
+                else:
+                    # If the original resource limits are not default, the new resource
+                    # limits should be the same as the original ones.
+                    # And the new exclude_resources should be zero.
+                    assert (
+                        new_execution_options.resource_limits
+                        == original_execution_options.resource_limits
+                    )
+                    assert (
+                        new_execution_options.exclude_resources
+                        == ExecutionResources.zero()
+                    )
 
             kwargs.pop("scaling_config", None)
-
-            execution_options = ExecutionOptions()
-            execution_options.exclude_resources.cpu = init_exclude_cpus
-            execution_options.exclude_resources.gpu = init_exclude_gpus
 
             super().__init__(
                 train_loop_per_worker=train_loop_fn,
@@ -333,12 +353,34 @@ def test_data_config_default_resource_limits(shutdown_only):
                     },
                 ),
                 datasets={"train": ray.data.range(10)},
-                dataset_config=DataConfig(execution_options=execution_options),
+                dataset_config=data_config,
                 **kwargs,
             )
 
     trainer = MyTrainer()
     trainer.fit()
+
+
+def test_data_config_default_resource_limits(shutdown_only):
+    """Test that DataConfig should exclude training resources from Data."""
+    execution_options = ExecutionOptions()
+    execution_options.exclude_resources = execution_options.exclude_resources.copy(
+        cpu=2, gpu=1
+    )
+    data_config = DataConfig(execution_options=execution_options)
+
+    _run_data_config_resource_test(data_config)
+
+
+def test_data_config_manual_resource_limits(shutdown_only):
+    """Test manually setting resource limits in DataConfig."""
+    execution_options = ExecutionOptions()
+    execution_options.resource_limits = execution_options.resource_limits.copy(
+        cpu=10, gpu=5
+    )
+    data_config = DataConfig(execution_options=execution_options)
+
+    _run_data_config_resource_test(data_config)
 
 
 if __name__ == "__main__":

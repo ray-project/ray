@@ -87,7 +87,7 @@ Step 2: Configure Access
 
 Ensure that your local machine can access the Ray Client port on the head node.
 
-The easiest way to accomplish this is to use SSH port forwarding or `K8s port-forwarding <https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod>`_. 
+The easiest way to accomplish this is to use SSH port forwarding or `K8s port-forwarding <https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod>`_.
 This allows you to connect to the Ray Client server on the head node via ``localhost``.
 
 First, open up an SSH connection with your Ray cluster and forward the
@@ -144,7 +144,7 @@ Alternative Connection Approach:
 
 Instead of port-forwarding, you can directly connect to the Ray Client server on the head node if your computer
 has network access to the head node. This is an option if your computer is on the same network as the Cluster or
-if your computer can connct to the Cluster with a VPN.
+if your computer can connect to the Cluster with a VPN.
 
 If your computer does not have direct access, you can modify the network configuration to grant access. On `EC2 <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/authorizing-access-to-an-instance.html>`_,
 this can be done by modifying the security group to allow inbound access from your local IP address to the Ray Client server port (``10001`` by default).
@@ -178,7 +178,8 @@ this can be done by modifying the security group to allow inbound access from yo
 
 
 .. warning::
-   Anyone with Ray Client access can execute arbitrary code on the Ray Cluster.\n
+   Anyone with Ray Client access can execute arbitrary code on the Ray Cluster.
+
    **Do not expose this to `0.0.0.0/0`.**
 
 Connect to multiple Ray clusters (Experimental)
@@ -300,6 +301,6 @@ Ray workers are started in the ``/tmp/ray/session_latest/runtime_resources/_ray_
 Troubleshooting
 ---------------
 
-Error: Attempted to reconnect a session that has already been cleaned up 
+Error: Attempted to reconnect a session that has already been cleaned up
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 This error happens when Ray Client reconnects to a head node that does not recognize the client. This can happen if the head node restarts unexpectedly and loses state. On Kubernetes, this can happen if the head pod restarts after being evicted or crashing.

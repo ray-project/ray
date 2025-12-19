@@ -1,3 +1,4 @@
+# @OldAPIStack
 """
 This file implements a MobileNet v2 Encoder.
 It uses MobileNet v2 to encode images into a latent space of 1000 dimensions.
@@ -10,7 +11,7 @@ in RLlib. You can modify this example to accommodate your own encoder network or
 other pre-trained networks.
 """
 
-from ray.rllib.core.models.base import Encoder, ENCODER_OUT
+from ray.rllib.core.models.base import ENCODER_OUT, Encoder
 from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.utils.framework import try_import_torch

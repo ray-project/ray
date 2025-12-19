@@ -80,7 +80,6 @@ class RayDistributedActor:
         """Finds a free port on the current node."""
         with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
             s.bind(("", 0))
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             return s.getsockname()[1]
 
 
@@ -112,7 +111,7 @@ def run_fault_tolerant_loop():
         # fairseq distributed training.
         ip = ray.get(workers[0].get_node_ip.remote())
         port = ray.get(workers[0].find_free_port.remote())
-        address = "tcp://{ip}:{port}".format(ip=ip, port=port)
+        address = f"tcp://{ip}:{port}"
 
         # Start the remote processes, and check whether their are any process
         # fails. If so, restart all the processes.
@@ -144,7 +143,7 @@ def add_ray_args(parser):
         type=lambda uf: options.eval_str_list(uf, type=int),
         help="fix the actual batch size (max_sentences * update_freq "
         "* n_GPUs) to be the fixed input values by adjusting update_freq "
-        "accroding to actual n_GPUs; the batch size is fixed to B_i for "
+        "according to actual n_GPUs; the batch size is fixed to B_i for "
         "epoch i; all epochs >N are fixed to B_N",
     )
     return group

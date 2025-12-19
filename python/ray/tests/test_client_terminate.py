@@ -3,7 +3,6 @@ import time
 
 import pytest
 
-from ray._private.test_utils import convert_actor_state, wait_for_condition
 from ray.exceptions import (
     GetTimeoutError,
     ObjectLostError,
@@ -20,34 +19,6 @@ def valid_exceptions(use_force):
         return (RayTaskError, TaskCancelledError, WorkerCrashedError, ObjectLostError)
     else:
         return (RayTaskError, TaskCancelledError)
-
-
-def _all_actors_dead(ray):
-    import ray as real_ray
-    import ray._private.gcs_utils as gcs_utils
-
-    def _all_actors_dead_internal():
-        return all(
-            actor["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD)
-            for actor in list(real_ray._private.state.actors().values())
-        )
-
-    return _all_actors_dead_internal
-
-
-def test_kill_actor_immediately_after_creation(ray_start_regular):
-    with ray_start_client_server() as ray:
-
-        @ray.remote
-        class A:
-            pass
-
-        a = A.remote()
-        b = A.remote()
-
-        ray.kill(a)
-        ray.kill(b)
-        wait_for_condition(_all_actors_dead(ray), timeout=10)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
@@ -138,11 +109,4 @@ def test_kill_cancel_metadata(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

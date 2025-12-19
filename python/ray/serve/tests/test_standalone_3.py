@@ -1,26 +1,32 @@
+import logging
 import os
 import subprocess
 import sys
 from contextlib import contextmanager
-from tempfile import NamedTemporaryFile
 
+import httpx
 import pytest
-import requests
 
 import ray
-import ray._private.state
 import ray.actor
 from ray import serve
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
-from ray.serve._private.common import ProxyStatus
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import _get_global_client
-from ray.serve.schema import ServeInstanceDetails
+from ray.serve.schema import ProxyStatus, ServeInstanceDetails
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
+from ray.util.state import list_actors
+
+
+# Some tests are not possible to run if proxy is not available on every node.
+# We skip them if proxy is not available.
+def is_proxy_on_every_node() -> bool:
+    client = _get_global_client()
+    return client._http_config.location == "EveryNode"
 
 
 @pytest.fixture
@@ -95,7 +101,7 @@ def test_long_poll_timeout_with_max_ongoing_requests(ray_instance):
 
     @ray.remote
     def do_req():
-        return requests.get("http://localhost:8000").text
+        return httpx.get("http://localhost:8000").text
 
     # The request should be hanging waiting on the `SignalActor`.
     first_ref = do_req.remote()
@@ -140,7 +146,7 @@ def test_replica_health_metric(ray_instance):
     serve.run(f.bind())
 
     def count_live_replica_metrics():
-        resp = requests.get("http://127.0.0.1:9999").text
+        resp = httpx.get("http://127.0.0.1:9999").text
         resp = resp.split("\n")
         count = 0
         for metrics in resp:
@@ -169,7 +175,7 @@ def test_replica_health_metric(ray_instance):
     serve.shutdown()
 
 
-def test_shutdown_remote(start_and_shutdown_ray_cli_function):
+def test_shutdown_remote(start_and_shutdown_ray_cli_function, tmp_path):
     """Check that serve.shutdown() works on a remote Ray cluster."""
 
     deploy_serve_script = (
@@ -194,28 +200,20 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function):
         "serve.shutdown()\n"
     )
 
-    # Cannot use context manager due to tmp file's delete flag issue in Windows
-    # https://stackoverflow.com/a/15590253
-    deploy_file = NamedTemporaryFile(mode="w+", delete=False, suffix=".py")
-    shutdown_file = NamedTemporaryFile(mode="w+", delete=False, suffix=".py")
+    deploy_file = tmp_path / "deploy.py"
+    shutdown_file = tmp_path / "shutdown.py"
 
-    try:
-        deploy_file.write(deploy_serve_script)
-        deploy_file.close()
+    deploy_file.write_text(deploy_serve_script)
 
-        shutdown_file.write(shutdown_serve_script)
-        shutdown_file.close()
+    shutdown_file.write_text(shutdown_serve_script)
 
-        # Ensure Serve can be restarted and shutdown with for loop
-        for _ in range(2):
-            subprocess.check_output(["python", deploy_file.name])
-            assert requests.get("http://localhost:8000/f").text == "got f"
-            subprocess.check_output(["python", shutdown_file.name])
-            with pytest.raises(requests.exceptions.ConnectionError):
-                requests.get("http://localhost:8000/f")
-    finally:
-        os.unlink(deploy_file.name)
-        os.unlink(shutdown_file.name)
+    # Ensure Serve can be restarted and shutdown with for loop
+    for _ in range(2):
+        subprocess.check_output([sys.executable, str(deploy_file)])
+        assert httpx.get("http://localhost:8000/f").text == "got f"
+        subprocess.check_output([sys.executable, str(shutdown_file)])
+        with pytest.raises(httpx.ConnectError):
+            httpx.get("http://localhost:8000/f")
 
 
 def test_handle_early_detect_failure(shutdown_ray):
@@ -295,8 +293,10 @@ def test_autoscaler_shutdown_node_http_everynode(
 
     serve.run(A.bind(), name="app_f")
 
-    # 2 proxies, 1 controller, 2 replicas.
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    # If proxy is on every node, total actors are 2 proxies, 1 controller, 2 replicas.
+    # Otherwise, total actors are 1 proxy, 1 controller, 2 replicas.
+    expected_actors = 5 if is_proxy_on_every_node() else 4
+    wait_for_condition(lambda: len(list_actors()) == expected_actors)
     assert len(ray.nodes()) == 2
 
     # Stop all deployment replicas.
@@ -304,15 +304,7 @@ def test_autoscaler_shutdown_node_http_everynode(
 
     # The http proxy on worker node should exit as well.
     wait_for_condition(
-        lambda: len(
-            list(
-                filter(
-                    lambda a: a["State"] == "ALIVE",
-                    ray._private.state.actors().values(),
-                )
-            )
-        )
-        == 2
+        lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 2,
     )
 
     client = _get_global_client()
@@ -341,200 +333,6 @@ def test_autoscaler_shutdown_node_http_everynode(
     ray.shutdown()
 
 
-def test_drain_and_undrain_http_proxy_actors(
-    monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
-):
-    """Test the state transtion of the proxy actor between
-    HEALTHY, DRAINING and DRAINED
-    """
-    monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "10")
-
-    cluster = Cluster()
-    head_node = cluster.add_node(num_cpus=0)
-    cluster.add_node(num_cpus=1)
-    cluster.add_node(num_cpus=1)
-    cluster.wait_for_nodes()
-    ray.init(address=head_node.address)
-    serve.start(http_options={"location": "EveryNode"})
-
-    @serve.deployment
-    class HelloModel:
-        def __call__(self):
-            return "hello"
-
-    serve.run(HelloModel.options(num_replicas=2).bind())
-
-    # 3 proxies, 1 controller, 2 replicas.
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 6)
-    assert len(ray.nodes()) == 3
-
-    client = _get_global_client()
-    serve_details = ServeInstanceDetails(
-        **ray.get(client._controller.get_serve_instance_details.remote())
-    )
-    proxy_actor_ids = {proxy.actor_id for _, proxy in serve_details.proxies.items()}
-    assert len(proxy_actor_ids) == 3
-
-    serve.run(HelloModel.options(num_replicas=1).bind())
-    # 1 proxy should be draining
-
-    def check_proxy_status(proxy_status_to_count):
-        serve_details = ServeInstanceDetails(
-            **ray.get(client._controller.get_serve_instance_details.remote())
-        )
-        proxy_status_list = [proxy.status for _, proxy in serve_details.proxies.items()]
-        print("all proxies!!!", [proxy for _, proxy in serve_details.proxies.items()])
-        current_status = {
-            status: proxy_status_list.count(status) for status in proxy_status_list
-        }
-        return current_status == proxy_status_to_count, current_status
-
-    wait_for_condition(
-        condition_predictor=check_proxy_status,
-        proxy_status_to_count={ProxyStatus.HEALTHY: 2, ProxyStatus.DRAINING: 1},
-    )
-
-    serve.run(HelloModel.options(num_replicas=2).bind())
-    # The draining proxy should become healthy.
-    wait_for_condition(
-        condition_predictor=check_proxy_status,
-        proxy_status_to_count={ProxyStatus.HEALTHY: 3},
-    )
-    serve_details = ServeInstanceDetails(
-        **ray.get(client._controller.get_serve_instance_details.remote())
-    )
-    {proxy.actor_id for _, proxy in serve_details.proxies.items()} == proxy_actor_ids
-
-    serve.run(HelloModel.options(num_replicas=1).bind())
-    # 1 proxy should be draining and eventually be drained.
-    wait_for_condition(
-        condition_predictor=check_proxy_status,
-        timeout=40,
-        proxy_status_to_count={ProxyStatus.HEALTHY: 2},
-    )
-
-    # Clean up serve.
-    serve.shutdown()
-
-
-def test_healthz_and_routes_on_head_and_worker_nodes(
-    shutdown_ray, call_ray_stop_only  # noqa: F811
-):
-    """Test `/-/healthz` and `/-/routes` return the correct responses for head and
-    worker nodes.
-
-    When there are replicas on all nodes, `/-/routes` and `/-/routes` on all nodes
-    should return 200. When there are no replicas on any nodes, `/-/routes` and
-    `/-/routes` on the head node should continue to return 200. `/-/routes` and
-    `/-/routes` on the worker node should start to return 503
-    """
-    # Setup worker http proxy to be pointing to port 8001. Head node http proxy will
-    # continue to be pointing to the default port 8000.
-    os.environ["TEST_WORKER_NODE_HTTP_PORT"] = "8001"
-
-    # Setup a cluster with 2 nodes
-    cluster = Cluster()
-    cluster.add_node(num_cpus=0)
-    cluster.add_node(num_cpus=2)
-    cluster.wait_for_nodes()
-    ray.init(address=cluster.address)
-    serve.start(http_options={"location": "EveryNode"})
-
-    # Deploy 2 replicas, both should be on the worker node.
-    @serve.deployment(num_replicas=2)
-    class HelloModel:
-        def __call__(self):
-            return "hello"
-
-    model = HelloModel.bind()
-    serve.run(target=model)
-
-    # Ensure worker node has both replicas.
-    def check_replicas_on_worker_nodes():
-        _actors = ray._private.state.actors().values()
-        replica_nodes = [
-            a["Address"]["NodeID"]
-            for a in _actors
-            if a["ActorClassName"].startswith("ServeReplica")
-        ]
-        return len(set(replica_nodes)) == 1
-
-    wait_for_condition(check_replicas_on_worker_nodes)
-
-    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas, and 2 nodes exist.
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
-    assert len(ray.nodes()) == 2
-
-    # Ensure `/-/healthz` and `/-/routes` return 200 and expected responses
-    # on both nodes.
-    def check_request(url: str, expected_code: int, expected_text: str):
-        req = requests.get(url)
-        return req.status_code == expected_code and req.text == expected_text
-
-    wait_for_condition(
-        condition_predictor=check_request,
-        url="http://127.0.0.1:8000/-/healthz",
-        expected_code=200,
-        expected_text="success",
-    )
-    assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
-    assert requests.get("http://127.0.0.1:8000/-/routes").text == '{"/":"default"}'
-    wait_for_condition(
-        condition_predictor=check_request,
-        url="http://127.0.0.1:8001/-/healthz",
-        expected_code=200,
-        expected_text="success",
-    )
-    assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 200
-    assert requests.get("http://127.0.0.1:8001/-/routes").text == '{"/":"default"}'
-
-    # Delete the deployment should bring the active actors down to 3 and drop
-    # replicas on all nodes.
-    serve.delete(name=SERVE_DEFAULT_APP_NAME)
-
-    def _check():
-        _actors = ray._private.state.actors().values()
-        return (
-            len(
-                list(
-                    filter(
-                        lambda a: a["State"] == "ALIVE",
-                        _actors,
-                    )
-                )
-            )
-            == 3
-        )
-
-    wait_for_condition(_check)
-
-    # Ensure head node `/-/healthz` and `/-/routes` continue to return 200 and expected
-    # responses. Also, the worker node `/-/healthz` and `/-/routes` should return 503
-    # and unavailable responses.
-    wait_for_condition(
-        condition_predictor=check_request,
-        url="http://127.0.0.1:8000/-/healthz",
-        expected_code=200,
-        expected_text="success",
-    )
-    assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
-    assert requests.get("http://127.0.0.1:8000/-/routes").text == "{}"
-    wait_for_condition(
-        condition_predictor=check_request,
-        url="http://127.0.0.1:8001/-/healthz",
-        expected_code=503,
-        expected_text="This node is being drained.",
-    )
-    assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 503
-    assert (
-        requests.get("http://127.0.0.1:8001/-/routes").text
-        == "This node is being drained."
-    )
-
-    # Clean up serve.
-    serve.shutdown()
-
-
 @pytest.mark.parametrize("wait_for_controller_shutdown", (True, False))
 def test_controller_shutdown_gracefully(
     shutdown_ray, call_ray_stop_only, wait_for_controller_shutdown  # noqa: F811
@@ -548,9 +346,20 @@ def test_controller_shutdown_gracefully(
     # Setup a cluster with 2 nodes
     cluster = Cluster()
     cluster.add_node()
-    cluster.add_node()
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
+
+    # On Windows, wait for resources to be available before adding second node
+    # to avoid timeout errors when cluster has zero CPU resources
+    if sys.platform == "win32":
+        wait_for_condition(
+            lambda: ray.cluster_resources().get("CPU", 0) > 0,
+            timeout=30,
+            retry_interval_ms=1000,
+        )
+
+    cluster.add_node()
+    cluster.wait_for_nodes()
 
     # Deploy 2 replicas
     @serve.deployment(num_replicas=2)
@@ -561,8 +370,10 @@ def test_controller_shutdown_gracefully(
     model = HelloModel.bind()
     serve.run(target=model)
 
-    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    # If proxy is on every node, total actors are 2 proxies, 1 controller, and 2 replicas
+    # Otherwise, total actors are 1 proxy, 1 controller, and 2 replicas
+    expected_actors = 5 if is_proxy_on_every_node() else 4
+    wait_for_condition(lambda: len(list_actors()) == expected_actors)
     assert len(ray.nodes()) == 2
 
     # Call `graceful_shutdown()` on the controller, so it will start shutdown.
@@ -577,9 +388,7 @@ def test_controller_shutdown_gracefully(
 
     # Ensure the all resources are shutdown.
     wait_for_condition(
-        lambda: all(
-            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
-        )
+        lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 0,
     )
 
     # Clean up serve.
@@ -595,6 +404,17 @@ def test_client_shutdown_gracefully_when_timeout(
     log timeout message and exit the process. The controller will continue to shutdown
     everything gracefully.
     """
+    logger = logging.getLogger(SERVE_LOGGER_NAME)
+    caplog.set_level(logging.WARNING, logger=SERVE_LOGGER_NAME)
+
+    warning_msg = []
+
+    class WarningHandler(logging.Handler):
+        def emit(self, record):
+            warning_msg.append(self.format(record))
+
+    logger.addHandler(WarningHandler())
+
     # Setup a cluster with 2 nodes
     cluster = Cluster()
     cluster.add_node()
@@ -611,8 +431,11 @@ def test_client_shutdown_gracefully_when_timeout(
     model = HelloModel.bind()
     serve.run(target=model)
 
-    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    # Check expected actors based on mode
+    # If proxy is on every node, total actors are 2 proxies, 1 controller, and 2 replicas
+    # Otherwise, total actors are 1 proxy, 1 controller, and 2 replicas
+    expected_actors = 5 if is_proxy_on_every_node() else 4
+    wait_for_condition(lambda: len(list_actors()) == expected_actors)
     assert len(ray.nodes()) == 2
 
     # Ensure client times out if the controller does not shutdown within timeout.
@@ -621,14 +444,12 @@ def test_client_shutdown_gracefully_when_timeout(
     client.shutdown(timeout_s=timeout_s)
     assert (
         f"Controller failed to shut down within {timeout_s}s. "
-        f"Check controller logs for more details." in caplog.text
+        f"Check controller logs for more details." in warning_msg
     )
 
     # Ensure the all resources are shutdown gracefully.
     wait_for_condition(
-        lambda: all(
-            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
-        ),
+        lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 0,
     )
 
     # Clean up serve.
@@ -659,9 +480,7 @@ def test_serve_shut_down_without_duplicated_logs(
 
     # Ensure the all resources are shutdown gracefully.
     wait_for_condition(
-        lambda: all(
-            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
-        ),
+        lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 0,
     )
 
     all_serve_logs = ""
@@ -672,6 +491,30 @@ def test_serve_shut_down_without_duplicated_logs(
                 all_serve_logs += f.read()
     assert all_serve_logs.count("Controller shutdown started") == 1
     assert all_serve_logs.count("Deleting app 'default'") == 1
+
+
+def test_job_runtime_env_not_leaked(shutdown_ray):  # noqa: F811
+    """https://github.com/ray-project/ray/issues/49074"""
+
+    @serve.deployment
+    class D:
+        async def __call__(self) -> str:
+            return os.environ["KEY"]
+
+    app = D.bind()
+
+    # Initialize Ray with a runtime_env, should get picked up by the app.
+    ray.init(runtime_env={"env_vars": {"KEY": "VAL1"}})
+    h = serve.run(app)
+    assert h.remote().result() == "VAL1"
+    serve.shutdown()
+    ray.shutdown()
+
+    # Re-initialize Ray with a different runtime_env, check that the updated one
+    # is picked up by the app.
+    ray.init(runtime_env={"env_vars": {"KEY": "VAL2"}})
+    h = serve.run(app)
+    assert h.remote().result() == "VAL2"
 
 
 if __name__ == "__main__":

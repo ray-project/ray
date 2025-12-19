@@ -114,7 +114,7 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]] = None):
     memory = spec.pop("memory", 0.0)
 
     # If there is a custom_resources key, use as base for bundle
-    bundle = {k: v for k, v in spec.pop("custom_resources", {}).items()}
+    bundle = dict(spec.pop("custom_resources", {}))
 
     # Otherwise, consider all other keys as custom resources
     if not bundle:

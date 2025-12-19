@@ -1,7 +1,8 @@
 import logging
-from gymnasium.envs.classic_control import CartPoleEnv
-import numpy as np
 import time
+
+import numpy as np
+from gymnasium.envs.classic_control import CartPoleEnv
 
 from ray.rllib.examples.envs.classes.multi_agent import make_multi_agent
 from ray.rllib.utils.annotations import override
@@ -94,9 +95,6 @@ class CartPoleCrashing(CartPoleEnv):
 
         print(f"Initializing crashing env (with init-delay of {sample}sec) ...")
         time.sleep(sample)
-
-        # No env pre-checking?
-        self._skip_env_checking = config.get("skip_env_checking", False)
 
         # Make sure envs don't crash at the same time.
         self._rng = np.random.RandomState()

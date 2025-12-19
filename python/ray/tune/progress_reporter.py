@@ -530,7 +530,7 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
                 "If this leads to unformatted output (e.g. like "
                 "<IPython.core.display.HTML object>), consider passing "
                 "a `CLIReporter` as the `progress_reporter` argument "
-                "to `train.RunConfig()` instead."
+                "to `tune.RunConfig()` instead."
             )
 
         self._overwrite = overwrite
@@ -1512,7 +1512,7 @@ class TrialProgressCallback(Callback):
         return print_result_str
 
 
-def _detect_reporter(**kwargs) -> TuneReporterBase:
+def _detect_reporter(_trainer_api: bool = False, **kwargs) -> TuneReporterBase:
     """Detect progress reporter class.
 
     Will return a :class:`JupyterNotebookReporter` if a IPython/Jupyter-like
@@ -1520,7 +1520,7 @@ def _detect_reporter(**kwargs) -> TuneReporterBase:
 
     Keyword arguments are passed on to the reporter class.
     """
-    if IS_NOTEBOOK:
+    if IS_NOTEBOOK and not _trainer_api:
         kwargs.setdefault("overwrite", not has_verbosity(Verbosity.V2_TRIAL_NORM))
         progress_reporter = JupyterNotebookReporter(**kwargs)
     else:

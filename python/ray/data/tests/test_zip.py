@@ -1,31 +1,44 @@
 import itertools
 
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 import ray
+from ray.data import Schema
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import column_udf, named_values
 from ray.tests.conftest import *  # noqa
 
 
-def test_zip(ray_start_regular_shared):
-    ds1 = ray.data.range(5, override_num_blocks=5)
-    ds2 = ray.data.range(5, override_num_blocks=5).map(
-        column_udf("id", lambda x: x + 1)
-    )
-    ds = ds1.zip(ds2)
-    assert ds.schema().names == ["id", "id_1"]
-    assert ds.take() == named_values(
-        ["id", "id_1"], [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
-    )
-    with pytest.raises(ValueError):
-        ds.zip(ray.data.range(3)).materialize()
+@pytest.mark.parametrize("num_datasets", [2, 3, 4, 5, 10])
+def test_zip_multiple_datasets(ray_start_regular_shared, num_datasets):
+    # Create multiple datasets with different transformations
+    datasets = []
+    for i in range(num_datasets):
+        ds = ray.data.range(5, override_num_blocks=5)
+        if i > 0:  # Apply transformation to all but the first dataset
+            ds = ds.map(column_udf("id", lambda x, offset=i: x + offset))
+        datasets.append(ds)
+
+    ds = datasets[0].zip(*datasets[1:])
+
+    # Verify schema names
+    expected_names = ["id"] + [f"id_{i}" for i in range(1, num_datasets)]
+    assert ds.schema().names == expected_names
+
+    # Verify data
+    expected_data = []
+    for row_idx in range(5):
+        row_data = tuple(row_idx + i for i in range(num_datasets))
+        expected_data.append(row_data)
+
+    assert ds.take() == named_values(expected_names, expected_data)
 
 
 @pytest.mark.parametrize(
     "num_blocks1,num_blocks2",
-    list(itertools.combinations_with_replacement(range(1, 12), 2)),
+    list(itertools.combinations_with_replacement([1, 2, 4, 16], 2)),
 )
 def test_zip_different_num_blocks_combinations(
     ray_start_regular_shared, num_blocks1, num_blocks2
@@ -69,7 +82,8 @@ def test_zip_different_num_blocks_split_smallest(
         override_num_blocks=num_blocks2,
     )
     ds = ds1.zip(ds2).materialize()
-    num_blocks = ds._plan._snapshot_blocks.executed_num_blocks()
+    bundles = ds.iter_internal_ref_bundles()
+    num_blocks = sum(len(b.block_refs) for b in bundles)
     assert ds.take() == [{str(i): i for i in range(num_cols1 + num_cols2)}] * n
     if should_invert:
         assert num_blocks == num_blocks2
@@ -82,14 +96,12 @@ def test_zip_pandas(ray_start_regular_shared):
     ds2 = ray.data.from_pandas(pd.DataFrame({"col3": ["a", "b"], "col4": ["d", "e"]}))
     ds = ds1.zip(ds2)
     assert ds.count() == 2
-    assert "{col1: int64, col2: int64, col3: object, col4: object}" in str(ds)
     result = list(ds.take())
     assert result[0] == {"col1": 1, "col2": 4, "col3": "a", "col4": "d"}
 
     ds3 = ray.data.from_pandas(pd.DataFrame({"col2": ["a", "b"], "col4": ["d", "e"]}))
     ds = ds1.zip(ds3)
     assert ds.count() == 2
-    assert "{col1: int64, col2: int64, col2_1: object, col4: object}" in str(ds)
     result = list(ds.take())
     assert result[0] == {"col1": 1, "col2": 4, "col2_1": "a", "col4": "d"}
 
@@ -99,14 +111,18 @@ def test_zip_arrow(ray_start_regular_shared):
     ds2 = ray.data.range(5).map(lambda r: {"a": r["id"] + 1, "b": r["id"] + 2})
     ds = ds1.zip(ds2)
     assert ds.count() == 5
-    assert "{id: int64, a: int64, b: int64}" in str(ds)
+    assert ds.schema() == Schema(
+        pa.schema([("id", pa.int64()), ("a", pa.int64()), ("b", pa.int64())])
+    )
     result = list(ds.take())
     assert result[0] == {"id": 0, "a": 1, "b": 2}
 
     # Test duplicate column names.
     ds = ds1.zip(ds1).zip(ds1)
     assert ds.count() == 5
-    assert "{id: int64, id_1: int64, id_2: int64}" in str(ds)
+    assert ds.schema() == Schema(
+        pa.schema([("id", pa.int64()), ("id_1", pa.int64()), ("id_2", pa.int64())])
+    )
     result = list(ds.take())
     assert result[0] == {"id": 0, "id_1": 0, "id_2": 0}
 

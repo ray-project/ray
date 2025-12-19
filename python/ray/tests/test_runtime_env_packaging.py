@@ -6,18 +6,16 @@ import string
 import sys
 import tempfile
 import uuid
+import zipfile
 from filecmp import dircmp
 from pathlib import Path
 from shutil import copytree, make_archive, rmtree
-import zipfile
-import ray
 
 import pytest
 
-from ray._private.gcs_utils import GcsAioClient
+import ray
 from ray._private.ray_constants import (
     KV_NAMESPACE_PACKAGE,
-    RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
 )
 from ray._private.runtime_env.packaging import (
     GCS_STORAGE_MAX_SIZE,
@@ -25,11 +23,14 @@ from ray._private.runtime_env.packaging import (
     Protocol,
     _dir_travel,
     _get_excludes,
+    _get_ignore_file,
     _store_package_in_gcs,
     download_and_unpack_package,
+    get_excludes_from_ignore_files,
     get_local_dir_from_uri,
     get_top_level_dir_from_compressed_package,
     get_uri_for_directory,
+    get_uri_for_file,
     get_uri_for_package,
     is_whl_uri,
     is_zip_uri,
@@ -37,7 +38,6 @@ from ray._private.runtime_env.packaging import (
     remove_dir_from_filepaths,
     unzip_package,
     upload_package_if_needed,
-    _get_gitignore,
     upload_package_to_gcs,
 )
 from ray.experimental.internal_kv import (
@@ -54,14 +54,21 @@ ARCHIVE_NAME = "archive.zip"
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
-HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/a885b80879665a49d5cd4c3ebd33bb6f865644e5.zip"
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 S3_WHL_PACKAGE_URI = "s3://runtime-env-test/test_module-0.0.1-py3-none-any.whl"
-GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 
 
 def random_string(size: int = 10):
     return "".join(random.choice(string.ascii_uppercase) for _ in range(size))
+
+
+@pytest.fixture
+def random_file(tmp_path) -> Path:
+    p = tmp_path / (random_string(10) + ".py")
+    with p.open("w") as f:
+        f.write(random_string(100))
+    yield p
 
 
 @pytest.fixture
@@ -135,54 +142,92 @@ def random_zip_file_with_top_level_dir(tmp_path):
     yield str(path / ARCHIVE_NAME)
 
 
+class TestGetURIForFile:
+    def test_invalid_file(self):
+        with pytest.raises(ValueError):
+            get_uri_for_file("/does/not/exist.py")
+
+        with pytest.raises(ValueError):
+            get_uri_for_file("does/not/exist.py")
+
+    def test_determinism(self, random_file):
+        # Check that it's deterministic for same data.
+        uris = {get_uri_for_file(str(random_file)) for _ in range(10)}
+        assert len(uris) == 1
+
+        # Append one line, should be different now.
+        with open(random_file, "a") as f:
+            f.write(random_string())
+
+        assert {get_uri_for_file(str(random_file))} != uris
+
+    def test_relative_paths(self, random_file):
+        # Check that relative or absolute paths result in the same URI.
+        p = Path(random_file)
+        relative_uri = get_uri_for_file(os.path.relpath(p))
+        absolute_uri = get_uri_for_file(str(p.resolve()))
+        assert relative_uri == absolute_uri
+
+    def test_uri_hash_length(self, random_file):
+        uri = get_uri_for_file(str(random_file))
+        hex_hash = uri.split("_")[-1][: -len(".zip")]
+        assert len(hex_hash) == 16
+
+
 class TestGetURIForDirectory:
     def test_invalid_directory(self):
         with pytest.raises(ValueError):
-            get_uri_for_directory("/does/not/exist")
+            get_uri_for_directory("/does/not/exist", include_gitignore=True)
 
         with pytest.raises(ValueError):
-            get_uri_for_directory("does/not/exist")
+            get_uri_for_directory("does/not/exist", include_gitignore=True)
 
     def test_determinism(self, random_dir):
         # Check that it's deterministic for same data.
-        uris = {get_uri_for_directory(random_dir) for _ in range(10)}
+        uris = {
+            get_uri_for_directory(random_dir, include_gitignore=True) for _ in range(10)
+        }
         assert len(uris) == 1
 
         # Add one file, should be different now.
         with open(random_dir / f"test_{random_string()}", "w") as f:
             f.write(random_string())
 
-        assert {get_uri_for_directory(random_dir)} != uris
+        assert {get_uri_for_directory(random_dir, include_gitignore=True)} != uris
 
     def test_relative_paths(self, random_dir):
         # Check that relative or absolute paths result in the same URI.
         p = Path(random_dir)
-        relative_uri = get_uri_for_directory(os.path.relpath(p))
-        absolute_uri = get_uri_for_directory(p.resolve())
+        relative_uri = get_uri_for_directory(os.path.relpath(p), include_gitignore=True)
+        absolute_uri = get_uri_for_directory(p.resolve(), include_gitignore=True)
         assert relative_uri == absolute_uri
 
     def test_excludes(self, random_dir):
         # Excluding a directory should modify the URI.
-        included_uri = get_uri_for_directory(random_dir)
-        excluded_uri = get_uri_for_directory(random_dir, excludes=["subdir"])
+        included_uri = get_uri_for_directory(random_dir, include_gitignore=True)
+        excluded_uri = get_uri_for_directory(
+            random_dir, include_gitignore=True, excludes=["subdir"]
+        )
         assert included_uri != excluded_uri
 
         # Excluding a directory should be the same as deleting it.
         rmtree((Path(random_dir) / "subdir").resolve())
-        deleted_uri = get_uri_for_directory(random_dir)
+        deleted_uri = get_uri_for_directory(random_dir, include_gitignore=True)
         assert deleted_uri == excluded_uri
 
     def test_empty_directory(self):
         try:
             os.mkdir("d1")
             os.mkdir("d2")
-            assert get_uri_for_directory("d1") == get_uri_for_directory("d2")
+            assert get_uri_for_directory(
+                "d1", include_gitignore=True
+            ) == get_uri_for_directory("d2", include_gitignore=True)
         finally:
             os.rmdir("d1")
             os.rmdir("d2")
 
     def test_uri_hash_length(self, random_dir):
-        uri = get_uri_for_directory(random_dir)
+        uri = get_uri_for_directory(random_dir, include_gitignore=True)
         hex_hash = uri.split("_")[-1][: -len(".zip")]
         assert len(hex_hash) == 16
 
@@ -207,24 +252,30 @@ class TestGetURIForDirectory:
             (short_path_dir / "test_socket").open()
 
         # Check that the hash can still be generated without errors.
-        get_uri_for_directory(short_path_dir)
+        get_uri_for_directory(short_path_dir, include_gitignore=True)
 
 
 class TestUploadPackageIfNeeded:
     def test_create_upload_once(self, tmp_path, random_dir, ray_start_regular):
-        uri = get_uri_for_directory(random_dir)
-        uploaded = upload_package_if_needed(uri, tmp_path, random_dir)
+        uri = get_uri_for_directory(random_dir, include_gitignore=True)
+        uploaded = upload_package_if_needed(
+            uri, tmp_path, random_dir, include_gitignore=True
+        )
         assert uploaded
         assert _internal_kv_exists(uri, namespace=KV_NAMESPACE_PACKAGE)
 
-        uploaded = upload_package_if_needed(uri, tmp_path, random_dir)
+        uploaded = upload_package_if_needed(
+            uri, tmp_path, random_dir, include_gitignore=True
+        )
         assert not uploaded
         assert _internal_kv_exists(uri, namespace=KV_NAMESPACE_PACKAGE)
 
         # Delete the URI from the internal_kv. This should trigger re-upload.
         _internal_kv_del(uri, namespace=KV_NAMESPACE_PACKAGE)
         assert not _internal_kv_exists(uri, namespace=KV_NAMESPACE_PACKAGE)
-        uploaded = upload_package_if_needed(uri, tmp_path, random_dir)
+        uploaded = upload_package_if_needed(
+            uri, tmp_path, random_dir, include_gitignore=True
+        )
         assert uploaded
 
 
@@ -451,6 +502,17 @@ class TestParseUri:
             ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
             ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
             ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
+            ("azure://container/file.zip", Protocol.AZURE, "azure_container_file.zip"),
+            (
+                "abfss://container@account.dfs.core.windows.net/file.zip",
+                Protocol.ABFSS,
+                "abfss_container_account_dfs_core_windows_net_file.zip",
+            ),
+            (
+                "https://test.com/package-0.0.1-py2.py3-none-any.whl?param=value",
+                Protocol.HTTPS,
+                "package-0.0.1-py2.py3-none-any.whl",
+            ),
         ],
     )
     def test_parsing_remote_basic(self, parsing_tuple):
@@ -504,9 +566,24 @@ class TestParseUri:
                 "s3_fake_2022-10-21T13_11_35_00_00_package.zip",
             ),
             (
+                "azure://fake/2022-10-21T13:11:35+00:00/package.zip",
+                Protocol.AZURE,
+                "azure_fake_2022-10-21T13_11_35_00_00_package.zip",
+            ),
+            (
+                "abfss://container@account.dfs.core.windows.net/2022-10-21T13:11:35+00:00/package.zip",
+                Protocol.ABFSS,
+                "abfss_container_account_dfs_core_windows_net_2022-10-21T13_11_35_00_00_package.zip",
+            ),
+            (
                 "file:///fake/2022-10-21T13:11:35+00:00/package.zip",
                 Protocol.FILE,
                 "file__fake_2022-10-21T13_11_35_00_00_package.zip",
+            ),
+            (
+                "file:///fake/2022-10-21T13:11:35+00:00/(package).zip",
+                Protocol.FILE,
+                "file__fake_2022-10-21T13_11_35_00_00__package_.zip",
             ),
         ],
     )
@@ -535,6 +612,16 @@ class TestParseUri:
                 "package.whl",
             ),
             (
+                "azure://fake/2022-10-21T13:11:35+00:00/package.whl",
+                Protocol.AZURE,
+                "package.whl",
+            ),
+            (
+                "abfss://container@account.dfs.core.windows.net/2022-10-21T13:11:35+00:00/package.whl",
+                Protocol.ABFSS,
+                "package.whl",
+            ),
+            (
                 "file:///fake/2022-10-21T13:11:35+00:00/package.whl",
                 Protocol.FILE,
                 "package.whl",
@@ -558,6 +645,142 @@ class TestParseUri:
         assert package_name == gcs_uri.split("/")[-1]
 
 
+class TestAbfssProtocol:
+    """Test ABFSS protocol implementation."""
+
+    def test_abfss_protocol_handler_with_invalid_uris(self, tmp_path):
+        """Test that ABFSS protocol handler raises ValueError for invalid URIs."""
+        import unittest.mock as mock
+
+        invalid_uris = [
+            "abfss://@account.dfs.core.windows.net/file.zip",  # Empty container name
+            "abfss://container@.dfs.core.windows.net/file.zip",  # Empty account name
+            "abfss://container@account.blob.core.windows.net/file.zip",  # Wrong endpoint
+            "abfss://container@account.core.windows.net/file.zip",  # Missing .dfs
+            "abfss://account.dfs.core.windows.net/file.zip",  # Missing container@
+            "abfss://container",  # Missing @ and hostname
+            "abfss://",  # Empty netloc
+        ]
+
+        dest_file = tmp_path / "test_download.zip"
+
+        # Mock adlfs and azure.identity modules in sys.modules to avoid import errors in CI
+        import sys
+
+        mock_adlfs_module = mock.MagicMock()
+        mock_azure_identity_module = mock.MagicMock()
+
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "adlfs": mock_adlfs_module,
+                "azure": mock.MagicMock(),
+                "azure.identity": mock_azure_identity_module,
+            },
+        ):
+            # Setup the mocks (though they won't be called due to validation failures)
+            mock_filesystem = mock.Mock()
+            mock_adlfs_module.AzureBlobFileSystem.return_value = mock_filesystem
+            mock_filesystem.open.return_value = mock.Mock()
+
+            for invalid_uri in invalid_uris:
+                with pytest.raises(ValueError, match="Invalid ABFSS URI format"):
+                    Protocol.ABFSS.download_remote_uri(invalid_uri, str(dest_file))
+
+
+class TestS3Protocol:
+    """Test S3 protocol implementation with public bucket fallback."""
+
+    def test_s3_client_creation_with_credentials(self):
+        """Test S3 client creation when credentials are available."""
+        import sys
+        import unittest.mock as mock
+
+        # Mock boto3 and smart_open modules
+        mock_boto3 = mock.MagicMock()
+        mock_smart_open = mock.MagicMock()
+
+        # Setup successful credential scenario
+        mock_session = mock.MagicMock()
+        mock_s3_client = mock.MagicMock()
+        mock_credentials = mock.MagicMock()  # Non-None credentials
+
+        mock_boto3.Session.return_value = mock_session
+        mock_session.get_credentials.return_value = mock_credentials
+        mock_session.client.return_value = mock_s3_client
+
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "boto3": mock_boto3,
+                "smart_open": mock_smart_open,
+            },
+        ):
+            mock_smart_open.open = mock.MagicMock()
+
+            from ray._private.runtime_env.protocol import ProtocolsProvider
+
+            open_file, transport_params = ProtocolsProvider._handle_s3_protocol()
+
+            # Verify that Session was created and get_credentials was called
+            mock_boto3.Session.assert_called_once()
+            mock_session.get_credentials.assert_called_once()
+            # Verify that session.client was called to create signed S3 client
+            mock_session.client.assert_called_with("s3")
+            # Verify that the signed client is returned
+            assert transport_params["client"] == mock_s3_client
+
+    def test_s3_client_creation_without_credentials(self):
+        """Test S3 client creation falls back to unsigned when no credentials."""
+        import sys
+        import unittest.mock as mock
+
+        # Mock boto3 and botocore modules
+        mock_boto3 = mock.MagicMock()
+        mock_botocore = mock.MagicMock()
+        mock_smart_open = mock.MagicMock()
+
+        # Setup no credentials scenario
+        mock_session = mock.MagicMock()
+        mock_unsigned_client = mock.MagicMock()
+
+        mock_boto3.Session.return_value = mock_session
+        mock_session.get_credentials.return_value = None  # No credentials found
+        mock_boto3.client.return_value = mock_unsigned_client
+
+        # Mock Config and UNSIGNED
+        mock_config_class = mock.MagicMock()
+        mock_config = mock.MagicMock()
+        mock_config_class.return_value = mock_config
+        mock_botocore.config.Config = mock_config_class
+        mock_botocore.UNSIGNED = "UNSIGNED"
+
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "boto3": mock_boto3,
+                "botocore": mock_botocore,
+                "botocore.config": mock_botocore.config,
+                "smart_open": mock_smart_open,
+            },
+        ):
+            mock_smart_open.open = mock.MagicMock()
+
+            from ray._private.runtime_env.protocol import ProtocolsProvider
+
+            open_file, transport_params = ProtocolsProvider._handle_s3_protocol()
+
+            # Verify that Session was created and get_credentials was called
+            mock_boto3.Session.assert_called_once()
+            mock_session.get_credentials.assert_called_once()
+            # Verify that boto3.client was called for unsigned client with config
+            mock_boto3.client.assert_called_with("s3", config=mock_config)
+            # Verify Config was created with UNSIGNED signature
+            mock_config_class.assert_called_with(signature_version="UNSIGNED")
+            # Verify that the unsigned client is returned
+            assert transport_params["client"] == mock_unsigned_client
+
+
 @pytest.mark.asyncio
 class TestDownloadAndUnpackPackage:
     async def test_download_and_unpack_package_with_gcs_uri_without_gcs_client(
@@ -579,15 +802,13 @@ class TestDownloadAndUnpackPackage:
                 await download_and_unpack_package(
                     pkg_uri=pkg_uri,
                     base_directory=temp_dir,
-                    gcs_aio_client=None,
+                    gcs_client=None,
                 )
 
     async def test_download_and_unpack_package_with_gcs_uri(self, ray_start_regular):
         # Test downloading and unpacking a GCS package with a GCS client.
 
-        gcs_aio_client = GcsAioClient(
-            address=ray._private.worker.global_worker.gcs_client.address
-        )
+        gcs_client = ray._private.worker.global_worker.gcs_client
 
         with tempfile.TemporaryDirectory() as temp_dir:
             zipfile_path = Path(temp_dir) / "test-zip-file.zip"
@@ -603,7 +824,7 @@ class TestDownloadAndUnpackPackage:
             local_dir = await download_and_unpack_package(
                 pkg_uri=pkg_uri,
                 base_directory=temp_dir,
-                gcs_aio_client=gcs_aio_client,
+                gcs_client=gcs_client,
             )
 
             # Check that the file was extracted to the destination directory
@@ -640,8 +861,8 @@ class TestDownloadAndUnpackPackage:
                 # Add a file to the zip file so we can verify the file was extracted.
                 zip.writestr("file.txt", "Hello, world!")
 
-            from urllib.request import pathname2url
             from urllib.parse import urljoin
+            from urllib.request import pathname2url
 
             # in windows, file_path = ///C:/Users/...
             # in linux, file_path = /tmp/...
@@ -695,8 +916,49 @@ class TestDownloadAndUnpackPackage:
 def test_get_gitignore(tmp_path):
     gitignore_path = tmp_path / ".gitignore"
     gitignore_path.write_text("*.pyc")
-    assert _get_gitignore(tmp_path)(Path(tmp_path / "foo.pyc")) is True
-    assert _get_gitignore(tmp_path)(Path(tmp_path / "foo.py")) is False
+    gitignore_func = _get_ignore_file(tmp_path, ".gitignore")
+    assert gitignore_func(Path(tmp_path / "foo.pyc")) is True
+    assert gitignore_func(Path(tmp_path / "foo.py")) is False
+
+
+@pytest.mark.parametrize(
+    "include_gitignore,expected_excludes",
+    [
+        # Default: both .gitignore and .rayignore are used
+        (True, ["gitignore", "rayignore"]),
+        # Only .rayignore is used, no inheritance
+        (False, ["rayignore"]),
+    ],
+)
+def test_ray_ignore_and_git_ignore_together(
+    tmp_path, include_gitignore, expected_excludes, monkeypatch
+):
+    """Test get_excludes_from_ignore_files with different environment variable combinations."""
+
+    # Create test ignore files
+    gitignore_path = tmp_path / ".gitignore"
+    gitignore_path.write_text("*.pyc")
+    git_ignore_file = tmp_path / "test.pyc"
+
+    rayignore_path = tmp_path / ".rayignore"
+    rayignore_path.write_text("*.cache")
+    ray_ignore_file = tmp_path / "test.cache"
+
+    # Get exclusion functions
+    exclude_funcs = get_excludes_from_ignore_files(
+        tmp_path, include_gitignore=include_gitignore
+    )
+
+    # Check the number of exclusion functions returned
+    assert len(exclude_funcs) == len(
+        expected_excludes
+    ), f"Should have {expected_excludes}"
+
+    # .gitignore patterns
+    assert any(f(git_ignore_file) for f in exclude_funcs) == include_gitignore
+
+    # .rayignore patterns is always used
+    assert any(f(ray_ignore_file) for f in exclude_funcs)
 
 
 @pytest.mark.parametrize("ignore_gitignore", [True, False])
@@ -707,11 +969,6 @@ def test_travel(tmp_path, ignore_gitignore, monkeypatch):
     item_num = 0
     excludes = []
     root = tmp_path / "test"
-
-    if ignore_gitignore:
-        monkeypatch.setenv(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "1")
-    else:
-        monkeypatch.delenv(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, raising=False)
 
     def construct(path, excluded=False, depth=0):
         nonlocal item_num
@@ -772,7 +1029,7 @@ def test_travel(tmp_path, ignore_gitignore, monkeypatch):
             with open(path) as f:
                 visited_file_paths.add((str(path), f.read()))
 
-    _dir_travel(root, [exclude_spec], handler)
+    _dir_travel(root, [exclude_spec], handler, include_gitignore=not ignore_gitignore)
     assert file_paths == visited_file_paths
     assert dir_paths == visited_dir_paths
 
@@ -802,7 +1059,4 @@ def test_get_local_dir_from_uri():
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

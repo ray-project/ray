@@ -17,12 +17,18 @@
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <utility>
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/common.h"
+#include "ray/rpc/rpc_chaos.h"
+#include "ray/util/network_util.h"
 
 namespace ray {
 namespace rpc {
@@ -50,82 +56,45 @@ namespace rpc {
     INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client, method_timeout_ms); \
   }
 
-inline std::shared_ptr<grpc::Channel> BuildChannel(
+/// Build a gRPC channel to the specified address.
+///
+/// This is the ONLY recommended way to create gRPC channels in Ray.
+/// Use of raw grpc::CreateCustomChannel() should be avoided.
+///
+/// Authentication tokens are automatically added in metadata when RAY_AUTH_MODE=token.
+///
+/// \param address The server address
+/// \param port The server port
+/// \param arguments Optional channel arguments for customization
+/// \return A shared pointer to the gRPC channel
+std::shared_ptr<grpc::Channel> BuildChannel(
     const std::string &address,
     int port,
-    std::optional<grpc::ChannelArguments> arguments = std::nullopt) {
-  if (!arguments.has_value()) {
-    arguments = grpc::ChannelArguments();
-  }
-
-  arguments->SetInt(GRPC_ARG_ENABLE_HTTP_PROXY,
-                    ::RayConfig::instance().grpc_enable_http_proxy() ? 1 : 0);
-  arguments->SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
-  arguments->SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
-  arguments->SetInt(GRPC_ARG_HTTP2_WRITE_BUFFER_SIZE,
-                    ::RayConfig::instance().grpc_stream_buffer_size());
-  std::shared_ptr<grpc::Channel> channel;
-  if (::RayConfig::instance().USE_TLS()) {
-    std::string server_cert_file = std::string(::RayConfig::instance().TLS_SERVER_CERT());
-    std::string server_key_file = std::string(::RayConfig::instance().TLS_SERVER_KEY());
-    std::string root_cert_file = std::string(::RayConfig::instance().TLS_CA_CERT());
-    std::string server_cert_chain = ReadCert(server_cert_file);
-    std::string private_key = ReadCert(server_key_file);
-    std::string cacert = ReadCert(root_cert_file);
-
-    grpc::SslCredentialsOptions ssl_opts;
-    ssl_opts.pem_root_certs = cacert;
-    ssl_opts.pem_private_key = private_key;
-    ssl_opts.pem_cert_chain = server_cert_chain;
-    auto ssl_creds = grpc::SslCredentials(ssl_opts);
-    channel = grpc::CreateCustomChannel(
-        address + ":" + std::to_string(port), ssl_creds, *arguments);
-  } else {
-    channel = grpc::CreateCustomChannel(address + ":" + std::to_string(port),
-                                        grpc::InsecureChannelCredentials(),
-                                        *arguments);
-  }
-  return channel;
-}
+    std::optional<grpc::ChannelArguments> arguments = std::nullopt);
 
 template <class GrpcService>
 class GrpcClient {
  public:
   GrpcClient(std::shared_ptr<grpc::Channel> channel,
              ClientCallManager &call_manager,
-             bool use_tls = false)
-      : client_call_manager_(call_manager), use_tls_(use_tls) {
-    channel_ = std::move(channel);
-    stub_ = GrpcService::NewStub(channel_);
-  }
+             std::string_view server_address)
+      : client_call_manager_(call_manager),
+        channel_(std::move(channel)),
+        stub_(GrpcService::NewStub(channel_)),
+        skip_testing_intra_node_rpc_failure_(
+            ::RayConfig::instance().testing_rpc_failure_avoid_intra_node_failures() &&
+            IsLocalHost(server_address, call_manager.GetLocalAddress())) {}
 
   GrpcClient(const std::string &address,
              const int port,
              ClientCallManager &call_manager,
-             bool use_tls = false)
-      : client_call_manager_(call_manager), use_tls_(use_tls) {
-    channel_ = BuildChannel(address, port, CreateDefaultChannelArguments());
-    stub_ = GrpcService::NewStub(channel_);
-  }
-
-  GrpcClient(const std::string &address,
-             const int port,
-             ClientCallManager &call_manager,
-             int num_threads,
-             bool use_tls = false)
-      : client_call_manager_(call_manager), use_tls_(use_tls) {
-    grpc::ChannelArguments argument = CreateDefaultChannelArguments();
-    grpc::ResourceQuota quota;
-    quota.SetMaxThreads(num_threads);
-    argument.SetResourceQuota(quota);
-    argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY,
-                    ::RayConfig::instance().grpc_enable_http_proxy() ? 1 : 0);
-    argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
-    argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
-
-    channel_ = BuildChannel(address, port, argument);
-    stub_ = GrpcService::NewStub(channel_);
-  }
+             grpc::ChannelArguments channel_arguments = CreateDefaultChannelArguments())
+      : client_call_manager_(call_manager),
+        channel_(BuildChannel(address, port, std::move(channel_arguments))),
+        stub_(GrpcService::NewStub(channel_)),
+        skip_testing_intra_node_rpc_failure_(
+            ::RayConfig::instance().testing_rpc_failure_avoid_intra_node_failures() &&
+            IsLocalHost(address, call_manager.GetLocalAddress())) {}
 
   /// Create a new `ClientCall` and send request.
   ///
@@ -148,15 +117,65 @@ class GrpcClient {
       const ClientCallback<Reply> &callback,
       std::string call_name = "UNKNOWN_RPC",
       int64_t method_timeout_ms = -1) {
-    auto call = client_call_manager_.CreateCall<GrpcService, Request, Reply>(
-        *stub_,
-        prepare_async_function,
-        request,
-        callback,
-        std::move(call_name),
-        method_timeout_ms);
-    RAY_CHECK(call != nullptr);
-    call_method_invoked_ = true;
+    testing::RpcFailure failure = skip_testing_intra_node_rpc_failure_
+                                      ? testing::RpcFailure::None
+                                      : testing::GetRpcFailure(call_name);
+    if (failure == testing::RpcFailure::Request) {
+      // Simulate the case where the RPC fails before server receives
+      // the request.
+      RAY_LOG(INFO) << "Inject RPC request failure for " << call_name;
+      client_call_manager_.GetMainService().post(
+          [callback]() {
+            callback(Status::RpcError("Unavailable", grpc::StatusCode::UNAVAILABLE),
+                     Reply());
+          },
+          "RpcChaos");
+    } else if (failure == testing::RpcFailure::Response) {
+      // Simulate the case where the RPC fails after server sends
+      // the response.
+      RAY_LOG(INFO) << "Inject RPC response failure for " << call_name;
+      client_call_manager_.CreateCall<GrpcService, Request, Reply>(
+          *stub_,
+          prepare_async_function,
+          request,
+          [callback](const Status &status, const Reply &) {
+            callback(Status::RpcError("Unavailable", grpc::StatusCode::UNAVAILABLE),
+                     Reply());
+          },
+          std::move(call_name),
+          method_timeout_ms);
+    } else if (failure == testing::RpcFailure::InFlight) {
+      // Simulate the case where the RPC fails after sending the request to the server but
+      // before the reply is sent back.
+      RAY_LOG(INFO) << "Inject RPC response failure while request in flight for "
+                    << call_name;
+      client_call_manager_.CreateCall<GrpcService, Request, Reply>(
+          *stub_,
+          prepare_async_function,
+          request,
+          [](const Status &, const Reply &) {
+            // The actual reply is dropped.
+          },
+          std::move(call_name),
+          method_timeout_ms);
+      client_call_manager_.GetMainService().post(
+          [callback]() {
+            callback(Status::RpcError("Unavailable", grpc::StatusCode::UNAVAILABLE),
+                     Reply());
+          },
+          "RpcChaos");
+    } else {
+      auto call = client_call_manager_.CreateCall<GrpcService, Request, Reply>(
+          *stub_,
+          prepare_async_function,
+          request,
+          callback,
+          std::move(call_name),
+          method_timeout_ms);
+      RAY_CHECK(call != nullptr);
+    }
+
+    call_method_invoked_.store(true);
   }
 
   std::shared_ptr<grpc::Channel> Channel() const { return channel_; }
@@ -167,19 +186,19 @@ class GrpcClient {
   /// Also see https://grpc.github.io/grpc/core/md_doc_connectivity-semantics-and-api.html
   /// for channel connectivity state machine.
   bool IsChannelIdleAfterRPCs() const {
-    return (channel_->GetState(false) == GRPC_CHANNEL_IDLE) && call_method_invoked_;
+    return (channel_->GetState(false) == GRPC_CHANNEL_IDLE) &&
+           call_method_invoked_.load();
   }
 
  private:
   ClientCallManager &client_call_manager_;
-  /// The gRPC-generated stub.
-  std::unique_ptr<typename GrpcService::Stub> stub_;
-  /// Whether to use TLS.
-  bool use_tls_;
   /// The channel of the stub.
   std::shared_ptr<grpc::Channel> channel_;
+  /// The gRPC-generated stub.
+  std::unique_ptr<typename GrpcService::Stub> stub_;
   /// Whether CallMethod is invoked.
-  bool call_method_invoked_ = false;
+  std::atomic<bool> call_method_invoked_ = false;
+  bool skip_testing_intra_node_rpc_failure_ = false;
 };
 
 }  // namespace rpc

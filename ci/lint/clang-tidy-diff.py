@@ -156,7 +156,7 @@ def main():
     )
     parser.add_argument(
         "-checks",
-        help="checks filter, when not specified, use clang-tidy " "default",
+        help="checks filter, when not specified, use clang-tidy default",
         default="",
     )
     parser.add_argument(
@@ -175,14 +175,14 @@ def main():
         dest="extra_arg",
         action="append",
         default=[],
-        help="Additional argument to append to the compiler " "command line.",
+        help="Additional argument to append to the compiler command line.",
     )
     parser.add_argument(
         "-extra-arg-before",
         dest="extra_arg_before",
         action="append",
         default=[],
-        help="Additional argument to prepend to the compiler " "command line.",
+        help="Additional argument to prepend to the compiler command line.",
     )
     parser.add_argument(
         "-quiet",
@@ -202,7 +202,7 @@ def main():
     filename = None
     lines_by_file = {}
     for line in sys.stdin:
-        match = re.search('^\+\+\+\ "?(.*?/){%s}([^ \t\n"]*)' % args.p, line)
+        match = re.search('^\\+\\+\\+\\ "?(.*?/){%s}([^ \t\n"]*)' % args.p, line)
         if match:
             filename = match.group(2)
         if filename is None:
@@ -215,7 +215,7 @@ def main():
             if not re.match("^%s$" % args.iregex, filename, re.IGNORECASE):
                 continue
 
-        match = re.search("^@@.*\+(\d+)(,(\d+))?", line)
+        match = re.search(r"^@@.*\+(\d+)(,(\d+))?", line)
         if match:
             start_line = int(match.group(1))
             line_count = 1

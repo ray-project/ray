@@ -11,7 +11,7 @@ For an example of using an Optuna define-by-run function, see
 import time
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.optuna import OptunaSearch
@@ -29,7 +29,7 @@ def easy_objective(config):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height)
         # Feed the score back back to Tune.
-        train.report({"iterations": step, "mean_loss": intermediate_score})
+        tune.report({"iterations": step, "mean_loss": intermediate_score})
         time.sleep(0.1)
 
 

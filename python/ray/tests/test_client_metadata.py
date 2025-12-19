@@ -1,9 +1,10 @@
+import sys
+
 import pytest
 
-from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray._raylet import NodeID
-
 from ray.runtime_context import RuntimeContext
+from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
 def test_get_ray_metadata(ray_start_regular_shared):
@@ -45,10 +46,4 @@ def test_get_runtime_context(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

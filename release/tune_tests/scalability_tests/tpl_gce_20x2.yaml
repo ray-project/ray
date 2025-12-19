@@ -1,6 +1,6 @@
 cloud_id: cld_tPsS3nQz8p5cautbyWgEdr4y
 region: us-west1
-allowed_azs: 
+allowed_azs:
     - us-west1-c
 
 max_workers: 19

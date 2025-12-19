@@ -1,8 +1,13 @@
 import logging
+import traceback
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
-from ray.air._internal.util import StartTraceback
+from ray.air._internal.util import (
+    StartTraceback,
+    StartTracebackWithWorkerRank,
+    skip_exceptions,
+)
 from ray.data import Dataset
 from ray.train import Checkpoint, DataConfig
 from ray.train._internal.backend_executor import (
@@ -118,18 +123,34 @@ class TrainingIterator:
 
     def __next__(self):
         if self.is_finished():
+            self._backend_executor.report_final_run_status(errored=False)
             raise StopIteration
         try:
             next_results = self._run_with_error_handling(self._fetch_next_result)
             if next_results is None:
+                self._backend_executor.report_final_run_status(errored=False)
                 self._run_with_error_handling(self._finish_training)
                 self._finished_training = True
                 raise StopIteration
             else:
                 return next_results
-        except StartTraceback:
+        except StartTraceback as e:
             # If this is a StartTraceback, then this is a user error.
             # We raise it directly
+            if isinstance(e, StartTracebackWithWorkerRank):
+                failed_rank = e.worker_rank
+            else:
+                failed_rank = None
+
+            # Extract the stack trace from the exception
+            e = skip_exceptions(e)
+            stack_trace = "".join(
+                traceback.format_exception(type(e), e, e.__traceback__)
+            )
+
+            self._backend_executor.report_final_run_status(
+                errored=True, stack_trace=stack_trace, failed_rank=failed_rank
+            )
             try:
                 # Exception raised in at least one training worker. Immediately raise
                 # this error to the user and do not attempt to terminate gracefully.

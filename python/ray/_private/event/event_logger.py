@@ -1,19 +1,18 @@
-import logging
-import pathlib
 import json
-import random
-import string
-import socket
+import logging
 import os
+import pathlib
+import random
+import socket
+import string
 import threading
-
-from typing import Dict, Optional
 from datetime import datetime
+from typing import Dict, Optional
 
 from google.protobuf.json_format import Parse
 
-from ray.core.generated.event_pb2 import Event
 from ray._private.protobuf_compat import message_to_dict
+from ray.core.generated.event_pb2 import Event
 
 global_logger = logging.getLogger(__name__)
 

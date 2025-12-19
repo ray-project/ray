@@ -4,7 +4,7 @@
 Accelerator Support
 ===================
 
-Accelerators (e.g. GPUs) are critical for many machine learning applications.
+Accelerators like GPUs are critical for many machine learning apps.
 Ray Core natively supports many accelerators as pre-defined :ref:`resource <core-resources>` types and allows tasks and actors to specify their accelerator :ref:`resource requirements <resource-requirements>`.
 
 The accelerators natively supported by Ray Core are:
@@ -15,7 +15,7 @@ The accelerators natively supported by Ray Core are:
    * - Accelerator
      - Ray Resource Name
      - Support Level
-   * - Nvidia GPU
+   * - NVIDIA GPU
      - GPU
      - Fully tested, supported by the Ray team
    * - AMD GPU
@@ -36,8 +36,14 @@ The accelerators natively supported by Ray Core are:
    * - Huawei Ascend
      - NPU
      - Experimental, supported by the community
+   * - Rebellions RBLN
+     - RBLN
+     - Experimental, supported by the community
+   * - METAX GPU
+     - GPU
+     - Experimental, supported by the community
 
-Starting Ray Nodes with Accelerators
+Starting Ray nodes with accelerators
 ------------------------------------
 
 By default, Ray sets the quantity of accelerator resources of a node to the physical quantities of accelerators auto detected by Ray.
@@ -45,13 +51,13 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
 
 .. tab-set::
 
-    .. tab-item:: Nvidia GPU
-        :sync: Nvidia GPU
+    .. tab-item:: NVIDIA GPU
+        :sync: NVIDIA GPU
 
         .. tip::
 
             You can set the ``CUDA_VISIBLE_DEVICES`` environment variable before starting a Ray node
-            to limit the Nvidia GPUs that are visible to Ray.
+            to limit the NVIDIA GPUs that are visible to Ray.
             For example, ``CUDA_VISIBLE_DEVICES=1,3 ray start --head --num-gpus=2``
             lets Ray only see devices 1 and 3.
 
@@ -81,9 +87,11 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
         .. tip::
 
             You can set the ``NEURON_RT_VISIBLE_CORES`` environment variable before starting a Ray node
-            to limit the AWS Neuro Cores that are visible to Ray.
+            to limit the AWS Neuron Cores that are visible to Ray.
             For example, ``NEURON_RT_VISIBLE_CORES=1,3 ray start --head --resources='{"neuron_cores": 2}'``
             lets Ray only see devices 1 and 3.
+
+            See the `Amazon documentation <https://awslabs.github.io/data-on-eks/docs/category/inference-on-eks>`_ for more examples of Ray on Neuron with EKS as an orchestration substrate.
 
     .. tab-item:: Google TPU
         :sync: Google TPU
@@ -115,10 +123,29 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
             For example, ``ASCEND_RT_VISIBLE_DEVICES=1,3 ray start --head --resources='{"NPU": 2}'``
             lets Ray only see devices 1 and 3.
 
+    .. tab-item:: Rebellions RBLN
+        :sync: Rebellions RBLN
+
+        .. tip::
+
+            You can set the ``RBLN_DEVICES`` environment variable before starting a Ray node
+            to limit the Rebellions RBLNs that are visible to Ray.
+            For example, ``RBLN_DEVICES=1,3 ray start --head --resources='{"RBLN": 2}'``
+            lets Ray only see devices 1 and 3.
+
+    .. tab-item:: METAX GPU
+        :sync: METAX GPU
+
+        .. tip::
+
+            You can set the ``CUDA_VISIBLE_DEVICES`` environment variable before starting a Ray node
+            to limit the METAX GPUs that are visible to Ray.
+            For example, ``CUDA_VISIBLE_DEVICES=1,3 ray start --head --num-gpus=2``
+            lets Ray only see devices 1 and 3.
 .. note::
 
-  There is nothing preventing you from specifying a larger number of
-  accelerator resources (e.g. ``num_gpus``) than the true number of accelerators on the machine given Ray resources are :ref:`logical <logical-resources>`.
+  There's nothing preventing you from specifying a larger number of
+  accelerator resources (e.g., ``num_gpus``) than the true number of accelerators on the machine given Ray resources are :ref:`logical <logical-resources>`.
   In this case, Ray acts as if the machine has the number of accelerators you specified
   for the purposes of scheduling tasks and actors that require accelerators.
   Trouble only occurs if those tasks and actors
@@ -133,8 +160,8 @@ and assign accelerators to the task or actor by setting the corresponding enviro
 
 .. tab-set::
 
-    .. tab-item:: Nvidia GPU
-        :sync: Nvidia GPU
+    .. tab-item:: NVIDIA GPU
+        :sync: NVIDIA GPU
 
         .. testcode::
 
@@ -403,6 +430,83 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             (npu_task pid=51830) NPU IDs: [1]
             (npu_task pid=51830) ASCEND_RT_VISIBLE_DEVICES: 1
 
+    .. tab-item:: Rebellions RBLN
+        :sync: Rebellions RBLN
+
+        .. testcode::
+            :hide:
+
+            ray.shutdown()
+
+        .. testcode::
+
+            import os
+            import ray
+
+            ray.init(resources={"RBLN": 2})
+
+            @ray.remote(resources={"RBLN": 1})
+            class RBLNActor:
+                def ping(self):
+                    print("RBLN IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["RBLN"]))
+                    print("RBLN_DEVICES: {}".format(os.environ["RBLN_DEVICES"]))
+
+            @ray.remote(resources={"RBLN": 1})
+            def rbln_task():
+                print("RBLN IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["RBLN"]))
+                print("RBLN_DEVICES: {}".format(os.environ["RBLN_DEVICES"]))
+
+            rbln_actor = RBLNActor.remote()
+            ray.get(rbln_actor.ping.remote())
+            # The actor uses the first RBLN so the task uses the second one.
+            ray.get(rbln_task.remote())
+
+        .. testoutput::
+            :options: +MOCK
+
+            (RBLNActor pid=52420) RBLN IDs: [0]
+            (RBLNActor pid=52420) RBLN_DEVICES: 0
+            (rbln_task pid=51830) RBLN IDs: [1]
+            (rbln_task pid=51830) RBLN_DEVICES: 1
+
+    .. tab-item:: METAX GPU
+        :sync: METAX GPU
+
+        .. testcode::
+            :hide:
+
+            ray.shutdown()
+
+        .. testcode::
+
+            import os
+            import ray
+
+            ray.init(num_gpus=2)
+
+            @ray.remote(num_gpus=1)
+            class GPUActor:
+                def ping(self):
+                    print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
+                    print("CUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
+
+            @ray.remote(num_gpus=1)
+            def gpu_task():
+                print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
+                print("CUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
+
+            gpu_actor = GPUActor.remote()
+            ray.get(gpu_actor.ping.remote())
+            # The actor uses the first GPU so the task uses the second one.
+            ray.get(gpu_task.remote())
+
+        .. testoutput::
+            :options: +MOCK
+
+            (GPUActor pid=52420) GPU IDs: [0]
+            (GPUActor pid=52420) CUDA_VISIBLE_DEVICES: 0
+            (gpu_task pid=51830) GPU IDs: [1]
+            (gpu_task pid=51830) CUDA_VISIBLE_DEVICES: 1
 
 Inside a task or actor, :func:`ray.get_runtime_context().get_accelerator_ids() <ray.runtime_context.RuntimeContext.get_accelerator_ids>` returns a
 list of accelerator IDs that are available to the task or actor.
@@ -444,8 +548,8 @@ so multiple tasks and actors can share the same accelerator.
 
 .. tab-set::
 
-    .. tab-item:: Nvidia GPU
-        :sync: Nvidia GPU
+    .. tab-item:: NVIDIA GPU
+        :sync: NVIDIA GPU
 
         .. testcode::
             :hide:
@@ -547,6 +651,32 @@ so multiple tasks and actors can share the same accelerator.
             # and share the same NPU.
             ray.get([f.remote() for _ in range(4)])
 
+    .. tab-item:: Rebellions RBLN
+        :sync: Rebellions RBLN
+
+        Rebellions RBLN doesn't support fractional resources.
+
+    .. tab-item:: METAX GPU
+        :sync: METAX GPU
+
+        .. testcode::
+            :hide:
+
+            ray.shutdown()
+
+        .. testcode::
+
+            ray.init(num_cpus=4, num_gpus=1)
+
+            @ray.remote(num_gpus=0.25)
+            def f():
+                import time
+
+                time.sleep(1)
+
+            # The four tasks created here can execute concurrently
+            # and share the same GPU.
+            ray.get([f.remote() for _ in range(4)])
 
 **Note:** It is the user's responsibility to make sure that the individual tasks
 don't use more than their share of the accelerator memory.
@@ -620,9 +750,8 @@ This also lets the multi-node-type autoscaler know that there is demand for that
 
     ray.shutdown()
     import ray.util.accelerators
-    import ray._private.ray_constants as ray_constants
 
-    v100_resource_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{ray.util.accelerators.NVIDIA_TESLA_V100}"
+    v100_resource_name = f"accelerator_type:{ray.util.accelerators.NVIDIA_TESLA_V100}"
     ray.init(num_gpus=4, resources={v100_resource_name: 1})
 
 .. testcode::
@@ -635,4 +764,4 @@ This also lets the multi-node-type autoscaler know that there is demand for that
 
     ray.get(train.remote(1))
 
-See ``ray.util.accelerators`` for available accelerator types.
+See :ref:`ray.util.accelerators <accelerator_types>` for available accelerator types.

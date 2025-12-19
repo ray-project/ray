@@ -1,25 +1,25 @@
-from collections import namedtuple, OrderedDict
-import gymnasium as gym
 import logging
 import re
-import tree  # pip install dm_tree
+from collections import OrderedDict, namedtuple
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
-from ray.util.debug import log_once
-from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
+import gymnasium as gym
+import tree  # pip install dm_tree
+
+from ray._common.deprecation import (
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.deprecation import (
-    deprecation_warning,
-    DEPRECATED_VALUE,
-)
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import (
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
@@ -28,11 +28,12 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.tf_utils import get_placeholder
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    AlgorithmConfigDict,
 )
+from ray.util.debug import log_once
 
 tf1, tf, tfv = try_import_tf()
 
@@ -617,9 +618,11 @@ class DynamicTFPolicy(TFPolicy):
                 )
             # Get the correct slice of the already loaded batch to use,
             # based on offset and batch size.
-            batch_size = self.config.get(
-                "sgd_minibatch_size", self.config["train_batch_size"]
-            )
+            batch_size = self.config.get("minibatch_size")
+            if batch_size is None:
+                batch_size = self.config.get(
+                    "sgd_minibatch_size", self.config["train_batch_size"]
+                )
             if batch_size >= len(self._loaded_single_cpu_batch):
                 sliced_batch = self._loaded_single_cpu_batch
             else:
@@ -780,7 +783,7 @@ class DynamicTFPolicy(TFPolicy):
                 {SampleBatch.SEQ_LENS: train_batch[SampleBatch.SEQ_LENS]}
             )
 
-        self._loss_input_dict.update({k: v for k, v in train_batch.items()})
+        self._loss_input_dict.update(dict(train_batch))
 
         if log_once("loss_init"):
             logger.debug(
@@ -972,7 +975,7 @@ class TFMultiGPUTowerStack:
             self.max_per_device_batch_size = (
                 max_per_device_batch_size
                 or policy.config.get(
-                    "sgd_minibatch_size", policy.config.get("train_batch_size", 999999)
+                    "minibatch_size", policy.config.get("train_batch_size", 999999)
                 )
             ) // len(self.devices)
             input_placeholders = tree.flatten(self.policy._loss_input_dict_no_rnn)
@@ -1181,7 +1184,7 @@ class TFMultiGPUTowerStack:
         if sequences_per_minibatch < len(self.devices):
             raise ValueError(
                 "Must load at least 1 tuple sequence per device. Try "
-                "increasing `sgd_minibatch_size` or reducing `max_seq_len` "
+                "increasing `minibatch_size` or reducing `max_seq_len` "
                 "to ensure that at least one sequence fits per device."
             )
         self._loaded_per_device_batch_size = (

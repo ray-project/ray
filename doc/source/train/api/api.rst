@@ -3,10 +3,16 @@
 Ray Train API
 =============
 
-.. _train-integration-api:
-.. _train-framework-specific-ckpts:
-
 .. currentmodule:: ray
+
+
+.. important::
+
+    These API references are for the revamped Ray Train V2 implementation that is available starting from Ray 2.43
+    by enabling the environment variable ``RAY_TRAIN_V2_ENABLED=1``. These APIs assume that the environment variable has been enabled.
+
+    See :ref:`train-deprecated-api` for the old API references and the `Ray Train V2 Migration Guide <https://github.com/ray-project/ray/issues/49454>`_.
+
 
 PyTorch Ecosystem
 -----------------
@@ -66,7 +72,7 @@ Hugging Face Transformers
 More Frameworks
 ---------------
 
-Tensorflow/Keras
+TensorFlow/Keras
 ~~~~~~~~~~~~~~~~
 
 .. autosummary::
@@ -77,16 +83,6 @@ Tensorflow/Keras
     ~train.tensorflow.TensorflowConfig
     ~train.tensorflow.prepare_dataset_shard
     ~train.tensorflow.keras.ReportCheckpointCallback
-
-Horovod
-~~~~~~~
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~train.horovod.HorovodTrainer
-    ~train.horovod.HorovodConfig
 
 
 XGBoost
@@ -108,7 +104,17 @@ LightGBM
     :toctree: doc/
 
     ~train.lightgbm.LightGBMTrainer
+    ~train.lightgbm.get_network_params
     ~train.lightgbm.RayTrainReportCallback
+
+JAX
+~~~
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~train.v2.jax.JaxTrainer
 
 
 .. _ray-train-configs-api:
@@ -125,7 +131,6 @@ Ray Train Configuration
     ~train.FailureConfig
     ~train.RunConfig
     ~train.ScalingConfig
-    ~train.SyncConfig
 
 .. _train-loop-api:
 
@@ -139,7 +144,9 @@ Ray Train Utilities
     :toctree: doc/
 
     ~train.Checkpoint
-    ~train.context.TrainContext
+    ~train.CheckpointUploadMode
+    ~train.CheckpointConsistencyMode
+    ~train.TrainContext
 
 **Functions**
 
@@ -147,11 +154,20 @@ Ray Train Utilities
     :nosignatures:
     :toctree: doc/
 
+    ~train.get_all_reported_checkpoints
     ~train.get_checkpoint
     ~train.get_context
     ~train.get_dataset_shard
     ~train.report
 
+**Collective**
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~train.collective.barrier
+    ~train.collective.broadcast_from_rank_zero
 
 Ray Train Output
 ----------------
@@ -161,24 +177,42 @@ Ray Train Output
     :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
+    ~train.ReportedCheckpoint
     ~train.Result
 
+Ray Train Errors
+----------------
 
-Ray Train Developer APIs
-------------------------
+.. autosummary::
+    :nosignatures:
+    :template: autosummary/class_without_autosummary.rst
+    :toctree: doc/
 
-.. _train-base-trainer:
+    ~train.ControllerError
+    ~train.WorkerGroupError
+    ~train.TrainingFailedError
 
-Trainer Base Classes
-~~~~~~~~~~~~~~~~~~~~
+Ray Tune Integration Utilities
+------------------------------
 
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
-    ~train.trainer.BaseTrainer
-    ~train.data_parallel_trainer.DataParallelTrainer
+    tune.integration.ray_train.TuneReportCallback
 
+
+Ray Train Developer APIs
+------------------------
+
+Trainer Base Class
+~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~train.v2.api.data_parallel_trainer.DataParallelTrainer
 
 Train Backend Base Classes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -193,3 +227,12 @@ Train Backend Base Classes
 
     ~train.backend.Backend
     ~train.backend.BackendConfig
+
+Trainer Callbacks
+~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~train.UserCallback

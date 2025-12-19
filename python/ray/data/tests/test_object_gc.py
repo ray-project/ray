@@ -1,10 +1,12 @@
+import sys
 import threading
 
+import pandas as pd
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.internal_api import memory_summary
-from ray._private.test_utils import wait_for_condition
 from ray.tests.conftest import *  # noqa
 
 
@@ -29,17 +31,6 @@ def check_no_spill(ctx, dataset):
     # task case is finished, and auto-init Ray when using some Ray APIs.
     # This will make the next test case fail to init Ray.
     wait_for_condition(_all_executor_threads_exited, timeout=10, retry_interval_ms=1000)
-
-
-def check_to_torch_no_spill(ctx, dataset):
-    # Iterate over the dataset for 10 epochs to stress test that
-    # no spilling will happen.
-    max_epoch = 10
-    for _ in range(max_epoch):
-        for _ in dataset.to_torch(batch_size=None):
-            pass
-    meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
-    assert "Spilled" not in meminfo, meminfo
 
 
 def check_iter_torch_batches_no_spill(ctx, dataset):
@@ -91,19 +82,20 @@ def test_torch_iteration(shutdown_only):
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
     ds = ray.data.range_tensor(500, shape=(80, 80, 4), override_num_blocks=100)
 
-    # to_torch
-    check_to_torch_no_spill(ctx, ds)
     # iter_torch_batches
     check_iter_torch_batches_no_spill(ctx, ds)
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
 def test_tf_iteration(shutdown_only):
     # The object store is about 800MB.
     ctx = ray.init(num_cpus=1, object_store_memory=800e6)
     # The size of dataset is 500*(80*80*4)*8B, about 100MB.
     ds = ray.data.range_tensor(
         500, shape=(80, 80, 4), override_num_blocks=100
-    ).add_column("label", lambda x: 1)
+    ).add_column("label", lambda df: pd.Series([1] * len(df)))
 
     # to_tf
     check_to_tf_no_spill(ctx, ds.map(lambda x: x))

@@ -43,6 +43,13 @@ To view the full list of supported file formats, see the
             petal.width   double
             variety       string
 
+        .. tip::
+
+            When reading parquet files, you can take advantage of column pruning to
+            efficiently filter columns at the file scan level. See
+            :ref:`Parquet column pruning <parquet_column_pruning>` for more details
+            on the projection pushdown feature.
+
     .. tab-item:: Images
 
         To read raw images, call :func:`~ray.data.read_images`. Ray Data represents
@@ -60,7 +67,7 @@ To view the full list of supported file formats, see the
 
             Column  Type
             ------  ----
-            image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            image   ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
 
     .. tab-item:: Text
 
@@ -209,9 +216,9 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
             petal.width   double
             variety       string
 
-        Ray Data relies on PyArrow for authenticaion with Amazon S3. For more on how to configure
+        Ray Data relies on PyArrow for authentication with Amazon S3. For more on how to configure
         your credentials to be compatible with PyArrow, see their
-        `S3 Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#s3>`_.
+        `S3 Filesystem docs <https://arrow.apache.org/docs/python/filesystems.html#s3>`_.
 
     .. tab-item:: GCS
 
@@ -222,7 +229,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
             pip install gcsfs
 
-        Then, create a ``GCSFileSystem`` and specify URIs with the ``gcs://`` scheme.
+        Then, create a ``GCSFileSystem`` and specify URIs with the ``gs://`` scheme.
 
         .. testcode::
             :skipif: True
@@ -231,7 +238,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
             filesystem = gcsfs.GCSFileSystem(project="my-google-project")
             ds = ray.data.read_parquet(
-                "gcs://anonymous@ray-example-data/iris.parquet",
+                "gs://...",
                 filesystem=filesystem
             )
 
@@ -247,9 +254,9 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
             petal.width   double
             variety       string
 
-        Ray Data relies on PyArrow for authenticaion with Google Cloud Storage. For more on how
+        Ray Data relies on PyArrow for authentication with Google Cloud Storage. For more on how
         to configure your credentials to be compatible with PyArrow, see their
-        `GCS Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system>`_.
+        `GCS Filesystem docs <https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system>`_.
 
     .. tab-item:: ABS
 
@@ -285,7 +292,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
             petal.width   double
             variety       string
 
-        Ray Data relies on PyArrow for authenticaion with Azure Blob Storage. For more on how
+        Ray Data relies on PyArrow for authentication with Azure Blob Storage. For more on how
         to configure your credentials to be compatible with PyArrow, see their
         `fsspec-compatible filesystems docs <https://arrow.apache.org/docs/python/filesystems.html#using-fsspec-compatible-filesystems-with-arrow>`_.
 
@@ -331,6 +338,33 @@ You can use any `codec supported by Arrow <https://arrow.apache.org/docs/python/
         arrow_open_stream_args={"compression": "gzip"},
     )
 
+
+Downloading files from URIs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes you may have a metadata table with a column of URIs and you want to download the files referenced by the URIs.
+
+You can download data in bulk by leveraging the :func:`~ray.data.Dataset.with_column` method together with the :func:`~ray.data.expressions.download` expression. This approach lets the system handle the parallel downloading of files referenced by URLs in your dataset, without needing to manage async code within your own transformations.
+
+The following example shows how to download a batch of images from URLs listed in a Parquet file:
+
+.. testcode::
+
+    import ray
+    from ray.data.expressions import download
+
+    # Read a Parquet file containing a column of image URLs
+    ds = ray.data.read_parquet("s3://anonymous@ray-example-data/imagenet/metadata_file.parquet")
+
+    # Use `with_column` and `download` to download the images in parallel.
+    # This creates a new column 'bytes' with the downloaded file contents.
+    ds = ds.with_column(
+        "bytes",
+        download("image_url"),
+    )
+
+    ds.take(1)
+
 Loading data from other libraries
 =================================
 
@@ -368,7 +402,7 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
             )
 
         You can also create a :class:`~ray.data.dataset.Dataset` from a list of regular
-        Python objects.
+        Python objects. In the schema, the column name defaults to "item". 
 
         .. testcode::
 
@@ -403,7 +437,7 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
             MaterializedDataset(
                num_blocks=1,
                num_rows=3,
-               schema={data: numpy.ndarray(shape=(2, 2), dtype=double)}
+               schema={data: ArrowTensorTypeV2(shape=(2, 2), dtype=double)}
             )
 
     .. tab-item:: pandas
@@ -462,7 +496,7 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 Loading data from distributed DataFrame libraries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data interoperates with distributed data processing frameworks like
+Ray Data interoperates with distributed data processing frameworks like `Daft <https://www.getdaft.io>`_,
 :ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`, :ref:`Modin <modin-on-ray>`, and
 :ref:`Mars <mars-on-ray>`.
 
@@ -473,6 +507,33 @@ Ray Data interoperates with distributed data processing frameworks like
 
 .. tab-set::
 
+    .. tab-item:: Daft
+
+        To create a :class:`~ray.data.dataset.Dataset` from a `Daft DataFrame <https://docs.getdaft.io/en/stable/api/dataframe/>`_, call
+        :func:`~ray.data.from_daft`. This function executes the Daft dataframe and constructs a ``Dataset`` backed by the resultant arrow data produced
+        by your Daft query.
+
+        .. warning::
+            :func:`~ray.data.from_daft` doesn't work with PyArrow 14 and later. For more
+            information, see `this issue <https://github.com/ray-project/ray/issues/54837>`__.
+
+        .. testcode::
+            :skipif: True
+
+            import daft
+            import ray
+
+            df = daft.from_pydict({"int_col": [i for i in range(10000)], "str_col": [str(i) for i in range(10000)]})
+            ds = ray.data.from_daft(df)
+
+            ds.show(3)
+
+        .. testoutput::
+
+            {'int_col': 0, 'str_col': '0'}
+            {'int_col': 1, 'str_col': '1'}
+            {'int_col': 2, 'str_col': '2'}
+
     .. tab-item:: Dask
 
         To create a :class:`~ray.data.dataset.Dataset` from a
@@ -481,7 +542,12 @@ Ray Data interoperates with distributed data processing frameworks like
         ``Dataset`` backed by the distributed Pandas DataFrame partitions that underly
         the Dask DataFrame.
 
+        ..
+          We skip the code snippet below because `from_dask` doesn't work with PyArrow 
+          14 and later. For more information, see https://github.com/ray-project/ray/issues/54837
+
         .. testcode::
+            :skipif: True
 
             import dask.dataframe as dd
             import pandas as pd
@@ -507,7 +573,7 @@ Ray Data interoperates with distributed data processing frameworks like
         call :func:`~ray.data.from_spark`. This function creates a ``Dataset`` backed by
         the distributed Spark DataFrame partitions that underly the Spark DataFrame.
 
-        .. 
+        ..
             TODO: This code snippet might not work correctly. We should test it.
 
         .. testcode::
@@ -526,6 +592,33 @@ Ray Data interoperates with distributed data processing frameworks like
             ds.show(3)
 
         .. testoutput::
+
+            {'col1': 0, 'col2': '0'}
+            {'col1': 1, 'col2': '1'}
+            {'col1': 2, 'col2': '2'}
+
+    .. tab-item:: Iceberg
+
+        To create a :class:`~ray.data.dataset.Dataset` from an `Iceberg Table
+        <https://iceberg.apache.org>`__,
+        call :func:`~ray.data.read_iceberg`. This function creates a ``Dataset`` backed by
+        the distributed files that underlie the Iceberg table.
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+            from pyiceberg.expressions import EqualTo
+
+            ds = ray.data.read_iceberg(
+                table_identifier="db_name.table_name",
+                row_filter=EqualTo("column_name", "literal_value"),
+                catalog_kwargs={"name": "default", "type": "glue"}
+            )
+            ds.show(3)
+
+        .. testoutput::
+            :options: +MOCK
 
             {'col1': 0, 'col2': '0'}
             {'col1': 1, 'col2': '1'}
@@ -564,6 +657,7 @@ Ray Data interoperates with distributed data processing frameworks like
         DataFrame.
 
         .. testcode::
+            :skipif: True
 
             import mars
             import mars.dataframe as md
@@ -585,44 +679,95 @@ Ray Data interoperates with distributed data processing frameworks like
             {'col1': 1, 'col2': '1'}
             {'col1': 2, 'col2': '2'}
 
+.. _loading_huggingface_datasets:
+
+Loading Hugging Face datasets
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To read datasets from the Hugging Face Hub, use :func:`~ray.data.read_parquet` (or other
+read functions) with the ``HfFileSystem`` filesystem. This approach provides better
+performance and scalability than loading datasets into memory first.
+
+First, install the required dependencies
+
+.. code-block:: console
+
+    pip install huggingface_hub
+
+Set your Hugging Face token to authenticate. While public datasets can be read without
+a token, Hugging Face rate limits are more aggressive without a token. To read Hugging
+Face datasets without a token, simply set the filesystem argument to ``HfFileSystem()``.
+
+.. code-block:: console
+
+    export HF_TOKEN=<YOUR HUGGING FACE TOKEN>
+
+For most Hugging Face datasets, the data is stored in Parquet files. You can directly
+read from the dataset path:
+
+.. testcode::
+    :skipif: True
+
+    import os
+    import ray
+    from huggingface_hub import HfFileSystem
+
+    ds = ray.data.read_parquet(
+        "hf://datasets/wikimedia/wikipedia",
+        file_extensions=["parquet"],
+        filesystem=HfFileSystem(token=os.environ["HF_TOKEN"]),
+    )
+
+    print(f"Dataset count: {ds.count()}")
+    print(ds.schema())
+
+.. testoutput::
+
+    Dataset count: 61614907
+    Column  Type
+    ------  ----
+    id      string
+    url     string
+    title   string
+    text    string
+
+.. tip::
+
+    If you encounter serialization errors when reading from Hugging Face filesystems, try upgrading ``huggingface_hub`` to version 1.1.6 or later. For more details, see this issue: https://github.com/ray-project/ray/issues/59029
+
+
+
 .. _loading_datasets_from_ml_libraries:
 
 Loading data from ML libraries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data interoperates with HuggingFace, PyTorch, and TensorFlow datasets.
+Ray Data interoperates with PyTorch and TensorFlow datasets.
 
 .. tab-set::
 
     .. tab-item:: HuggingFace
 
-        To convert a HuggingFace Dataset to a Ray Datasets, call
-        :func:`~ray.data.from_huggingface`. This function accesses the underlying Arrow
-        table and converts it to a Dataset directly.
-
-        .. warning::
-            :class:`~ray.data.from_huggingface` only supports parallel reads in certain
-            instances, namely for untransformed public HuggingFace Datasets. For those datasets,
-            Ray Data uses `hosted parquet files <https://huggingface.co/docs/datasets-server/parquet#list-parquet-files>`_
-            to perform a distributed read; otherwise, Ray Data uses a single node read.
-            This behavior shouldn't be an issue with in-memory HuggingFace Datasets, but may cause a failure with
-            large memory-mapped HuggingFace Datasets. Additionally, HuggingFace `DatasetDict <https://huggingface.co/docs/datasets/en/package_reference/main_classes#datasets.DatasetDict>`_ and
-            `IterableDatasetDict <https://huggingface.co/docs/datasets/en/package_reference/main_classes#datasets.IterableDatasetDict>`_
-            objects aren't supported.
+        To load a HuggingFace Dataset into Ray Data, use the HuggingFace Hub ``HfFileSystem``
+        with :func:`~ray.data.read_parquet`, :func:`~ray.data.read_csv`, or :func:`~ray.data.read_json`.
+        Since HuggingFace datasets are often backed by these file formats, this approach enables efficient distributed
+        reads directly from the Hub.
 
         .. testcode::
+            :skipif: True
 
             import ray.data
-            from datasets import load_dataset
+            from huggingface_hub import HfFileSystem
 
-            hf_ds = load_dataset("wikitext", "wikitext-2-raw-v1")
-            ray_ds = ray.data.from_huggingface(hf_ds["train"])
-            ray_ds.take(2)
+            path = "hf://datasets/Salesforce/wikitext/wikitext-2-raw-v1/"
+            fs = HfFileSystem()
+            ds = ray.data.read_parquet(path, filesystem=fs)
+            print(ds.take(5))
 
         .. testoutput::
             :options: +MOCK
 
-            [{'text': ''}, {'text': ' = Valkyria Chronicles III = \n'}]
+            [{'text': '...'}, {'text': '...'}]
 
     .. tab-item:: PyTorch
 
@@ -679,7 +824,7 @@ Ray Data interoperates with HuggingFace, PyTorch, and TensorFlow datasets.
                num_rows=50000,
                schema={
                   id: binary,
-                  image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8),
+                  image: ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8),
                   label: int64
                }
             )
@@ -830,7 +975,7 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
             export DATABRICKS_HOST=adb-<workspace-id>.<random-number>.azuredatabricks.net
 
-        Then, call :func:`ray.data.read_databricks_tables` to read from the Databricks 
+        Then, call :func:`ray.data.read_databricks_tables` to read from the Databricks
         SQL warehouse.
 
         .. testcode::
@@ -919,6 +1064,77 @@ run against the collection.
         collection="my_collection",
     )
 
+Reading from Kafka
+======================
+
+Ray Data reads from message queues like Kafka.
+
+.. _reading_kafka:
+
+To read data from Kafka topics, call :func:`~ray.data.read_kafka` and specify
+the topic names and broker addresses. Ray Data performs bounded reads between
+a start and end offset.
+
+First, install the required dependencies:
+
+.. code-block:: console
+
+    pip install kafka-python
+
+Then, specify your Kafka configuration and read from topics.
+
+.. testcode::
+    :skipif: True
+
+    import ray
+
+    # Read from a single topic with offset range
+    ds = ray.data.read_kafka(
+        topics="my-topic",
+        bootstrap_servers="localhost:9092",
+        start_offset=0,
+        end_offset=1000,
+    )
+
+    # Read from multiple topics
+    ds = ray.data.read_kafka(
+        topics=["topic1", "topic2"],
+        bootstrap_servers="localhost:9092",
+        start_offset="earliest",
+        end_offset="latest",
+    )
+
+    # Read with authentication
+    from ray.data import KafkaAuthConfig
+
+    auth_config = KafkaAuthConfig(
+        security_protocol="SASL_SSL",
+        sasl_mechanism="PLAIN",
+        sasl_plain_username="your-username",
+        sasl_plain_password="your-password",
+    )
+
+    ds = ray.data.read_kafka(
+        topics="secure-topic",
+        bootstrap_servers="localhost:9092",
+        kafka_auth_config=auth_config,
+    )
+
+    print(ds.schema())
+
+.. testoutput::
+
+    Column          Type
+    ------          ----
+    offset          int64
+    key             binary
+    value           binary
+    topic           string
+    partition       int32
+    timestamp       int64
+    timestamp_type  int32
+    headers         map<string, binary>
+
 Creating synthetic data
 =======================
 
@@ -929,7 +1145,8 @@ Synthetic datasets can be useful for testing and benchmarking.
     .. tab-item:: Int Range
 
         To create a synthetic :class:`~ray.data.Dataset` from a range of integers, call
-        :func:`~ray.data.range`. Ray Data stores the integer range in a single column.
+        :func:`~ray.data.range`. Ray Data stores the integer range in a single column called
+        "id".
 
         .. testcode::
 
@@ -949,7 +1166,7 @@ Synthetic datasets can be useful for testing and benchmarking.
 
         To create a synthetic :class:`~ray.data.Dataset` containing arrays, call
         :func:`~ray.data.range_tensor`. Ray Data packs an integer range into ndarrays of
-        the provided shape.
+        the provided shape. In the schema, the column name defaults to "data". 
 
         .. testcode::
 
@@ -963,7 +1180,7 @@ Synthetic datasets can be useful for testing and benchmarking.
 
             Column  Type
             ------  ----
-            data    numpy.ndarray(shape=(64, 64), dtype=int64)
+            data    ArrowTensorTypeV2(shape=(64, 64), dtype=int64)
 
 Loading other datasources
 ==========================

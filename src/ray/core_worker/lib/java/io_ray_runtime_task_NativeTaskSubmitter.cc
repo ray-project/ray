@@ -16,7 +16,13 @@
 
 #include <jni.h>
 
-#include "jni_utils.h"
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
@@ -60,10 +66,10 @@ inline const RayFunction &ToRayFunction(JNIEnv *env,
   return fd_vector.back().second;
 }
 
-inline std::vector<std::unique_ptr<TaskArg>> ToTaskArgs(JNIEnv *env, jobject args) {
+inline std::vector<std::unique_ptr<TaskArg>> ToTaskArgs(JNIEnv *inner_env, jobject args) {
   std::vector<std::unique_ptr<TaskArg>> task_args;
   JavaListToNativeVector<std::unique_ptr<TaskArg>>(
-      env, args, &task_args, [](JNIEnv *env, jobject arg) {
+      inner_env, args, &task_args, [](JNIEnv *env, jobject arg) {
         auto java_id = env->GetObjectField(arg, java_function_arg_id);
         if (java_id) {
           auto java_id_bytes = static_cast<jbyteArray>(
@@ -82,7 +88,8 @@ inline std::vector<std::unique_ptr<TaskArg>> ToTaskArgs(JNIEnv *env, jobject arg
             static_cast<jbyteArray>(env->GetObjectField(arg, java_function_arg_value));
         RAY_CHECK(java_value) << "Both id and value of FunctionArg are null.";
         auto value = JavaNativeRayObjectToNativeRayObject(env, java_value);
-        return std::unique_ptr<TaskArg>(new TaskArgByValue(value));
+        std::unique_ptr<TaskArg> task_arg = std::make_unique<TaskArgByValue>(value);
+        return task_arg;
       });
   return task_args;
 }
@@ -92,12 +99,12 @@ inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
   return JavaMapToNativeMap<std::string, double>(
       env,
       java_resources,
-      [](JNIEnv *env, jobject java_key) {
-        return JavaStringToNativeString(env, (jstring)java_key);
+      [](JNIEnv *inner_env, jobject java_key) {
+        return JavaStringToNativeString(inner_env, (jstring)java_key);
       },
-      [](JNIEnv *env, jobject java_value) {
-        double value = env->CallDoubleMethod(java_value, java_double_double_value);
-        RAY_CHECK_JAVA_EXCEPTION(env);
+      [](JNIEnv *inner_env, jobject java_value) {
+        double value = inner_env->CallDoubleMethod(java_value, java_double_double_value);
+        RAY_CHECK_JAVA_EXCEPTION(inner_env);
         return value;
       });
 }
@@ -174,6 +181,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   std::string ray_namespace = "";
   int32_t max_pending_calls = -1;
   bool is_async = false;
+  bool allow_out_of_order_execution = false;
 
   if (actorCreationOptions) {
     auto java_name = (jstring)env->GetObjectField(actorCreationOptions,
@@ -224,34 +232,35 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
         env,
         java_concurrency_groups_field,
         &concurrency_groups,
-        [](JNIEnv *env, jobject java_concurrency_group_impl) {
+        [](JNIEnv *inner_env, jobject java_concurrency_group_impl) {
           RAY_CHECK(java_concurrency_group_impl != nullptr);
-          jobject java_func_descriptors =
-              env->CallObjectMethod(java_concurrency_group_impl,
-                                    java_concurrency_group_impl_get_function_descriptors);
-          RAY_CHECK_JAVA_EXCEPTION(env);
+          jobject java_func_descriptors = inner_env->CallObjectMethod(
+              java_concurrency_group_impl,
+              java_concurrency_group_impl_get_function_descriptors);
+          RAY_CHECK_JAVA_EXCEPTION(inner_env);
           std::vector<ray::FunctionDescriptor> native_func_descriptors;
           JavaListToNativeVector<ray::FunctionDescriptor>(
-              env,
+              inner_env,
               java_func_descriptors,
               &native_func_descriptors,
-              [](JNIEnv *env, jobject java_func_descriptor) {
+              [](JNIEnv *converter_env, jobject java_func_descriptor) {
                 RAY_CHECK(java_func_descriptor != nullptr);
-                const jint hashcode = GetHashCodeOfJavaObject(env, java_func_descriptor);
+                const jint hashcode =
+                    GetHashCodeOfJavaObject(converter_env, java_func_descriptor);
                 ray::FunctionDescriptor native_func =
-                    ToRayFunction(env, java_func_descriptor, hashcode)
+                    ToRayFunction(converter_env, java_func_descriptor, hashcode)
                         .GetFunctionDescriptor();
                 return native_func;
               });
           // Put func_descriptors into this task group.
           const std::string concurrency_group_name = JavaStringToNativeString(
-              env,
-              (jstring)env->GetObjectField(java_concurrency_group_impl,
-                                           java_concurrency_group_impl_name));
-          const uint32_t max_concurrency = env->GetIntField(
+              inner_env,
+              (jstring)inner_env->GetObjectField(java_concurrency_group_impl,
+                                                 java_concurrency_group_impl_name));
+          const uint32_t _max_concurrency = inner_env->GetIntField(
               java_concurrency_group_impl, java_concurrency_group_impl_max_concurrency);
           return ray::ConcurrencyGroup{
-              concurrency_group_name, max_concurrency, native_func_descriptors};
+              concurrency_group_name, _max_concurrency, native_func_descriptors};
         });
     auto java_serialized_runtime_env = (jstring)env->GetObjectField(
         actorCreationOptions, java_actor_creation_options_serialized_runtime_env);
@@ -267,8 +276,10 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
 
     max_pending_calls = static_cast<int32_t>(env->GetIntField(
         actorCreationOptions, java_actor_creation_options_max_pending_calls));
-    is_async = (bool)env->GetBooleanField(actorCreationOptions,
-                                          java_actor_creation_options_is_async);
+    is_async = static_cast<bool>(
+        env->GetBooleanField(actorCreationOptions, java_actor_creation_options_is_async));
+    allow_out_of_order_execution = static_cast<bool>(env->GetBooleanField(
+        actorCreationOptions, java_actor_creation_options_allow_out_of_order_execution));
   }
 
   rpc::SchedulingStrategy scheduling_strategy;
@@ -295,7 +306,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                               /*scheduling_strategy=*/scheduling_strategy,
                                               serialized_runtime_env,
                                               concurrency_groups,
-                                              /*execute_out_of_order*/ false,
+                                              allow_out_of_order_execution,
                                               max_pending_calls};
   return actor_creation_options;
 }
@@ -330,24 +341,24 @@ inline PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
       placementGroupCreationOptions, java_placement_group_creation_options_bundles);
   std::vector<std::unordered_map<std::string, double>> bundles;
   JavaListToNativeVector<std::unordered_map<std::string, double>>(
-      env, java_bundles, &bundles, [](JNIEnv *env, jobject java_bundle) {
+      env, java_bundles, &bundles, [](JNIEnv *inner_env, jobject java_bundle) {
         return JavaMapToNativeMap<std::string, double>(
-            env,
+            inner_env,
             java_bundle,
-            [](JNIEnv *env, jobject java_key) {
-              return JavaStringToNativeString(env, (jstring)java_key);
+            [](JNIEnv *key_env, jobject java_key) {
+              return JavaStringToNativeString(key_env, (jstring)java_key);
             },
-            [](JNIEnv *env, jobject java_value) {
-              double value = env->CallDoubleMethod(java_value, java_double_double_value);
-              RAY_CHECK_JAVA_EXCEPTION(env);
+            [](JNIEnv *value_env, jobject java_value) {
+              double value =
+                  value_env->CallDoubleMethod(java_value, java_double_double_value);
+              RAY_CHECK_JAVA_EXCEPTION(value_env);
               return value;
             });
       });
   return PlacementGroupCreationOptions(name,
                                        ConvertStrategy(java_strategy),
                                        bundles,
-                                       /*is_detached=*/false,
-                                       /*max_cpu_fraction_per_node*/ 1.0);
+                                       /*is_detached=*/false);
 }
 
 #ifdef __cplusplus
@@ -379,7 +390,9 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(JNIEnv *env,
         placement_group_options.second);
     placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
   }
-  // TODO (kfstorm): Allow setting `max_retries` via `CallOptions`.
+  // TODO(kfstorm): Allow setting `max_retries` via `CallOptions`.
+  // TODO(ryw): support `call_site` in SubmitTask. Problem is it needs to
+  // happen in Java, while we don't yet expose RayConfig to Java.
   auto return_refs =
       CoreWorkerProcess::GetCoreWorker().SubmitTask(ray_function,
                                                     task_args,
@@ -420,6 +433,7 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
                                                                task_args,
                                                                actor_creation_options,
                                                                /*extension_data*/ "",
+                                                               /*call_site=*/"",
                                                                &actor_id);
 
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
@@ -446,7 +460,7 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   // NOTE: An actor method call from Java ActorHandle only recognizes the actor's
   // max_task_retries. It does NOT recognize per-method max_retries. It also only retries
   // on actor death, not on user exceptions. The max_task_retries is read from CoreWorker.
-  // TODO: support Java max_retries and retry_exceptions.
+  // TODO(ryw): support Java max_retries and retry_exceptions.
   const auto native_actor_handle =
       CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id);
   int max_retries = native_actor_handle->MaxTaskRetries();
@@ -460,6 +474,7 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
       max_retries,
       /*retry_exceptions=*/false,
       /*serialized_retry_exception_allowlist=*/"",
+      /*call_site=*/"",
       return_refs);
   if (!status.ok()) {
     std::stringstream ss;

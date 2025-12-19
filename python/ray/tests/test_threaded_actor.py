@@ -6,17 +6,18 @@ import numpy as np
 import pytest
 
 import ray
+import ray._common.test_utils
 import ray._private.test_utils as test_utils
 from ray._private.state import available_resources
 
 
 def ensure_cpu_returned(expected_cpus):
-    test_utils.wait_for_condition(
+    ray._common.test_utils.wait_for_condition(
         lambda: (available_resources().get("CPU", 0) == expected_cpus)
     )
 
 
-def test_threaded_actor_basic(shutdown_only):
+def test_threaded_actor_basic(ray_start_cluster):
     """Test the basic threaded actor."""
     ray.init(num_cpus=1)
 
@@ -45,7 +46,7 @@ def test_threaded_actor_basic(shutdown_only):
     ensure_cpu_returned(1)
 
 
-def test_threaded_actor_api_thread_safe(shutdown_only):
+def test_threaded_actor_api_thread_safe(ray_start_cluster):
     """Test if Ray APIs are thread safe
     when they are used within threaded actor.
     """
@@ -291,10 +292,6 @@ def test_threaded_actor_integration_test_stress(
 
 
 if __name__ == "__main__":
-    import os
 
     # Test suite is timing out. Disable on windows for now.
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

@@ -1,0 +1,51 @@
+# @OldAPIStack
+halfcheetah_cql:
+    env:
+        grid_search:
+            #- ray.rllib.examples.envs.classes.d4rl_env.halfcheetah_random
+            #- ray.rllib.examples.envs.classes.d4rl_env.halfcheetah_medium
+            - ray.rllib.examples.envs.classes.d4rl_env.halfcheetah_expert
+            #- ray.rllib.examples.envs.classes.d4rl_env.halfcheetah_medium_replay
+    run: CQL
+    config:
+        # SAC Configs
+        #input: d4rl.halfcheetah-random-v0
+        #input: d4rl.halfcheetah-medium-v0
+        input: d4rl.halfcheetah-expert-v0
+        #input: d4rl.halfcheetah-medium-replay-v0
+
+        # Works for both torch and tf.
+        framework: torch
+        q_model_config:
+            fcnet_activation: relu
+            fcnet_hiddens: [256, 256, 256]
+        policy_model_config:
+            fcnet_activation: relu
+            fcnet_hiddens: [256, 256, 256]
+        tau: 0.005
+        target_entropy: auto
+        n_step: 3
+        rollout_fragment_length: 1
+        replay_buffer_config:
+          type: MultiAgentReplayBuffer
+        num_steps_sampled_before_learning_starts: 256
+        train_batch_size: 256
+        target_network_update_freq: 0
+        min_train_timesteps_per_iteration: 1000
+        optimization:
+            actor_learning_rate: 0.0001
+            critic_learning_rate: 0.0003
+            entropy_learning_rate: 0.0001
+        num_env_runners: 0
+        num_gpus: 1
+        metrics_num_episodes_for_smoothing: 5
+        # CQL Configs
+        min_q_weight: 5.0
+        bc_iters: 20000
+        temperature: 1.0
+        num_actions: 10
+        lagrangian: False
+
+        evaluation_interval: 3
+        evaluation_config:
+            input: sampler

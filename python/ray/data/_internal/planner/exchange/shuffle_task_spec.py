@@ -6,7 +6,13 @@ import numpy as np
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
-from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockExecStats,
+    BlockMetadata,
+    BlockMetadataWithSchema,
+)
 from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
 
 logger = logging.getLogger(__name__)
@@ -47,7 +53,7 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         upstream_map_fn: Optional[Callable[[Iterable[Block]], Iterable[Block]]],
         random_shuffle: bool,
         random_seed: Optional[int],
-    ) -> List[Union[BlockMetadata, Block]]:
+    ) -> List[Union[Block, "BlockMetadataWithSchema"]]:
         stats = BlockExecStats.builder()
         if upstream_map_fn:
             # TODO: Support dynamic block splitting in
@@ -100,8 +106,12 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
 
         num_rows = sum(BlockAccessor.for_block(s).num_rows() for s in slices)
         assert num_rows == block.num_rows(), (num_rows, block.num_rows())
-        metadata = block.get_metadata(input_files=None, exec_stats=stats.build())
-        return slices + [metadata]
+        from ray.data.block import BlockMetadataWithSchema
+
+        meta = block.get_metadata(exec_stats=stats.build())
+        schema = block.schema()
+        meta_with_schema = BlockMetadataWithSchema(metadata=meta, schema=schema)
+        return slices + [meta_with_schema]
 
     @staticmethod
     def reduce(
@@ -109,7 +119,7 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         random_seed: Optional[int],
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
-    ) -> Tuple[Block, BlockMetadata]:
+    ) -> Tuple[Block, "BlockMetadataWithSchema"]:
         # TODO: Support fusion with other downstream operators.
         stats = BlockExecStats.builder()
         builder = DelegatingBlockBuilder()
@@ -125,8 +135,12 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         new_metadata = BlockMetadata(
             num_rows=accessor.num_rows(),
             size_bytes=accessor.size_bytes(),
-            schema=accessor.schema(),
             input_files=None,
             exec_stats=stats.build(),
         )
-        return new_block, new_metadata
+        from ray.data.block import BlockMetadataWithSchema
+
+        meta_with_schema = BlockMetadataWithSchema(
+            metadata=new_metadata, schema=accessor.schema()
+        )
+        return new_block, meta_with_schema

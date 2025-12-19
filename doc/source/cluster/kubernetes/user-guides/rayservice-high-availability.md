@@ -1,11 +1,11 @@
 (kuberay-rayservice-ha)=
 # RayService high availability
 
-[RayService](kuberay-rayservice) provides high availability (HA) for services to continue serving requests when the Ray head Pod fails.
+[RayService](kuberay-rayservice) provides high availability to ensure services continue serving requests when the Ray head Pod fails.
 
 ## Prerequisites
 
-* Use RayService with KubeRay 1.0.0 or later.
+* Use RayService with KubeRay 1.3.0 or later.
 * Enable GCS fault tolerance in the RayService.
 
 ## Quickstart
@@ -13,7 +13,7 @@
 ### Step 1: Create a Kubernetes cluster with Kind
 
 ```sh
-kind create cluster --image=kindest/node:v1.23.0
+kind create cluster --image=kindest/node:v1.26.0
 ```
 
 ### Step 2: Install the KubeRay operator
@@ -23,13 +23,12 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ### Step 3: Install a RayService with GCS fault tolerance
 
 ```sh
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-availability.yaml
-kubectl apply -f ray-service.high-availability.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-availability.yaml
 ```
 
 The [ray-service.high-availability.yaml](https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-availability.yaml) file has several Kubernetes objects:
 
-* Redis: Redis is required to make GCS fault tolerant. See {ref}`GCS fault tolerance <kuberay-gcs-ft>` for more details.
+* Redis: Redis is necessary to make GCS fault tolerant. See {ref}`GCS fault tolerance <kuberay-gcs-ft>` for more details.
 * RayService: This RayService custom resource includes a 3-node RayCluster and a simple [Ray Serve application](https://github.com/ray-project/test_dag).
 * Ray Pod: This Pod sends requests to the RayService.
 
@@ -37,10 +36,22 @@ The [ray-service.high-availability.yaml](https://raw.githubusercontent.com/ray-p
 
 Check the output of the following command to verify that you successfully started the Kubernetes Serve service:
 ```sh
-# Step 4.1: KubeRay creates the K8s service `rayservice-ha-serve-svc` after the Ray Serve applications are ready.
-kubectl describe svc rayservice-ha-serve-svc
+# Step 4.1: Wait until the RayService is ready to serve requests.
+kubectl describe rayservices.ray.io rayservice-ha
+
+# [Example output]
+#   Conditions:
+#     Last Transition Time:  2025-02-13T21:36:18Z
+#     Message:               Number of serve endpoints is greater than 0
+#     Observed Generation:   1
+#     Reason:                NonZeroServeEndpoints
+#     Status:                True
+#     Type:                  Ready 
 
 # Step 4.2: `rayservice-ha-serve-svc` should have 3 endpoints, including the Ray head and two Ray workers.
+kubectl describe svc rayservice-ha-serve-svc
+
+# [Example output]
 # Endpoints:         10.244.0.29:8000,10.244.0.30:8000,10.244.0.32:8000
 ```
 
@@ -57,7 +68,7 @@ Thus, the `rayservice-ha-serve-svc` service in the previous step has 3 endpoints
 
 ```sh
 # Port forward the Ray Dashboard.
-kubectl port-forward --address 0.0.0.0 svc/rayservice-ha-head-svc 8265:8265
+kubectl port-forward svc/rayservice-ha-head-svc 8265:8265
 # Visit ${YOUR_IP}:8265 in your browser for the Dashboard (e.g. 127.0.0.1:8265)
 # Check:
 # (1) Both head and worker nodes have HTTPProxyActors.

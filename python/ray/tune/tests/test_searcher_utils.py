@@ -3,6 +3,12 @@ import pytest
 from ray.tune.search import BasicVariantGenerator, ConcurrencyLimiter, Searcher
 from ray.tune.search.repeater import Repeater
 from ray.tune.search.search_generator import SearchGenerator
+from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
+
+
+@pytest.fixture(autouse=True)
+def register_test_trainable():
+    register_mock_trainable()
 
 
 def test_nested_suggestion():
@@ -12,7 +18,7 @@ def test_nested_suggestion():
 
     searcher = TestSuggestion()
     alg = SearchGenerator(searcher)
-    alg.add_configurations({"test": {"run": "__fake"}})
+    alg.add_configurations({"test": {"run": MOCK_TRAINABLE_NAME}})
     trial = alg.next_trial()
     assert "e=5" in trial.experiment_tag
     assert "d=4" in trial.experiment_tag
@@ -36,7 +42,7 @@ def _repeat_trials(num_samples: int, repeat: int):
     alg.add_configurations(
         {
             "test": {
-                "run": "__fake",
+                "run": MOCK_TRAINABLE_NAME,
                 "num_samples": num_samples,
                 "stop": {"training_iteration": 1},
             }
@@ -157,7 +163,7 @@ def test_basic_variant_limiter():
     search_alg = BasicVariantGenerator(max_concurrent=2)
 
     experiment_spec = {
-        "run": "__fake",
+        "run": MOCK_TRAINABLE_NAME,
         "num_samples": 5,
         "stop": {"training_iteration": 1},
     }

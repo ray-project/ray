@@ -19,7 +19,6 @@
 
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -41,12 +40,17 @@ using flatbuf::MessageType;
 using flatbuf::ObjectSource;
 using flatbuf::PlasmaError;
 
-Status PlasmaErrorStatus(flatbuf::PlasmaError plasma_error);
-
 template <class T>
-bool VerifyFlatbuffer(T *object, uint8_t *data, size_t size) {
+bool VerifyFlatbuffer(T *object, const uint8_t *data, size_t size) {
   flatbuffers::Verifier verifier(data, size);
   return object->Verify(verifier);
+}
+
+template <class T>
+void VerifyNotNullPtr(T *object, std::string_view obj_name, MessageType msg_type) {
+  RAY_CHECK(object != nullptr) << "Corrupted " << EnumNameMessageType(msg_type)
+                               << " message: " << obj_name << " is null. "
+                               << kCorruptedRequestErrorMessage;
 }
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
@@ -92,7 +96,7 @@ Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn,
                          int device_num,
                          bool try_immediately);
 
-void ReadCreateRequest(uint8_t *data,
+void ReadCreateRequest(const uint8_t *data,
                        size_t size,
                        ray::ObjectInfo *object_info,
                        flatbuf::ObjectSource *source,
@@ -117,17 +121,17 @@ Status ReadCreateReply(uint8_t *data,
 
 Status SendAbortRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id);
 
-Status ReadAbortRequest(uint8_t *data, size_t size, ObjectID *object_id);
+void ReadAbortRequest(const uint8_t *data, size_t size, ObjectID *object_id);
 
 Status SendAbortReply(const std::shared_ptr<Client> &client, ObjectID object_id);
 
-Status ReadAbortReply(uint8_t *data, size_t size, ObjectID *object_id);
+void ReadAbortReply(uint8_t *data, size_t size, ObjectID *object_id);
 
 /* Plasma Seal message functions. */
 
 Status SendSealRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id);
 
-Status ReadSealRequest(uint8_t *data, size_t size, ObjectID *object_id);
+void ReadSealRequest(const uint8_t *data, size_t size, ObjectID *object_id);
 
 Status SendSealReply(const std::shared_ptr<Client> &client,
                      ObjectID object_id,
@@ -140,14 +144,12 @@ Status ReadSealReply(uint8_t *data, size_t size, ObjectID *object_id);
 Status SendGetRequest(const std::shared_ptr<StoreConn> &store_conn,
                       const ObjectID *object_ids,
                       int64_t num_objects,
-                      int64_t timeout_ms,
-                      bool is_from_worker);
+                      int64_t timeout_ms);
 
-Status ReadGetRequest(uint8_t *data,
-                      size_t size,
-                      std::vector<ObjectID> &object_ids,
-                      int64_t *timeout_ms,
-                      bool *is_from_worker);
+void ReadGetRequest(const uint8_t *data,
+                    size_t size,
+                    std::vector<ObjectID> &object_ids,
+                    int64_t *timeout_ms);
 
 Status SendGetReply(const std::shared_ptr<Client> &client,
                     ObjectID object_ids[],
@@ -156,13 +158,13 @@ Status SendGetReply(const std::shared_ptr<Client> &client,
                     const std::vector<MEMFD_TYPE> &store_fds,
                     const std::vector<int64_t> &mmap_sizes);
 
-Status ReadGetReply(uint8_t *data,
-                    size_t size,
-                    ObjectID object_ids[],
-                    PlasmaObject plasma_objects[],
-                    int64_t num_objects,
-                    std::vector<MEMFD_TYPE> &store_fds,
-                    std::vector<int64_t> &mmap_sizes);
+void ReadGetReply(uint8_t *data,
+                  size_t size,
+                  ObjectID object_ids[],
+                  PlasmaObject plasma_objects[],
+                  int64_t num_objects,
+                  std::vector<MEMFD_TYPE> &store_fds,
+                  std::vector<int64_t> &mmap_sizes);
 
 /* Plasma Release message functions. */
 
@@ -170,10 +172,10 @@ Status SendReleaseRequest(const std::shared_ptr<StoreConn> &store_conn,
                           ObjectID object_id,
                           bool may_unmap);
 
-Status ReadReleaseRequest(uint8_t *data,
-                          size_t size,
-                          ObjectID *object_id,
-                          bool *may_unmap);
+void ReadReleaseRequest(const uint8_t *data,
+                        size_t size,
+                        ObjectID *object_id,
+                        bool *may_unmap);
 
 Status SendReleaseReply(const std::shared_ptr<Client> &client,
                         ObjectID object_id,
@@ -190,51 +192,38 @@ Status ReadReleaseReply(uint8_t *data,
 Status SendDeleteRequest(const std::shared_ptr<StoreConn> &store_conn,
                          const std::vector<ObjectID> &object_ids);
 
-Status ReadDeleteRequest(uint8_t *data, size_t size, std::vector<ObjectID> *object_ids);
+void ReadDeleteRequest(const uint8_t *data,
+                       size_t size,
+                       std::vector<ObjectID> *object_ids);
 
 Status SendDeleteReply(const std::shared_ptr<Client> &client,
                        const std::vector<ObjectID> &object_ids,
                        const std::vector<PlasmaError> &errors);
 
-Status ReadDeleteReply(uint8_t *data,
-                       size_t size,
-                       std::vector<ObjectID> *object_ids,
-                       std::vector<PlasmaError> *errors);
+void ReadDeleteReply(uint8_t *data,
+                     size_t size,
+                     std::vector<ObjectID> *object_ids,
+                     std::vector<PlasmaError> *errors);
 
 /* Plasma Contains message functions. */
 
 Status SendContainsRequest(const std::shared_ptr<StoreConn> &store_conn,
                            ObjectID object_id);
 
-Status ReadContainsRequest(uint8_t *data, size_t size, ObjectID *object_id);
+void ReadContainsRequest(const uint8_t *data, size_t size, ObjectID *object_id);
 
 Status SendContainsReply(const std::shared_ptr<Client> &client,
                          ObjectID object_id,
                          bool has_object);
 
-Status ReadContainsReply(uint8_t *data,
-                         size_t size,
-                         ObjectID *object_id,
-                         bool *has_object);
+void ReadContainsReply(uint8_t *data, size_t size, ObjectID *object_id, bool *has_object);
 
 /* Plasma Connect message functions. */
 
 Status SendConnectRequest(const std::shared_ptr<StoreConn> &store_conn);
 
-Status ReadConnectRequest(uint8_t *data, size_t size);
-
 Status SendConnectReply(const std::shared_ptr<Client> &client, int64_t memory_capacity);
 
-Status ReadConnectReply(uint8_t *data, size_t size, int64_t *memory_capacity);
-
-/* Plasma Evict message functions (no reply so far). */
-
-Status SendEvictRequest(const std::shared_ptr<StoreConn> &store_conn, int64_t num_bytes);
-
-Status ReadEvictRequest(uint8_t *data, size_t size, int64_t *num_bytes);
-
-Status SendEvictReply(const std::shared_ptr<Client> &client, int64_t num_bytes);
-
-Status ReadEvictReply(uint8_t *data, size_t size, int64_t &num_bytes);
+void ReadConnectReply(uint8_t *data, size_t size);
 
 }  // namespace plasma

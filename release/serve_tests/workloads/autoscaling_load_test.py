@@ -3,8 +3,10 @@
 Benchmark test.
 """
 
+import click
 import json
 import logging
+from typing import Optional
 
 from anyscale import service
 from anyscale.compute_config.models import (
@@ -29,9 +31,13 @@ logging.basicConfig(level=logging.INFO)
 
 
 URI = "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000019.jpeg"
+CLOUD = "serve_release_tests_cloud"
 
 
-def main():
+@click.command()
+@click.option("--output-path", "-o", type=str, default=None)
+@click.option("--image-uri", type=str, default=None)
+def main(output_path: Optional[str], image_uri: Optional[str]):
     resnet_application = {
         "import_path": "resnet_50:app",
         "deployments": [
@@ -42,7 +48,7 @@ def main():
         ],
     }
     compute_config = ComputeConfig(
-        cloud="anyscale_v2_default_cloud",
+        cloud=CLOUD,
         head_node=HeadNodeConfig(instance_type="m5.8xlarge"),
         worker_nodes=[
             WorkerNodeGroupConfig(
@@ -58,11 +64,14 @@ def main():
 
     with start_service(
         "autoscaling-load-test",
+        image_uri=image_uri,
         compute_config=compute_config,
         applications=[resnet_application],
+        working_dir="workloads",
+        cloud=CLOUD,
     ) as service_name:
         ray.init(address="auto")
-        status = service.status(name=service_name)
+        status = service.status(name=service_name, cloud=CLOUD)
 
         # Start the locust workload
         num_locust_workers = int(ray.available_resources()["CPU"]) - 1
@@ -131,7 +140,7 @@ def main():
         }
         logger.info(f"Stats history: {json.dumps(stats.history, indent=4)}")
         logger.info(f"Final aggregated metrics: {json.dumps(results, indent=4)}")
-        save_test_results(results)
+        save_test_results(results, output_path=output_path)
 
 
 if __name__ == "__main__":

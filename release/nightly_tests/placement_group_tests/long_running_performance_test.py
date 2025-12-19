@@ -8,7 +8,7 @@ from time import perf_counter
 import ray
 
 from ray.util.placement_group import placement_group, remove_placement_group
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -145,9 +145,9 @@ def main():
     assert creation_perf["p50_ms"] * 100 > creation_perf_final["p50_ms"]
 
     if "TEST_OUTPUT_JSON" in os.environ:
-        out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-        results = {}
-        json.dump(results, out_file)
+        with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_file:
+            results = {}
+            json.dump(results, out_file)
 
 
 main()

@@ -1,19 +1,19 @@
 import asyncio
-import pytest
-import numpy as np
-import sys
-import time
-import threading
 import gc
+import sys
+import threading
+import time
+from unittest.mock import Mock, patch
 
-from unittest.mock import patch, Mock
+import numpy as np
+import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
-from ray.experimental.state.api import list_objects
+from ray._common.test_utils import wait_for_condition
 from ray._raylet import ObjectRefGenerator, ObjectRefStreamEndOfStreamError
 from ray.cloudpickle import dumps
 from ray.exceptions import WorkerCrashedError
+from ray.experimental.state.api import list_objects
 
 
 class MockedWorker:
@@ -52,6 +52,10 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
             generator_ref = ray.ObjectRef.from_random()
             generator = ObjectRefGenerator(generator_ref, mocked_worker)
 
+            # Make sure we cannot serialize the generator.
+            with pytest.raises(TypeError):
+                dumps(generator)
+
             # Test when there's no new ref, it returns a nil.
             new_ref = ray.ObjectRef.from_random()
             c.peek_object_ref_stream.return_value = (new_ref, False)
@@ -87,14 +91,9 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
                 ObjectRefStreamEndOfStreamError("")
             )  # noqa
             mocked_ray_get.return_value = None
-            with pytest.raises(StopIteration):
-                ref = generator._next_sync(timeout_s=0)
-            # Make sure we cannot serialize the generator.
-            with pytest.raises(TypeError):
-                dumps(generator)
 
-            del generator
-            c.async_delete_object_ref_stream.assert_called()
+            with pytest.raises(StopIteration):
+                generator._next_sync(timeout_s=0)
 
 
 def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):
@@ -577,9 +576,5 @@ def test_streaming_generator_exception(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

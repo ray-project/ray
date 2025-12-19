@@ -1,13 +1,14 @@
+import os
 import sys
+import time
 
 import pytest
-import os
-import time
-import ray
 from pyspark.sql import SparkSession
-from ray.util.spark import setup_ray_cluster
-import ray.util.spark.databricks_hook
 
+import ray
+import ray.util.spark.databricks_hook
+from ray._common.test_utils import wait_for_condition
+from ray.util.spark import setup_ray_cluster
 
 pytestmark = pytest.mark.skipif(
     not sys.platform.startswith("linux"),
@@ -67,9 +68,12 @@ class TestDatabricksHook:
                 head_node_options={"include_dashboard": False},
             )
             cluster = ray.util.spark.cluster_init._active_ray_cluster
-            assert db_api_entry.registered_job_groups == [cluster.spark_job_group_id]
             assert not cluster.is_shutdown
-            time.sleep(35)
+            wait_for_condition(
+                lambda: cluster.is_shutdown,
+                timeout=45,
+                retry_interval_ms=10000,
+            )
             assert cluster.is_shutdown
             assert ray.util.spark.cluster_init._active_ray_cluster is None
         finally:
@@ -80,7 +84,4 @@ class TestDatabricksHook:
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

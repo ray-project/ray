@@ -14,6 +14,13 @@
 
 #include "ray/common/scheduling/scheduling_ids.h"
 
+#include <boost/algorithm/string.hpp>
+#include <string>
+#include <vector>
+
+#include "ray/common/ray_config.h"
+#include "ray/util/logging.h"
+
 namespace ray {
 
 int64_t StringIdMap::Get(const std::string &string_id) const {
@@ -21,9 +28,8 @@ int64_t StringIdMap::Get(const std::string &string_id) const {
   auto it = string_to_int_.find(string_id);
   if (it == string_to_int_.end()) {
     return -1;
-  } else {
-    return it->second;
   }
+  return it->second;
 };
 
 std::string StringIdMap::Get(uint64_t id) const {
@@ -44,7 +50,7 @@ int64_t StringIdMap::Insert(const std::string &string_id, uint8_t max_id) {
   if (sit == string_to_int_.end()) {
     int64_t id = hasher_(string_id);
     if (max_id != 0) {
-      id = id % MAX_ID_TEST;
+      id = id % max_id;
     }
     for (size_t i = 0; true; i++) {
       auto it = int_to_string_.find(id);
@@ -60,9 +66,8 @@ int64_t StringIdMap::Insert(const std::string &string_id, uint8_t max_id) {
       }
     }
     return id;
-  } else {
-    return sit->second;
   }
+  return sit->second;
 };
 
 StringIdMap &StringIdMap::InsertOrDie(const std::string &string_id, int64_t value) {

@@ -46,7 +46,7 @@ class EndpointState:
 
     def _notify_route_table_changed(self):
         self._long_poll_host.notify_changed(
-            LongPollNamespace.ROUTE_TABLE, self._endpoints
+            {LongPollNamespace.ROUTE_TABLE: self._endpoints}
         )
 
     def _get_endpoint_for_route(self, route: str) -> Optional[DeploymentID]:

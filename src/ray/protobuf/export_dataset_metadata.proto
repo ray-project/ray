@@ -1,0 +1,125 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+import "google/protobuf/struct.proto";
+
+option cc_enable_arenas = true;
+package ray.rpc;
+
+// Represents a sub-stage within an operator
+message SubStage {
+  // Name of the sub-stage
+  string name = 1;
+
+  // Unique identifier for the sub-stage
+  string id = 2;
+}
+
+// Represents a data processing operator in the DAG
+message Operator {
+  enum OperatorState {
+    UNKNOWN = 0;
+    RUNNING = 1;
+    FINISHED = 2;
+    FAILED = 3;
+    PENDING = 4;
+  }
+
+  // Name of the operator
+  string name = 1;
+
+  // The unique identifier of the operator within the DAG structure, typically
+  // incorporating a position or index (e.g., "ReadParquet_0"). This is used for
+  // referencing operators within the DAG topology.
+  string id = 2;
+
+  // The system-generated UUID of the physical operator instance. This is the
+  // internal unique identifier created when the operator instance is initialized
+  // and remains consistent throughout its lifetime.
+  string uuid = 3;
+
+  // List of operator IDs that this operator depends on for input
+  repeated string input_dependencies = 4;
+
+  // List of sub-stages contained within this operator
+  repeated SubStage sub_stages = 5;
+
+  // A dict mapping from PhysicalOp -> LogicalOp -> Input Args. The Input Args
+  // can be found in `_get_logical_args`, and is used to help understand how a
+  // user's arguments lead to a dataset's state execution
+  google.protobuf.Struct args = 6;
+
+  // The timestamp when execution starts (in seconds since epoch)
+  double execution_start_time = 7;
+
+  // The timestamp when execution ends (in seconds since epoch)
+  double execution_end_time = 8;
+
+  // The state of the operator
+  OperatorState state = 9;
+}
+
+// Represents the complete structure of the operator DAG
+message Topology {
+  // List of all operators in the DAG
+  repeated Operator operators = 1;
+}
+
+// Top-level message containing full metadata about a Ray Data execution
+message ExportDatasetMetadata {
+  enum DatasetState {
+    UNKNOWN = 0;
+    RUNNING = 1;
+    FINISHED = 2;
+    FAILED = 3;
+    PENDING = 4;
+  }
+
+  message DashboardPanelMetadata {
+    // Unique identifier for the panel
+    string id = 1;
+    // Display name of the panel
+    string title = 2;
+  }
+
+  // The operator DAG structure
+  Topology topology = 1;
+
+  // The dataset ID
+  string dataset_id = 2;
+
+  // The Ray Job ID
+  string job_id = 3;
+
+  // The timestamp when dataset is registered (in seconds since epoch)
+  double start_time = 4;
+
+  // The data context attached to the dataset.
+  google.protobuf.Struct data_context = 5;
+
+  // The timestamp when execution starts (in seconds since epoch)
+  double execution_start_time = 6;
+
+  // The timestamp when execution ends (in seconds since epoch)
+  double execution_end_time = 7;
+
+  // The state of the dataset
+  DatasetState state = 8;
+
+  // List of metric panels to show for operators
+  // When showing these panels, it is expected to filter the metrics by operator ID.
+  repeated DashboardPanelMetadata operator_panels = 9;
+}

@@ -1,13 +1,14 @@
-import numpy as np
-import gymnasium as gym
 from typing import Dict
+
+import gymnasium as gym
+import numpy as np
 
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.typing import TensorType, List, ModelConfigDict
+from ray.rllib.utils.typing import List, ModelConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -53,7 +54,7 @@ class FullyConnectedNetwork(TFModelV2):
 
         # We are using obs_flat, so take the flattened shape as input.
         inputs = tf.keras.layers.Input(
-            shape=(int(np.product(obs_space.shape)),), name="observations"
+            shape=(int(np.prod(obs_space.shape)),), name="observations"
         )
         # Last hidden layer output (before logits outputs).
         last_layer = inputs
@@ -99,9 +100,7 @@ class FullyConnectedNetwork(TFModelV2):
                 )(last_layer)
             # Adjust num_outputs to be the number of nodes in the last layer.
             else:
-                self.num_outputs = ([int(np.product(obs_space.shape))] + hiddens[-1:])[
-                    -1
-                ]
+                self.num_outputs = ([int(np.prod(obs_space.shape))] + hiddens[-1:])[-1]
 
         # Concat the log std vars to the end of the state-dependent means.
         if free_log_std and logits_out is not None:

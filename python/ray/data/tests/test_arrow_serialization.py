@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import types
 from unittest import mock
 
 import numpy as np
@@ -8,11 +9,14 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from packaging.version import parse as parse_version
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 import ray.cloudpickle as pickle
+import ray.data
+import ray.train
 from ray._private.arrow_serialization import (
+    PicklableArrayPayload,
     _align_bit_offset,
     _bytes_for_bits,
     _copy_bitpacked_buffer_if_needed,
@@ -20,7 +24,11 @@ from ray._private.arrow_serialization import (
     _copy_normal_buffer_if_needed,
     _copy_offsets_buffer_if_needed,
 )
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
+from ray.data.extensions.object_extension import (
+    ArrowPythonObjectArray,
+    _object_extension_type_allowed,
+)
 from ray.data.extensions.tensor_extension import (
     ArrowTensorArray,
     ArrowVariableShapedTensorArray,
@@ -227,10 +235,7 @@ def fixed_size_list_array():
 @pytest.fixture
 def map_array():
     return pa.array(
-        [
-            [(key, item) for key, item in zip("abcdefghij", range(10))]
-            for _ in range(1000)
-        ],
+        [list(zip("abcdefghij", range(10))) for _ in range(1000)],
         type=pa.map_(pa.string(), pa.int64()),
     )
 
@@ -342,14 +347,21 @@ def complex_nested_array():
                 ]
             ),
             pa.array(
-                [
-                    [(key, item) for key, item in zip("abcdefghij", range(10))]
-                    for _ in range(1000)
-                ],
+                [list(zip("abcdefghij", range(10))) for _ in range(1000)],
                 type=pa.map_(pa.string(), pa.int64()),
             ),
         ],
     )
+
+
+@pytest.fixture
+def pickled_objects_array():
+    elements = ["test", 20, False, {"some": "value"}, None, np.zeros((10, 10))]
+    elements *= 1 + 1000 // len(elements)
+    elements = elements[:1000]
+
+    arr = np.array(elements, dtype=object)
+    return ArrowPythonObjectArray.from_objects(arr)
 
 
 pytest_custom_serialization_arrays = [
@@ -406,6 +418,12 @@ pytest_custom_serialization_arrays = [
     (lazy_fixture("complex_nested_array"), 0.1),
 ]
 
+if _object_extension_type_allowed():
+    pytest_custom_serialization_arrays.append(
+        # Array of pickled objects
+        (lazy_fixture("pickled_objects_array"), 0.1),
+    )
+
 
 @pytest.mark.parametrize("data,cap_mult", pytest_custom_serialization_arrays)
 def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
@@ -425,7 +443,7 @@ def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
         )
     ray._private.worker.global_worker.get_serialization_context()
     data.validate()
-    pyarrow_version = parse_version(_get_pyarrow_version())
+    pyarrow_version = get_pyarrow_version()
     if pyarrow_version >= parse_version("7.0.0"):
         # get_total_buffer_size API was added in Arrow 7.0.0.
         buf_size = data.get_total_buffer_size()
@@ -475,7 +493,7 @@ def test_custom_arrow_data_serializer_fallback(
     cap_mult = 0.1
     ray._private.worker.global_worker.get_serialization_context()
     data.validate()
-    pyarrow_version = parse_version(_get_pyarrow_version())
+    pyarrow_version = get_pyarrow_version()
     if pyarrow_version >= parse_version("7.0.0"):
         # get_total_buffer_size API was added in Arrow 7.0.0.
         buf_size = data.get_total_buffer_size()
@@ -526,6 +544,25 @@ def test_arrow_scalar_conversion(ray_start_regular_shared):
     assert res == [{"id": 1}], res
 
 
+@pytest.mark.skipif(
+    not _object_extension_type_allowed(), reason="Object extension not supported."
+)
+def test_arrow_object_and_array_support(ray_start_regular_shared):
+    obj = types.SimpleNamespace(some_attribute="test")
+
+    def f(batch):
+        batch_size = len(batch["id"])
+        return {
+            "array": np.zeros((batch_size, 32, 32, 3)),
+            "unsupported": [obj] * batch_size,
+        }
+
+    res = ray.data.range(5).map_batches(f, batch_size=None).take(1)
+    assert res[0]["array"].shape == (32, 32, 3)
+    assert np.all(res[0]["array"] == 0)
+    assert res[0]["unsupported"] == obj
+
+
 def test_custom_arrow_data_serializer_parquet_roundtrip(
     ray_start_regular_shared, tmp_path
 ):
@@ -559,3 +596,69 @@ def test_custom_arrow_data_serializer_disable(shutdown_only):
     assert d_view["a"].chunk(0).buffers()[1].size == t["a"].chunk(0).buffers()[1].size
     # Check that the serialized slice view is large
     assert len(s_view) > 0.8 * len(s_t)
+
+
+@pytest.mark.skipif(
+    parse_version(pa.__version__) < parse_version("10.0.0"),
+    reason="FixedShapeTensorArray is not supported in PyArrow < 10.0.0",
+)
+def test_fixed_shape_tensor_array_serialization():
+    a = pa.FixedShapeTensorArray.from_numpy_ndarray(
+        np.arange(4 * 2 * 3).reshape(4, 2, 3)
+    )
+    payload = PicklableArrayPayload.from_array(a)
+    a2 = payload.to_array()
+    assert a == a2
+
+
+class _VariableShapeTensorType(pa.ExtensionType):
+    def __init__(
+        self,
+        value_type: pa.DataType,
+        ndim: int,
+    ) -> None:
+        self.value_type = value_type
+        self.ndim = ndim
+        super().__init__(
+            pa.struct(
+                [
+                    pa.field("data", pa.list_(value_type)),
+                    pa.field("shape", pa.list_(pa.int32(), ndim)),
+                ]
+            ),
+            "variable_shape_tensor",
+        )
+
+    def __arrow_ext_serialize__(self) -> bytes:
+        return b""
+
+    @classmethod
+    def __arrow_ext_deserialize__(cls, storage_type: pa.DataType, serialized: bytes):
+        ndim = storage_type[1].type.list_size
+        value_type = storage_type[0].type.value_type
+        return cls(value_type, ndim)
+
+
+def test_variable_shape_tensor_serialization():
+    t = _VariableShapeTensorType(pa.float32(), 2)
+    values = [
+        {
+            "data": np.arange(2 * 3, dtype=np.float32).tolist(),
+            "shape": [2, 3],
+        },
+        {
+            "data": np.arange(4 * 5, dtype=np.float32).tolist(),
+            "shape": [4, 5],
+        },
+    ]
+    storage = pa.array(values, type=t.storage_type)
+    ar = pa.ExtensionArray.from_storage(t, storage)
+    payload = PicklableArrayPayload.from_array(ar)
+    ar2 = payload.to_array()
+    assert ar == ar2
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

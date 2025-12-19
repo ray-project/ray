@@ -28,7 +28,7 @@ to learn from these items. Experiences with a higher priority are more likely to
 Eviction Strategy
 -----------------
 
-A buffer is naturally limited in its capacity to hold experiences. In the course of running an algorith, a buffer will eventually reach
+A buffer is naturally limited in its capacity to hold experiences. In the course of running an algorithm, a buffer will eventually reach
 its capacity and in order to make room for new experiences, we need to delete (evict) older ones. This is generally done on a first-in-first-out basis.
 For your algorithms this means that buffers with a high capacity give the opportunity to learn from older samples, while smaller buffers
 make the learning process more on-policy. An exception from this strategy is made in buffers that implement reservoir sampling.
@@ -49,13 +49,13 @@ Basic Usage
 -----------
 
 You will rarely have to define your own replay buffer sub-class, when running an experiment, but rather configure existing buffers.
-The following is `from RLlib's examples section <https://github.com/ray-project/ray/blob/master/rllib/examples/replay_buffer_api.py>`__:  and runs the R2D2 algorithm with `PER <https://arxiv.org/abs/1511.05952>`__ (which by default it doesn't).
+The following is `from RLlib's examples section <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/replay_buffer_api.py>`__:  and runs the R2D2 algorithm with `PER <https://arxiv.org/abs/1511.05952>`__ (which by default it doesn't).
 The highlighted lines focus on the PER configuration.
 
 .. dropdown:: **Executable example script**
     :animate: fade-in-slide-down
 
-    .. literalinclude:: ../../../rllib/examples/replay_buffer_api.py
+    .. literalinclude:: ../../../rllib/examples/_old_api_stack/replay_buffer_api.py
         :emphasize-lines: 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70
         :language: python
         :start-after: __sphinx_doc_replay_buffer_api_example_script_begin__

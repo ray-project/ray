@@ -1,21 +1,22 @@
 import random
 from collections import defaultdict
-import numpy as np
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
+import numpy as np
+
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
+from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import (
     _PolicyCollector,
     _PolicyCollectorGroup,
 )
-from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import AgentID, EnvID, EnvInfoDict, PolicyID, TensorType
 
 if TYPE_CHECKING:
-    from ray.rllib.algorithms.callbacks import DefaultCallbacks
+    from ray.rllib.callbacks.callbacks import RLlibCallback
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 
@@ -30,7 +31,7 @@ class EpisodeV2:
         policy_mapping_fn: Callable[[AgentID, "EpisodeV2", "RolloutWorker"], PolicyID],
         *,
         worker: Optional["RolloutWorker"] = None,
-        callbacks: Optional["DefaultCallbacks"] = None,
+        callbacks: Optional["RLlibCallback"] = None,
     ):
         """Initializes an Episode instance.
 
@@ -191,7 +192,7 @@ class EpisodeV2:
             ),
             is_policy_recurrent=policy.is_recurrent(),
             intial_states=policy.get_initial_state(),
-            _enable_new_api_stack=policy.config.get("_enable_new_api_stack", False),
+            _enable_new_api_stack=False,
         )
         self._agent_collectors[agent_id].add_init_obs(
             episode_id=self.episode_id,

@@ -1,4 +1,4 @@
-(kuberay-troubleshootin-guides)=
+(kuberay-troubleshooting-guides)=
 
 # Troubleshooting guide
 
@@ -7,16 +7,38 @@ If you don't find an answer to your question here, please don't hesitate to conn
 
 # Contents
 
+- [Use the right version of Ray](#use-the-right-version-of-ray)
+- [Use ARM-based docker images for Apple M1 or M2 MacBooks](#docker-image-for-apple-macbooks)
 - [Upgrade KubeRay](#upgrade-kuberay)
 - [Worker init container](#worker-init-container)
 - [Cluster domain](#cluster-domain)
 - [RayService](#rayservice)
 - [Autoscaler](#autoscaler)
+- [Multi-node GPU clusters](#multi-node-gpu)
 - [Other questions](#other-questions)
 
+(use-the-right-version-of-ray)=
+## Use the right version of Ray
+
+See the [upgrade guide](#kuberay-upgrade-guide) for the compatibility matrix between KubeRay versions and Ray versions.
+
+```{admonition} Don't use Ray versions between 2.11.0 and 2.37.0.
+The [commit](https://github.com/ray-project/ray/pull/44658) introduces a bug in Ray 2.11.0.
+When a Ray job is created, the Ray dashboard agent process on the head node gets stuck, causing the readiness and liveness probes, which send health check requests for the Raylet to the dashboard agent, to fail.
+```
+
+(docker-image-for-apple-macbooks)=
+## Use ARM-based docker images for Apple M1 or M2 MacBooks
+Ray builds different images for different platforms. Until Ray moves to building multi-architecture images, [tracked by this GitHub issue](https://github.com/ray-project/ray/issues/39364), use platform-specific docker images in the head and worker group specs of the [RayCluster config](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#image).
+
+Use an image with the tag `aarch64`, for example, `image: rayproject/ray:2.41.0-aarch64`), if you are running KubeRay on a MacBook M1 or M2.
+
+[Link to issue details and discussion](https://ray-distributed.slack.com/archives/C02GFQ82JPM/p1712267296145549).
+
+(upgrade-kuberay)=
 ## Upgrade KubeRay
 
-If you have issues upgrading KubeRay, refer to the [upgrade guide](#kuberay-upgrade-guide).
+If you have issues upgrading KubeRay, see the [upgrade guide](#kuberay-upgrade-guide).
 Most issues are about the CRD version.
 
 (worker-init-container)=
@@ -37,7 +59,7 @@ Some common causes for the worker init container to stuck in `Init:0/1` status a
 * The `CLUSTER_DOMAIN` environment variable is not set correctly. See the section [cluster domain](#cluster-domain) for more details.
 * The worker init container shares the same ***ImagePullPolicy***, ***SecurityContext***, ***Env***, ***VolumeMounts***, and ***Resources*** as the worker Pod template. Sharing these settings is possible to cause a deadlock. See [#1130](https://github.com/ray-project/kuberay/issues/1130) for more details.
 
-If the init container remains stuck in `Init:0/1` status for 2 minutes, we will stop redirecting the output messages to `/dev/null` and instead print them to the worker Pod logs.
+If the init container remains stuck in `Init:0/1` status for 2 minutes, Ray stops redirecting the output messages to `/dev/null` and instead prints them to the worker Pod logs.
 To troubleshoot further, you can inspect the logs using `kubectl logs`.
 
 ### 2. Disable the init container injection
@@ -76,9 +98,43 @@ One common cause is that the Ray tasks or actors require an amount of resources 
 Note that Ray tasks and actors represent the smallest scheduling units in Ray, and a task or actor should be on a single Ray node.
 Take [kuberay#846](https://github.com/ray-project/kuberay/issues/846) as an example. The user attempts to schedule a Ray task that requires 2 CPUs, but the Ray Pods available for these tasks have only 1 CPU each. Consequently, the Ray Autoscaler decides not to scale up the RayCluster.
 
+(multi-node-gpu)=
+## Multi-node GPU Deployments
+
+For comprehensive troubleshooting of multi-node GPU serving issues, refer to {ref}`Troubleshooting multi-node GPU serving on KubeRay <serve-multi-node-gpu-troubleshooting>`.
+
 (other-questions)=
 ## Other questions
 
 ### Why are changes to the RayCluster or RayJob CR not taking effect?
 
 Currently, only modifications to the `replicas` field in `RayCluster/RayJob` CR are supported. Changes to other fields may not take effect or could lead to unexpected results.
+
+### How to configure reconcile concurrency when there are large mount of CRs?
+
+In this example, [kuberay#3909](https://github.com/ray-project/kuberay/issues/3909),
+the user encountered high latency when processing RayCluster CRs and found that the ReconcileConcurrency value was set to 1.
+
+The KubeRay operator supports configuring the `ReconcileConcurrency` setting, which controls the number of concurrent workers processing Ray custom resources (CRs).
+
+To configure the `ReconcileConcurrency` number, you can edit the deployment's container args:
+
+```bash
+kubectl edit deployment kuberay-operator
+```
+
+Specify the `ReconcileConcurrency` number in the container args:
+
+```yaml
+spec:
+  containers:
+  - args:
+    - --reconcile-concurrency
+    - "10"
+```
+
+You can also use the following command for kuberay version >= 1.5.1:
+
+```bash
+helm install kuberay-operator kuberay/kuberay-operator --version 1.5.1 --set reconcileConcurrency=10
+```

@@ -1,10 +1,11 @@
 import os
 import sys
-import pytest
 from unittest.mock import patch
 
+import pytest
+
 import ray
-from ray._private.accelerators import hpu, HPUAcceleratorManager
+from ray._private.accelerators import HPUAcceleratorManager, hpu
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -26,7 +27,7 @@ def test_auto_detected_more_than_visible(
     # Test more hpus are detected than visible.
     monkeypatch.setenv("HABANA_VISIBLE_MODULES", "0,1,2")
     ray.init()
-    mock_get_num_accelerators.called
+    _ = mock_get_num_accelerators.called
     assert ray.available_resources()["HPU"] == 3
 
 
@@ -37,7 +38,7 @@ def test_auto_detected_more_than_visible(
 def test_auto_detect_resources(mock_get_num_accelerators, shutdown_only):
     # Test that ray node resources are filled with auto detected count.
     ray.init()
-    mock_get_num_accelerators.called
+    _ = mock_get_num_accelerators.called
     assert ray.available_resources()["HPU"] == 2
 
 
@@ -291,7 +292,4 @@ def test_hpu_with_placement_group(shutdown_only):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

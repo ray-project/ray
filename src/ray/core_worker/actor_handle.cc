@@ -15,6 +15,8 @@
 #include "ray/core_worker/actor_handle.h"
 
 #include <memory>
+#include <string>
+#include <unordered_map>
 
 namespace ray {
 namespace core {
@@ -32,8 +34,11 @@ rpc::ActorHandle CreateInnerActorHandle(
     const std::string &name,
     const std::string &ray_namespace,
     int32_t max_pending_calls,
-    bool execute_out_of_order,
-    absl::optional<bool> enable_task_events) {
+    bool allow_out_of_order_execution,
+    bool enable_tensor_transport,
+    std::optional<bool> enable_task_events,
+    const std::unordered_map<std::string, std::string> &labels,
+    bool is_detached) {
   rpc::ActorHandle inner;
   inner.set_actor_id(actor_id.Data(), actor_id.Size());
   inner.set_owner_id(owner_id.Binary());
@@ -47,9 +52,12 @@ rpc::ActorHandle CreateInnerActorHandle(
   inner.set_max_task_retries(max_task_retries);
   inner.set_name(name);
   inner.set_ray_namespace(ray_namespace);
-  inner.set_execute_out_of_order(execute_out_of_order);
   inner.set_max_pending_calls(max_pending_calls);
+  inner.set_allow_out_of_order_execution(allow_out_of_order_execution);
+  inner.set_enable_tensor_transport(enable_tensor_transport);
   inner.set_enable_task_events(enable_task_events.value_or(kDefaultTaskEventEnabled));
+  inner.mutable_labels()->insert(labels.begin(), labels.end());
+  inner.set_is_detached(is_detached);
   return inner;
 }
 
@@ -79,9 +87,11 @@ rpc::ActorHandle CreateInnerActorHandleFromActorData(
   inner.set_max_task_retries(task_spec.actor_creation_task_spec().max_task_retries());
   inner.set_name(actor_table_data.name());
   inner.set_ray_namespace(actor_table_data.ray_namespace());
-  inner.set_execute_out_of_order(
-      task_spec.actor_creation_task_spec().execute_out_of_order());
+  inner.set_allow_out_of_order_execution(
+      task_spec.actor_creation_task_spec().allow_out_of_order_execution());
   inner.set_max_pending_calls(task_spec.actor_creation_task_spec().max_pending_calls());
+  inner.mutable_labels()->insert(task_spec.labels().begin(), task_spec.labels().end());
+  inner.set_is_detached(task_spec.actor_creation_task_spec().is_detached());
   return inner;
 }
 }  // namespace
@@ -99,8 +109,11 @@ ActorHandle::ActorHandle(
     const std::string &name,
     const std::string &ray_namespace,
     int32_t max_pending_calls,
-    bool execute_out_of_order,
-    absl::optional<bool> enable_task_events)
+    bool allow_out_of_order_execution,
+    bool enable_tensor_transport,
+    std::optional<bool> enable_task_events,
+    const std::unordered_map<std::string, std::string> &labels,
+    bool is_detached)
     : ActorHandle(CreateInnerActorHandle(actor_id,
                                          owner_id,
                                          owner_address,
@@ -113,8 +126,11 @@ ActorHandle::ActorHandle(
                                          name,
                                          ray_namespace,
                                          max_pending_calls,
-                                         execute_out_of_order,
-                                         enable_task_events)) {}
+                                         allow_out_of_order_execution,
+                                         enable_tensor_transport,
+                                         enable_task_events,
+                                         labels,
+                                         is_detached)) {}
 
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}
@@ -142,11 +158,10 @@ void ActorHandle::SetActorTaskSpec(
                            task_counter_++);
 }
 
-void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec,
-                                              const ObjectID new_cursor) {
+void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec) {
   absl::MutexLock guard(&mutex_);
   auto mutable_spec = spec.GetMutableMessage().mutable_actor_task_spec();
-  mutable_spec->set_actor_counter(task_counter_++);
+  mutable_spec->set_sequence_number(task_counter_++);
 }
 
 void ActorHandle::Serialize(std::string *output) { inner_.SerializeToString(output); }

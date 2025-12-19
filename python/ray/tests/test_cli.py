@@ -18,6 +18,7 @@ Note: config cache does not work with AWS mocks since the AWS resource ids are
       randomized each time.
 """
 import glob
+import json
 import multiprocessing as mp
 import multiprocessing.connection
 import os
@@ -25,10 +26,10 @@ import re
 import sys
 import tempfile
 import threading
-import json
 import time
 import uuid
 from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Optional
 from unittest import mock
@@ -42,15 +43,16 @@ from testfixtures import Replacer
 from testfixtures.popen import MockPopen, PopenBehaviour
 
 import ray
+import ray._private.ray_constants as ray_constants
 import ray.autoscaler._private.aws.config as aws_config
 import ray.autoscaler._private.constants as autoscaler_constants
-import ray._private.ray_constants as ray_constants
 import ray.scripts.scripts as scripts
-from ray.util.check_open_ports import check_open_ports
-from ray._private.test_utils import wait_for_condition
+from ray._common.network_utils import build_address, parse_address
+from ray._common.test_utils import wait_for_condition
+from ray._common.utils import get_ray_temp_dir
 from ray.cluster_utils import cluster_not_supported
+from ray.util.check_open_ports import check_open_ports
 from ray.util.state import list_nodes
-from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import psutil
 
@@ -470,6 +472,20 @@ def test_ray_start_head_block_and_signals(
     # NOTE(rickyyx): The wait here is needed for the `head_proc`
     # process to exit
     head_proc.join(5)
+
+    exit_log = Path(
+        os.path.join(
+            get_ray_temp_dir(),
+            ray_constants.SESSION_LATEST,
+            "logs",
+            "ray_process_exit.log",
+        )
+    )
+    assert exit_log.exists(), f"ray_process_exit.log not found at {exit_log}"
+    content = exit_log.read_text(encoding="utf-8")
+    assert (
+        "Some Ray subprocesses exited unexpectedly:" in content
+    ), "Expected message not found in ray_process_exit.log."
 
     # Process with "--block" should be dead with a subprocess killed
     if head_proc.is_alive() or head_proc.exitcode == 0:
@@ -919,7 +935,7 @@ def test_ray_status(shutdown_only, monkeypatch, enable_v2):
 
     def output_ready():
         result = runner.invoke(scripts.status)
-        result.stdout
+        _ = result.stdout
         if not result.exception and "memory" in result.output:
             return True
         raise RuntimeError(
@@ -967,7 +983,7 @@ def test_ray_status_multinode(ray_start_cluster, enable_v2):
 
     def output_ready():
         result = runner.invoke(scripts.status)
-        result.stdout
+        _ = result.stdout
         if not result.exception and "memory" in result.output:
             return True
         raise RuntimeError(
@@ -1012,7 +1028,7 @@ def start_open_port_check_server():
 
     yield (
         OpenPortCheckServer,
-        f"http://{server.server_address[0]}:{server.server_address[1]}",
+        f"http://{build_address(server.server_address[0], server.server_address[1])}",
     )
 
     server.shutdown()
@@ -1035,7 +1051,7 @@ def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
     )
     assert result.exit_code == 0
     assert (
-        int(context.address_info["gcs_address"].split(":")[1])
+        int(parse_address(context.address_info["gcs_address"])[1])
         in open_port_check_server.request_ports
     )
     assert "[🟢] No open ports detected" in result.output
@@ -1055,7 +1071,10 @@ def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
     assert "[🛑] open ports detected" in result.output
 
 
-def test_ray_drain_node():
+def test_ray_drain_node(monkeypatch):
+    monkeypatch.setenv("RAY_py_gcs_connect_timeout_s", "1")
+    ray.init()
+
     runner = CliRunner()
     result = runner.invoke(
         scripts.drain_node,
@@ -1105,7 +1124,9 @@ def test_ray_drain_node():
         ],
     )
     assert result.exit_code != 0
-    assert "Ray cluster is not found at 127.0.0.2:8888" in result.output
+    assert "Timed out while waiting for GCS to become available" in str(
+        result.exception
+    )
 
     result = runner.invoke(
         scripts.drain_node,
@@ -1121,10 +1142,32 @@ def test_ray_drain_node():
     assert result.exit_code != 0
     assert "Invalid hex ID of a Ray node, got invalid-node-id" in result.output
 
-    with patch("ray._raylet.check_health", return_value=True), patch(
-        "ray._raylet.GcsClient"
-    ) as MockGcsClient:
+    with patch("ray._raylet.GcsClient") as MockGcsClient:
         mock_gcs_client = MockGcsClient.return_value
+        mock_gcs_client.internal_kv_get.return_value = (
+            '{"ray_version": "ray_version_mismatch"}'.encode()
+        )
+        result = runner.invoke(
+            scripts.drain_node,
+            [
+                "--address",
+                "127.0.0.1:6543",
+                "--node-id",
+                "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
+                "--reason",
+                "DRAIN_NODE_REASON_IDLE_TERMINATION",
+                "--reason-message",
+                "idle termination",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "Ray version mismatch" in str(result.exception)
+
+    with patch("ray._raylet.GcsClient") as MockGcsClient:
+        mock_gcs_client = MockGcsClient.return_value
+        mock_gcs_client.internal_kv_get.return_value = (
+            f'{{"ray_version": "{ray.__version__}"}}'.encode()
+        )
         mock_gcs_client.drain_node.return_value = (True, "")
         result = runner.invoke(
             scripts.drain_node,
@@ -1140,17 +1183,18 @@ def test_ray_drain_node():
             ],
         )
         assert result.exit_code == 0
-        assert mock_gcs_client.mock_calls[0] == mock.call.drain_node(
+        assert mock_gcs_client.mock_calls[1] == mock.call.drain_node(
             "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
             1,
             "idle termination",
             0,
         )
 
-    with patch("ray._raylet.check_health", return_value=True), patch(
-        "ray._raylet.GcsClient"
-    ) as MockGcsClient:
+    with patch("ray._raylet.GcsClient") as MockGcsClient:
         mock_gcs_client = MockGcsClient.return_value
+        mock_gcs_client.internal_kv_get.return_value = (
+            f'{{"ray_version": "{ray.__version__}"}}'.encode()
+        )
         mock_gcs_client.drain_node.return_value = (False, "Node not idle")
         result = runner.invoke(
             scripts.drain_node,
@@ -1168,10 +1212,36 @@ def test_ray_drain_node():
         assert result.exit_code != 0
         assert "The drain request is not accepted: Node not idle" in result.output
 
-    with patch("ray._raylet.check_health", return_value=True), patch(
-        "time.time_ns", return_value=1000000000
-    ), patch("ray._raylet.GcsClient") as MockGcsClient:
+    # Test without node-id
+    with patch("ray._raylet.GcsClient") as MockGcsClient:
         mock_gcs_client = MockGcsClient.return_value
+        mock_gcs_client.internal_kv_get.return_value = (
+            f'{{"ray_version": "{ray.__version__}"}}'.encode()
+        )
+        mock_gcs_client.drain_node.return_value = (True, "")
+        result = runner.invoke(
+            scripts.drain_node,
+            [
+                "--address",
+                "127.0.01:6543",
+                "--reason",
+                "DRAIN_NODE_REASON_PREEMPTION",
+                "--reason-message",
+                "spot preemption",
+            ],
+        )
+        assert result.exit_code == 0
+        assert mock_gcs_client.mock_calls[1] == mock.call.drain_node(
+            ray.get_runtime_context().get_node_id(), 2, "spot preemption", 0
+        )
+
+    with patch("time.time_ns", return_value=1000000000), patch(
+        "ray._raylet.GcsClient"
+    ) as MockGcsClient:
+        mock_gcs_client = MockGcsClient.return_value
+        mock_gcs_client.internal_kv_get.return_value = (
+            f'{{"ray_version": "{ray.__version__}"}}'.encode()
+        )
         mock_gcs_client.drain_node.return_value = (True, "")
         result = runner.invoke(
             scripts.drain_node,
@@ -1189,7 +1259,7 @@ def test_ray_drain_node():
             ],
         )
         assert result.exit_code == 0
-        assert mock_gcs_client.mock_calls[0] == mock.call.drain_node(
+        assert mock_gcs_client.mock_calls[1] == mock.call.drain_node(
             "0db0438b5cfd6e84d7ec07212ed76b23be7886cbd426ef4d1879bebf",
             2,
             "spot preemption",
@@ -1231,7 +1301,4 @@ def test_ray_cluster_dump(configure_lang, configure_aws, _unlink_test_ssh_key):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
