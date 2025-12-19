@@ -19,7 +19,7 @@ PyTorch Lightning (tune.integration.pytorch_lightning)
 .. _tune-integration-xgboost:
 
 XGBoost (tune.integration.xgboost)
-----------------------------------
+-----------------------------------
 
 .. autosummary::
     :nosignatures:

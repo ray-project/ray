@@ -4,12 +4,12 @@ How to Save and Load Trial Checkpoints
 ======================================
 
 Trial checkpoints are one of :ref:`the three types of data stored by Tune <tune-persisted-experiment-data>`.
-These are user-defined and are meant to snapshot your training progress!
+These are user-defined and are meant to snapshot your training progress.
 
-Trial-level checkpoints are saved via the :ref:`Tune Trainable <tune-60-seconds>` API: this is how you define your
-custom training logic, and it's also where you'll define which trial state to checkpoint.
-In this guide, we will show how to save and load checkpoints for Tune's Function Trainable and Class Trainable APIs,
-as well as walk you through configuration options.
+Trial-level checkpoints are saved through the :ref:`Tune Trainable <tune-60-seconds>` API: this is how you define your
+custom training logic, and it's also where you can define which trial state to checkpoint.
+In this guide, learn how to save and load checkpoints for Tune's Function Trainable and Class Trainable APIs,
+as well as configuration options.
 
 .. _tune-function-trainable-checkpointing:
 
@@ -24,16 +24,20 @@ To create a checkpoint, use the :meth:`~ray.tune.Checkpoint.from_directory` APIs
     :start-after: __function_api_checkpointing_from_dir_start__
     :end-before: __function_api_checkpointing_from_dir_end__
 
-In the above code snippet:
+In the preceding code snippet:
 
-- We implement *checkpoint saving* with :meth:`tune.report(..., checkpoint=checkpoint) <ray.tune.report>`. Note that every checkpoint must be reported alongside a set of metrics -- this way, checkpoints can be ordered with respect to a specified metric.
+.. vale Google.Ellipses = NO
+
+- Implement *checkpoint saving* with :meth:`tune.report(..., checkpoint=checkpoint) <ray.tune.report>`. Note that every checkpoint must be reported alongside a set of metrics — this way, checkpoints can be ordered with respect to a specified metric.
 - The saved checkpoint during training iteration `epoch` is saved to the path ``<storage_path>/<exp_name>/<trial_name>/checkpoint_<epoch>`` on the node on which training happens and can be further synced to a consolidated storage location depending on the :ref:`storage configuration <tune-storage-options>`.
-- We implement *checkpoint loading* with :meth:`tune.get_checkpoint() <ray.tune.get_checkpoint>`. This will be populated with a trial's latest checkpoint whenever Tune restores a trial. This happens when (1) a trial is configured to retry after encountering a failure, (2) the experiment is being restored, and (3) the trial is being resumed after a pause (ex: :doc:`PBT </tune/examples/pbt_guide>`).
+- Implement *checkpoint loading* with :meth:`tune.get_checkpoint() <ray.tune.get_checkpoint>`. This is populated with a trial's latest checkpoint whenever Tune restores a trial. This happens when (1) a trial is configured to retry after encountering a failure, (2) the experiment is being restored, and (3) the trial is being resumed after a pause (ex: :doc:`PBT </tune/examples/pbt_guide>`).
+
+.. vale Google.Ellipses = YES
 
   .. TODO: for (1), link to tune fault tolerance guide. For (2), link to tune restore guide.
 
 .. note::
-    ``checkpoint_frequency`` and ``checkpoint_at_end`` will not work with Function API checkpointing.
+    ``checkpoint_frequency`` and ``checkpoint_at_end`` won't work with Function API checkpointing.
     These are configured manually with Function Trainable. For example, if you want to checkpoint every three
     epochs, you can do so through:
 
@@ -74,7 +78,7 @@ This can be especially helpful in spot instances:
     :start-after: __class_api_manual_checkpointing_start__
     :end-before: __class_api_manual_checkpointing_end__
 
-In the above example, if ``detect_instance_preemption`` returns True, manual checkpointing can be triggered.
+In the preceding example, if ``detect_instance_preemption`` returns True, manual checkpointing can be triggered.
 
 
 .. _tune-callback-checkpointing:
@@ -99,7 +103,7 @@ complex checkpointing strategies.
 Periodic Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~
 
-This can be enabled by setting ``checkpoint_frequency=N`` to checkpoint trials every *N* iterations, e.g.:
+This can be enabled by setting ``checkpoint_frequency=N`` to checkpoint trials every *N* iterations, for example:
 
 .. literalinclude:: /tune/doc_code/trial_checkpoint.py
     :language: python
@@ -122,7 +126,7 @@ If you want a checkpoint to be created at the end of a trial, you can additional
 Configurations
 --------------
 Checkpointing can be configured through :class:`CheckpointConfig <ray.tune.CheckpointConfig>`.
-Some of the configurations do not apply to Function Trainable API, since checkpointing frequency
+Some of the configurations don't apply to Function Trainable API, since checkpointing frequency
 is determined manually within the user-defined training loop. See the compatibility matrix below.
 
 .. list-table::
@@ -152,7 +156,7 @@ is determined manually within the user-defined training loop. See the compatibil
 Summary
 -------
 
-In this user guide, we covered how to save and load trial checkpoints in Tune. Once checkpointing is enabled,
+In this user guide, learn how to save and load trial checkpoints in Tune. Once checkpointing is enabled,
 move onto one of the following guides to find out how to:
 
 - :ref:`Extract checkpoints from Tune experiment results <tune-analysis-guide>`
@@ -167,12 +171,12 @@ Experiment Checkpoints
 ~~~~~~~~~~~~~~~~~~~~~~
 
 Experiment-level checkpoints save the experiment state. This includes the state of the searcher,
-the list of trials and their statuses (e.g., PENDING, RUNNING, TERMINATED, ERROR), and
-metadata pertaining to each trial (e.g., hyperparameter configuration, some derived trial results
+the list of trials and their statuses (for example, ``PENDING``, ``RUNNING``, ``TERMINATED``, ``ERROR``), and
+metadata pertaining to each trial (for example, hyperparameter configuration, some derived trial results
 (min, max, last), etc).
 
 The experiment-level checkpoint is periodically saved by the driver on the head node.
-By default, the frequency at which it is saved is automatically
+By default, the frequency at which it's saved is automatically
 adjusted so that at most 5% of the time is spent saving experiment checkpoints,
 and the remaining time is used for handling training results and scheduling.
 This time can also be adjusted with the
@@ -184,7 +188,7 @@ Trial Checkpoints
 Trial-level checkpoints capture the per-trial state. This often includes the model and optimizer states.
 Following are a few uses of trial checkpoints:
 
-- If the trial is interrupted for some reason (e.g., on spot instances), it can be resumed from the last state. No training time is lost.
+- If the trial is interrupted for some reason (for example, on spot instances), it can be resumed from the last state. No training time is lost.
 - Some searchers or schedulers pause trials to free up resources for other trials to train in the meantime. This only makes sense if the trials can then continue training from the latest state.
 - The checkpoint can be later used for other downstream tasks like batch inference.
 

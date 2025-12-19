@@ -3,8 +3,8 @@
 Ray Tune FAQ
 ------------
 
-Here we try to answer questions that come up often.
-If you still have questions after reading this FAQ, let us know!
+Here are answers to questions that come up often.
+If you still have questions after reading this FAQ, let Ray know.
 
 .. contents::
     :local:
@@ -16,22 +16,22 @@ What are Hyperparameters?
 
 What are *hyperparameters?* And how are they different from *model parameters*?
 
-In supervised learning, we train a model with labeled data so the model can properly identify new data values.
+In supervised learning, train a model with labeled data so the model can properly identify new data values.
 Everything about the model is defined by a set of parameters, such as the weights in a linear regression. These
-are *model parameters*; they are learned during training.
+are *model parameters*; they're learned during training.
 
 .. image:: /images/hyper-model-parameters.png
 
 In contrast, the *hyperparameters* define structural details about the kind of model itself, like whether or not
-we are using a linear regression or classification, what architecture is best for a neural network,
-how many layers, what kind of filters, etc. They are defined before training, not learned.
+to use a linear regression or classification, what architecture is best for a neural network,
+how many layers, what kind of filters, etc. They're defined before training, not learned.
 
 .. image:: /images/hyper-network-params.png
 
-Other quantities considered *hyperparameters* include learning rates, discount rates, etc. If we want our training
-process and resulting model to work well, we first need to determine the optimal or near-optimal set of *hyperparameters*.
+Other quantities considered *hyperparameters* include learning rates, discount rates, etc. For the training
+process and resulting model to work well, first determine the optimal or near-optimal set of *hyperparameters*.
 
-How do we determine the optimal *hyperparameters*? The most direct approach is to perform a loop where we pick
+How to determine the optimal *hyperparameters*? The most direct approach is to perform a loop where you pick
 a candidate set of values from some reasonably inclusive list of possible values, train a model, compare the results
 achieved with previous loop iterations, and pick the set that performed best. This process is called
 *Hyperparameter Tuning* or *Optimization* (HPO). And *hyperparameters* are specified over a configured and confined
@@ -40,7 +40,7 @@ search space, collectively defined for each *hyperparameter* in a ``config`` dic
 
 .. TODO: We *really* need to improve this section.
 
-Which search algorithm/scheduler should I choose?
+Which search algorithm/scheduler should you choose?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Ray Tune offers :ref:`many different search algorithms <tune-search-alg>`
 and :ref:`schedulers <tune-schedulers>`.
@@ -51,11 +51,11 @@ Deciding on which to use mostly depends on your problem:
 * How many hyperparameters would you like to tune?
 * What values are valid for hyperparameters?
 
-**If your model returns incremental results** (eg. results per epoch in deep learning,
-results per each added tree in GBDTs, etc.) using early stopping usually allows for sampling
+**If your model returns incremental results** (for example, results per epoch in deep learning,
+results per each added tree in Gradient-Boosted Decision Trees (GBDTs), etc.) using early stopping usually allows for sampling
 more configurations, as unpromising trials are pruned before they run their full course.
-Please note that not all search algorithms can use information from pruned trials.
-Early stopping cannot be used without incremental results - in case of the functional API,
+Note that not all search algorithms can use information from pruned trials.
+Early stopping can't be used without incremental results - in case of the functional API,
 that means that ``tune.report()`` has to be called more than once - usually in a loop.
 
 **If your model is small**, you can usually try to run many different configurations.
@@ -68,9 +68,9 @@ supports early stopping).
 **Bayesian Optimization-based search algorithms** like :ref:`BayesOpt <bayesopt>`
 to get good parameter configurations after few
 trials. :ref:`Ax <tune-ax>` is similar but more robust to noisy data.
-Please note that these algorithms only work well with **a small number of hyperparameters**.
+Note that these algorithms only work well with **a small number of hyperparameters**.
 Alternatively, you can use :ref:`Population Based Training <tune-scheduler-pbt>` which
-works well with few trials, e.g. 8 or even 4. However, this will output a hyperparameter *schedule* rather
+works well with few trials, for example, 8 or even 4. However, this outputs a hyperparameter *schedule* rather
 than one fixed set of hyperparameters.
 
 **If you have a small number of hyperparameters**, Bayesian Optimization methods
@@ -78,23 +78,23 @@ work well. Take a look at :ref:`BOHB <tune-scheduler-bohb>` or :ref:`Optuna <tun
 with the :ref:`ASHA <tune-scheduler-hyperband>` scheduler to combine the
 benefits of Bayesian Optimization with early stopping.
 
-**If you only have continuous values for hyperparameters** this will work well
+**If you only have continuous values for hyperparameters** this works well
 with most Bayesian Optimization methods. Discrete or categorical variables still
 work, but less good with an increasing number of categories.
 
 **If you have many categorical values for hyperparameters**, consider using random search,
-or a TPE-based Bayesian Optimization algorithm such as :ref:`Optuna <tune-optuna>` or
-:ref:`HyperOpt <tune-hyperopt>`.
+or a Tree-structured Parzen Estimator (TPE)-based Bayesian Optimization algorithm such as :ref:`Optuna <tune-optuna>` or
+:ref:`Hyperopt <tune-hyperopt>`.
 
-**Our go-to solution** is usually to use **random search** with
+**The go-to solution** is usually to use **random search** with
 :ref:`ASHA for early stopping <tune-scheduler-hyperband>` for smaller problems.
 Use :ref:`BOHB <tune-scheduler-bohb>` for **larger problems** with a **small number of hyperparameters**
 and :ref:`Population Based Training <tune-scheduler-pbt>` for **larger problems** with a
 **large number of hyperparameters** if a learning schedule is acceptable.
 
 
-How do I choose hyperparameter ranges?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How do you choose hyperparameter ranges?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 A good start is to look at the papers that introduced the algorithms, and also
 to see what other people are using.
 
@@ -103,24 +103,24 @@ For instance, `XGBoost's parameter overview <https://xgboost.readthedocs.io/en/l
 reports to use ``max_depth=6`` for the maximum decision tree depth. Here, anything
 between 2 and 10 might make sense (though that naturally depends on your problem).
 
-For **learning rates**, we suggest using a **loguniform distribution** between
+For **learning rates**, use a **log-uniform distribution** between
 **1e-5** and **1e-1**: ``tune.loguniform(1e-5, 1e-1)``.
 
-For **batch sizes**, we suggest trying **powers of 2**, for instance, 2, 4, 8,
+For **batch sizes**, try **powers of 2**, for instance, 2, 4, 8,
 16, 32, 64, 128, 256, etc. The magnitude depends on your problem. For easy
 problems with lots of data, use higher batch sizes, for harder problems with
 not so much data, use lower batch sizes.
 
-For **layer sizes** we also suggest trying **powers of 2**. For small problems
-(e.g. Cartpole), use smaller layer sizes. For larger problems, try larger ones.
+For **layer sizes** also try **powers of 2**. For small problems
+(for example, CartPole), use smaller layer sizes. For larger problems, try larger ones.
 
-For **discount factors** in reinforcement learning we suggest sampling uniformly
-between 0.9 and 1.0. Depending on the problem, a much stricter range above 0.97
-or even above 0.99 can make sense (e.g. for Atari).
+For **discount factors** in reinforcement learning, sample uniformly
+between 0.9 and 1.0. Depending on the problem, a much stricter range greater than 0.97
+or even greater than 0.99 can make sense (for example, for Atari).
 
 
-How can I use nested/conditional search spaces?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How can you use nested/conditional search spaces?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Sometimes you might need to define parameters whose value depend on the value
 of other parameters. Ray Tune offers some methods to define these.
 
@@ -133,7 +133,7 @@ You can nest hyperparameter definition in sub dictionaries:
     :start-after: __basic_config_start__
     :end-before: __basic_config_end__
 
-The trial config will be nested exactly like the input config.
+The trial config is nested exactly like the input config.
 
 
 Conditional spaces
@@ -152,8 +152,8 @@ Conditional grid search
 '''''''''''''''''''''''
 If you would like to grid search over two parameters that depend on each other,
 this might not work out of the box. For instance say that *a* should be a value
-between 5 and 10 and *b* should be a value between 0 and a. In this case, we
-cannot use ``tune.sample_from`` because it doesn't support grid searching.
+between 5 and 10 and *b* should be a value between 0 and a. In this case, you
+can't use ``tune.sample_from`` because it doesn't support grid searching.
 
 The solution here is to create a list of valid *tuples* with the help of a
 helper function, like this:
@@ -168,10 +168,10 @@ Your trainable then can do something like ``a, b = config["ab"]`` to split
 the a and b variables and use them afterwards.
 
 
-How does early termination (e.g. Hyperband/ASHA) work?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How does early termination (for example, Hyperband/ASHA) work?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Early termination algorithms look at the intermediately reported values,
-e.g. what is reported to them via ``tune.report()`` after each training
+for example, what's reported to them through ``tune.report()`` after each training
 epoch. After a certain number of steps, they then remove the worst
 performing trials and keep only the best performing trials. Goodness of a trial
 is determined by ordering them by the objective metric, for instance accuracy
@@ -179,12 +179,12 @@ or loss.
 
 In ASHA, you can decide how many trials are early terminated.
 ``reduction_factor=4`` means that only 25% of all trials are kept each
-time they are reduced. With ``grace_period=n`` you can force ASHA to
+time they're reduced. With ``grace_period=n`` you can force ASHA to
 train each trial at least for ``n`` epochs.
 
 
-Why are all my trials returning "1" iteration?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Why are all trials returning "1" iteration?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 **This is most likely applicable for the Tune function API.**
 
@@ -202,7 +202,7 @@ like Hyperband/ASHA can terminate bad performing trials early.
 What are all these extra outputs?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You'll notice that Ray Tune not only reports hyperparameters (from the
+Ray Tune not only reports hyperparameters (from the
 ``config``) or metrics (passed to ``tune.report()``), but also some other
 outputs.
 
@@ -230,10 +230,10 @@ outputs.
 
 See the :ref:`tune-autofilled-metrics` section for a glossary.
 
-How do I set resources?
-~~~~~~~~~~~~~~~~~~~~~~~
+How do you set resources?
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 If you want to allocate specific resources to a trial, you can use the
-``tune.with_resources`` and wrap it around you trainable together with
+``tune.with_resources`` and wrap it around your trainable together with
 a dict or a :class:`PlacementGroupFactory <ray.tune.execution.placement_groups.PlacementGroupFactory>` object:
 
 .. literalinclude:: doc_code/faq.py
@@ -242,28 +242,28 @@ a dict or a :class:`PlacementGroupFactory <ray.tune.execution.placement_groups.P
     :start-after: __resources_start__
     :end-before: __resources_end__
 
-The example above showcases three things:
+The preceding example showcases three things:
 
 1. The `cpu` and `gpu` options set how many CPUs and GPUs are available for
-   each trial, respectively. **Trials cannot request more resources** than these
+   each trial, respectively. **Trials can't request more resources** than these
    (exception: see 3).
-2. It is possible to request **fractional GPUs**. A value of 0.5 means that
-   half of the memory of the GPU is made available to the trial. You will have
+2. It's possible to request **fractional GPUs**. A value of 0.5 means that
+   half of the memory of the GPU is made available to the trial. You have
    to make sure yourself that your model still fits on the fractional memory.
 3. You can request custom resources you supplied to Ray when starting the cluster.
-   Trials will only be scheduled on single nodes that can provide all resources you
+   Trials are only scheduled on single nodes that can provide all resources you
    requested.
 
 One important thing to keep in mind is that each Ray worker (and thus each
-Ray Tune Trial) will only be scheduled on **one machine**. That means if
+Ray Tune Trial) is only scheduled on **one machine**. That means if
 you for instance request 2 GPUs for your trial, but your cluster consists
-of 4 machines with 1 GPU each, the trial will never be scheduled.
+of 4 machines with 1 GPU each, the trial is never scheduled.
 
-In other words, you will have to make sure that your Ray cluster
+In other words, you have to make sure that your Ray cluster
 has machines that can actually fulfill your resource requests.
 
 In some cases your trainable might want to start other remote actors, for instance if you're
-leveraging distributed training via Ray Train. In these cases, you can use
+leveraging distributed training through Ray Train. In these cases, you can use
 :ref:`placement groups <ray-placement-group-doc-ref>` to request additional resources:
 
 .. literalinclude:: doc_code/faq.py
@@ -273,15 +273,15 @@ leveraging distributed training via Ray Train. In these cases, you can use
     :end-before: __resources_pgf_end__
 
 Here, you're requesting 2 additional CPUs for remote tasks. These two additional
-actors do not necessarily have to live on the same node as your main trainable.
-In fact, you can control this via the ``strategy`` parameter. In this example, ``PACK``
-will try to schedule the actors on the same node, but allows them to be scheduled
-on other nodes as well. Please refer to the
+actors don't necessarily have to live on the same node as your main trainable.
+In fact, you can control this through the ``strategy`` parameter. In this example, ``PACK``
+tries to schedule the actors on the same node, but allows them to be scheduled
+on other nodes as well. Refer to the
 :ref:`placement groups documentation <ray-placement-group-doc-ref>` to learn more
 about these placement strategies.
 
-You can also allocate specific resources to a trial based on a custom rule via lambda functions.
-For instance, if you want to allocate GPU resources to trials based on a setting in your param space:
+You can also allocate specific resources to a trial based on a custom rule through lambda functions.
+For instance, if you want to allocate GPU resources to trials based on a setting in your parameter space:
 
 .. literalinclude:: doc_code/faq.py
     :dedent:
@@ -290,19 +290,19 @@ For instance, if you want to allocate GPU resources to trials based on a setting
     :end-before: __resources_lambda_end__
 
 
-Why is my training stuck and Ray reporting that pending actor or tasks cannot be scheduled?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Why is your training stuck and Ray reporting that pending actor or tasks can't be scheduled?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This is usually caused by Ray actors or tasks being started by the
 trainable without the trainable resources accounting for them, leading to a deadlock.
 This can also be "stealthily" caused by using other libraries in the trainable that are
 based on Ray, such as Modin. In order to fix the issue, request additional resources for
 the trial using :ref:`placement groups <ray-placement-group-doc-ref>`, as outlined in
-the section above.
+the preceding section.
 
-For example, if your trainable is using Modin dataframes, operations on those will spawn
-Ray tasks. By allocating an additional CPU bundle to the trial, those tasks will be able
-to run without being starved of resources.
+For example, if your trainable is using Modin dataframes, operations on those spawn
+Ray tasks. By allocating an additional CPU bundle to the trial, those tasks can
+run without being starved of resources.
 
 .. literalinclude:: doc_code/faq.py
     :dedent:
@@ -311,8 +311,8 @@ to run without being starved of resources.
     :end-before: __modin_end__
 
 
-How can I pass further parameter values to my trainable?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How can you pass further parameter values to trainables?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ray Tune expects your trainable functions to accept only up to two parameters,
 ``config`` and ``checkpoint_dir``. But sometimes there are cases where
@@ -332,12 +332,12 @@ can pass even huge objects like datasets, and Ray makes sure that these
 are efficiently stored and retrieved on your cluster machines.
 
 :func:`tune.with_parameters() <ray.tune.with_parameters>`
-also works with class trainables. Please see
+also works with class trainables. See
 :func:`tune.with_parameters() <ray.tune.with_parameters>` for more details and examples.
 
 
-How can I reproduce experiments?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How can you reproduce experiments?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Reproducing experiments and experiment results means that you get the exact same
 results when running an experiment again and again. To achieve this, the
 conditions have to be exactly the same each time you run the experiment.
@@ -365,20 +365,20 @@ native ``random`` submodule and the ``numpy.random`` module.
     :end-before: __seeded_2_end__
 
 In your tuning and training run, there are several places where randomness occurs, and
-at all these places we will have to introduce seeds to make sure we get the same behavior.
+at all these places you have to introduce seeds to make sure you get the same behavior.
 
 * **Search algorithm**: Search algorithms have to be seeded to generate the same
   hyperparameter configurations in each run. Some search algorithms can be explicitly instantiated with a
   random seed (look for a ``seed`` parameter in the constructor). For others, try to use
-  the above code block.
+  the preceding code block.
 * **Schedulers**: Schedulers like Population Based Training rely on resampling some
-  of the parameters, requiring randomness. Use the code block above to set the initial
+  of the parameters, requiring randomness. Use the preceding code block to set the initial
   seeds.
 * **Training function**: In addition to initializing the configurations, the training
-  functions themselves have to use seeds. This could concern e.g. the data splitting.
+  functions themselves have to use seeds. This could concern, for example, the data splitting.
   You should make sure to set the seed at the start of your training function.
 
-PyTorch and TensorFlow use their own RNGs, which have to be initialized, too:
+PyTorch and TensorFlow use their own Random Number Generators (RNGs), which have to be initialized, too:
 
 .. literalinclude:: doc_code/faq.py
     :language: python
@@ -387,7 +387,7 @@ PyTorch and TensorFlow use their own RNGs, which have to be initialized, too:
 
 You should thus seed both Ray Tune's schedulers and search algorithms, and the
 training code. The schedulers and search algorithms should always be seeded with the
-same seed. This is also true for the training code, but often it is beneficial that
+same seed. This is also true for the training code, but often it's beneficial that
 the seeds differ *between different training runs*.
 
 Here's a blueprint on how to do all this in your training code:
@@ -398,24 +398,24 @@ Here's a blueprint on how to do all this in your training code:
     :end-before: __torch_seed_example_end__
 
 
-**Please note** that it is not always possible to control all sources of non-determinism.
-For instance, if you use schedulers like ASHA or PBT, some trials might finish earlier
+**Note** that it's not always possible to control all sources of non-determinism.
+For instance, if you use schedulers like ASHA or Population Based Training (PBT), some trials might finish earlier
 than other trials, affecting the behavior of the schedulers. Which trials finish first
 can however depend on the current system load, network communication, or other factors
-in the environment that we cannot control with random seeds. This is also true for search
+in the environment that you can't control with random seeds. This is also true for search
 algorithms such as Bayesian Optimization, which take previous results into account when
 sampling new configurations. This can be tackled by
 using the **synchronous modes** of PBT and Hyperband, where the schedulers wait for all trials to
 finish an epoch before deciding which trials to promote.
 
-We strongly advise to try reproduction on smaller toy problems first before relying
+Try reproduction on smaller toy problems first before relying
 on it for larger experiments.
 
 
 .. _tune-bottlenecks:
 
-How can I avoid bottlenecks?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How can you avoid bottlenecks?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Sometimes you might run into a message like this:
 
 .. code-block::
@@ -425,28 +425,28 @@ Sometimes you might run into a message like this:
 Most commonly, the ``experiment_checkpoint`` operation is throwing this warning, but it might be something else,
 like ``process_trial_result``.
 
-These operations should usually take less than 500ms to complete. When it consistently takes longer, this might
-indicate a problem or inefficiencies. To get rid of this message, it is important to understand where it comes
+These operations should usually take less than 500 ms to complete. When it consistently takes longer, this might
+indicate a problem or inefficiencies. To get rid of this message, it's important to understand where it comes
 from.
 
 These are the main reasons this problem comes up:
 
 **The Trial config is very large**
 
-This is the case if you e.g. try to pass a dataset or other large object via the ``config`` parameter.
+This is the case if you, for example, try to pass a dataset or other large object through the ``config`` parameter.
 If this is the case, the dataset is serialized and written to disk repeatedly during experiment
 checkpointing, which takes a long time.
 
 **Solution**: Use :func:`tune.with_parameters <ray.tune.with_parameters>` to pass large objects to
-function trainables via the objects store. For class trainables you can do this manually via ``ray.put()``
+function trainables through the objects store. For class trainables you can do this manually through ``ray.put()``
 and ``ray.get()``. If you need to pass a class definition, consider passing an
-indicator (e.g. a string) instead and let the trainable select the class instead. Generally, your config
-dictionary should only contain primitive types, like numbers or strings.
+indicator (for example, a string) instead and let the trainable select the class instead. Generally, your config
+dictionary should only contain primitive types, such as numbers or strings.
 
 **The Trial result is very large**
 
-This is the case if you return objects, data, or other large objects via the return value of ``step()`` in
-your class trainable or to ``tune.report()`` in your function trainable. The effect is the same as above:
+This is the case if you return objects, data, or other large objects through the return value of ``step()`` in
+your class trainable or to ``tune.report()`` in your function trainable. The effect is the same as the preceding:
 The results are repeatedly serialized and written to disk, and this can take a long time.
 
 **Solution**: Use checkpoint by writing data to the trainable's current working directory instead. There are various ways
@@ -455,14 +455,14 @@ to do that depending on whether you are using class or functional Trainable API.
 **You are training a large number of trials on a cluster, or you are saving huge checkpoints**
 
 **Solution**: You can use :ref:`cloud checkpointing <tune-cloud-checkpointing>` to save logs and checkpoints to a specified `storage_path`.
-This is the preferred way to deal with this. All syncing will be taken care of automatically, as all nodes
-are able to access the cloud storage. Additionally, your results will be safe, so even when you're working on
+This is the preferred way to deal with this. All syncing is taken care of automatically, as all nodes
+are able to access the cloud storage. Additionally, your results are safe, so even when you're working on
 pre-emptible instances, you won't lose any of your data.
 
 **You are reporting results too often**
 
 Each result is processed by the search algorithm, trial scheduler, and callbacks (including loggers and the
-trial syncer). If you're reporting a large number of results per trial (e.g. multiple results per second),
+trial syncer). If you're reporting a large number of results per trial (for example, multiple results per second),
 this can take a long time.
 
 **Solution**: The solution here is obvious: Just don't report results that often. In class trainables, ``step()``
@@ -471,8 +471,8 @@ of the training loop. Try to balance the number of results you really need to ma
 decisions. If you need more fine grained metrics for logging or tracking, consider using a separate logging
 mechanism for this instead of the Ray Tune-provided progress logging of results.
 
-How can I develop and test Tune locally?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How can you develop and test Tune locally?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 First, follow the instructions in :ref:`python-develop` to develop Tune without compiling Ray.
 After Ray is set up, run ``pip install -r ray/python/ray/tune/requirements-dev.txt`` to install all packages
@@ -482,15 +482,15 @@ required for Tune development. Now, to run all Tune tests simply run:
 
     pytest ray/python/ray/tune/tests/
 
-If you plan to submit a pull request, we recommend you to run unit tests locally beforehand to speed up the review process.
-Even though we have hooks to run unit tests automatically for each pull request, it's usually quicker to run them
+If you plan to submit a pull request, run unit tests locally beforehand to speed up the review process.
+Even though there are hooks to run unit tests automatically for each pull request, it's usually quicker to run them
 on your machine first to avoid any obvious mistakes.
 
 
-How can I get started contributing to Tune?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How can you get started contributing to Tune?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-We use GitHub to track issues, feature requests, and bugs. Take a look at the
+GitHub is used to track issues, feature requests, and bugs. Take a look at the
 ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good-first-issue%22>`__ and `"help wanted" <https://github.com/ray-project/ray/issues?q=is%3Aopen+is%3Aissue+label%3A%22help-wanted%22>`__ for a place to start.
 Look for issues with "[tune]" in the title.
 
@@ -501,7 +501,7 @@ Look for issues with "[tune]" in the title.
 
 .. _tune-reproducible:
 
-How can I make my Tune experiments reproducible?
+How can you make Tune experiments reproducible?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Exact reproducibility of machine learning runs is hard to achieve. This
@@ -509,21 +509,21 @@ is even more true in a distributed setting, as more non-determinism is
 introduced. For instance, if two trials finish at the same time, the
 convergence of the search algorithm might be influenced by which trial
 result is processed first. This depends on the searcher - for random search,
-this shouldn't make a difference, but for most other searchers it will.
+this shouldn't make a difference, but for most other searchers it does.
 
 If you try to achieve some amount of reproducibility, there are two
-places where you'll have to set random seeds:
+places where you have to set random seeds:
 
-1. On the driver program, e.g. for the search algorithm. This will ensure
+1. On the driver program, for example, for the search algorithm. This ensures
    that at least the initial configurations suggested by the search
    algorithms are the same.
 
 2. In the trainable (if required). Neural networks are usually initialized
-   with random numbers, and many classical ML algorithms, like GBDTs, make use of
-   randomness. Thus you'll want to make sure to set a seed here
+   with random numbers, and many classical ML algorithms, such as gradient-boosted decision trees, make use of
+   randomness. Thus make sure to set a seed here
    so that the initialization is always the same.
 
-Here is an example that will always produce the same result (except for trial
+Here is an example that always produces the same result (except for trial
 runtimes).
 
 .. literalinclude:: doc_code/faq.py
@@ -535,22 +535,22 @@ runtimes).
 Some searchers use their own random states to sample new configurations.
 These searchers usually accept a ``seed`` parameter that can be passed on
 initialization. Other searchers use Numpy's ``np.random`` interface -
-these seeds can be then set with ``np.random.seed()``. We don't offer an
+these seeds can be then set with ``np.random.seed()``. Ray Tune doesn't offer an
 interface to do this in the searcher classes as setting a random seed
 globally could have side effects. For instance, it could influence the
-way your dataset is split. Thus, we leave it up to the user to make
+way your dataset is split. Thus, it's up to the user to make
 these global configuration changes.
 
 
-How can I use large datasets in Tune?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How can you use large datasets in Tune?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You often will want to compute a large object (e.g., training data, model weights) on the driver and use that
+You often want to compute a large object (for example, training data, model weights) on the driver and use that
 object within each trial.
 
 Tune provides a wrapper function ``tune.with_parameters()`` that allows you to broadcast large objects to your trainable.
-Objects passed with this wrapper will be stored on the :ref:`Ray object store <objects-in-ray>` and will
-be automatically fetched and passed to your trainable as a parameter.
+Objects passed with this wrapper are stored on the :ref:`Ray object store <objects-in-ray>` and are
+automatically fetched and passed to your trainable as a parameter.
 
 
 .. tip:: If the objects are small in size or already exist in the :ref:`Ray Object Store <objects-in-ray>`, there's no need to use ``tune.with_parameters()``. You can use `partials <https://docs.python.org/3/library/functools.html#functools.partial>`__ or pass in directly to ``config`` instead.
@@ -563,7 +563,7 @@ be automatically fetched and passed to your trainable as a parameter.
 
 .. _tune-cloud-syncing:
 
-How can I upload my Tune results to cloud storage?
+How can you upload Tune results to cloud storage?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 See :ref:`tune-cloud-checkpointing`.
@@ -576,25 +576,25 @@ Please :ref:`see here for more tips <aws-cluster-s3>`.
 
 .. _tune-kubernetes:
 
-How can I use Tune with Kubernetes?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How can you use Tune with Kubernetes?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You should configure shared storage. See this user guide: :ref:`tune-storage-options`.
 
 .. _tune-docker:
 
-How can I use Tune with Docker?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How can you use Tune with Docker?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You should configure shared storage. See this user guide: :ref:`tune-storage-options`.
 
 
 .. _tune-default-search-space:
 
-How do I configure search spaces?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How do you configure search spaces?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can specify a grid search or sampling distribution via the dict passed into ``Tuner(param_space=...)``.
+You can specify a grid search or sampling distribution through the dict passed into ``Tuner(param_space=...)``.
 
 .. literalinclude:: doc_code/faq.py
     :dedent:
@@ -604,7 +604,7 @@ You can specify a grid search or sampling distribution via the dict passed into 
 
 By default, each random variable and grid search point is sampled once.
 To take multiple random samples, add ``num_samples: N`` to the experiment config.
-If `grid_search` is provided as an argument, the grid will be repeated ``num_samples`` of times.
+If `grid_search` is provided as an argument, the grid is repeated ``num_samples`` of times.
 
 .. literalinclude:: doc_code/faq.py
     :language: python
@@ -612,17 +612,17 @@ If `grid_search` is provided as an argument, the grid will be repeated ``num_sam
     :end-before: __grid_search_2_end__
 
 Note that search spaces may not be interoperable across different search algorithms.
-For example, for many search algorithms, you will not be able to use a ``grid_search`` or ``sample_from`` parameters.
+For example, for many search algorithms, you can't use a ``grid_search`` or ``sample_from`` parameters.
 Read about this in the :ref:`Search Space API <tune-search-space>` page.
 
 .. _tune-working-dir:
 
-How do I access relative filepaths in my Tune training function?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How do you access relative filepaths in Tune training functions?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Let's say you launch a Tune experiment with ``my_script.py`` from inside ``~/code``.
+Say you launch a Tune experiment with ``my_script.py`` from inside ``~/code``.
 By default, Tune changes the working directory of each worker to its corresponding trial
-directory (e.g. ``~/ray_results/exp_name/trial_0000x``). This guarantees separate working
+directory (for example, ``~/ray_results/exp_name/trial_0000x``). This guarantees separate working
 directories for each worker process, avoiding conflicts when saving trial-specific outputs.
 
 You can configure this by setting the `RAY_CHDIR_TO_TRIAL_DIR=0` environment variable.
@@ -643,25 +643,25 @@ API should be used to get the path for saving trial-specific outputs.
 
     The `TUNE_ORIG_WORKING_DIR` environment variable was the original workaround for
     accessing paths relative to the original working directory. This environment
-    variable is deprecated, and the `RAY_CHDIR_TO_TRIAL_DIR` environment variable above
+    variable is deprecated, and the `RAY_CHDIR_TO_TRIAL_DIR` environment variable preceding
     should be used instead.
 
 
 .. _tune-multi-tenancy:
 
-How can I run multiple Ray Tune jobs on the same cluster at the same time (multi-tenancy)?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How can you run multiple Ray Tune jobs on the same cluster at the same time (multi-tenancy)?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Running multiple Ray Tune runs on the same cluster at the same
-time is not officially supported. We do not test this workflow and we recommend
-using a separate cluster for each tuning job.
+time isn't officially supported. This workflow isn't tested and using
+a separate cluster for each tuning job is recommended.
 
 The reasons for this are:
 
 1. When multiple Ray Tune jobs run at the same time, they compete for resources.
    One job could run all its trials at the same time, while the other job waits
    for a long time until it gets resources to run the first trial.
-2. If it is easy to start a new Ray cluster on your infrastructure, there is often
+2. If it's easy to start a new Ray cluster on your infrastructure, there's often
    no cost benefit to running one large cluster instead of multiple smaller
    clusters. For instance, running one cluster of 32 instances incurs almost the same
    cost as running 4 clusters with 8 instances each.
@@ -673,30 +673,30 @@ Previously, some internal implementations in Ray Tune assumed that you only have
 running at a time. A symptom was when trials from job A used parameters specified in job B,
 leading to unexpected results.
 
-Please refer to
+Refer to
 `this GitHub issue <https://github.com/ray-project/ray/issues/30091#issuecomment-1431676976>`__
 for more context and a workaround if you run into this issue.
 
 .. _tune-iterative-experimentation:
 
-How can I continue training a completed Tune experiment for longer and with new configurations (iterative experimentation)?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How can you continue training a completed Tune experiment for longer and with new configurations (iterative experimentation)?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Let's say that I have a Tune experiment that has completed with the following configurations:
+Say a Tune experiment has completed with the following configurations:
 
 .. literalinclude:: /tune/doc_code/faq.py
     :language: python
     :start-after: __iter_experimentation_initial_start__
     :end-before: __iter_experimentation_initial_end__
 
-Now, I want to continue training from a checkpoint (e.g., the best one) generated by the previous experiment,
+Now, to continue training from a checkpoint (for example, the best one) generated by the previous experiment,
 and search over a new hyperparameter search space, for another ``10`` epochs.
 
 :ref:`tune-fault-tolerance-ref` explains that the usage of :meth:`Tuner.restore <ray.tune.Tuner.restore>`
 is meant for resuming an *unfinished* experiment that was interrupted in the middle,
 according to the *exact configuration* that was supplied in the initial training run.
 
-Therefore, ``Tuner.restore`` is not suitable for our desired behavior.
+Therefore, ``Tuner.restore`` isn't suitable for this desired behavior.
 This style of "iterative experimentation" should be done with *new* Tune experiments
 rather than restoring a single experiment over and over and modifying the experiment spec.
 

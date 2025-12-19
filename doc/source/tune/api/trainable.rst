@@ -4,13 +4,13 @@
     API does not really have a signature to just describe.
 .. TODO: Reusing actors and advanced resources allocation seem ill-placed.
 
-Training in Tune (tune.Trainable, tune.report)
-=================================================
+Training in Tune (``tune.Trainable``, ``tune.report``)
+=======================================================
 
 Training can be done with either a **Function API** (:func:`tune.report() <ray.tune.report>`) or
 **Class API** (:ref:`tune.Trainable <tune-trainable-docstring>`).
 
-For the sake of example, let's maximize this objective function:
+For the sake of example, maximize this objective function:
 
 .. literalinclude:: /tune/doc_code/trainable.py
     :language: python
@@ -37,8 +37,8 @@ With the Function API, you can report intermediate metrics by simply calling :fu
 
 .. tip:: Do not use :func:`tune.report() <ray.tune.report>` within a ``Trainable`` class.
 
-In the previous example, we reported on every step, but this metric reporting frequency
-is configurable. For example, we could also report only a single time at the end with the final score:
+In the previous example, the metrics are reported on every step, but this metric reporting frequency
+is configurable. For example, you could also report only a single time at the end with the final score:
 
 .. literalinclude:: /tune/doc_code/trainable.py
     :language: python
@@ -64,14 +64,14 @@ Class Trainable API
 
 .. caution:: Do not use :func:`tune.report() <ray.tune.report>` within a ``Trainable`` class.
 
-The Trainable **class API** will require users to subclass ``ray.tune.Trainable``. Here's a naive example of this API:
+The Trainable **class API** requires users to subclass ``ray.tune.Trainable``. Here's a naive example of this API:
 
 .. literalinclude:: /tune/doc_code/trainable.py
     :language: python
     :start-after: __class_api_example_start__
     :end-before: __class_api_example_end__
 
-As a subclass of ``tune.Trainable``, Tune will create a ``Trainable`` object on a
+As a subclass of ``tune.Trainable``, Tune creates a ``Trainable`` object on a
 separate process (using the :ref:`Ray Actor API <actor-guide>`).
 
   1. ``setup`` function is invoked once training starts.
@@ -84,9 +84,9 @@ The ``config`` argument in the ``setup`` method is a dictionary populated automa
 the hyperparameters selected for the trial from the :ref:`search space <tune-key-concepts-search-spaces>`.
 
 .. tip:: As a rule of thumb, the execution time of ``step`` should be large enough to avoid overheads
-    (i.e. more than a few seconds), but short enough to report progress periodically (i.e. at most a few minutes).
+    (that's more than a few seconds), but short enough to report progress periodically (that's at most a few minutes).
 
-You'll notice that Ray Tune will output extra values in addition to the user reported metrics,
+Ray Tune outputs extra values in addition to the user reported metrics,
 such as ``iterations_since_restore``.
 See :ref:`tune-autofilled-metrics` for an explanation/glossary of these values.
 
@@ -103,7 +103,7 @@ To avoid this, you can do ``tune.TuneConfig(reuse_actors=True)`` (which is taken
 object for multiple hyperparameters.
 
 This requires you to implement ``Trainable.reset_config``, which provides a new set of hyperparameters.
-It is up to the user to correctly update the hyperparameters of your trainable.
+It's up to the user to correctly update the hyperparameters of your trainable.
 
 .. code-block:: python
 
@@ -179,11 +179,11 @@ Here are a few key concepts and what they look like for the Function and Class A
 ======================= =============================================== ==============================================
 Concept                 Function API                                    Class API
 ======================= =============================================== ==============================================
-Training Iteration      Increments on each `tune.report` call           Increments on each `Trainable.step` call
-Report  metrics         `tune.report(metrics)`                          Return metrics from `Trainable.step`
-Saving a checkpoint     `tune.report(..., checkpoint=checkpoint)`       `Trainable.save_checkpoint`
-Loading a checkpoint    `tune.get_checkpoint()`                         `Trainable.load_checkpoint`
-Accessing config        Passed as an argument `def train_func(config):` Passed through `Trainable.setup`
+Training Iteration      Increments on each ``tune.report`` call           Increments on each ``Trainable.step`` call
+Report  metrics         ``tune.report(metrics)``                          Return metrics from ``Trainable.step``
+Saving a checkpoint     ``tune.report(..., checkpoint=checkpoint)``       ``Trainable.save_checkpoint``
+Loading a checkpoint    ``tune.get_checkpoint()``                         ``Trainable.load_checkpoint``
+Accessing config        Passed as an argument ``def train_func(config):`` Passed through ``Trainable.setup``
 ======================= =============================================== ==============================================
 
 
@@ -191,11 +191,12 @@ Advanced Resource Allocation
 ----------------------------
 
 Trainables can themselves be distributed. If your trainable function / class creates further Ray actors or tasks
-that also consume CPU / GPU resources, you will want to add more bundles to the :class:`PlacementGroupFactory`
+that also consume CPU / GPU resources, add more bundles to the :class:`PlacementGroupFactory`
 to reserve extra resource slots.
 For example, if a trainable class requires 1 GPU itself, but also launches 4 actors, each using another GPU,
 then you should use :func:`tune.with_resources <ray.tune.with_resources>` like this:
 
+.. vale Google.Spacing = NO
 .. code-block:: python
    :emphasize-lines: 4-10
 
@@ -209,11 +210,11 @@ then you should use :func:`tune.with_resources <ray.tune.with_resources>` like t
         ])),
         run_config=RunConfig(name="my_trainable")
     )
-
+.. vale Google.Spacing = YES
 The ``Trainable`` also provides the ``default_resource_requests`` interface to automatically
 declare the resources per trial based on the given configuration.
 
-It is also possible to specify memory (``"memory"``, in bytes) and custom resource requirements.
+It's also possible to specify memory (``"memory"``, in bytes) and custom resource requirements.
 
 .. currentmodule:: ray
 

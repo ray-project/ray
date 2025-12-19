@@ -3,11 +3,15 @@
 
 .. _result-grid-docstring:
 
-Tune Experiment Results (tune.ResultGrid)
-=========================================
+Tune Experiment Results (``tune.ResultGrid``)
+=============================================
+
+.. vale Google.Spacing = NO
 
 ResultGrid (tune.ResultGrid)
 ----------------------------
+
+.. vale Google.Spacing = YES
 
 .. currentmodule:: ray
 
@@ -26,8 +30,12 @@ ResultGrid (tune.ResultGrid)
 
 .. _result-docstring:
 
+.. vale Google.Spacing = NO
+
 Result (tune.Result)
 ---------------------
+
+.. vale Google.Spacing = YES
 
 .. autosummary::
     :nosignatures:
@@ -39,8 +47,12 @@ Result (tune.Result)
 .. _exp-analysis-docstring:
 
 
+.. vale Google.Spacing = NO
+
 ExperimentAnalysis (tune.ExperimentAnalysis)
 --------------------------------------------
+
+.. vale Google.Spacing = YES
 
 .. note::
 

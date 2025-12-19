@@ -1,6 +1,5 @@
-Tune Execution (tune.Tuner)
-===========================
-
+Tune Execution (``tune.Tuner``)
+======================
 .. _tune-run-ref:
 
 Tuner

@@ -1,7 +1,7 @@
 .. _tune-callbacks-docs:
 
-Tune Callbacks (tune.Callback)
-==============================
+Tune Callbacks (``tune.Callback``)
+==================================
 
 See :doc:`this user guide </tune/tutorials/tune-metrics>` for more details.
 

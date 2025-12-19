@@ -8,37 +8,37 @@ The most common way to use Tune is also the simplest: as a parallel experiment r
 Running Independent Tune Trials in Parallel
 -------------------------------------------
 
-As a general example, let's consider executing ``N`` independent model training trials using Tune as a simple grid sweep. Each trial can execute different code depending on a passed-in config dictionary.
+As a general example, consider executing ``N`` independent model training trials using Tune as a simple grid sweep. Each trial can execute different code depending on a passed-in config dictionary.
 
-**Step 1:** First, we define the model training function that we want to run variations of. The function takes in a config dictionary as argument, and returns a simple dict output. Learn more about logging Tune results at :ref:`tune-logging`.
+**Step 1:** First, define the model training function to run variations of. The function takes in a config dictionary as argument, and returns a simple dict output. Learn more about logging Tune results at :ref:`tune-logging`.
 
 .. literalinclude:: ../doc_code/tune.py
     :language: python
     :start-after: __step1_begin__
     :end-before: __step1_end__
 
-**Step 2:** Next, define the space of trials to run. Here, we define a simple grid sweep from ``0..NUM_MODELS``, which will generate the config dicts to be passed to each model function. Learn more about what features Tune offers for defining spaces at :ref:`tune-search-space-tutorial`.
+**Step 2:** Next, define the space of trials to run. Here, define a simple grid sweep from ``0..NUM_MODELS``, which generates the config dicts to be passed to each model function. Learn more about what features Tune offers for defining spaces at :ref:`tune-search-space-tutorial`.
 
 .. literalinclude:: ../doc_code/tune.py
     :language: python
     :start-after: __step2_begin__
     :end-before: __step2_end__
 
-**Step 3:** Optionally, configure the resources allocated per trial. Tune uses this resources allocation to control the parallelism. For example, if each trial was configured to use 4 CPUs, and the cluster had only 32 CPUs, then Tune will limit the number of concurrent trials to 8 to avoid overloading the cluster. For more information, see :ref:`tune-parallelism`.
+**Step 3:** Optionally, configure the resources allocated per trial. Tune uses this resources allocation to control the parallelism. For example, if each trial was configured to use 4 CPUs, and the cluster had only 32 CPUs, then Tune limits the number of concurrent trials to 8 to avoid overloading the cluster. For more information, see :ref:`tune-parallelism`.
 
 .. literalinclude:: ../doc_code/tune.py
     :language: python
     :start-after: __step3_begin__
     :end-before: __step3_end__
 
-**Step 4:** Run the trial with Tune. Tune will report on experiment status, and after the experiment finishes, you can inspect the results. Tune can retry failed trials automatically, as well as entire experiments; see :ref:`tune-stopping-guide`.
+**Step 4:** Run the trial with Tune. Tune reports on experiment status, and after the experiment finishes, you can inspect the results. Tune can retry failed trials automatically, as well as entire experiments; see :ref:`tune-stopping-guide`.
 
 .. literalinclude:: ../doc_code/tune.py
     :language: python
     :start-after: __step4_begin__
     :end-before: __step4_end__
 
-**Step 5:** Inspect results. They will look something like this. Tune periodically prints a status summary to stdout showing the ongoing experiment status, until it finishes:
+**Step 5:** Inspect results. They look something like this. Tune periodically prints a status summary to stdout showing the ongoing experiment status, until it finishes:
 
 .. code::
 
@@ -74,14 +74,14 @@ The final result objects contain finished trial metadata:
 How does Tune compare  to using Ray Core (``ray.remote``)?
 ----------------------------------------------------------
 
-You might be wondering how Tune differs from simply using :ref:`ray-remote-functions` for parallel trial execution. Indeed, the above example could be re-written similarly as:
+You might be wondering how Tune differs from simply using :ref:`ray-remote-functions` for parallel trial execution. Indeed, the preceding example could be re-written similarly as:
 
 .. literalinclude:: ../doc_code/tune.py
     :language: python
     :start-after: __tasks_begin__
     :end-before: __tasks_end__
 
-Compared to using Ray tasks, Tune offers the following additional functionality:
+Compared to using Ray tasks, Tune offers the following additional features:
 
 * Status reporting and tracking, including integrations and callbacks to common monitoring tools.
 * Checkpointing of trials for fine-grained fault-tolerance.

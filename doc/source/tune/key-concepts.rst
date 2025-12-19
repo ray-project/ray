@@ -7,8 +7,8 @@ Key Concepts of Ray Tune
 .. TODO: should we introduce checkpoints as well?
 .. TODO: should we at least mention "Stopper" classes here?
 
-Let's quickly walk through the key concepts you need to know to use Tune.
-If you want to see practical tutorials right away, go visit our :ref:`user guides <tune-guides>`.
+Quickly walk through the key concepts you need to know to use Tune.
+If you want to see practical tutorials right away, go visit the :ref:`user guides <tune-guides>`.
 In essence, Tune has six crucial components that you need to understand.
 
 First, you define the hyperparameters you want to tune in a `search space` and pass them into a `trainable`
@@ -18,7 +18,7 @@ Then you select a `search algorithm` to effectively optimize your parameters and
 Together with other configuration, your `trainable`, search algorithm, and scheduler are passed into ``Tuner``,
 which runs your experiments and creates `trials`.
 The `Tuner` returns a `ResultGrid` to inspect your experiment results.
-The following figure shows an overview of these components, which we cover in detail in the next sections.
+The following figure shows an overview of these components, covered in detail in the next sections.
 
 .. image:: images/tune_flow.png
 
@@ -34,9 +34,9 @@ Both are valid ways of defining a `trainable`, but the Function API is generally
 throughout the rest of this guide.
 
 Consider an example of optimizing a simple objective function like ``a * (x ** 2) + b`` in which ``a`` and ``b`` are the
-hyperparameters we want to tune to `minimize` the objective.
-Since the objective also has a variable ``x``, we need to test for different values of ``x``.
-Given concrete choices for ``a``, ``b`` and ``x`` we can evaluate the objective function and get a `score` to minimize.
+hyperparameters to tune to `minimize` the objective.
+Since the objective also has a variable ``x``, test for different values of ``x``.
+Given concrete choices for ``a``, ``b`` and ``x``, you can evaluate the objective function and get a `score` to minimize.
 
 .. tab-set::
 
@@ -51,7 +51,7 @@ Given concrete choices for ``a``, ``b`` and ``x`` we can evaluate the objective 
             :start-after: __function_api_start__
             :end-before: __function_api_end__
 
-        Note that we use ``tune.report(...)`` to report the intermediate ``score`` in the training loop, which can be useful
+        Note that ``tune.report(...)`` reports the intermediate ``score`` in the training loop, which can be useful
         in many machine learning tasks.
         If you just want to report the final ``score`` outside of this loop, you can simply return the score at the
         end of the ``trainable`` function with ``return {"score": score}``.
@@ -79,7 +79,7 @@ Tune Search Spaces
 
 To optimize your *hyperparameters*, you have to define a *search space*.
 A search space defines valid values for your hyperparameters and can specify
-how these values are sampled (e.g. from a uniform distribution or a normal
+how these values are sampled (for example, from a uniform distribution or a normal
 distribution).
 
 Tune offers various functions to define search spaces and sampling methods.
@@ -112,14 +112,14 @@ looks like this:
     :start-after: __run_tunable_start__
     :end-before: __run_tunable_end__
 
-``Tuner.fit`` will generate a couple of hyperparameter configurations from its arguments,
+``Tuner.fit`` generates a couple of hyperparameter configurations from its arguments,
 wrapping them into :ref:`Trial objects <trial-docstring>`.
 
 Trials contain a lot of information.
 For instance, you can get the hyperparameter configuration using (``trial.config``), the trial ID (``trial.trial_id``),
 the trial's resource specification (``resources_per_trial`` or ``trial.placement_group_factory``) and many other values.
 
-By default ``Tuner.fit`` will execute until all trials stop or error.
+By default ``Tuner.fit`` executes until all trials stop or error.
 Here's an example output of a trial run:
 
 .. TODO: how to make sure this doesn't get outdated?
@@ -139,7 +139,7 @@ Here's an example output of a trial run:
 
 
 You can also easily run just 10 trials by specifying the number of samples (``num_samples``).
-Tune automatically :ref:`determines how many trials will run in parallel <tune-parallelism>`.
+Tune automatically :ref:`determines how many trials run in parallel <tune-parallelism>`.
 Note that instead of the number of samples, you can also specify a time budget in seconds through ``time_budget_s``,
 if you set ``num_samples=-1``.
 
@@ -150,7 +150,7 @@ if you set ``num_samples=-1``.
 
 
 Finally, you can use more interesting search spaces to optimize your hyperparameters
-via Tune's :ref:`search space API <tune-default-search-space>`, like using random samples or grid search.
+through Tune's :ref:`search space API <tune-default-search-space>`, such as using random samples or grid search.
 Here's an example of uniformly sampling between ``[0, 1]`` for ``a`` and ``b``:
 
 .. literalinclude:: doc_code/key_concepts.py
@@ -168,7 +168,7 @@ Tune Search Algorithms
 
 To optimize the hyperparameters of your training process, you use
 a :ref:`Search Algorithm <tune-search-alg>` which suggests hyperparameter configurations.
-If you don't specify a search algorithm, Tune will use random search by default, which can provide you
+If you don't specify a search algorithm, Tune uses random search by default, which can provide you
 with a good starting point for your hyperparameter optimization.
 
 For instance, to use Tune with simple Bayesian optimization through the ``bayesian-optimization`` package
@@ -181,7 +181,7 @@ Simply pass in a ``search_alg`` argument to ``tune.TuneConfig``, which is taken 
     :end-before: __bayes_end__
 
 Tune has Search Algorithms that integrate with many popular **optimization** libraries,
-such as :ref:`HyperOpt <tune-hyperopt>` or :ref:`Optuna <tune-optuna>`.
+such as :ref:`Hyperopt <tune-hyperopt>` or :ref:`Optuna <tune-optuna>`.
 Tune automatically converts the provided search space into the search
 spaces the search algorithms and underlying libraries expect.
 See the :ref:`Search Algorithm API documentation <tune-search-alg>` for more details.
@@ -206,14 +206,14 @@ Here's an overview of all available search algorithms in Tune:
      - :doc:`/tune/examples/includes/ax_example`
    * - :ref:`HyperOptSearch <tune-hyperopt>`
      - Tree-Parzen Estimators
-     - [`HyperOpt <http://hyperopt.github.io/hyperopt>`__]
+     - [`Hyperopt <http://hyperopt.github.io/hyperopt>`__]
      - :doc:`/tune/examples/hyperopt_example`
    * - :ref:`BayesOptSearch <bayesopt>`
      - Bayesian Optimization
      - [`BayesianOptimization <https://github.com/fmfn/BayesianOptimization>`__]
      - :doc:`/tune/examples/includes/bayesopt_example`
    * - :ref:`TuneBOHB <suggest-TuneBOHB>`
-     - Bayesian Opt/HyperBand
+     - Bayesian Opt/Hyperband
      - [`BOHB <https://github.com/automl/HpBandSter>`__]
      - :doc:`/tune/examples/includes/bohb_example`
    * - :ref:`NevergradSearch <nevergrad>`
@@ -238,8 +238,8 @@ Tune also provides helpful utilities to use with Search Algorithms:
  * :ref:`limiter`: Limits the amount of concurrent trials when running optimization.
  * :ref:`shim`: Allows creation of the search algorithm object given a string.
 
-Note that in the example above we tell Tune to ``stop`` after ``20`` training iterations.
-This way of stopping trials with explicit rules is useful, but in many cases we can do even better with
+Note that in the preceding example, tell Tune to ``stop`` after ``20`` training iterations.
+This way of stopping trials with explicit rules is useful, but in many cases you can do even better with
 `schedulers`.
 
 .. _schedulers-ref:
@@ -248,15 +248,15 @@ Tune Schedulers
 ---------------
 
 To make your training process more efficient, you can use a :ref:`Trial Scheduler <tune-schedulers>`.
-For instance, in our ``trainable`` example minimizing a function in a training loop, we used ``tune.report()``.
-This reported `incremental` results, given a hyperparameter configuration selected by a search algorithm.
+For instance, in the ``trainable`` example minimizing a function in a training loop, ``tune.report()`` reported
+`incremental` results, given a hyperparameter configuration selected by a search algorithm.
 Based on these reported results, a Tune scheduler can decide whether to stop the trial early or not.
-If you don't specify a scheduler, Tune will use a first-in-first-out (FIFO) scheduler by default, which simply
-passes through the trials selected by your search algorithm in the order they were picked and does not perform any early stopping.
+If you don't specify a scheduler, Tune uses a First In First Out (FIFO) scheduler by default, which simply
+passes through the trials selected by your search algorithm in the order they were picked and doesn't perform any early stopping.
 
 In short, schedulers can stop, pause, or tweak the
 hyperparameters of running trials, potentially making your hyperparameter tuning process much faster.
-Unlike search algorithms, :ref:`Trial Schedulers <tune-schedulers>` do not select which hyperparameter
+Unlike search algorithms, :ref:`Trial Schedulers <tune-schedulers>` don't select which hyperparameter
 configurations to evaluate.
 
 Here's a quick example of using the so-called ``HyperBand`` scheduler to tune an experiment.
@@ -276,10 +276,10 @@ and `ASHA <https://openreview.net/forum?id=S1Y7OOlRZ>`__.
 Tune also includes a distributed implementation of `Population Based Training (PBT) <https://www.deepmind.com/blog/population-based-training-of-neural-networks>`__
 and `Population Based Bandits (PB2) <https://arxiv.org/abs/2002.02518>`__.
 
-.. tip:: The easiest scheduler to start with is the ``ASHAScheduler`` which will aggressively terminate low-performing trials.
+.. tip:: The easiest scheduler to start with is the ``ASHAScheduler`` which aggressively terminates low-performing trials.
 
 When using schedulers, you may face compatibility issues, as shown in the below compatibility matrix.
-Certain schedulers cannot be used with search algorithms,
+Certain schedulers can't be used with search algorithms,
 and certain schedulers require that you implement :ref:`checkpointing <tune-trial-checkpoint>`.
 
 Schedulers can dynamically change trial resource requirements during tuning.

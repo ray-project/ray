@@ -3,7 +3,7 @@
 Tune Trial Schedulers (tune.schedulers)
 =======================================
 
-In Tune, some hyperparameter optimization algorithms are written as "scheduling algorithms".
+In Tune, some hyperparameter optimization algorithms are written as "scheduling algorithms."
 These Trial Schedulers can early terminate bad trials, pause trials, clone trials,
 and alter hyperparameters of a running trial.
 
@@ -35,8 +35,14 @@ Trainable and is maximized or minimized according to ``mode``.
 
 .. _tune-scheduler-hyperband:
 
+.. vale Google.Spacing = NO
+
 ASHA (tune.schedulers.ASHAScheduler)
 ------------------------------------
+
+.. vale Google.Spacing = YES
+
+Adaptive Successive Halving Algorithm (ASHA) is an asynchronous version of Successive Halving.
 
 The `ASHA <https://openreview.net/forum?id=S1Y7OOlRZ>`__ scheduler can be used by
 setting the ``scheduler`` parameter of ``tune.TuneConfig``, which is taken in by ``Tuner``, e.g.
@@ -63,7 +69,7 @@ setting the ``scheduler`` parameter of ``tune.TuneConfig``, which is taken in by
 
 Compared to the original version of HyperBand, this implementation provides better
 parallelism and avoids straggler issues during eliminations.
-**We recommend using this over the standard HyperBand scheduler.**
+**Using this over the standard HyperBand scheduler is recommended.**
 An example of this can be found here: :doc:`/tune/examples/includes/async_hyperband_example`.
 
 Even though the original paper mentions a bracket count of 3, discussions with the authors concluded
@@ -80,11 +86,15 @@ This is the default used if no value is provided for the ``brackets`` argument.
 
 .. _tune-original-hyperband:
 
+.. vale Google.Spacing = NO
+
 HyperBand (tune.schedulers.HyperBandScheduler)
 ----------------------------------------------
 
+.. vale Google.Spacing = YES
+
 Tune implements the `standard version of HyperBand <https://arxiv.org/abs/1603.06560>`__.
-**We recommend using the ASHA Scheduler over the standard HyperBand scheduler.**
+**Using the ASHA Scheduler over the standard HyperBand scheduler is recommended.**
 
 .. autosummary::
     :nosignatures:
@@ -109,28 +119,32 @@ See `this post <https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparam
 .. image:: /images/hyperband_bracket.png
 
 On the other hand, holding ``R`` constant at ``R = 300`` and varying ``eta`` also leads to
-HyperBand configurations that are not very intuitive:
+HyperBand configurations that aren't very intuitive:
 
 .. image:: /images/hyperband_eta.png
 
 The implementation takes the same configuration as the example given in the paper
-and exposes ``max_t``, which is not a parameter in the paper.
+and exposes ``max_t``, which isn't a parameter in the paper.
 
 2. The example in the `post <https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/>`_ to calculate ``n_0``
     is actually a little different than the algorithm given in the paper.
-    In this implementation, we implement ``n_0`` according to the paper (which is `n` in the below example):
+    In this implementation, ``n_0`` is implemented according to the paper (which is `n` in the below example):
 
 .. image:: /images/hyperband_allocation.png
 
 
-3. There are also implementation specific details like how trials are placed into brackets which are not covered in the paper.
+3. There are also implementation specific details such as how trials are placed into brackets which aren't covered in the paper.
     This implementation places trials within brackets according to smaller bracket first - meaning
-    that with low number of trials, there will be less early stopping.
+    that with low number of trials, there is less early stopping.
 
 .. _tune-scheduler-msr:
 
+.. vale Google.Spacing = NO
+
 Median Stopping Rule (tune.schedulers.MedianStoppingRule)
 ---------------------------------------------------------
+
+.. vale Google.Spacing = YES
 
 The Median Stopping Rule implements the simple strategy of stopping a trial if its performance falls
 below the median of other trials at similar points in time.
@@ -143,8 +157,14 @@ below the median of other trials at similar points in time.
 
 .. _tune-scheduler-pbt:
 
+.. vale Google.Spacing = NO
+
 Population Based Training (tune.schedulers.PopulationBasedTraining)
 -------------------------------------------------------------------
+
+.. vale Google.Spacing = YES
+
+Population Based Training (PBT) is a hyperparameter optimization algorithm.
 
 Tune includes a distributed implementation of `Population Based Training (PBT) <https://www.deepmind.com/blog/population-based-training-of-neural-networks>`__.
 This can be enabled by setting the ``scheduler`` parameter of ``tune.TuneConfig``, which is taken in by ``Tuner``, e.g.
@@ -180,7 +200,7 @@ Periodically, **top-performing trials are checkpointed**
 perturb them** slightly in the hopes of discovering even better hyperparameter settings.
 **Low-performing trials also resume from the checkpoints of the top performers**, allowing
 the trials to explore the new hyperparameter configuration starting from a partially
-trained model (e.g. by copying model weights from one of the top-performing trials).
+trained model (for example, by copying model weights from one of the top-performing trials).
 
 Take a look at :doc:`/tune/examples/pbt_visualization/pbt_visualization` to get an idea
 of how PBT operates. :doc:`/tune/examples/pbt_guide` gives more examples
@@ -195,12 +215,16 @@ of PBT usage.
 
 .. _tune-scheduler-pbt-replay:
 
+.. vale Google.Spacing = NO
+
 Population Based Training Replay (tune.schedulers.PopulationBasedTrainingReplay)
 --------------------------------------------------------------------------------
 
+.. vale Google.Spacing = YES
+
 Tune includes a utility to replay hyperparameter schedules of Population Based Training runs.
 You just specify an existing experiment directory and the ID of the trial you would
-like to replay. The scheduler accepts only one trial, and it will update its
+like to replay. The scheduler accepts only one trial, and it updates its
 config according to the obtained schedule.
 
 .. code-block:: python
@@ -273,7 +297,7 @@ in the hope of discovering an even better variation.
 The primary motivation for PB2 is the ability to find promising hyperparameters with only a small population size.
 With that in mind, you can run this :doc:`PB2 PPO example </tune/examples/includes/pb2_ppo_example>` to compare PB2 vs. PBT,
 with a population size of ``4`` (as in the paper).
-The example uses the ``BipedalWalker`` environment so does not require any additional licenses.
+The example uses the ``BipedalWalker`` environment so it doesn't require any additional licenses.
 
 .. autosummary::
     :nosignatures:
@@ -284,11 +308,15 @@ The example uses the ``BipedalWalker`` environment so does not require any addit
 
 .. _tune-scheduler-bohb:
 
+.. vale Google.Spacing = NO
+
 BOHB (tune.schedulers.HyperBandForBOHB)
 ---------------------------------------
 
-This class is a variant of HyperBand that enables the `BOHB Algorithm <https://arxiv.org/abs/1807.01774>`_.
-This implementation is true to the original HyperBand implementation and does not implement pipelining nor
+.. vale Google.Spacing = YES
+
+This class is a variant of HyperBand that enables the `Bayesian Optimization HyperBand (BOHB) Algorithm <https://arxiv.org/abs/1807.01774>`_.
+This implementation is true to the original HyperBand implementation and doesn't implement pipelining nor
 straggler mitigation.
 
 This is to be used in conjunction with the Tune BOHB search algorithm.
@@ -312,7 +340,7 @@ This class is a utility scheduler, allowing for trial resource requirements to b
 It wraps around another scheduler and uses its decisions.
 
 * If you are using the Trainable (class) API for tuning, your Trainable must implement ``Trainable.update_resources``,
-    which will let your model know about the new resources assigned. You can also obtain the current trial resources
+    which lets your model know about the new resources assigned. You can also obtain the current trial resources
     by calling ``Trainable.trial_resources``.
 
 * If you are using the functional API for tuning, get the current trial resources obtained by calling
@@ -361,8 +389,8 @@ Shim Instantiation (tune.create_scheduler)
 ------------------------------------------
 
 There is also a shim function that constructs the scheduler based on the provided string.
-This can be useful if the scheduler you want to use changes often (e.g., specifying the scheduler
-via a CLI option or config file).
+This can be useful if the scheduler you want to use changes often (for example, specifying the scheduler
+through a CLI option or config file).
 
 .. autosummary::
     :nosignatures:

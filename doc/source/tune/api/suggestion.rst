@@ -4,8 +4,8 @@ Tune Search Algorithms (tune.search)
 ====================================
 
 Tune's Search Algorithms are wrappers around open-source optimization libraries for efficient hyperparameter selection.
-Each library has a specific way of defining the search space - please refer to their documentation for more details.
-Tune will automatically convert search spaces passed to ``Tuner`` to the library format in most cases.
+Each library has a specific way of defining the search space - refer to their documentation for more details.
+Tune automatically converts search spaces passed to ``Tuner`` to the library format in most cases.
 
 You can utilize these search algorithms as follows:
 
@@ -68,7 +68,7 @@ Tune automatically saves searcher state inside the current experiment folder dur
 See ``Result logdir: ...`` in the output logs for this location.
 
 Note that if you have two Tune runs with the same experiment folder,
-the previous state checkpoint will be overwritten. You can
+the previous state checkpoint is overwritten. You can
 avoid this by making sure ``RunConfig(name=...)`` is set to a unique
 identifier:
 
@@ -95,10 +95,14 @@ identifier:
 
 .. _tune-basicvariant:
 
+.. vale Google.Spacing = NO
+
 Random search and grid search (tune.search.basic_variant.BasicVariantGenerator)
 -------------------------------------------------------------------------------
 
-The default and most basic way to do hyperparameter search is via random and grid search.
+.. vale Google.Spacing = YES
+
+The default and most basic way to do hyperparameter search is through random and grid search.
 Ray Tune does this through the :class:`BasicVariantGenerator <ray.tune.search.basic_variant.BasicVariantGenerator>`
 class that generates trial variants given a search space definition.
 
@@ -116,8 +120,12 @@ default if no search algorithm is passed to
 
 .. _tune-ax:
 
+.. vale Google.Spacing = NO
+
 Ax (tune.search.ax.AxSearch)
 ----------------------------
+
+.. vale Google.Spacing = YES
 
 .. autosummary::
     :nosignatures:
@@ -127,8 +135,12 @@ Ax (tune.search.ax.AxSearch)
 
 .. _bayesopt:
 
+.. vale Google.Spacing = NO
+
 Bayesian Optimization (tune.search.bayesopt.BayesOptSearch)
 -----------------------------------------------------------
+
+.. vale Google.Spacing = YES
 
 .. autosummary::
     :nosignatures:
@@ -138,16 +150,20 @@ Bayesian Optimization (tune.search.bayesopt.BayesOptSearch)
 
 .. _suggest-TuneBOHB:
 
-BOHB (tune.search.bohb.TuneBOHB)
+.. vale Google.Spacing = NO
+
+Bayesian Optimization HyperBand (tune.search.bohb.TuneBOHB)
 --------------------------------
 
-BOHB (Bayesian Optimization HyperBand) is an algorithm that both terminates bad trials
+.. vale Google.Spacing = YES
+
+Bayesian Optimization HyperBand (BOHB) is an algorithm that both terminates bad trials
 and also uses Bayesian Optimization to improve the hyperparameter search.
-It is available from the `HpBandSter library <https://github.com/automl/HpBandSter>`_.
+It's available from the `HpBandSter library <https://github.com/automl/HpBandSter>`_.
 
 Importantly, BOHB is intended to be paired with a specific scheduler class: :ref:`HyperBandForBOHB <tune-scheduler-bohb>`.
 
-In order to use this search algorithm, you will need to install ``HpBandSter`` and ``ConfigSpace``:
+To use this search algorithm, install ``HpBandSter`` and ``ConfigSpace``:
 
 .. code-block:: bash
 
@@ -163,9 +179,14 @@ See the `BOHB paper <https://arxiv.org/abs/1807.01774>`_ for more details.
 
 .. _tune-hebo:
 
-HEBO (tune.search.hebo.HEBOSearch)
+.. vale Google.Spacing = NO
+
+Heteroscedastic and Evolutionary Bayesian Optimisation (tune.search.hebo.HEBOSearch)
 ----------------------------------
 
+.. vale Google.Spacing = YES
+
+Heteroscedastic and Evolutionary Bayesian Optimisation (HEBO) is a Bayesian optimization library.
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -174,8 +195,12 @@ HEBO (tune.search.hebo.HEBOSearch)
 
 .. _tune-hyperopt:
 
-HyperOpt (tune.search.hyperopt.HyperOptSearch)
+.. vale Google.Spacing = NO
+
+Hyperopt (tune.search.hyperopt.HyperOptSearch)
 ----------------------------------------------
+
+.. vale Google.Spacing = YES
 
 .. autosummary::
     :nosignatures:
@@ -185,8 +210,12 @@ HyperOpt (tune.search.hyperopt.HyperOptSearch)
 
 .. _nevergrad:
 
+.. vale Google.Spacing = NO
+
 Nevergrad (tune.search.nevergrad.NevergradSearch)
 -------------------------------------------------
+
+.. vale Google.Spacing = YES
 
 .. autosummary::
     :nosignatures:
@@ -196,8 +225,12 @@ Nevergrad (tune.search.nevergrad.NevergradSearch)
 
 .. _tune-optuna:
 
+.. vale Google.Spacing = NO
+
 Optuna (tune.search.optuna.OptunaSearch)
 ----------------------------------------
+
+.. vale Google.Spacing = YES
 
 .. autosummary::
     :nosignatures:
@@ -208,8 +241,12 @@ Optuna (tune.search.optuna.OptunaSearch)
 
 .. _zoopt:
 
+.. vale Google.Spacing = NO
+
 ZOOpt (tune.search.zoopt.ZOOptSearch)
 -------------------------------------
+
+.. vale Google.Spacing = YES
 
 .. autosummary::
     :nosignatures:
@@ -219,20 +256,24 @@ ZOOpt (tune.search.zoopt.ZOOptSearch)
 
 .. _repeater:
 
+.. vale Google.Spacing = NO
+
 Repeated Evaluations (tune.search.Repeater)
 -------------------------------------------
 
+.. vale Google.Spacing = YES
+
 Use ``ray.tune.search.Repeater`` to average over multiple evaluations of the same
 hyperparameter configurations. This is useful in cases where the evaluated
-training procedure has high variance (i.e., in reinforcement learning).
+training procedure has high variance (that's in reinforcement learning).
 
-By default, ``Repeater`` will take in a ``repeat`` parameter and a ``search_alg``.
-The ``search_alg`` will suggest new configurations to try, and the ``Repeater``
-will run ``repeat`` trials of the configuration. It will then average the
+By default, ``Repeater`` takes in a ``repeat`` parameter and a ``search_alg``.
+The ``search_alg`` suggests new configurations to try, and the ``Repeater``
+runs ``repeat`` trials of the configuration. It then averages the
 ``search_alg.metric`` from the final results of each repeated trial.
 
 
-.. warning:: It is recommended to not use ``Repeater`` with a TrialScheduler.
+.. warning:: It's recommended to not use ``Repeater`` with a TrialScheduler.
     Early termination can negatively affect the average reported metric.
 
 .. autosummary::
@@ -243,11 +284,15 @@ will run ``repeat`` trials of the configuration. It will then average the
 
 .. _limiter:
 
+.. vale Google.Spacing = NO
+
 ConcurrencyLimiter (tune.search.ConcurrencyLimiter)
 ---------------------------------------------------
 
+.. vale Google.Spacing = YES
+
 Use ``ray.tune.search.ConcurrencyLimiter`` to limit the amount of concurrency when using a search algorithm.
-This is useful when a given optimization algorithm does not parallelize very well (like a naive Bayesian Optimization).
+This is useful when a given optimization algorithm doesn't parallelize very well (such as a naive Bayesian Optimization).
 
 .. autosummary::
     :nosignatures:
@@ -257,8 +302,12 @@ This is useful when a given optimization algorithm does not parallelize very wel
 
 .. _byo-algo:
 
+.. vale Google.Spacing = NO
+
 Custom Search Algorithms (tune.search.Searcher)
 -----------------------------------------------
+
+.. vale Google.Spacing = YES
 
 If you are interested in implementing or contributing a new Search Algorithm, provide the following interface:
 
@@ -286,7 +335,7 @@ Shim Instantiation (tune.create_searcher)
 -----------------------------------------
 There is also a shim function that constructs the search algorithm based on the provided string.
 This can be useful if the search algorithm you want to use changes often
-(e.g., specifying the search algorithm via a CLI option or config file).
+(for example, specifying the search algorithm through a CLI option or config file).
 
 .. autosummary::
     :nosignatures:

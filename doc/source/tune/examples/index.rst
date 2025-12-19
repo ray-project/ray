@@ -33,7 +33,7 @@ ML frameworks
     Ray RLlib Example <pbt_ppo_example>
     Keras Example <tune_mnist_keras>
 
-Ray Tune integrates with many popular machine learning frameworks. Here you find a few practical examples showing you how to tune your models. At the end of these guides you will often find links to even more examples.
+Ray Tune integrates with many popular machine learning frameworks. Here you find a few practical examples showing you how to tune your models. At the end of these guides you often find links to even more examples.
 
 .. list-table::
 

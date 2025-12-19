@@ -18,8 +18,12 @@ see :ref:`Trainable Logging <trainable-logging>`.
 
 .. _logger-interface:
 
+.. vale Google.Spacing = NO
+
 LoggerCallback Interface (tune.logger.LoggerCallback)
 -----------------------------------------------------
+
+.. vale Google.Spacing = YES
 
 .. autosummary::
     :nosignatures:
@@ -50,7 +54,7 @@ Tune Built-in Loggers
     tune.logger.TBXLoggerCallback
 
 
-MLFlow Integration
+MLflow Integration
 ------------------
 
 Tune also provides a logger for `MLflow <https://mlflow.org>`_.
@@ -113,7 +117,7 @@ Viskit
 ~~~~~~
 
 Tune automatically integrates with `Viskit <https://github.com/vitchyr/viskit>`_ via the ``CSVLoggerCallback`` outputs.
-To use VisKit (you may have to install some dependencies), run:
+To use Viskit (you may have to install some dependencies), run:
 
 .. code-block:: bash
 

@@ -3,15 +3,15 @@
 Scalability and Overhead Benchmarks for Ray Tune
 ================================================
 
-We conducted a series of micro-benchmarks where we evaluated the scalability of Ray Tune and analyzed the
-performance overhead we observed. The results from these benchmarks are reflected in the documentation,
-e.g. when we make suggestions on :ref:`how to remove performance bottlenecks <tune-bottlenecks>`.
+A series of micro-benchmarks were conducted to evaluate the scalability of Ray Tune and analyze the
+performance overhead observed. The results from these benchmarks are reflected in the documentation,
+for example when making suggestions on :ref:`how to remove performance bottlenecks <tune-bottlenecks>`.
 
-This page gives an overview over the experiments we did. For each of these experiments, the goal was to
+This page gives an overview of the experiments conducted. For each of these experiments, the goal was to
 examine the total runtime of the experiment and address issues when the observed overhead compared to the
-minimal theoretical time was too high (e.g. more than 20% overhead).
+minimal theoretical time was too high (for example more than 20% overhead).
 
-In some of the experiments we tweaked the default settings for maximum throughput, e.g. by disabling
+In some of the experiments, the default settings were tweaked for maximum throughput, for example by disabling
 trial synchronization or result logging. If this is the case, this is stated in the respective benchmark
 description.
 
@@ -66,20 +66,20 @@ description.
    * - `Durable trainable <https://github.com/ray-project/ray/blob/master/release/tune_tests/scalability_tests/workloads/test_durable_trainable.py>`_
      - 16
      - | 10/60
-       | with 10MB CP
+       | with 10 MB CP
      - 16
      - 2
      - 300
      - 392.42
 
 
-Below we discuss some insights on results where we observed much overhead.
+Below are some insights on results where much overhead was observed.
 
 
 Result throughput
 -----------------
 
-Result throughput describes the number of results Ray Tune can process in a given timeframe (e.g.
+Result throughput describes the number of results Ray Tune can process in a given timeframe (for example
 "results per second").
 The higher the throughput, the more concurrent results can be processed without major delays.
 
@@ -92,12 +92,12 @@ To speed the process up, Ray Tune adaptively buffers results, so that trial trai
 many trials are running in parallel and report many results at the same time. Still, processing hundreds of
 results per trial for dozens or hundreds of trials can become a bottleneck.
 
-**Main insight**: Ray Tune will throw a warning when trial processing becomes a bottleneck. If you notice
-that this becomes a problem, please follow our guidelines outlined :ref:`in the FAQ <tune-bottlenecks>`.
-Generally, it is advised to not report too many results at the same time. Consider increasing the report
+**Main insight**: Ray Tune throws a warning when trial processing becomes a bottleneck. If you notice
+that this becomes a problem, follow the guidelines outlined :ref:`in the FAQ <tune-bottlenecks>`.
+Generally, it's advised to not report too many results at the same time. Consider increasing the report
 intervals by a factor of 5-10x.
 
-Below we present more detailed results on the result throughput performance.
+Below are more detailed results on the result throughput performance.
 
 Benchmarking many concurrent Tune trials
 """"""""""""""""""""""""""""""""""""""""
@@ -105,8 +105,8 @@ Benchmarking many concurrent Tune trials
 In this setup, loggers (CSV, JSON, and TensorBoardX) and trial synchronization are disabled, except when
 explicitly noted.
 
-In this experiment, we're running many concurrent trials (up to 1,000) on a cluster. We then adjust the
-reporting frequency (number of results per second) of the trials to measure the throughput limits.
+In this experiment, many concurrent trials (up to 1,000) are run on a cluster. The
+reporting frequency (number of results per second) of the trials is then adjusted to measure the throughput limits.
 
 It seems that around 500 total results/second seem to be the threshold for acceptable performance
 when logging and synchronization are disabled. With logging enabled, around 50-100 results per second
@@ -116,23 +116,23 @@ should be considered.
 +-------------+--------------------------+---------+---------------+------------------+---------+
 | # of trials | Results / second / trial | # Nodes | # CPUs / Node | Length of trial. | Current |
 +=============+==========================+=========+===============+==================+=========+
-| 1,000       | 10                       | 16      | 64            | 100s             | 248.39  |
+| 1,000       | 10                       | 16      | 64            | 100 s             | 248.39  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-| 1,000       | 1                        | 16      | 64            | 100s             | 175.00  |
+| 1,000       | 1                        | 16      | 64            | 100 s             | 175.00  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-| 1,000       | 0.1 with logging         | 16      | 64            | 100s             | 168.18  |
+| 1,000       | 0.1 with logging         | 16      | 64            | 100 s             | 168.18  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-| 384         | 10                       | 16      | 64            | 100s             | 125.17  |
+| 384         | 10                       | 16      | 64            | 100 s             | 125.17  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-| 256         | 50                       | 16      | 64            | 100s             | 307.02  |
+| 256         | 50                       | 16      | 64            | 100 s             | 307.02  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-| 256         | 20                       | 16      | 64            | 100s             | 146.20  |
+| 256         | 20                       | 16      | 64            | 100 s             | 146.20  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-| 256         | 10                       | 16      | 64            | 100s             | 113.40  |
+| 256         | 10                       | 16      | 64            | 100 s             | 113.40  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-| 256         | 10 with logging          | 16      | 64            | 100s             | 436.12  |
+| 256         | 10 with logging          | 16      | 64            | 100 s             | 436.12  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-| 256         | 0.1 with logging         | 16      | 64            | 100s             | 106.75  |
+| 256         | 0.1 with logging         | 16      | 64            | 100 s             | 106.75  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
 
 
@@ -142,9 +142,9 @@ Benchmarking many Tune results on a single node
 In this setup, loggers (CSV, JSON, and TensorBoardX) are disabled, except when
 explicitly noted.
 
-In this experiment, we're running 96 concurrent trials on a single node. We then adjust the
-reporting frequency (number of results per second) of the trials to find the throughput limits.
-Compared to the cluster experiment setup, we report much more often, as we're running less total trials in parallel.
+In this experiment, 96 concurrent trials are run on a single node. The
+reporting frequency (number of results per second) of the trials is then adjusted to find the throughput limits.
+Compared to the cluster experiment setup, reporting happens much more often, as fewer total trials run in parallel.
 
 On a single node, throughput seems to be a bit higher. With logging, handling 1000 results per second
 seems acceptable in terms of overhead, though you should probably still target for a lower number.
@@ -152,19 +152,19 @@ seems acceptable in terms of overhead, though you should probably still target f
 +-------------+--------------------------+---------+---------------+------------------+---------+
 | # of trials | Results / second / trial | # Nodes | # CPUs / Node | Length of trial. | Current |
 +=============+==========================+=========+===============+==================+=========+
-| 96          | 500                      | 1       | 96            | 100s             | 959.32  |
+| 96          | 500                      | 1       | 96            | 100 s             | 959.32  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-| 96          | 100                      | 1       | 96            | 100s             | 219.48  |
+| 96          | 100                      | 1       | 96            | 100 s             | 219.48  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-| 96          | 80                       | 1       | 96            | 100s             | 197.15  |
+| 96          | 80                       | 1       | 96            | 100 s             | 197.15  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-| 96          | 50                       | 1       | 96            | 100s             | 110.55  |
+| 96          | 50                       | 1       | 96            | 100 s             | 110.55  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-| 96          | 50 with logging          | 1       | 96            | 100s             | 702.64  |
+| 96          | 50 with logging          | 1       | 96            | 100 s             | 702.64  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-| 96          | 10                       | 1       | 96            | 100s             | 103.51  |
+| 96          | 10                       | 1       | 96            | 100 s             | 103.51  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-| 96          | 10 with logging          | 1       | 96            | 100s             | 168.94  |
+| 96          | 10 with logging          | 1       | 96            | 100 s             | 168.94  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
 
 
@@ -172,13 +172,13 @@ Network overhead in Ray Tune
 ----------------------------
 
 Running Ray Tune on a distributed setup leads to network communication overhead. This is mostly due to
-trial synchronization, where results and checkpoints are periodically synchronized and sent via the network.
-Per default this happens via SSH, where connection initialization can take between 1 and 2 seconds each time.
+trial synchronization, where results and checkpoints are periodically synchronized and sent through the network.
+Per default this happens through SSH, where connection initialization can take between 1 and 2 seconds each time.
 Since this is a blocking operation that happens on a per-trial basis, running many concurrent trials
 quickly becomes bottlenecked by this synchronization.
 
-In this experiment, we ran a number of trials on a cluster. Each trial was run on a separate node. We
-varied the number of concurrent trials (and nodes) to see how much network communication affects
+In this experiment, a number of trials were run on a cluster. Each trial was run on a separate node. The
+number of concurrent trials (and nodes) was varied to see how much network communication affects
 total runtime.
 
 **Main insight**: When running many concurrent trials in a distributed setup, consider using
@@ -187,20 +187,20 @@ be to use a shared storage and disable syncing to driver. The best practices are
 :ref:`here for Kubernetes setups <tune-kubernetes>` but is applicable for any kind of setup.
 
 
-In the table below we present more detailed results on the network communication overhead.
+In the table below are more detailed results on the network communication overhead.
 
 +-------------+--------------------------+---------+---------------+------------------+---------+
 | # of trials | Results / second / trial | # Nodes | # CPUs / Node | Length of trial  | Current |
 +=============+==========================+=========+===============+==================+=========+
-| 200         | 1                        | 200     | 2             | 300s             | 2280.82 |
+| 200         | 1                        | 200     | 2             | 300 s             | 2280.82 |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-| 100         | 1                        | 100     | 2             | 300s             | 1470    |
+| 100         | 1                        | 100     | 2             | 300 s             | 1470    |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-| 100         | 0.01                     | 100     | 2             | 300s             | 473.41  |
+| 100         | 0.01                     | 100     | 2             | 300 s             | 473.41  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-| 50          | 1                        | 50      | 2             | 300s             | 474.30  |
+| 50          | 1                        | 50      | 2             | 300 s             | 474.30  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-| 50          | 0.1                      | 50      | 2             | 300s             | 441.54  |
+| 50          | 0.1                      | 50      | 2             | 300 s             | 441.54  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-| 10          | 1                        | 10      | 2             | 300s             | 334.37  |
+| 10          | 1                        | 10      | 2             | 300 s             | 334.37  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
