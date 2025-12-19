@@ -31,28 +31,22 @@ class DPGroupManager:
     This actor manages multiple DP groups within a single deployment. Each group
     is a set of replicas that participate in the same collective operations.
 
-    Unlike the legacy _DPRankAssigner which supports only a single global DP group,
-    DPGroupManager:
-    - Supports multiple DP groups per deployment
-    - Uses deterministic rank assignment based on ReplicaRank (not incremental)
-    - Tracks per-group master info (ip/port)
-    - Enables per-group failure isolation
-
     Key concepts:
     - dp_group_size: Number of replicas in each DP group (e.g., 8)
-    - dp_size_per_node: Number of DP replicas per node (e.g., 8 for single-node groups)
-    - group_index: Which group a replica belongs to (0, 1, 2, ...)
+    - dp_size_per_node: Number of DP replicas that fit on a node, determined by
+        node GPU count / TP size (e.g., 8-GPU node with TP=2 -> 4 replicas per node)
+    - group_index: Which group a replica belongs to (0 to num_replicas // dp_group_size - 1)
     - dp_rank: Rank within the group (0 to dp_group_size-1)
 
     Example:
-        With 16 total replicas, dp_group_size=8, dp_size_per_node=8:
-        - Group 0: replicas with global ranks 0-7 (all on node 0)
-        - Group 1: replicas with global ranks 8-15 (all on node 1)
+        With 16 total replicas, dp_group_size=8, dp_size_per_node=4 (TP=2 on 8-GPU nodes):
+        - Group 0: replicas with global ranks 0-7 (on nodes 0-1)
+        - Group 1: replicas with global ranks 8-15 (on nodes 2-3)
 
     State:
         group_info: group_index → GroupInfo containing:
             - master_info: (dp_address, dp_rpc_port) for the group
-            - dp_rank_to_replica_id: {dp_rank -> replica_id} for tracking
+            - dp_rank_to_replica_id: {dp_rank -> replica_id} for registration tracking
     """
 
     def __init__(self, dp_group_size: int, dp_size_per_node: int):
@@ -60,7 +54,8 @@ class DPGroupManager:
 
         Args:
             dp_group_size: Number of replicas in each DP group.
-            dp_size_per_node: Number of DP replicas per node.
+            dp_size_per_node: Number of DP replicas that fit on a node
+                (node GPU count / TP size).
         """
         self.dp_group_size = dp_group_size
         self.dp_size_per_node = dp_size_per_node
@@ -77,34 +72,19 @@ class DPGroupManager:
         dp_group_size: int,
         dp_size_per_node: int,
     ) -> int:
-        """Calculate the DP rank within a group from the replica's rank info.
+        """Calculate the DP rank within a group.
 
-        The DP rank is the position within the DP group, ranging from 0 to
-        dp_group_size - 1.
-
-        Formula: (node_rank * dp_size_per_node + local_rank) % dp_group_size
+        Uses dp_size_per_node to compute a deterministic global rank from
+        (node_rank, local_rank), then takes modulo to get the rank within
+        the group.
 
         Args:
             replica_rank: The replica's rank info containing node_rank and local_rank.
-            dp_group_size: Total number of replicas in each DP group.
-            dp_size_per_node: Number of DP replicas per node.
+            dp_group_size: Number of replicas in each DP group.
+            dp_size_per_node: Number of DP replicas that fit on a node.
 
         Returns:
             The DP rank within the group (0 to dp_group_size - 1).
-
-        Examples:
-            Single node (dp_group_size=8, dp_size_per_node=8):
-                node_rank=0, local_rank=0 -> dp_rank=0
-                node_rank=0, local_rank=7 -> dp_rank=7
-
-            Multi-node, single group (dp_group_size=16, dp_size_per_node=8):
-                node_rank=0, local_rank=0 -> dp_rank=0
-                node_rank=1, local_rank=0 -> dp_rank=8
-                node_rank=1, local_rank=7 -> dp_rank=15
-
-            Multi-node, multi-group (dp_group_size=8, dp_size_per_node=8):
-                node_rank=0, local_rank=0 -> dp_rank=0 (group 0)
-                node_rank=1, local_rank=0 -> dp_rank=0 (group 1)
         """
         global_rank = (
             replica_rank.node_rank * dp_size_per_node + replica_rank.local_rank
@@ -119,22 +99,17 @@ class DPGroupManager:
     ) -> int:
         """Calculate which DP group a replica belongs to.
 
+        Uses dp_size_per_node to compute a deterministic global rank from
+        (node_rank, local_rank), then divides by group size to get the
+        group index.
+
         Args:
             replica_rank: The replica's rank info containing node_rank and local_rank.
-            dp_group_size: Total number of replicas in each DP group.
-            dp_size_per_node: Number of DP replicas per node.
+            dp_group_size: Number of replicas in each DP group.
+            dp_size_per_node: Number of DP replicas that fit on a node.
 
         Returns:
             The group index (0, 1, 2, ...).
-
-        Examples:
-            Single node per group (dp_group_size=8, dp_size_per_node=8):
-                node_rank=0 -> group_index=0
-                node_rank=1 -> group_index=1
-
-            Two nodes per group (dp_group_size=16, dp_size_per_node=8):
-                node_rank=0, node_rank=1 -> group_index=0
-                node_rank=2, node_rank=3 -> group_index=1
         """
         global_rank = (
             replica_rank.node_rank * dp_size_per_node + replica_rank.local_rank
