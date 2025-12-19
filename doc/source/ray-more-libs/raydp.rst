@@ -25,7 +25,7 @@ RayDP can be installed from PyPI and supports PySpark 3.0 and 3.1.
   RayDP requires ray >= 1.2.0
 
 .. note::
-  In order to run Spark, the head and worker nodes will need Java installed.
+  To run Spark, the head and worker nodes need Java installed.
 
 ========================
 Creating a Spark Session

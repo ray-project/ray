@@ -5,8 +5,8 @@ Using Pandas on Ray (Modin)
 
 Modin_, previously Pandas on Ray, is a dataframe manipulation library that
 allows users to speed up their pandas workloads by acting as a drop-in
-replacement. Modin also provides support for other APIs (e.g. spreadsheet)
-and libraries, like xgboost.
+replacement. Modin also provides support for other APIs (for example spreadsheet)
+and libraries, like XGBoost.
 
 .. code-block:: python
 
@@ -16,8 +16,8 @@ and libraries, like xgboost.
    ray.init()
    df = pd.read_parquet("s3://my-bucket/big.parquet")
 
-You can use Modin on Ray with your laptop or cluster. In this document,
-we show instructions for how to set up a Modin compatible Ray cluster
+You can use Modin on Ray with your laptop or cluster. This document
+shows instructions for how to set up a Modin compatible Ray cluster
 and connect Modin to Ray.
 
 .. note:: In previous versions of Modin, you had to initialize Ray before importing Modin. As of Modin 0.9.0, this is no longer the case.
@@ -40,7 +40,7 @@ by simply importing.
    df = pd.read_parquet("s3://my-bucket/big.parquet")
 
 As long as Ray is initialized before any dataframes are created, Modin
-will be able to connect to and use the Ray cluster.
+is able to connect to and use the Ray cluster.
 
 How Modin uses Ray
 ------------------
@@ -48,7 +48,7 @@ How Modin uses Ray
 Modin has a layered architecture, and the core abstraction for data manipulation
 is the Modin Dataframe, which implements a novel algebra that enables Modin to
 handle all of pandas (see Modin's documentation_ for more on the architecture).
-Modin's internal dataframe object has a scheduling layer that is able to partition
+Modin's internal dataframe object has a scheduling layer that's able to partition
 and operate on data with Ray.
 
 Dataframe operations
@@ -60,10 +60,10 @@ a number of benefits over the actor model for data manipulation:
 - Multiple tasks may be manipulating the same objects simultaneously
 - Objects in Ray's object store are immutable, making provenance and lineage easier
   to track
-- As new workers come online the shuffling of data will happen as tasks are
+- As new workers come online the shuffling of data happens as tasks are
   scheduled on the new node
 - Identical partitions need not be replicated, especially beneficial for operations
-  that selectively mutate the data (e.g., ``fillna``).
+  that selectively mutate the data (for example, ``fillna``).
 - Finer grained parallelism with finer grained placement control
 
 Machine Learning

@@ -1,6 +1,6 @@
 .. _ray-multiprocessing:
 
-Distributed multiprocessing.Pool
+Distributed `multiprocessing.Pool`
 ================================
 
 .. _`issue on GitHub`: https://github.com/ray-project/ray/issues
@@ -17,8 +17,8 @@ Quickstart
 
 To get started, first `install Ray <installation.html>`__, then use
 ``ray.util.multiprocessing.Pool`` in place of ``multiprocessing.Pool``.
-This will start a local Ray cluster the first time you create a ``Pool`` and
-distribute your tasks across it. See the `Run on a Cluster`_ section below for
+This starts a local Ray cluster the first time you create a ``Pool`` and
+distributes your tasks across it. See the `Run on a Cluster`_ section below for
 instructions to run on a multi-node Ray cluster instead.
 
 .. code-block:: python
@@ -32,7 +32,7 @@ instructions to run on a multi-node Ray cluster instead.
   for result in pool.map(f, range(100)):
       print(result)
 
-The full ``multiprocessing.Pool`` API is currently supported. Please see the
+The full ``multiprocessing.Pool`` API is currently supported. See the
 `multiprocessing documentation`_ for details.
 
 .. warning::
