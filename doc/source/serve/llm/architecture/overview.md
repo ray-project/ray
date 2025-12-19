@@ -162,7 +162,7 @@ Request routing from ingress to LLMServer replicas. Solid lines represent prefer
 
 #### Scaling considerations
 
-**Ingress-to-LLMServer ratio**: The ingress event loop can become the bottleneck at high concurrency. In such situations, upscaling the number of ingress replicas can mitigate CPU contention. We recommend keeping at least a 2:1 ratio between the number of ingress replicas and LLMServer replicas. This architecture allows the system to dynamically scale the component that is the bottleneck.
+**Ingress-to-LLMServer ratio**: The ingress event loop can become the bottleneck at high concurrency. In such situations, upscaling the number of ingress replicas can mitigate CPU contention. Keep at least a 2:1 ratio between the number of ingress replicas and LLMServer replicas. This architecture allows the system to dynamically scale the component that's the bottleneck.
 
 **Autoscaling coordination**: To maintain proper ratios during autoscaling, configure `target_ongoing_requests` proportionally:
 

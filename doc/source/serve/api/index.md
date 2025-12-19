@@ -165,7 +165,7 @@ The Serve REST API is exposed at the same port as the Ray Dashboard. The Dashboa
 
 ### `PUT "/api/serve/applications/"`
 
-Declaratively deploys a list of Serve applications. If Serve is already running on the Ray cluster, removes all applications not listed in the new config. If Serve is not running on the Ray cluster, starts Serve. See [multi-app config schema](serve-rest-api-config-schema) for the request's JSON schema.
+Declaratively deploys a list of Serve applications. If Serve is already running on the Ray cluster, removes all applications not listed in the new config. If Serve isn't running on the Ray cluster, starts Serve. See [multi-app config schema](serve-rest-api-config-schema) for the request's JSON schema.
 
 **Example Request**:
 
@@ -356,7 +356,7 @@ Content-Type: application/json
 
 ### `DELETE "/api/serve/applications/"`
 
-Shuts down Serve and all applications running on the Ray cluster. Has no effect if Serve is not running on the Ray cluster.
+Shuts down Serve and all applications running on the Ray cluster. Has no effect if Serve isn't running on the Ray cluster.
 
 **Example Request**:
 
@@ -374,7 +374,7 @@ Content-Type: application/json
 ```
 
 (serve-rest-api-config-schema)=
-## Config Schemas
+## Configuration schemas
 
 ```{eval-rst}
 .. currentmodule:: ray.serve
@@ -455,7 +455,7 @@ Content-Type: application/json
    serve.llm.build_openai_app
 ```
 
-### Configs
+### Configurations
 
 ```{eval-rst}
 

@@ -128,11 +128,11 @@ Example:
 :language: python
 ```
 
-## Advanced: Pass a DeploymentResponse in a nested object [FULLY DEPRECATED]
+## Advanced: Pass a DeploymentResponse in a nested object (fully deprecated)
 
 :::{warning}
 Passing a `DeploymentResponse` to downstream handle calls in nested objects is fully deprecated and no longer supported.
-Please manually use `DeploymentResponse._to_object_ref()` instead to pass the corresponding object reference in nested objects.
+Manually use `DeploymentResponse._to_object_ref()` instead to pass the corresponding object reference in nested objects.
 
 Passing a `DeploymentResponse` object as a top-level argument or keyword argument is still supported.
 :::

@@ -21,7 +21,7 @@ In particular, it shows:
 - How to train a TensorFlow model and load the model from your file system in your Ray Serve deployment.
 - How to parse the JSON request and make a prediction.
 
-Ray Serve is framework-agnostic--you can use any version of TensorFlow.
+Ray Serve is framework-agnostic — you can use any version of TensorFlow.
 This tutorial uses TensorFlow 2 and Keras. You also need `requests` to send HTTP requests to your model deployment. If you haven't already, install TensorFlow 2 and requests by running:
 
 ```console

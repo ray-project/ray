@@ -120,7 +120,7 @@ Centralized metric store pattern for custom routing
 
 **Cons:**
 
-- A single actor can become a bottleneck in high-throughput applications where TTFT is impacted by the RPC call (~1000s of requests/s).
+- A single actor can become a bottleneck in high-throughput applications where TTFT is impacted by the RPC call (~1000 s of requests/s).
 - Requires an additional network hop for every routing decision.
 
 ### Pattern 2: Metrics broadcasted from Serve controller
@@ -187,7 +187,7 @@ Key methods to implement:
 
 ### Utility mixins
 
-Ray Serve provides mixin classes that add common functionality to routers. See the {ref}`custom-request-router-guide` for examples:
+Ray Serve provides mixin classes that add common capabilities to routers. See the {ref}`custom-request-router-guide` for examples:
 
 - [`LocalityMixin`](../../api/doc/ray.serve.request_router.LocalityMixin.rst): Prefers replicas on the same node to reduce network latency.
 - [`MultiplexMixin`](../../api/doc/ray.serve.request_router.MultiplexMixin.rst): Tracks which models are loaded on each replica for LoRA deployments.
@@ -207,7 +207,7 @@ The typical lifecycle of request routers includes the following stages:
 
 #### Async operations
 
-Routers should use async operations for best performance. The following example demonstrates the recommended pattern:
+Routers should use asynchronous operations for best performance. The following example demonstrates the recommended pattern:
 
 ```python
 # Recommended pattern: Async operation

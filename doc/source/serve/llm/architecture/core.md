@@ -1,7 +1,7 @@
 (serve-llm-architecture-core)=
 # Core components
 
-This guide explains the technical implementation details of Ray Serve LLM's core components. You'll learn about the abstractions, protocols, and patterns that enable extensibility and modularity.
+This guide explains the technical implementation details of Ray Serve LLM's core components. Learn about the abstractions, protocols, and patterns that enable extensibility and modularity.
 
 ## Core abstractions
 

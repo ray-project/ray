@@ -18,7 +18,7 @@ Considering your use case, you can choose the right level of abstraction:
 
 
 (serve-http)=
-## Calling Deployments via HTTP
+## Calling Deployments through HTTP
 When you deploy a Serve application, the [ingress deployment](serve-key-concepts-ingress-deployment) (the one passed to `serve.run`) is exposed over HTTP.
 
 ```{literalinclude} doc_code/http_guide/http_guide.py
@@ -27,7 +27,7 @@ When you deploy a Serve application, the [ingress deployment](serve-key-concepts
 :language: python
 ```
 
-Requests to the Serve HTTP server at `/` are routed to the deployment's `__call__` method with a [Starlette Request object](https://www.starlette.io/requests/) as the sole argument. The `__call__` method can return any JSON-serializable object or a [Starlette Response object](https://www.starlette.io/responses/) (e.g., to return a custom status code or custom headers). A Serve app's route prefix can be changed from `/` to another string by setting `route_prefix` in `serve.run()` or the Serve config file.
+Requests to the Serve HTTP server at `/` are routed to the deployment's `__call__` method with a [Starlette Request object](https://www.starlette.io/requests/) as the sole argument. The `__call__` method can return any JSON-serializable object or a [Starlette Response object](https://www.starlette.io/responses/) (for example, to return a custom status code or custom headers). A Serve app's route prefix can be changed from `/` to another string by setting `route_prefix` in `serve.run()` or the Serve config file.
 
 (serve-request-cancellation-http)=
 ### Request cancellation
@@ -55,12 +55,12 @@ To prevent an async call from being interrupted by `asyncio.CancelledError`, use
 :language: python
 ```
 
-When the request is cancelled, a cancellation error is raised inside the `SnoringSleeper` deployment's `__call__()` method. However, the cancellation is not raised inside the `snore()` call, so `ZZZ` is printed even if the request is cancelled. Note that `asyncio.shield` cannot be used on a `DeploymentHandle` call to prevent the downstream handler from being cancelled. You need to explicitly handle the cancellation error in that handler as well.
+When the request is cancelled, a cancellation error is raised inside the `SnoringSleeper` deployment's `__call__()` method. However, the cancellation isn't raised inside the `snore()` call, so `ZZZ` is printed even if the request is cancelled. Note that `asyncio.shield` can't be used on a `DeploymentHandle` call to prevent the downstream handler from being cancelled. You need to explicitly handle the cancellation error in that handler as well.
 
 (serve-fastapi-http)=
 ## FastAPI HTTP Deployments
 
-If you want to define more complex HTTP handling logic, Serve integrates with [FastAPI](https://fastapi.tiangolo.com/). This allows you to define a Serve deployment using the {mod}`@serve.ingress <ray.serve.ingress>` decorator that wraps a FastAPI app with its full range of features. The most basic example of this is shown below, but for more details on all that FastAPI has to offer such as variable routes, automatic type validation, dependency injection (e.g., for database connections), and more, please check out [their documentation](https://fastapi.tiangolo.com/).
+If you want to define more complex HTTP handling logic, Serve integrates with [FastAPI](https://fastapi.tiangolo.com/). This allows you to define a Serve deployment using the {mod}`@serve.ingress <ray.serve.ingress>` decorator that wraps a FastAPI app with its full range of features. The most basic example of this is shown below, but for more details on all that FastAPI has to offer such as variable routes, automatic type validation, dependency injection (for example, for database connections), and more, check out [their documentation](https://fastapi.tiangolo.com/).
 
 :::{note}
 A Serve application that's integrated with FastAPI still respects the `route_prefix` set through Serve. The routes that are registered through the FastAPI `app` object are layered on top of the route prefix. For instance, if your Serve application has `route_prefix = /my_app` and you decorate a method with `@app.get("/fetch_data")`, then you can call that method by sending a GET request to the path `/my_app/fetch_data`.
@@ -71,7 +71,7 @@ A Serve application that's integrated with FastAPI still respects the `route_pre
 :language: python
 ```
 
-Now if you send a request to `/hello`, this will be routed to the `root` method of our deployment. We can also easily leverage FastAPI to define multiple routes with different HTTP methods:
+Now if you send a request to `/hello`, this is routed to the `root` method of the deployment. You can also easily leverage FastAPI to define multiple routes with different HTTP methods:
 
 ```{literalinclude} doc_code/http_guide/http_guide.py
 :start-after: __begin_fastapi_multi_routes__
@@ -92,7 +92,7 @@ Existing middlewares, **automatic OpenAPI documentation generation**, and other 
 
 ### WebSockets
 
-Serve supports WebSockets via FastAPI:
+Serve supports WebSockets through FastAPI:
 
 ```{literalinclude} doc_code/http_guide/websockets_example.py
 :start-after: __websocket_serve_app_start__
@@ -112,7 +112,7 @@ Query the deployment using the `websockets` package (`pip install websockets`):
 
 ### FastAPI factory pattern
 
-Ray Serve's object-based pattern, shown previously, requires FastAPI objects to be serializable via cloudpickle, which prevents the use of some standard libraries like `FastAPIInstrumentor` due to their reliance on non-serializable components such as thread locks. The factory pattern create the object of FastAPI directly on each replica, avoiding the need for FastAPI object serialization.
+Ray Serve's object-based pattern, shown previously, requires FastAPI objects to be serializable through cloudpickle, which prevents the use of some standard libraries like `FastAPIInstrumentor` due to their reliance on non-serializable components such as thread locks. The factory pattern create the object of FastAPI directly on each replica, avoiding the need for FastAPI object serialization.
 
 ```{literalinclude} doc_code/http_guide/http_guide.py
 :start-after: __begin_fastapi_factory_pattern__
@@ -164,7 +164,7 @@ Got result 0.9s after start: '9'
 ### Terminating the stream when a client disconnects
 
 In some cases, you may want to cease processing a request when the client disconnects before the full stream has been returned.
-If you pass an async generator to `StreamingResponse`, it is cancelled and raises an `asyncio.CancelledError` when the client disconnects.
+If you pass an async generator to `StreamingResponse`, it's cancelled and raises an `asyncio.CancelledError` when the client disconnects.
 Note that you must `await` at some point in the generator for the cancellation to occur.
 
 In the example below, the generator streams responses forever until the client disconnects, then it prints that it was cancelled and exits. Save this code in `stream.py` and run it:

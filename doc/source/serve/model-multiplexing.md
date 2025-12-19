@@ -7,7 +7,7 @@ This section helps you understand how to write multiplexed deployment by using t
 ## Why model multiplexing?
 
 Model multiplexing is a technique used to efficiently serve multiple models with similar input types from a pool of replicas. Traffic is routed to the corresponding model based on the request header. To serve multiple models with a pool of replicas, 
-model multiplexing optimizes cost and load balances the traffic. This is useful in cases where you might have many models with the same shape but different weights that are sparsely invoked. If any replica for the deployment has the model loaded, incoming traffic for that model (based on request header) will automatically be routed to that replica avoiding unnecessary load time.
+model multiplexing optimizes cost and load balances the traffic. This is useful in cases where you might have many models with the same shape but different weights that are sparsely invoked. If any replica for the deployment has the model loaded, incoming traffic for that model (based on request header) is automatically routed to that replica avoiding unnecessary load time.
 
 ## Writing a multiplexed deployment
 
@@ -38,7 +38,7 @@ This code example uses the PyTorch Model object. You can also define your own mo
 :::
 
 
-`serve.get_multiplexed_model_id` retrieves the model ID from the request header. This ID is then passed to the `get_model` function. If the model is not already cached in the replica, Serve loads it from the S3 bucket. Otherwise, the cached model is returned.
+`serve.get_multiplexed_model_id` retrieves the model ID from the request header. This ID is then passed to the `get_model` function. If the model isn't already cached in the replica, Serve loads it from the S3 bucket. Otherwise, the cached model is returned.
 
 :::{note}
 Internally, the Serve router uses the model ID in the request header to route traffic to a corresponding replica. If all replicas that have the model are over-subscribed, Ray Serve routes the request to a new replica, which then loads and caches the model from the S3 bucket.
@@ -53,17 +53,17 @@ To send a request to a specific model, include the `serve_multiplexed_model_id` 
 :::{note}
 `serve_multiplexed_model_id` is required in the request header, and the value should be the model ID you want to send the request to.
 
-If the `serve_multiplexed_model_id` is not found in the request header, Serve will treat it as a normal request and route it to a random replica.
+If the `serve_multiplexed_model_id` isn't found in the request header, Serve treats it as a normal request and routes it to a random replica.
 :::
 
-After you run the above code, you should see the following lines in the deployment logs:
+After you run the preceding code, you should see the following lines in the deployment logs:
 ```
 INFO 2023-05-24 01:19:03,853 default_Model default_Model#EjYmnQ CUpzhwUUNw / default replica.py:442 - Started executing request CUpzhwUUNw
 INFO 2023-05-24 01:19:03,854 default_Model default_Model#EjYmnQ CUpzhwUUNw / default multiplex.py:131 - Loading model '1'.
 INFO 2023-05-24 01:19:04,859 default_Model default_Model#EjYmnQ CUpzhwUUNw / default replica.py:542 - __CALL__ OK 1005.8ms
 ```
 
-If you continue to load more models and exceed the `max_num_models_per_replica`, the least recently used model will be evicted and you will see the following lines in the deployment logs::
+If you continue to load more models and exceed the `max_num_models_per_replica`, the least recently used model is evicted and you see the following lines in the deployment logs::
 ```
 INFO 2023-05-24 01:19:15,988 default_Model default_Model#rimNjA WzjTbJvbPN / default replica.py:442 - Started executing request WzjTbJvbPN
 INFO 2023-05-24 01:19:15,988 default_Model default_Model#rimNjA WzjTbJvbPN / default multiplex.py:145 - Unloading model '3'.

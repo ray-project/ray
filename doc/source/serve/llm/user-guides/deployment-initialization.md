@@ -8,14 +8,14 @@ The initialization phase of a serve.llm deployment involves many steps, includin
 - **Image Download**: Downloading image to target instance incurs latency correlated with image size.
 - **Fixed Ray/Node Initialization**: Ray/vLLM incurs some fixed overhead when spawning new processes to handle a new replica, which involves importing large libraries (such as vLLM), preparing model and engine configurations, etc.
 - **Model Loading**: Retrieve model either from Hugging Face or cloud storage, including time spent downloading the model and moving it to GPU memory
-- **Torch Compile**: Torch compile is integral to vLLM's design and it is enabled by default.
+- **Torch Compile**: Torch compile is integral to vLLM's design and it's enabled by default.
 - **Memory Profiling**: vLLM runs some inference on the model to determine the amount of available memory it can dedicate to the KV cache
 - **CUDA Graph Capture**: vLLM captures the CUDA graphs for different input sizes ahead of time. More details are [here.](https://docs.vllm.ai/en/latest/design/cuda_graphs.html)
 - **Warmup**: Initialize KV cache, run model inference.
 
 
 
-This document will provide an overview of the numerous ways to customize your deployment initialization.
+This document provides an overview of the numerous ways to customize your deployment initialization.
 
 ## Model Loading from Hugging Face
 
@@ -255,7 +255,7 @@ llm_config = LLMConfig(
 ```
 
 ### Model Sharding
-Modern LLM model sizes often outgrow the memory capacity of a single GPU, requiring the use of tensor parallelism to split computation across multiple devices. In this paradigm, only a subset of weights are stored on each GPU, and model sharding ensures that each device only loads the relevant portion of the model. By sharding the model files in advance, we can reduce load times significantly, since GPUs avoid loading unneeded weights. vLLM provides a utility script for this purpose: [save_sharded_state.py](https://github.com/vllm-project/vllm/blob/main/examples/offline_inference/save_sharded_state.py).
+Modern LLM model sizes often outgrow the memory capacity of a single GPU, requiring the use of tensor parallelism to split computation across multiple devices. In this paradigm, only a subset of weights are stored on each GPU, and model sharding ensures that each device only loads the relevant portion of the model. By sharding the model files in advance, load times can be reduced significantly, since GPUs avoid loading unneeded weights. vLLM provides a utility script for this purpose: [save_sharded_state.py](https://github.com/vllm-project/vllm/blob/main/examples/offline_inference/save_sharded_state.py).
 
 Once the sharded weights have been saved, upload them to S3 and use RunAI streamer with a new flag to load the sharded weights
 
@@ -278,7 +278,7 @@ Torch.compile incurs some latency during initialization. This can be mitigated b
 (RayWorkerWrapper pid=126782) INFO 10-15 11:57:04 [backends.py:608] Using cache directory: /home/ray/.cache/vllm/torch_compile_cache/131ee5c6d9/rank_1_0/backbone for vLLM's torch.compile
 ```
 
-In this example the cache folder is located at `/home/ray/.cache/vllm/torch_compile_cache/131ee5c6d9`. Upload this directory to your S3 bucket. The cache folder can now be retrieved at startup. We provide a custom utility to download the compile cache from cloud storage. Specify the `CloudDownloader` callback in `LLMConfig` and supply the relevant arguments. Make sure to set the `cache_dir` in compilation_config correctly. 
+In this example the cache folder is located at `/home/ray/.cache/vllm/torch_compile_cache/131ee5c6d9`. Upload this directory to your S3 bucket. The cache folder can now be retrieved at startup. A custom utility is provided to download the compile cache from cloud storage. Specify the `CloudDownloader` callback in `LLMConfig` and supply the relevant arguments. Make sure to set the `cache_dir` in compilation_config correctly. 
 
 ```python
 llm_config = LLMConfig(
@@ -300,7 +300,7 @@ Other options for retrieving the compile cache (distributed filesystem, block st
 
 ### Custom Initialization Behaviors
 
-We provide the ability to create custom node initialization behaviors with the API defined by [`CallbackBase`](https://github.com/ray-project/ray/blob/master/python/ray/llm/_internal/common/callbacks/base.py). Callback functions defined in the class are invoked at certain parts of the initialization process. An example is the above mentioned [`CloudDownloader`](https://github.com/ray-project/ray/blob/master/python/ray/llm/_internal/common/callbacks/cloud_downloader.py) which overrides the `on_before_download_model_files_distributed` function to distribute download tasks across nodes. To enable your custom callback, specify the classname inside `LLMConfig`. 
+The ability to create custom node initialization behaviors is provided with the API defined by [`CallbackBase`](https://github.com/ray-project/ray/blob/master/python/ray/llm/_internal/common/callbacks/base.py). Callback functions defined in the class are invoked at certain parts of the initialization process. An example is the preceding mentioned [`CloudDownloader`](https://github.com/ray-project/ray/blob/master/python/ray/llm/_internal/common/callbacks/cloud_downloader.py) which overrides the `on_before_download_model_files_distributed` function to distribute download tasks across nodes. To enable your custom callback, specify the class name inside `LLMConfig`. 
 
 ```python
 from user_custom_classes import CustomCallback
@@ -315,7 +315,7 @@ config = LLMConfig(
 )
 ```
 
-> **Note:** Callbacks are a new feature. We may change the callback API and incorporate user feedback as we continue to develop this functionality.
+> **Note:** Callbacks are a new feature. The callback API may change and incorporate user feedback as this capability continues to be developed.
 
 
 ## Best practices
@@ -335,7 +335,7 @@ config = LLMConfig(
 ### Performance
 
 - **Co-locate storage and compute** in the same cloud region to reduce latency and egress costs.
-- **Use fast download** (`HF_HUB_ENABLE_HF_TRANSFER`) for models larger than 10GB.
+- **Use fast download** (`HF_HUB_ENABLE_HF_TRANSFER`) for models larger than 10 GB.
 - **Cache models** locally if you're repeatedly deploying the same model.
 - **See benchmarks** [here](../benchmarks.md) for detailed information about optimizations
 

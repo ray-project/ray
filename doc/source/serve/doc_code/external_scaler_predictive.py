@@ -3,9 +3,11 @@ import time
 from ray import serve
 from typing import Any
 
+
 @serve.deployment(num_replicas=3)
 class TextProcessor:
     """A simple text processing deployment that can be scaled externally."""
+
     def __init__(self):
         self.request_count = 0
 
@@ -21,15 +23,12 @@ class TextProcessor:
 app = TextProcessor.bind()
 # __serve_example_end__
 
+
 def main():
     import requests
 
     serve.run(app)
-    
-    # Test the deployment
-    resp = requests.post(
-        "http://localhost:8000/",
-        json="hello world"
-    )
-    print(f"Response: {resp.json()}")
 
+    # Test the deployment
+    resp = requests.post("http://localhost:8000/", json="hello world")
+    print(f"Response: {resp.json()}")

@@ -3,7 +3,7 @@ orphan: true
 ---
 (serve-streaming-tutorial)=
 
-# Serve a Chatbot with Request and Response Streaming
+# Serve a chatbot with Request and Response Streaming
 
 This example deploys a chatbot that streams output back to the
 user. It shows:

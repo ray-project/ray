@@ -60,8 +60,8 @@ Learn more about how to configure KubeRay clusters [here](kuberay-config).
 $ curl -o ray-service.text-ml.yaml https://raw.githubusercontent.com/ray-project/kuberay/2ba0dd7bea387ac9df3681666bab3d622e89846c/ray-operator/config/samples/ray-service.text-ml.yaml
 ```
 
-To deploy the example, we simply `kubectl apply` the CR.
-This creates the underlying Ray cluster, consisting of a head and worker node pod (see [Ray Clusters Key Concepts](../../cluster/key-concepts.rst) for more details on Ray clusters), as well as the service that can be used to query our application:
+To deploy the example, simply `kubectl apply` the CR.
+This creates the underlying Ray cluster, consisting of a head and worker node pod (see [Ray Clusters Key Concepts](../../cluster/key-concepts.rst) for more details on Ray clusters), as well as the service that can be used to query the application:
 
 ```console
 $ kubectl apply -f ray-service.text-ml.yaml
@@ -82,12 +82,12 @@ rayservice-sample-raycluster-7wlx2-head-svc   ClusterIP   None              <non
 rayservice-sample-serve-svc                   ClusterIP   192.168.145.219   <none>        8000/TCP                                        XXs
 ```
 
-Note that the `rayservice-sample-serve-svc` above is the one that can be used to send queries to the Serve application -- this will be used in the next section.
+Note that the `rayservice-sample-serve-svc` preceding is the one that can be used to send queries to the Serve application — this is used in the next section.
 
 ## Querying the application
 
-Once the `RayService` is running, we can query it over HTTP using the service created by the KubeRay controller.
-This service can be queried directly from inside the cluster, but to access it from your laptop you'll need to configure a [Kubernetes ingress](kuberay-networking) or use port forwarding as below:
+Once the `RayService` is running, query it over HTTP using the service created by the KubeRay controller.
+This service can be queried directly from inside the cluster, but to access it from your laptop you need to configure a [Kubernetes ingress](kuberay-networking) or use port forwarding as below:
 
 ```console
 $ kubectl port-forward service/rayservice-sample-serve-svc 8000
@@ -165,11 +165,11 @@ Events:
 To update the `RayService`, modify the manifest and apply it use `kubectl apply`.
 There are two types of updates that can occur:
 - *Application-level updates*: when only the Serve config options are changed, the update is applied _in-place_ on the same Ray cluster. This enables [lightweight updates](serve-in-production-lightweight-update) such as scaling a deployment up or down or modifying autoscaling parameters.
-- *Cluster-level updates*: when the `RayCluster` config options are changed, such as updating the container image for the cluster, it may result in a cluster-level update. In this case, a new cluster is started, and the application is deployed to it. Once the new cluster is ready, the Kubernetes service is updated to point to the new cluster and the previous cluster is terminated. There should not be any downtime for the application, but note that this requires the Kubernetes cluster to be large enough to schedule both Ray clusters.
+- *Cluster-level updates*: when the `RayCluster` config options are changed, such as updating the container image for the cluster, it may result in a cluster-level update. In this case, a new cluster is started, and the application is deployed to it. Once the new cluster is ready, the Kubernetes service is updated to point to the new cluster and the previous cluster is terminated. There shouldn't be any downtime for the application, but note that this requires the Kubernetes cluster to be large enough to schedule both Ray clusters.
 
 ### Example: Serve config update
 
-In the Text ML example above, change the language of the Translator in the Serve config to German:
+In the Text ML example preceding, change the language of the Translator in the Serve config to German:
 
 ```yaml
   - name: Translator
@@ -178,7 +178,7 @@ In the Text ML example above, change the language of the Translator in the Serve
       language: german
 ```
 
-Now to update the application we apply the modified manifest:
+Now to update the application apply the modified manifest:
 
 ```console
 $ kubectl apply -f ray-service.text-ml.yaml
@@ -203,7 +203,7 @@ Es war die beste Zeit, es war die schlimmste Zeit .
 ### Updating the RayCluster config
 
 The process of updating the RayCluster config is the same as updating the Serve config.
-For example, we can update the number of worker nodes to 2 in the manifest:
+For example, update the number of worker nodes to 2 in the manifest:
 
 ```console
 workerGroupSpecs:
@@ -232,11 +232,11 @@ After the pending cluster is healthy, it becomes the active cluster and the prev
 ## Autoscaling
 You can configure autoscaling for your Serve application by setting the autoscaling field in the Serve config. Learn more about the configuration options in the [Serve Autoscaling Guide](serve-autoscaling).
 
-To enable autoscaling in a KubeRay Cluster, you need to set `enableInTreeAutoscaling` to True. Additionally, there are other options available to configure the autoscaling behavior. For further details, please refer to the documentation [here](serve-autoscaling).
+To enable autoscaling in a KubeRay Cluster, you need to set `enableInTreeAutoscaling` to True. Additionally, there are other options available to configure the autoscaling behavior. For further details, refer to the documentation [here](serve-autoscaling).
 
 
 :::{note}
-In most use cases, it is recommended to enable Kubernetes autoscaling to fully utilize the resources in your cluster. If you are using GKE, you can utilize the AutoPilot Kubernetes cluster. For instructions, see [Create an Autopilot Cluster](https://cloud.google.com/kubernetes-engine/docs/how-to/creating-an-autopilot-cluster). For EKS, you can enable Kubernetes cluster autoscaling by utilizing the Cluster Autoscaler. For detailed information, see [Cluster Autoscaler on AWS](https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/aws/README.md). To understand the relationship between Kubernetes autoscaling and Ray autoscaling, see [Ray Autoscaler with Kubernetes Cluster Autoscaler](kuberay-autoscaler-with-ray-autoscaler).
+In most use cases, it's recommended to enable Kubernetes autoscaling to fully utilize the resources in your cluster. If you are using GKE, you can utilize the AutoPilot Kubernetes cluster. For instructions, see [Create an Autopilot Cluster](https://cloud.google.com/kubernetes-engine/docs/how-to/creating-an-autopilot-cluster). For EKS, you can enable Kubernetes cluster autoscaling by utilizing the Cluster Autoscaler. For detailed information, see [Cluster Autoscaler on AWS](https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/aws/README.md). To understand the relationship between Kubernetes autoscaling and Ray autoscaling, see [Ray Autoscaler with Kubernetes Cluster Autoscaler](kuberay-autoscaler-with-ray-autoscaler).
 :::
 
 ## Load balancer
@@ -255,7 +255,7 @@ Monitor your Serve application using the Ray Dashboard.
 - Learn about the [Ray Serve logs](serve-logging) and how to [persistent logs](persist-kuberay-custom-resource-logs) on Kubernetes.
 
 :::{note}
-- To troubleshoot application deployment failures in Serve, you can check the KubeRay operator logs by running `kubectl logs -f <kuberay-operator-pod-name>` (e.g., `kubectl logs -f kuberay-operator-7447d85d58-lv7pf`). The KubeRay operator logs contain information about the Serve application deployment event and Serve application health checks.
+- To troubleshoot application deployment failures in Serve, you can check the KubeRay operator logs by running `kubectl logs -f <kuberay-operator-pod-name>` (for example, `kubectl logs -f kuberay-operator-7447d85d58-lv7pf`). The KubeRay operator logs contain information about the Serve application deployment event and Serve application health checks.
 - You can also check the controller log and deployment log, which are located under `/tmp/ray/session_latest/logs/serve/` in both the head node pod and worker node pod. These logs contain information about specific deployment failure reasons and autoscaling events.
 :::
 

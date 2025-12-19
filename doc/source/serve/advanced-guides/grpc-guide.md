@@ -117,7 +117,7 @@ serve run config.yaml
 gRPC applications in Serve works similarly to HTTP applications. The only difference is
 that the input and output of the methods need to match with what's defined in the `.proto`
 file and that the method of the application needs to be an exact match (case sensitive)
-with the predefined RPC methods. For example, if we want to deploy `UserDefinedService`
+with the predefined RPC methods. For example, to deploy `UserDefinedService`
 with `__call__` method, the method name needs to be `__call__`, the input type needs to
 be `UserDefinedMessage`, and the output type needs to be `UserDefinedResponse`. Serve
 passes the protobuf object into the method and expects the protobuf object back
@@ -139,7 +139,7 @@ Deploy the application:
 
 :::{note}
 `route_prefix` is still a required field as of Ray 2.7.0 due to a shared code path with
-HTTP. Future releases will make it optional for gRPC.
+HTTP. Future releases plan to make it optional for gRPC.
 :::
 
 
@@ -199,7 +199,7 @@ You can call the service method with the following code:
 :::{note}
 Serve provides the `RayServeAPIServiceStub` stub, and `HealthzRequest` and
 `ListApplicationsRequest` protobufs for you to use. You don't need to generate them
-from the proto file. They are available for your reference.
+from the `.proto` file. They're available for your reference.
 :::
 
 (serve-grpc-metadata)=
@@ -230,7 +230,7 @@ gRPC proxy remains at feature parity with HTTP proxy. Here are more examples of 
 gRPC proxy for getting streaming response as well as doing model composition.
 
 ### Streaming
-The `Steaming` method is deployed with the app named "app1" above. The following code
+The `Steaming` method is deployed with the app named "app1" described in the preceding example. The following code
 gets a streaming response.
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_streaming__   
@@ -239,10 +239,10 @@ gets a streaming response.
 ```
 
 ### Model composition
-Assuming we have the below deployments. `ImageDownloader` and `DataPreprocessor` are two
+Assume you have the following deployments; `ImageDownloader` and `DataPreprocessor` are two
 separate steps to download and process the image before PyTorch can run inference.
 The `ImageClassifier` deployment initializes the model, calls both
-`ImageDownloader` and `DataPreprocessor`, and feed into the resnet model to get the
+`ImageDownloader` and `DataPreprocessor`, and feed into the ResNet model to get the
 classes and probabilities of the given image.
 
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
@@ -251,7 +251,7 @@ classes and probabilities of the given image.
 :language: python
 ```
 
-We can deploy the application with the following code:
+You can deploy the application with the following code:
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_model_composition_deploy__   
 :end-before: __end_model_composition_deploy__
@@ -266,7 +266,7 @@ The client code to call the application looks like the following:
 ```
 
 :::{note}
-At this point, two applications are running on Serve, "app1" and "app2". If more
+At this point, two applications are running on Serve, "app1" and "app2." If more
 than one application is running, you need to pass `application` to the
 metadata so Serve knows which application to route to.
 :::
@@ -275,7 +275,7 @@ metadata so Serve knows which application to route to.
 (serve-grpc-proxy-error-handling)=
 ## Handle errors
 Similar to any other gRPC server, request throws a `grpc.RpcError` when the response
-code is not "OK". Put your request code in a try-except block and handle
+code isn't "OK." Put your request code in a try-except block and handle
 the error accordingly.
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_error_handle__   
@@ -297,7 +297,7 @@ Serve uses the following gRPC error codes:
 Serve provides a [gRPC context object](https://grpc.github.io/grpc/python/grpc.html#grpc.ServicerContext)
 to the deployment replica to get information
 about the request as well as setting response metadata such as code and details.
-If the handler function is defined with a `grpc_context` argument, Serve will pass a
+When you define the handler function with a `grpc_context` argument, Serve passes a
 [RayServegRPCContext](../api/doc/ray.serve.grpc_util.RayServegRPCContext.rst) object
 in for each request. Below is an example of how to set a custom status code,
 details, and trailing metadata.
@@ -316,7 +316,5 @@ The client code is defined like the following to get those attributes.
 ```
 
 :::{note}
-If the handler raises an unhandled exception, Serve will return an `INTERNAL` error code
-with the stacktrace in the details, regardless of what code and details
-are set in the `RayServegRPCContext` object.
+If the handler raises an unhandled exception, Serve returns an `INTERNAL` error code. The details field contains the full error message and traceback, no matter what code or details you set in the `RayServegRPCContext` object.
 :::

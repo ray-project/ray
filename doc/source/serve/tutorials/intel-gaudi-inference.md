@@ -103,7 +103,7 @@ Start Ray in the container with `ray start --head`. You are now ready to run the
 
 This example shows how to deploy a Llama2-7b model on an HPU for inference. 
 
-First, define a deployment that serves a Llama2-7b model using an HPU. Note that we enable [HPU graph optimizations](https://docs.habana.ai/en/latest/Gaudi_Overview/SynapseAI_Software_Suite.html?highlight=graph#graph-compiler-and-runtime) for better performance.
+First, define a deployment that serves a Llama2-7b model using an HPU. Note that [HPU graph optimizations](https://docs.habana.ai/en/latest/Gaudi_Overview/SynapseAI_Software_Suite.html?highlight=graph#graph-compiler-and-runtime) are enabled for better performance.
 
 ```{literalinclude} ../doc_code/intel_gaudi_inference_serve.py
 :language: python
@@ -111,7 +111,7 @@ First, define a deployment that serves a Llama2-7b model using an HPU. Note that
 :end-before: __model_def_end__
 ```
 
-Copy the code above and save it as `intel_gaudi_inference_serve.py`. Start the deployment like this:
+Copy the preceding code and save it as `intel_gaudi_inference_serve.py`. Start the deployment like this:
 
 ```bash
 serve run intel_gaudi_inference_serve:entrypoint
@@ -220,7 +220,7 @@ Next, define a deployment:
 
 Copy both blocks of the preceding code and save them into `intel_gaudi_inference_serve_deepspeed.py`. Run this example using `serve run intel_gaudi_inference_serve_deepspeed:entrypoint`.
 
-Notice!!! Please set the environment variable `HABANA_VISIBLE_MODULES` carefully.
+**Notice:** Set the environment variable `HABANA_VISIBLE_MODULES` carefully.
 
 The terminal should print logs as the deployment starts up:
 ```text

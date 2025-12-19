@@ -50,7 +50,7 @@ For other HTTP options, see [Set Up FastAPI and HTTP](serve-set-up-fastapi-http)
 :language: python
 ```
 
-Note that the code configures parameters for the deployment, such as `num_replicas` and `ray_actor_options`. These parameters help configure the number of copies of the deployment and the resource requirements for each copy. In this case, we set up 2 replicas of the model that take 0.2 CPUs and 0 GPUs each. For a complete guide on the configurable parameters on a deployment, see [Configure a Serve deployment](serve-configure-deployment).
+Note that the code configures parameters for the deployment, such as `num_replicas` and `ray_actor_options`. These parameters help configure the number of copies of the deployment and the resource requirements for each copy. In this case, set up 2 replicas of the model that take 0.2 CPUs and 0 GPUs each. For a complete guide on the configurable parameters on a deployment, see [Configure a Serve deployment](serve-configure-deployment).
 
 ## Test a Ray Serve application locally
 
@@ -60,7 +60,7 @@ To test locally, run the script with the `serve run` CLI command. This command t
 $ serve run model:translator_app
 ```
 
-This command runs the `translator_app` application and then blocks, streaming logs to the console. You can kill it with `Ctrl-C`, which tears down the application.
+This command runs the `translator_app` application and then blocks, streaming logs to the console. You can stop it with `Ctrl-C`, which tears down the application.
 
 Now test the model over HTTP. Reach it at the following default URL:
 
@@ -153,7 +153,7 @@ applications:
         message: ''
 ```
 
-For more details, see [Serve Config Files](serve-in-production-config-file).
+For more details, see [Serve config files](serve-in-production-config-file).
 
 ## Deploy Ray Serve in production
 

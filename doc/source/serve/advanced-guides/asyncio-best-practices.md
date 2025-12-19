@@ -251,11 +251,11 @@ Ray Serve exposes several environment variables that control how user code inter
 
 By default (`RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0`), which means synchronous methods in a deployment run directly on the user event loop. To help you migrate to a safer model, Serve emits a warning like:
 
-> `RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING`: Calling sync method '...' directly on the asyncio loop. In a future version, sync methods will be run in a threadpool by default...
+> `RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING`: Calling sync method directly on the asyncio loop. In a future version, sync methods are run in a threadpool by default.
 
 This warning means:
 
-- You have a `def` method that is currently running on the event loop.
+- You have a `def` method currently running on the event loop.
 - In a future version, that method runs in a threadpool instead.
 
 You can opt in to the future behavior now by setting:
@@ -359,7 +359,7 @@ To get the benefit of `max_concurrent_batches`:
 - Offload CPU-heavy batch processing to a threadpool with `asyncio.to_thread()` or `loop.run_in_executor()`.
 - Avoid blocking operations that prevent the event loop from scheduling other batches.
 
-In the offloaded batch example above, the handler yields to the event loop when awaiting the threadpool executor, which allows multiple batches to be in flight simultaneously (up to the `max_concurrent_batches` limit).
+In the offloaded batch example preceding, the handler yields to the event loop when awaiting the threadpool executor, which allows multiple batches to be in flight simultaneously (up to the `max_concurrent_batches` limit).
 
 ### Streaming
 
@@ -369,7 +369,7 @@ Streaming is especially sensitive to blocking:
 
 - If you block between chunks, you delay the next piece of data to the client.
 - While the generator is blocked on the event loop, other requests on that loop can't make progress.
-- The system also cannot react quickly to slow clients (backpressure) or cancellation.
+- The system also can't react quickly to slow clients (backpressure) or cancellation.
 
 Bad streaming example:
 

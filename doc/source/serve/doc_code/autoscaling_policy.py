@@ -91,12 +91,14 @@ def coordinated_scaling_policy(
 
     return decisions, {}
 
+
 # __end_application_level_autoscaling_policy__
 
 # __begin_stateful_application_level_policy__
 from typing import Dict, Tuple, Any
 from ray.serve.config import AutoscalingContext
 from ray.serve._private.common import DeploymentID
+
 
 def stateful_application_level_policy(
     contexts: Dict[DeploymentID, AutoscalingContext]

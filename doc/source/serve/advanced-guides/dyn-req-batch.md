@@ -3,7 +3,7 @@
 
 Serve offers a request batching feature that can improve your service throughput without sacrificing latency. This improvement is possible because ML models can utilize efficient vectorized computation to process a batch of requests at a time. Batching is also necessary when your model is expensive to use and you want to maximize the utilization of hardware.
 
-Machine Learning (ML) frameworks such as Tensorflow, PyTorch, and Scikit-Learn support evaluating multiple samples at the same time.
+Machine Learning (ML) frameworks such as TensorFlow, PyTorch, and Scikit-Learn support evaluating multiple samples at the same time.
 Ray Serve allows you to take advantage of this feature with dynamic request batching.
 When a request arrives, Serve puts the request in a queue. This queue buffers the requests to form a batch. The deployment picks up the batch and evaluates it. After the evaluation, Ray Serve
 splits up the resulting batch, and returns each response individually.
@@ -117,11 +117,11 @@ Some inputs within a batch may generate fewer outputs than others. When a partic
 
 ## Tips for fine-tuning batching parameters
 
-`max_batch_size` ideally should be a power of 2 (2, 4, 8, 16, ...) because CPUs and GPUs are both optimized for data of these shapes. Large batch sizes incur a high memory cost as well as latency penalty for the first few requests.
+`max_batch_size` ideally should be a power of 2 (2, 4, 8, 16) because CPUs and GPUs are both optimized for data of these shapes. Large batch sizes incur a high memory cost as well as latency penalty for the first few requests.
 
 When using `batch_size_fn`, set `max_batch_size` based on your custom metric rather than item count. For example, if batching by total nodes in graphs, set `max_batch_size` to your GPU's maximum node capacity (such as 10,000 nodes) rather than a count of graphs.
 
-Set `batch_wait_timeout_s` considering the end-to-end latency SLO (Service Level Objective). For example, if your latency target is 150ms, and the model takes 100ms to evaluate the batch, set the `batch_wait_timeout_s` to a value much lower than 150ms - 100ms = 50ms.
+Set `batch_wait_timeout_s` considering the end-to-end latency Service Level Objective (SLO). For example, if your latency target is 150 ms, and the model takes 100 ms to evaluate the batch, set the `batch_wait_timeout_s` to a value much lower than 150 ms - 100 ms = 50 ms.
 
 When using batching in a Serve Deployment Graph, the relationship between an upstream node and a downstream node might affect the performance as well. Consider a chain of two models where first model sets `max_batch_size=8` and second model sets `max_batch_size=6`. In this scenario, when the first model finishes a full batch of 8, the second model finishes one batch of 6 and then to fill the next batch, which Serve initially only partially fills with 8 - 6 = 2 requests, leads to incurring latency costs. The batch size of downstream models should ideally be multiples or divisors of the upstream models to ensure the batches work optimally together.
 

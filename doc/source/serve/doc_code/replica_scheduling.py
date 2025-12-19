@@ -4,7 +4,9 @@ import ray
 from ray import serve
 
 
-@serve.deployment(num_replicas=6, max_replicas_per_node=2, ray_actor_options={"num_cpus": 0.1})
+@serve.deployment(
+    num_replicas=6, max_replicas_per_node=2, ray_actor_options={"num_cpus": 0.1}
+)
 class MyDeployment:
     def __call__(self, request):
         return "Hello!"

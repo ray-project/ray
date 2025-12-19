@@ -4,10 +4,10 @@
 :::{warning}
 Java API support is an experimental feature and subject to change.
 
-The Java API is not currently supported on KubeRay.
+The Java API isn't currently supported on KubeRay.
 :::
 
-Java is a mainstream programming language for production services. Ray Serve offers a native Java API for creating, updating, and managing deployments. You can create Ray Serve deployments using Java and call them via Python, or vice versa.
+Java is a mainstream programming language for production services. Ray Serve offers a native Java API for creating, updating, and managing deployments. You can create Ray Serve deployments using Java and call them through Python, or vice versa.
 
 This section helps you to:
 
@@ -131,7 +131,7 @@ public class ManagePythonDeployment {
 ```
 
 :::{note}
-Before `Ray.init` or `Serve.start`, you need to specify a directory to find the Python code. For details, please refer to [Cross-Language Programming](cross_language).
+Before `Ray.init` or `Serve.start`, you need to specify a directory to find the Python code. For details, refer to [Cross-Language Programming](cross_language).
 :::
 
 ## Future Roadmap

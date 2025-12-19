@@ -28,7 +28,7 @@ By default, the Serve controller periodically health-checks each Serve deploymen
 You can define custom application-level health-checks and adjust their frequency and timeout.
 To define a custom health-check, add a `check_health` method to your deployment class.
 This method should take no arguments and return no result, and it should raise an exception if Ray Serve considers the replica unhealthy.
-If the health-check fails, the Serve controller logs the exception, kills the unhealthy replica(s), and restarts them.
+If the health-check fails, the Serve controller logs the exception, kills the unhealthy replicas, and restarts them.
 You can also use the deployment options to customize how frequently Serve runs the health-check and the timeout after which Serve marks a replica unhealthy.
 
 ```{literalinclude} ../doc_code/fault_tolerance/replica_health_check.py
@@ -40,7 +40,7 @@ You can also use the deployment options to customize how frequently Serve runs t
 In this example, `check_health` raises an error if the connection to an external database is lost. The Serve controller periodically calls this method on each replica of the deployment. If the method raises an exception for a replica, Serve marks that replica as unhealthy and restarts it. Health checks are configured and performed on a per-replica basis.
 
 :::{note}
-You shouldn't call ``check_health`` directly through a deployment handle (e.g., ``await deployment_handle.check_health.remote()``). This would invoke the health check on a single, arbitrary replica. The ``check_health`` method is designed as an interface for the Serve controller, not for direct user calls.
+You shouldn't call ``check_health`` directly through a deployment handle (for example, ``await deployment_handle.check_health.remote()``). This would invoke the health check on a single, arbitrary replica. The ``check_health`` method is designed as an interface for the Serve controller, not for direct user calls.
 :::
 
 :::{note}
@@ -70,7 +70,7 @@ You **must** deploy your Serve application with [KubeRay] to use this feature.
 See Serve's [Kubernetes production guide](serve-in-production-kubernetes) to learn how you can deploy your app with KubeRay.
 :::
 
-In this section, you'll learn how to add fault tolerance to Ray's Global Control Store (GCS), which allows your Serve application to serve traffic even when the head node crashes.
+In this section, learn how to add fault tolerance to Ray's Global Control Store (GCS), which allows your Serve application to serve traffic even when the head node crashes.
 
 By default, the Ray head node is a single point of failure: if it crashes, the entire Ray cluster crashes and you must restart it. When running on Kubernetes, the `RayService` controller health-checks the Ray cluster and restarts it if this occurs, but this introduces some downtime.
 
@@ -84,7 +84,7 @@ You can enable GCS fault tolerance on KubeRay by adding an external Redis server
 
 GCS fault tolerance requires an external Redis database. You can choose to host your own Redis database, or you can use one through a third-party vendor. Use a highly available Redis database for resiliency.
 
-**For development purposes**, you can also host a small Redis database on the same Kubernetes cluster as your Ray cluster. For example, you can add a 1-node Redis cluster by prepending these three Redis objects to your Kubernetes YAML:
+**For development purposes**, you can also host a small Redis database on the same Kubernetes cluster as your Ray cluster. For example, you can add a 1-node Redis cluster by pre-pending these three Redis objects to your Kubernetes YAML:
 
 (one-node-redis-example)=
 ```YAML
@@ -151,7 +151,7 @@ spec:
 ---
 ```
 
-**This configuration is NOT production-ready**, but it's useful for development and testing. When you move to production, it's highly recommended that you replace this 1-node Redis cluster with a highly available Redis cluster.
+**This configuration isn't production-ready**, but it's useful for development and testing. When you move to production, it's highly recommended that you replace this 1-node Redis cluster with a highly available Redis cluster.
 
 #### Step 2: Add Redis info to RayService
 
@@ -161,7 +161,7 @@ First, you need to update your `RayService` metadata's annotations:
 
 ::::{tab-set}
 
-:::{tab-item} Vanilla Config
+:::{tab-item} Vanilla config
 ```yaml
 ...
 apiVersion: ray.io/v1alpha1
@@ -173,7 +173,7 @@ spec:
 ```
 :::
 
-:::{tab-item} Fault Tolerant Config
+:::{tab-item} Fault Tolerant config
 :selected:
 ```yaml
 ...
@@ -199,7 +199,7 @@ Next, you need to add the `RAY_REDIS_ADDRESS` environment variable to the `headG
 
 ::::{tab-set}
 
-:::{tab-item} Vanilla Config
+:::{tab-item} Vanilla config
 
 ```yaml
 apiVersion: ray.io/v1alpha1
@@ -221,7 +221,7 @@ spec:
 
 :::
 
-:::{tab-item} Fault Tolerant Config
+:::{tab-item} Fault Tolerant config
 :selected:
 
 ```yaml
@@ -249,9 +249,9 @@ spec:
 
 `RAY_REDIS_ADDRESS`'s value should be your Redis database's `redis://` address. It should contain your Redis database's host and port. An [example Redis address](https://www.iana.org/assignments/uri-schemes/prov/rediss) is `redis://user:secret@localhost:6379/0?foo=bar&qux=baz`.
 
-In the example above, the Redis deployment name (`redis`) is the host within the Kubernetes cluster, and the Redis port is `6379`. The example is compatible with the previous section's [example config](one-node-redis-example).
+In the example preceding, the Redis deployment name (`redis`) is the host within the Kubernetes cluster, and the Redis port is `6379`. The example is compatible with the previous section's [example config](one-node-redis-example).
 
-After you apply the Redis objects along with your updated `RayService`, your Ray cluster can recover from head node crashes without restarting all the workers!
+After you apply the Redis objects along with your updated `RayService`, your Ray cluster can recover from head node crashes without restarting all the workers.
 
 :::{seealso}
 Check out the KubeRay guide on [GCS fault tolerance](kuberay-gcs-ft) to learn more about how Serve leverages the external Redis cluster to provide head node fault tolerance.
@@ -308,7 +308,7 @@ This section explains how Serve recovers from system failures. It uses the follo
 ```
 :::
 
-:::{tab-item} Kubernetes Config
+:::{tab-item} Kubernetes config
 ```{literalinclude} ../doc_code/fault_tolerance/k8s_config.yaml
 :language: yaml
 ```
@@ -321,7 +321,7 @@ Follow the [KubeRay quickstart guide](kuberay-quickstart) to:
 * Prepare a Kubernetes cluster
 * Deploy a KubeRay operator
 
-Then, [deploy the Serve application](serve-deploy-app-on-kuberay) above:
+Then, [deploy the Serve application](serve-deploy-app-on-kuberay) preceding:
 
 ```console
 $ kubectl apply -f config.yaml
@@ -374,7 +374,7 @@ $ curl localhost:8000
 385
 ```
 
-Now you can simulate worker failures. You have two options: kill a worker pod or kill a worker node. Let's start with the worker pod. Make sure to kill the pod that you're **not** port-forwarding to, so you can continue querying the living worker while the other one relaunches.
+Now you can simulate worker failures. You have two options: stop a worker pod or stop a worker node. Start with the worker pod. Make sure to stop the pod that you're **not** port-forwarding to, so you can continue querying the living worker while the other one relaunches.
 
 ```console
 $ kubectl delete pod ervice-sample-raycluster-thwmr-worker-small-group-pztzk
@@ -384,13 +384,13 @@ $ curl localhost:8000
 6318
 ```
 
-While the pod crashes and recovers, the live pod can continue serving traffic!
+While the pod crashes and recovers, the live pod can continue serving traffic.
 
 :::{tip}
 Killing a node and waiting for it to recover usually takes longer than killing a pod and waiting for it to recover. For this type of debugging, it's quicker to simulate failures by killing at the pod level rather than at the node level.
 :::
 
-You can similarly kill a worker node and see that the other nodes can continue serving traffic:
+You can similarly stop a worker node and see that the other nodes can continue serving traffic:
 
 ```console
 $ kubectl get pods -o wide
@@ -422,7 +422,7 @@ rayservice-sample-raycluster-thwmr-head-28mdh             1/1     Running   1 (7
 redis-75c8b8b65d-4qgfz                                    1/1     Running   0             79m     10.68.2.60   gke-serve-demo-default-pool-ed597cce-nvm2   <none>           <none>
 ```
 
-Port-forward to one of your worker pods. Make sure this pod is on a separate node from the head node, so you can kill the head node without crashing the worker:
+Port-forward to one of your worker pods. Make sure this pod is on a separate node from the head node, so you can stop the head node without affecting the worker:
 
 ```console
 $ kubectl port-forward ervice-sample-raycluster-thwmr-worker-small-group-bdv6q
@@ -437,7 +437,7 @@ $ curl localhost:8000
 418
 ```
 
-You can kill the head pod to simulate killing the Ray head node:
+You can delete the head pod to simulate stopping the Ray head node:
 
 ```console
 $ kubectl delete pod rayservice-sample-raycluster-thwmr-head-28mdh
@@ -446,7 +446,7 @@ pod "rayservice-sample-raycluster-thwmr-head-28mdh" deleted
 $ curl localhost:8000
 ```
 
-If you have configured [GCS fault tolerance](serve-e2e-ft-guide-gcs) on your cluster, your worker pod can continue serving traffic without restarting when the head pod crashes and recovers. Without GCS fault tolerance, KubeRay restarts all worker pods when the head pod crashes, so you'll need to wait for the workers to restart and the deployments to reinitialize before you can port-forward and send more requests.
+If you have configured [GCS fault tolerance](serve-e2e-ft-guide-gcs) on your cluster, your worker pod can continue serving traffic without restarting when the head pod crashes and recovers. Without GCS fault tolerance, KubeRay restarts all worker pods when the head pod crashes, so you need to wait for the workers to restart and the deployments to reinitialize before you can port-forward and send more requests.
 
 ### Serve controller failure
 
@@ -498,7 +498,7 @@ Table:
  0  70a718c973c2ce9471d318f701000000  ServeController  ALIVE    SERVE_CONTROLLER_ACTOR  48570
 ```
 
-You can then kill the Serve controller via the Python interpreter. Note that you'll need to use the `NAME` from the `ray list actor` output to get a handle to the Serve controller.
+You can use the Python interpreter to stop the Serve controller. Use the `NAME` from the `ray list actor` output to get a handle to the Serve controller.
 
 ```console
 $ python
@@ -540,7 +540,7 @@ $ python
 ```
 
 :::{note}
-While the controller is dead, replica health-checking and deployment autoscaling will not work. They'll continue working once the controller recovers.
+While the controller is dead, replica health-checking and deployment autoscaling won't work. They continue working once the controller recovers.
 :::
 
 ### Deployment replica failure

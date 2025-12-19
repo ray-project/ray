@@ -18,7 +18,7 @@ Drawbacks:
 - Doesn't test HTTP endpoints.
 - Can't use GPUs if your local machine doesn't have them.
 
-Let's see a simple example.
+See a simple example.
 
 ```{literalinclude} ../doc_code/local_dev.py
 :start-after: __local_dev_start__
@@ -26,7 +26,7 @@ Let's see a simple example.
 :language: python
 ```
 
-We can add the code below to deploy and test Serve locally.
+Add the code below to deploy and test Serve locally.
 
 ```{literalinclude} ../doc_code/local_dev.py
 :start-after: __local_dev_handle_start__
@@ -38,7 +38,7 @@ We can add the code below to deploy and test Serve locally.
 
 You can use the `serve run` CLI command to run and test your application locally using HTTP to send requests (similar to how you might use the `uvicorn` command if you're familiar with [Uvicorn](https://www.uvicorn.org/)).
 
-Recall our example above:
+Recall the example preceding:
 
 ```{literalinclude} ../doc_code/local_dev.py
 :start-after: __local_dev_start__
@@ -59,17 +59,17 @@ serve run local_dev:app
 # 2022-08-11 11:31:57,383 SUCC scripts.py:315 -- Deployed successfully.
 ```
 
-The `serve run` command blocks the terminal and can be canceled with Ctrl-C. Typically, `serve run` should not be run simultaneously from multiple terminals, unless each `serve run` is targeting a separate running Ray cluster.
+The `serve run` command blocks the terminal and can be canceled with CTRL-C. Typically, `serve run` shouldn't be run simultaneously from multiple terminals, unless each `serve run` is targeting a separate running Ray cluster.
 
-Now that Serve is running, we can send HTTP requests to the application.
-For simplicity, we'll just use the `curl` command to send requests from another terminal.
+Now that Serve is running, send HTTP requests to the application.
+For simplicity, just use the `curl` command to send requests from another terminal.
 
 ```bash
 curl -X PUT "http://localhost:8000/?name=Ray"
 # Hello, Ray! Hello, Ray!
 ```
 
-After you're done testing, you can shut down Ray Serve by interrupting the `serve run` command (e.g., with Ctrl-C):
+After you're done testing, you can shut down Ray Serve by interrupting the `serve run` command (for example, with CTRL-C):
 
 ```console
 ^C2022-08-11 11:47:19,829       INFO scripts.py:323 -- Got KeyboardInterrupt, shutting down...
@@ -93,15 +93,15 @@ Ray Serve supports a local testing mode that allows you to run your deployments 
 :language: python
 ```
 
-This mode runs each deployment in a background thread and supports most of the same features as running on a full Ray cluster. Note that some features, such as converting `DeploymentResponses` to `ObjectRefs`, are not supported in local testing mode. If you encounter limitations, consider filing a feature request on GitHub.
+This mode runs each deployment in a background thread and supports most of the same features as running on a full Ray cluster. Note that some features, such as converting `DeploymentResponses` to `ObjectRefs`, aren't supported in local testing mode. If you encounter limitations, consider filing a feature request on GitHub.
 
 ## Testing on a remote cluster
 
 To test on a remote cluster, use `serve run` again, but this time, pass in an `--address` argument to specify the address of the Ray cluster to connect to. For remote clusters, this address has the form `ray://<head-node-ip-address>:10001`; see [Ray Client](ray-client-ref) for more information.
 
-When making the transition from your local machine to a remote cluster, you'll need to make sure your cluster has a similar environment to your local machine--files, environment variables, and Python packages, for example.
+When making the transition from your local machine to a remote cluster, you need to make sure your cluster has a similar environment to your local machine — files, environment variables, and Python packages, for example.
 
-Let's see a simple example that just packages the code. Run the following command on your local machine, with your remote cluster head node IP address substituted for `<head-node-ip-address>` in the command:
+See a simple example that just packages the code. Run the following command on your local machine, with your remote cluster head node IP address substituted for `<head-node-ip-address>` in the command:
 
 ```bash
 serve run  --address=ray://<head-node-ip-address>:10001 --working-dir="./project/src" local_dev:app
@@ -109,14 +109,14 @@ serve run  --address=ray://<head-node-ip-address>:10001 --working-dir="./project
 
 This connects to the remote cluster with the Ray Client, uploads the `working_dir` directory, and runs your Serve application. Here, the local directory specified by `working_dir` must contain `local_dev.py` so that it can be uploaded to the cluster and imported by Ray Serve.
 
-Once this is up and running, we can send requests to the application:
+Once this is up and running, send requests to the application:
 
 ```bash
 curl -X PUT http://<head-node-ip-address>:8000/?name=Ray
 # Hello, Ray! Hello, Ray!
 ```
 
-For more complex dependencies, including files outside the working directory, environment variables, and Python packages, you can use {ref}`Runtime Environments<runtime-environments>`. This example uses the --runtime-env-json argument:
+For more complex dependencies, including files outside the working directory, environment variables, and Python packages, you can use {ref}`Runtime Environments<runtime-environments>`. This example uses the `--runtime-env-json` argument:
 
 ```bash
 serve run  --address=ray://<head-node-ip-address>:10001 --runtime-env-json='{"env_vars": {"MY_ENV_VAR": "my-value"}, "working_dir": "./project/src", "pip": ["requests", "chess"]}' local_dev:app

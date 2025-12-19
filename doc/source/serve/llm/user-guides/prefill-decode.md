@@ -160,7 +160,7 @@ Create the LMCache configuration for Mooncake (`lmcache_mooncake.yaml`):
 :::{warning}
 For Mooncake deployments:
 - Ensure the etcd metadata server is running and accessible at the specified address.
-- Verify that you properly configured RDMA devices and storage servers and that they are accessible.
+- Verify that you properly configured RDMA devices and storage servers and that they're accessible.
 - In containerized deployments, mount configuration files with appropriate read permissions (for example, `chmod 644`).
 - Ensure all referenced hostnames and IP addresses in configuration files are resolvable from the deployment environment.
 :::
@@ -170,7 +170,7 @@ For Mooncake deployments:
 - `kv_connector`: Set to `"LMCacheConnectorV1"`.
 - `kv_role`: Set to `"kv_producer"` for prefill, `"kv_consumer"` for decode.
 - `kv_buffer_size`: Size of the KV cache buffer.
-- `LMCACHE_CONFIG_FILE`: Environment variable that specifies the configuration file path.
+- `LMCACHE_CONFIG_FILE`: Environment variable that specifies the configuration path.
 
 ## Test your deployment
 

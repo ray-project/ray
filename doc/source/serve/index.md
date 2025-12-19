@@ -82,7 +82,7 @@ Use Serve's [FastAPI](https://fastapi.tiangolo.com/) integration to elegantly ha
 To run this example, install the following: ``pip install transformers``
 
 Serve a pre-trained [Hugging Face Transformers](https://huggingface.co/docs/transformers/index) model using Ray Serve.
-The model we'll use is a sentiment analysis model: it will take a text string as input and return if the text was "POSITIVE" or "NEGATIVE."
+The model used is a sentiment analysis model: it takes a text string as input and returns if the text was "POSITIVE" or "NEGATIVE."
 
 ```{literalinclude} doc_code/transformers_example.py
 :language: python
@@ -97,7 +97,7 @@ The model we'll use is a sentiment analysis model: it will take a text string as
 :::{dropdown} Build end-to-end ML-powered applications
 :animate: fade-in-slide-down
 
-Many solutions for ML serving focus on "tensor-in, tensor-out" serving: that is, they wrap ML models behind a predefined, structured endpoint.
+Many solutions for ML serving focus on "tensor-in, tensor-out" serving: they wrap ML models behind a predefined, structured endpoint.
 However, machine learning isn't useful in isolation.
 It's often important to combine machine learning with business logic and traditional web serving logic such as database queries.
 
@@ -134,17 +134,17 @@ It supports dynamically scaling the resources for a model up and down by adjusti
 :::{dropdown} Avoid framework or vendor lock-in
 :animate: fade-in-slide-down
 
-Machine learning moves fast, with new libraries and model architectures being released all the time, it's important to avoid locking yourself into a solution that is tied to a specific framework.
+Machine learning moves fast, with new libraries and model architectures being released all the time, it's important to avoid locking yourself into a solution that's tied to a specific framework.
 This is particularly important in serving, where making changes to your infrastructure can be time consuming, expensive, and risky.
 Additionally, many hosted solutions are limited to a single cloud provider which can be a problem in today's multi-cloud world.
 
-Ray Serve is not tied to any specific machine learning library or framework, but rather provides a general-purpose scalable serving layer.
+Ray Serve isn't tied to any specific machine learning library or framework, but rather provides a general-purpose scalable serving layer.
 Because it's built on top of Ray, you can run it anywhere Ray can: on your laptop, Kubernetes, any major cloud provider, or even on-premise.
 
 :::
 
 
-## How can Serve help me as a...
+## How can Serve help as a
 
 :::{dropdown} Data scientist
 :animate: fade-in-slide-down
@@ -163,7 +163,7 @@ Serve helps you scale out your deployment and runs them reliably and efficiently
 :animate: fade-in-slide-down
 
 Serve specializes in scalable and reliable ML model serving. As such, it can be an important plug-and-play component of your ML platform stack.
-Serve supports arbitrary Python code and therefore integrates well with the MLOps ecosystem. You can use it with model optimizers (ONNX, TVM), model monitoring systems (Seldon Alibi, Arize), model registries (MLFlow, Weights and Biases), machine learning frameworks (XGBoost, Scikit-learn), data app UIs (Gradio, Streamlit), and Web API frameworks (FastAPI, gRPC).
+Serve supports arbitrary Python code and therefore integrates well with the MLOps ecosystem. You can use it with model optimizers (ONNX, TVM), model monitoring systems (Seldon Alibi, Arize), model registries (MLflow, Weights and Biases), machine learning frameworks (XGBoost, Scikit-learn), data app UIs (Gradio, Streamlit), and Web API frameworks (FastAPI, gRPC).
 
 :::
 
@@ -175,18 +175,18 @@ Serve enables you to rapidly prototype, develop, and deploy scalable LLM applica
 :::
 
 
-## How does Serve compare to ...
+## How does Serve compare to other solutions?
 
 :::{dropdown} TFServing, TorchServe, ONNXRuntime
 :animate: fade-in-slide-down
 
 Ray Serve is *framework-agnostic*, so you can use it alongside any other Python framework or library.
-We believe data scientists should not be bound to a particular machine learning framework.
+Data scientists shouldn't be bound to a particular machine learning framework.
 They should be empowered to use the best tool available for the job.
 
 Compared to these framework-specific solutions, Ray Serve doesn't perform any model-specific optimizations to make your ML model run faster. However, you can still optimize the models yourself
 and run them in Ray Serve. For example, you can run a model compiled by
-[PyTorch JIT](https://pytorch.org/docs/stable/jit.html) or [ONNXRuntime](https://onnxruntime.ai/).
+[PyTorch Just-In-Time (JIT)](https://pytorch.org/docs/stable/jit.html) or [ONNXRuntime](https://onnxruntime.ai/).
 :::
 
 :::{dropdown} AWS SageMaker, Azure ML, Google Vertex AI
@@ -195,8 +195,8 @@ and run them in Ray Serve. For example, you can run a model compiled by
 As an open-source project, Ray Serve brings the scalability and reliability of these hosted offerings to your own infrastructure.
 You can use the Ray [cluster launcher](cluster-index) to deploy Ray Serve to all major public clouds, K8s, as well as on bare-metal, on-premise machines.
 
-Ray Serve is not a full-fledged ML Platform.
-Compared to these other offerings, Ray Serve lacks the functionality for
+Ray Serve isn't a full-fledged ML Platform.
+Compared to these other offerings, Ray Serve lacks the capability for
 managing the lifecycle of your models, visualizing their performance, etc. Ray
 Serve primarily focuses on model serving and providing the primitives for you to
 build your own ML platform on top.
@@ -209,7 +209,7 @@ build your own ML platform on top.
 You can develop Ray Serve on your laptop, deploy it on a dev box, and scale it out
 to multiple machines or a Kubernetes cluster, all with minimal or no changes to code. It's a lot
 easier to get started with when you don't need to provision and manage a K8s cluster.
-When it's time to deploy, you can use our [Kubernetes Operator](kuberay-quickstart)
+When it's time to deploy, you can use the [Kubernetes Operator](kuberay-quickstart)
 to transparently deploy your Ray Serve application to K8s.
 :::
 
@@ -222,10 +222,10 @@ As such, Ray Serve works with any model packaging and registry format.
 Ray Serve also provides key features for building production-ready machine learning applications, including best-in-class autoscaling and naturally integrating with business logic.
 :::
 
-We truly believe Serve is unique as it gives you end-to-end control
+Serve is unique as it gives you end-to-end control
 over your ML application while delivering scalability and high performance. To achieve
 Serve's feature offerings with other tools, you would need to glue together multiple
-frameworks like Tensorflow Serving and SageMaker, or even roll your own
+frameworks like TensorFlow Serving and SageMaker, or even roll your own
 micro-batching component to improve throughput.
 
 ## Learn More

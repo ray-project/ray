@@ -16,7 +16,7 @@ You can use the Ray dashboard to get a high-level overview of your Ray cluster a
 This includes details such as:
 * the number of deployment replicas currently running
 * logs for your Serve controller, deployment replicas, and proxies
-* the Ray nodes (i.e. machines) running in your Ray cluster.
+* the Ray nodes (machines) running in your Ray cluster.
 
 You can access the Ray dashboard at port 8265 at your cluster's URI.
 For example, if you're running Ray Serve locally, you can access the dashboard by going to `http://localhost:8265` in your browser.
@@ -42,7 +42,7 @@ You can see the details of these entities throughout the Serve page and in the a
 This page includes additional useful information like each actor's process ID (PID) and a link to each actor's logs. You can also see whether any particular actor is alive or dead to help you debug potential cluster failures.
 
 :::{tip}
-To learn more about the Serve controller actor, the HTTP proxy actor(s), the deployment replicas, and how they all work together, check out the [Serve Architecture](serve-architecture) documentation.
+To learn more about the Serve controller actor, the HTTP proxy actors, the deployment replicas, and how they all work together, check out the [Serve Architecture](serve-architecture) documentation.
 :::
 
 For a detailed overview of the Ray dashboard, see the [dashboard documentation](observability-getting-started).
@@ -83,16 +83,16 @@ deployments:
 `serve status` gets your Serve application's current status. This command reports the status of the `proxies` and the `applications` running on the Ray cluster.
 
 `proxies` lists each proxy's status. Each proxy is identified by the node ID of the node that it runs on. A proxy has three possible statuses:
-* `STARTING`: The proxy is starting up and is not yet ready to serve requests.
-* `HEALTHY`: The proxy is capable of serving requests. It is behaving normally.
-* `UNHEALTHY`: The proxy has failed its health-checks. It will be killed, and a new proxy will be started on that node.
+* `STARTING`: The proxy is starting up and isn't yet ready to serve requests.
+* `HEALTHY`: The proxy is capable of serving requests. It's behaving normally.
+* `UNHEALTHY`: The proxy has failed its health-checks. It's killed, and a new proxy is started on that node.
 * `DRAINING`: The proxy is healthy but is closed to new requests. It may contain pending requests that are still being processed.
 * `DRAINED`: The proxy is closed to new requests. There are no pending requests.
 
 `applications` contains a list of applications, their overall statuses, and their deployments' statuses. Each entry in `applications` maps an application's name to four fields:
 * `status`: A Serve application has four possible overall statuses:
     * `"NOT_STARTED"`: No application has been deployed on this cluster.
-    * `"DEPLOYING"`: The application is currently carrying out a `serve deploy` request. It is deploying new deployments or updating existing ones.
+    * `"DEPLOYING"`: The application is currently carrying out a `serve deploy` request. It's deploying new deployments or updating existing ones.
     * `"RUNNING"`: The application is at steady-state. It has finished executing any previous `serve deploy` requests, and is attempting to maintain the goal state set by the latest `serve deploy` request.
     * `"DEPLOY_FAILED"`: The latest `serve deploy` request has failed.
 * `message`: Provides context on the current status.
@@ -113,7 +113,7 @@ deployments:
         * `STOPPING`: The replica is being stopped.
     * `message`: Provides context on the current status.
 
-Use the `serve status` command to inspect your deployments after they are deployed and throughout their lifetime.
+Use the `serve status` command to inspect your deployments after they're deployed and throughout their lifetime.
 
 Using the `serve_config.yaml` example from [an earlier section](production-config-yaml):
 
@@ -166,9 +166,9 @@ This includes both system-level logs from the Serve controller and proxy as well
 
 In development, logs are streamed to the driver Ray program (the Python script that calls `serve.run()` or the `serve run` CLI command), so it's convenient to keep the driver running while debugging.
 
-For example, let's run a basic Serve application and view the logs that it emits.
+For example, run a basic Serve application and view the logs that it emits.
 
-First, let's create a simple deployment that logs a custom log message when it's queried:
+First, create a simple deployment that logs a custom log message when it's queried:
 
 ```{literalinclude} doc_code/monitoring/monitoring.py
 :start-after: __start__
@@ -195,9 +195,9 @@ $ serve run monitoring:say_hello
 (ServeController pid=63881)
 ```
 
-These messages are logs from Ray Serve [actors](actor-guide). They describe which actor (Serve controller, proxy, or deployment replica) created the log and what its process ID is (which is useful when distinguishing between different deployment replicas or proxies). The rest of these log messages are the actual log statements generated by the actor.
+These messages are logs from Ray Serve [actors](actor-guide). They describe which actor (Serve controller, proxy, or deployment replica) created the log and what its process ID is (which is useful when distinguishing between different deployment replicas or proxies). The REST of these log messages are the actual log statements generated by the actor.
 
-While `serve run` is running, we can query the deployment in a separate terminal window:
+While `serve run` is running, query the deployment in a separate terminal window:
 
 ```
 curl -X GET http://localhost:8000/
@@ -211,7 +211,7 @@ This causes the HTTP proxy and deployment replica to print log statements to the
 ```
 
 :::{note}
-Log messages include the logging level, timestamp, deployment name, replica tag, request ID, route, file name, and line number.
+Log messages include the logging level, timestamp, deployment name, replica tag, request ID, route, filename, and line number.
 :::
 
 Find a copy of these logs at `/tmp/ray/session_latest/logs/serve/`. You can parse these stored logs with a logging stack such as ELK or [Loki](serve-logging-loki) to be able to search by deployment or replica.
@@ -284,7 +284,7 @@ next release. To enable JSON logging globally, use `RAY_SERVE_LOG_ENCODING=JSON`
 #### Disable access log
 
 :::{note}
-Access log is Ray Serve traffic log, it is printed to proxy log files and replica log files per request. Sometimes it is useful for debugging, but it can also be noisy.
+Access log is Ray Serve traffic log, it's printed to proxy log files and replica log files per request. Sometimes it's useful for debugging, but it can also be noisy.
 :::
 
 You can also disable the access log by passing `disable_access_log=True` to `logging_config` argument of `@serve.deployment`. For example:
@@ -341,10 +341,10 @@ INFO 2024-02-27 16:05:11,244 default_Model 256v3hq4 4db9445d-fc9e-490b-8bad-0a5e
 INFO 2024-02-27 16:05:11,244 default_Model 256v3hq4 4db9445d-fc9e-490b-8bad-0a5e6bf30899 / replica.py:373 - __CALL__ OK 0.6ms
 ```
 
-When you set `logging_config` at the application level, Ray Serve applies to all deployments in the application. When you set `logging_config` at the deployment level at the same time, the deployment level configuration will overrides the application level configuration.
+When you set `logging_config` at the application level, Ray Serve applies to all deployments in the application. When you set `logging_config` at the deployment level at the same time, the deployment level configuration overrides the application level configuration.
 
 #### Configure logging for serve components
-You can also update logging configuration similar above to the Serve controller and proxies by passing `logging_config` to `serve.start`.
+You can also update logging configuration similar to preceding examples for the Serve controller and proxies by passing `logging_config` to `serve.start`.
 
 ```{literalinclude} doc_code/monitoring/logging_config.py
 :start-after: __configure_serve_component_start__
@@ -379,12 +379,12 @@ duplicate request IDs, which may lead to confusion when debugging.
 ### Filtering logs with Loki
 
 You can explore and filter your logs using [Loki](https://grafana.com/oss/loki/).
-Setup and configuration are straightforward on Kubernetes, but as a tutorial, let's set up Loki manually.
+Setup and configuration are straightforward on Kubernetes, but as a tutorial, set up Loki manually.
 
-For this walkthrough, you need both Loki and Promtail, which are both supported by [Grafana Labs](https://grafana.com). Follow the installation instructions at Grafana's website to get executables for [Loki](https://grafana.com/docs/loki/latest/installation/) and [Promtail](https://grafana.com/docs/loki/latest/clients/promtail/).
+For this walk-through, you need both Loki and Promtail, which are both supported by [Grafana Labs](https://grafana.com). Follow the installation instructions at Grafana's website to get executables for [Loki](https://grafana.com/docs/loki/latest/installation/) and [Promtail](https://grafana.com/docs/loki/latest/clients/promtail/).
 For convenience, save the Loki and Promtail executables in the same directory, and then navigate to this directory in your terminal.
 
-Now let's get your logs into Loki using Promtail.
+Now get your logs into Loki using Promtail.
 
 Save the following file as `promtail-local-config.yaml`:
 
@@ -407,10 +407,10 @@ scrape_configs:
         __path__: /tmp/ray/session_latest/logs/serve/*.*
 ```
 
-The relevant part for Ray Serve is the `static_configs` field, where we have indicated the location of our log files with `__path__`.
-The expression `*.*` will match all files, but it won't match directories since they cause an error with Promtail.
+The relevant part for Ray Serve is the `static_configs` field, where the location of log files is indicated with `__path__`.
+The expression `*.*` matches all files, but it won't match directories since they cause an error with Promtail.
 
-We'll run Loki locally.  Grab the default config file for Loki with the following command in your terminal:
+Run Loki locally. Grab the default config file for Loki with the following command in your terminal:
 
 ```shell
 wget https://raw.githubusercontent.com/grafana/loki/v2.1.0/cmd/loki/loki-local-config.yaml
@@ -424,7 +424,7 @@ Now start Loki:
 
 Here you may need to replace `./loki-darwin-amd64` with the path to your Loki executable file, which may have a different name depending on your operating system.
 
-Start Promtail and pass in the path to the config file we saved earlier:
+Start Promtail and pass in the path to the config file saved earlier:
 
 ```shell
 ./promtail-darwin-amd64 -config.file=promtail-local-config.yaml
@@ -447,9 +447,9 @@ Now [install and run Grafana](https://grafana.com/docs/grafana/latest/installati
 
 On the welcome page, click "Add your first data source" and click "Loki" to add Loki as a data source.
 
-Now click "Explore" in the left-side panel.  You are ready to run some queries!
+Now click "Explore" in the left-side panel. You are ready to run some queries.
 
-To filter all these Ray logs for the ones relevant to our deployment, use the following [LogQL](https://grafana.com/docs/loki/latest/logql/) query:
+To filter all these Ray logs for the ones relevant to the deployment, use the following [LogQL](https://grafana.com/docs/loki/latest/logql/) query:
 
 ```shell
 {job="ray"} |= "Counter"
@@ -474,7 +474,7 @@ failed requests through the [Ray metrics monitoring infrastructure](dash-metrics
 
 :::{note}
 Different metrics are collected when Deployments are called
-via Python `DeploymentHandle` and when they are called via HTTP.
+through Python `DeploymentHandle` and when they're called through HTTP.
 
 See the list of metrics below marked for each.
 :::
@@ -670,8 +670,8 @@ Then run the following script:
 The requests loop until canceled with `Control-C`.
 
 While this script is running, go to `localhost:8080` in your web browser.
-In the output there, you can search for `serve_` to locate the metrics above.
-The metrics are updated once every ten seconds by default, so you need to refresh the page to see new values. The metrics report interval rate can be modified using the following configuration option (note that this is not a stable public API and is subject to change without warning):
+In the output there, you can search for `serve_` to locate the preceding metrics.
+The metrics are updated once every ten seconds by default, so you need to refresh the page to see new values. The metrics report interval rate can be modified using the following configuration option (note that this isn't a stable public API and is subject to change without warning):
 
 ```console
 
@@ -708,9 +708,9 @@ See the [Ray Metrics documentation](collect-metrics) for more details, including
 
 ## Profiling memory
 
-Ray provides two useful metrics to track memory usage: `ray_component_rss_mb` (resident set size) and `ray_component_mem_shared_bytes` (shared memory). Approximate a Serve actor's memory usage by subtracting its shared memory from its resident set size (i.e. `ray_component_rss_mb` - `ray_component_mem_shared_bytes`).
+Ray provides two useful metrics to track memory usage: `ray_component_rss_mb` (resident set size) and `ray_component_mem_shared_bytes` (shared memory). Approximate a Serve actor's memory usage by subtracting its shared memory from its resident set size (`ray_component_rss_mb` - `ray_component_mem_shared_bytes`).
 
-If you notice a memory leak on a Serve actor, use `memray` to debug (`pip install memray`). Set the env var `RAY_SERVE_ENABLE_MEMORY_PROFILING=1`, and run your Serve application. All the Serve actors will run a `memray` tracker that logs their memory usage to `bin` files in the `/tmp/ray/session_latest/logs/serve/` directory. Run the `memray flamegraph [bin file]` command to generate a flamegraph of the memory usage. See the [memray docs](https://bloomberg.github.io/memray/overview.html) for more info.
+If you notice a memory leak on a Serve actor, use `memray` to debug (`pip install memray`). Set the env var `RAY_SERVE_ENABLE_MEMORY_PROFILING=1`, and run your Serve application. All the Serve actors run a `memray` tracker that logs their memory usage to `bin` files in the `/tmp/ray/session_latest/logs/serve/` directory. Run the `memray flamegraph [bin file]` command to generate a flamegraph of the memory usage. See the [memray docs](https://bloomberg.github.io/memray/overview.html) for more info.
 
 ## Exporting metrics into Arize
 Besides using Prometheus to check out Ray metrics, Ray Serve also has the flexibility to export the metrics into other observability platforms.

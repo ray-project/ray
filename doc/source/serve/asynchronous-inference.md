@@ -19,7 +19,7 @@ Common use cases include video inference (such as transcoding, detection, and tr
 ## Key concepts
 
 - **@task_consumer**: A Serve deployment that consumes and executes tasks from a queue. Requires a `TaskProcessorConfig` parameter to configure the task processor; by default it uses the Celery task processor, but you can provide your own implementation.
-- **@task_handler**: A decorator applied to a method inside a `@task_consumer` class. Each handler declares the task it handles via `name=...`; if `name` is omitted, the method's function name is used as the task name. All tasks with that name in the consumer's configured queue (set via the `TaskProcessorConfig` above) are routed to this method for execution.
+- **@task_handler**: A decorator applied to a method inside a `@task_consumer` class. Each handler declares the task it handles with `name=...`; if `name` is omitted, the method's function name is used as the task name. All tasks with that name in the consumer's configured queue (set through the `TaskProcessorConfig` preceding) are routed to this method for execution.
 
 
 ## Components and APIs
@@ -47,7 +47,7 @@ processor_config = TaskProcessorConfig(
 ```
 
 :::{note}
-The filesystem broker is intended for local testing only and has limited functionality. For example, it doesn't support `cancel_tasks`. For production deployments, use a production-ready broker such as Redis or RabbitMQ. See the [Celery broker documentation](https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/) for the full list of supported brokers.
+The filesystem broker is intended for local testing only and has limited capability. For example, it doesn't support `cancel_tasks`. For production deployments, use a production-ready broker such as Redis or RabbitMQ. See the [Celery broker documentation](https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/) for the full list of supported brokers.
 :::
 
 ### `@task_consumer`
@@ -220,7 +220,7 @@ In this example:
 
 ## Concurrency and reliability
 
- Manage concurrency by setting `max_ongoing_requests` on the consumer deployment; this caps how many tasks each replica can process simultaneously. For at-least-once delivery, adapters should acknowledge a task only after the handler completes successfully. Failed tasks are retried up to `max_retries`; once exhausted, they are routed to the failed-task DLQ when configured. The default Celery adapter acknowledges on success, providing at-least-once processing.
+ Manage concurrency by setting `max_ongoing_requests` on the consumer deployment; this caps how many tasks each replica can process simultaneously. For at-least-once delivery, adapters should acknowledge a task only after the handler completes successfully. Failed tasks are retried up to `max_retries`; once exhausted, they're routed to the failed-task Dead Letter Queue (DLQ) when configured. The default Celery adapter acknowledges on success, providing at-least-once processing.
 
 ## Dead letter queues (DLQs)
 

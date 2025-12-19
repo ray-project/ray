@@ -7,7 +7,7 @@ This guide shows how to build an application with stable diffusion model using [
 ## Preparation
 
 ### Installation
-It is recommended to use the `nvcr.io/nvidia/tritonserver:23.12-py3` image which already has the Triton Server python API library installed, and install the ray serve lib by `pip install "ray[serve]"` inside the image.
+It's recommended to use the `nvcr.io/nvidia/tritonserver:23.12-py3` image which already has the Triton Server python API library installed, and install the ray serve lib by `pip install "ray[serve]"` inside the image.
 
 ### Build and export a model
 For this application, the encoder is exported to ONNX format and the stable diffusion model is exported to be TensorRT engine format which is being compatible with Triton Server.
@@ -64,14 +64,14 @@ torch.onnx.export(
 
 From the script, the outputs are `vae.onnx` and `encoder.onnx`.
 
-After the ONNX model exported, convert the ONNX model to the TensorRT engine serialized file. ([Details](https://github.com/NVIDIA/TensorRT/blob/release/9.2/samples/trtexec/README.md?plain=1#L22) about trtexec cli)
+After the ONNX model exported, convert the ONNX model to the TensorRT engine serialized file. ([Details](https://github.com/NVIDIA/TensorRT/blob/release/9.2/samples/trtexec/README.md?plain=1#L22) about `trtexec` CLI)
 ```bash
 trtexec --onnx=vae.onnx --saveEngine=vae.plan --minShapes=latent_sample:1x4x64x64 --optShapes=latent_sample:4x4x64x64 --maxShapes=latent_sample:8x4x64x64 --fp16
 ```
 
 ### Prepare the model repository
-Triton Server requires a [model repository](https://github.com/triton-inference-server/server/blob/main/docs/user_guide/model_repository.md) to store the models, which is a local directory or remote blob store (e.g. AWS S3) containing the model configuration and the model files.
-In our example, we will use a local directory as the model repository to save all the model files.
+Triton Server requires a [model repository](https://github.com/triton-inference-server/server/blob/main/docs/user_guide/model_repository.md) to store the models, which is a local directory or remote blob store (for example, AWS S3) containing the model configuration and the model files.
+In this example, a local directory is used as the model repository to save all the model files.
 
 ```bash
 model_repo/
@@ -89,7 +89,7 @@ model_repo/
     └── config.pbtxt
 ```
 
-The model repository contains three models: `stable_diffusion`, `text_encoder` and `vae`. Each model has a `config.pbtxt` file and a model file. The `config.pbtxt` file contains the model configuration, which is used to describe the model type and input/output formats.(you can learn more about model config file [here](https://github.com/triton-inference-server/server/blob/main/docs/user_guide/model_configuration.md)). To get config files for our example, you can download them from [here](https://github.com/triton-inference-server/tutorials/tree/main/Conceptual_Guide/Part_6-building_complex_pipelines/model_repository). We use `1` as the version of each model. The model files are saved in the version directory.
+The model repository contains three models: `stable_diffusion`, `text_encoder` and `vae`. Each model has a `config.pbtxt` file and a model file. The `config.pbtxt` file contains the model configuration, which is used to describe the model type and input/output formats.(you can learn more about model config file [here](https://github.com/triton-inference-server/server/blob/main/docs/user_guide/model_configuration.md)). To get config files for this example, you can download them from [here](https://github.com/triton-inference-server/tutorials/tree/main/Conceptual_Guide/Part_6-building_complex_pipelines/model_repository). The version `1` is used for each model. The model files are saved in the version directory.
 
 
 ## Start the Triton Server inside a Ray Serve application
@@ -164,7 +164,7 @@ if __name__ == "__main__":
     )
 ```
 
-Save the above code to a file named e.g. `triton_serve.py`, then run `python triton_serve.py` to start the server and send classify requests. After you run the above code, you should see the image generated `generated_image.jpg`. Check it out!
+Save the preceding code to a file named, for example, `triton_serve.py`, then run `python triton_serve.py` to start the server and send classify requests. After you run the preceding code, you should see the image generated `generated_image.jpg`. Check it out
 ![image](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/triton_server_stable_diffusion.jpg)
 
 
@@ -172,4 +172,4 @@ Save the above code to a file named e.g. `triton_serve.py`, then run `python tri
 You can also use remote model repository, such as AWS S3, to store the model files. To use remote model repository, you need to set the `model_repository` variable to the remote model repository path.  For example `model_repository = s3://<bucket_name>/<model_repository_path>`.
 :::
 
-If you find any bugs or have any suggestions, please let us know by [filing an issue](https://github.com/ray-project/ray/issues) on GitHub.
+If you find any bugs or have any suggestions, [file an issue](https://github.com/ray-project/ray/issues) on GitHub.

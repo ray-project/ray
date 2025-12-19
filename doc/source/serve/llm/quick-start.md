@@ -212,7 +212,7 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
 
 ::::{tab-set}
 
-:::{tab-item} Inline Config
+:::{tab-item} Inline configuration
 :sync: inline
 
 ```{literalinclude} ../../llm/doc_code/serve/qwen/llm_config_example.yaml
@@ -220,7 +220,7 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
 ```
 :::
 
-:::{tab-item} Standalone Config
+:::{tab-item} Standalone configuration
 :sync: standalone
 
 ```yaml

@@ -6,7 +6,7 @@ Each [Ray Serve deployment](serve-key-concepts-deployment) has one [replica](ser
 
 ## Manual Scaling
 
-Before jumping into autoscaling, which is more complex, the other option to consider is manual scaling. You can increase the number of replicas by setting a higher value for [num_replicas](serve-configure-deployment) in the deployment options through [in place updates](serve-inplace-updates). By default, `num_replicas` is 1. Increasing the number of replicas will horizontally scale out your deployment and improve latency and throughput for increased levels of traffic.
+Before jumping into autoscaling, which is more complex, the other option to consider is manual scaling. You can increase the number of replicas by setting a higher value for [num_replicas](serve-configure-deployment) in the deployment options through [in place updates](serve-inplace-updates). By default, `num_replicas` is 1. Increasing the number of replicas horizontally scales out your deployment and improves latency and throughput for increased levels of traffic.
 
 ```yaml
 # Deploy with a single replica
@@ -24,7 +24,7 @@ deployments:
 
 Instead of setting a fixed number of replicas for a deployment and manually updating it, you can configure a deployment to autoscale based on incoming traffic. The Serve autoscaler reacts to traffic spikes by monitoring queue sizes and making scaling decisions to add or remove replicas. Turn on autoscaling for a deployment by setting `num_replicas="auto"`. You can further configure it by tuning the [autoscaling_config](../serve/api/doc/ray.serve.config.AutoscalingConfig.rst) in deployment options.
 
-The following config is what we will use in the example in the following section.
+The following config is used in the example in the following section.
 ```yaml
 - name: Model
   num_replicas: auto
@@ -40,7 +40,7 @@ Setting `num_replicas="auto"` is equivalent to the following deployment configur
     max_replicas: 100
 ```
 :::{note}
-When you set `num_replicas="auto"`, Ray Serve applies the defaults shown above,
+When you set `num_replicas="auto"`, Ray Serve applies the defaults shown preceding,
 including `max_replicas: 100`. However, if you configure autoscaling manually
 without using `num_replicas="auto"`, the base default for `max_replicas` is 1,
 which means autoscaling won't occur unless you explicitly set a higher value.
@@ -48,12 +48,12 @@ You can override any of these defaults by specifying `autoscaling_config` even
 when using `num_replicas="auto"`.
 :::
 
-Let's dive into what each of these parameters do.
+Here's what each of these parameters does.
 
-* **target_ongoing_requests** is the average number of ongoing requests per replica that the Serve autoscaler tries to ensure. You can adjust it based on your request processing length (the longer the requests, the smaller this number should be) as well as your latency objective (the shorter you want your latency to be, the smaller this number should be).
-* **max_ongoing_requests** is the maximum number of ongoing requests allowed for a replica. Note this parameter is not part of the autoscaling config because it's relevant to all deployments, but it's important to set it relative to the target value if you turn on autoscaling for your deployment.
-* **min_replicas** is the minimum number of replicas for the deployment. Set this to 0 if there are long periods of no traffic and some extra tail latency during upscale is acceptable. Otherwise, set this to what you think you need for low traffic.
-* **max_replicas** is the maximum number of replicas for the deployment. Set this to ~20% higher than what you think you need for peak traffic.
+* **`target_ongoing_requests`** is the average number of ongoing requests per replica that the Serve autoscaler tries to ensure. You can adjust it based on your request processing length (the longer the requests, the smaller this number should be) as well as your latency objective (the shorter you want your latency to be, the smaller this number should be).
+* **`max_ongoing_requests`** is the maximum number of ongoing requests allowed for a replica. Note this parameter isn't part of the autoscaling config because it's relevant to all deployments, but it's important to set it relative to the target value if you turn on autoscaling for your deployment.
+* **`min_replicas`** is the minimum number of replicas for the deployment. Set this to 0 if there are long periods of no traffic and some extra tail latency during upscale is acceptable. Otherwise, set this to what you think you need for low traffic.
+* **`max_replicas`** is the maximum number of replicas for the deployment. Set this to ~20% higher than what you think you need for peak traffic.
 
 These guidelines are a great starting point. If you decide to further tune your autoscaling config for your application, see [Advanced Ray Serve Autoscaling](serve-advanced-autoscaling).
 
@@ -107,6 +107,6 @@ Notice the following:
 
 The Ray Serve Autoscaler is an application-level autoscaler that sits on top of the [Ray Autoscaler](cluster-index).
 Concretely, this means that the Ray Serve autoscaler asks Ray to start a number of replica actors based on the request demand.
-If the Ray Autoscaler determines there aren't enough available resources (e.g. CPUs, GPUs, etc.) to place these actors, it responds by requesting more Ray nodes.
+If the Ray Autoscaler determines there aren't enough available resources (for example, CPUs, GPUs, etc.) to place these actors, it responds by requesting more Ray nodes.
 The underlying cloud provider then responds by adding more nodes.
 Similarly, when Ray Serve scales down and terminates replica Actors, it attempts to make as many nodes idle as possible so the Ray Autoscaler can remove them. To learn more about the architecture underlying Ray Serve Autoscaling, see [Ray Serve Autoscaling Architecture](serve-autoscaling-architecture).

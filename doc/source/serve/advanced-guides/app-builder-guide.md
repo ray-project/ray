@@ -21,7 +21,7 @@ To pass arguments without changing the code, define an "application builder" fun
 You can use this application builder function as the import path in the `serve run` CLI command or the config file (as shown below).
 To avoid writing code to handle type conversions and missing arguments, use a [Pydantic object](typed-app-builders) instead.
 
-### Passing arguments via `serve run`
+### Passing arguments through `serve run`
 
 Pass arguments to the application builder from `serve run` using the following syntax:
 
@@ -30,7 +30,7 @@ $ serve run hello:app_builder key1=val1 key2=val2
 ```
 
 The arguments are passed to the application builder as a dictionary, in this case `{"key1": "val1", "key2": "val2"}`.
-For example, to pass a new message to the `HelloWorld` app defined above (with the code saved in `hello.py`):
+For example, to pass a new message to the `HelloWorld` app defined preceding (with the code saved in `hello.py`):
 
 ```bash
 % serve run hello:app_builder message="Hello from CLI"
@@ -45,7 +45,7 @@ For example, to pass a new message to the `HelloWorld` app defined above (with t
 
 Notice that the "Hello from CLI" message is printed from within the deployment constructor.
 
-### Passing arguments via config file
+### Passing arguments through config file
 
 Pass arguments to the application builder in the config file's `args` field:
 
@@ -57,7 +57,7 @@ applications:
       message: "Hello from config"
 ```
 
-For example, to pass a new message to the `HelloWorld` app defined above (with the code saved in `hello.py` and the config saved in `config.yaml`):
+For example, to pass a new message to the `HelloWorld` app defined preceding (with the code saved in `hello.py` and the config saved in `config.yaml`):
 
 ```bash
 % serve run config.yaml

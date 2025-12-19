@@ -6,7 +6,7 @@ Monitor your LLM deployments with built-in metrics, dashboards, and logging.
 Ray Serve LLM provides comprehensive observability with the following features:
 
 - **Service-level metrics**: Request and token behavior across deployed models.
-- **Engine metrics**: vLLM-specific performance metrics such as TTFT and TPOT.
+- **Engine metrics**: vLLM-specific performance metrics such as Time To First Token (TTFT) and Time Per Output Token (TPOT).
 - **Grafana dashboards**: Pre-built dashboard for LLM-specific visualizations.
 - **Prometheus integration**:  Export capability for all metrics for custom monitoring and alerting.
 
@@ -32,7 +32,7 @@ The dashboard includes visualizations for:
 
 - **Request metrics**: Throughput, latency, and error rates.
 - **Token metrics**: Input/output token counts and ratios.
-- **Performance metrics**: Time to first token (TTFT), time per output token (TPOT).
+- **Performance metrics**: Time To First Token (TTFT), Time Per Output Token (TPOT).
 - **Resource metrics**: GPU cache utilization, memory usage.
 
 ## Engine metrics
@@ -41,8 +41,8 @@ All engine metrics, including vLLM, are available through the Ray metrics export
 
 Key engine metrics include:
 
-- **Time to first token (TTFT)**: Latency before the first token is generated.
-- **Time per output token (TPOT)**: Average latency per generated token.
+- **Time To First Token (TTFT)**: Latency before the first token is generated.
+- **Time Per Output Token (TPOT)**: Average latency per generated token.
 - **GPU cache utilization**: KV cache memory usage.
 - **Batch size**: Current and average batch sizes.
 - **Throughput**: Requests per second and tokens per second.

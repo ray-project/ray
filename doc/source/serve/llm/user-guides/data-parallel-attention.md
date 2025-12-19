@@ -62,7 +62,7 @@ serve deploy dp_config.yaml
 ```
 
 :::{note}
-The `num_replicas` in `deployment_config` must equal `data_parallel_size` in `engine_kwargs`. Autoscaling is not supported for data parallel attention deployments since all replicas must be present and coordinated.
+The `num_replicas` in `deployment_config` must equal `data_parallel_size` in `engine_kwargs`. Autoscaling isn't supported for data parallel attention deployments since all replicas must be present and coordinated.
 :::
 
 ## Configuration parameters
@@ -70,7 +70,7 @@ The `num_replicas` in `deployment_config` must equal `data_parallel_size` in `en
 ### Required parameters
 
 - `data_parallel_size`: Number of data parallel replicas to create. Must be a positive integer.
-- `dp_size_per_node`: Number of DP replicas per node. Must be set in `experimental_configs`. This controls how replicas are distributed across nodes. This is a temporary required config that we will remove in future versions. 
+- `dp_size_per_node`: Number of DP replicas per node. Must be set in `experimental_configs`. This controls how replicas are distributed across nodes. This is a temporary required config that's removed in future versions. 
 
 ### Deployment configuration
 
@@ -83,7 +83,7 @@ In data parallel attention, all replicas work together as a cohesive unit:
 
 1. **Rank assignment**: Each replica receives a unique rank (0 to `dp_size-1`) from a coordinator.
 2. **Request distribution**: Ray Serve's request router distributes requests across replicas using load balancing.
-3. **Collective operations**: Replicas coordinate for collective operations (e.g., all-reduce) required by the model.
+3. **Collective operations**: Replicas coordinate for collective operations (for example, all-reduce) required by the model.
 4. **Synchronization**: All replicas must be present and healthy for the deployment to function correctly.
 
 The coordination overhead is minimal:

@@ -8,7 +8,7 @@ orphan: true
 
 ## Overview
 
-This tutorial demonstrates how to deploy a production-ready object detection service using Ray Serve. You will learn how to serve a YOLOv5 object detection model efficiently with automatic GPU resource management and scaling capabilities.
+This tutorial demonstrates how to deploy a production-ready object detection service using Ray Serve. You learn how to serve a YOLOv5 object detection model efficiently with automatic GPU resource management and scaling capabilities.
 
 
 ## Installation

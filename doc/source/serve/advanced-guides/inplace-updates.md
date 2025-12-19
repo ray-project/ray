@@ -6,7 +6,7 @@ You can update your Serve applications once they're in production by updating th
 
 (serve-in-production-lightweight-update)=
 
-## Lightweight Config Updates
+## Lightweight config updates
 
 Lightweight config updates modify running deployment replicas without tearing them down and restarting them, so there's less downtime as the deployments update. For each deployment, modifying the following values is considered a lightweight config update, and won't tear down the replicas for that deployment:
 - `num_replicas`
@@ -23,7 +23,7 @@ Lightweight config updates modify running deployment replicas without tearing th
 ## Updating the user config
 This example uses the text summarization and translation application [from the production guide](production-config-yaml). Both of the individual deployments contain a `reconfigure()` method. This method allows you to issue lightweight updates to the deployments by updating the `user_config`.
 
-First let's deploy the graph. Make sure to stop any previous Ray cluster using the CLI command `ray stop` for this example:
+First, deploy the graph. Make sure to stop any previous Ray cluster using the CLI command `ray stop` for this example:
 
 ```console
 $ ray start --head
@@ -66,7 +66,7 @@ $ serve deploy serve_config.yaml
 ...
 ```
 
-We can inspect our deployments with `serve status`. Once the application's `status` returns to `RUNNING`, we can try our request one more time:
+Inspect the deployments with `serve status`. Once the application's `status` returns to `RUNNING`, try the request one more time:
 
 ```console
 $ serve status
@@ -99,17 +99,17 @@ The language has updated. Now the returned text is in German instead of French.
 
 ## Code Updates
 
-Changing the following values in a deployment's config will trigger redeployment and restart all the deployment's replicas.
+Changing the following values in a deployment's config triggers redeployment and restarts all the deployment's replicas.
 - `ray_actor_options`
 - `placement_group_bundles`
 - `placement_group_strategy`
 
-Changing the following application-level config values is also considered a code update, and all deployments in the application will be restarted.
+Changing the following application-level config values is also considered a code update, and all deployments in the application are restarted.
 - `import_path`
 - `runtime_env`
 
 :::{warning}
-Although you can update your Serve application by deploying an entirely new deployment graph using a different `import_path` and a different `runtime_env`, this is NOT recommended in production.
+Although you can update your Serve application by deploying an entirely new deployment graph using a different `import_path` and a different `runtime_env`, this isn't recommended in production.
 
 The best practice for large-scale code updates is to start a new Ray cluster, deploy the updated code to it using `serve deploy`, and then switch traffic from your old cluster to the new one.
 :::

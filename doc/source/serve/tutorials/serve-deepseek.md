@@ -16,7 +16,7 @@ To run this example, install the following:
 pip install "ray[llm]==2.46.0"
 ```
 
-Note: Deploying DeepSeek-R1 requires at least 720GB of free disk space per worker node to store model weights.
+Note: Deploying DeepSeek-R1 requires at least 720 GB of free disk space per worker node to store model weights.
 
 ## Deployment
 
@@ -97,7 +97,7 @@ applications:
 
 ## Configuration
 
-You may need to adjust configurations in the above code based on your setup, specifically:
+You may need to adjust configurations in the preceding code based on your setup, specifically:
 
 * `accelerator_type`: for NVIDIA GPUs, DeepSeek requires Hopper GPUs or later ones. 
 Therefore, you can specify `H200`, `H100`, `H20` etc. based on your hardware.
@@ -105,12 +105,12 @@ Therefore, you can specify `H200`, `H100`, `H20` etc. based on your hardware.
 or two nodes of 8xH100. The typical setup of using H100 is setting `tensor_parallel_size` to `8`
 and `pipeline_parallel_size` to `2` as in the code example. When using H200, you can set
 `tensor_parallel_size` to `8` and leave out the `pipeline_parallel_size` parameter
-(it is `1` by default).
+(it's `1` by default).
 * `model_source`: although you could specify a HuggingFace model ID like `deepseek-ai/DeepSeek-R1` 
-in the code example, it is recommended to pre-download the model because it is huge.
-You can download it to the local file system (e.g., `/path/to/downloaded/model`)
-or to a remote object store (e.g., `s3://my-bucket/path/to/downloaded/model`),
-and specify it as `model_source`. It is recommended to download it to a remote object store,
+in the code example, it's recommended to pre-download the model because it's huge.
+You can download it to the local file system (for example, `/path/to/downloaded/model`)
+or to a remote object store (for example, `s3://my-bucket/path/to/downloaded/model`),
+and specify it as `model_source`. It's recommended to download it to a remote object store,
 using {ref}`Ray model caching utilities <model_cache>`. 
 Note that if you have two nodes and would like to download to local file system,
 you need to download the model to the same path on both nodes.

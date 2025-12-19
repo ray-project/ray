@@ -29,8 +29,8 @@ Once you set up [monitoring](serve-monitoring) with Ray and Ray Serve, these iss
 The following are ways to address these issues:
 
 1. Make sure you are using the right hardware and resources:
-   * Are you reserving GPUs for your deployment replicas using `ray_actor_options` (e.g., `ray_actor_options={“num_gpus”: 1}`)?
-   * Are you reserving one or more cores for your deployment replicas using `ray_actor_options` (e.g., `ray_actor_options={“num_cpus”: 2}`)?
+   * Are you reserving GPUs for your deployment replicas using `ray_actor_options` (for example, `ray_actor_options={"num_gpus": 1}`)?
+   * Are you reserving one or more cores for your deployment replicas using `ray_actor_options` (for example, `ray_actor_options={"num_cpus": 2}`)?
    * Are you setting [OMP_NUM_THREADS](serve-omp-num-threads) to increase the performance of your deep learning framework?
 2. Try batching your requests. See [Dynamic Request Batching](serve-performance-batching-requests).
 3. Consider using `async` methods in your callable. See [the section below](serve-performance-async-methods).
@@ -45,7 +45,7 @@ According to the [FastAPI documentation](https://fastapi.tiangolo.com/async/#ver
 :::
 
 Are you using `async def` in your callable? If you are using `asyncio` and
-hitting the same queuing issue mentioned above, you might want to increase
+hitting the same queuing issue mentioned preceding, you might want to increase
 `max_ongoing_requests`. By default, Serve sets this to a low value (5) to ensure clients receive proper backpressure.
 You can increase the value in the deployment decorator; for example,
 `@serve.deployment(max_ongoing_requests=1000)`.
@@ -79,7 +79,7 @@ Ray Serve allows you to fine-tune the backoff behavior of the request router, wh
 ### Enable throughput-optimized serving
 
 :::{note}
-In Ray v2.54.0, the defaults for `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD` and `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP` will change to `0` for improved performance.
+In Ray v2.54.0, the defaults for `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD` and `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP` change to `0` for improved performance.
 :::
 
 This section details how to enable Ray Serve options focused on improving throughput and reducing latency. These configurations focus on the following:
@@ -150,10 +150,10 @@ You can also configure each option individually. The following table details the
 | --- | --- |
 | `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0` | Your code runs in the same event loop as the replica's main event loop. You must avoid blocking operations in your request path. Set this configuration to `1` to run your code in a separate event loop, which protects the replica's ability to communicate with the Serve Controller if your code has blocking operations. |
 | `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0`| The request router runs in the same event loop as the your code's event loop. You must avoid blocking operations in your request path. Set this configuration to `1` to run the router in a separate event loop, which protect Ray Serve's request routing ability when your code has blocking operations |
-| `RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE=1000` | Sets the log buffer to batch writes to every `1000` logs, flushing the buffer on write. The system always flushes the buffer and writes logs when it detects a line with level ERROR.  Set the buffer size to `1` to disable buffering and write logs immediately. |
+| `RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE=1000` | Sets the log buffer to batch writes to every `1000` logs, flushing the buffer on write. The system always flushes the buffer and writes logs when it detects a line with level `ERROR`.  Set the buffer size to `1` to disable buffering and write logs immediately. |
 | `RAY_SERVE_LOG_TO_STDERR=0` | Only write logs to files under the `logs/serve/` directory. Proxy, Controller, and Replica logs no longer appear in the console, worker files, or the Actor Logs section of the Ray Dashboard. Set this property to `1` to enable additional logging. |
 
-You may want to enable throughput-optimized serving while customizing the options above. You can do this by setting `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and overriding the specific options. For example, to enable throughput-optimized serving and continue logging to stderr, you should set `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and override with `RAY_SERVE_LOG_TO_STDERR=1`.
+You may want to enable throughput-optimized serving while customizing the options preceding. You can do this by setting `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and overriding the specific options. For example, to enable throughput-optimized serving and continue logging to stderr, you should set `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and override with `RAY_SERVE_LOG_TO_STDERR=1`.
 
 ## Debugging performance issues in controller
 

@@ -70,8 +70,8 @@ By default, Ray Serve uses a **spread scheduling strategy** that distributes rep
 When scheduling a replica, the scheduler evaluates strategies in the following priority order:
 
 1. **Placement groups**: If you specify `placement_group_bundles`, the scheduler uses a `PlacementGroupSchedulingStrategy` to co-locate the replica with its required resources.
-2. **Pack scheduling with node affinity**: If pack scheduling is enabled, the scheduler identifies the best available node by preferring non-idle nodes (nodes already running replicas) and using a best-fit algorithm to minimize resource fragmentation. It then uses a `NodeAffinitySchedulingStrategy` with soft constraints to schedule the replica on that node.
-3. **Default strategy**: Falls back to `SPREAD` when pack scheduling isn't enabled.
+2. **PACK scheduling with node affinity**: If PACK scheduling is enabled, the scheduler identifies the best available node by preferring non-idle nodes (nodes already running replicas) and using a best-fit algorithm to minimize resource fragmentation. It then uses a `NodeAffinitySchedulingStrategy` with soft constraints to schedule the replica on that node.
+3. **Default strategy**: Falls back to `SPREAD` when PACK scheduling isn't enabled.
 
 ### Downscaling behavior
 
@@ -170,14 +170,14 @@ This is different from simply requesting resources in `ray_actor_options`. With 
 
 | Scenario | Why placement groups help |
 |----------|---------------------------|
-| **Model parallelism** | Tensor parallelism or pipeline parallelism requires multiple GPUs that must communicate efficiently. Use `STRICT_PACK` to guarantee all GPUs are on the same node. For example, vLLM with `tensor_parallel_size=4` and the Ray distributed executor backend spawns 4 Ray worker actors (one per GPU shard), all of which must be on the same node for efficient inter-GPU communication via NVLink/NVSwitch. |
+| **Model parallelism** | Tensor parallelism or pipeline parallelism requires multiple GPUs that must communicate efficiently. Use `STRICT_PACK` to guarantee all GPUs are on the same node. For example, vLLM with `tensor_parallel_size=4` and the Ray distributed executor backend spawns 4 Ray worker actors (one per GPU shard), all of which must be on the same node for efficient inter-GPU communication through NVLink/NVSwitch. |
 | **Replica spawns workers** | Your deployment creates Ray actors or tasks for parallel processing. Placement groups reserve resources for these workers. For example, a video processing service that spawns Ray tasks to decode frames in parallel, or a batch inference service using Ray Data to preprocess inputs before model inference. |
 | **Cross-node distribution** | You need bundles spread across different nodes. Use `SPREAD` or `STRICT_SPREAD`. For example, serving a model with a massive embedding table (such as a recommendation model with billions of item embeddings) that must be sharded across multiple nodes because it exceeds single-node memory. Each bundle holds one shard, and `STRICT_SPREAD` ensures each shard is on a separate node. |
 
 Don't use placement groups when:
 - Your replica is self-contained and doesn't spawn additional actors/tasks
 - You only need simple resource requirements (use `ray_actor_options` instead)
-- You want to use `max_replicas_per_node`. The combination of these two options is not supported today.
+- You want to use `max_replicas_per_node`. The combination of these two options isn't supported today.
 
 :::{note}
 **How `max_replicas_per_node` works:** Ray Serve creates a synthetic custom resource for each deployment. Every node implicitly has 1.0 of this resource, and each replica requests `1.0 / max_replicas_per_node` of it. For example, with `max_replicas_per_node=3`, each replica requests ~0.33 of the resource, so only 3 replicas can fit on a node before the resource is exhausted. This mechanism relies on Ray's standard resource scheduling, which conflicts with placement group scheduling.
@@ -185,7 +185,7 @@ Don't use placement groups when:
 
 #### Configuring placement groups
 
-The following example reserves 2 GPUs for each replica using a strict pack strategy:
+The following example reserves 2 GPUs for each replica using a strict PACK strategy:
 
 ```{literalinclude} ../doc_code/replica_scheduling.py
 :start-after: __placement_group_start__
@@ -233,7 +233,7 @@ These environment variables modify Ray Serve's scheduling behavior. Set them bef
 
 **Default**: `0` (disabled)
 
-When enabled, switches from spread scheduling to **pack scheduling**. Pack scheduling:
+When enabled, switches from spread scheduling to **PACK scheduling**. PACK scheduling:
 - Packs replicas onto fewer nodes to minimize resource fragmentation
 - Sorts pending replicas by resource requirements (largest first)
 - Prefers scheduling on nodes that already have replicas (non-idle nodes)
@@ -243,26 +243,26 @@ When enabled, switches from spread scheduling to **pack scheduling**. Pack sched
 export RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY=1
 ray start --head
 ```
-**When to use pack scheduling:** When you run many small deployments (such as 10 models each needing 0.5 CPUs), spread scheduling scatters them across nodes, wasting capacity. Pack scheduling fills nodes efficiently before using new ones. Cloud providers bill per node-hour. Packing replicas onto fewer nodes allows idle nodes to be released by the autoscaler, directly reducing your bill.
+**When to use PACK scheduling:** When you run many small deployments (such as 10 models each needing 0.5 CPUs), spread scheduling scatters them across nodes, wasting capacity. PACK scheduling fills nodes efficiently before using new ones. Cloud providers bill per node-hour. Packing replicas onto fewer nodes allows idle nodes to be released by the autoscaler, directly reducing your bill.
 
-**When to avoid pack scheduling:** High availability is critical and you want replicas spread across nodes
+**When to avoid PACK scheduling:** High availability is critical and you want replicas spread across nodes
 
 :::{note}
-Pack scheduling automatically falls back to spread scheduling when any deployment uses placement groups with `PACK`, `SPREAD`, or `STRICT_SPREAD` strategies. This happens because pack scheduling needs to predict where resources will be consumed to bin-pack effectively. With `STRICT_PACK`, all bundles are guaranteed to land on one node, making resource consumption predictable. With other strategies, bundles may spread across multiple nodes unpredictably, so the scheduler can't accurately track available resources per node.
+PACK scheduling automatically falls back to spread scheduling when any deployment uses placement groups with `PACK`, `SPREAD`, or `STRICT_SPREAD` strategies. This happens because PACK scheduling needs to predict where resources are consumed to bin-PACK effectively. With `STRICT_PACK`, all bundles are guaranteed to land on one node, making resource consumption predictable. With other strategies, bundles may spread across multiple nodes unpredictably, so the scheduler can't accurately track available resources per node.
 :::
 
 ### `RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES`
 
 **Default**: empty
 
-A comma-separated list of custom resource names that should be prioritized when sorting replicas for pack scheduling. Resources listed earlier have higher priority.
+A comma-separated list of custom resource names that should be prioritized when sorting replicas for PACK scheduling. Resources listed earlier have higher priority.
 
 ```bash
 export RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES="TPU,custom_accelerator"
 ray start --head
 ```
 
-When pack scheduling sorts replicas by resource requirements, the priority order is:
+When PACK scheduling sorts replicas by resource requirements, the priority order is:
 1. Custom resources in `RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES` (in order)
 2. GPU
 3. CPU

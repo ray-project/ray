@@ -4,7 +4,7 @@ Common issues and frequently asked questions for Ray Serve LLM.
 
 ## Frequently asked questions
 
-### How do I use gated Hugging Face models?
+### How do you use gated Hugging Face models?
 
 You can use `runtime_env` to specify the env variables that are required to access the model. To get the deployment options, you can use the `get_deployment_options` method on the {class}`LLMServer <ray.serve.llm.deployment.LLMServer>` class. Each deployment class has its own `get_deployment_options` method.
 

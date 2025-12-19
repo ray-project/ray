@@ -65,7 +65,7 @@ Then, you can build this image and push it to your Dockerhub account, so it can 
 ...
 ```
 
-Make sure to replace `your_dockerhub_username` with your DockerHub user name and the `custom_image_name` with the name you want for your image. `latest` is this image's version. If you don't specify a version when you pull the image, then Docker automatically pulls the `latest` version of the package. You can also replace `latest` with a specific version if you prefer.
+Make sure to replace `your_dockerhub_username` with your Dockerhub user name and the `custom_image_name` with the name you want for your image. `latest` is this image's version. If you don't specify a version when you pull the image, then Docker automatically pulls the `latest` version of the package. You can also replace `latest` with a specific version if you prefer.
 
 ## Adding your Serve application to the Docker image
 

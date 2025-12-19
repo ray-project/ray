@@ -13,7 +13,7 @@ This guide helps you configure Ray Serve to:
 
 ## Resource management (CPUs, GPUs, accelerators)
 
-You may want to specify a deployment's resource requirements to reserve cluster resources like GPUs or other accelerators.  To assign hardware resources per replica, you can pass resource requirements to
+You may want to specify a deployment's resource requirements to reserve cluster resources like GPUs or other accelerators. To assign hardware resources per replica, you can pass resource requirements to
 `ray_actor_options`.
 By default, each replica reserves one CPU.
 To learn about options to pass in, take a look at the [Resources with Actors guide](actor-resource-guide).
@@ -52,7 +52,7 @@ def func_2(*args):
     return do_something_with_my_gpu()
 ```
 
-In this example, each replica of each deployment will be allocated 0.5 GPUs.  The same can be done to multiplex over CPUs, using `"num_cpus"`.
+In this example, each replica of each deployment is allocated 0.5 GPUs. The same can be done to multiplex over CPUs, using `"num_cpus"`.
 
 ### Custom resources, accelerator types, and more
 
@@ -65,9 +65,9 @@ def func(*args):
     return do_something_with_my_custom_resource()
 ```
 
-You can also specify {ref}`accelerator types <accelerator-types>` via the `accelerator_type` parameter in `ray_actor_options`.
+You can also specify {ref}`accelerator types <accelerator-types>` through the `accelerator_type` parameter in `ray_actor_options`.
 
-Below is the full list of supported options in `ray_actor_options`; please see the relevant Ray Core documentation for more details about each option:
+Below is the full list of supported options in `ray_actor_options`; see the relevant Ray Core documentation for more details about each option:
 
 - `accelerator_type`
 - `memory`
@@ -81,9 +81,9 @@ Below is the full list of supported options in `ray_actor_options`; please see t
 
 ## Configuring parallelism with OMP_NUM_THREADS
 
-Deep learning models like PyTorch and Tensorflow often use multithreading when performing inference.
+Deep learning models like PyTorch and TensorFlow often use multi-threading when performing inference.
 The number of CPUs they use is controlled by the `OMP_NUM_THREADS` environment variable.
-Ray sets `OMP_NUM_THREADS=<num_cpus>` by default. To [avoid contention](omp-num-thread-note), Ray sets `OMP_NUM_THREADS=1` if `num_cpus` is not specified on the tasks/actors, to reduce contention between actors/tasks which run in a single thread.
+Ray sets `OMP_NUM_THREADS=<num_cpus>` by default. To [avoid contention](omp-num-thread-note), Ray sets `OMP_NUM_THREADS=1` if `num_cpus` isn't specified on the tasks/actors, to reduce contention between actors/tasks which run in a single thread.
 If you *do* want to enable this parallelism in your Serve deployment, just set `num_cpus` (recommended) to the desired value, or manually set the `OMP_NUM_THREADS` environment variable when starting Ray or in your function/class definition.
 
 ```bash
@@ -99,6 +99,6 @@ OMP_NUM_THREADS=12 ray start --address=$HEAD_NODE_ADDRESS
 
 :::{note}
 Some other libraries may not respect `OMP_NUM_THREADS` and have their own way to configure parallelism.
-For example, if you're using OpenCV, you'll need to manually set the number of threads using `cv2.setNumThreads(num_threads)` (set to 0 to disable multi-threading).
+For example, if you're using OpenCV, you need to manually set the number of threads using `cv2.setNumThreads(num_threads)` (set to 0 to disable multi-threading).
 You can check the configuration using `cv2.getNumThreads()` and `cv2.getNumberOfCPUs()`.
 :::

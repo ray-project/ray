@@ -3,7 +3,7 @@
 # Deploy on VM
 
 You can deploy your Serve application to production on a Ray cluster using the Ray Serve CLI.
-`serve deploy` takes in a config file path and it deploys that file to a Ray cluster over HTTP.
+`serve deploy` takes in a config path and it deploys that file to a Ray cluster over HTTP.
 This could either be a local, single-node cluster as in this example or a remote, multi-node cluster started with the [Ray Cluster Launcher](cloud-vm-index).
 
 This section should help you:
@@ -33,10 +33,10 @@ Sent deploy request successfully!
 
 The message `Sent deploy request successfully!` means:
 * The Ray cluster has received your config file successfully.
-* It will start a new Serve application if one hasn't already started.
-* The Serve application will deploy the deployments from your deployment graph, updated with the configurations from your config file.
+* It starts a new Serve application if one hasn't already started.
+* The Serve application deploys the deployments from your deployment graph, updated with the configurations from your config file.
 
-It does **not** mean that your Serve application, including your deployments, has already started running successfully. This happens asynchronously as the Ray cluster attempts to update itself to match the settings from your config file. See [Inspect an application](serve-in-production-inspecting) for how to get the current status.
+It doesn't mean that your Serve application, including your deployments, has already started running successfully. This happens asynchronously as the Ray cluster attempts to update itself to match the settings from your config file. See [Inspect an application](serve-in-production-inspecting) for how to get the current status.
 
 (serve-in-production-remote-cluster)=
 
@@ -48,7 +48,7 @@ By default, `serve deploy` deploys to a cluster running locally. However, you sh
 [RAY_CLUSTER_URI]:[DASHBOARD_PORT]
 ```
 
-As an example, the address for the local cluster started by `ray start --head` is `http://127.0.0.1:8265`. We can explicitly deploy to this address using the command
+As an example, the address for the local cluster started by `ray start --head` is `http://127.0.0.1:8265`. Explicitly deploy to this address using the command
 
 ```console
 $ serve deploy config_file.yaml -a http://127.0.0.1:8265
@@ -61,9 +61,9 @@ When running on a remote cluster, you need to ensure that the import path is acc
 :::
 
 :::{tip}
-By default, all the Serve CLI commands assume that you're working with a local cluster. All Serve CLI commands, except `serve start` and `serve run` use the Ray Dashboard address associated with a local cluster started by `ray start --head`. However, if the `RAY_DASHBOARD_ADDRESS` environment variable is set, these Serve CLI commands will default to that value instead.
+By default, all the Serve CLI commands assume that you're working with a local cluster. All Serve CLI commands, except `serve start` and `serve run` use the Ray Dashboard address associated with a local cluster started by `ray start --head`. However, if the `RAY_DASHBOARD_ADDRESS` environment variable is set, these Serve CLI commands default to that value instead.
 
-Similarly, `serve start` and `serve run`, use the Ray head node address associated with a local cluster by default. If the `RAY_ADDRESS` environment variable is set, they will use that value instead.
+Similarly, `serve start` and `serve run`, use the Ray head node address associated with a local cluster by default. If the `RAY_ADDRESS` environment variable is set, they use that value instead.
 
 You can check `RAY_DASHBOARD_ADDRESS`'s value by running:
 

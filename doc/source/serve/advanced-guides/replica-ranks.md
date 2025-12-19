@@ -105,9 +105,9 @@ This design choice prevents rank reassignment from interfering with ongoing depl
 :::{note}
 **Ranks don't influence scheduling or eviction decisions**
 
-Replica ranks are independent of scheduling and eviction decisions. The deployment scheduler doesn't consider ranks when placing replicas on nodes, so there's no guarantee that replicas with contiguous ranks (such as rank 0 and rank 1) will be on the same node. Similarly, during downscaling, the autoscaler's eviction decisions don't take replica ranks into account—any replica can be chosen for removal regardless of its rank.
+Replica ranks are independent of scheduling and eviction decisions. The deployment scheduler doesn't consider ranks when placing replicas on nodes, so there's no guarantee that replicas with contiguous ranks (such as rank 0 and rank 1) are on the same node. Similarly, during downscaling, the autoscaler's eviction decisions don't take replica ranks into account—any replica can be chosen for removal regardless of its rank.
 
-If you need rank-aware scheduling or eviction (for example, to colocate replicas with consecutive ranks), [open a GitHub issue](https://github.com/ray-project/ray/issues/new/choose) to discuss your requirements with the Ray Serve team.
+If you need rank-aware scheduling or eviction (for example, to run replicas with consecutive ranks on the same nodes), [open a GitHub issue](https://github.com/ray-project/ray/issues/new/choose) to discuss your requirements with the Ray Serve team.
 :::
 
 Ray Serve manages replica ranks automatically throughout the deployment lifecycle. The system maintains these invariants:
@@ -124,7 +124,7 @@ The following table shows how ranks and world size behave during different event
 |-------|------------|------------|
 | Upscaling | No change for existing replicas | Increases to target count |
 | Downscaling | Can change to maintain contiguity | Decreases to target count |
-| Other replica dies(will be restarted) | No change | No change |
+| Other replica dies (is restarted) | No change | No change |
 | Self replica dies | No change | No change |
 
 :::{note}
@@ -179,7 +179,7 @@ Controller Recovery:
 
 2. **Rank release on shutdown**: Ranks are released only after a replica fully stops, which occurs during graceful shutdown or downscaling. Ray Serve preserves existing rank assignments as much as possible to minimize disruption.
 
-3. **Handling replica crashes**: If a replica crashes unexpectedly, the system releases its rank and assigns the **same rank** to the replacement replica. This means if replica with rank 3 crashes, the new replacement replica will also receive rank 3. The replacement receives its rank during initialization, and other replicas keep their existing ranks unchanged.
+3. **Handling replica crashes**: If a replica crashes unexpectedly, the system releases its rank and assigns the **same rank** to the replacement replica. This means if replica with rank 3 crashes, the new replacement replica also receives rank 3. The replacement receives its rank during initialization, and other replicas keep their existing ranks unchanged.
 
 4. **Controller crash and recovery**: When the controller recovers from a crash, it reconstructs the rank state by querying all running replicas for their assigned ranks. Ranks aren't checkpointed; the system re-learns them directly from replicas during recovery.
 
