@@ -1,5 +1,4 @@
 import contextlib
-
 from typing import Dict
 
 from ray.rllib.algorithms.impala.impala import IMPALAConfig
