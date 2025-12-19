@@ -526,13 +526,13 @@ class TPUAcceleratorManager(AcceleratorManager):
         try:
             # Attempt GKE based lookup first
             if topology := os.environ.get(GKE_TPU_TOPOLOGY_ENV_VAR):
-                return topology
+                return topology.strip().lower()
             # GCE-based VM check using TPU env string.
             tpu_env = _get_tpu_metadata(key=GCE_TPU_ENV_KEY)
             if tpu_env:
                 topology = re.search(r"TOPOLOGY:\s*'([^']+)'", tpu_env)
                 if topology:
-                    return topology.group(1)
+                    return topology.group(1).strip().lower()
         except ValueError as e:
             logging.debug("Could not get TPU topology: %s", e)
             return None
