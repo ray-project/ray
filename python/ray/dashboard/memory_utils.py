@@ -87,12 +87,23 @@ def get_group_by_type(group_by: str):
 
 class MemoryTableEntry:
     def __init__(
-        self, *, object_ref: dict, node_address: str, is_driver: bool, pid: int
+        self,
+        *,
+        object_ref: dict,
+        node_address: str,
+        is_driver: bool,
+        pid: int,
+        is_rdt: bool = False,
+        device: str = "cpu",
     ):
         # worker info
         self.is_driver = is_driver
         self.pid = pid
         self.node_address = node_address
+
+        # RDT object info
+        self.is_rdt = is_rdt
+        self.device = device
 
         # object info
         self.task_status = object_ref.get("taskStatus", "?")
@@ -192,6 +203,8 @@ class MemoryTableEntry:
                 object_ref.hex() for object_ref in self.contained_in_owned
             ],
             "type": "Driver" if self.is_driver else "Worker",
+            "is_rdt": self.is_rdt,
+            "device": self.device,
         }
 
     def __str__(self):
@@ -329,6 +342,17 @@ def construct_memory_table(
     group_by: GroupByType = GroupByType.NODE_ADDRESS,
     sort_by=SortingType.OBJECT_SIZE,
 ) -> MemoryTable:
+
+    rdt_info_map = {}
+    for core_worker_stats in workers_stats:
+        for rdt_info in core_worker_stats.get("rdtObjectInfos", []):
+            object_id = decode_object_ref_if_needed(rdt_info.get("objectId", b"")).hex()
+            if object_id not in rdt_info_map:
+                rdt_info_map[object_id] = {
+                    "device": rdt_info.get("device", "cpu"),
+                    "object_size": int(rdt_info.get("objectSize", 0)),
+                }
+
     memory_table_entries = []
     for core_worker_stats in workers_stats:
         pid = core_worker_stats["pid"]
@@ -337,11 +361,23 @@ def construct_memory_table(
         object_refs = core_worker_stats.get("objectRefs", [])
 
         for object_ref in object_refs:
+            is_rdt = False
+            device = "cpu"
+            object_id = decode_object_ref_if_needed(
+                object_ref.get("objectId", b"")
+            ).hex()
+            rdt_info = rdt_info_map.get(object_id)
+            if rdt_info:
+                is_rdt = True
+                device = rdt_info["device"]
+                object_ref["objectSize"] = rdt_info["object_size"]
             memory_table_entry = MemoryTableEntry(
                 object_ref=object_ref,
                 node_address=node_address,
                 is_driver=is_driver,
                 pid=pid,
+                is_rdt=is_rdt,
+                device=device,
             )
             if memory_table_entry.is_valid():
                 memory_table_entries.append(memory_table_entry)
@@ -433,14 +469,16 @@ def memory_summary(
         "Attempt",
         "Size",
         "Reference Type",
+        "RDT",
+        "Device",
         "Object Ref",
     ]
-    object_ref_string = "{:<13} | {:<8} | {:<7} | {:<9} \
-| {:<9} | {:<8} | {:<8} | {:<14} | {:<10}\n"
+    object_ref_string = "{:<13} | {:<7} | {:<7} | {:<9} \
+| {:<9} | {:<7} | {:<8} | {:<14} | {:<4} | {:<8} | {:<10}\n"
 
     if size > line_wrap_threshold and line_wrap:
-        object_ref_string = "{:<15}  {:<5}  {:<6}  {:<22}  {:<14}  {:<8}  {:<6}  \
-{:<18}  {:<56}\n"
+        object_ref_string = "{:<15}  {:<5}  {:<6}  {:<22}  {:<14}  {:<7}  {:<8}  \
+{:<18}  {:<4}  {:<8}  {:<56}\n"
 
     mem += f"Grouping by {group_by}...\
         Sorting by {sort_by}...\
@@ -501,6 +539,8 @@ entries per group...\n\n\n"
                 entry["attempt_number"],
                 entry["object_size"],
                 entry["reference_type"],
+                "Yes" if entry["is_rdt"] else "No",
+                entry["device"],
                 entry["object_ref"],
             ]
             for i in range(len(object_ref_values)):

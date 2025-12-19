@@ -90,6 +90,14 @@ cdef extern from "ray/core_worker/experimental_mutable_object_manager.h" nogil:
         int64_t num_reader_actors
 
 
+cdef extern from "ray/core_worker/rdt_types.h" nogil:
+    cdef cppclass CRDTObjectInfo "ray::core::RDTObjectInfo":
+        c_string object_id
+        c_string device
+        c_bool is_primary
+        int64_t object_size
+
+
 cdef extern from "ray/core_worker/context.h" nogil:
     cdef cppclass CWorkerContext "ray::core::WorkerContext":
         c_bool CurrentActorIsAsync()
@@ -407,6 +415,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             CTensorTransport tensor_transport
         ) nogil) task_execution_callback
         (void(const CObjectID &) nogil) free_actor_object_callback
+        (c_vector[CRDTObjectInfo]() nogil) get_rdt_object_infos_callback
         (function[void()]() nogil) initialize_thread_callback
         (CRayStatus() nogil) check_signals
         (void() nogil) gc_collect

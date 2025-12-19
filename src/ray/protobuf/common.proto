@@ -948,6 +948,18 @@ message ObjectRefInfo {
   uint64 attempt_number = 9;
 }
 
+// Object info for an RDT object.
+message RDTObjectInfo {
+  // Object ID.
+  bytes object_id = 1;
+  // Device location (e.g., "cuda:0", "cpu").
+  string device = 2;
+  // Whether this is the primary copy of the object.
+  bool is_primary = 3;
+  // Object size in bytes.
+  int64 object_size = 4;
+}
+
 // Details about the allocation of a given resource. Some resources
 // (e.g., GPUs) have individually allocatable units that are represented
 // as "slots" here.
@@ -1009,6 +1021,9 @@ message CoreWorkerStats {
   int64 num_in_flight_arg_pinning_requests = 23;
   // Number of failed arg pinning requests
   int64 num_of_failed_arg_pinning_requests = 24;
+  // RDT object infos from the local GPUObjectStore.
+  // Used for cross-worker matching to get correct sizes for RDT objects.
+  repeated RDTObjectInfo rdt_object_infos = 25;
 }
 
 // Resource usage reported by the node reporter.

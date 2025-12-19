@@ -4170,6 +4170,16 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
     reference_counter_->AddObjectRefStats(
         plasma_store_provider_->UsedObjectsList(), stats, limit);
     task_manager_->AddTaskStatusInfo(stats);
+    if (options_.get_rdt_object_infos_callback != nullptr) {
+      std::vector<RDTObjectInfo> rdt_infos = options_.get_rdt_object_infos_callback();
+      for (const auto &info : rdt_infos) {
+        auto *rdt_proto = stats->add_rdt_object_infos();
+        rdt_proto->set_object_id(info.object_id);
+        rdt_proto->set_device(info.device);
+        rdt_proto->set_is_primary(info.is_primary);
+        rdt_proto->set_object_size(info.object_size);
+      }
+    }
   }
 
   if (request.include_task_info()) {

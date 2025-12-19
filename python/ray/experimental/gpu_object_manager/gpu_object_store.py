@@ -421,3 +421,32 @@ class GPUObjectStore:
         """
         with self._lock:
             return len(self._managed_meta_nixl)
+
+    def get_stats(self) -> Dict[str, Any]:
+        """
+        Get stats for objects in the GPU object store.
+
+        Returns:
+            A dictionary containing a list of object info dicts with
+            object_id, size_bytes, is_primary, and devices.
+        """
+        with self._lock:
+            objects = []
+            for obj_id, queue in self._gpu_object_store.items():
+                for gpu_obj in queue:
+                    if gpu_obj.error:
+                        continue
+                    obj_size = 0
+                    devices = []
+                    for tensor in gpu_obj.data:
+                        obj_size += tensor.numel() * tensor.element_size()
+                        devices.append(str(tensor.device))
+                    objects.append(
+                        {
+                            "object_id": obj_id,
+                            "size_bytes": obj_size,
+                            "is_primary": gpu_obj.is_primary,
+                            "devices": devices,
+                        }
+                    )
+            return {"objects": objects}

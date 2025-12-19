@@ -158,6 +158,7 @@ from ray.includes.libcoreworker cimport (
     CFiberEvent,
     CGeneratorBackpressureWaiter,
     CReaderRefInfo,
+    CRDTObjectInfo,
 )
 from ray.includes.stream_redirection cimport (
     CStreamRedirectionOptions,
@@ -2100,6 +2101,28 @@ cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
         gpu_object_manager.free_object_primary_copy(object_id)
 
+
+cdef c_vector[CRDTObjectInfo] get_rdt_object_infos_callback() nogil:
+    """Get RDT object infos from the GPU object manager.
+
+    Returns:
+        Vector of RDTObjectInfo structs.
+    """
+    cdef c_vector[CRDTObjectInfo] result
+    cdef CRDTObjectInfo info
+    with gil:
+        worker = ray._private.worker.global_worker
+        gpu_object_manager = worker._gpu_object_manager
+        if gpu_object_manager is not None:
+            for rdt_info in gpu_object_manager.get_rdt_object_infos():
+                info.object_id = rdt_info["object_id"]
+                info.device = rdt_info["device"].encode("utf-8")
+                info.is_primary = rdt_info["is_primary"]
+                info.object_size = rdt_info["object_size"]
+                result.push_back(info)
+    return result
+
+
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
     return make_shared[LocalMemoryBuffer](
@@ -2675,6 +2698,7 @@ cdef class CoreWorker:
         options.initialize_thread_callback = initialize_pygilstate_for_thread
         options.task_execution_callback = task_execution_handler
         options.free_actor_object_callback = free_actor_object_callback
+        options.get_rdt_object_infos_callback = get_rdt_object_infos_callback
         options.check_signals = check_signals
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler
