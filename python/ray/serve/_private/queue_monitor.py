@@ -108,10 +108,17 @@ class QueueMonitor:
         self._rabbitmq_channel = self._rabbitmq_connection.channel()
 
     def _ensure_redis_connection(self) -> None:
+        """Ensure Redis connection is open, reconnecting if necessary."""
         import redis
 
-        """Ensure Redis connection is open, reconnecting if necessary."""
-        if self._redis_client is None or self._redis_client.ping() != "PONG":
+        needs_reconnect = self._redis_client is None
+        if not needs_reconnect:
+            try:
+                needs_reconnect = not self._redis_client.ping()
+            except redis.ConnectionError:
+                needs_reconnect = True
+
+        if needs_reconnect:
             logger.warning("Redis connection lost, reconnecting...")
             self._redis_client = redis.from_url(self._config.broker_url)
 
