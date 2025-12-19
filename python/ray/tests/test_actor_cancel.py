@@ -310,7 +310,9 @@ def test_cancel_recursive_tree(shutdown_only):
     run_ref = a.run.remote(child_actor, sig)
     task_id = run_ref.task_id().hex()
     wait_for_condition(
-        lambda: list_tasks(filters=[("task_id", "=", task_id)])[0].state == "RUNNING"
+        lambda: list_tasks(filters=[("task_id", "=", task_id)])[0].state == "RUNNING",
+        timeout=30,
+        retry_interval_ms=500,
     )
     ray.cancel(run_ref, recursive=True)
     ray.get(sig.send.remote())
@@ -327,7 +329,9 @@ def test_cancel_recursive_tree(shutdown_only):
     run_ref = a.run.remote(child_actor, sig)
     task_id = run_ref.task_id().hex()
     wait_for_condition(
-        lambda: list_tasks(filters=[("task_id", "=", task_id)])[0].state == "RUNNING"
+        lambda: list_tasks(filters=[("task_id", "=", task_id)])[0].state == "RUNNING",
+        timeout=30,
+        retry_interval_ms=500,
     )
     ray.cancel(run_ref, recursive=False)
     ray.get(sig.send.remote())
@@ -353,7 +357,9 @@ def test_cancel_recursive_tree(shutdown_only):
             lambda task_id=task_id: list_tasks(filters=[("task_id", "=", task_id)])[
                 0
             ].state
-            == "RUNNING"
+            == "RUNNING",
+            timeout=30,
+            retry_interval_ms=500,
         )
         children_refs = ray.get(a.get_children_refs.remote(task_id))
         for child_ref in children_refs:
@@ -362,7 +368,9 @@ def test_cancel_recursive_tree(shutdown_only):
                 lambda task_id=task_id: list_tasks(filters=[("task_id", "=", task_id)])[
                     0
                 ].state
-                == "RUNNING"
+                == "RUNNING",
+                timeout=30,
+                retry_interval_ms=500,
             )
         recursive = i % 2 == 0
         ray.cancel(run_ref, recursive=recursive)

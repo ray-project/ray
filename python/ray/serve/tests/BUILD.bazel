@@ -132,7 +132,6 @@ py_test_module_list(
         "test_request_timeout.py",
         "test_streaming_response.py",
         "test_task_processor.py",
-        "test_telemetry.py",
     ],
     tags = [
         "exclusive",
@@ -180,6 +179,7 @@ py_test_module_list(
         "test_standalone.py",
         "test_standalone_3.py",
         "test_target_capacity.py",
+        "test_telemetry.py",
         "test_telemetry_1.py",
         "test_telemetry_2.py",
     ],
