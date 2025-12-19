@@ -319,7 +319,8 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     parser = _create_uv_run_parser()
     (options, command) = _parse_args(parser, cmdline[2:])
 
-    if cmdline[-len(command) :] != command:
+    # NOTE: The empty list is a suffix of any list.
+    if len(command) > 0 and cmdline[-len(command) :] != command:
         raise AssertionError(
             f"uv run command {command} is not a suffix of command line {cmdline}"
         )
