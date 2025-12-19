@@ -1,8 +1,8 @@
 {#
   It's a known bug (https://github.com/sphinx-doc/sphinx/issues/9884)
-  that autosummary will generate warning for inherited instance attributes.
-  Those warnings will fail our build.
-  For now, we don't autosummary classes with inherited instance attributes.
+  that autosummary generates warnings for inherited instance attributes.
+  Those warnings fail the build.
+  autosummary is disabled for classes with inherited instance attributes.
   To opt out, use `:template: autosummary/class_without_autosummary.rst`
 #}
 

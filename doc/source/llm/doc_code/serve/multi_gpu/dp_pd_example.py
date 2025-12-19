@@ -18,6 +18,7 @@ from ray.serve.llm.ingress import OpenAiIngress, make_fastapi_ingress
 # Check if NIXL is available (required for NixlConnector)
 try:
     import nixl  # noqa: F401
+
     NIXL_AVAILABLE = True
 except ImportError:
     NIXL_AVAILABLE = False
@@ -56,9 +57,7 @@ from ray.serve.llm.ingress import OpenAiIngress, make_fastapi_ingress
 
 # Configure prefill with data parallel attention
 prefill_config = LLMConfig(
-    model_loading_config={
-        "model_id": "Qwen/Qwen2.5-0.5B-Instruct"
-    },
+    model_loading_config={"model_id": "Qwen/Qwen2.5-0.5B-Instruct"},
     engine_kwargs={
         "data_parallel_size": 2,  # 2 DP replicas for prefill
         "tensor_parallel_size": 1,
@@ -77,9 +76,7 @@ prefill_config = LLMConfig(
 
 # Configure decode with data parallel attention
 decode_config = LLMConfig(
-    model_loading_config={
-        "model_id": "Qwen/Qwen2.5-0.5B-Instruct"
-    },
+    model_loading_config={"model_id": "Qwen/Qwen2.5-0.5B-Instruct"},
     engine_kwargs={
         "data_parallel_size": 2,  # 2 DP replicas for decode (adjusted for 4 GPU limit)
         "tensor_parallel_size": 1,
@@ -102,16 +99,22 @@ decode_deployment = build_dp_deployment(decode_config, name_prefix="Decode:")
 
 # Create PDProxyServer to coordinate between prefill and decode
 proxy_options = PDProxyServer.get_deployment_options(prefill_config, decode_config)
-proxy_deployment = serve.deployment(PDProxyServer).options(**proxy_options).bind(
-    prefill_server=prefill_deployment,
-    decode_server=decode_deployment,
+proxy_deployment = (
+    serve.deployment(PDProxyServer)
+    .options(**proxy_options)
+    .bind(
+        prefill_server=prefill_deployment,
+        decode_server=decode_deployment,
+    )
 )
 
 # Create OpenAI-compatible ingress
 ingress_options = OpenAiIngress.get_deployment_options([prefill_config, decode_config])
 ingress_cls = make_fastapi_ingress(OpenAiIngress)
-ingress_deployment = serve.deployment(ingress_cls).options(**ingress_options).bind(
-    llm_deployments=[proxy_deployment]
+ingress_deployment = (
+    serve.deployment(ingress_cls)
+    .options(**ingress_options)
+    .bind(llm_deployments=[proxy_deployment])
 )
 
 # Deploy the application
@@ -138,4 +141,3 @@ if status != ApplicationStatus.RUNNING:
     )
 
 serve.shutdown()
-

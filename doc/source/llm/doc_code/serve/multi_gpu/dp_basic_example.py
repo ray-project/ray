@@ -41,9 +41,7 @@ from ray.serve.llm import LLMConfig, build_dp_openai_app
 
 # Configure the model with data parallel settings
 config = LLMConfig(
-    model_loading_config={
-        "model_id": "Qwen/Qwen2.5-0.5B-Instruct"
-    },
+    model_loading_config={"model_id": "Qwen/Qwen2.5-0.5B-Instruct"},
     engine_kwargs={
         "data_parallel_size": 2,  # Number of DP replicas
         "tensor_parallel_size": 1,  # TP size per replica
@@ -57,9 +55,7 @@ config = LLMConfig(
     },
 )
 
-app = build_dp_openai_app({
-    "llm_config": config
-})
+app = build_dp_openai_app({"llm_config": config})
 
 serve.run(app, blocking=True)
 # __dp_basic_example_end__
@@ -84,4 +80,3 @@ if status != ApplicationStatus.RUNNING:
     )
 
 serve.shutdown()
-
