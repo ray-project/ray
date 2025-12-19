@@ -1,9 +1,9 @@
 import logging
 import time
 
-from ray import serve
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
+from ray.runtime_context import get_runtime_context
 from ray.serve.handle import DeploymentHandle
 from ray.util.collective.collective import get_address_and_port
 
@@ -20,38 +20,21 @@ class DPServer(LLMServer):
     like DeepSeek-V3.
     """
 
-    async def __init__(
-        self,
-        llm_config: LLMConfig,
-        dp_group_manager: DeploymentHandle,
-    ):
-        self.dp_group_manager = dp_group_manager
+    async def __init__(self, llm_config: LLMConfig, dp_rank_assigner: DeploymentHandle):
+        self.dp_rank_assigner = dp_rank_assigner
 
-        # Get replica context for deterministic rank assignment
-        replica_context = serve.get_replica_context()
-        self.replica_rank = replica_context.rank
-        self.replica_id = replica_context.replica_id.unique_id
+        node_id = get_runtime_context().get_node_id()
+        self.dp_rank = await self.dp_rank_assigner.register.remote(node_id)
 
-        # Register with DPGroupManager and get dp_rank and group_index
-        self.dp_rank, self.group_index = await self.dp_group_manager.register.remote(
-            replica_rank=self.replica_rank,
-            replica_id=self.replica_id,
-        )
-
-        logger.info(
-            f"DP rank {self.dp_rank} registered to group {self.group_index} "
-            f"(replica_rank={self.replica_rank})"
-        )
+        logger.info(f"DP rank {self.dp_rank} registered with rank assigner")
 
         if self.dp_rank == 0:
             self.dp_address, self.dp_rpc_port = get_address_and_port()
-            await self.dp_group_manager.set_dp_master_info.remote(
-                group_index=self.group_index,
-                dp_address=self.dp_address,
-                dp_rpc_port=self.dp_rpc_port,
+            await self.dp_rank_assigner.set_dp_master_info.remote(
+                self.dp_address, self.dp_rpc_port
             )
             logger.info(
-                f"DP rank {self.dp_rank} (group {self.group_index}) has set DP master info: "
+                f"DP rank {self.dp_rank} has set DP master info: "
                 f"data_parallel_address={self.dp_address}, "
                 f"data_parallel_rpc_port={self.dp_rpc_port}"
             )
@@ -60,11 +43,9 @@ class DPServer(LLMServer):
             (
                 self.dp_address,
                 self.dp_rpc_port,
-            ) = await self.dp_group_manager.get_dp_master_info.remote(
-                group_index=self.group_index
-            )
+            ) = await self.dp_rank_assigner.get_dp_master_info.remote()
             logger.info(
-                f"DP rank {self.dp_rank} (group {self.group_index}) got DP master info: "
+                f"DP rank {self.dp_rank} got DP master info: "
                 f"data_parallel_address={self.dp_address}, "
                 f"data_parallel_rpc_port={self.dp_rpc_port}, "
                 f"waited {time.time() - timestamp:.3f} seconds"
@@ -83,42 +64,27 @@ class DPServer(LLMServer):
     def get_deployment_options(cls, llm_config: "LLMConfig"):
         deployment_options = super().get_deployment_options(llm_config)
 
-        dp_group_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
-        if not (isinstance(dp_group_size, int) and dp_group_size > 0):
+        dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
+        if not (isinstance(dp_size, int) and dp_size > 0):
             raise ValueError(
-                f"Invalid data_parallel_size: {dp_group_size}, expecting "
-                "positive integer."
+                f"Invalid data_parallel_size: {dp_size}, expecting " "positive integer."
             )
-
-        if dp_group_size != 1:
+        if dp_size != 1:
+            if "num_replicas" in deployment_options:
+                raise ValueError(
+                    "num_replicas should not be specified for DP deployment, "
+                    f"use engine_kwargs.data_parallel_size={dp_size} instead."
+                )
             if "autoscaling_config" in deployment_options:
                 raise ValueError(
                     "autoscaling_config is not supported for DP deployment, "
-                    "remove autoscaling_config instead."
+                    "remove autoscaling_config instead. The `num_replicas` "
+                    "will be set to `data_parallel_size`."
                 )
-
-            # num_replicas is the total number of replicas across all DP groups.
-            # If not specified, default to a single DP group (num_replicas = dp_group_size).
-            num_replicas = deployment_options.get("num_replicas", dp_group_size)
-
-            if num_replicas % dp_group_size != 0:
-                raise ValueError(
-                    f"num_replicas ({num_replicas}) must be divisible by "
-                    f"data_parallel_size ({dp_group_size})."
-                )
-
-            num_groups = num_replicas // dp_group_size
-            logger.info(
-                f"DP deployment: {num_replicas} total replicas, "
-                f"{num_groups} DP group(s) of size {dp_group_size}"
-            )
-
-            deployment_options["num_replicas"] = num_replicas
-
+            deployment_options["num_replicas"] = dp_size
             if deployment_options["placement_group_strategy"] != "STRICT_PACK":
                 logger.warning(
-                    f"DP deployment with placement_strategy="
-                    f"{deployment_options['placement_group_strategy']} "
+                    f"DP deployment with placement_strategy={deployment_options['placement_group_strategy']} "
                     "is not supported. Using STRICT_PACK instead."
                 )
                 deployment_options["placement_group_strategy"] = "STRICT_PACK"

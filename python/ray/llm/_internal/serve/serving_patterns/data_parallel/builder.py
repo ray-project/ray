@@ -13,8 +13,8 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 )
 from ray.llm._internal.serve.core.server.builder import build_llm_deployment
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.serving_patterns.data_parallel.dp_group_manager import (
-    DPGroupManager,
+from ray.llm._internal.serve.serving_patterns.data_parallel.dp_rank_assigner import (
+    _DPRankAssigner,
 )
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
     DPServer,
@@ -54,15 +54,14 @@ def build_dp_deployment(
             "dp_size_per_node must be set in experimental_configs for DP deployment."
         )
 
-    dp_group_manager = serve.deployment(DPGroupManager, num_replicas=1).bind(
-        dp_group_size=dp_size,
-        dp_size_per_node=dp_size_per_node,
+    dp_rank_assigner = _DPRankAssigner.bind(
+        dp_size=dp_size, dp_size_per_node=dp_size_per_node
     )
 
     return build_llm_deployment(
         llm_config,
         name_prefix=name_prefix,
-        bind_kwargs={"dp_group_manager": dp_group_manager},
+        bind_kwargs={"dp_rank_assigner": dp_rank_assigner},
         override_serve_options=override_serve_options,
         deployment_cls=DPServer,
     )
