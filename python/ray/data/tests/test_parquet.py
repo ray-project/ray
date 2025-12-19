@@ -1278,12 +1278,116 @@ def test_seed_file_shuffle(
         write_parquet_file(path, i)
 
     # Read with deterministic shuffling
-    shuffle_config = FileShuffleConfig(seed=42)
+    shuffle_config = FileShuffleConfig(seed=42, reseed_after_execution=False)
     ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
     ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
 
     # Verify deterministic behavior
     assert ds1.take_all() == ds2.take_all()
+
+
+def test_seed_file_shuffle_with_execution_update(
+    restore_data_context, tmp_path, target_max_block_size_infinite_or_default
+):
+    def write_parquet_file(path, file_index):
+        """Write a dummy Parquet file with test data."""
+        # Create a dummy dataset with unique data for each file
+        data = {
+            "col1": range(10 * file_index, 10 * (file_index + 1)),
+            "col2": ["foo", "bar"] * 5,
+        }
+        table = pa.Table.from_pydict(data)
+        pq.write_table(table, path)
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+
+    # Create temporary Parquet files for testing in the current directory
+    paths = [os.path.join(tmp_path, f"test_file_{i}.parquet") for i in range(15)]
+    for i, path in enumerate(paths):
+        # Write dummy Parquet files
+        write_parquet_file(path, i)
+
+    shuffle_config = FileShuffleConfig(seed=42)
+    ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+    ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+
+    ds1_epoch_results = []
+    ds2_epoch_results = []
+    for i in range(5):
+        ds1_epoch = ds1.to_pandas()
+        ds2_epoch = ds2.to_pandas()
+        ds1_epoch_results.append(ds1_epoch)
+        ds2_epoch_results.append(ds2_epoch)
+        # For the same epoch, ds1 and ds2 should produce identical results
+        pd.testing.assert_frame_equal(ds1_epoch, ds2_epoch)
+
+    # Convert results to hashable format for comparison
+    def make_hashable(df):
+        """Convert a DataFrame to a hashable string representation."""
+        return df.to_csv()
+
+    ds1_hashable_results = {make_hashable(result) for result in ds1_epoch_results}
+    ds2_hashable_results = {make_hashable(result) for result in ds2_epoch_results}
+
+    assert (
+        len(ds1_hashable_results) == 5
+    ), "ds1 should produce different results across epochs"
+    assert (
+        len(ds2_hashable_results) == 5
+    ), "ds2 should produce different results across epochs"
+
+
+def test_seed_file_shuffle_with_execution_no_effect(
+    restore_data_context, tmp_path, target_max_block_size_infinite_or_default
+):
+    def write_parquet_file(path, file_index):
+        """Write a dummy Parquet file with test data."""
+        # Create a dummy dataset with unique data for each file
+        data = {
+            "col1": range(10 * file_index, 10 * (file_index + 1)),
+            "col2": ["foo", "bar"] * 5,
+        }
+        table = pa.Table.from_pydict(data)
+        pq.write_table(table, path)
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+
+    # Create temporary Parquet files for testing in the current directory
+    paths = [os.path.join(tmp_path, f"test_file_{i}.parquet") for i in range(5)]
+    for i, path in enumerate(paths):
+        # Write dummy Parquet files
+        write_parquet_file(path, i)
+
+    shuffle_config = FileShuffleConfig(seed=42, reseed_after_execution=False)
+    ds1 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+    ds2 = ray.data.read_parquet(paths, shuffle=shuffle_config)
+
+    ds1_execution_results = []
+    ds2_execution_results = []
+    for i in range(5):
+        ds1_execution = ds1.to_pandas()
+        ds2_execution = ds2.to_pandas()
+        ds1_execution_results.append(ds1_execution)
+        ds2_execution_results.append(ds2_execution)
+        # For the same execution, ds1 and ds2 should produce identical results
+        pd.testing.assert_frame_equal(ds1_execution, ds2_execution)
+
+    # Convert results to hashable format for comparison
+    def make_hashable(df):
+        """Convert a DataFrame to a hashable string representation."""
+        return df.to_csv()
+
+    ds1_hashable_results = {make_hashable(result) for result in ds1_execution_results}
+    ds2_hashable_results = {make_hashable(result) for result in ds2_execution_results}
+
+    assert (
+        len(ds1_hashable_results) == 1
+    ), "ds1 should produce the same results across executions"
+    assert (
+        len(ds2_hashable_results) == 1
+    ), "ds2 should produce the same results across executions"
 
 
 def test_read_file_with_partition_values(
