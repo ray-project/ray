@@ -4496,6 +4496,32 @@
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
 
+- name: asynchronous_inference  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: serve
+  working_dir: //doc/source/serve/tutorials/asynchronous-inference
+
+  cluster:
+    byod:
+      type: cpu  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_asynchronous_inference.sh
+    cluster_compute: ci/aws.yaml
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+
 - name: distributing_pytorch  # do not use dashes (regex sensitive)
   python: "3.10"
   frequency: weekly
