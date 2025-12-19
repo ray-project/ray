@@ -1814,6 +1814,77 @@ py_test(
     ],
 )
 
+# | Dreamerv3 (14 total tests)     |         |                Number of Learners (Device)                 |
+# | Environment                    | Success | Local (CPU) | Single (CPU)    | Single (GPU) | Multi (GPU) |
+# |--------------------------------|---------|-------------|-----------------|--------------|-------------|
+# | (SA/D) Cartpole                | 200     | ✅          | ❌              | ❌           | ❌         |
+# | (SA/C) MuJoCo (Humanoid)       | 200     | ❌          | ❌              | ✅           | ❌         |
+# | (SA/D) Atari (Pong)            | 5       | ❌          | ❌              | ❌           | ✅         |
+
+py_test(
+    name = "learning_tests_dreamerv3_cartpole_local",
+    size = "large",
+    timeout = "eternal",
+    srcs = ["examples/algorithms/dreamerv3/cartpole_dreamerv3.py"],
+    args = [
+        "--as-test",
+        "--num-cpus=7",
+        "--num-env-runners=5",
+        "--num-learners=0",
+        "--stop-reward=200.0",
+    ],
+    main = "examples/algorithms/sac/cartpole_dreamerv3.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "learning_tests_dreamerv3_mujoco_single_gpu",
+    size = "large",
+    timeout = "eternal",
+    srcs = ["examples/algorithms/dreamerv3/mujoco_dreamerv3.py"],
+    args = [
+        "--as-test",
+        "--num-cpus=8",
+        "--num-env-runners=5",
+        "--num-learners=1",
+        "--num-gpus-per-learner=1",
+        "--stop-reward=200.0",
+    ],
+    main = "examples/algorithms/sac/mujoco_dreamerv3.py",
+    tags = [
+        "exclusive",
+        "gpu",
+        "learning_tests",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "learning_tests_dreamerv3_atari_multi_gpu",
+    size = "large",
+    timeout = "eternal",
+    srcs = ["examples/algorithms/dreamerv3/atari_dreamerv3.py"],
+    args = [
+        "--as-test",
+        "--num-cpus=16",
+        "--num-env-runners=10",
+        "--num-learners=2",
+        "--num-gpus-per-learner=1",
+        "--stop-reward=5.0",
+    ],
+    main = "examples/algorithms/sac/atari_dreamerv3.py",
+    tags = [
+        "exclusive",
+        "learning_tests",
+        "multi_gpu",
+        "team:rllib",
+    ],
+)
+
 # --------------------------------------------------------------------
 # Algorithms (Compilation, Losses, simple functionality tests)
 # rllib/algorithms/
