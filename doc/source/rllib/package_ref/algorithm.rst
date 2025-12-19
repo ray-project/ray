@@ -7,11 +7,11 @@ Algorithms
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class is the highest-level API in RLlib responsible for **WHEN** and **WHAT** of RL algorithms.
-Things like **WHEN** should we sample the algorithm, **WHEN** should we perform a neural network update, and so on.
-The **HOW** will be delegated to components such as ``RolloutWorker``, etc..
+The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class is the highest-level API in RLlib responsible for the **when** and **what** of RL algorithms.
+Things like **when** to sample the algorithm, **when** to perform a neural network update, and so on.
+The **how** delegates to components such as ``RolloutWorker``, etc..
 
-It is the main entry point for RLlib users to interact with RLlib's algorithms.
+It's the main entry point for RLlib users to interact with RLlib's algorithms.
 
 It allows you to train and evaluate policies, save an experiment's progress and restore from
 a prior saved experiment when continuing an RL run.
@@ -25,14 +25,14 @@ and thus fully supports distributed hyperparameter tuning for RL.
 
     **A typical RLlib Algorithm object:** Algorithms are normally comprised of
     N ``RolloutWorkers`` that
-    orchestrated via a :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` object.
+    orchestrated through a :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` object.
     Each worker own its own a set of ``Policy`` objects and their NN models per worker, plus a :py:class:`~ray.rllib.env.base_env.BaseEnv` instance per worker.
 
 Building Custom Algorithm Classes
 ---------------------------------
 
 .. warning::
-    As of Ray >= 1.9, it is no longer recommended to use the `build_trainer()` utility
+    As of Ray >= 1.9, it's no longer recommended to use the `build_trainer()` utility
     function for creating custom Algorithm sub-classes.
     Instead, follow the simple guidelines here for directly sub-classing from
     :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`.

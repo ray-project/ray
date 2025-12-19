@@ -163,8 +163,8 @@ Curiosity
    regions of the environment.
    Suitable for sparse-reward tasks, where diverse exploration is key to success.
 
-- `Intrinsic-curiosity-model (ICM) Based Curiosity <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__:
-   Adds an `Intrinsic Curiosity Model (ICM) <https://arxiv.org/pdf/1705.05363.pdf>`__ that learns to predict the next state as well as the action in
+- `Intrinsic Curiosity Model Based Curiosity <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__:
+   Adds an Intrinsic Curiosity Model (ICM) (`see paper <https://arxiv.org/pdf/1705.05363.pdf>`__) that learns to predict the next state as well as the action in
    between two states to measure novelty. The higher the loss of the ICM, the higher the "novelty" and thus the intrinsic reward.
    Ideal for complex environments with large observation spaces where reward signals are sparse.
 
@@ -252,7 +252,7 @@ GPUs for training and sampling
    Useful for saving resources when training smaller models, many of which can fit on a single GPU.
 
 - `Mixed precision training and float16 inference <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/mixed_precision_training_float16_inference.py>`__:
-   Uses mixed precision, float32 and float16, for training, while switching to float16 precision for inference, balancing stability during training
+   Uses mixed precision, `float32`, and `float16` for training, while switching to `float16` precision for inference, balancing stability during training
    with performance improvements during evaluation.
 
 - `Using GPUs on EnvRunners <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/gpus_on_env_runners.py>`__:

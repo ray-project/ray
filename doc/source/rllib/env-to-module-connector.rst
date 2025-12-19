@@ -73,13 +73,13 @@ By default RLlib populates every env-to-module pipeline with the following built
 * *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_time_dim_to_batch_and_zero_pad.AddTimeDimToBatchAndZeroPad`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is stateful, adds a single timestep, second axis to all data to make it sequential.
 * *Relevant for stateful models only:* :py:class:`~ray.rllib.connectors.common.add_states_from_episodes_to_batch.AddStatesFromEpisodesToBatch`: If the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is stateful, places the most recent state outputs of the module as new state inputs into the batch. The column name is ``state_in`` and the values don't have a time-dimension.
 * *For multi-agent only:* :py:class:`~ray.rllib.connectors.common.agent_to_module_mapping.AgentToModuleMapping`: Maps per-agent data to the respective per-module data depending on your defined agent-to-module mapping function.
-* :py:class:`~ray.rllib.connectors.common.batch_individual_items.BatchIndividualItems`: Converts all data in the batch, which thus far are lists of individual items, into batched structures meaning NumPy arrays, whose 0th axis is the batch axis.
+* :py:class:`~ray.rllib.connectors.common.batch_individual_items.BatchIndividualItems`: Converts all data in the batch, which thus far are lists of individual items, into batched structures meaning NumPy arrays, whose first axis (axis 0) is the batch axis.
 * :py:class:`~ray.rllib.connectors.common.numpy_to_tensor.NumpyToTensor`: Converts all NumPy arrays in the batch into framework specific tensors and moves these to the GPU, if required.
 
 You can disable all the preceding default connector pieces by setting `config.env_runners(add_default_connectors_to_env_to_module_pipeline=False)`
 in your :ref:`algorithm config <rllib-algo-configuration-docs>`.
 
-Note that the order of these transforms is very relevant for the functionality of the pipeline.
+Note that the order of these transforms is very relevant for the correct operation of the pipeline.
 See :ref:`here on how to write and add your own connector pieces <writing_custom_env_to_module_connectors>` to the pipeline.
 
 
@@ -154,7 +154,7 @@ for stateless- and stateful :py:class:`~ray.rllib.core.rl_module.rl_module.RLMod
             episode1 = SingleAgentEpisode()
             episode2 = SingleAgentEpisode()
 
-            # Fill episodes with some data, as if we were currently stepping through them
+            # Fill episodes with some data, as if currently stepping through them
             # to collect samples.
             # - episode 1 (two timesteps)
             obs, _ = env.reset()
@@ -188,8 +188,8 @@ for stateless- and stateful :py:class:`~ray.rllib.core.rl_module.rl_module.RLMod
             # Alter the config to use the default LSTM model of RLlib.
             config.rl_module(model_config=DefaultModelConfig(use_lstm=True))
 
-            # For stateful RLModules, we do need to pass in the RLModule to every call to the
-            # connector. so construct an instance here.
+            # For stateful RLModules, you need to pass in the RLModule to every call to the
+            # connector, so construct an instance here.
             rl_module_spec = config.get_rl_module_spec(env=env)
             rl_module = rl_module_spec.build()
 
@@ -216,7 +216,7 @@ for stateless- and stateful :py:class:`~ray.rllib.core.rl_module.rl_module.RLMod
 
 You can see that the pipeline extracted the current observations from the two
 running episodes and placed them under the ``obs`` column into the forward batch.
-The batch has a size of two, because we had two episodes, and should look similar to this:
+The batch has a size of two, because there are two episodes, and should look similar to this:
 
 .. code-block:: text
 
@@ -527,7 +527,7 @@ write a custom connector piece following this example here:
 
                 # Compute some example new-data item for your `batch` (to be added
                 # under a new column).
-                # Here, we compile the average over the last 3 rewards.
+                # This example compiles the average over the last 3 rewards.
                 last_3_rewards = sa_episode.get_rewards(
                     indices=[-3, -2, -1],
                     fill=0.0,  # at beginning of episode, fill with 0s

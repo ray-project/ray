@@ -66,7 +66,7 @@ action choices eventually maximize the cumulative reward over the agent's lifeti
     :align: left
 
     **Single-agent setup:** One agent lives in the environment and takes actions computed by a single policy.
-    The mapping from agent to policy is fixed ("default_agent" maps to "default_policy").
+    The mapping from agent to policy is fixed (``"default_agent"`` maps to ``"default_policy"``).
     See :ref:`Multi-Agent Environments <rllib-multi-agent-environments-doc>` for how this setup generalizes in the multi-agent case.
 
 
@@ -139,8 +139,12 @@ For example:
     * `MuJoCo <https://gymnasium.farama.org/environments/mujoco/>`__
     * `Box2D <https://gymnasium.farama.org/environments/box2d/>`__
 
-Specifying by Subclass of gymnasium.Env
+.. vale Google.Spacing = NO
+
+Specifying by subclass of gymnasium.Env
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. vale Google.Spacing = YES
 
 If you're using a custom subclass of `gymnasium.Env class <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__,
 you can pass the class itself rather than a registered string. Your subclass must accept
@@ -259,7 +263,7 @@ For example:
 
     When using logging within an environment, the configuration must be done
     inside the environment (running within Ray workers). Pre-Ray logging
-    configurations will be ignored. Use the following code to connect to Ray's
+    configurations are ignored. Use the following code to connect to Ray's
     logging instance:
 
     .. testcode::

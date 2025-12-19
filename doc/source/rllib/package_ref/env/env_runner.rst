@@ -7,8 +7,8 @@ EnvRunner API
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-rllib.env.env_runner.EnvRunner
-------------------------------
+``rllib.env.env_runner.EnvRunner``
+----------------------------------
 
 .. currentmodule:: ray.rllib.env.env_runner
 
@@ -45,8 +45,8 @@ Cleanup
     EnvRunner.stop
 
 
-rllib.env.env_errors.StepFailedRecreateEnvError
-------------------------------------------------
+``rllib.env.env_errors.StepFailedRecreateEnvError``
+---------------------------------------------------
 
 .. currentmodule:: ray.rllib.env.env_errors
 

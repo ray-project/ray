@@ -29,7 +29,7 @@ the Ray Team strictly applied the following principles:
 * Classes must be usable outside of RLlib.
 * Separation of concerns. Try to answer: "**What** should get done **when** and **by whom**?"
   and give each class as few non-overlapping and clearly defined tasks as possible.
-* Offer fine-grained modularity, full interoperability, and frictionless pluggability of classes.
+* Offer fine-grained modularity, full interoperability, and seamless integration of classes.
 * Use widely accepted third-party standards and APIs wherever possible.
 
 Applying the preceding principles, the Ray Team reduced the important **must-know** classes

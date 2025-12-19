@@ -96,7 +96,7 @@ Forward methods
 +++++++++++++++
 
 Use the following three forward methods when you use RLModule from inside other classes
-and components. However, do NOT override them and leave them as-is in your custom subclasses.
+and components. However, **don't** override them and leave them as-is in your custom subclasses.
 For defining your own forward behavior, override the private methods ``_forward`` (generic forward behavior for
 all phases) or, for more granularity, use ``_forward_exploration``, ``_forward_inference``, and ``_forward_train``.
 
