@@ -44,8 +44,8 @@ This diagram illustrates the complete planning process:
 
 The building blocks of these plans are operators:
 
-* Logical plans consist of *logical operators* that describe *what* operation to perform. For example, when you write ``dataset = ray.data.read_parquet(...)``, a ``ReadOp`` logical operator is created to specify what data to read.
-* Physical plans consist of *physical operators* that describe *how* to execute the operation. For example, the ``ReadOp`` logical operator is converted into a ``TaskPoolMapOperator`` physical operator that launches Ray tasks to actually read the data.
+* Logical plans consist of *logical operators* that describe *what* operation to perform. For example, when you write ``dataset = ray.data.read_parquet(...)``, Ray Data creates a ``ReadOp`` logical operator to specify what data to read.
+* Physical plans consist of *physical operators* that describe *how* to execute the operation. For example, Ray Data converts the ``ReadOp`` logical operator into a ``TaskPoolMapOperator`` physical operator that launches Ray tasks to read the data.
 
 Here is a simple example of how Ray Data builds a logical plan. As you chain operations together, Ray Data constructs the logical plan behind the scenes:
 
@@ -84,7 +84,7 @@ For more details on Ray Tasks and Actors, see :ref:`Ray Core Concepts <core-key-
 Streaming execution model
 -------------------------
 
-Ray Data can leverage a *streaming execution model* to efficiently process large datasets.
+Ray Data can stream data through a pipeline of operators to efficiently process large datasets.
 
 This means that different operators in an execution can be scaled independently while running concurrently, allowing for more flexible and fine-grained resource allocation. For example, if two map operators require different amounts or types of resources, the streaming execution model can allow them to run concurrently and independently while still maintaining high performance.
 
@@ -100,9 +100,9 @@ Here is an example of how the streaming execution works in Ray Data.
     ds = ray.data.read_parquet(...)
 
     # Define a pipeline of operations
-    ds = ds.map(CPU_Function, num_cpus=2)
-    ds = ds.map(GPU_Class, num_gpus=1)
-    ds = ds.map(CPU_Function2, num_cpus=4)
+    ds = ds.map(cpu_function, num_cpus=2)
+    ds = ds.map(GPUClass, num_gpus=1)
+    ds = ds.map(cpu_function2, num_cpus=4)
     ds = ds.filter(filter_func)
 
     # Data starts flowing when you call a method like show()
@@ -113,9 +113,9 @@ This creates a logical plan like the following:
 .. code-block::
 
     Filter(filter_func)
-    +- Map(CPU_Function2)
-       +- Map(GPU_Class)
-          +- Map(CPU_Function)
+    +- Map(cpu_function2)
+       +- Map(GPUClass)
+          +- Map(cpu_function)
                 +- Dataset(schema={...})
 
 

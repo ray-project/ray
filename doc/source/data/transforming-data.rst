@@ -351,7 +351,7 @@ Specifying CPUs, GPUs, and Memory
 
 You can optionally specify logical resources per transformation by using one of the following parameters: ``num_cpus``, ``num_gpus``, ``memory``, ``resources``.
 
-* ``num_cpus``: The number of CPUs to use for the transformation. Ray automatically configures ``OMP_NUM_THREADS`` to the number of CPUs specified.
+* ``num_cpus``: The number of CPUs to use for the transformation.
 * ``num_gpus``: The number of GPUs to use for the transformation. Ray automatically configures the proper CUDA_VISIBLE_DEVICES environment variable so that GPUs are isolated from other tasks/actors.
 * ``memory``: The amount of memory to use for the transformation. This is useful for avoiding out-of-memory errors by telling Ray how much memory your function uses, and preventing Ray from scheduling too many tasks on a node.
 * ``resources``: A dictionary of resources to use for the transformation. This is useful for specifying custom resources.
@@ -382,10 +382,9 @@ Specifying Concurrency
 You can specify the concurrency of the transformation by using the ``compute`` parameter.
 
 For functions, use ``compute=ray.data.TaskPoolStrategy(size=n)`` to cap the number of concurrent tasks. By default, Ray Data automatically determines the number of concurrent tasks.
-For classes, use ``compute=ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers. Currently, this is required to be specified.
+For classes, use ``compute=ray.data.ActorPoolStrategy(size=n)`` to use a fixed size actor pool of ``n`` workers. If ``compute`` is not specified, an autoscaling actor pool is used by default.
 
 .. testcode::
-    :hide:
 
     import ray
 
@@ -477,7 +476,6 @@ a large model, you may want to distribute the model across multiple nodes.
 You can do this by using :ref:`placement groups <ray-placement-group-doc-ref>` and ``ray_remote_args_fn``, which can dynamically create placement groups for each model replica.
 
 .. testcode::
-    :hide:
 
     import ray
     from typing import Dict
@@ -515,7 +513,6 @@ Ray Data supports asynchronous functions by using the ``async`` keyword. This is
 Note that this only works when using a class-based transform function and currently requires ``uvloop==0.21.0``.
 
 .. testcode::
-    :hide:
 
     import ray
     from typing import Dict
