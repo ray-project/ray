@@ -109,7 +109,7 @@ if specified).
 To optimize model loading, you can configure the `load_format` to `runai_streamer` or `tensorizer`.
 
 .. note::
-    In this case, install vLLM with runai dependencies: `pip install -U "vllm[runai]>=0.10.1"`
+    In this case, install vLLM with RunAI dependencies: `pip install -U "vllm[runai]>=0.10.1"`
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python

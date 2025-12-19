@@ -16,10 +16,12 @@ from ray.data.llm import vLLMEngineProcessorConfig, build_processor
 ray.init()
 
 # simple dataset
-ds = ray.data.from_items([
-    {"prompt": "What is machine learning?"},
-    {"prompt": "Explain neural networks in one sentence."},
-])
+ds = ray.data.from_items(
+    [
+        {"prompt": "What is machine learning?"},
+        {"prompt": "Explain neural networks in one sentence."},
+    ]
+)
 
 # Minimal vLLM configuration
 config = vLLMEngineProcessorConfig(
@@ -27,8 +29,8 @@ config = vLLMEngineProcessorConfig(
     concurrency=1,  # 1 vLLM engine replica
     batch_size=32,  # 32 samples per batch
     engine_kwargs={
-        "max_model_len": 4096, # Fit into test GPU memory
-    }
+        "max_model_len": 4096,  # Fit into test GPU memory
+    },
 )
 
 # Build processor
@@ -59,4 +61,3 @@ for result in ds.iter_rows():
 # ds.show(limit=5)       # Print first 5 results
 # ds.write_parquet("output.parquet")  # Save to file
 # __minimal_vllm_quickstart_end__
-
