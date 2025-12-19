@@ -202,7 +202,7 @@ backoff==1.10.0
     #   segment-analytics-python
 base58==2.0.1
     # via aimrecords
-bayesian-optimization==1.4.3
+bayesian-optimization==1.4.0
     # via
     #   -r python/requirements/ml/tune-requirements.txt
     #   nevergrad
@@ -330,7 +330,7 @@ click-repl==0.3.0
     # via celery
 clickhouse-connect==0.8.10
     # via -r python/requirements/ml/data-test-requirements.txt
-cloudpickle==2.2.0 ; python_version < "3.12"
+cloudpickle==3.1.1
     # via
     #   -r python/requirements/test-requirements.txt
     #   dask
@@ -350,7 +350,6 @@ colorama==0.4.6
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
-    #   bayesian-optimization
     #   halo
     #   log-symbols
     #   semgrep
@@ -410,10 +409,13 @@ cycler==0.12.1
     # via matplotlib
 cython==0.29.37
     # via -r python/requirements/test-requirements.txt
-dask==2023.6.1 ; python_version < "3.12"
+dask==2024.8.1 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/data-requirements.txt
+    #   dask-expr
     #   distributed
+dask-expr==1.1.11
+    # via dask
 databricks-sdk==0.52.0
     # via mlflow-skinny
 datasets==3.6.0
@@ -448,9 +450,11 @@ dill==0.3.7
     #   datasets
     #   evaluate
     #   multiprocess
+directsearch==1.0
+    # via nevergrad
 distlib==0.3.7
     # via virtualenv
-distributed==2023.6.1 ; python_version < "3.12"
+distributed==2024.8.1 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   dask
@@ -1193,7 +1197,7 @@ networkx==3.2.1
     #   hyperopt
     #   scikit-image
     #   torch
-nevergrad==0.4.3.post7
+nevergrad==1.0.12
     # via -r python/requirements/ml/tune-requirements.txt
 ninja==1.11.1.1
     # via deepspeed
@@ -1209,7 +1213,7 @@ numba==0.62.1
     # via
     #   -r python/requirements/test-requirements.txt
     #   statsforecast
-numexpr==2.8.4
+numexpr==2.14.1
     # via
     #   -r python/requirements/test-requirements.txt
     #   pymars
@@ -1232,6 +1236,7 @@ numpy==2.2.6
     #   datasketches
     #   decord
     #   deepspeed
+    #   directsearch
     #   dm-control
     #   dm-env
     #   dm-tree
@@ -1451,12 +1456,14 @@ pandas==2.3.3
     #   ax-platform
     #   cmdstanpy
     #   dask
+    #   dask-expr
     #   datasets
     #   delta-sharing
     #   evaluate
     #   gradio
     #   mlflow
     #   modin
+    #   nevergrad
     #   prophet
     #   pymars
     #   qpd
@@ -1606,6 +1613,7 @@ pyarrow==19.0.1
     # via
     #   -r python/requirements.txt
     #   dask
+    #   dask-expr
     #   datasets
     #   delta-sharing
     #   deltalake
@@ -1617,7 +1625,9 @@ pyarrow==19.0.1
     #   raydp
     #   triad
 pyarrow-hotfix==0.7
-    # via hudi
+    # via
+    #   dask
+    #   hudi
 pyasn1==0.5.1
     # via
     #   oauth2client
@@ -2024,6 +2034,7 @@ scipy==1.14.1
     #   bayesian-optimization
     #   botorch
     #   configspace
+    #   directsearch
     #   dm-control
     #   hpbandster
     #   hyperopt

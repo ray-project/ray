@@ -362,9 +362,9 @@ click-repl==0.3.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   celery
-cloudpickle==2.2.0 \
-    --hash=sha256:3f4219469c55453cfe4737e564b67c2a149109dabf7f242478948b895f61106f \
-    --hash=sha256:7428798d5926d8fcbfd092d18d01a2a03daf8237d8fcdc8095d256b8490796f0
+cloudpickle==3.1.1 \
+    --hash=sha256:b216fa8ae4019d5482a8ac3c95d8f6346115d8835911fd4aefd1a445e4242c64 \
+    --hash=sha256:c8c5a44295039331ee9dad40ba100a9c7297b6f988e50e87ccdf3765a668350e
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   gymnasium
