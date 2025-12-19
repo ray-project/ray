@@ -33,7 +33,7 @@ setup(
         "pydantic >= 2.5.0",
         "PyGithub",
         "requests",
-        "twine == 6.1.0",
+        "twine == 6.2.0",
         "docker >= 7.1.0",
     ],
 )
