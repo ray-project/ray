@@ -15,26 +15,42 @@ from ray.train.tensorflow import TensorflowTrainer
 
 
 def mnist_dataset(batch_size: int) -> tf.data.Dataset:
+    # Load once per process (FileLock prevents races when running locally)
     with FileLock(os.path.expanduser("~/.mnist_lock")):
         (x_train, y_train), _ = tf.keras.datasets.mnist.load_data()
-    # The `x` arrays are in uint8 and have values in the [0, 255] range.
-    # You need to convert them to float32 with values in the [0, 1] range.
-    x_train = x_train / np.float32(255)
+
+    # Normalize and ensure float32 numpy arrays, then add channel dim
+    x_train = x_train.astype(np.float32) / 255.0
+    x_train = x_train[..., np.newaxis]  # shape -> (N, 28, 28, 1)
     y_train = y_train.astype(np.int64)
-    train_dataset = (
-        tf.data.Dataset.from_tensor_slices((x_train, y_train))
-        .shuffle(60000)
-        .repeat()
-        .batch(batch_size)
-    )
-    return train_dataset
+
+    # Create tf.data.Dataset and convert elements to Tensors, with stable shapes.
+    ds = tf.data.Dataset.from_tensor_slices((x_train, y_train))
+    ds = ds.shuffle(60000)
+    # Important: drop_remainder=True to keep fixed batch shapes across replicas
+    ds = ds.repeat().batch(batch_size, drop_remainder=True)
+
+    # Ensure TF knows how to shard the dataset in a multi-worker setup.
+    options = tf.data.Options()
+    try:
+        # Explicitly set the auto-shard policy to the default AUTO behavior.
+        options.experimental_distribute.auto_shard_policy = (
+            tf.data.experimental.AutoShardPolicy.AUTO
+        )
+    except Exception:
+        # Older TF versions may expose API differently; ignore if not present.
+        pass
+    ds = ds.with_options(options)
+
+    ds = ds.prefetch(tf.data.AUTOTUNE)
+
+    return ds
 
 
 def build_cnn_model() -> tf.keras.Model:
     model = tf.keras.Sequential(
         [
-            tf.keras.Input(shape=(28, 28)),
-            tf.keras.layers.Reshape(target_shape=(28, 28, 1)),
+            tf.keras.Input(shape=(28, 28, 1)),
             tf.keras.layers.Conv2D(32, 3, activation="relu"),
             tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(128, activation="relu"),
@@ -54,8 +70,13 @@ def train_func(config: dict):
 
     strategy = tf.distribute.MultiWorkerMirroredStrategy()
 
+    # Use global batch size (per worker batch * num workers)
     global_batch_size = per_worker_batch_size * num_workers
     multi_worker_dataset = mnist_dataset(global_batch_size)
+
+    # debug: show element spec so we can detect PerReplica issues early
+    # (This will print in each worker's logs)
+    tf.print("train_ds.element_spec:", multi_worker_dataset.element_spec)
 
     with strategy.scope():
         # Model building/compiling need to be within `strategy.scope()`.
@@ -67,6 +88,8 @@ def train_func(config: dict):
             metrics=["accuracy"],
         )
 
+    # Pass the plain tf.data.Dataset to fit. Do NOT call
+    # strategy.experimental_distribute_dataset(...) when using model.fit.
     history = multi_worker_model.fit(
         multi_worker_dataset,
         epochs=epochs,

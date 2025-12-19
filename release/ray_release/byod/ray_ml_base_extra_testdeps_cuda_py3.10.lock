@@ -3599,7 +3599,6 @@ numpy==2.2.6 \
     #   patsy
     #   peft
     #   petastorm
-    #   pytorch-lightning
     #   ray
     #   rouge-score
     #   sacrebleu
@@ -4701,9 +4700,9 @@ python-json-logger==2.0.7 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   jupyter-events
-pytorch-lightning==1.8.6 \
-    --hash=sha256:8b6b4126b85c56a9dd08a03f7096ce749bcb452a9a50f6201a7165dbd92d866d \
-    --hash=sha256:c4af783579a1528e07f40dd9bd0128c162bbbcf74fe1ce4292fec63fa7e76ada
+pytorch-lightning==2.4.0 \
+    --hash=sha256:6aa897fd9d6dfa7b7b49f37c2f04e13592861831d08deae584dfda423fdb71c8 \
+    --hash=sha256:9ac7935229ac022ef06994c928217ed37f525ac6700f7d4fc57009624570e655
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
@@ -5840,7 +5839,6 @@ tensorboardx==2.6.2.2 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.10.in
-    #   pytorch-lightning
     #   ray
 termcolor==2.4.0 \
     --hash=sha256:9297c0df9c99445c2412e832e882a7884038a25617c60cea2ad69488d4040d63 \

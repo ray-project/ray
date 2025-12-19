@@ -1276,7 +1276,6 @@ numpy==2.2.6
     #   pylance
     #   pymars
     #   pyro-ppl
-    #   pytorch-lightning
     #   raydp
     #   scikit-image
     #   scikit-learn
@@ -1823,7 +1822,7 @@ python-multipart==0.0.20
     # via gradio
 python-snappy==0.7.2
     # via -r python/requirements/ml/data-test-requirements.txt
-pytorch-lightning==1.8.6
+pytorch-lightning==2.4.0
     # via -r python/requirements/ml/tune-test-requirements.txt
 pytorch-ranger==0.1.1
     # via torch-optimizer
@@ -2224,11 +2223,12 @@ tensorboardx==2.6.2.2
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
-    #   pytorch-lightning
 tensordict==0.8.3 ; sys_platform != "darwin"
     # via -r python/requirements/test-requirements.txt
 tensorflow==2.20.0 ; python_version < "3.12" and (sys_platform != "darwin" or platform_machine != "arm64")
-    # via -r python/requirements/ml/dl-cpu-requirements.txt
+    # via
+    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   tf-keras
 tensorflow-estimator==2.15.0
     # via -r python/requirements/ml/rllib-test-requirements.txt
 tensorflow-io-gcs-filesystem==0.31.0 ; python_version < "3.12"
@@ -2251,6 +2251,8 @@ testfixtures==7.0.0
     # via -r python/requirements/test-requirements.txt
 textual==4.0.0
     # via memray
+tf-keras==2.20.0
+    # via -r python/requirements/ml/dl-cpu-requirements.txt
 threadpoolctl==3.1.0
     # via
     #   -r python/requirements/test-requirements.txt
