@@ -2,7 +2,7 @@
   "title": "Train Dashboard",
   "uid": "rayTrainDashboard",
   "version": 1,
-  "schemaVersion": 27,
+  "schemaVersion": 38,
   "style": "dark",
   "editable": true,
   "graphTooltip": 1,

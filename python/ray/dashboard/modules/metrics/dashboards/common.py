@@ -25,21 +25,24 @@ GRAPH_TARGET_TEMPLATE = {
 
 HEATMAP_TARGET_TEMPLATE = {
     "format": "heatmap",
-    "fullMetaSearch": False,
-    "includeNullMetadata": True,
     "instant": False,
     "range": True,
-    "useBackend": False,
 }
 
 HISTOGRAM_BAR_CHART_TARGET_TEMPLATE = {
     "exemplar": True,
     "format": "heatmap",
-    "fullMetaSearch": False,
-    "includeNullMetadata": True,
     "instant": True,
     "range": False,
-    "useBackend": False,
+}
+
+TABLE_TARGET_TEMPLATE = {
+    "exemplar": True,
+    "expr": "0",
+    "format": "table",
+    "instant": True,
+    "range": False,
+    "refId": "A",
 }
 
 
@@ -48,6 +51,7 @@ class TargetTemplate(Enum):
     GRAPH = GRAPH_TARGET_TEMPLATE
     HEATMAP = HEATMAP_TARGET_TEMPLATE
     HISTOGRAM_BAR_CHART = HISTOGRAM_BAR_CHART_TARGET_TEMPLATE
+    TABLE = TABLE_TARGET_TEMPLATE
 
 
 @DeveloperAPI
@@ -63,11 +67,14 @@ class Target:
     Attributes:
         expr: The prometheus query to evaluate.
         legend: The legend string to format for each time-series.
+        template: The target template to use (determines format and query type).
+        instant: Whether this is an instant query (vs range query). Used for tables.
     """
 
     expr: str
     legend: str
     template: Optional[TargetTemplate] = TargetTemplate.GRAPH
+    instant: bool = False
 
 
 HEATMAP_TEMPLATE = {
@@ -100,131 +107,8 @@ HEATMAP_TEMPLATE = {
     "targets": [],
     "title": "<Title>",
     "type": "heatmap",
-    "yaxes": [
-        {
-            "$$hashKey": "object:628",
-            "format": "units",
-            "label": "",
-            "logBase": 1,
-            "max": None,
-            "min": "0",
-            "show": True,
-        },
-        {
-            "$$hashKey": "object:629",
-            "format": "short",
-            "label": None,
-            "logBase": 1,
-            "max": None,
-            "min": None,
-            "show": True,
-        },
-    ],
 }
 
-GRAPH_PANEL_TEMPLATE = {
-    "aliasColors": {},
-    "bars": False,
-    "dashLength": 10,
-    "dashes": False,
-    "datasource": r"${datasource}",
-    "description": "<Description>",
-    "fieldConfig": {"defaults": {}, "overrides": []},
-    # Setting height and width is important here to ensure the default panel has some size to it.
-    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-    "fill": 10,
-    "fillGradient": 0,
-    "hiddenSeries": False,
-    "id": 26,
-    "legend": {
-        "alignAsTable": True,
-        "avg": True,
-        "current": True,
-        "hideEmpty": False,
-        "hideZero": True,
-        "max": True,
-        "min": False,
-        "rightSide": False,
-        "show": True,
-        "sort": "current",
-        "sortDesc": True,
-        "total": False,
-        "values": True,
-    },
-    "lines": True,
-    "linewidth": 1,
-    "nullPointMode": None,
-    "options": {"alertThreshold": True},
-    "percentage": False,
-    "pluginVersion": "7.5.17",
-    "pointradius": 2,
-    "points": False,
-    "renderer": "flot",
-    # These series overrides are necessary to make the "MAX" and "MAX + PENDING" dotted lines
-    # instead of stacked filled areas.
-    "seriesOverrides": [
-        {
-            "$$hashKey": "object:2987",
-            "alias": "MAX",
-            "dashes": True,
-            "color": "#1F60C4",
-            "fill": 0,
-            "stack": False,
-        },
-        {
-            "$$hashKey": "object:78",
-            "alias": "/FINISHED|FAILED|DEAD|REMOVED|Failed Nodes:/",
-            "hiddenSeries": True,
-        },
-        {
-            "$$hashKey": "object:2987",
-            "alias": "MAX + PENDING",
-            "dashes": True,
-            "color": "#777777",
-            "fill": 0,
-            "stack": False,
-        },
-    ],
-    "spaceLength": 10,
-    "stack": True,
-    "steppedLine": False,
-    "targets": [],
-    "thresholds": [],
-    "timeFrom": None,
-    "timeRegions": [],
-    "timeShift": None,
-    "title": "<Title>",
-    "tooltip": {"shared": True, "sort": 0, "value_type": "individual"},
-    "type": "graph",
-    "xaxis": {
-        "buckets": None,
-        "mode": "time",
-        "name": None,
-        "show": True,
-        "values": [],
-    },
-    "yaxes": [
-        {
-            "$$hashKey": "object:628",
-            "format": "units",
-            "label": "",
-            "logBase": 1,
-            "max": None,
-            "min": "0",
-            "show": True,
-        },
-        {
-            "$$hashKey": "object:629",
-            "format": "short",
-            "label": None,
-            "logBase": 1,
-            "max": None,
-            "min": None,
-            "show": True,
-        },
-    ],
-    "yaxis": {"align": False, "alignLevel": None},
-}
 
 STAT_PANEL_TEMPLATE = {
     "datasource": r"${datasource}",
@@ -255,32 +139,10 @@ STAT_PANEL_TEMPLATE = {
         "text": {},
         "textMode": "auto",
     },
-    "pluginVersion": "7.5.17",
+    "pluginVersion": "10.0.0",
     "targets": [],
-    "timeFrom": None,
-    "timeShift": None,
     "title": "<Title>",
     "type": "stat",
-    "yaxes": [
-        {
-            "$$hashKey": "object:628",
-            "format": "Tokens",
-            "label": "",
-            "logBase": 1,
-            "max": None,
-            "min": "0",
-            "show": True,
-        },
-        {
-            "$$hashKey": "object:629",
-            "format": "short",
-            "label": None,
-            "logBase": 1,
-            "max": None,
-            "min": None,
-            "show": True,
-        },
-    ],
 }
 
 
@@ -305,30 +167,10 @@ GAUGE_PANEL_TEMPLATE = {
         "showThresholdMarkers": False,
         "text": {"titleSize": 12},
     },
-    "pluginVersion": "7.5.17",
+    "pluginVersion": "10.0.0",
     "targets": [],
     "title": "<Title>",
     "type": "gauge",
-    "yaxes": [
-        {
-            "$$hashKey": "object:628",
-            "format": "Tokens",
-            "label": "",
-            "logBase": 1,
-            "max": None,
-            "min": "0",
-            "show": True,
-        },
-        {
-            "$$hashKey": "object:629",
-            "format": "short",
-            "label": None,
-            "logBase": 1,
-            "max": None,
-            "min": None,
-            "show": True,
-        },
-    ],
 }
 
 PIE_CHART_TEMPLATE = {
@@ -347,129 +189,200 @@ PIE_CHART_TEMPLATE = {
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
         "text": {},
     },
-    "pluginVersion": "7.5.17",
+    "pluginVersion": "10.0.0",
     "targets": [],
-    "timeFrom": None,
-    "timeShift": None,
     "title": "<Title>",
     "type": "piechart",
-    "yaxes": [
-        {
-            "$$hashKey": "object:628",
-            "format": "units",
-            "label": "",
-            "logBase": 1,
-            "max": None,
-            "min": "0",
-            "show": True,
-        },
-        {
-            "$$hashKey": "object:629",
-            "format": "short",
-            "label": None,
-            "logBase": 1,
-            "max": None,
-            "min": None,
-            "show": True,
-        },
-    ],
 }
 
+# Modern bar chart panel (timeseries with bars)
 BAR_CHART_PANEL_TEMPLATE = {
-    "aliasColors": {},
-    "dashLength": 10,
-    "dashes": False,
     "datasource": r"${datasource}",
     "description": "<Description>",
-    "fieldConfig": {"defaults": {}, "overrides": []},
-    # Setting height and width is important here to ensure the default panel has some size to it.
-    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-    "hiddenSeries": False,
-    "id": 26,
-    "legend": {
-        "alignAsTable": True,
-        "avg": False,
-        "current": True,
-        "hideEmpty": False,
-        "hideZero": True,
-        "max": False,
-        "min": False,
-        "rightSide": False,
-        "show": False,
-        "sort": "current",
-        "sortDesc": True,
-        "total": False,
-        "values": True,
+    "fieldConfig": {
+        "defaults": {
+            "unit": "short",
+            "custom": {
+                "drawStyle": "bars",
+                "barAlignment": 0,
+                "lineInterpolation": "linear",
+                "fillOpacity": 100,
+                "stacking": {"mode": "normal"},
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": False,
+            },
+            "thresholds": {
+                "mode": "absolute",
+                "steps": [{"color": "green", "value": None}],
+            },
+        },
+        "overrides": [],
     },
-    "lines": False,
-    "linewidth": 1,
-    "bars": True,
-    "nullPointMode": None,
+    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+    "id": 26,
     "options": {
-        "alertThreshold": True,
         "legend": {
-            "showLegend": False,
             "displayMode": "table",
             "placement": "bottom",
+            "showLegend": False,
         },
+        "tooltip": {"mode": "multi", "sort": "desc"},
     },
-    "percentage": False,
-    "pluginVersion": "7.5.17",
-    "pointradius": 2,
-    "points": False,
-    "renderer": "flot",
-    "spaceLength": 10,
-    "stack": True,
-    "steppedLine": False,
+    "pluginVersion": "10.0.0",
     "targets": [],
-    "thresholds": [],
-    "timeFrom": None,
-    "timeRegions": [],
-    "timeShift": None,
     "title": "<Title>",
-    "tooltip": {"shared": True, "sort": 0, "value_type": "individual"},
-    "type": "graph",
-    "xaxis": {
-        "buckets": None,
-        "mode": "series",
-        "name": None,
-        "show": True,
-        "values": [
-            "total",
-        ],
+    "type": "timeseries",
+}
+
+# Modern timeseries panel (replaces old "graph" type for time series data)
+TIMESERIES_PANEL_TEMPLATE = {
+    "datasource": r"${datasource}",
+    "description": "<Description>",
+    "fieldConfig": {
+        "defaults": {
+            "unit": "short",
+            "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "linear",
+                "fillOpacity": 10,
+                "stacking": {"mode": "none"},
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "auto",
+                "spanNulls": False,
+            },
+            "thresholds": {
+                "mode": "absolute",
+                "steps": [{"color": "green", "value": None}],
+            },
+        },
+        "overrides": [],
     },
-    "yaxes": [
-        {
-            "$$hashKey": "object:628",
-            "format": "units",
-            "label": "",
-            "logBase": 1,
-            "max": None,
-            "min": "0",
-            "show": True,
+    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+    "id": 1,
+    "options": {
+        "legend": {
+            "displayMode": "list",
+            "placement": "bottom",
+            "showLegend": True,
         },
-        {
-            "$$hashKey": "object:629",
-            "format": "short",
-            "label": None,
-            "logBase": 1,
-            "max": None,
-            "min": None,
-            "show": True,
+        "tooltip": {"mode": "multi", "sort": "desc"},
+    },
+    "pluginVersion": "10.0.0",
+    "targets": [],
+    "title": "<Title>",
+    "type": "timeseries",
+}
+
+# State timeline panel for showing state changes over time
+STATE_TIMELINE_TEMPLATE = {
+    "datasource": r"${datasource}",
+    "description": "<Description>",
+    "fieldConfig": {
+        "defaults": {
+            "mappings": [],
+            "thresholds": {
+                "mode": "absolute",
+                "steps": [{"color": "green", "value": None}],
+            },
+            "custom": {"fillOpacity": 70},
         },
+        "overrides": [],
+    },
+    "gridPos": {"h": 6, "w": 24, "x": 0, "y": 0},
+    "id": 1,
+    "options": {
+        "showValue": "auto",
+        "rowHeight": 0.8,
+        "mergeValues": True,
+        "legend": {
+            "displayMode": "list",
+            "placement": "bottom",
+            "showLegend": True,
+        },
+        "tooltip": {"mode": "single"},
+    },
+    "pluginVersion": "10.0.0",
+    "targets": [],
+    "title": "<Title>",
+    "type": "state-timeline",
+}
+
+# Table panel for displaying data in tabular format
+TABLE_PANEL_TEMPLATE = {
+    "datasource": r"${datasource}",
+    "description": "<Description>",
+    "fieldConfig": {
+        "defaults": {},
+        "overrides": [],
+    },
+    "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+    "id": 1,
+    "options": {
+        "showHeader": True,
+        "footer": {"show": False},
+    },
+    "pluginVersion": "10.0.0",
+    "targets": [],
+    "title": "<Title>",
+    "transformations": [
+        {"id": "organize", "options": {}},
     ],
-    "yaxis": {"align": False, "alignLevel": None},
+    "type": "table",
+}
+
+# Histogram panel (bar chart showing value distribution)
+HISTOGRAM_PANEL_TEMPLATE = {
+    "datasource": r"${datasource}",
+    "description": "<Description>",
+    "fieldConfig": {
+        "defaults": {
+            "custom": {
+                "fillOpacity": 80,
+                "gradientMode": "none",
+                "hideFrom": {"legend": False, "tooltip": False, "viz": False},
+                "lineWidth": 1,
+                "stacking": {"group": "A", "mode": "none"},
+            },
+            "mappings": [],
+            "thresholds": {
+                "mode": "absolute",
+                "steps": [{"color": "green", "value": None}],
+            },
+            "unit": "short",
+        },
+        "overrides": [],
+    },
+    "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+    "id": 1,
+    "options": {
+        "legend": {
+            "displayMode": "list",
+            "placement": "bottom",
+            "showLegend": True,
+        },
+        "tooltip": {"mode": "single", "sort": "none"},
+    },
+    "pluginVersion": "10.0.0",
+    "targets": [],
+    "title": "<Title>",
+    "type": "histogram",
 }
 
 
 @DeveloperAPI
 class PanelTemplate(Enum):
-    GRAPH = GRAPH_PANEL_TEMPLATE
     HEATMAP = HEATMAP_TEMPLATE
     PIE_CHART = PIE_CHART_TEMPLATE
     STAT = STAT_PANEL_TEMPLATE
     GAUGE = GAUGE_PANEL_TEMPLATE
     BAR_CHART = BAR_CHART_PANEL_TEMPLATE
+    TIMESERIES = TIMESERIES_PANEL_TEMPLATE
+    STATE_TIMELINE = STATE_TIMELINE_TEMPLATE
+    TABLE = TABLE_PANEL_TEMPLATE
+    HISTOGRAM = HISTOGRAM_PANEL_TEMPLATE
 
 
 @DeveloperAPI
@@ -488,6 +401,12 @@ class Panel:
         targets: List of query targets.
         fill: Whether or not the graph will be filled by a color.
         stack: Whether or not the lines in the graph will be stacked.
+        linewidth: Width of the line in the graph.
+        grid_pos: Position and size of the panel in the dashboard grid.
+        template: The panel template to use (GRAPH, STAT, TIMESERIES, etc).
+        hideXAxis: Whether to hide the X-axis.
+        extra_json: Additional JSON fields to merge into the panel config.
+                   Use this for panel-specific options not covered by other fields.
     """
 
     title: str
@@ -499,8 +418,9 @@ class Panel:
     stack: bool = True
     linewidth: int = 1
     grid_pos: Optional[GridPos] = None
-    template: Optional[PanelTemplate] = PanelTemplate.GRAPH
+    template: Optional[PanelTemplate] = PanelTemplate.TIMESERIES
     hideXAxis: bool = False
+    extra_json: dict = field(default_factory=dict)
 
 
 @DeveloperAPI

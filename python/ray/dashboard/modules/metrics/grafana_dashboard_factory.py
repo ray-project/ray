@@ -224,19 +224,61 @@ def _generate_panel_template(
             "y": base_y_position + (row_number * PANEL_HEIGHT),
         }
 
-    template["yaxes"][0]["format"] = panel.unit
-    template["fill"] = panel.fill
-    template["stack"] = panel.stack
-    template["linewidth"] = panel.linewidth
+    # Apply unit configuration for modern panel types
+    # Unit goes in fieldConfig.defaults.unit for all modern Grafana panels
+    template.setdefault("fieldConfig", {}).setdefault("defaults", {})[
+        "unit"
+    ] = panel.unit
 
+    # Apply fill, stack, linewidth for applicable panel types
+    # These panel types support fillOpacity, lineWidth, and stacking in fieldConfig.defaults.custom
+    if panel.template in [
+        panel.template.__class__.TIMESERIES,
+        panel.template.__class__.BAR_CHART,
+        panel.template.__class__.HISTOGRAM,
+    ]:
+        custom = (
+            template.setdefault("fieldConfig", {})
+            .setdefault("defaults", {})
+            .setdefault("custom", {})
+        )
+        custom["fillOpacity"] = panel.fill
+        custom["lineWidth"] = panel.linewidth
+        if panel.stack:
+            custom.setdefault("stacking", {})["mode"] = "normal"
+    # STATE_TIMELINE only supports fillOpacity (no lineWidth or stacking)
+    elif panel.template == panel.template.__class__.STATE_TIMELINE:
+        custom = (
+            template.setdefault("fieldConfig", {})
+            .setdefault("defaults", {})
+            .setdefault("custom", {})
+        )
+        custom["fillOpacity"] = panel.fill
+
+    # Hide X-axis if requested (modern Grafana panels)
     if panel.hideXAxis:
-        template.setdefault("xaxis", {})["show"] = False
+        template.setdefault("options", {})["showXAxis"] = False
 
-    # Handle stacking visualization
-    if panel.stack is True:
-        template["nullPointMode"] = "connected"
+    # Merge extra_json for panel-specific customizations
+    if panel.extra_json:
+        _deep_merge(template, panel.extra_json)
 
     return template
+
+
+def _deep_merge(base: dict, override: dict) -> None:
+    """
+    Deep merge override dict into base dict, modifying base in place.
+
+    Args:
+        base: The base dictionary to merge into
+        override: The dictionary with values to override
+    """
+    for key, value in override.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
 
 
 def _create_row_panel(row: Panel, y_position: int) -> dict:
@@ -358,5 +400,9 @@ def _generate_targets(panel: Panel, panel_global_filters: List[str]) -> List[dic
                 "refId": ref_id,
             }
         )
+        # Apply instant query flag if specified
+        if target.instant:
+            template["instant"] = True
+            template["range"] = False
         targets.append(template)
     return targets
