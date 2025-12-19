@@ -8,7 +8,7 @@ Hyperparameter Tuning with Ray Tune (Deprecated API)
 .. important::
     This user guide covers the deprecated Train + Tune integration. See :ref:`train-tune` for the new API user guide.
 
-    Please see :ref:`here <train-tune-deprecation>` for information about the deprecation and migration.
+    See :ref:`here <train-tune-deprecation>` for information about the deprecation and migration.
 
 Hyperparameter tuning with :ref:`Ray Tune <tune-main>` is natively supported with Ray Train.
 
@@ -18,7 +18,7 @@ Hyperparameter tuning with :ref:`Ray Tune <tune-main>` is natively supported wit
 .. figure:: ../images/train-tuner.svg
     :align: center
 
-    The `Tuner` will take in a `Trainer` and execute multiple training runs, each with different hyperparameter configurations.
+    The `Tuner` takes in a `Trainer` and executes multiple training runs, each with different hyperparameter configurations.
 
 Key Concepts
 ------------
@@ -81,7 +81,7 @@ This includes:
 - custom callbacks
 - integration with cloud storage
 
-Below we showcase some common configurations of :class:`ray.tune.RunConfig`.
+Below are some common configurations of :class:`ray.tune.RunConfig`.
 
 .. literalinclude:: ../doc_code/tuner.py
     :language: python
@@ -93,13 +93,13 @@ Search Space configuration
 --------------------------
 
 A `Tuner` takes in a `param_space` argument where you can define the search space
-from which hyperparameter configurations will be sampled.
+from which hyperparameter configurations are sampled.
 
 Depending on the model and dataset, you may want to tune:
 
 - The training batch size
-- The learning rate for deep learning training (e.g., image classification)
-- The maximum depth for tree-based models (e.g., XGBoost)
+- The learning rate for deep learning training (for example, image classification)
+- The maximum depth for tree-based models (for example, XGBoost)
 
 You can use a Tuner to tune most arguments and configurations for Ray Train, including but
 not limited to:
@@ -116,8 +116,8 @@ Train - Tune gotchas
 
 There are a couple gotchas about parameter specification when using Tuners with Trainers:
 
-- By default, configuration dictionaries and config objects will be deep-merged.
-- Parameters that are duplicated in the Trainer and Tuner will be overwritten by the Tuner ``param_space``.
+- By default, configuration dictionaries and config objects are deep-merged.
+- Parameters that are duplicated in the Trainer and Tuner are overwritten by the Tuner ``param_space``.
 - **Exception:** all arguments of the :class:`ray.tune.RunConfig` and :class:`ray.tune.TuneConfig` are inherently un-tunable.
 
 See :doc:`/tune/tutorials/tune_get_data_in_and_out` for an example.

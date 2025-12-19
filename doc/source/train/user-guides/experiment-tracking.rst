@@ -32,7 +32,7 @@ In this way, you can port your experiment tracking logic to Ray Train with minim
 Getting Started
 ===============
 
-Let's start by looking at some code snippets.
+Start by looking at some code snippets.
 
 The following examples uses Weights & Biases (W&B) and MLflow but it's adaptable to other frameworks.
 
@@ -320,8 +320,8 @@ PyTorch
 PyTorch Lightning
 -----------------
 
-You can use the native Logger integration in PyTorch Lightning with W&B, CometML, MLFlow,
-and Tensorboard, while using Ray Train's TorchTrainer.
+You can use the native Logger integration in PyTorch Lightning with W&B, CometML, MLflow,
+and TensorBoard, while using Ray Train's TorchTrainer.
 
 The following example walks you through the process. The code here is runnable.
 
@@ -373,13 +373,13 @@ Common Errors
 Missing Credentials
 -------------------
 
-**I have already called `wandb login` cli, but am still getting**
+**I have already called `wandb login` CLI, but am still getting**
 
 .. code-block:: none
 
     wandb: ERROR api_key not configured (no-tty). call wandb.login(key=[your_api_key]).
 
-This is probably due to wandb credentials are not set up correctly
+This is probably due to wandb credentials aren't set up correctly
 on worker nodes. Make sure that you run ``wandb.login``
 or pass ``WANDB_API_KEY`` to each training function.
 See :ref:`Set up credentials <set-up-credentials>` for more details.

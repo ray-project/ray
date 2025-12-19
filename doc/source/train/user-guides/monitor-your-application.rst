@@ -5,7 +5,7 @@ Ray Train Metrics
 Ray Train exports Prometheus metrics including the Ray Train controller state, worker group start times, checkpointing times and more. You can use these metrics to monitor Ray Train runs.
 The Ray dashboard displays these metrics in the Ray Train Grafana Dashboard. See :ref:`Ray Dashboard documentation<observability-getting-started>` for more information.
 
-The Ray Train dashboard also displays a subset of Ray Core metrics that are useful for monitoring training but are not listed in the table below.
+The Ray Train dashboard also displays a subset of Ray Core metrics that are useful for monitoring training but aren't listed in the table below.
 For more information about these metrics, see the :ref:`System Metrics documentation<system-metrics>`.
 
 The following table lists the Prometheus metrics emitted by Ray Train:

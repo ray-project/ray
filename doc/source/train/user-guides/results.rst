@@ -22,7 +22,7 @@ as an argument :ref:`in your training function <train-monitoring-and-logging>`.
 
 
 .. note::
-    Persisting free-floating metrics reported via ``ray.train.report(metrics, checkpoint=None)`` is deprecated.
+    Persisting free-floating metrics reported through ``ray.train.report(metrics, checkpoint=None)`` is deprecated.
     This also means that retrieving these metrics from the :class:`~ray.train.Result` object is deprecated.
     Only metrics attached to checkpoints are persisted. See :ref:`train-metric-only-reporting-deprecation` for more details.
 
@@ -55,7 +55,7 @@ Retrieving checkpoints
 You can retrieve checkpoints reported to Ray Train from the :class:`~ray.train.Result`
 object.
 
-:ref:`Checkpoints <train-checkpointing>` contain all the information that is needed
+:ref:`Checkpoints <train-checkpointing>` contain all the information that's needed
 to restore the training state. This usually includes the trained model.
 
 You can use checkpoints for common downstream tasks such as
@@ -100,8 +100,8 @@ Accessing storage location
 If you need to retrieve the results later, you can get the storage location
 of the training run with :attr:`Result.path <ray.train.Result>`.
 
-This path will correspond to the :ref:`storage_path <train-log-dir>` you configured
-in the :class:`~ray.train.RunConfig`. It will be a
+This path corresponds to the :ref:`storage_path <train-log-dir>` you configured
+in the :class:`~ray.train.RunConfig`. It's a
 (nested) subdirectory within that path, usually
 of the form `TrainerName_date-string/TrainerName_id_00000_0_...`.
 
@@ -127,7 +127,7 @@ access the storage location, which is useful if the path is on cloud storage.
 Catching Errors
 ---------------
 If an error occurred during training,
-:attr:`Result.error <ray.train.Result>` will be set and contain the exception
+:attr:`Result.error <ray.train.Result>` is set and contains the exception
 that was raised.
 
 .. literalinclude:: ../doc_code/key_concepts.py

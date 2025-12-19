@@ -37,8 +37,8 @@ Create a :class:`~ray.train.RunConfig` object to specify the path where results
 .. warning::
 
     Specifying a *shared storage location* (such as cloud storage or NFS) is
-    *optional* for single-node clusters, but it is **required for multi-node clusters.**
-    Using a local path will :ref:`raise an error <multinode-local-storage-warning>`
+    *optional* for single-node clusters, but it's **required for multi-node clusters.**
+    Using a local path :ref:`raises an error <multinode-local-storage-warning>`
     during checkpointing for multi-node clusters.
 
 

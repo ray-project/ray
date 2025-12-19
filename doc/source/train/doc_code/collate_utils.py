@@ -8,6 +8,7 @@ import pyarrow as pa
 FEATURE_TYPE = Tuple[torch.dtype, torch.Size, int]
 TORCH_BYTE_ELEMENT_TYPE = torch.uint8
 
+
 def _create_binary_array_from_buffer(buffer: bytes) -> pa.BinaryArray:
     """Zero-copy create a binary array from a buffer."""
     data_buffer = pa.py_buffer(buffer)
@@ -21,40 +22,49 @@ def _create_binary_array_from_buffer(buffer: bytes) -> pa.BinaryArray:
         ],
     )
 
+
 @dataclass
 class _Metadata:
     features: Dict[str, List[FEATURE_TYPE]]
     total_buffer_size: int
 
+
 @dataclass
 class _TensorBatch:
     """Internal class for serializing/deserializing tensor batches."""
+
     buffer: torch.Tensor
     metadata: _Metadata
 
     @classmethod
-    def from_batch(cls, batch: Dict[str, Union[List[torch.Tensor], torch.Tensor]]) -> '_TensorBatch':
+    def from_batch(
+        cls, batch: Dict[str, Union[List[torch.Tensor], torch.Tensor]]
+    ) -> "_TensorBatch":
         """Serialize a batch of tensors into a single buffer."""
         features: Dict[str, List[FEATURE_TYPE]] = {}
         flattened_binary_tensors = []
         total_buffer_size = 0
-        
+
         for name, tensors in batch.items():
             features[name] = []
             if not isinstance(tensors, list):
                 tensors = [tensors]
             for tensor in tensors:
-                flattened_tensor = tensor.flatten().contiguous().view(TORCH_BYTE_ELEMENT_TYPE)
+                flattened_tensor = (
+                    tensor.flatten().contiguous().view(TORCH_BYTE_ELEMENT_TYPE)
+                )
                 flattened_binary_tensors.append(flattened_tensor)
                 features[name].append((tensor.dtype, tensor.shape, total_buffer_size))
                 total_buffer_size += flattened_tensor.shape[0]
-        
+
         buffer = torch.empty(total_buffer_size, dtype=TORCH_BYTE_ELEMENT_TYPE)
         cur_offset = 0
         for flattened_tensor in flattened_binary_tensors:
-            buffer[cur_offset:cur_offset + flattened_tensor.shape[0]] = flattened_tensor
+            buffer[
+                cur_offset : cur_offset + flattened_tensor.shape[0]
+            ] = flattened_tensor
             cur_offset += flattened_tensor.shape[0]
-        
+
         return _TensorBatch(
             buffer=buffer,
             metadata=_Metadata(
@@ -73,12 +83,11 @@ class _TensorBatch:
         )
 
     @classmethod
-    def from_table(cls, table: pa.Table) -> '_TensorBatch':
+    def from_table(cls, table: pa.Table) -> "_TensorBatch":
         """Deserialize from a single-row PyArrow table."""
         return _TensorBatch(
             buffer=torch.frombuffer(
-                table["_buffer"].chunks[0].buffers()[2],
-                dtype=TORCH_BYTE_ELEMENT_TYPE
+                table["_buffer"].chunks[0].buffers()[2], dtype=TORCH_BYTE_ELEMENT_TYPE
             ),
             metadata=pickle.loads(table["_metadata"].chunks[0].buffers()[2]),
         )
@@ -92,27 +101,33 @@ class _TensorBatch:
             for _, _, offset in features:
                 offsets.append(offset)
         offsets.append(self.metadata.total_buffer_size)
-        
+
         offset_id = 0
         for name, features in self.metadata.features.items():
             batch[name] = []
             for dtype, shape, _ in features:
                 # Create a zero-copy view of the byte slice.
-                byte_slice = self.buffer[offsets[offset_id]:offsets[offset_id + 1]]
-                tensor = torch.frombuffer(
-                    byte_slice.numpy().data, dtype=dtype
-                ).view(shape)
+                byte_slice = self.buffer[offsets[offset_id] : offsets[offset_id + 1]]
+                tensor = torch.frombuffer(byte_slice.numpy().data, dtype=dtype).view(
+                    shape
+                )
                 if pin_memory:
                     tensor = tensor.pin_memory()
                 batch[name].append(tensor)
                 offset_id += 1
         return batch
 
+
 # Helper functions for use in your code
-def serialize_tensors_to_table(batch: Dict[str, Union[List[torch.Tensor], torch.Tensor]]) -> pa.Table:
+def serialize_tensors_to_table(
+    batch: Dict[str, Union[List[torch.Tensor], torch.Tensor]]
+) -> pa.Table:
     """Serialize a batch of tensors to a PyArrow table."""
     return _TensorBatch.from_batch(batch).to_table()
 
-def deserialize_table_to_tensors(table: pa.Table, pin_memory: bool = False) -> Dict[str, List[torch.Tensor]]:
+
+def deserialize_table_to_tensors(
+    table: pa.Table, pin_memory: bool = False
+) -> Dict[str, List[torch.Tensor]]:
     """Deserialize a PyArrow table back to tensors."""
     return _TensorBatch.from_table(table).to_batch(pin_memory=pin_memory)

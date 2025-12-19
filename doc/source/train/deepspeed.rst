@@ -3,7 +3,7 @@
 Get Started with DeepSpeed
 ==========================
 
-The :class:`~ray.train.torch.TorchTrainer` can help you easily launch your `DeepSpeed <https://www.deepspeed.ai/>`_ training across a distributed Ray cluster. 
+The :class:`~ray.train.torch.TorchTrainer` can help you easily launch your `DeepSpeed <https://www.deepspeed.ai/>`_ training across a distributed Ray cluster.
 DeepSpeed is an optimization library that enables efficient large-scale model training through techniques like ZeRO (Zero Redundancy Optimizer).
 
 Benefits of Using Ray Train with DeepSpeed

@@ -14,7 +14,7 @@ Learn how to:
 Quickstart
 ----------
 
-For reference, the final code will look something like this:
+For reference, the final code looks something like this:
 
 .. testcode::
     :skipif: True
@@ -30,7 +30,7 @@ For reference, the final code will look something like this:
     trainer = LightGBMTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
 
-1. `train_func` is the Python code that executes on each distributed training worker.
+1. ``train_func`` is the Python code that executes on each distributed training worker.
 2. :class:`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
 3. :class:`~ray.train.lightgbm.LightGBMTrainer` launches the distributed training job.
 
@@ -70,7 +70,7 @@ LightGBM training code in a :ref:`training function <train-overview-training-fun
 
 Each distributed training worker executes this function.
 
-You can also specify the input argument for `train_func` as a dictionary via the Trainer's `train_loop_config`. For example:
+You can also specify the input argument for ``train_func`` as a dictionary using the Trainer's ``train_loop_config``. For example:
 
 .. testcode:: python
     :skipif: True
@@ -87,7 +87,7 @@ You can also specify the input argument for `train_func` as a dictionary via the
 
     Avoid passing large data objects through `train_loop_config` to reduce the
     serialization and deserialization overhead. Instead,
-    initialize large objects (e.g. datasets, models) directly in `train_func`.
+    initialize large objects (for example, datasets, models) directly in `train_func`.
 
     .. code-block:: diff
 
@@ -193,7 +193,7 @@ When running distributed LightGBM training, each worker should use a different s
 
 A common way to do this is to pre-shard the dataset and then assign each worker a different set of files to read.
 
-Pre-sharding the dataset is not very flexible to changes in the number of workers, since some workers may be assigned more data than others. For more flexibility, Ray Data provides a solution for sharding the dataset at runtime.
+Pre-sharding the dataset isn't very flexible to changes in the number of workers, since some workers may be assigned more data than others. For more flexibility, Ray Data provides a solution for sharding the dataset at runtime.
 
 Use Ray Data to shard the dataset
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -228,7 +228,7 @@ Convert this into a native `lightgbm.Dataset <https://lightgbm.readthedocs.io/en
         ...
 
 
-Finally, pass the dataset to the Trainer. This will automatically shard the dataset across the workers. These keys must match the keys used when calling ``get_dataset_shard`` in the training function.
+Finally, pass the dataset to the Trainer. This automatically shards the dataset across the workers. These keys must match the keys used when calling ``get_dataset_shard`` in the training function.
 
 
 .. testcode:: python
@@ -259,7 +259,7 @@ Outside of your training function, create a :class:`~ray.train.ScalingConfig` ob
 .. note::
     When using Ray Data with Ray Train, be careful not to request all available CPUs in your cluster with the `resources_per_worker` parameter. 
     Ray Data needs CPU resources to execute data preprocessing operations in parallel. 
-    If all CPUs are allocated to training workers, Ray Data operations may be bottlenecked, leading to reduced performance. 
+    If all CPUs are allocated to training workers, Ray Data operations may slow down, leading to reduced performance. 
     A good practice is to leave some portion of CPU resources available for Ray Data operations.
 
     For example, if your cluster has 8 CPUs per node, you might allocate 6 CPUs to training workers and leave 2 CPUs for Ray Data:
@@ -270,8 +270,8 @@ Outside of your training function, create a :class:`~ray.train.ScalingConfig` ob
         scaling_config = ScalingConfig(num_workers=4, resources_per_worker={"CPU": 6})
 
 
-In order to use GPUs, you will need to set the `use_gpu` parameter to `True` in your :class:`~ray.train.ScalingConfig` object.
-This will request and assign a single GPU per worker.
+To use GPUs, set the `use_gpu` parameter to `True` in your :class:`~ray.train.ScalingConfig` object.
+This requests and assigns a single GPU per worker.
 
 .. testcode::
     
@@ -281,7 +281,7 @@ This will request and assign a single GPU per worker.
     # 4 nodes with 8 CPUs and 4 GPUs each.
     scaling_config = ScalingConfig(num_workers=16, use_gpu=True)
 
-When using GPUs, you will also need to update your training function to use the assigned GPU. 
+When using GPUs, also update your training function to use the assigned GPU. 
 This can be done by setting the `"device"` parameter as `"gpu"`. 
 For more details on LightGBM's GPU support, see the `LightGBM GPU documentation <https://lightgbm.readthedocs.io/en/latest/GPU-Tutorial.html>`__.
 
@@ -305,7 +305,7 @@ Configure persistent storage
 ----------------------------
 
 Create a :class:`~ray.train.RunConfig` object to specify the path where results
-(including checkpoints and artifacts) will be saved.
+(including checkpoints and artifacts) are saved.
 
 .. testcode::
 
@@ -324,8 +324,8 @@ Create a :class:`~ray.train.RunConfig` object to specify the path where results
 .. warning::
 
     Specifying a *shared storage location* (such as cloud storage or NFS) is
-    *optional* for single-node clusters, but it is **required for multi-node clusters.**
-    Using a local path will :ref:`raise an error <multinode-local-storage-warning>`
+    *optional* for single-node clusters, but it's **required for multi-node clusters.**
+    Using a local path :ref:`raises an error <multinode-local-storage-warning>`
     during checkpointing for multi-node clusters.
 
 

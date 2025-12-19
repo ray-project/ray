@@ -5,15 +5,15 @@ Get Started with Distributed Training using JAX
 
 This guide provides an overview of the `JaxTrainer` in Ray Train.
 
-What is JAX?
+What's JAX?
 ------------
 
 `JAX <https://github.com/jax-ml/jax>`_ is a Python library for accelerator-oriented array computation and
 program transformation, designed for high-performance numerical computing and large-scale machine learning.
 
 JAX provides an extensible system for transforming numerical functions like `jax.grad`, `jax.jit`, and `jax.vmap`,
-utilizing the XLA compiler to create highly optimized code that scales efficiently on accelerators like GPUs and TPUs.
-The core power of JAX lies in its composability, allowing these transformations to be combined to build complex,
+utilizing the Accelerated Linear Algebra (XLA) compiler to create highly optimized code that scales efficiently on accelerators like GPUs and TPUs.
+The core power of JAX lies in how these transformations can be combined, allowing you to build complex,
 high-performance numerical programs for distributed execution.
 
 What are TPUs?
@@ -23,8 +23,8 @@ Tensor Processing Units (TPUs), are custom-designed accelerators created by Goog
 workloads. Unlike general-purpose CPUs or parallel-processing GPUs, TPUs are highly specialized for the massive
 matrix and tensor computations involved in deep learning, making them exceptionally efficient.
 
-The primary advantage of TPUs is performance at scale, as they are designed to be connected into large, multi-host
-configurations called “PodSlices” via a high-speed ICI interconnect, making them ideal for training large models
+The primary advantage of TPUs is performance at scale, as they're designed to be connected into large, multi-host
+configurations called "PodSlices" through a high-speed Inter-Chip Interconnect (ICI), making them ideal for training large models
 that are unable to fit on a single node.
 
 To learn more about configuring TPUs with KubeRay, see :ref:`kuberay-tpu`.
@@ -47,11 +47,11 @@ Configuring Scale and TPU
 For TPU training, the `ScalingConfig` is where you define the specifics of your hardware slice. Key fields include:
 
 * `use_tpu`: This is a new field added in Ray 2.49.0 to the V2 `ScalingConfig`. This boolean flag explicitly tells Ray Train to initialize the JAX backend for TPU execution.
-* `topology`: This is a new field added in Ray 2.49.0 to the V2 `ScalingConfig`. Topology is a string defining the physical arrangement of the TPU chips (e.g., "4x4"). This is required for multi-host training and ensures Ray places workers correctly across the slice. For a list of supported TPU topologies by generation,
+* `topology`: This is a new field added in Ray 2.49.0 to the V2 `ScalingConfig`. Topology is a string defining the physical arrangement of the TPU chips (for example, "4x4"). This is required for multi-host training and ensures Ray places workers correctly across the slice. For a list of supported TPU topologies by generation,
   see the `GKE documentation <https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#topology>`_.
 * `num_workers`: Set to the number of VMs in your TPU slice. For a v4-32 slice with a 2x2x4 topology, this would be 4.
 * `resources_per_worker`: A dictionary specifying the resources each worker needs. For TPUs, you typically request the number of chips per VM (Ex: {"TPU": 4}).
-* `accelerator_type`: For TPUs, `accelerator_type` specifies the TPU generation you are using (e.g., "TPU-V6E"), ensuring your workload is scheduled on the desired TPU slice.
+* `accelerator_type`: For TPUs, `accelerator_type` specifies the TPU generation you are using (for example, "TPU-V6E"), ensuring your workload is scheduled on the desired TPU slice.
 
 Together, these configurations provide a declarative API for defining your entire distributed JAX
 training environment, allowing Ray Train to handle the complex task of launching and coordinating
@@ -75,7 +75,7 @@ For reference, the final code is as follows:
     trainer = JaxTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
 
-1. `train_func` is the Python code that executes on each distributed training worker.
+1. ``train_func`` is the Python code that executes on each distributed training worker.
 2. :class:`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use TPUs.
 3. :class:`~ray.train.v2.jax.JaxTrainer` launches the distributed training job.
 
@@ -208,7 +208,7 @@ Ray Train automatically initializes the JAX distributed environment on each TPU 
 To adapt your existing JAX code, you simply need to wrap your training logic in a Python function
 that can be passed to the `JaxTrainer`.
 
-This function is the entry point that Ray will execute on each remote worker.
+This function is the entry point that Ray executes on each remote worker.
 
 .. code-block:: diff
 
@@ -249,7 +249,7 @@ Configure persistent storage
 ----------------------------
 
 Create a :class:`~ray.train.RunConfig` object to specify the path where results
-(including checkpoints and artifacts) will be saved.
+(including checkpoints and artifacts) are saved.
 
 .. testcode::
 
@@ -268,8 +268,8 @@ Create a :class:`~ray.train.RunConfig` object to specify the path where results
 .. warning::
 
     Specifying a *shared storage location* (such as cloud storage or NFS) is
-    *optional* for single-node clusters, but it is **required for multi-node clusters.**
-    Using a local path will :ref:`raise an error <multinode-local-storage-warning>`
+    *optional* for single-node clusters, but it's **required for multi-node clusters.**
+    Using a local path :ref:`raises an error <multinode-local-storage-warning>`
     during checkpointing for multi-node clusters.
 
 
