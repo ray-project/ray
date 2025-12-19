@@ -464,17 +464,107 @@ class LLMServer(LLMServerProtocol):
             logger.error("Engine health check failed in LLMServer.check_health: %s", e)
             raise e
 
+    async def sleep(self, **kwargs: Any) -> None:
+        """Put the engine to sleep.
+
+        Args:
+            **kwargs: Engine-specific sleep options. Passed through to the engine.
+        """
+        if self.engine is None:
+            return
+        try:
+            await self.engine.sleep(**kwargs)
+        except Exception as e:
+            logger.error("Engine sleep failed in LLMServer.sleep: %s", e)
+            raise e
+
+    async def wakeup(self, **kwargs: Any) -> None:
+        """Wake up the engine from sleep mode.
+
+        Args:
+            **kwargs: Engine-specific wakeup options. Passed through to the engine.
+        """
+        if self.engine is None:
+            return
+        try:
+            await self.engine.wakeup(**kwargs)
+        except Exception as e:
+            logger.error("Engine wakeup failed in LLMServer.wakeup: %s", e)
+            raise e
+
+    async def is_sleeping(self) -> bool:
+        """Check whether the engine is currently sleeping.
+
+        Returns:
+            True if the engine is sleeping, False otherwise.
+        """
+        if self.engine is None:
+            return False
+        try:
+            return await self.engine.is_sleeping()
+        except Exception as e:
+            logger.error("Engine is_sleeping failed in LLMServer.is_sleeping: %s", e)
+            raise e
+
     async def reset_prefix_cache(self) -> None:
-        """Reset the prefix cache of the underlying engine"""
+        """Reset the KV prefix cache on the engine.
+
+        Clears cached key-value pairs from previous requests.
+        """
         if self.engine is None:
             return
         try:
             await self.engine.reset_prefix_cache()
         except Exception as e:
             logger.error(
-                "Engine reset prefix cache failed in LLMServer.reset_prefix_cache: %s",
+                "Engine reset_prefix_cache failed in LLMServer.reset_prefix_cache: %s",
                 e,
             )
+            raise e
+
+    async def pause(self, **kwargs: Any) -> None:
+        """Pause generation on the engine.
+
+        This halts generation requests while keeping model weights
+        in GPU memory. New requests are blocked until resume is called.
+
+        Args:
+            **kwargs: Engine-specific pause options. Passed through to the engine.
+        """
+        if self.engine is None:
+            return
+        try:
+            await self.engine.pause(**kwargs)
+        except Exception as e:
+            logger.error("Engine pause failed in LLMServer.pause: %s", e)
+            raise e
+
+    async def resume(self, **kwargs: Any) -> None:
+        """Resume generation on the engine after pause.
+
+        Args:
+            **kwargs: Engine-specific resume options. Passed through to the engine.
+        """
+        if self.engine is None:
+            return
+        try:
+            await self.engine.resume(**kwargs)
+        except Exception as e:
+            logger.error("Engine resume failed in LLMServer.resume: %s", e)
+            raise e
+
+    async def is_paused(self) -> bool:
+        """Check whether the engine is currently paused.
+
+        Returns:
+            True if the engine is paused, False otherwise.
+        """
+        if self.engine is None:
+            return False
+        try:
+            return await self.engine.is_paused()
+        except Exception as e:
+            logger.error("Engine is_paused failed in LLMServer.is_paused: %s", e)
             raise e
 
     async def start_profile(self) -> None:
