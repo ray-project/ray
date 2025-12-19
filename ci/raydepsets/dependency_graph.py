@@ -2,10 +2,12 @@ from typing import List
 
 from networkx import DiGraph
 
-from ci.raydepsets.parser import Dep
+from ci.raydepsets.models import Dep
 
 
 class DependencyGraph:
+    """Manages a dependency graph of Python packages."""
+
     def __init__(self):
         self.graph = DiGraph()
 
@@ -19,7 +21,6 @@ class DependencyGraph:
             for dependent in dep.required_by:
                 if not self.graph.has_node(dependent):
                     raise ValueError(f"Dependency {dependent} not found in deps")
-                # Edge: dependent -> dep (the package that requires points to what it requires)
                 self.graph.add_edge(dependent, dep.name)
 
     def build_dependency_graph(self, deps: List[Dep]):
@@ -27,13 +28,14 @@ class DependencyGraph:
         self.add_edges(deps)
 
     def remove_dropped_dependencies(self, dropped_dependencies: List[str]):
+        """Remove dependencies and their children from the graph"""
         for dep in dropped_dependencies:
             if not self.graph.has_node(dep):
                 raise ValueError(f"Dependency {dep} not found in deps")
 
         to_remove = set(dropped_dependencies)
 
-        # Cascade: find nodes that should be removed because nothing else requires them
+        # Find nodes that should be removed because nothing else requires them
         # A node should be removed if ALL its predecessors (dependents) are being removed
         changed = True
         while changed:
@@ -41,7 +43,7 @@ class DependencyGraph:
             for node in list(self.graph.nodes()):
                 if node in to_remove:
                     continue
-                # Get all packages that require this node (predecessors point TO this node)
+                # Get all packages that require this node
                 dependents = set(self.graph.predecessors(node))
                 # If this node has dependents and ALL of them are being removed,
                 # then this node is no longer needed

@@ -359,13 +359,13 @@ NodeInfoAccessor::GetAllNodeAddressAndLiveness() const {
 StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCache(
     int64_t timeout_ms,
     std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter,
-    std::optional<rpc::GetAllNodeInfoRequest::NodeSelector> node_selector) {
+    const std::vector<rpc::GetAllNodeInfoRequest::NodeSelector> &node_selectors) {
   rpc::GetAllNodeInfoRequest request;
   if (state_filter.has_value()) {
     request.set_state_filter(state_filter.value());
   }
-  if (node_selector.has_value()) {
-    *request.add_node_selectors() = std::move(node_selector.value());
+  for (const auto &node_selector : node_selectors) {
+    *request.add_node_selectors() = node_selector;
   }
   rpc::GetAllNodeInfoReply reply;
   RAY_RETURN_NOT_OK(client_impl_->GetGcsRpcClient().SyncGetAllNodeInfo(
@@ -546,6 +546,19 @@ void TaskInfoAccessor::AsyncAddTaskEventData(std::unique_ptr<rpc::TaskEventData>
         }
         RAY_LOG(DEBUG) << "Accessor added task events grpc OK";
       });
+}
+
+void TaskInfoAccessor::AsyncAddEvents(rpc::events::AddEventsRequest &&request,
+                                      const StatusCallback &callback,
+                                      int64_t timeout_ms) {
+  client_impl_->GetGcsRpcClient().AddEvents(
+      std::move(request),
+      [callback](const Status &status, rpc::events::AddEventsReply &&reply) {
+        if (callback) {
+          callback(status);
+        }
+      },
+      timeout_ms);
 }
 
 void TaskInfoAccessor::AsyncGetTaskEvents(

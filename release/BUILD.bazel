@@ -962,3 +962,13 @@ py_binary(
         bk_require("click"),
     ],
 )
+
+py_binary(
+    name = "list_release_tests",
+    srcs = ["ray_release/scripts/list_release_tests.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ":ray_release",
+        bk_require("click"),
+    ],
+)

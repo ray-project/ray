@@ -1,13 +1,7 @@
 import re
-from dataclasses import dataclass
 from typing import List
 
-
-@dataclass
-class Dep:
-    name: str
-    version: str
-    required_by: List[str]
+from ci.raydepsets.models import Dep
 
 
 class Parser:
