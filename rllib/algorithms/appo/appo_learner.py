@@ -125,7 +125,14 @@ class APPOLearner(IMPALALearner):
                 self.metrics.log_value(
                     (module_id, NUM_TARGET_UPDATES), 1, reduce="lifetime_sum"
                 )
+                self.metrics.log_value(
+                    (module_id, NUM_TARGET_UPDATES), 1, reduce="lifetime_sum"
+                )
                 # Update the (single-value -> window=1) last updated timestep metric.
+                self._last_update_ts_by_mid[module_id] = curr_timestep
+                self.metrics.log_value(
+                    (module_id, LAST_TARGET_UPDATE_TS), curr_timestep, reduce="max"
+                )
                 self._last_update_ts_by_mid[module_id] = curr_timestep
                 self.metrics.log_value(
                     (module_id, LAST_TARGET_UPDATE_TS), curr_timestep, reduce="max"

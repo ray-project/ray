@@ -1,27 +1,29 @@
 import asyncio
 import concurrent.futures
 import enum
+import json
 import os
 import platform
 import subprocess
-import json
 import time
-from itertools import chain
-from typing import Awaitable, Optional, List, Dict, Set
 from dataclasses import dataclass
+from itertools import chain
+from typing import TYPE_CHECKING, Awaitable, Dict, List, Optional, Set
 
 import aioboto3
 import boto3
 from botocore.exceptions import ClientError
-from github import Repository
+
+if TYPE_CHECKING:
+    from github import Repository
 
 from ray_release.aws import s3_put_rayci_test_data
 from ray_release.configs.global_config import get_global_config
-from ray_release.result import (
-    ResultStatus,
-    Result,
-)
 from ray_release.logger import logger
+from ray_release.result import (
+    Result,
+    ResultStatus,
+)
 from ray_release.util import (
     ANYSCALE_RAY_IMAGE_PREFIX,
     dict_hash,
@@ -34,7 +36,7 @@ MICROCHECK_COMMAND = "@microcheck"
 AWS_TEST_KEY = "ray_tests"
 AWS_TEST_RESULT_KEY = "ray_test_results"
 DEFAULT_PYTHON_VERSION = tuple(
-    int(v) for v in os.environ.get("RELEASE_PY", "3.9").split(".")
+    int(v) for v in os.environ.get("RELEASE_PY", "3.10").split(".")
 )
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
@@ -355,7 +357,7 @@ class Test(dict):
         except subprocess.CalledProcessError:
             return set()
 
-    def is_jailed_with_open_issue(self, ray_github: Repository) -> bool:
+    def is_jailed_with_open_issue(self, ray_github: "Repository") -> bool:
         """
         Returns whether this test is jailed with open issue.
         """
@@ -474,7 +476,7 @@ class Test(dict):
     def get_ray_version(self) -> Optional[str]:
         """
         Returns the Ray version to use from DockerHub if specified in cluster config.
-        If set, this will use released Ray images like anyscale/ray:2.50.0-py39-cpu
+        If set, this will use released Ray images like anyscale/ray:2.50.0-py310-cpu
         instead of building custom BYOD images.
         """
         return self["cluster"].get("ray_version", None)

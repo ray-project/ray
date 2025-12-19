@@ -25,6 +25,7 @@
 #include "ray/gcs/metrics.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/observability/metrics.h"
+#include "ray/raylet/metrics.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/raii.h"
@@ -188,8 +189,11 @@ int main(int argc, char *argv[]) {
       ray::gcs::GetGcsStorageOperationLatencyInMsHistogramMetric();
   auto storage_operation_count_counter =
       ray::gcs::GetGcsStorageOperationCountCounterMetric();
-  auto scheduler_placement_time_s_histogram =
-      ray::GetSchedulerPlacementTimeSHistogramMetric();
+  auto resource_usage_gauge = ray::raylet::GetResourceUsageGaugeMetric();
+  auto health_check_rpc_latency_ms_histogram =
+      ray::gcs::GetHealthCheckRpcLatencyMsHistogramMetric();
+  auto scheduler_placement_time_ms_histogram =
+      ray::GetSchedulerPlacementTimeMsHistogramMetric();
 
   // Create the metrics struct
   ray::gcs::GcsServerMetrics gcs_server_metrics{
@@ -211,7 +215,9 @@ int main(int argc, char *argv[]) {
       /*storage_operation_latency_in_ms_histogram=*/
       storage_operation_latency_in_ms_histogram,
       /*storage_operation_count_counter=*/storage_operation_count_counter,
-      scheduler_placement_time_s_histogram,
+      resource_usage_gauge,
+      scheduler_placement_time_ms_histogram,
+      health_check_rpc_latency_ms_histogram,
   };
 
   ray::gcs::GcsServer gcs_server(gcs_server_config, gcs_server_metrics, main_service);

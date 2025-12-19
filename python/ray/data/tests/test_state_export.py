@@ -10,11 +10,12 @@ from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.metadata_exporter import (
     UNKNOWN,
+    DataContextMetadata,
     Operator,
     Topology,
     sanitize_for_struct,
 )
-from ray.data._internal.stats import _get_or_create_stats_actor
+from ray.data._internal.stats import get_or_create_stats_actor
 from ray.data.context import DataContext
 from ray.tests.conftest import _ray_start
 
@@ -343,7 +344,7 @@ def dummy_dataset_topology_expected_output():
 
 def test_export_disabled(ray_start_regular, dummy_dataset_topology):
     """Test that no export files are created when export API is disabled."""
-    stats_actor = _get_or_create_stats_actor()
+    stats_actor = get_or_create_stats_actor()
 
     # Create or update train run
     ray.get(
@@ -352,7 +353,9 @@ def test_export_disabled(ray_start_regular, dummy_dataset_topology):
             operator_tags=["ReadRange->Map(<lambda>)->Filter(<lambda>)"],
             topology=dummy_dataset_topology,
             job_id=STUB_JOB_ID,
-            data_context=DataContext.get_current(),
+            data_context=DataContextMetadata.from_data_context(
+                DataContext.get_current()
+            ),
         )
     )
 
@@ -362,7 +365,7 @@ def test_export_disabled(ray_start_regular, dummy_dataset_topology):
 
 def _test_dataset_metadata_export(topology, dummy_dataset_topology_expected_output):
     """Test that dataset metadata export events are written when export API is enabled."""
-    stats_actor = _get_or_create_stats_actor()
+    stats_actor = get_or_create_stats_actor()
 
     # Simulate a dataset registration
     ray.get(
@@ -371,7 +374,9 @@ def _test_dataset_metadata_export(topology, dummy_dataset_topology_expected_outp
             operator_tags=["ReadRange->Map(<lambda>)->Filter(<lambda>)"],
             topology=topology,
             job_id=STUB_JOB_ID,
-            data_context=DataContext.get_current(),
+            data_context=DataContextMetadata.from_data_context(
+                DataContext.get_current()
+            ),
         )
     )
 
@@ -449,7 +454,7 @@ def test_export_multiple_datasets(
     dummy_dataset_topology_expected_output,
 ):
     """Test that multiple datasets can be exported when export API is enabled."""
-    stats_actor = _get_or_create_stats_actor()
+    stats_actor = get_or_create_stats_actor()
 
     # Create a second dataset structure that's different from the dummy one
     second_topology = Topology(
@@ -488,7 +493,9 @@ def test_export_multiple_datasets(
             operator_tags=["ReadRange->Map(<lambda>)->Filter(<lambda>)"],
             topology=dummy_dataset_topology,
             job_id=STUB_JOB_ID,
-            data_context=DataContext.get_current(),
+            data_context=DataContextMetadata.from_data_context(
+                DataContext.get_current()
+            ),
         )
     )
 
@@ -499,7 +506,9 @@ def test_export_multiple_datasets(
             operator_tags=["ReadRange->Map(<lambda>)"],
             topology=second_topology,
             job_id=STUB_JOB_ID,
-            data_context=DataContext.get_current(),
+            data_context=DataContextMetadata.from_data_context(
+                DataContext.get_current()
+            ),
         )
     )
 
@@ -642,7 +651,7 @@ def test_update_dataset_metadata_state(
     ray_start_cluster_with_export_api_write, dummy_dataset_topology
 ):
     """Test dataset state update at the export API"""
-    stats_actor = _get_or_create_stats_actor()
+    stats_actor = get_or_create_stats_actor()
     # Register dataset
     ray.get(
         stats_actor.register_dataset.remote(
@@ -650,7 +659,9 @@ def test_update_dataset_metadata_state(
             dataset_tag=STUB_DATASET_ID,
             operator_tags=["Input_0", "ReadRange->Map(<lambda>)->Filter(<lambda>)_1"],
             topology=dummy_dataset_topology,
-            data_context=DataContext.get_current(),
+            data_context=DataContextMetadata.from_data_context(
+                DataContext.get_current()
+            ),
         )
     )
     # Check that export files were created as expected
@@ -689,7 +700,7 @@ def test_update_dataset_metadata_state(
 def test_update_dataset_metadata_operator_states(
     ray_start_cluster_with_export_api_write, dummy_dataset_topology
 ):
-    stats_actor = _get_or_create_stats_actor()
+    stats_actor = get_or_create_stats_actor()
     # Register dataset
     ray.get(
         stats_actor.register_dataset.remote(
@@ -697,7 +708,9 @@ def test_update_dataset_metadata_operator_states(
             operator_tags=["Input_0", "ReadRange->Map(<lambda>)->Filter(<lambda>)_1"],
             topology=dummy_dataset_topology,
             job_id=STUB_JOB_ID,
-            data_context=DataContext.get_current(),
+            data_context=DataContextMetadata.from_data_context(
+                DataContext.get_current()
+            ),
         )
     )
     data = _get_exported_data()

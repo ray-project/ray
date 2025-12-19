@@ -23,6 +23,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/ray_syncer/ray_syncer.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
@@ -32,6 +33,7 @@ namespace ray {
 /// Encapsulates non-resource artifacts that evidence work when present.
 enum WorkFootprint {
   NODE_WORKERS = 1,
+  PULLING_TASK_ARGUMENTS = 2,
 };
 
 // Represents artifacts of a node that can be busy or idle.
@@ -54,7 +56,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
       std::function<int64_t(void)> get_used_object_store_memory,
       std::function<bool(void)> get_pull_manager_at_capacity,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-      std::function<void(const NodeResources &)> resource_change_subscriber);
+      std::function<void(const NodeResources &)> resource_change_subscriber,
+      ray::observability::MetricInterface &resource_usage_gauge);
 
   scheduling::NodeID GetNodeId() const { return local_node_id_; }
 
@@ -117,9 +120,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
   void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
 
   // Removes idle time for a WorkFootprint, thereby marking it busy.
-  void SetBusyFootprint(WorkFootprint item);
+  void MarkFootprintAsBusy(WorkFootprint item);
   // Sets the idle time for a WorkFootprint to now.
-  void SetIdleFootprint(WorkFootprint item);
+  void MarkFootprintAsIdle(WorkFootprint item);
 
   double GetLocalAvailableCpus() const;
 
@@ -236,6 +239,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   /// The draining request this node received.
   std::optional<rpc::DrainRayletRequest> drain_request_;
+
+  ray::observability::MetricInterface &resource_usage_gauge_;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);

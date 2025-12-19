@@ -10,7 +10,10 @@ steps:
     instance_type: builder-arm64
 
   - name: manylinux-aarch64
-    wanda: ci/docker/manylinux.aarch64.wanda.yaml
+    wanda: ci/docker/manylinux.wanda.yaml
+    env:
+      HOSTTYPE: "aarch64"
+      MANYLINUX_VERSION: "251216.3835fc5"
     instance_type: builder-arm64
 
   - name: ray-java-build-aarch64
@@ -22,8 +25,9 @@ steps:
       - oss
     env:
       ARCH_SUFFIX: "-aarch64"
+      HOSTTYPE: "aarch64"
+      MANYLINUX_VERSION: "251216.3835fc5"
     instance_type: builder-arm64
-    depends_on: manylinux-aarch64
 
   - name: raycpubase-aarch64
     label: "wanda: ray.py{{matrix}}.cpu.base (aarch64)"
@@ -32,7 +36,6 @@ steps:
       - docker
     wanda: docker/base-deps/cpu.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -40,12 +43,12 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: "-aarch64"
+      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix}}.lock"
 
   - name: raycpubaseextra-aarch64
     label: "wanda: ray.py{{matrix}}.cpu.base-extra (aarch64)"
     wanda: docker/base-extra/cpu.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -54,6 +57,7 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: "-aarch64"
+      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix}}.lock"
     depends_on: raycpubase-aarch64
 
   - name: raycudabase-aarch64
@@ -65,7 +69,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
@@ -78,11 +81,13 @@ steps:
           - "12.5.1-cudnn"
           - "12.6.3-cudnn"
           - "12.8.1-cudnn"
+          - "12.9.1-cudnn"
     instance_type: builder-arm64
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       ARCH_SUFFIX: "-aarch64"
+      REQUIREMENTS_FILE: "ray_base_deps_py{{matrix.python}}.lock"
 
   - name: raycudabaseextra-aarch64
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra (aarch64)"
@@ -90,7 +95,6 @@ steps:
     matrix:
       setup:
         python:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
@@ -103,19 +107,20 @@ steps:
           - "12.5.1-cudnn"
           - "12.6.3-cudnn"
           - "12.8.1-cudnn"
+          - "12.9.1-cudnn"
     instance_type: builder-arm64
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: "-aarch64"
+      REQUIREMENTS_FILE: "ray_base_extra_py{{matrix.python}}.lock"
     depends_on: raycudabase-aarch64
 
   - name: ray-core-build-aarch64
     label: "wanda: core binary parts py{{matrix}} (aarch64)"
     wanda: ci/docker/ray-core.wanda.yaml
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -123,9 +128,10 @@ steps:
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: "-aarch64"
+      HOSTTYPE: "aarch64"
+      MANYLINUX_VERSION: "251216.3835fc5"
     tags: release_wheels
     instance_type: builder-arm64
-    depends_on: manylinux-aarch64
 
   - label: ":tapioca: build: wheel {{matrix}} (aarch64)"
     tags:
@@ -136,7 +142,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture aarch64 --upload
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -159,6 +164,7 @@ steps:
         --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
         --platform cu12.4.1-cudnn --platform cu12.5.1-cudnn
         --platform cu12.6.3-cudnn --platform cu12.8.1-cudnn
+        --platform cu12.9.1-cudnn
         --platform cpu
         --image-type ray-extra --architecture aarch64 --upload
     depends_on:
@@ -168,7 +174,6 @@ steps:
       - raycpubaseextra-aarch64
     job_env: forge-aarch64
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -186,6 +191,7 @@ steps:
         --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
         --platform cu12.4.1-cudnn --platform cu12.5.1-cudnn
         --platform cu12.6.3-cudnn --platform cu12.8.1-cudnn
+        --platform cu12.9.1-cudnn
         --platform cpu
         --image-type ray --architecture aarch64 --upload
     depends_on:
@@ -195,7 +201,6 @@ steps:
       - raycpubase-aarch64
     job_env: forge-aarch64
     matrix:
-      - "3.9"
       - "3.10"
       - "3.11"
       - "3.12"
@@ -210,6 +215,7 @@ steps:
         --parallelism-per-worker 3
         --only-tags post_wheel_build
         --test-env=RAY_CI_POST_WHEEL_TESTS=True
+        --python-version 3.10
     depends_on:
       - manylinux-aarch64
       - oss-ci-base_build-aarch64
@@ -226,6 +232,7 @@ steps:
         --parallelism-per-worker 3
         --only-tags post_wheel_build
         --test-env=RAY_CI_POST_WHEEL_TESTS=True
+        --python-version 3.10
     depends_on:
       - manylinux-aarch64
       - oss-ci-base_build-aarch64
