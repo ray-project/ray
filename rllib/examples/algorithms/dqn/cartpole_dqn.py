@@ -23,8 +23,11 @@ How to run this script
 To run with default settings:
 `python cartpole_dqn.py`
 
-To scale up with multiple learners:
-`python cartpole_dqn.py --num-learners=2`
+To scale up with distributed learning using multiple learners and env-runners:
+`python cartpole_dqn.py --num-learners=2 --num-env-runners=8`
+
+To use a GPU-based learner add the number of GPUs per learners:
+`python cartpole_dqn.py --num-learners=1 --num-gpus-per-learner=1`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`

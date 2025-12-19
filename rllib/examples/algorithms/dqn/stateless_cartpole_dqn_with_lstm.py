@@ -24,6 +24,12 @@ How to run this script
 To run with default settings:
 `python stateless_cartpole_dqn_with_lstm.py`
 
+To scale up with distributed learning using multiple learners and env-runners:
+`python stateless_cartpole_dqn_with_lstm.py --num-learners=2 --num-env-runners=8`
+
+To use a GPU-based learner add the number of GPUs per learners:
+`python stateless_cartpole_dqn_with_lstm.py --num-learners=1 --num-gpus-per-learner=1`
+
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
 which should allow you to set breakpoints anywhere in the RLlib code and
@@ -37,7 +43,7 @@ For logging to your WandB account, use:
 Results to expect
 -----------------
 The algorithm should reach the default reward threshold of 350.0 within
-1,000,000 timesteps. The POMDP nature of this task makes it harder than
+500,000 timesteps. The POMDP nature of this task makes it harder than
 standard CartPole, as the agent must learn to infer velocity from position
 changes over time using its LSTM memory.
 """

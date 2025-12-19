@@ -25,6 +25,12 @@ To run with default settings (5 learning policies):
 To change the number of competing policies:
 `python tictactoe_dqn.py --num-agents=3`
 
+To scale up with distributed learning using multiple learners and env-runners:
+`python tictactoe_dqn.py --num-learners=2 --num-env-runners=8`
+
+To use a GPU-based learner add the number of GPUs per learners:
+`python tictactoe_dqn.py --num-learners=1 --num-gpus-per-learner=1`
+
 To scale up with more parallel environments:
 `python tictactoe_dqn.py --num-env-runners=10 --num-envs-per-env-runner=16`
 
@@ -41,7 +47,7 @@ For logging to your WandB account, use:
 Results to expect
 -----------------
 The algorithm should reach the default reward threshold of -0.5 within
-1,000,000 timesteps. In TicTacToe, rewards are +1 for win, -1 for loss, and
+250,000 timesteps. In TicTacToe, rewards are +1 for win, -1 for loss, and
 0 for draw. A mean reward of -0.5 indicates policies are winning more often
 than losing against the mix of opponents including the random baseline.
 """
@@ -50,7 +56,7 @@ import random
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.core.rl_module import MultiRLModuleSpec, RLModuleSpec
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from tic_tac_toe import TicTacToe
+from ray.rllib.examples.envs.classes.multi_agent.tic_tac_toe import TicTacToe
 from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
