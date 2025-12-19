@@ -656,7 +656,9 @@ def test_default_excludes_disabled_via_env_var(start_cluster, monkeypatch):
         def check_git():
             return os.path.exists(".git")
 
-        assert ray.get(check_git.remote()), ".git should be included when defaults disabled"
+        assert ray.get(
+            check_git.remote()
+        ), ".git should be included when defaults disabled"
 
 
 if __name__ == "__main__":

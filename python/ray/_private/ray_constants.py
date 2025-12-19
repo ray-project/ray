@@ -164,7 +164,9 @@ RAY_RUNTIME_ENV_DEFAULT_EXCLUDES = ".git,.venv,venv,__pycache__"
 
 def get_runtime_env_default_excludes() -> list[str]:
     """Get default excludes for working_dir, overridable via RAY_OVERRIDE_RUNTIME_ENV_DEFAULT_EXCLUDES environment variable."""
-    val = os.environ.get("RAY_OVERRIDE_RUNTIME_ENV_DEFAULT_EXCLUDES", RAY_RUNTIME_ENV_DEFAULT_EXCLUDES)
+    val = os.environ.get(
+        "RAY_OVERRIDE_RUNTIME_ENV_DEFAULT_EXCLUDES", RAY_RUNTIME_ENV_DEFAULT_EXCLUDES
+    )
     return [x.strip() for x in val.split(",") if x.strip()]
 
 

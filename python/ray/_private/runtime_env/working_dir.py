@@ -70,7 +70,7 @@ def upload_working_dir_if_needed(
         return runtime_env
 
     default_excludes = ray_constants.get_runtime_env_default_excludes()
-    user_excludes = runtime_env.get("excludes", [])
+    user_excludes = runtime_env.get("excludes") or []
     excludes = default_excludes + list(user_excludes)
     try:
         working_dir_uri = get_uri_for_directory(
