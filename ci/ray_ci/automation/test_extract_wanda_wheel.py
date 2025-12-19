@@ -10,8 +10,8 @@ from click.testing import CliRunner
 
 from ci.ray_ci.automation.extract_wanda_wheel import (
     WheelExtractionError,
-    _get_arch_suffix,
     _extract_wheel,
+    _get_arch_suffix,
     main,
 )
 
@@ -62,10 +62,12 @@ class TestExtractWheel:
                     result.stderr = ""
                 elif args[0:2] == ["docker", "cp"]:
                     # Simulate copying by actually copying the fake wheel
+                    # to the destination path provided in the command.
                     import shutil
 
+                    dest_path = Path(args[3])
                     for whl in docker_temp.glob("*.whl"):
-                        shutil.copy2(whl, output_dir / whl.name)
+                        shutil.copy2(whl, dest_path / whl.name)
                     result.returncode = 0
                     result.stdout = ""
                     result.stderr = ""
@@ -80,9 +82,7 @@ class TestExtractWheel:
 
             mock_run.side_effect = mock_subprocess
 
-            _extract_wheel(
-                "test-repo:test-tag", "test-image", output_dir
-            )
+            _extract_wheel("test-repo:test-tag", "test-image", output_dir)
 
             # Verify docker_pull was called
             mock_docker_pull.assert_called_once_with("test-repo:test-tag")
@@ -119,7 +119,9 @@ class TestExtractWheel:
                 stderr="Error: cannot create container",
             )
 
-            with pytest.raises(WheelExtractionError, match="Failed to create container"):
+            with pytest.raises(
+                WheelExtractionError, match="Failed to create container"
+            ):
                 _extract_wheel("test:tag", "test-image", output_dir)
 
 
@@ -135,10 +137,14 @@ class TestMainCLI:
             result = runner.invoke(
                 main,
                 [
-                    "--python-version", "3.10",
-                    "--arch", "x86_64",
-                    "--rayci-build-id", "test-build-123",
-                    "--output-dir", temp_dir,
+                    "--python-version",
+                    "3.10",
+                    "--arch",
+                    "x86_64",
+                    "--rayci-build-id",
+                    "test-build-123",
+                    "--output-dir",
+                    temp_dir,
                 ],
             )
 
@@ -160,10 +166,14 @@ class TestMainCLI:
             result = runner.invoke(
                 main,
                 [
-                    "--python-version", "3.10",
-                    "--arch", "x86_64",
-                    "--rayci-build-id", "test-build-123",
-                    "--output-dir", temp_dir,
+                    "--python-version",
+                    "3.10",
+                    "--arch",
+                    "x86_64",
+                    "--rayci-build-id",
+                    "test-build-123",
+                    "--output-dir",
+                    temp_dir,
                     "--skip-ray",
                 ],
             )
@@ -184,10 +194,14 @@ class TestMainCLI:
             result = runner.invoke(
                 main,
                 [
-                    "--python-version", "3.10",
-                    "--arch", "x86_64",
-                    "--rayci-build-id", "test-build-123",
-                    "--output-dir", temp_dir,
+                    "--python-version",
+                    "3.10",
+                    "--arch",
+                    "x86_64",
+                    "--rayci-build-id",
+                    "test-build-123",
+                    "--output-dir",
+                    temp_dir,
                     "--skip-ray-cpp",
                 ],
             )
@@ -209,10 +223,14 @@ class TestMainCLI:
             result = runner.invoke(
                 main,
                 [
-                    "--python-version", "3.11",
-                    "--arch", "aarch64",
-                    "--rayci-build-id", "test-build-123",
-                    "--output-dir", temp_dir,
+                    "--python-version",
+                    "3.11",
+                    "--arch",
+                    "aarch64",
+                    "--rayci-build-id",
+                    "test-build-123",
+                    "--output-dir",
+                    temp_dir,
                 ],
             )
 
@@ -233,8 +251,10 @@ class TestMainCLI:
             result = runner.invoke(
                 main,
                 [
-                    "--python-version", "3.10",
-                    "--arch", "x86_64",
+                    "--python-version",
+                    "3.10",
+                    "--arch",
+                    "x86_64",
                 ],
             )
 
@@ -248,9 +268,12 @@ class TestMainCLI:
         result = runner.invoke(
             main,
             [
-                "--python-version", "3.10",
-                "--arch", "invalid_arch",
-                "--rayci-build-id", "test-build-123",
+                "--python-version",
+                "3.10",
+                "--arch",
+                "invalid_arch",
+                "--rayci-build-id",
+                "test-build-123",
             ],
         )
 
