@@ -35,11 +35,13 @@ RUN <<EOF
 set -euo pipefail
 
 # Find the wheel file
-WHEEL_FILE=$(ls /tmp/ray-*.whl | head -1)
-if [[ -z "$WHEEL_FILE" ]]; then
-    echo "Error: No ray wheel found in /tmp/"
+WHEEL_FILES=(/tmp/ray-*.whl)
+if [[ ${#WHEEL_FILES[@]} -ne 1 ]]; then
+    echo "Error: Expected 1 ray wheel file, but found ${#WHEEL_FILES[@]} in /tmp/." >&2
+    ls -l /tmp/*.whl >&2
     exit 1
 fi
+WHEEL_FILE="${WHEEL_FILES[0]}"
 
 echo "Installing wheel: $WHEEL_FILE"
 

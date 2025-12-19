@@ -45,9 +45,14 @@ if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
 fi
 
 # Parse arguments
-PYTHON_VERSION="${1:-3.10}"
-IMAGE_TYPE="${2:-cpu}"
-CUDA_VERSION="${3:-}"
+if [[ "${1:-}" =~ ^3\.[0-9]+$ ]]; then
+    PYTHON_VERSION="$1"
+    shift
+else
+    PYTHON_VERSION="3.10"
+fi
+IMAGE_TYPE="${1:-cpu}"
+CUDA_VERSION="${2:-}"
 WANDA_BIN="${WANDA_BIN:-/home/ubuntu/rayci/bin/wanda}"
 
 # Handle gpu as alias for cuda with default version
