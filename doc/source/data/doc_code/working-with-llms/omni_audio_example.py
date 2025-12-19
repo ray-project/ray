@@ -48,10 +48,6 @@ import ray
 from ray.data.llm import (
     vLLMEngineProcessorConfig,
     build_processor,
-    PrepareMultimodalStageConfig,
-    ChatTemplateStageConfig,
-    TokenizerStageConfig,
-    DetokenizeStageConfig,
 )
 
 # __omni_audio_config_example_start__
@@ -64,13 +60,13 @@ audio_processor_config = vLLMEngineProcessorConfig(
     batch_size=16,
     accelerator_type="L4",
     concurrency=1,
-    prepare_multimodal_stage=PrepareMultimodalStageConfig(
-        enabled=True,
-        chat_template_content_format="openai",
-    ),
-    chat_template_stage=ChatTemplateStageConfig(enabled=True),
-    tokenize_stage=TokenizerStageConfig(enabled=True),
-    detokenize_stage=DetokenizeStageConfig(enabled=True),
+    prepare_multimodal_stage={
+        "enabled": True,
+        "chat_template_content_format": "openai",
+    },
+    chat_template_stage={"enabled": True},
+    tokenize_stage={"enabled": True},
+    detokenize_stage={"enabled": True},
 )
 # __omni_audio_config_example_end__
 
@@ -180,13 +176,13 @@ def create_omni_audio_config():
         batch_size=16,
         accelerator_type="L4",
         concurrency=1,
-        prepare_multimodal_stage=PrepareMultimodalStageConfig(
-            enabled=True,
-            chat_template_content_format="openai",
-        ),
-        chat_template_stage=ChatTemplateStageConfig(enabled=True),
-        tokenize_stage=TokenizerStageConfig(enabled=True),
-        detokenize_stage=DetokenizeStageConfig(enabled=True),
+        prepare_multimodal_stage={
+            "enabled": True,
+            "chat_template_content_format": "openai",
+        },
+        chat_template_stage={"enabled": True},
+        tokenize_stage={"enabled": True},
+        detokenize_stage={"enabled": True},
     )
 
 
@@ -203,8 +199,9 @@ def run_omni_audio_example():
 
         print("Omni audio processor configured successfully")
         print(f"Model: {config.model_source}")
-        print(f"Has multimodal support: {config.prepare_multimodal_stage.enabled}")
+        print(f"Has multimodal support: {config.prepare_multimodal_stage.get('enabled', False)}")
         result = processor(audio_dataset).take_all()
+        print(result)
         return config, processor, result
     # __omni_audio_run_example_end__
     return None, None, None

@@ -141,7 +141,7 @@ Ray Data LLM also supports running batch inference with vision language
 and omni-modal models on multimodal data. To enable multimodal batch inference,
 apply the following 2 adjustments on top of the previous example:
 
-- Set `PrepareMultimodalStageConfig(enabled=True)` in the `vLLMEngineProcessorConfig`
+- Set `prepare_multimodal_stage={"enabled": True}` in the `vLLMEngineProcessorConfig`
 - Prepare multimodal data inside the preprocessor.
 
 Prior to running the examples below, install the required dependencies:

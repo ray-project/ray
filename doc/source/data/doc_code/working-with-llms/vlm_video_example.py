@@ -46,10 +46,6 @@ import ray
 from ray.data.llm import (
     vLLMEngineProcessorConfig,
     build_processor,
-    PrepareMultimodalStageConfig,
-    ChatTemplateStageConfig,
-    TokenizerStageConfig,
-    DetokenizeStageConfig,
 )
 
 
@@ -65,16 +61,16 @@ video_processor_config = vLLMEngineProcessorConfig(
     batch_size=1,
     accelerator_type="L4",
     concurrency=1,
-    prepare_multimodal_stage=PrepareMultimodalStageConfig(
-        enabled=True,
-        model_config_kwargs=dict(
+    prepare_multimodal_stage={"enabled": True,
+        "enabled": True,
+        "model_config_kwargs": dict(
             # See available model config kwargs at https://docs.vllm.ai/en/latest/api/vllm/config/#vllm.config.ModelConfig
             allowed_local_media_path="/tmp",
         ),
-    ),
-    chat_template_stage=ChatTemplateStageConfig(enabled=True),
-    tokenize_stage=TokenizerStageConfig(enabled=True),
-    detokenize_stage=DetokenizeStageConfig(enabled=True),
+    },
+    chat_template_stage={"enabled": True},
+    tokenize_stage={"enabled": True},
+    detokenize_stage={"enabled": True},
 )
 # __vlm_video_config_example_end__
 
@@ -195,16 +191,16 @@ def create_vlm_video_config():
         batch_size=1,
         accelerator_type="L4",
         concurrency=1,
-        prepare_multimodal_stage=PrepareMultimodalStageConfig(
-            enabled=True,
-            model_config_kwargs=dict(
+        prepare_multimodal_stage={
+            "enabled": True,
+            "model_config_kwargs": dict(
                 # See available model config kwargs at https://docs.vllm.ai/en/latest/api/vllm/config/#vllm.config.ModelConfig
                 allowed_local_media_path="/tmp",
             ),
-        ),
-        chat_template_stage=ChatTemplateStageConfig(enabled=True),
-        tokenize_stage=TokenizerStageConfig(enabled=True),
-        detokenize_stage=DetokenizeStageConfig(enabled=True),
+        },
+        chat_template_stage={"enabled": True},
+        tokenize_stage={"enabled": True},
+        detokenize_stage={"enabled": True},
     )
 
 
@@ -221,7 +217,7 @@ def run_vlm_video_example():
 
         print("VLM video processor configured successfully")
         print(f"Model: {config.model_source}")
-        print(f"Has multimodal support: {config.prepare_multimodal_stage.enabled}")
+        print(f"Has multimodal support: {config.prepare_multimodal_stage.get('enabled', False)}")
         result = processor(video_dataset).take_all()
         return config, processor, result
     # __vlm_video_run_example_end__
