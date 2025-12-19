@@ -129,13 +129,6 @@ TEST(UtilTest, CreateCommandLineTest) {
   }
 }
 
-TEST(UtilTest, ZstdTest) {
-  std::string data = "Zstd test input data";
-  std::string compressed = CompressZstd(data);
-  std::string decompressed = DecompressZstd(compressed);
-  ASSERT_EQ(data, decompressed);
-}
-
 }  // namespace
 
 int main(int argc, char **argv) {

@@ -34,6 +34,7 @@
 #include "ray/object_manager_rpc_client/object_manager_client_interface.h"
 #include "ray/rpc/object_manager_server.h"
 #include "ray/stats/metric.h"
+#include "ray/util/compression.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
