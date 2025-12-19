@@ -141,35 +141,16 @@ class DPGroupManager:
             replica_rank, self.dp_group_size, self.dp_size_per_node
         )
 
-        replicas_to_kill: List[str] = []
-
         async with self._group_info_lock:
             if group_index not in self._group_info:
                 self._group_info[group_index] = GroupInfo()
 
             group = self._group_info[group_index]
 
-            # Check for double-registration
-            existing_replica_id = group.dp_rank_to_replica_id.get(dp_rank)
-            if existing_replica_id is not None and existing_replica_id != replica_id:
-                # Double-registration detected! A new replica is trying to take
-                # a DP rank that's already occupied by a different replica.
-                # This indicates a replica failure/restart scenario.
-                logger.warning(
-                    f"Double-registration detected for group {group_index}, "
-                    f"dp_rank {dp_rank}: existing={existing_replica_id}, "
-                    f"new={replica_id}. Killing all replicas in the group."
-                )
-
-                # Collect all replica IDs to kill (excluding the new registrant)
-                replicas_to_kill = [
-                    rid
-                    for rid in group.dp_rank_to_replica_id.values()
-                    if rid != replica_id
-                ]
-
-                # Clear the group state for a fresh restart
-                self._reset_group(group)
+            # Get replicas to kill if double-registration is detected
+            replicas_to_kill = self._handle_double_registration(
+                group, group_index, dp_rank, replica_id
+            )
 
             # Register the new replica
             group.dp_rank_to_replica_id[dp_rank] = replica_id
@@ -193,37 +174,78 @@ class DPGroupManager:
 
         Must be called while holding _group_info_lock.
         """
+        # If there are any waiters, wake them so they can re-check state.
+        group.master_info_event.set()
+        group.master_info_event.clear()
+
         group.dp_rank_to_replica_id.clear()
         group.master_info = None
-        group.master_info_event = asyncio.Event()
 
-    async def _kill_replicas(self, replica_ids: List[str], group_index: int) -> None:
-        """Kill all replicas in the given list.
+    def _handle_double_registration(
+        self,
+        group: GroupInfo,
+        group_index: int,
+        dp_rank: int,
+        replica_id: str,
+    ) -> List[str]:
+        """Check for and handle double-registration.
 
-        Handles already-dead replicas gracefully by catching exceptions.
+        If a new replica is trying to register for a DP rank already occupied
+        by a different replica, this indicates a replica failure/restart.
+        Collects replicas to kill and resets the group for a clean restart.
+
+        Must be called while holding _group_info_lock.
 
         Args:
-            replica_ids: List of replica IDs to kill.
-            group_index: The group index (for logging).
+            group: The group info object.
+            group_index: The index of the group.
+            dp_rank: The data parallel rank being registered.
+            replica_id: The replica ID attempting to register.
+
+        Returns:
+            List of replica IDs to kill (empty if no double-registration).
         """
-        for replica_id in replica_ids:
-            try:
-                # Get the actor handle by name and kill it
-                actor = ray.get_actor(replica_id)
-                ray.kill(actor, no_restart=False)
-                logger.info(f"Killed replica {replica_id} from group {group_index}")
-            except ValueError:
-                # Actor not found - already dead
-                logger.info(
-                    f"Replica {replica_id} from group {group_index} "
-                    "already dead, skipping kill"
-                )
-            except Exception as e:
-                # Log but don't fail - the replica might be in a bad state
-                logger.warning(
-                    f"Failed to kill replica {replica_id} from group "
-                    f"{group_index}: {e}"
-                )
+        existing_replica_id = group.dp_rank_to_replica_id.get(dp_rank)
+        if existing_replica_id is None or existing_replica_id == replica_id:
+            return []
+
+        logger.warning(
+            f"Double-registration detected for group {group_index}, "
+            f"dp_rank {dp_rank}: existing={existing_replica_id}, "
+            f"new={replica_id}. Killing all replicas in the group."
+        )
+
+        # Collect all replica IDs to kill (excluding the new registrant)
+        replicas_to_kill = [
+            rid for rid in group.dp_rank_to_replica_id.values() if rid != replica_id
+        ]
+
+        # Clear the group state to prevent cascading kills
+        self._reset_group(group)
+
+        return replicas_to_kill
+
+    async def _kill_replica(self, replica_id: str, group_index: int) -> None:
+        try:
+            actor = ray.get_actor(replica_id)
+            ray.kill(actor, no_restart=False)
+            logger.info(f"Killed replica {replica_id} from group {group_index}")
+        except ValueError:
+            # Actor not found - already dead
+            logger.info(
+                f"Replica {replica_id} from group {group_index} "
+                "already dead, skipping kill"
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to kill replica {replica_id} from group " f"{group_index}: {e}"
+            )
+
+    async def _kill_replicas(self, replica_ids: List[str], group_index: int) -> None:
+        """Kill all replicas in the given list."""
+        await asyncio.gather(
+            *[self._kill_replica(rid, group_index) for rid in replica_ids]
+        )
 
     async def set_dp_master_info(
         self,
@@ -234,6 +256,7 @@ class DPGroupManager:
         """Set the master info for a DP group.
 
         Called by dp_rank=0 replica after obtaining its address and port.
+        The group must already exist (i.e., register() must be called first).
 
         Args:
             group_index: The index of the DP group.
@@ -241,8 +264,10 @@ class DPGroupManager:
             dp_rpc_port: The RPC port of the master.
         """
         async with self._group_info_lock:
-            if group_index not in self._group_info:
-                self._group_info[group_index] = GroupInfo()
+            assert group_index in self._group_info, (
+                f"Group {group_index} does not exist. "
+                "register() must be called before set_dp_master_info()."
+            )
 
             group = self._group_info[group_index]
             group.master_info = (dp_address, dp_rpc_port)
@@ -261,7 +286,9 @@ class DPGroupManager:
     ) -> Tuple[str, int]:
         """Get the master info for a DP group.
 
-        Blocks until the master info is available (set by dp_rank=0).
+        Blocks until the master info is available (set by dp_rank=0). Loops in
+        case the master_info is reset between the time the event is set and we
+        acquire the lock.
 
         Args:
             group_index: The index of the DP group.
@@ -276,16 +303,11 @@ class DPGroupManager:
 
                 group = self._group_info[group_index]
 
-                # If master_info is already set, return it
                 if group.master_info is not None:
+                    # Master info may be ready right away
                     return group.master_info
 
-                # Get the current event to wait on
                 event = group.master_info_event
 
-            # Wait outside the lock to avoid blocking other operations
+            # Otherwise wait
             await event.wait()
-
-            # After waking up, re-check under lock. The group may have been
-            # reset (e.g., due to double-registration) while we were waiting,
-            # in which case we need to wait on the new event.

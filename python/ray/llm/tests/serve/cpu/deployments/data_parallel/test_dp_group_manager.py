@@ -407,6 +407,10 @@ class TestMasterInfo:
     @pytest.mark.asyncio
     async def test_set_and_get_master_info(self, manager):
         """Master info can be set and retrieved for a group."""
+        # Must register before setting master info
+        replica_rank = ReplicaRank(rank=0, node_rank=0, local_rank=0)
+        await manager.register(replica_rank=replica_rank, replica_id="replica-0")
+
         await manager.set_dp_master_info(
             group_index=0, dp_address="192.168.1.1", dp_rpc_port=12345
         )
@@ -418,6 +422,10 @@ class TestMasterInfo:
     @pytest.mark.asyncio
     async def test_get_master_info_waits_for_set(self, manager):
         """get_dp_master_info blocks until master info is available."""
+        # Must register before setting master info
+        replica_rank = ReplicaRank(rank=0, node_rank=0, local_rank=0)
+        await manager.register(replica_rank=replica_rank, replica_id="replica-0")
+
         results = []
 
         async def getter():
@@ -439,6 +447,10 @@ class TestMasterInfo:
     @pytest.mark.asyncio
     async def test_multiple_waiters(self, manager):
         """Multiple callers can wait for and receive master info."""
+        # Must register before setting master info
+        replica_rank = ReplicaRank(rank=0, node_rank=0, local_rank=0)
+        await manager.register(replica_rank=replica_rank, replica_id="replica-0")
+
         results = []
 
         async def getter(waiter_id):
@@ -461,6 +473,12 @@ class TestMasterInfo:
     @pytest.mark.asyncio
     async def test_independent_groups(self, manager):
         """Master info is independent per group."""
+        # Must register replicas for both groups first
+        replica_rank_0 = ReplicaRank(rank=0, node_rank=0, local_rank=0)
+        await manager.register(replica_rank=replica_rank_0, replica_id="replica-0")
+        replica_rank_1 = ReplicaRank(rank=8, node_rank=1, local_rank=0)
+        await manager.register(replica_rank=replica_rank_1, replica_id="replica-8")
+
         await manager.set_dp_master_info(
             group_index=0, dp_address="192.168.0.1", dp_rpc_port=1111
         )
