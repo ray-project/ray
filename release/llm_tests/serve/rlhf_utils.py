@@ -1,7 +1,7 @@
 import torch
 import ray
 import requests
-from typing import List
+from typing import Optional
 from transformers import AutoModelForCausalLM
 
 
@@ -166,7 +166,7 @@ class TrainerActor:
         torch.cuda.synchronize()
 
     def _call_collective_rpc_sync(
-        self, method: str, args: List = None, kwargs: dict = None
+        self, method: str, args: Optional[list] = None, kwargs: Optional[dict] = None
     ):
         """Call the /collective_rpc endpoint synchronously."""
         url = f"{self._base_url}/collective_rpc"
