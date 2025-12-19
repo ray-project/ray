@@ -414,7 +414,7 @@ class Panel:
     id: int
     unit: str
     targets: List[Target]
-    fill: int = 10
+    fill: Optional[int] = None
     stack: bool = True
     linewidth: int = 1
     grid_pos: Optional[GridPos] = None

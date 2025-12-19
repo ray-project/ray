@@ -242,7 +242,8 @@ def _generate_panel_template(
             .setdefault("defaults", {})
             .setdefault("custom", {})
         )
-        custom["fillOpacity"] = panel.fill
+        if panel.fill:
+            custom["fillOpacity"] = panel.fill
         custom["lineWidth"] = panel.linewidth
         if panel.stack:
             custom.setdefault("stacking", {})["mode"] = "normal"
