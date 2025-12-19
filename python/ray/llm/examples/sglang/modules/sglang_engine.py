@@ -244,7 +244,7 @@ class SGLangServer:
 
         if "placement_group_bundles" not in pg_config:
             pg_bundles = [{"CPU": 1, "GPU": 1}]
-            if tp_size > 1:
+            if tp_size > 1:  # TO DO: to support tp_size > 1 cases
                 pg_bundles.extend([{"GPU": 1} for _ in range(tp_size - 1)])
             pg_strategy = "PACK"
         else:
