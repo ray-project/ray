@@ -66,13 +66,17 @@ def ray_tpu_multi_host():
         }
         cluster.add_node(
             num_cpus=8,
-            resources={"TPU": 4, f"TPU-{pod_type}-head": 1},
+            resources={
+                "TPU": 4,
+                f"TPU-{pod_type}-head": 1,
+                "accelerator_type:TPU-V4": 1,
+            },
             env_vars=slice_a_head_env,
             labels=slice_a_head_labels,
         )
         cluster.add_node(
             num_cpus=8,
-            resources={"TPU": 4},
+            resources={"TPU": 4, "accelerator_type:TPU-V4": 1},
             env_vars=slice_a_worker_env,
             labels=slice_a_worker_labels,
         )
@@ -101,13 +105,17 @@ def ray_tpu_multi_host():
         }
         cluster.add_node(
             num_cpus=8,
-            resources={"TPU": 4, f"TPU-{pod_type}-head": 1},
+            resources={
+                "TPU": 4,
+                f"TPU-{pod_type}-head": 1,
+                "accelerator_type:TPU-V4": 1,
+            },
             env_vars=slice_b_head_env,
             labels=slice_b_head_labels,
         )
         cluster.add_node(
             num_cpus=8,
-            resources={"TPU": 4},
+            resources={"TPU": 4, "accelerator_type:TPU-V4": 1},
             env_vars=slice_b_worker_env,
             labels=slice_b_worker_labels,
         )

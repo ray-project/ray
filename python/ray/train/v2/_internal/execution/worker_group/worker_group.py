@@ -4,7 +4,7 @@ import logging
 import os
 import traceback
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import ray
 from ray._private.ray_constants import env_float
@@ -263,24 +263,8 @@ class WorkerGroup(BaseWorkerGroup):
         self._assert_inactive()
         worker_group_context = self._worker_group_context
 
-        scaling_config = self._train_run_context.scaling_config
-        pg: Optional[PlacementGroup] = None
-
-        if (
-            scaling_config.use_tpu
-            and scaling_config.topology
-            and scaling_config.accelerator_type
-        ):
-            # Utilize SlicePlacementGroup scheduling logic when a specific TPU
-            # topology is specified.
-            pg, worker_group_context = self._setup_tpu_placement_group(
-                scaling_config, worker_group_context
-            )
-            self._worker_group_context = worker_group_context
-
-        WorkerGroup._check_cluster_resources_and_raise_if_insufficient(
-            worker_group_context.resources_per_worker,
-            worker_group_context.num_workers,
+        pg = self._create_placement_group(
+            self._train_run_context.scaling_config, worker_group_context
         )
 
         # TODO: Review the order of `on_xyz_start` and `after_xyz_start` callbacks.
@@ -291,13 +275,7 @@ class WorkerGroup(BaseWorkerGroup):
         ):
             for callback in self._callbacks:
                 callback.before_worker_group_start(worker_group_context)
-            pg = placement_group(
-                # TODO: support heterogeneous workers and placement
-                bundles=[worker_group_context.resources_per_worker]
-                * worker_group_context.num_workers,
-                strategy=worker_group_context.placement_strategy,
-                bundle_label_selector=worker_group_context.label_selector,
-            )
+
             logger.info(
                 f"Attempting to start training worker group of size {worker_group_context.num_workers} with "
                 f"the following resources: [{worker_group_context.resources_per_worker}] * {worker_group_context.num_workers}"
@@ -464,61 +442,61 @@ class WorkerGroup(BaseWorkerGroup):
 
         self._decorate_worker_log_file_paths(workers)
 
-    def _setup_tpu_placement_group(
+    def _create_placement_group(
         self,
         scaling_config: ScalingConfig,
         worker_group_context: WorkerGroupContext,
-    ) -> Tuple[PlacementGroup, WorkerGroupContext]:
-        """
-        Reserves TPU slices using the SlicePlacementGroup utility and
-        returns the resolved PG and WorkerGroupContext.
+    ) -> PlacementGroup:
+        """Creates and returns the placement group for the worker group.
 
-        This method mutates `self._train_run_context.scaling_config` as side effects,
-        resolving the values of `num_workers` and `resources_per_worker` if unspecified.
+        If TPU resources are requested, this uses `SlicePlacementGroup` to reserve
+        resources. Otherwise, it creates a standard placement group.
         """
-        logger.info(
-            f"Using SlicePlacementGroup utility to reserve {scaling_config.num_slices} "
-            f"slice(s) with topology '{scaling_config.topology}'..."
+
+        # Check that we have sufficient resources in the cluster before waiting for
+        # a placement group.
+        WorkerGroup._check_cluster_resources_and_raise_if_insufficient(
+            worker_group_context.resources_per_worker,
+            worker_group_context.num_workers,
         )
 
-        scaling_config = self._train_run_context.scaling_config
-        resources_per_bundle = scaling_config.resources_per_worker
-
-        try:
-            accelerator_version = get_tpu_version_from_type(
-                scaling_config.accelerator_type
-            )
-            spg_handle = SlicePlacementGroup(
-                topology=scaling_config.topology,
-                accelerator_version=accelerator_version,
-                num_slices=scaling_config.num_slices,
-                resources_per_bundle=resources_per_bundle,
-                strategy=worker_group_context.placement_strategy,
+        if (
+            scaling_config.use_tpu
+            and scaling_config.topology
+            and scaling_config.accelerator_type
+        ):
+            # TPU specific SlicePlacementGroup reservation.
+            logger.info(
+                f"Using SlicePlacementGroup utility to reserve {scaling_config.num_slices} "
+                f"slice(s) with topology '{scaling_config.topology}'..."
             )
 
-            self._slice_placement_group_handle = spg_handle
-            pg = spg_handle.placement_group
+            try:
+                accelerator_version = get_tpu_version_from_type(
+                    scaling_config.accelerator_type
+                )
+                spg_handle = SlicePlacementGroup(
+                    topology=scaling_config.topology,
+                    accelerator_version=accelerator_version,
+                    num_slices=scaling_config.num_slices,
+                    resources_per_bundle=worker_group_context.resources_per_worker,
+                    strategy=worker_group_context.placement_strategy,
+                )
 
-            # Use the handle's resolved properties
-            final_num_workers = spg_handle.num_bundles
-            final_resources = spg_handle.bundle_resources
+                self._slice_placement_group_handle = spg_handle
+                return spg_handle.placement_group
 
-        except Exception as e:
-            self._cleanup_slice_pg()
-            raise ValueError(f"Failed to reserve TPU slice(s): {e}") from e
+            except Exception as e:
+                self._cleanup_slice_pg()
+                raise ValueError(f"Failed to reserve TPU slice(s): {e}") from e
 
-        scaling_config.num_workers = final_num_workers
-        scaling_config.resources_per_worker = final_resources
-
-        new_worker_group_context = WorkerGroupContext(
-            run_attempt_id=worker_group_context.run_attempt_id,
-            train_fn_ref=worker_group_context.train_fn_ref,
-            num_workers=final_num_workers,
-            resources_per_worker=final_resources,
-            placement_strategy=worker_group_context.placement_strategy,
-            bundle_label_selector=None,
+        pg = placement_group(
+            # TODO: support heterogeneous workers and placement
+            bundles=[worker_group_context.resources_per_worker]
+            * worker_group_context.num_workers,
+            strategy=worker_group_context.placement_strategy,
+            bundle_label_selector=worker_group_context.label_selector,
         )
-        return pg, new_worker_group_context
 
     #####################################################################################
     # Shutdown Worker Group
