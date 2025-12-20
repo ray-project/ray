@@ -8,10 +8,12 @@ set -exo pipefail
 
 # Install vLLM with CPU support using the precompiled wheel
 # This uses the official vLLM CPU wheel from PyPI
+# Use --force-reinstall to replace the GPU version with CPU version,
+# and --no-deps to avoid reinstalling Ray and other dependencies
 VLLM_USE_PRECOMPILED=1 \
 VLLM_PRECOMPILED_WHEEL_VARIANT=cpu \
 VLLM_TARGET_DEVICE=cpu \
-pip install --force-reinstall vllm --extra-index-url https://download.pytorch.org/whl/cpu
+pip install --force-reinstall --no-deps vllm==0.13.0 --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Verify the installation
 python -c "import vllm; print(f'vLLM version: {vllm.__version__}')"
