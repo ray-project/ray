@@ -11,7 +11,13 @@ if TYPE_CHECKING:
     import torch
 
 
+# NOTE: This is a public facing abstract interface for custom tensor transports.
+# Be sure to update the direct-transport docs when making changes to this interface, especially if changing the path to the file.
+
+
 class TensorTransportManager(ABC):
+    """Interface with which to implement custom tensor transports."""
+
     @property
     @abstractmethod
     def tensor_transport_backend(self) -> str:
