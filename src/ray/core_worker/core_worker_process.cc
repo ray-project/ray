@@ -552,10 +552,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       lease_request_rate_limiter,
       /*tensor_transport_getter=*/
       [](const ObjectID &object_id) {
-        // Currently, out-of-band tensor transport (i.e., GPU objects) is only
-        // supported for actor tasks. Therefore, normal tasks should always use
-        // OBJECT_STORE.
-        return rpc::TensorTransport::OBJECT_STORE;
+        // Currently, RDT is only supported for actor tasks.
+        return std::nullopt;
       },
       io_service_,
       *scheduler_placement_time_ms_histogram_);
