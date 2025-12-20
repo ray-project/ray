@@ -251,6 +251,7 @@ class SlicePlacementGroup:
         self._head_pgs: List[PlacementGroup] = []
         self._bundle_label_selector: List[Dict[str, str]] = []
         self._validate_tpu_config()
+        self._placement_group = None
 
         # Reserve a TPU slice of the provided accelerator version and topology.
         self._placement_group = self._reserve_slice(
