@@ -130,7 +130,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
             # Test that this should be overridden by the stage.
             "model": "random-model",
             # Test that this should be overridden by the stage.
-            "task": vLLMTaskType.EMBED,
+            "task_type": vLLMTaskType.EMBED,
             "max_num_seqs": 100,
             "disable_log_stats": False,
         },
@@ -138,7 +138,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
 
     assert udf.model == model_llama_3_2_216M
     assert udf.task_type == vLLMTaskType.GENERATE
-    assert udf.engine_kwargs["task"] == vLLMTaskType.GENERATE
+    assert udf.engine_kwargs["task_type"] == vLLMTaskType.GENERATE
     assert udf.engine_kwargs["max_num_seqs"] == 100
     assert udf.max_pending_requests == math.ceil(100 * 1.1)
 

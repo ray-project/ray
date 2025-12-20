@@ -235,7 +235,7 @@ class vLLMEngineWrapper:
     ):
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
-        self.task_type = kwargs.get("task", vLLMTaskType.GENERATE)
+        self.task_type = kwargs.pop("task_type", vLLMTaskType.GENERATE)
 
         # Use model_source in kwargs["model"] because "model" is actually
         # the model source in vLLM.
@@ -249,8 +249,18 @@ class vLLMEngineWrapper:
         self.lora_lock = asyncio.Lock()
         self.lora_name_to_request = {}
 
-        # Convert the task type back to a string to pass to the engine.
-        kwargs["task"] = self.task_type.value
+        # Set runner and convert based on task type.
+        if self.task_type == vLLMTaskType.GENERATE:
+            kwargs["runner"] = "generate"
+        elif self.task_type == vLLMTaskType.EMBED:
+            kwargs["runner"] = "pooling"
+            kwargs["convert"] = "embed"
+        elif self.task_type == vLLMTaskType.CLASSIFY:
+            kwargs["runner"] = "pooling"
+            kwargs["convert"] = "classify"
+        elif self.task_type == vLLMTaskType.SCORE:
+            kwargs["runner"] = "pooling"
+            kwargs["convert"] = "reward"
 
         try:
             import vllm
@@ -625,17 +635,8 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 self.model,
             )
 
-        # Override the task if it is different from the stage.
-        task = vLLMTaskType(engine_kwargs.get("task", task_type))
-        if task != task_type:
-            logger.warning(
-                "The task set in engine kwargs (%s) is different from the "
-                "stage (%s). Overriding the task in engine kwargs to %s.",
-                task,
-                task_type,
-                task_type,
-            )
-        engine_kwargs["task"] = task_type
+        # Set task_type for the wrapper to use.
+        engine_kwargs["task_type"] = task_type
         return engine_kwargs
 
     async def _generate_with_error_handling(
