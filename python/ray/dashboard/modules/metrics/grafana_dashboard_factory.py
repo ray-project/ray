@@ -242,7 +242,7 @@ def _generate_panel_template(
             .setdefault("defaults", {})
             .setdefault("custom", {})
         )
-        if panel.fill:
+        if panel.fill is not None:
             custom["fillOpacity"] = panel.fill
         custom["lineWidth"] = panel.linewidth
         if panel.stack:
@@ -256,7 +256,7 @@ def _generate_panel_template(
             .setdefault("defaults", {})
             .setdefault("custom", {})
         )
-        if panel.fill:
+        if panel.fill is not None:
             custom["fillOpacity"] = panel.fill
 
     # Hide X-axis if requested (modern Grafana panels)
