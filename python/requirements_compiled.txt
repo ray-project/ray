@@ -136,7 +136,9 @@ async-exit-stack==1.0.1
 async-generator==1.10
     # via -r python/requirements/test-requirements.txt
 async-timeout==4.0.3
-    # via redis
+    # via
+    #   aiohttp
+    #   redis
 attrs==25.1.0
     # via
     #   -r python/requirements/test-requirements.txt
@@ -505,10 +507,16 @@ etils==1.5.2 ; python_version < "3.12"
     #   array-record
     #   mujoco
     #   tensorflow-datasets
+eval-type-backport==0.3.1
+    # via wandb
 evaluate==0.4.3
     # via -r python/requirements/ml/train-test-requirements.txt
 everett==3.1.0
     # via comet-ml
+exceptiongroup==1.3.1
+    # via
+    #   anyio
+    #   pytest
 execnet==2.1.1
     # via pytest-shutil
 executing==2.0.1
@@ -708,7 +716,7 @@ graphviz==0.20.3
     # via -r python/requirements/test-requirements.txt
 greenlet==3.0.1
     # via sqlalchemy
-grpcio==1.76.0 ; python_version >= "3.10"
+grpcio==1.76.0 ; python_version < "3.10"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -726,9 +734,8 @@ gsutil==5.27
     # via -r python/requirements/docker/ray-docker-requirements.txt
 gunicorn==20.1.0
     # via mlflow
-gymnasium==1.2.2 ; python_version >= "3.10"
+gymnasium==1.2.2
     # via
-    #   -r python/requirements.txt
     #   minigrid
     #   pettingzoo
     #   shimmy
@@ -815,17 +822,27 @@ imagesize==1.4.1
 importlib-metadata==6.11.0
     # via
     #   -r python/requirements/test-requirements.txt
+    #   ale-py
+    #   build
     #   dask
+    #   flask
+    #   gymnasium
+    #   jax
     #   jupyter-cache
+    #   jupyter-ydoc
+    #   jupyterlab-server
+    #   markdown
     #   mlflow-skinny
     #   myst-nb
     #   opentelemetry-api
     #   pytest-virtualenv
+    #   sphinx
     #   tensordict
 importlib-resources==5.13.0
     # via
     #   etils
     #   gradio
+    #   matplotlib
     #   prophet
 iniconfig==2.0.0
     # via pytest
@@ -2301,7 +2318,14 @@ tokenizers==0.15.2
 toml==0.10.2
     # via tensorflow-datasets
 tomli==2.0.1
-    # via semgrep
+    # via
+    #   black
+    #   build
+    #   jupyterlab
+    #   jupytext
+    #   mypy
+    #   pytest
+    #   semgrep
 tomlkit==0.13.0
     # via
     #   snowflake-connector-python
@@ -2439,21 +2463,29 @@ types-urllib3==1.26.25.14
 typing-extensions==4.15.0
     # via
     #   -r python/requirements/test-requirements.txt
+    #   aioitertools
+    #   ale-py
     #   alembic
+    #   altair
+    #   asgiref
     #   aws-sam-translator
     #   azure-core
     #   azure-identity
     #   azure-storage-blob
+    #   black
     #   bokeh
     #   configspace
     #   etils
+    #   exceptiongroup
     #   fastapi
+    #   getdaft
     #   gradio
     #   gradio-client
     #   graphene
     #   grpcio
     #   gymnasium
     #   huggingface-hub
+    #   ipython
     #   lightning-utilities
     #   mlflow-skinny
     #   mypy
@@ -2506,6 +2538,7 @@ urllib3==1.26.19
     #   responses
     #   semgrep
     #   sentry-sdk
+    #   snowflake-connector-python
     #   testcontainers
 utilsforecast==0.2.0
     # via statsforecast
@@ -2641,6 +2674,7 @@ zipp==3.19.2
     # via
     #   etils
     #   importlib-metadata
+    #   importlib-resources
 zoopt==0.4.1
     # via -r python/requirements/ml/tune-test-requirements.txt
 zstandard==0.23.0

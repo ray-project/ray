@@ -1200,7 +1200,6 @@ grpcio==1.76.0 \
     --hash=sha256:fd5ef5932f6475c436c4a55e4336ebbe47bd3272be04964a03d316bbf4afbcbc \
     --hash=sha256:ff8a59ea85a1f2191a0ffcc61298c571bc566332f82e5f5be1b83c9d8e668a62
     # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -r docker/base-extra/requirements.in
     #   google-api-core
     #   google-cloud-secret-manager
