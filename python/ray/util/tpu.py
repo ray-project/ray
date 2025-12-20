@@ -125,6 +125,14 @@ def get_tpu_worker_resources(
             f"TPUs requested per unit ({tpus_per_unit})."
         )
 
+    if total_chips_per_slice % tpus_per_unit != 0:
+        raise ValueError(
+            f"The requested resources per bundle ({tpus_per_unit} TPU chips) do not "
+            f"divide evenly into the chips available per slice ({total_chips_per_slice}). "
+            "This configuration results in an uneven distribution of workers across slices, "
+            "which is not supported."
+        )
+
     num_workers = int(total_chips_available // tpus_per_unit)
 
     return num_workers, final_resources
@@ -288,7 +296,12 @@ class SlicePlacementGroup:
             for _ in range(self.num_slices):
                 reservation = reserve_tpu_slice(self._topology, accelerator_type)
                 if not reservation:
-                    raise RuntimeError("Failed to reserve TPU slice.")
+                    raise RuntimeError(
+                        f"Failed to reserve TPU slice. Requested {self.num_slices} "
+                        f"slice(s) of topology '{self._topology}' with accelerator type "
+                        f"'{accelerator_type}'. Ensure that sufficient TPU resources are "
+                        "available in the cluster."
+                    )
 
                 # Store the head placement group for clean-up when un-reserving the slice.
                 slice_name, head_pg = reservation
@@ -312,13 +325,7 @@ class SlicePlacementGroup:
 
             return pg
         except Exception:
-            logger.warning(
-                f"Failed to reserve all TPU slices, cleaning up {len(self._head_pgs)} reserved TPU heads."
-            )
-            for head_pg in self._head_pgs:
-                remove_placement_group(head_pg)
-            self._head_pgs = []
-            # Re-raise the original exception to notify the caller.
+            self.shutdown()
             raise
 
     @property
