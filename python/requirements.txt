@@ -1,4 +1,4 @@
-# These are mirrored in setup.py as install_requires,
+# These are mirrored in setup.py as install_requires,a
 # which is what the users of the ray package will install. The rest of this file
 # sets up all the packages necessary for a /developer/ of Ray.
 #
@@ -39,7 +39,7 @@ opentelemetry-api
 opentelemetry-exporter-prometheus
 opentelemetry-proto
 fastapi
-gymnasium==1.2.2
+gymnasium==1.2.2; python_version >= '3.10'
 virtualenv!=20.21.1,>=20.0.24
 opencensus
 aiohttp_cors
