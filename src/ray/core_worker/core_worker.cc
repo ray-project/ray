@@ -394,7 +394,9 @@ CoreWorker::CoreWorker(
         execute_task,
         *task_argument_waiter_,
         options_.initialize_thread_callback,
-        [this] { return raylet_ipc_client_->ActorCreationTaskDone(); });
+        [this] { return raylet_ipc_client_->ActorCreationTaskDone(); },
+        CoreWorkerProcess::GetTaskReceiveTimeMsHistogram(),
+        CoreWorkerProcess::GetTaskPostProcessingTimeMsHistogram());
   }
 
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
@@ -2814,8 +2816,16 @@ Status CoreWorker::ExecuteTask(
   ++num_get_pin_args_in_flight_;
   task_counter_.SetMetricStatus(
       func_name, rpc::TaskStatus::GETTING_AND_PINNING_ARGS, is_retry);
+  auto arg_fetch_start_time_ms = current_sys_time_ms();
   Status pin_args_request_status =
       GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids);
+  // Record arg fetch time metric if enabled.
+  std::shared_ptr<ray::stats::Histogram> arg_fetch_histogram =
+      CoreWorkerProcess::GetTaskArgFetchTimeMsHistogram();
+  if (arg_fetch_histogram) {
+    int64_t arg_fetch_time_ms = current_sys_time_ms() - arg_fetch_start_time_ms;
+    arg_fetch_histogram->Record(static_cast<double>(arg_fetch_time_ms));
+  }
   task_counter_.UnsetMetricStatus(
       func_name, rpc::TaskStatus::GETTING_AND_PINNING_ARGS, is_retry);
   --num_get_pin_args_in_flight_;
