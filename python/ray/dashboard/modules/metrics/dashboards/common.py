@@ -288,7 +288,7 @@ TIMESERIES_PANEL_TEMPLATE = {
             {
                 "matcher": {
                     "id": "byRegex",
-                    "options": "/FINISHED|FAILED|DEAD|REMOVED|Failed Nodes:/",
+                    "options": "FINISHED|FAILED|DEAD|REMOVED|Failed Nodes",
                 },
                 "properties": [
                     {
