@@ -242,6 +242,7 @@ class SlicePlacementGroup:
         self._head_pgs: List[PlacementGroup] = []
         self._bundle_label_selector: List[Dict[str, str]] = []
         self._validate_tpu_config()
+        self._placement_group = None
 
         # Reserve a TPU slice of the provided accelerator version and topology.
         self._placement_group = self._reserve_slice(
@@ -282,28 +283,38 @@ class SlicePlacementGroup:
 
         # Construct accelerator format for reserve_tpu_slice. e.g. From "v6e" to "TPU-V6E", "v5p" to "TPU-V5P".
         accelerator_type = "TPU-" + self.accelerator_version.upper()
-        for _ in range(self.num_slices):
-            reservation = reserve_tpu_slice(self._topology, accelerator_type)
-            if not reservation:
-                raise RuntimeError("Failed to reserve TPU slice.")
+        try:
+            for _ in range(self.num_slices):
+                reservation = reserve_tpu_slice(self._topology, accelerator_type)
+                if not reservation:
+                    raise RuntimeError(
+                        f"Failed to reserve TPU slice. Requested {self.num_slices} "
+                        f"slice(s) of topology '{self._topology}' with accelerator type "
+                        f"'{accelerator_type}'. Ensure that sufficient TPU resources are "
+                        "available in the cluster."
+                    )
 
-            # Store the head placement group for clean-up when un-reserving the slice.
-            slice_name, head_pg = reservation
-            self._head_pgs.append(head_pg)
+                # Store the head placement group for clean-up when un-reserving the slice.
+                slice_name, head_pg = reservation
+                self._head_pgs.append(head_pg)
 
-            # Reserving a slice is done through constructing num_hosts bundles, each with a label selector for
-            # the unique name of an available TPU slice.
-            selector = {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name}
-            self._bundle_label_selector.extend([selector] * bundles_per_slice)
-            bundles += [self._bundle_resources.copy()] * bundles_per_slice
+                # Reserving a slice is done through constructing num_hosts bundles, each with a label selector for
+                # the unique name of an available TPU slice.
+                selector = {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name}
+                self._bundle_label_selector.extend([selector] * bundles_per_slice)
+                bundles += [self._bundle_resources.copy()] * bundles_per_slice
 
-        pg = placement_group(
-            bundles=bundles,
-            strategy=strategy,
-            name=name,
-            lifetime=lifetime,
-            bundle_label_selector=self._bundle_label_selector,
-        )
+            pg = placement_group(
+                bundles=bundles,
+                strategy=strategy,
+                name=name,
+                lifetime=lifetime,
+                bundle_label_selector=self._bundle_label_selector,
+            )
+        except Exception:
+            # Force cleanup of any partial reservations.
+            self.shutdown()
+            raise
 
         return pg
 
