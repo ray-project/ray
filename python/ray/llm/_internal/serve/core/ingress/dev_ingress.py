@@ -13,6 +13,7 @@ Endpoints:
     POST /resume: Resume generation after pause
     GET /is_paused: Check if engine is paused
     POST /reset_prefix_cache: Reset the KV prefix cache
+    POST /collective_rpc: Execute collective RPC on all workers
 """
 
 import pprint
@@ -30,6 +31,7 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 )
 from ray.llm._internal.serve.core.ingress.mixins import (
     CacheManagerIngressMixin,
+    CollectiveRpcIngressMixin,
     PausableIngressMixin,
     SleepableIngressMixin,
 )
@@ -43,6 +45,7 @@ logger = get_logger(__name__)
 # Endpoint map for DevIngress - includes all default endpoints plus control plane
 DEV_ENDPOINTS = {
     **CacheManagerIngressMixin.ENDPOINTS,
+    **CollectiveRpcIngressMixin.ENDPOINTS,
     **PausableIngressMixin.ENDPOINTS,
     **SleepableIngressMixin.ENDPOINTS,
     **DEFAULT_ENDPOINTS,
@@ -54,6 +57,7 @@ class DevIngress(
     SleepableIngressMixin,
     PausableIngressMixin,
     CacheManagerIngressMixin,
+    CollectiveRpcIngressMixin,
 ):
     """OpenAI-compatible ingress with additional control plane endpoints.
 
@@ -62,11 +66,13 @@ class DevIngress(
     - RL training: Put engines to sleep during training, wake up for rollouts
     - Memory management: Free GPU memory between inference workloads
     - Benchmarking: Reset prefix cache between benchmark rounds
+    - RLHF: Execute collective RPC on all workers for weight updates
 
     Control plane endpoints provided by mixins:
     - SleepableIngressMixin: /sleep, /wakeup, /is_sleeping
     - PausableIngressMixin: /pause, /resume, /is_paused
     - CacheManagerIngressMixin: /reset_prefix_cache
+    - CollectiveRpcIngressMixin: /collective_rpc
 
     WARNING: These endpoints are intended for development and trusted
     environments. Consider access control in production deployments.
@@ -83,6 +89,7 @@ def build_dev_openai_app(builder_config: Dict) -> Application:
     - /sleep, /wakeup, /is_sleeping (sleep mode - offloads weights to CPU)
     - /pause, /resume, /is_paused (pause mode - keeps weights in GPU)
     - /reset_prefix_cache (cache management)
+    - /collective_rpc (RLHF - execute RPC on all workers)
 
     Args:
         builder_config: Configuration conforming to LLMServingArgs.
