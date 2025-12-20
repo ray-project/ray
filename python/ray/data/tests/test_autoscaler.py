@@ -52,7 +52,7 @@ def test_actor_pool_scaling():
         num_free_task_slots=MagicMock(return_value=5),
         num_tasks_in_flight=MagicMock(return_value=15),
         per_actor_resource_usage=MagicMock(return_value=ExecutionResources(cpu=1)),
-        _max_actor_concurrency=1,
+        max_actor_concurrency=MagicMock(return_value=1),
         get_pool_util=MagicMock(
             # NOTE: Unittest mocking library doesn't support proxying to actual
             #       non-mocked methods so we have emulate it by directly binding existing
@@ -66,7 +66,8 @@ def test_actor_pool_scaling():
         completed=MagicMock(return_value=False),
         _inputs_complete=False,
         input_dependencies=[MagicMock()],
-        internal_queue_num_blocks=MagicMock(return_value=1),
+        internal_input_queue_num_blocks=MagicMock(return_value=1),
+        metrics=MagicMock(average_num_inputs_per_task=1),
     )
     op_state = OpState(
         op, inqueues=[MagicMock(__len__=MagicMock(return_value=10), num_blocks=10)]
@@ -99,6 +100,15 @@ def test_actor_pool_scaling():
         delta=1,
         expected_reason="utilization of 1.5 >= 1.0",
     )
+
+    # Should scale up immediately when the actor pool has no running actors.
+    with patch(actor_pool, "num_running_actors", 0):
+        with patch(actor_pool, "num_free_task_slots", 0):
+            with patch(actor_pool, "get_pool_util", float("inf")):
+                assert_autoscaling_action(
+                    delta=1,
+                    expected_reason="no running actors, scale up immediately",
+                )
 
     # Should be no-op since the util is below the threshold.
     with patch(actor_pool, "num_tasks_in_flight", 9):
@@ -159,11 +169,10 @@ def test_actor_pool_scaling():
                     expected_reason="consumed all inputs",
                 )
 
-            # If the input queue is empty but inputs did not complete,
-            # allow to scale up still
+            # Should be no-op since the op has enough free task slots to consume the existing inputs (which is 0).
             assert_autoscaling_action(
-                delta=1,
-                expected_reason="utilization of 1.5 >= 1.0",
+                delta=0,
+                expected_reason="enough free task slots to consume the existing inputs",
             )
 
     # Should be no-op since the op doesn't have enough resources.
@@ -222,6 +231,7 @@ def autoscaler_max_upscaling_delta_setup():
         current_size=MagicMock(return_value=10),
         get_current_size=MagicMock(return_value=10),
         num_pending_actors=MagicMock(return_value=0),
+        num_free_task_slots=MagicMock(return_value=0),
         get_pool_util=MagicMock(return_value=2.0),
     )
 
@@ -229,6 +239,7 @@ def autoscaler_max_upscaling_delta_setup():
         spec=InternalQueueOperatorMixin,
         completed=MagicMock(return_value=False),
         _inputs_complete=False,
+        metrics=MagicMock(average_num_inputs_per_task=1),
     )
     op_state = MagicMock(
         spec=OpState,
@@ -439,16 +450,16 @@ def test_autoscaling_config_validation_warnings(
         ds.take_all()
 
     # Check that warning was called with expected message
-    wanr_log_args_str = str(mock_warning.call_args_list)
+    warn_log_args_str = str(mock_warning.call_args_list)
     expected_message = (
         "⚠️  Actor Pool configuration of the "
         "ActorPoolMapOperator[MapBatches(SimpleMapper)] will not allow it to scale up: "
-        "configured utilization threshold (200.0%) couldn't be reached with "
+        "configured utilization threshold (175.0%) couldn't be reached with "
         "configured max_concurrency=1 and max_tasks_in_flight_per_actor=1 "
         "(max utilization will be max_tasks_in_flight_per_actor / max_concurrency = 100%)"
     )
 
-    assert expected_message in wanr_log_args_str
+    assert expected_message in warn_log_args_str
 
     # Test #2: Provided config is valid (no warnings)
     #   - max_tasks_in_flight / max_concurrency == 2 (default)
@@ -466,13 +477,13 @@ def test_autoscaling_config_validation_warnings(
         ds.take_all()
 
     # Check that this warning hasn't been emitted
-    wanr_log_args_str = str(mock_warning.call_args_list)
+    warn_log_args_str = str(mock_warning.call_args_list)
     expected_message = (
         "⚠️  Actor Pool configuration of the "
         "ActorPoolMapOperator[MapBatches(SimpleMapper)] will not allow it to scale up: "
     )
 
-    assert expected_message not in wanr_log_args_str
+    assert expected_message not in warn_log_args_str
 
     # Test #3: Default config is valid (no warnings)
     #   - max_tasks_in_flight / max_concurrency == 4 (default)
@@ -486,13 +497,13 @@ def test_autoscaling_config_validation_warnings(
         ds.take_all()
 
     # Check that this warning hasn't been emitted
-    wanr_log_args_str = str(mock_warning.call_args_list)
+    warn_log_args_str = str(mock_warning.call_args_list)
     expected_message = (
         "⚠️  Actor Pool configuration of the "
         "ActorPoolMapOperator[MapBatches(SimpleMapper)] will not allow it to scale up: "
     )
 
-    assert expected_message not in wanr_log_args_str
+    assert expected_message not in warn_log_args_str
 
 
 @pytest.fixture

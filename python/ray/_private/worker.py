@@ -635,6 +635,10 @@ class Worker:
         """Set the cached job id to speed `current_job_id()`."""
         self._cached_job_id = job_id
 
+    @property
+    def is_canceled(self):
+        return self.core_worker.is_canceled()
+
     @contextmanager
     def task_paused_by_debugger(self):
         """Use while the task is paused by debugger"""
@@ -1819,6 +1823,9 @@ def init(
     if bootstrap_address is not None:
         gcs_address = bootstrap_address
         logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
+
+    if _node_ip_address is not None:
+        _node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
 
     if local_mode:
         driver_mode = LOCAL_MODE
@@ -3314,12 +3321,14 @@ def cancel(
         If the specified Task is pending execution, it is cancelled and not
         executed. If the Task is currently executing, the behavior depends
         on the execution model of an Actor. If it is a regular Actor
-        or a threaded Actor, the execution isn't cancelled.
-        Actor Tasks cannot be interrupted because Actors have
-        states. If it is an async Actor, Ray cancels a `asyncio.Task`.
+        or a threaded Actor, Ray sets a cancellation flag that can be checked
+        via `ray.get_runtime_context().is_canceled()` within the task body.
+        This allows for graceful cancellation by periodically checking the
+        cancellation status. If it is an async Actor, Ray cancels a `asyncio.Task`.
         The semantic of cancellation is equivalent to asyncio's cancellation.
         https://docs.python.org/3/library/asyncio-task.html#task-cancellation
-        If the Task has finished, nothing happens.
+        Note: `is_canceled()` is not supported for async actors and will raise
+        a RuntimeError. If the Task has finished, nothing happens.
 
         Only `force=False` is allowed for an Actor Task. Otherwise, it raises
         `ValueError`. Use `ray.kill(actor)` instead to kill an Actor.
@@ -3327,8 +3336,7 @@ def cancel(
         Cancelled Tasks aren't retried. `max_task_retries` aren't respected.
 
         Calling ray.get on a cancelled Task raises a TaskCancelledError
-        if the Task has been scheduled or interrupted. Also note that
-        only async actor tasks can be interrupted.
+        if the Task has been scheduled or interrupted.
 
         If `recursive=True`, all the child Tasks and actor Tasks
         are cancelled.

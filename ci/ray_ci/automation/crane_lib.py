@@ -9,6 +9,7 @@ Callers are responsible for checking return_code to detect failures rather than
 relying on exceptions.
 """
 
+import os
 import platform
 import subprocess
 from typing import List, Tuple
@@ -35,18 +36,29 @@ def _crane_binary() -> str:
     return r.Rlocation("crane_linux_x86_64/crane")
 
 
-def _run_crane_command(args: List[str]) -> Tuple[int, str]:
+def _run_crane_command(
+    args: List[str], stdin_input: str | None = None
+) -> Tuple[int, str]:
     """
     Run a crane command and return the exit code and output.
+
+    Args:
+        args: Command arguments to pass to crane.
+        stdin_input: Optional input to pass via stdin (e.g., for passwords).
     """
     command = [_crane_binary()] + args
     try:
         with subprocess.Popen(
             command,
+            stdin=subprocess.PIPE if stdin_input else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env=os.environ,
         ) as proc:
+            if stdin_input:
+                proc.stdin.write(stdin_input)
+                proc.stdin.close()
             output = ""
             if proc.stdout:
                 for line in proc.stdout:
