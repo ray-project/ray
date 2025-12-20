@@ -37,6 +37,9 @@ def ray_tpu_multi_host():
     """
     Simulates a Ray cluster with two multi-host TPU v4-16 slices.
     """
+    if ray.is_initialized():
+        ray.shutdown()
+
     pod_type = "v4-16"
     topology = "2x2x2"
 
@@ -123,6 +126,7 @@ def ray_tpu_multi_host():
         ray.init(address=cluster.address)
         yield cluster
         ray.shutdown()
+        cluster.shutdown()
 
 
 @pytest.fixture(autouse=True)
