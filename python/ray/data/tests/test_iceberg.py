@@ -1001,7 +1001,10 @@ class TestOverwriteMode:
 
         # Verify initial write
         result = _read_from_iceberg(sort_by="col_a")
-        assert len(result) == 3
+        expected = _create_typed_dataframe(
+            {"col_a": [1, 2, 3], "col_b": ["a", "b", "c"], "col_c": [10, 20, 30]}
+        )
+        assert rows_same(result, expected)
 
         # Overwrite with new data
         new_data = _create_typed_dataframe(

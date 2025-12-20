@@ -575,8 +575,8 @@ def build_processor(
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages. Each row
-            can contain a `sampling_params` field which will be used by the
-            engine for row-specific sampling parameters.
+            can contain a `sampling_params` or `pooling_params` field which will be used
+            by the engine for row-specific sampling or pooling parameters respectively.
             Note that all columns will be carried over until the postprocess stage.
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict). To keep all the original columns,

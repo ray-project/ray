@@ -641,3 +641,32 @@ class VLLMEngine(LLMEngine):
     async def stop_profile(self) -> None:
         assert self._engine_client is not None, "engine_client is not initialized"
         await self._engine_client.stop_profile()
+
+    async def collective_rpc(
+        self,
+        method: str,
+        timeout: Optional[float] = None,
+        args: tuple = (),
+        kwargs: Optional[dict] = None,
+    ) -> list:
+        """Execute a collective RPC call on all vLLM workers.
+
+        This is used for RLHF workflows where a trainer needs to execute
+        methods on all TP/PP workers (e.g., for weight synchronization).
+
+        Args:
+            method: Name of the worker method to execute.
+            timeout: Maximum time in seconds to wait for execution.
+            args: Positional arguments to pass to the worker method.
+            kwargs: Keyword arguments to pass to the worker method.
+
+        Returns:
+            A list containing the results from each worker.
+        """
+        assert self._engine_client is not None, "engine_client is not initialized"
+        return await self._engine_client.collective_rpc(
+            method=method,
+            timeout=timeout,
+            args=args,
+            kwargs=kwargs or {},
+        )

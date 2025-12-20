@@ -165,7 +165,7 @@ ci/docker/doctest.build.wanda.yaml
 ;
 
 release/ray_release/
-release/requirements_buildkite.*
+release/requirements_*
 release/*.md
 release/*.yaml
 @ tools

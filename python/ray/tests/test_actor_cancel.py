@@ -381,7 +381,7 @@ def test_cancel_recursive_tree(shutdown_only):
                 assert ray.get(ref)
 
         with pytest.raises(ray.exceptions.TaskCancelledError):
-            ray.get(run_ref)
+            ray.get(run_refs[i])
 
 
 @pytest.mark.parametrize("recursive", [True, False])
