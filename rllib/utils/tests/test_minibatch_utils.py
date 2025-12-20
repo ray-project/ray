@@ -1,6 +1,7 @@
 import unittest
 
 import numpy as np
+import pytest
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.framework import try_import_tf
@@ -181,31 +182,31 @@ class TestMinibatchUtils(unittest.TestCase):
         check([len(e) for e in shards[2]], [35, 10])  # 45
         check([len(e) for e in shards[3]], [21, 15, 5, 1, 3])  # 45
 
-    def test_shard_object_ref_iterator(self):
-        """Test ShardObjectRefIterator to ensure no empty shards are produced."""
-        # Note (Artur): For context: The first two cases are representative of situations where
-        # fewer EnvRunners return episode refs than we have learners. This issue occurs because in this example,
-        # episode refs are not lists of refs to episodes, but rather lists of refs to lists of episodes.
 
-        # Test cases: (object_refs, num_shards)
-        test_cases = [
-            (["ref0"], 2),
-            (["ref0", "ref1"], 3),
-            (["ref0", "ref1", "ref2", "ref3", "ref4"], 3),  # Normal case
-        ]
+@pytest.mark.parametrize(
+    "object_refs, num_shards",
+    [
+        ([], 2),
+        (["ref0"], 2),
+        (["ref0", "ref1"], 3),
+        (["ref0", "ref1", "ref2", "ref3", "ref4"], 3),
+    ],
+)
+def test_shard_object_ref_iterator(object_refs, num_shards):
+    """Test ShardObjectRefIterator to ensure no empty shards are produced."""
+    # Note (Artur): For context: The first two cases are representative of situations where
+    # fewer EnvRunners return episode refs than we have learners. This issue occurs because in this example,
+    # episode refs are not lists of refs to episodes, but rather lists of refs to lists of episodes.
 
-        for object_refs, num_shards in test_cases:
-            iterator = ShardObjectRefIterator(object_refs, num_shards)
-            shards = list(iterator)
+    iterator = ShardObjectRefIterator(object_refs, num_shards)
+    shards = list(iterator)
 
-            # When n < num_shards, we produce min(n, num_shards) shards to avoid empty ones
-            expected_num_shards = (
-                min(len(object_refs), num_shards) if object_refs else num_shards
-            )
-            check(len(shards), expected_num_shards)
+    # When n <= num_shards, we produce min(n, num_shards) shards to avoid empty ones
+    expected_num_shards = min(len(object_refs), num_shards)
+    check(len(shards), expected_num_shards)
 
-            for shard in shards:
-                self.assertGreater(len(shard), 0)
+    for shard in shards:
+        assert len(shard) > 0
 
 
 if __name__ == "__main__":
