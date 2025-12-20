@@ -949,7 +949,7 @@ class ReporterAgent(
                 proc = psutil.Process(pid)
                 agents[self._generate_worker_key(proc)] = proc
             except (psutil.NoSuchProcess, psutil.AccessDenied):
-                logger.error(f"Failed to access worker process {pid}")
+                logger.error(f"Failed to access agent process {pid}")
                 continue
         return agents
 
