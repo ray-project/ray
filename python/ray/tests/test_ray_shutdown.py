@@ -9,6 +9,7 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
+from ray._private import ray_constants
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
 )
@@ -276,7 +277,7 @@ def test_raylet_graceful_exit_upon_agent_exit(ray_start_cluster):
         assert raylet is not None
 
         children = psutil.Process(raylet.pid).children()
-        target_path = os.path.join("dashboard", "agent.py")
+        target_path = ray_constants.AGENT_PROCESS_TYPE_DASHBOARD_AGENT
         for child in children:
             if target_path in " ".join(child.cmdline()):
                 return raylet, child

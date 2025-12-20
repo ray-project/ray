@@ -193,7 +193,7 @@ If you consistently encounter this issue, there are several possible causes:
   # Step 2: Check the PID of the dashboard agent process
   ps aux
   # [Example output]
-  # ray          156 ... 0:03 /.../python -u /.../ray/dashboard/agent.py --
+  # ray          156 ... 0:03 ray::DashboardAgent --
 
   # Step 3: Kill the dashboard agent process
   kill 156

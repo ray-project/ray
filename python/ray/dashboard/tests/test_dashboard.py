@@ -99,7 +99,7 @@ def search_agent(processes):
     for p in processes:
         try:
             for c in p.cmdline():
-                if os.path.join("dashboard", "agent.py") in c:
+                if ray_constants.AGENT_PROCESS_TYPE_DASHBOARD_AGENT in c:
                     return p
         except Exception:
             pass
