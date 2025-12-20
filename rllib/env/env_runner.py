@@ -120,6 +120,8 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             {"rllib": self.__class__.__name__}
         )
 
+        self._shared_data = None
+
     @abc.abstractmethod
     def assert_healthy(self):
         """Checks that self.__init__() has been completed properly.

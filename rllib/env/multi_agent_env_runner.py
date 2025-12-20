@@ -89,8 +89,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
         self.spaces = kwargs.get("spaces", {})
 
-        self._setup_metrics()
-
         # Create our callbacks object.
         self._callbacks = [cls() for cls in force_list(self.config.callbacks_class)]
 
@@ -135,14 +133,23 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         )
 
         self._needs_initial_reset: bool = True
-        self._episode: Optional[MultiAgentEpisode] = None
-        self._shared_data = None
-
+        self._ongoing_episodes: List[Optional[MultiAgentEpisode]] = [
+            None for _ in range(self.num_envs)
+        ]
+        self._done_episodes_for_metrics: List[MultiAgentEpisode] = []
+        self._ongoing_episodes_for_metrics: DefaultDict[
+            EpisodeID, List[MultiAgentEpisode]
+        ] = defaultdict(list)
         self._weights_seq_no: int = 0
 
         # Measures the time passed between returning from `sample()`
         # and receiving the next `sample()` request from the user.
         self._time_after_sampling = None
+
+        # Save whether to convert episodes to numpy during sample
+        #   In `OfflineSingleAgentEnvRunner`, this result is set to False
+        #   during initialisation
+        self.episodes_to_numpy = self.config.episodes_to_numpy
 
     @override(EnvRunner)
     def sample(
@@ -505,7 +512,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # that we need simple `list` objects in the
             # `AddObservationsFromEpisodesToBatch` connector. Furthermore, we spare
             # multiple `if` calls.
-            if self.config.episodes_to_numpy:
+            if self.episodes_to_numpy:
                 for episode in done_episodes_to_return:
                     # Any possibly compress observations.
                     episode.to_numpy()
@@ -536,7 +543,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 self._prune_zero_len_sa_episodes(eps)
 
                 # Numpy'ize the episode.
-                if self.config.episodes_to_numpy:
+                if self.episodes_to_numpy:
                     # Any possibly compress observations.
                     ongoing_episodes_to_return.append(eps.to_numpy())
                 # Leave episode as lists of individual (obs, action, etc..) items.
@@ -908,12 +915,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
         if self.env is not None:
             self.env.close()
-
-    def _setup_metrics(self):
-        self._done_episodes_for_metrics: List[MultiAgentEpisode] = []
-        self._ongoing_episodes_for_metrics: DefaultDict[
-            EpisodeID, List[MultiAgentEpisode]
-        ] = defaultdict(list)
 
     def _new_episode(self, env_index, episodes=None, call_on_episode_created=True):
         episodes = episodes if episodes is not None else self._ongoing_episodes

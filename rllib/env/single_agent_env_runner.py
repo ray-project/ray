@@ -125,12 +125,10 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             env=self.env, spaces=self.spaces
         )
 
-        # This should be the default.
         self._needs_initial_reset: bool = True
         self._ongoing_episodes: List[Optional[SingleAgentEpisode]] = [
             None for _ in range(self.num_envs)
         ]
-        self._shared_data = None
 
         self._done_episodes_for_metrics: List[SingleAgentEpisode] = []
         self._ongoing_episodes_for_metrics: DefaultDict[
