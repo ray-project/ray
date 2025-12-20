@@ -26,7 +26,12 @@ def get_all_ray_worker_processes():
     result = []
     for p in processes:
         cmdline = p.info["cmdline"]
-        if cmdline is not None and len(cmdline) > 0 and "ray::" in cmdline[0]:
+        if (
+            cmdline is not None
+            and len(cmdline) > 0
+            and "ray::" in cmdline[0]
+            and cmdline[0] not in ray_constants.AGENT_PROCESS_LIST
+        ):
             result.append(p)
     print(f"all ray worker processes: {result}")
     return result
@@ -276,11 +281,22 @@ def test_raylet_graceful_exit_upon_agent_exit(ray_start_cluster):
                 raylet = p[1]
         assert raylet is not None
 
-        children = psutil.Process(raylet.pid).children()
-        target_path = ray_constants.AGENT_PROCESS_TYPE_DASHBOARD_AGENT
-        for child in children:
-            if target_path in " ".join(child.cmdline()):
-                return raylet, child
+        agent = None
+
+        def verify():
+            nonlocal agent
+            children = psutil.Process(raylet.pid).children()
+            target_path = ray_constants.AGENT_PROCESS_TYPE_DASHBOARD_AGENT
+            for child in children:
+                if target_path in " ".join(child.cmdline()):
+                    agent = child
+                    return True
+            return False
+
+        # wait until proctitle is updated
+        wait_for_condition(verify, timeout=1, retry_interval_ms=100)
+        if agent is not None:
+            return raylet, agent
         raise ValueError("dashboard agent not found")
 
     # Make sure raylet exits gracefully upon agent terminated by SIGTERM.

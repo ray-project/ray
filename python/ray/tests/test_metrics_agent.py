@@ -22,6 +22,8 @@ from ray._private.metrics_agent import (
     PrometheusServiceDiscoveryWriter,
 )
 from ray._private.ray_constants import (
+    AGENT_PROCESS_TYPE_DASHBOARD_AGENT,
+    AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT,
     PROMETHEUS_SERVICE_DISCOVERY_FILE,
 )
 from ray._private.test_utils import (
@@ -428,7 +430,15 @@ def test_metrics_export_node_metrics(shutdown_only):
             samples = avail_metrics[metric]
             for sample in samples:
                 components.add(sample.labels["Component"])
-        assert components == {"gcs", "raylet", "agent", "ray::IDLE", sys.executable}
+        assert components == {
+            AGENT_PROCESS_TYPE_DASHBOARD_AGENT,
+            AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT,
+            "gcs",
+            "raylet",
+            "agent",
+            "ray::IDLE",
+            sys.executable,
+        }
 
         avail_metrics = set(avail_metrics)
 

@@ -877,6 +877,12 @@ async def test_reporter_worker_cpu_percent():
         async def _async_get_worker_processes(self):
             return await ReporterAgent._async_get_worker_processes(self)
 
+        async def _async_get_agent_pids_from_raylet(self):
+            return []
+
+        async def _async_get_agent_processes(self):
+            return await ReporterAgent._async_get_agent_processes(self)
+
     obj = ReporterAgentDummy()
 
     try:
@@ -1219,7 +1225,13 @@ async def test_reporter_dashboard_and_runtime_env_agent(ray_start_with_dashboard
     assert len(agent_pids) == 2
     for pid in agent_pids:
         proc = psutil.Process(pid)
-        assert proc.name() in ["ray::DashboardAgent", "ray::RuntimeEnvAgent"]
+
+        def verify():
+            # If linux, proctitle will be cut to 15 chars. So we only check if the
+            # proctitle is a substring
+            return any(proc.cmdline()[0] in s for s in ray_constants.AGENT_PROCESS_LIST)
+
+        wait_for_condition(verify, timeout=5, retry_interval_ms=100)
 
 
 if __name__ == "__main__":
