@@ -22,6 +22,7 @@ ray_cc_library(
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:node_manager_cc_proto",
         "//src/ray/rpc:object_manager_server",
+        "//src/ray/util:compression",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
