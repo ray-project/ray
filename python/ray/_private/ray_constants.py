@@ -379,9 +379,6 @@ REDIS_DEFAULT_USERNAME = ""
 
 REDIS_DEFAULT_PASSWORD = ""
 
-# The default ip address to bind to.
-NODE_DEFAULT_IP = "127.0.0.1"
-
 # The Mach kernel page size in bytes.
 MACH_PAGE_SIZE_BYTES = 4096
 
@@ -410,6 +407,12 @@ DEFAULT_RUNTIME_ENV_DIR_NAME = "runtime_resources"
 # The timeout seconds for the creation of runtime env,
 # dafault timeout is 10 minutes
 DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS = 600
+
+# The timeout seconds for the GCS server request.
+# Try fetching from the cpp environment variable first.
+GCS_SERVER_REQUEST_TIMEOUT_SECONDS = int(
+    os.environ.get("RAY_gcs_server_request_timeout_seconds", "60")
+)
 
 # Used to separate lines when formatting the call stack where an ObjectRef was
 # created.

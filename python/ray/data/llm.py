@@ -11,6 +11,13 @@ from ray.llm._internal.batch.processor import (
     SGLangEngineProcessorConfig as _SGLangEngineProcessorConfig,
     vLLMEngineProcessorConfig as _vLLMEngineProcessorConfig,
 )
+from ray.llm._internal.batch.stages.configs import (
+    ChatTemplateStageConfig as _ChatTemplateStageConfig,
+    DetokenizeStageConfig as _DetokenizeStageConfig,
+    PrepareImageStageConfig as _PrepareImageStageConfig,
+    PrepareMultimodalStageConfig as _PrepareMultimodalStageConfig,
+    TokenizerStageConfig as _TokenizerStageConfig,
+)
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -136,8 +143,9 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             ``detokenize`` field is deprecated but still supported.
         prepare_image_stage: Prepare image stage config (bool | dict | PrepareImageStageConfig).
             Defaults to False. Use nested config for per-stage control over batch_size,
-            concurrency, runtime_env, num_cpus, and memory. Legacy ``has_image`` field
-            is deprecated but still supported.
+            concurrency, runtime_env, num_cpus, and memory. Both the legacy ``has_image`` field
+            and ``prepare_image_stage`` are deprecated but still supported. Prefer to use multimodal
+            processor to process multimodal data instead.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
@@ -389,6 +397,141 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
     pass
 
 
+@PublicAPI(stability="alpha")
+class ChatTemplateStageConfig(_ChatTemplateStageConfig):
+    """The configuration for the chat template stage.
+
+    Args:
+        enabled: Whether this stage is enabled. Defaults to True.
+        model_source: Model source/identifier for this stage. If not specified,
+            will use the processor-level model_source.
+        chat_template: The chat template in Jinja template format. This is
+            usually not needed if the model checkpoint already contains the
+            chat template.
+        chat_template_kwargs: Optional kwargs to pass to apply_chat_template.
+        batch_size: Rows per batch. If not specified, will use the processor-level
+            batch_size.
+        concurrency: Actor pool size or range for this stage. If not specified,
+            will use the processor-level concurrency. If ``concurrency`` is a
+            tuple ``(m, n)``, Ray creates an autoscaling actor pool that scales
+            between ``m`` and ``n`` workers (``1 <= m <= n``). If ``concurrency``
+            is an ``int`` ``n``, CPU stages use an autoscaling pool from ``(1, n)``.
+        runtime_env: Optional runtime environment for this stage. If not specified,
+            will use the processor-level runtime_env. See
+            :ref:`this doc <handling_dependencies>` for more details.
+        num_cpus: Number of CPUs to reserve for each map worker in this stage.
+        memory: Heap memory in bytes to reserve for each map worker in this stage.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class DetokenizeStageConfig(_DetokenizeStageConfig):
+    """The configuration for the detokenize stage.
+
+    Args:
+        enabled: Whether this stage is enabled. Defaults to True.
+        model_source: Model source/identifier for this stage. If not specified,
+            will use the processor-level model_source.
+        batch_size: Rows per batch. If not specified, will use the processor-level
+            batch_size.
+        concurrency: Actor pool size or range for this stage. If not specified,
+            will use the processor-level concurrency. If ``concurrency`` is a
+            tuple ``(m, n)``, Ray creates an autoscaling actor pool that scales
+            between ``m`` and ``n`` workers (``1 <= m <= n``). If ``concurrency``
+            is an ``int`` ``n``, CPU stages use an autoscaling pool from ``(1, n)``.
+        runtime_env: Optional runtime environment for this stage. If not specified,
+            will use the processor-level runtime_env. See
+            :ref:`this doc <handling_dependencies>` for more details.
+        num_cpus: Number of CPUs to reserve for each map worker in this stage.
+        memory: Heap memory in bytes to reserve for each map worker in this stage.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class PrepareMultimodalStageConfig(_PrepareMultimodalStageConfig):
+    """The configuration for the prepare multimodal stage.
+
+    Args:
+        enabled: Whether this stage is enabled. Defaults to True.
+        model_source: Name or path of the Hugging Face model to use for the
+            multimodal processor. This is required to process multimodal data
+            according to a specific model. If not specified, will use the
+            processor-level model_source.
+        chat_template_content_format: The content format to use for the chat
+            template. This is used to format the chat template content according
+            to a specific model. Choices are "string" or "openai". Defaults to
+            "string".
+        apply_sys_msg_formatting: Whether to apply formatting system messages.
+            Defaults to False.
+        batch_size: Rows per batch. If not specified, will use the processor-level
+            batch_size.
+        concurrency: Actor pool size or range for this stage. If not specified,
+            will use the processor-level concurrency. If ``concurrency`` is a
+            tuple ``(m, n)``, Ray creates an autoscaling actor pool that scales
+            between ``m`` and ``n`` workers (``1 <= m <= n``). If ``concurrency``
+            is an ``int`` ``n``, CPU stages use an autoscaling pool from ``(1, n)``.
+        runtime_env: Optional runtime environment for this stage. If not specified,
+            will use the processor-level runtime_env. See
+            :ref:`this doc <handling_dependencies>` for more details.
+        num_cpus: Number of CPUs to reserve for each map worker in this stage.
+        memory: Heap memory in bytes to reserve for each map worker in this stage.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class TokenizerStageConfig(_TokenizerStageConfig):
+    """The configuration for the tokenizer stage.
+
+    Args:
+        enabled: Whether this stage is enabled. Defaults to True.
+        model_source: Model source/identifier for this stage. If not specified,
+            will use the processor-level model_source.
+        batch_size: Rows per batch. If not specified, will use the processor-level
+            batch_size.
+        concurrency: Actor pool size or range for this stage. If not specified,
+            will use the processor-level concurrency. If ``concurrency`` is a
+            tuple ``(m, n)``, Ray creates an autoscaling actor pool that scales
+            between ``m`` and ``n`` workers (``1 <= m <= n``). If ``concurrency``
+            is an ``int`` ``n``, CPU stages use an autoscaling pool from ``(1, n)``.
+        runtime_env: Optional runtime environment for this stage. If not specified,
+            will use the processor-level runtime_env. See
+            :ref:`this doc <handling_dependencies>` for more details.
+        num_cpus: Number of CPUs to reserve for each map worker in this stage.
+        memory: Heap memory in bytes to reserve for each map worker in this stage.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class PrepareImageStageConfig(_PrepareImageStageConfig):
+    """The configuration for the prepare image stage.
+
+    Args:
+        enabled: Whether this stage is enabled. Defaults to True.
+        batch_size: Rows per batch. If not specified, will use the processor-level
+            batch_size.
+        concurrency: Actor pool size or range for this stage. If not specified,
+            will use the processor-level concurrency. If ``concurrency`` is a
+            tuple ``(m, n)``, Ray creates an autoscaling actor pool that scales
+            between ``m`` and ``n`` workers (``1 <= m <= n``). If ``concurrency``
+            is an ``int`` ``n``, CPU stages use an autoscaling pool from ``(1, n)``.
+        runtime_env: Optional runtime environment for this stage. If not specified,
+            will use the processor-level runtime_env. See
+            :ref:`this doc <handling_dependencies>` for more details.
+        num_cpus: Number of CPUs to reserve for each map worker in this stage.
+        memory: Heap memory in bytes to reserve for each map worker in this stage.
+    """
+
+    pass
+
+
 @Deprecated(new="build_processor", error=False)
 def build_llm_processor(
     config: ProcessorConfig,
@@ -432,8 +575,8 @@ def build_processor(
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages. Each row
-            can contain a `sampling_params` field which will be used by the
-            engine for row-specific sampling parameters.
+            can contain a `sampling_params` or `pooling_params` field which will be used
+            by the engine for row-specific sampling or pooling parameters respectively.
             Note that all columns will be carried over until the postprocess stage.
         postprocess: An optional lambda function that takes a row (dict) as input
             and returns a postprocessed row (dict). To keep all the original columns,
@@ -587,6 +730,11 @@ __all__ = [
     "vLLMEngineProcessorConfig",
     "SGLangEngineProcessorConfig",
     "ServeDeploymentProcessorConfig",
+    "ChatTemplateStageConfig",
+    "DetokenizeStageConfig",
+    "PrepareMultimodalStageConfig",
+    "TokenizerStageConfig",
+    "PrepareImageStageConfig",
     "build_llm_processor",
     "build_processor",
 ]

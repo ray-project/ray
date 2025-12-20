@@ -88,7 +88,7 @@ opentelemetry-instrumentation-fastapi==0.55b1
 mlflow>=3.0.0
 
 # For dataset tests
-polars>=1.32.3,<2.0.0
+polars>=1.36.0,<2.0.0
 
 importlib-metadata==6.11.0
 
@@ -137,6 +137,7 @@ cffi>=1.17.1,<2
 fastrlock>=0.8.3; sys_platform != 'darwin'
 lz4>=4.4.5
 pyyaml>=6.0.3
+msgpack>=1.1.2
 
 # TODO(aslonnie): remove this
 # this is required as some packages depends on ray and will pick up older version of

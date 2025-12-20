@@ -1,5 +1,5 @@
 import abc
-from typing import TYPE_CHECKING, AsyncGenerator, Optional, Union
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Optional, Union
 
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
@@ -38,10 +38,6 @@ class LLMEngine(abc.ABC):
     async def resolve_lora(self, lora_model: DiskMultiplexConfig):
         """Mounts the LoRA model on the engine, given the local disk path."""
         pass
-
-    @abc.abstractmethod
-    async def reset_prefix_cache(self) -> None:
-        """Reset the prefix cache of the underlying engine"""
 
     @abc.abstractmethod
     async def chat(
@@ -182,14 +178,86 @@ class LLMEngine(abc.ABC):
     # to sleep during training and wake up during rollouts.
     ##############################################################
 
-    async def sleep(self):
-        """Puts the engine to sleep"""
+    @abc.abstractmethod
+    async def reset_prefix_cache(self) -> None:
+        """Reset the prefix cache of the underlying engine"""
+
+    async def sleep(self, **kwargs: Any) -> None:
+        """Put the engine to sleep.
+
+        The caller should guarantee that no requests are being processed
+        during the sleep period, before `wakeup` is called.
+
+        Args:
+            **kwargs: Engine-specific sleep options. See the concrete engine
+                implementation for available options.
+        """
         pass
 
-    async def wakeup(self):
-        """Wakes up the engine"""
+    async def wakeup(self, **kwargs: Any) -> None:
+        """Wake up the engine from sleep mode.
+
+        Args:
+            **kwargs: Engine-specific wakeup options. See the concrete engine
+                implementation for available options.
+        """
         pass
 
-    def shutdown(self):
+    async def is_sleeping(self) -> bool:
+        """Check whether the engine is currently sleeping.
+
+        Returns:
+            True if the engine is sleeping, False otherwise.
+        """
+        return False
+
+    async def collective_rpc(
+        self,
+        method: str,
+        timeout: Optional[float] = None,
+        args: tuple = (),
+        kwargs: Optional[dict] = None,
+    ) -> list:
+        """Execute a collective RPC call on all workers.
+
+        This is used for RLHF workflows where a trainer needs to execute
+        methods on all TP/PP workers (e.g., for weight synchronization).
+
+        Args:
+            method: Name of the worker method to execute.
+            timeout: Maximum time in seconds to wait for execution.
+            args: Positional arguments to pass to the worker method.
+            kwargs: Keyword arguments to pass to the worker method.
+
+        Returns:
+            A list containing the results from each worker.
+        """
+        raise NotImplementedError("collective_rpc is not implemented for this engine")
+
+    async def pause(self, **kwargs: Any) -> None:
+        """Pause the engine.
+
+        Args:
+            **kwargs: Engine-specific pause options. Passed through to the engine.
+        """
+        pass
+
+    async def resume(self, **kwargs: Any) -> None:
+        """Resume the engine.
+
+        Args:
+            **kwargs: Engine-specific resume options. Passed through to the engine.
+        """
+        pass
+
+    async def is_paused(self) -> bool:
+        """Check whether the engine is currently paused.
+
+        Returns:
+            True if the engine is paused, False otherwise.
+        """
+        return False
+
+    def shutdown(self) -> None:
         """Shuts down the engine"""
         pass
