@@ -196,11 +196,9 @@ class InferenceActor:
         extra_output_columns: Dict[str, Any],
         device: str = "cuda",
     ):
-        # Load model from object ref (simulates loading from MLflow)
         self.model_weights = ray.get(model_ref)
         self.metadata_columns = metadata_columns
         self.extra_output_columns = extra_output_columns
-        self.device = device
 
         # Simulate model initialization
         self._init_model()
@@ -208,7 +206,6 @@ class InferenceActor:
     def _init_model(self):
         """Initialize model on the appropriate device."""
         assert self.model_weights is not None
-        self._initialized = True
 
     def __call__(self, batch: pd.DataFrame) -> pd.DataFrame:
         """
@@ -246,8 +243,8 @@ class InferenceActor:
             token_features = []
             for col in input_ids_cols:
                 # Each row is an array of token ids - compute mean as feature
-                token_means = np.array(
-                    [np.mean(ids) for ids in batch[col].values], dtype=np.float32
+                token_means = (
+                    np.stack(batch[col].values).mean(axis=1).astype(np.float32)
                 )
                 token_features.append(token_means)
             token_features = np.column_stack(token_features)
@@ -407,8 +404,8 @@ def main(args):
 
     # Consume output
     total_rows = 0
-    for bundle in output_ds.iter_internal_ref_bundles():
-        total_rows += bundle.num_rows()
+    for batch in output_ds.iter_batches(batch_size=None, batch_format="pandas"):
+        total_rows += len(batch)
 
     end_time = time.time()
 
