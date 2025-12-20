@@ -328,7 +328,7 @@ class GPUObjectManager:
     def _fetch_object(
         self,
         obj_id: str,
-        fetch_through_object_store: bool,
+        use_object_store: bool,
     ):
         """
         Fetches the GPU object from the source actor's GPU object store via the object store
@@ -340,7 +340,7 @@ class GPUObjectManager:
 
         Args:
             obj_id: The object ID of the RDT object.
-            fetch_through_object_store: Whether to fetch the RDT object through the
+            use_object_store: Whether to fetch the RDT object through the
                 object store or through its designated tensor transport.
 
         Returns:
@@ -359,7 +359,7 @@ class GPUObjectManager:
 
         gpu_object_meta = self.managed_gpu_object_metadata[obj_id]
 
-        if fetch_through_object_store:
+        if use_object_store:
             src_actor = gpu_object_meta.src_actor
             tensors = ray.get(
                 src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
@@ -541,14 +541,14 @@ class GPUObjectManager:
     def get_gpu_object(
         self,
         object_id: str,
-        fetch_through_object_store: bool = False,
+        use_object_store: bool = False,
     ) -> List["torch.Tensor"]:
         """
         Get the RDT object for a given object ID.
 
         Args:
             object_id: The object ID of the RDT object.
-            fetch_through_object_store: Whether to fetch the RDT object
+            use_object_store: Whether to fetch the RDT object
                 through the object store or through its designated tensor transport.
 
         Returns:
@@ -556,7 +556,7 @@ class GPUObjectManager:
         """
         gpu_object_store = self.gpu_object_store
         if self.is_managed_object(object_id):
-            self._fetch_object(object_id, fetch_through_object_store)
+            self._fetch_object(object_id, use_object_store)
 
         # If the GPU object is the primary copy, it means the transfer is intra-actor.
         # In this case, we should not remove the GPU object after it is consumed once,

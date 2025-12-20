@@ -435,9 +435,10 @@ def method(*args, **kwargs):
             use for the actor method. If a tensor transport is specified,
             Ray will store a *reference* instead of a copy of any torch.Tensors found inside
             values returned by this task, and the tensors will be sent directly
-            to other tasks using the specified transport. NCCL and GLOO
-            transports require first creating a collective with the involved
-            actors using
+            to other tasks using the specified transport. The object store will be used
+            when this is None (default). "NIXL", "NCCL", and "GLOO" (case-insensitive) are
+            the three transports supported by default. The NCCL and GLOO transports
+            require first creating a collective with the involved actors using
             :func:`ray.experimental.collective.create_collective_group`.
             See :ref:`Ray Direct Transport (RDT) <direct-transport>` for more
             details.

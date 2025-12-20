@@ -37,7 +37,7 @@ class GPUTestActor:
         return sum
 
     def consume_with_object_store(self, refs):
-        tensors = [ray.get(ref, _fetch_through_object_store=True) for ref in refs]
+        tensors = [ray.get(ref, _use_object_store=True) for ref in refs]
         sum = 0
         for t in tensors:
             assert t.device.type == "cuda"
@@ -104,7 +104,7 @@ def test_ray_get_gpu_ref_created_by_actor_task(ray_start_regular):
     assert torch.equal(ray.get(ref2), tensor)
 
     # # Test ray.get with object store tensor transport
-    assert torch.equal(ray.get(ref3, _fetch_through_object_store=True), tensor)
+    assert torch.equal(ray.get(ref3, _use_object_store=True), tensor)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)

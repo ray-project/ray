@@ -896,7 +896,7 @@ class Worker:
         self,
         serialized_objects,
         object_refs,
-        fetch_through_object_store: bool = False,
+        use_object_store: bool = False,
     ):
         gpu_objects: Dict[str, List["torch.Tensor"]] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
@@ -909,10 +909,10 @@ class Worker:
             if object_id not in gpu_objects:
                 # If using a non-object store transport, then tensors will be sent
                 # out-of-band. Get them before deserializing the object store data.
-                # The user can set fetch_through_object_store to fetch the RDT object
+                # The user can set use_object_store to fetch the RDT object
                 # through the object store.
                 gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
-                    object_id, fetch_through_object_store
+                    object_id, use_object_store
                 )
 
         # Function actor manager or the import thread may call pickle.loads
@@ -931,7 +931,7 @@ class Worker:
         timeout: Optional[float] = None,
         return_exceptions: bool = False,
         skip_deserialization: bool = False,
-        fetch_through_object_store: bool = False,
+        use_object_store: bool = False,
     ) -> Tuple[List[serialization.SerializedRayObject], bytes]:
         """Get the values in the object store associated with the IDs.
 
@@ -950,7 +950,7 @@ class Worker:
                 raised.
             skip_deserialization: If true, only the buffer will be released and
                 the object associated with the buffer will not be deserialized.
-            fetch_through_object_store: [Alpha] To fetch an RDT object through the object store.
+            use_object_store: [Alpha] To fetch an RDT object through the object store.
         Returns:
             list: List of deserialized objects or None if skip_deserialization is True.
             bytes: UUID of the debugger breakpoint we should drop
@@ -987,7 +987,7 @@ class Worker:
             return None, debugger_breakpoint
 
         values = self.deserialize_objects(
-            serialized_objects, object_refs, fetch_through_object_store
+            serialized_objects, object_refs, use_object_store
         )
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.
@@ -2853,7 +2853,7 @@ def get(
     ],
     *,
     timeout: Optional[float] = None,
-    _fetch_through_object_store: bool = False,
+    _use_object_store: bool = False,
 ) -> Union[Any, List[Any]]:
     """Get a remote object or a list of remote objects from the object store.
 
@@ -2889,8 +2889,12 @@ def get(
             corresponding object becomes available. Setting ``timeout=0`` will
             return the object immediately if it's available, else raise
             GetTimeoutError in accordance with the above docstring.
-        _fetch_through_object_store: [Alpha] To fetch an RDT object through the object store instead of using its designated tensor transport. You may want to do this in situations where you want the value on driver but maybe the driver is not part of the tensor transport's collective.
-
+        _use_object_store: [Alpha] To fetch an RDT object through the object store
+            instead of using its designated tensor transport. You can set this to True
+            for cases where the caller does not support the object's tensor transport,
+            e.g., the tensor transport is "nccl" and the caller is not part of the collective.
+            When this is False (default), Ray will use the object store for normal objects,
+            and attempt to use the object's tensor transport for RDT objects.
     Returns:
         A Python object or a list of Python objects.
 
@@ -2954,7 +2958,7 @@ def get(
             )
 
         values, debugger_breakpoint = worker.get_objects(
-            object_refs, timeout, fetch_through_object_store=_fetch_through_object_store
+            object_refs, timeout, use_object_store=_use_object_store
         )
         for i, value in enumerate(values):
             if isinstance(value, RayError):
@@ -3015,7 +3019,9 @@ def put(
             object prior to the object creator exiting, otherwise the reference
             will still be lost. *Note that this argument is an experimental API
             and should be avoided if possible.*
-        _tensor_transport: [Alpha] The tensor transport to use for the GPU object. Currently, this supports "object_store" and "nixl" for tensor transport in ray.put().
+        _tensor_transport: [Alpha] The tensor transport to use for the GPU object.
+            Currently, this only supports one-sided tensor transports such as "nixl".
+            When this is None (default), Ray will use the object store.
 
     Returns:
         The object ref assigned to this value.

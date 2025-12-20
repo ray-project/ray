@@ -144,8 +144,9 @@ assert (
     in str(e.value)
 )
 
-# Correct example of ray.get(), explicitly setting the tensor transport to use the Ray object store.
-print(ray.get(tensor, _fetch_through_object_store=True))
+# Correct example of ray.get(), using the object store to fetch the RDT object because the caller
+# is not part of the collective group.
+print(ray.get(tensor, _use_object_store=True))
 # torch.Tensor(...)
 # __gloo_get_end__
 
