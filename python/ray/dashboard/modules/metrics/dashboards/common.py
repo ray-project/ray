@@ -60,9 +60,10 @@ class Target:
     """Defines a Grafana target (time-series query) within a panel.
 
     A panel will have one or more targets. By default, all targets are rendered as
-    stacked area charts, with the exception of legend="MAX", which is rendered as
-    a blue dotted line. Any legend="FINISHED|FAILED|DEAD|REMOVED" series will also be
-    rendered hidden by default.
+    stacked area charts, with the following exceptions:
+    - legend="MAX": rendered as a blue dotted line
+    - legend="MAX + PENDING": rendered as a grey dotted line
+    - legend matching "FINISHED|FAILED|DEAD|REMOVED": hidden by default
 
     Attributes:
         expr: The prometheus query to evaluate.
@@ -258,7 +259,45 @@ TIMESERIES_PANEL_TEMPLATE = {
                 "steps": [{"color": "green", "value": None}],
             },
         },
-        "overrides": [],
+        "overrides": [
+            # Render legend="MAX" as dotted blue line
+            {
+                "matcher": {"id": "byName", "options": "MAX"},
+                "properties": [
+                    {
+                        "id": "custom.lineStyle",
+                        "value": {"dash": [10, 10], "fill": "dash"},
+                    },
+                    {"id": "color", "value": {"mode": "fixed", "fixedColor": "blue"}},
+                    {"id": "custom.fillOpacity", "value": 0},
+                ],
+            },
+            # Render legend="MAX + PENDING" as dotted grey line
+            {
+                "matcher": {"id": "byName", "options": "MAX + PENDING"},
+                "properties": [
+                    {
+                        "id": "custom.lineStyle",
+                        "value": {"dash": [10, 10], "fill": "dash"},
+                    },
+                    {"id": "color", "value": {"mode": "fixed", "fixedColor": "grey"}},
+                    {"id": "custom.fillOpacity", "value": 0},
+                ],
+            },
+            # Hide series matching FINISHED|FAILED|DEAD|REMOVED
+            {
+                "matcher": {
+                    "id": "byRegex",
+                    "options": "/FINISHED|FAILED|DEAD|REMOVED|Failed Nodes:/",
+                },
+                "properties": [
+                    {
+                        "id": "custom.hideFrom",
+                        "value": {"tooltip": False, "viz": True, "legend": False},
+                    }
+                ],
+            },
+        ],
     },
     "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
     "id": 1,

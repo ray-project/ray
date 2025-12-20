@@ -247,6 +247,8 @@ def _generate_panel_template(
         custom["lineWidth"] = panel.linewidth
         if panel.stack:
             custom.setdefault("stacking", {})["mode"] = "normal"
+        else:
+            custom.setdefault("stacking", {})["mode"] = "none"
     # STATE_TIMELINE only supports fillOpacity (no lineWidth or stacking)
     elif panel.template == panel.template.__class__.STATE_TIMELINE:
         custom = (
@@ -254,7 +256,8 @@ def _generate_panel_template(
             .setdefault("defaults", {})
             .setdefault("custom", {})
         )
-        custom["fillOpacity"] = panel.fill
+        if panel.fill:
+            custom["fillOpacity"] = panel.fill
 
     # Hide X-axis if requested (modern Grafana panels)
     if panel.hideXAxis:
