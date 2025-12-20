@@ -14,11 +14,13 @@
 
 // Util function on environment variables.
 
-#pragma once
+#include "ray/util/compression.h"
 
 #include <zstd.h>
 
 #include <string>
+
+#include "ray/util/logging.h"
 
 namespace ray {
 

@@ -368,6 +368,7 @@ ray_cc_library(
     srcs = ["compression.cc"],
     hdrs = ["compression.h"],
     deps = [
+        ":logging",
         "@zstd//:libzstd",
     ],
 )
