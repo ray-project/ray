@@ -287,7 +287,7 @@ TIMESERIES_PANEL_TEMPLATE = {
             # Hide series matching FINISHED|FAILED|DEAD|REMOVED
             {
                 "matcher": {
-                    "id": "byRegex",
+                    "id": "byRegexp",
                     "options": "FINISHED|FAILED|DEAD|REMOVED|Failed Nodes",
                 },
                 "properties": [
