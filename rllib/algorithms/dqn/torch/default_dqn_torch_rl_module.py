@@ -40,15 +40,19 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
     def _forward_inference(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
         # Q-network forward pass.
         qf_outs = self.compute_q_values(batch)
+        logits = qf_outs[QF_PREDS]
 
         # Get action distribution.
         action_dist_cls = self.get_exploration_action_dist_cls()
-        action_dist = action_dist_cls.from_logits(qf_outs[QF_PREDS])
+        action_dist = action_dist_cls.from_logits(logits)
         # Note, the deterministic version of the categorical distribution
         # outputs directly the `argmax` of the logits.
         exploit_actions = action_dist.to_deterministic().sample()
 
-        output = {Columns.ACTIONS: exploit_actions}
+        output = {
+            Columns.ACTIONS: exploit_actions,
+            Columns.ACTION_DIST_INPUTS: logits,
+        }
         if Columns.STATE_OUT in qf_outs:
             output[Columns.STATE_OUT] = qf_outs[Columns.STATE_OUT]
 
@@ -64,10 +68,11 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
 
         # Q-network forward pass.
         qf_outs = self.compute_q_values(batch)
+        logits = qf_outs[QF_PREDS]
 
         # Get action distribution.
         action_dist_cls = self.get_exploration_action_dist_cls()
-        action_dist = action_dist_cls.from_logits(qf_outs[QF_PREDS])
+        action_dist = action_dist_cls.from_logits(logits)
         # Note, the deterministic version of the categorical distribution
         # outputs directly the `argmax` of the logits.
         exploit_actions = action_dist.to_deterministic().sample()
@@ -94,14 +99,13 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
             dim=1,
         )
 
-        actions = torch.where(
+        # Add the actions to the return dictionary.
+        output[Columns.ACTIONS] = torch.where(
             torch.rand((B,)) < epsilon,
             random_actions,
             exploit_actions,
         )
-
-        # Add the actions to the return dictionary.
-        output[Columns.ACTIONS] = actions
+        output[Columns.ACTION_DIST_INPUTS] = logits
 
         # If this is a stateful module, add output states.
         if Columns.STATE_OUT in qf_outs:
