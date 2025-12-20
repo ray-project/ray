@@ -68,6 +68,27 @@ def pre_envs(monkeypatch):
     yield
 
 
+@pytest.fixture(autouse=True)
+def auto_setup_auth_token_if_enabled(monkeypatch):
+    """Auto-setup authentication token when RAY_AUTH_MODE=token is set globally.
+
+    This allows tests to run with token auth enabled without modification.
+    Tests that explicitly manage auth (using cleanup_auth_token_env fixture)
+    will override this setup.
+    """
+    auth_mode = os.environ.get("RAY_AUTH_MODE", "").lower()
+    if auth_mode in ("token", "k8s"):
+        # Only set token if not already set (tests may set their own)
+        if not os.environ.get("RAY_AUTH_TOKEN") and not os.environ.get(
+            "RAY_AUTH_TOKEN_PATH"
+        ):
+            test_token = "ci_test_token_" + "0" * 48  # 64 char token
+            monkeypatch.setenv("RAY_AUTH_TOKEN", test_token)
+            reset_auth_token_state()
+    yield
+    # Cleanup handled by monkeypatch automatically
+
+
 def wait_for_redis_to_start(
     redis_ip_address: str, redis_port: bool, password=None, username=None
 ):
