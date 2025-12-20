@@ -84,6 +84,9 @@ class ScalingConfig(ScalingConfigV1):
         if self.trainer_resources is not None:
             raise DeprecationWarning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
 
+        if self.num_slices < 1:
+            raise ValueError(f"`num_slices` must be >= 1. Received {self.num_slices}.")
+
         if self.use_tpu and self.num_workers is None:
             raise ValueError(
                 "`num_workers` must be specified in ScalingConfig when `use_tpu=True`. "
