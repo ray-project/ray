@@ -125,7 +125,7 @@ class DPGroupManager:
 
         Detects double-registration (a replica trying to register for a DP rank
         that's already taken by a different replica). When double-registration
-        is detected, kills all replicas in the group to trigger a clean restart.
+        is detected, the DPGroupManager kills all replicas in the group to trigger a clean restart.
 
         Args:
             replica_rank: The replica's rank info from serve.get_replica_context().rank.
