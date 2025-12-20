@@ -300,8 +300,14 @@ TEST_F(PushMutableObjectTest, TestSingleChunkTransferSuccess) {
     callback_reply = std::move(reply);
   };
 
-  raylet_client_->PushMutableObject(
-      writer_object_id, data_size, metadata_size, data.data(), metadata.data(), callback);
+  raylet_client_->PushMutableObject(writer_object_id,
+                                    data_size,
+                                    metadata_size,
+                                    data.data(),
+                                    metadata.data(),
+                                    /*version=*/1,
+                                    callback,
+                                    /*timeout_ms=*/-1);
 
   // Wait for callback
   auto start_time = std::chrono::steady_clock::now();
@@ -359,8 +365,14 @@ TEST_F(PushMutableObjectTest, TestMultiChunkTransferSuccess) {
     callback_reply = std::move(reply);
   };
 
-  raylet_client_->PushMutableObject(
-      writer_object_id, data_size, metadata_size, data.data(), metadata.data(), callback);
+  raylet_client_->PushMutableObject(writer_object_id,
+                                    data_size,
+                                    metadata_size,
+                                    data.data(),
+                                    metadata.data(),
+                                    /*version=*/1,
+                                    callback,
+                                    /*timeout_ms=*/-1);
 
   // Wait for callback (may take longer for large object)
   auto start_time = std::chrono::steady_clock::now();
@@ -415,8 +427,14 @@ TEST_F(PushMutableObjectTest, TestCallbackCalledOnlyOnce) {
     callback_status = status;
   };
 
-  raylet_client_->PushMutableObject(
-      writer_object_id, data_size, metadata_size, data.data(), metadata.data(), callback);
+  raylet_client_->PushMutableObject(writer_object_id,
+                                    data_size,
+                                    metadata_size,
+                                    data.data(),
+                                    metadata.data(),
+                                    /*version=*/1,
+                                    callback,
+                                    /*timeout_ms=*/-1);
 
   // Wait for completion
   auto start_time = std::chrono::steady_clock::now();
@@ -462,8 +480,14 @@ TEST_F(PushMutableObjectTest, TestRetryHappens) {
   grpc_server_->Shutdown();
 
   // Start the transfer (will fail initially due to UNAVAILABLE)
-  raylet_client_->PushMutableObject(
-      writer_object_id, data_size, metadata_size, data.data(), metadata.data(), callback);
+  raylet_client_->PushMutableObject(writer_object_id,
+                                    data_size,
+                                    metadata_size,
+                                    data.data(),
+                                    metadata.data(),
+                                    /*version=*/1,
+                                    callback,
+                                    /*timeout_ms=*/-1);
 
   // Wait a bit to let initial attempts fail
   std::this_thread::sleep_for(std::chrono::milliseconds(500));

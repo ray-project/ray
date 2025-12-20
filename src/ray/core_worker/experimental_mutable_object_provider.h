@@ -266,9 +266,10 @@ class MutableObjectProvider : public MutableObjectProviderInterface {
   // write epochs, preventing stale retries from interfering with new writes.
   std::unordered_map<ObjectID, std::unordered_set<std::pair<uint64_t, int64_t>>>
       received_chunks_ ABSL_GUARDED_BY(written_so_far_lock_);
-  // Tracks whether WriteAcquire has been called for each object to handle out-of-order
-  // chunks. This ensures WriteAcquire is called exactly once, even if chunks arrive
-  // concurrently or out of order.
+  // Tracks whether WriteAcquire has been called AND completed for each object to handle
+  // out-of-order chunks. This ensures WriteAcquire is called exactly once, even if chunks
+  // arrive concurrently or out of order. Other threads must wait until this is true
+  // before calling GetObjectBackingStore().
   std::unordered_map<ObjectID, bool> write_acquired_
       ABSL_GUARDED_BY(written_so_far_lock_);
   // Maps writer_object_id to the highest version that has completed WriteRelease.

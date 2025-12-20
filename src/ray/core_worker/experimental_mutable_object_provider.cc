@@ -200,7 +200,8 @@ void MutableObjectProvider::HandlePushMutableObject(
     // Step 5: Active version - check if need WriteAcquire
     if (!write_acquired_[writer_object_id]) {
       needs_write_acquire = true;
-      write_acquired_[writer_object_id] = true;
+      // Note: We do NOT set write_acquired_ = true here yet. This prevents other threads
+      // from calling GetObjectBackingStore() before WriteAcquire() completes.
     }
   }
 
@@ -224,7 +225,24 @@ void MutableObjectProvider::HandlePushMutableObject(
                                                total_metadata_size,
                                                info.num_readers,
                                                object_backing_store));
+    // Now that WriteAcquire has completed, set write_acquired_ to true so other threads
+    // can proceed with GetObjectBackingStore().
+    {
+      absl::MutexLock guard(&written_so_far_lock_);
+      write_acquired_[writer_object_id] = true;
+    }
   } else {
+    // Wait until WriteAcquire has completed before calling GetObjectBackingStore.
+    // This prevents the race condition where we check write_acquired_ before
+    // WriteAcquire() has actually completed.
+    {
+      absl::MutexLock guard(&written_so_far_lock_);
+      auto condition = [this, &writer_object_id]()
+                           ABSL_SHARED_LOCKS_REQUIRED(written_so_far_lock_) {
+                             return write_acquired_[writer_object_id];
+                           };
+      written_so_far_lock_.Await(absl::Condition(&condition));
+    }
     // Subsequent chunk (or chunk arriving after WriteAcquire was called by another chunk)
     // - get existing backing store.
     RAY_CHECK_OK(object_manager_->GetObjectBackingStore(info.local_object_id,
