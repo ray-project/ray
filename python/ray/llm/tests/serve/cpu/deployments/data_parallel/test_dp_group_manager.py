@@ -560,15 +560,25 @@ class TestDoubleRegistration:
 
         with patch(
             "ray.llm._internal.serve.serving_patterns.data_parallel.dp_group_manager.ray.get_actor"
-        ), patch(
+        ) as mock_get_actor, patch(
             "ray.llm._internal.serve.serving_patterns.data_parallel.dp_group_manager.ray.kill"
-        ):
+        ) as mock_kill:
+            mock_actor = MagicMock()
+            mock_get_actor.return_value = mock_actor
+
             # Double registration for dp_rank=0
             replica_rank = ReplicaRank(rank=0, node_rank=0, local_rank=0)
             await manager.register(
                 replica_rank=replica_rank,
                 replica_id="replica-new-0",
             )
+
+            # Verify all original replicas were killed
+            assert mock_kill.call_count == 4
+            killed_replica_ids = {
+                call.args[0] for call in mock_get_actor.call_args_list
+            }
+            assert killed_replica_ids == {f"replica-{i}" for i in range(4)}
 
         # Verify group state was reset (only the new replica should be registered)
         assert len(manager._group_info[0].dp_rank_to_replica_id) == 1
@@ -611,15 +621,25 @@ class TestDoubleRegistration:
 
         with patch(
             "ray.llm._internal.serve.serving_patterns.data_parallel.dp_group_manager.ray.get_actor"
-        ), patch(
+        ) as mock_get_actor, patch(
             "ray.llm._internal.serve.serving_patterns.data_parallel.dp_group_manager.ray.kill"
-        ):
+        ) as mock_kill:
+            mock_actor = MagicMock()
+            mock_get_actor.return_value = mock_actor
+
             # Double registration in group 0 only
             replica_rank = ReplicaRank(rank=0, node_rank=0, local_rank=0)
             await manager.register(
                 replica_rank=replica_rank,
                 replica_id="replica-g0-new",
             )
+
+            # Verify only group 0's replicas were killed (not group 1)
+            assert mock_kill.call_count == 4
+            killed_replica_ids = {
+                call.args[0] for call in mock_get_actor.call_args_list
+            }
+            assert killed_replica_ids == {f"replica-g0-{i}" for i in range(4)}
 
         # Group 0 should be reset
         assert len(manager._group_info[0].dp_rank_to_replica_id) == 1
@@ -656,8 +676,8 @@ class TestDoubleRegistration:
             assert manager._group_info[0].dp_rank_to_replica_id[0] == "replica-new"
 
     @pytest.mark.asyncio
-    async def test_same_replica_re_registration_no_kill(self, manager):
-        """Same replica re-registering does not trigger kill."""
+    async def test_same_replica_re_registration_raises(self, manager):
+        """Same replica re-registering raises an assertion error."""
         replica_rank = ReplicaRank(rank=0, node_rank=0, local_rank=0)
 
         # First registration
@@ -666,23 +686,12 @@ class TestDoubleRegistration:
             replica_id="replica-same",
         )
 
-        with patch(
-            "ray.llm._internal.serve.serving_patterns.data_parallel.dp_group_manager.ray.get_actor"
-        ) as mock_get_actor, patch(
-            "ray.llm._internal.serve.serving_patterns.data_parallel.dp_group_manager.ray.kill"
-        ) as mock_kill:
-            # Same replica re-registering (e.g., reconnection)
+        # Same replica re-registering should raise
+        with pytest.raises(AssertionError, match="attempted to register twice"):
             await manager.register(
                 replica_rank=replica_rank,
                 replica_id="replica-same",
             )
-
-            # No kill should be triggered
-            mock_get_actor.assert_not_called()
-            mock_kill.assert_not_called()
-
-        # Replica should still be registered
-        assert manager._group_info[0].dp_rank_to_replica_id[0] == "replica-same"
 
 
 if __name__ == "__main__":

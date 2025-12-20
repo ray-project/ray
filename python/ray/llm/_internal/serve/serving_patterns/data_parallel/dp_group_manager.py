@@ -17,12 +17,14 @@ class GroupInfo:
         master_info: Tuple of (dp_address, dp_rpc_port) for the group's master.
         dp_rank_to_replica_id: Mapping from DP rank to replica ID for tracking
             registered replicas.
-        master_info_event: Event that is set when master info is available.
+
+    Note:
+        This class is kept serializable (no asyncio.Event). The master_info_event
+        is stored separately in DPGroupManager.
     """
 
     master_info: Optional[Tuple[str, int]] = None
     dp_rank_to_replica_id: Dict[int, str] = field(default_factory=dict)
-    master_info_event: asyncio.Event = field(default_factory=asyncio.Event)
 
 
 class DPGroupManager:
@@ -33,15 +35,17 @@ class DPGroupManager:
 
     Key concepts:
     - dp_group_size: Number of replicas in each DP group (e.g., 8)
-    - dp_size_per_node: Number of DP replicas that fit on a node, determined by
-        node GPU count / TP size (e.g., 8-GPU node with TP=2 -> 4 replicas per node)
+    - dp_size_per_node: Number of DP replicas per node, calculated as
+        (node GPU count) / (TP size). This equals the number of replicas per node.
+        (e.g., 8-GPU node with TP=2 -> 4 replicas per node)
     - group_index: Which group a replica belongs to (0 to num_replicas // dp_group_size - 1)
     - dp_rank: Rank within the group (0 to dp_group_size-1)
 
     Example:
-        With 16 total replicas, dp_group_size=8, dp_size_per_node=4 (TP=2 on 8-GPU nodes):
-        - Group 0: replicas with global ranks 0-7 (on nodes 0-1)
-        - Group 1: replicas with global ranks 8-15 (on nodes 2-3)
+        With 4 nodes, 16 total TP=2 replicas (4 replicas per 8-GPU node), and 2 DP groups:
+        - dp_group_size=8, dp_size_per_node=4
+        - Group 0: replicas with global ranks 0-7 (nodes 0-1, 4 replicas each)
+        - Group 1: replicas with global ranks 8-15 (nodes 2-3, 4 replicas each)
 
     State:
         group_info: group_index → GroupInfo containing:
@@ -60,6 +64,7 @@ class DPGroupManager:
         self.dp_group_size = dp_group_size
         self.dp_size_per_node = dp_size_per_node
         self._group_info: Dict[int, GroupInfo] = {}
+        self._master_info_events: Dict[int, asyncio.Event] = {}
         self._group_info_lock = asyncio.Lock()
         logger.info(
             f"DPGroupManager initialized with dp_group_size={dp_group_size}, "
@@ -123,9 +128,13 @@ class DPGroupManager:
     ) -> Tuple[int, int]:
         """Register a replica to its DP group.
 
-        Detects double-registration (a replica trying to register for a DP rank
-        that's already taken by a different replica). When double-registration
-        is detected, the DPGroupManager kills all replicas in the group to trigger a clean restart.
+        Detects double-registration, which indicates that a DP rank replica has
+        died. Registration is tracked uniquely by (node_rank, local_rank, replica_id).
+        When a replica dies, it will try to register to the same (node_rank, local_rank),
+        but with a different replica_id.
+
+        When double-registration is detected, the DPGroupManager kills all
+        replicas in the group to trigger a clean restart.
 
         Args:
             replica_rank: The replica's rank info from serve.get_replica_context().rank.
@@ -144,6 +153,7 @@ class DPGroupManager:
         async with self._group_info_lock:
             if group_index not in self._group_info:
                 self._group_info[group_index] = GroupInfo()
+                self._master_info_events[group_index] = asyncio.Event()
 
             group = self._group_info[group_index]
 
@@ -166,7 +176,7 @@ class DPGroupManager:
 
         return dp_rank, group_index
 
-    def _reset_group(self, group: GroupInfo) -> None:
+    def _reset_group(self, group: GroupInfo, group_index: int) -> None:
         """Reset a group's state for a fresh restart.
 
         Clears the dp_rank_to_replica_id mapping and resets the master info
@@ -174,9 +184,12 @@ class DPGroupManager:
 
         Must be called while holding _group_info_lock.
         """
-        # If there are any waiters, wake them so they can re-check state.
-        group.master_info_event.set()
-        group.master_info_event.clear()
+        assert (
+            group_index in self._master_info_events
+        ), f"Attempted to reset group {group_index}, but no master_info_event exists."
+        event = self._master_info_events[group_index]
+        event.set()
+        event.clear()
 
         group.dp_rank_to_replica_id.clear()
         group.master_info = None
@@ -206,8 +219,14 @@ class DPGroupManager:
             List of replica IDs to kill (empty if no double-registration).
         """
         existing_replica_id = group.dp_rank_to_replica_id.get(dp_rank)
-        if existing_replica_id is None or existing_replica_id == replica_id:
+        if existing_replica_id is None:
             return []
+
+        # Same replica_id should never re-register
+        assert existing_replica_id != replica_id, (
+            f"Replica {replica_id} attempted to register twice for "
+            f"group {group_index}, dp_rank {dp_rank}. This should never happen."
+        )
 
         logger.warning(
             f"Double-registration detected for group {group_index}, "
@@ -220,12 +239,24 @@ class DPGroupManager:
             rid for rid in group.dp_rank_to_replica_id.values() if rid != replica_id
         ]
 
-        # Clear the group state to prevent cascading kills
-        self._reset_group(group)
+        # Clear the group state BEFORE killing replicas to prevent cascading kills.
+        # If we killed first, other replicas might detect the kill and try to
+        # re-register, triggering another round of double-registration detection.
+        self._reset_group(group, group_index)
 
         return replicas_to_kill
 
     async def _kill_replica(self, replica_id: str, group_index: int) -> None:
+        """Kill a replica actor.
+
+        Args:
+            replica_id: The replica ID to kill.
+            group_index: The group index (for logging).
+
+        Note:
+            We use no_restart=False to allow Ray Serve to restart the replica.
+            The restarted replica will re-register with a fresh state.
+        """
         try:
             actor = ray.get_actor(replica_id)
             ray.kill(actor, no_restart=False)
@@ -273,7 +304,7 @@ class DPGroupManager:
             group.master_info = (dp_address, dp_rpc_port)
 
             # Notify all waiters that the master info is available
-            group.master_info_event.set()
+            self._master_info_events[group_index].set()
 
             logger.info(
                 f"Set master info for group {group_index}: "
@@ -286,9 +317,13 @@ class DPGroupManager:
     ) -> Tuple[str, int]:
         """Get the master info for a DP group.
 
-        Blocks until the master info is available (set by dp_rank=0). Loops in
-        case the master_info is reset between the time the event is set and we
-        acquire the lock.
+        Blocks until the master info is available (set by dp_rank=0).
+        The group must already exist (i.e., register() must be called first).
+
+        The while True loop handles a race condition: if master_info is reset
+        (due to group failure) between event.wait() returning and acquiring
+        the lock, we need to wait again for the new master to set its info.
+        The loop ensures we always return valid master_info.
 
         Args:
             group_index: The index of the DP group.
@@ -298,8 +333,10 @@ class DPGroupManager:
         """
         while True:
             async with self._group_info_lock:
-                if group_index not in self._group_info:
-                    self._group_info[group_index] = GroupInfo()
+                assert group_index in self._group_info, (
+                    f"Group {group_index} does not exist. "
+                    "register() must be called before get_dp_master_info()."
+                )
 
                 group = self._group_info[group_index]
 
@@ -307,7 +344,7 @@ class DPGroupManager:
                     # Master info may be ready right away
                     return group.master_info
 
-                event = group.master_info_event
+                event = self._master_info_events[group_index]
 
             # Otherwise wait
             await event.wait()
