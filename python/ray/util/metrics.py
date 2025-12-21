@@ -359,6 +359,38 @@ class Gauge(Metric):
 
         self._record(value, tags)
 
+    def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
+        """Increment the gauge by `value` (defaults to 1).
+
+        Tags passed in will take precedence over the metric's default tags.
+
+        Args:
+            value: Value to increment the gauge by (default=1).
+            tags: Tags to set or override for this gauge.
+        """
+        if not isinstance(value, (int, float)):
+            raise TypeError(f"value must be int or float, got {type(value)}.")
+        if value <= 0:
+            raise ValueError(f"value must be >0, got {value}")
+
+        self._record(value, tags)
+
+    def dec(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
+        """Decrement the gauge by `value` (defaults to 1).
+
+        Tags passed in will take precedence over the metric's default tags.
+
+        Args:
+            value: Value to decrement the gauge by (default=1).
+            tags: Tags to set or override for this gauge.
+        """
+        if not isinstance(value, (int, float)):
+            raise TypeError(f"value must be int or float, got {type(value)}.")
+        if value <= 0:
+            raise ValueError(f"value must be >0, got {value}")
+
+        self._record(-value, tags)
+
     def __reduce__(self):
         deserializer = Gauge
         serialized_data = (self._name, self._description, self._tag_keys)
