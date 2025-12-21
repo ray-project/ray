@@ -1,3 +1,54 @@
+"""Example showing how to run APPO on Atari environments with frame stacking.
+
+This example demonstrates APPO (Asynchronous Proximal Policy Optimization) on
+Atari Pong. APPO is a distributed, off-policy variant of PPO that uses a
+circular replay buffer for improved sample efficiency and supports asynchronous
+training across multiple learners and env runners.
+
+This example:
+    - demonstrates how to wrap Atari environments for preprocessing
+    - configures a CNN-based model with 4 convolutional layers suitable for
+    processing stacked Atari frames
+    - shows how to use the `FrameStackingEnvToModule` and `FrameStackingLearner`
+    ConnectorV2 pieces for proper frame stacking
+    - uses 2 aggregator actors per learner for efficient experience collection (see: `num_aggregator_actors_per_learner=2` in the learner configuration)
+    - schedules the entropy coefficient to decay from 0.01 to 0.0 over training
+
+How to run this script
+----------------------
+`python atari_appo.py [options]`
+
+To run with default settings on Pong:
+`python atari_appo.py`
+
+To run on a different Atari environment:
+`python atari_appo.py --env=ale_py:ALE/SpaceInvaders-v5`
+
+To scale up with multiple learners:
+`python atari_appo.py --num-learners=2 --num-env-runners=8`
+
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0 --num-learners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+By setting `--num-learners=0` and `--num-env-runners=0` will make them run locally
+instead of remote Ray Actor where breakpoints aren't possible.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key]
+ --wandb-project=[some project name]
+ --wandb-run-name=[optional: WandB run name (within the defined project)]`
+
+Results to expect
+-----------------
+The algorithm should reach the default reward threshold of XX on Breakout
+within 10 million timesteps (40 million frames with 4x frame stacking,
+see: `default_timesteps` in the code).
+Training performance scales with the number of learners and env runners.
+The entropy coefficient schedule (decaying from 0.01 to 0.0 over 3 million
+timesteps) is crucial for achieving good final performance - removing this
+schedule will likely result in suboptimal policies.
+"""
 import gymnasium as gym
 
 from ray.rllib.algorithms.appo import APPOConfig
@@ -12,8 +63,8 @@ from ray.rllib.examples.utils import (
 from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args(
-    default_reward=20.0,
-    default_timesteps=10_000_000,
+    default_reward=18.0,
+    default_timesteps=10_000_000,  # 40 million steps
 )
 parser.set_defaults(
     env="ale_py:ALE/Pong-v5",
