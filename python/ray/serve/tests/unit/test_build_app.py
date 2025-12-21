@@ -526,7 +526,6 @@ def test_ingress_name_got_modified():
     collisions.
     """
 
-    @serve.deployment
     class D:
         pass
 
@@ -539,7 +538,10 @@ def test_ingress_name_got_modified():
 
     # The ingress deployment name should be modified to avoid collision.
     assert built_app.ingress_deployment_name == "D_2"
+
+    # The ingress deployment should be the last one.
     assert len(built_app.deployments) == 3
+    assert built_app.deployments[-1].name == "D_2"
 
 
 if __name__ == "__main__":
