@@ -158,3 +158,17 @@ class AcceleratorManager(ABC):
             A dictionary mapping accelerator related label keys to values.
         """
         return None
+
+    @staticmethod
+    def healthcheck_accelerator(accelerator_id: str) -> Tuple[bool, Optional[str]]:
+        """Run a health check on a specific accelerator.
+
+        Args:
+            accelerator_id: The physical device ID to check.
+
+        Returns:
+            (healthy, error_message): A tuple where the first element is True
+                if the accelerator is healthy, False otherwise. The second
+                element is an error message if unhealthy, None otherwise.
+        """
+        return (True, None)
