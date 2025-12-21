@@ -215,6 +215,8 @@ class TestOfflineEnvRunner(unittest.TestCase):
                 offline_env_runner.subdir_path = offline_env_runner.env.unwrapped.envs[
                     0
                 ].unwrapped.__class__.__name__.lower()
+
+            return offline_env_runner.subdir_path
         elif not offline_env_runner.env and (
             (
                 offline_env_runner.config.create_env_on_local_worker
