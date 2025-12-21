@@ -526,6 +526,7 @@ def test_ingress_name_got_modified():
     collisions.
     """
 
+    @serve.deployment
     class D:
         pass
 
