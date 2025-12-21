@@ -72,8 +72,8 @@ class TensorTransportManager(ABC):
     @abstractmethod
     def get_communicator_metadata(
         self,
-        src_actor: "ray.actor.ActorHandle",
-        dst_actor: "ray.actor.ActorHandle",
+        src_actor: Optional["ray.actor.ActorHandle"],
+        dst_actor: Optional["ray.actor.ActorHandle"],
         backend: Optional[str] = None,
     ) -> CommunicatorMetadata:
         """

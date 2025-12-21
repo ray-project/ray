@@ -16,7 +16,6 @@
 
 #include <memory>
 #include <string>
-#include <utility>
 
 #include "ray/util/process.h"
 
@@ -82,6 +81,10 @@ void SerializeReturnObject(const ObjectID &object_id,
   }
   for (const auto &nested_ref : return_object->GetNestedRefs()) {
     return_object_proto->add_nested_inlined_refs()->CopyFrom(nested_ref);
+  }
+  const auto &direct_transport_metadata = return_object->GetDirectTransportMetadata();
+  if (direct_transport_metadata.has_value()) {
+    return_object_proto->set_direct_transport_metadata(*direct_transport_metadata);
   }
 }
 

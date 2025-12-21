@@ -50,7 +50,7 @@ class GPUTestActor:
         obj_id = ref.hex()
         gpu_manager = ray._private.worker.global_worker.gpu_object_manager
         assert gpu_manager.gpu_object_store.has_tensor(tensor)
-        assert obj_id in gpu_manager.managed_gpu_object_metadata
+        assert gpu_manager.is_managed_object(obj_id)
         nixl_meta = gpu_manager.gpu_object_store._managed_meta_nixl[obj_id]
         assert nixl_meta is not None
         assert gpu_manager.gpu_object_store._managed_meta_counts_nixl[nixl_meta] == 1
@@ -59,7 +59,7 @@ class GPUTestActor:
 
         gpu_manager.gpu_object_store.wait_tensor_freed(tensor, timeout=10)
         assert not gpu_manager.gpu_object_store.has_tensor(tensor)
-        assert obj_id not in gpu_manager.managed_gpu_object_metadata
+        assert not gpu_manager.is_managed_object(obj_id)
         assert obj_id not in gpu_manager.gpu_object_store._managed_meta_nixl
         assert nixl_meta not in gpu_manager.gpu_object_store._managed_meta_counts_nixl
         return "Success"

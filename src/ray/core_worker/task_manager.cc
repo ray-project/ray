@@ -598,6 +598,9 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
       direct_return = true;
     }
   }
+  if (return_object.has_direct_transport_metadata()) {
+    set_direct_transport_metadata_(object_id, return_object.direct_transport_metadata());
+  }
 
   rpc::Address owner_address;
   if (reference_counter_.GetOwner(object_id, &owner_address) && !nested_refs.empty()) {
