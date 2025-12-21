@@ -263,14 +263,6 @@ class MARWILConfig(AlgorithmConfig):
         if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
         if burnin_len is not NotProvided:
-            # Make sure the burnin_len is smaller than max_seq_len.
-            if burnin_len >= self.model_config.get("max_seq_len", 0):
-                raise ValueError(
-                    "`burnin_len` must be < `model.max_seq_len`! "
-                    f"Got burnin_len={burnin_len}, "
-                    f"model.max_seq_len="
-                    f"{self.model_config.get('max_seq_len', 0)}."
-                )
             self.burnin_len = burnin_len
         return self
 
@@ -421,6 +413,14 @@ class MARWILConfig(AlgorithmConfig):
                 "iterations per learner (`dataset_num_iters_per_learner`) has to be "
                 "defined! Set this hyperparameter through `config.offline_data("
                 "dataset_num_iters_per_learner=...)`."
+            )
+
+        # Assert that burnin_len is smaller than max_seq_len.
+        if self.burnin_len >= self.model.get("max_seq_len", 0):
+            self._value_error(
+                "`burnin_len` must be < `model.max_seq_len`! "
+                f"Got burnin_len={self.burnin_len}, "
+                f"model.max_seq_len={self.model.get('max_seq_len', 0)}."
             )
 
     @property
