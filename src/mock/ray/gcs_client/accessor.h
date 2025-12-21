@@ -83,7 +83,8 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
   MOCK_METHOD(
       void,
       AsyncSubscribeToNodeAddressAndLivenessChange,
-      (std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe,
+      (std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &, const bool)>
+           subscribe,
        StatusCallback done),
       (override));
   MOCK_METHOD(std::optional<rpc::GcsNodeAddressAndLiveness>,

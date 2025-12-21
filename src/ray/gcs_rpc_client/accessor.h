@@ -206,11 +206,19 @@ class NodeInfoAccessor {
   /// and liveness information for each node, excluding other node metadata.
   ///
   /// \param subscribe Callback that will be called if a node is
-  /// added or a node is removed. The callback needs to be idempotent because it will also
-  /// be called for existing nodes.
+  /// added or a node is removed. Callbacks are triggered from two sources. One is
+  /// from an initialization stage and steady state stage, and they may interleave (there
+  /// is no ordering guarantee relative to these two stages).  is_initialization denotes
+  /// the source of the callback and these are triggered from a compacted view of events
+  /// which will include a limited set of dead nodes (but not all). As such, it's not
+  /// guaranteed that for every dead node, that the callback will be triggered
+  /// twice (for alive and dead states) or even once (as it's possible a dead node was
+  /// trimmed from the list) during the lifetime of a cluster and a given subscription.
   /// \param done Callback that will be called when subscription is complete.
   virtual void AsyncSubscribeToNodeAddressAndLivenessChange(
-      std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe,
+      std::function<void(NodeID,
+                         const rpc::GcsNodeAddressAndLiveness &,
+                         const bool is_initializing)> subscribe,
       StatusCallback done);
 
   /// Send a check alive request to GCS for the liveness of some nodes.
@@ -261,7 +269,8 @@ class NodeInfoAccessor {
   virtual void AsyncResubscribe();
 
   /// Add rpc::GcsNodeAddressAndLiveness information to accessor cache.
-  virtual void HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_info);
+  virtual void HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_info,
+                                  const bool is_initializing = false);
 
   virtual bool IsSubscribedToNodeChange() const {
     return node_change_callback_address_and_liveness_ != nullptr;
@@ -276,7 +285,8 @@ class NodeInfoAccessor {
 
   /// The callback to call when a new node is added or a node is removed when leveraging
   /// the GcsNodeAddressAndLiveness version of the node api
-  std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)>
+  std::function<void(
+      NodeID, const rpc::GcsNodeAddressAndLiveness &, const bool is_initializing)>
       node_change_callback_address_and_liveness_ = nullptr;
 
   /// Mutex to protect node_cache_address_and_liveness_ for thread-safe access
@@ -290,6 +300,8 @@ class NodeInfoAccessor {
   // TODO(dayshah): Need to refactor gcs client / accessor to avoid this.
   // https://github.com/ray-project/ray/issues/54805
   FRIEND_TEST(NodeInfoAccessorTest, TestHandleNotification);
+  FRIEND_TEST(NodeInfoAccessorTest, TestHandleNotificationIsInitializingOverride);
+  FRIEND_TEST(NodeInfoAccessorTest, TestHandleNotificationIsInitializingPreserved);
 };
 
 /// \class NodeResourceInfoAccessor
