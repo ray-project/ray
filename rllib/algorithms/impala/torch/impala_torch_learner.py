@@ -242,11 +242,15 @@ class IMPALATorchLearner(IMPALALearner, TorchLearner):
             gradients = self.compute_gradients(loss_per_module)
 
         # 5. Manually All-Reduce gradients (outside no_sync).
-        world_size = torch.distributed.get_world_size()
         # We iterate over all known parameters (`self._params`). This is important
         # to ensure the
         for param in self._params.values():
+            # Is the parameter present on this rank?
+            present = 1
             if param.grad is None:
+                # Parameter is not present on this rank. Keep track of that
+                # for averaging later.
+                present = 0
                 # This parameter was not used (e.g., p1 on Rank 0).
                 # Create a zero-gradient to participate in the all_reduce.
                 param.grad = torch.zeros_like(param)
@@ -254,7 +258,11 @@ class IMPALATorchLearner(IMPALALearner, TorchLearner):
             # all_reduce. No deadlock.
             torch.distributed.all_reduce(param.grad, op=torch.distributed.ReduceOp.SUM)
             # Scale the gradients accordingly.
-            param.grad.data.div_(world_size)
+            denom = torch.tensor(present, device=param.device, dtype=param.dtype)
+            # Receive the number of participating ranks for this param.
+            torch.distributed.all_reduce(denom, op=torch.distributed.ReduceOp.SUM)
+            # Average the summed gradients.
+            param.grad.data.div_(denom.clamp(min=1.0))
 
         # 6. Collect the gradients for all modules to update the modules synchronously.
         gradients = {pid: p.grad for pid, p in self._params.items()}

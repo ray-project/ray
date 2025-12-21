@@ -480,7 +480,9 @@ class _LearnerThread(threading.Thread):
             self._in_queue.put_nowait(_STOP_SENTINEL)
         except queue.Full:
             # If the queue is full, the consumer will wake soon anyway.
-            pass
+            logger.warning(
+                "_LearnerThread.request_stop(): in_queue is full; cannot enqueue stop sentinel."
+            )
 
     def run(self) -> None:
         while True:
@@ -569,6 +571,7 @@ class _LearnerThread(threading.Thread):
                         self.learner._learner_state_queue.get_nowait()
                     except queue.Empty:
                         logger.warning("No old learner state to remove from the queue.")
+
                     # Pass the learner state into the queue to the main process.
                     self.learner._learner_state_queue.put_nowait(learner_state)
                 self.learner.metrics.log_value(

@@ -143,6 +143,10 @@ class CircularBuffer:
 
         return dropped_ts
 
+    def put_nowait(self, item: Any) -> int:
+        """Equivalent to self.put(block=False)."""
+        return self.put(item, block=False)
+
     def get(self, block: bool = True, timeout: Optional[float] = None) -> Any:
         """Sample a random batch from the buffer.
 
@@ -182,6 +186,10 @@ class CircularBuffer:
 
         # Return the sampled batch.
         return batch
+
+    def get_nowait(self) -> Any:
+        """Equivalent to self.get(block=False)."""
+        return self.get(block=False)
 
     @property
     def filled(self) -> bool:
