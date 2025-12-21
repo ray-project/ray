@@ -206,7 +206,4 @@ Serve uses a Uvicorn HTTP server internally to serve HTTP requests. By default, 
 keeps HTTP connections alive for 5 seconds between requests. Modify the keep-alive
 timeout by setting the `keep_alive_timeout_s` in the `http_options` field of the Serve
 config files. This config is global to your Ray cluster, and you can't update it during
-runtime. You can also set the `RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S` environment variable to
-set the keep alive timeout. `RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S` takes
-precedence over the `keep_alive_timeout_s` config if both are set. See
-Uvicorn's keep alive timeout [guide](https://www.uvicorn.org/server-behavior/#timeouts) for more information.
+runtime. See Uvicorn's keep alive timeout [guide](https://www.uvicorn.org/server-behavior/#timeouts) for more information.
