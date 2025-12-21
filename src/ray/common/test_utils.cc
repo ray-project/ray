@@ -31,7 +31,7 @@
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
-#include "ray/util/process.h"
+#include "ray/util/process_factory.h"
 #include "ray/util/time.h"
 
 namespace ray {
@@ -74,7 +74,7 @@ int TestSetupUtil::StartUpRedisServer(int port, bool save) {
 #endif
   cmdargs.insert(cmdargs.end(), {"--port", std::to_string(actual_port)});
   RAY_LOG(INFO) << "Start redis command is: " << CreateCommandLine(cmdargs);
-  RAY_CHECK(!Process::Spawn(cmdargs, true).second);
+  RAY_CHECK(!ProcessFactory::Spawn(cmdargs, true).second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
   return actual_port;
 }
@@ -90,7 +90,7 @@ void TestSetupUtil::ShutDownRedisServer(int port) {
   std::vector<std::string> cmdargs(
       {TEST_REDIS_CLIENT_EXEC_PATH, "-p", std::to_string(port), "shutdown"});
   RAY_LOG(INFO) << "Stop redis command is: " << CreateCommandLine(cmdargs);
-  if (Process::Call(cmdargs) != std::error_code()) {
+  if (ProcessFactory::Call(cmdargs) != std::error_code()) {
     RAY_LOG(WARNING) << "Failed to stop redis. The redis process may no longer exist.";
   }
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -107,7 +107,7 @@ void TestSetupUtil::ExecuteRedisCmd(int port, std::vector<std::string> cmd) {
       {TEST_REDIS_CLIENT_EXEC_PATH, "-p", std::to_string(port)});
   cmdargs.insert(cmdargs.end(), cmd.begin(), cmd.end());
   RAY_LOG(INFO) << "Send command to redis: " << CreateCommandLine(cmdargs);
-  if (Process::Call(cmdargs)) {
+  if (ProcessFactory::Call(cmdargs)) {
     RAY_LOG(WARNING) << "Failed to send request to redis.";
   }
 }
@@ -116,7 +116,7 @@ void TestSetupUtil::FlushRedisServer(int port) {
   std::vector<std::string> cmdargs(
       {TEST_REDIS_CLIENT_EXEC_PATH, "-p", std::to_string(port), "flushall"});
   RAY_LOG(INFO) << "Cleaning up redis with command: " << CreateCommandLine(cmdargs);
-  if (Process::Call(cmdargs)) {
+  if (ProcessFactory::Call(cmdargs)) {
     RAY_LOG(WARNING) << "Failed to flush redis. The redis process may no longer exist.";
   }
   std::this_thread::sleep_for(std::chrono::milliseconds(100));

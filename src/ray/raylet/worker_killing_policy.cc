@@ -36,7 +36,7 @@ std::string WorkerKillingPolicy::WorkersDebugString(
   std::stringstream result;
   int64_t index = 1;
   for (auto &worker : workers) {
-    auto pid = worker->GetProcess().GetId();
+    auto pid = worker->GetProcess()->GetId();
     int64_t used_memory = 0;
     const auto pid_entry = system_memory.process_used_bytes.find(pid);
     if (pid_entry != system_memory.process_used_bytes.end()) {

@@ -14,73 +14,30 @@
 
 #pragma once
 
-#ifdef __linux__
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#endif
-
-#include <cstdint>
 #include <functional>
-#include <map>
 #include <memory>
-#include <optional>
 #include <string>
 #include <system_error>
 #include <utility>
 #include <vector>
 
-#include "ray/util/compat.h"
 #include "ray/util/logging.h"
+#include "ray/util/process_interface.h"
 
 // TODO(#54703): Put this type in a separate target.
 using AddProcessToCgroupHook = std::function<void(const std::string &)>;
 
-#ifndef PID_MAX_LIMIT
-// This is defined by Linux to be the maximum allowable number of processes
-// There's no guarantee for other OSes, but it's useful for testing purposes.
-enum { PID_MAX_LIMIT = 1 << 22 };
-#endif
-
 namespace ray {
-
-#if !defined(_WIN32)
-/// Sets the FD_CLOEXEC flag on a file descriptor.
-/// This means when the process is forked, this fd would be closed in the child process
-/// side.
-///
-/// Idempotent.
-/// Not thread safe.
-/// See https://github.com/ray-project/ray/issues/40813
-void SetFdCloseOnExec(int fd);
-#endif
-
-class EnvironmentVariableLess {
- public:
-  bool operator()(char a, char b) const;
-
-  bool operator()(const std::string &a, const std::string &b) const;
-};
-
-typedef std::map<std::string, std::string, EnvironmentVariableLess> ProcessEnvironment;
-
-using StartupToken = int64_t;
 
 class ProcessFD;
 
-class Process {
- protected:
-  std::shared_ptr<ProcessFD> p_;
-
-  explicit Process(pid_t pid);
-
+class Process : public ProcessInterface {
  public:
-  ~Process();
+  ~Process() override;
+
   /// Creates a null process object. Two null process objects are assumed equal.
   Process();
-  Process(const Process &);
-  Process(Process &&);
-  Process &operator=(Process other);
+
   /// Creates a new process.
   /// \param[in] argv The command-line of the process to spawn (terminated with NULL).
   /// \param[in] io_service Boost.Asio I/O service (optional).
@@ -109,69 +66,44 @@ class Process {
       bool pipe_to_stdin = false,
       AddProcessToCgroupHook add_to_cgroup_hook = [](const std::string &) {},
       bool new_process_group = false);
-  /// Convenience function to run the given command line and wait for it to finish.
-  static std::error_code Call(const std::vector<std::string> &args,
-                              const ProcessEnvironment &env = {});
+
+  explicit Process(pid_t pid);
+
+  Process(const Process &) = default;
+  Process(Process &&) = default;
+  Process &operator=(const Process &) = default;
+  Process &operator=(Process &&) = default;
+
+ protected:
+  std::shared_ptr<ProcessFD> p_;
+
+ public:
   /// Executes command line operation.
   ///
   /// \param[in] argv The command line command to execute.
   /// \return The output from the command.
   static std::string Exec(const std::string command);
-  static Process CreateNewDummy();
-  static Process FromPid(pid_t pid);
-  pid_t GetId() const;
+
+  pid_t GetId() const override;
+
   /// Returns an opaque pointer or handle to the underlying process object.
   /// Implementation detail, used only for identity testing. Do not dereference.
-  const void *Get() const;
-  bool IsNull() const;
-  bool IsValid() const;
+  const void *Get() const override;
+
+  bool IsNull() const override;
+
+  bool IsValid() const override;
+
   /// Forcefully kills the process. Unsafe for unowned processes.
-  void Kill();
+  void Kill() override;
+
   /// Check whether the process is alive.
-  bool IsAlive() const;
-  /// Convenience function to start a process in the background.
-  /// \param pid_file A file to write the PID of the spawned process in.
-  static std::pair<Process, std::error_code> Spawn(
-      const std::vector<std::string> &args,
-      bool decouple,
-      const std::string &pid_file = std::string(),
-      const ProcessEnvironment &env = {},
-      bool new_process_group = false);
+  bool IsAlive() const override;
+
   /// Waits for process to terminate. Not supported for unowned processes.
   /// \return The process's exit code. Returns 0 for a dummy process, -1 for a null one.
-  int Wait() const;
+  int Wait() const override;
 };
-
-// Get the Process ID of the parent process. If the parent process exits, the PID
-// will be 1 (this simulates POSIX getppid()).
-pid_t GetParentPID();
-
-pid_t GetPID();
-
-bool IsParentProcessAlive();
-
-bool IsProcessAlive(pid_t pid);
-
-static constexpr char kProcDirectory[] = "/proc";
-
-// Platform-specific kill for the specified process identifier.
-// Currently only supported on Linux. Returns nullopt for other platforms.
-std::optional<std::error_code> KillProc(pid_t pid);
-
-// Platform-specific kill for an entire process group. Currently only supported on
-// POSIX (non-Windows). Returns nullopt for other platforms.
-std::optional<std::error_code> KillProcessGroup(pid_t pgid, int sig);
-
-// Platform-specific utility to find the process IDs of all processes
-// that have the specified parent_pid as their parent.
-// In other words, find all immediate children of the specified process
-// id.
-//
-// Currently only supported on Linux. Returns nullopt on other platforms.
-std::optional<std::vector<pid_t>> GetAllProcsWithPpid(pid_t parent_pid);
-
-/// Terminate the process without cleaning up the resources.
-void QuickExit();
 
 }  // namespace ray
 

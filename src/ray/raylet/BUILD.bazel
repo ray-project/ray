@@ -12,6 +12,9 @@ ray_cc_library(
         "//src/ray/util:event",
         "//src/ray/util:logging",
         "//src/ray/util:process",
+        "//src/ray/util:process_factory",
+        "//src/ray/util:process_interface",
+        "//src/ray/util:process_utils",
         "//src/ray/util:thread_utils",
         "@boost//:asio",
     ],
@@ -86,7 +89,7 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:id",
-        "//src/ray/util:process",
+        "//src/ray/util:process_interface",
         "@com_google_absl//absl/time",
     ],
 )
@@ -106,7 +109,8 @@ ray_cc_library(
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/raylet_ipc_client:client_connection",
-        "//src/ray/util:process",
+        "//src/ray/util:process_factory",
+        "//src/ray/util:process_interface",
         "@com_google_absl//absl/time",
     ],
 )
@@ -118,6 +122,7 @@ ray_cc_library(
     deps = [
         ":worker",
         "//src/ray/raylet_ipc_client:client_connection",
+        "//src/ray/util:process_factory",
     ],
 )
 
@@ -142,8 +147,11 @@ ray_cc_library(
         "//src/ray/raylet_ipc_client:client_connection",
         "//src/ray/util:container_util",
         "//src/ray/util:network_util",
+        "//src/ray/util:process_factory",
+        "//src/ray/util:process_utils",
         "//src/ray/util:time",
         "@boost//:system",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -162,7 +170,7 @@ ray_cc_library(
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
         "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/util:logging",
-        "//src/ray/util:process",
+        "//src/ray/util:process_utils",
         "//src/ray/util:time",
         "@boost//:beast",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -270,6 +278,8 @@ ray_cc_library(
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:container_util",
         "//src/ray/util:network_util",
+        "//src/ray/util:process_factory",
+        "//src/ray/util:process_utils",
         "//src/ray/util:throttler",
         "//src/ray/util:time",
         "@boost//:system",

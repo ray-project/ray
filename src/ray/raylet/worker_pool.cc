@@ -37,11 +37,17 @@
 #include "ray/util/container_util.h"
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
+#include "ray/util/process_factory.h"
+#include "ray/util/process_utils.h"
 #include "ray/util/time.h"
 
 namespace ray {
 
 namespace raylet {
+
+// Static null process for returning references in error cases.
+const std::unique_ptr<ProcessInterface> WorkerPool::kNullProcess =
+    ProcessFactory::CreateNull();
 
 namespace {
 
@@ -163,15 +169,16 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
 }
 
 WorkerPool::~WorkerPool() {
-  std::unordered_set<Process> procs_to_kill;
-  for (const auto &entry : states_by_lang_) {
+  absl::flat_hash_map<pid_t, std::unique_ptr<ProcessInterface>> procs_to_kill;
+  for (auto &entry : states_by_lang_) {
     // Kill all the worker processes.
     for (auto &worker_process : entry.second.worker_processes) {
-      procs_to_kill.insert(worker_process.second.proc);
+      auto pid = worker_process.second.proc->GetId();
+      procs_to_kill.try_emplace(pid, std::move(worker_process.second.proc));
     }
   }
-  for (Process proc : procs_to_kill) {
-    proc.Kill();
+  for (const auto &[_, proc] : procs_to_kill) {
+    proc->Kill();
     // NOTE: Avoid calling Wait() here. It fails with ECHILD, as SIGCHLD is disabled.
   }
 }
@@ -238,22 +245,24 @@ void WorkerPool::update_worker_startup_token_counter() {
   worker_startup_token_counter_ += 1;
 }
 
-void WorkerPool::AddWorkerProcess(
+const std::unique_ptr<ProcessInterface> &WorkerPool::AddWorkerProcess(
     State &state,
     rpc::WorkerType worker_type,
-    const Process &proc,
+    std::unique_ptr<ProcessInterface> proc,
     const std::chrono::high_resolution_clock::time_point &start,
     const rpc::RuntimeEnvInfo &runtime_env_info,
     const std::vector<std::string> &dynamic_options,
     std::optional<absl::Duration> worker_startup_keep_alive_duration) {
-  state.worker_processes.emplace(worker_startup_token_counter_,
-                                 WorkerProcessInfo{/*is_pending_registration=*/true,
-                                                   worker_type,
-                                                   proc,
-                                                   start,
-                                                   runtime_env_info,
-                                                   dynamic_options,
-                                                   worker_startup_keep_alive_duration});
+  auto [it, inserted] = state.worker_processes.emplace(
+      worker_startup_token_counter_,
+      WorkerProcessInfo{/*is_pending_registration=*/true,
+                        worker_type,
+                        std::move(proc),
+                        start,
+                        runtime_env_info,
+                        dynamic_options,
+                        worker_startup_keep_alive_duration});
+  return it->second.proc;
 }
 
 void WorkerPool::RemoveWorkerProcess(State &state,
@@ -460,7 +469,8 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
   return {std::move(worker_command_args), std::move(env)};
 }
 
-std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
+std::tuple<const std::unique_ptr<ProcessInterface> &, StartupToken>
+WorkerPool::StartWorkerProcess(
     const Language &language,
     const rpc::WorkerType worker_type,
     const JobID &job_id,
@@ -478,7 +488,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
       // Will reschedule ready leases in `NodeManager::HandleJobStarted`.
       *status = PopWorkerStatus::JobConfigMissing;
       process_failed_job_config_missing_++;
-      return {Process(), (StartupToken)-1};
+      return {kNullProcess, (StartupToken)-1};
     }
     job_config = &it->second;
   }
@@ -502,7 +512,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
                    << " being started and pending registration";
     *status = PopWorkerStatus::TooManyStartingWorkerProcesses;
     process_failed_rate_limited_++;
-    return {Process(), (StartupToken)-1};
+    return {kNullProcess, (StartupToken)-1};
   }
   // Either there are no workers pending registration or the worker start is being forced.
   RAY_LOG(DEBUG) << "Starting new worker process of language "
@@ -522,28 +532,29 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
 
   auto start = std::chrono::high_resolution_clock::now();
   // Start a process and measure the startup time.
-  Process proc = StartProcess(worker_command_args, env);
+  std::unique_ptr<ProcessInterface> proc = StartProcess(worker_command_args, env);
   worker_pool_metrics_.num_workers_started_sum.Record(1);
-  RAY_LOG(INFO) << "Started worker process with pid " << proc.GetId() << ", the token is "
-                << worker_startup_token_counter_;
+  RAY_LOG(INFO) << "Started worker process with pid " << proc->GetId()
+                << ", the token is " << worker_startup_token_counter_;
   if (!IsIOWorkerType(worker_type)) {
-    AdjustWorkerOomScore(proc.GetId());
+    AdjustWorkerOomScore(proc->GetId());
   }
   MonitorStartingWorkerProcess(worker_startup_token_counter_, language, worker_type);
-  AddWorkerProcess(state,
-                   worker_type,
-                   proc,
-                   start,
-                   runtime_env_info,
-                   dynamic_options,
-                   worker_startup_keep_alive_duration);
+  const std::unique_ptr<ProcessInterface> &stored_proc =
+      AddWorkerProcess(state,
+                       worker_type,
+                       std::move(proc),
+                       start,
+                       runtime_env_info,
+                       dynamic_options,
+                       worker_startup_keep_alive_duration);
   StartupToken worker_startup_token = worker_startup_token_counter_;
   update_worker_startup_token_counter();
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
     io_worker_state.num_starting_io_workers++;
   }
-  return {proc, worker_startup_token};
+  return {stored_proc, worker_startup_token};
 }
 
 void WorkerPool::AdjustWorkerOomScore(pid_t pid) const {
@@ -584,14 +595,14 @@ void WorkerPool::MonitorStartingWorkerProcess(StartupToken proc_startup_token,
     auto it = state.worker_processes.find(proc_startup_token);
     if (it != state.worker_processes.end() && it->second.is_pending_registration) {
       RAY_LOG(ERROR)
-          << "Some workers of the worker process(" << it->second.proc.GetId()
+          << "Some workers of the worker process(" << it->second.proc->GetId()
           << ") have not registered within the timeout. "
-          << (it->second.proc.IsAlive()
+          << (it->second.proc->IsAlive()
                   ? "The process is still alive, probably it's hanging during start."
                   : "The process is dead, probably it crashed during start.");
 
-      if (it->second.proc.IsAlive()) {
-        it->second.proc.Kill();
+      if (it->second.proc->IsAlive()) {
+        it->second.proc->Kill();
       }
 
       process_failed_pending_registration_++;
@@ -633,8 +644,8 @@ void WorkerPool::MonitorPopWorkerRequestForRegistration(
   });
 }
 
-Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args,
-                                 const ProcessEnvironment &env) {
+std::unique_ptr<ProcessInterface> WorkerPool::StartProcess(
+    const std::vector<std::string> &worker_command_args, const ProcessEnvironment &env) {
   // Launch the process to create the worker.
   std::error_code ec;
   std::vector<const char *> argv;
@@ -670,15 +681,16 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   // Workers should be placed into their own process groups (if enabled) to enable
   // per-worker cleanup via killpg on worker death.
   const bool new_process_group = RayConfig::instance().process_group_cleanup_enabled();
-  Process child(argv.data(),
-                io_service_,
-                ec,
-                /*decouple=*/false,
-                env,
-                /*pipe_to_stdin=*/false,
-                add_to_cgroup_hook_,
-                new_process_group);
-  if (!child.IsValid() || ec) {
+  std::unique_ptr<ProcessInterface> child =
+      ProcessFactory::Create(argv.data(),
+                             io_service_,
+                             ec,
+                             /*decouple=*/false,
+                             env,
+                             /*pipe_to_stdin=*/false,
+                             add_to_cgroup_hook_,
+                             new_process_group);
+  if (!child->IsValid() || ec) {
     // errorcode 24: Too many files. This is caused by ulimit.
     if (ec.value() == 24) {
       RAY_LOG(FATAL) << "Too many workers, failed to create a file. Try setting "
@@ -800,8 +812,8 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     return status;
   }
 
-  auto process = Process::FromPid(pid);
-  worker->SetProcess(process);
+  std::unique_ptr<ProcessInterface> process = ProcessFactory::FromPid(pid);
+  worker->SetProcess(std::move(process));
 #if !defined(_WIN32)
   // Save the worker's actual PGID at registration for safe cleanup later.
   // If setpgrp() succeeded in the child, pgid will equal pid; otherwise it will be the
@@ -912,7 +924,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   // internal namespace. These are system processes and therefore, do not need to be moved
   // into the workers cgroup.
   if (!IsInternalNamespace(job_config.ray_namespace())) {
-    add_to_cgroup_hook_(std::to_string(driver->GetProcess().GetId()));
+    add_to_cgroup_hook_(std::to_string(driver->GetProcess()->GetId()));
   }
 
   HandleJobStarted(job_id, job_config);
@@ -1204,7 +1216,7 @@ void WorkerPool::TryKillingIdleWorkers() {
       RAY_LOG(DEBUG) << "Number of idle workers " << num_killable_idle_workers
                      << " is larger than the number of desired workers "
                      << num_desired_idle_workers << " killing idle worker with PID "
-                     << it->worker->GetProcess().GetId();
+                     << it->worker->GetProcess()->GetId();
       KillIdleWorker(*it);
       it = idle_of_all_languages_.erase(it);
       num_killable_idle_workers--;
@@ -1348,7 +1360,7 @@ void WorkerPool::StartNewWorker(
                            request->runtime_env_info_,
                            request->worker_startup_keep_alive_duration_);
     if (status == PopWorkerStatus::OK) {
-      RAY_CHECK(proc.IsValid());
+      RAY_CHECK(proc->IsValid());
       WarnAboutSize();
       state.pending_registration_requests.emplace_back(request);
       MonitorPopWorkerRequestForRegistration(request);
@@ -1773,7 +1785,7 @@ void WorkerPool::TryStartIOWorkers(const Language &language,
       PopWorkerStatus status;
       auto [proc, startup_token] =
           StartWorkerProcess(ray::Language::PYTHON, worker_type, JobID::Nil(), &status);
-      if (!proc.IsValid()) {
+      if (!proc->IsValid()) {
         // We may hit the maximum worker start up concurrency limit. Stop.
         return;
       }

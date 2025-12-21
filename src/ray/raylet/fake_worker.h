@@ -21,6 +21,7 @@
 
 #include "ray/raylet/worker.h"
 #include "ray/raylet_ipc_client/client_connection.h"
+#include "ray/util/process_factory.h"
 
 namespace ray {
 namespace raylet {
@@ -30,7 +31,7 @@ class FakeWorker : public WorkerInterface {
   FakeWorker(WorkerID worker_id, int port, instrumented_io_context &io_context)
       : worker_id_(worker_id),
         port_(port),
-        proc_(Process::CreateNewDummy()),
+        proc_(ProcessFactory::CreateNewDummy()),
         connection_([&io_context]() {
           local_stream_socket socket(io_context);
           return ClientConnection::Create(
@@ -71,9 +72,9 @@ class FakeWorker : public WorkerInterface {
   void MarkBlocked() override {}
   void MarkUnblocked() override {}
   bool IsBlocked() const override { return false; }
-  Process GetProcess() const override { return proc_; }
+  const std::unique_ptr<ProcessInterface> &GetProcess() const override { return proc_; }
   StartupToken GetStartupToken() const override { return 0; }
-  void SetProcess(Process proc) override {}
+  void SetProcess(std::unique_ptr<ProcessInterface> proc) override {}
   Language GetLanguage() const override { return Language::PYTHON; }
   void Connect(int port) override {}
   void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) override {}
@@ -114,7 +115,7 @@ class FakeWorker : public WorkerInterface {
   int port_;
   LeaseID lease_id_;
   BundleID bundle_id_;
-  Process proc_;
+  std::unique_ptr<ProcessInterface> proc_;
   std::shared_ptr<ClientConnection> connection_;
   RayLease granted_lease_;
   JobID job_id_;

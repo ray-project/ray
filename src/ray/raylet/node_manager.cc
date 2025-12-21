@@ -54,6 +54,8 @@
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/network_util.h"
+#include "ray/util/process_factory.h"
+#include "ray/util/process_utils.h"
 #include "ray/util/string_utils.h"
 #include "ray/util/time.h"
 
@@ -771,7 +773,7 @@ void NodeManager::QueryAllWorkerStates(
            // If the worker type is the same, order it based on pid (just for consistent
            // ordering).
            || ((worker_a->GetWorkerType() == worker_b->GetWorkerType()) &&
-               (worker_a->GetProcess().GetId() < worker_b->GetProcess().GetId()));
+               (worker_a->GetProcess()->GetId() < worker_b->GetProcess()->GetId()));
   };
   std::sort(all_workers.begin(), all_workers.end(), sort_func);
 
@@ -1098,7 +1100,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
                  << protocol::EnumNameMessageType(message_type_value) << "("
                  << message_type << ") from worker with PID "
                  << (registered_worker
-                         ? std::to_string(registered_worker->GetProcess().GetId())
+                         ? std::to_string(registered_worker->GetProcess()->GetId())
                          : "nil");
 
   if (registered_worker && registered_worker->IsDead()) {
@@ -1264,7 +1266,7 @@ Status NodeManager::RegisterForNewDriver(
     const JobID &job_id,
     const ray::protocol::RegisterClientRequest *message,
     std::function<void(Status, int)> send_reply_callback) {
-  worker->SetProcess(Process::FromPid(pid));
+  worker->SetProcess(ProcessFactory::FromPid(pid));
   rpc::JobConfig job_config;
   job_config.ParseFromString(message->serialized_job_config()->str());
   return worker_pool_.RegisterDriver(worker, job_config, send_reply_callback);
@@ -1309,7 +1311,7 @@ void NodeManager::ProcessAnnounceWorkerPortMessageImpl(
     auto job_data_ptr = gcs::CreateJobTableData(job_id,
                                                 /*is_dead=*/false,
                                                 driver_address,
-                                                worker->GetProcess().GetId(),
+                                                worker->GetProcess()->GetId(),
                                                 message->entrypoint()->str(),
                                                 *job_config);
 
@@ -1445,7 +1447,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                                    time(nullptr),
                                    disconnect_type,
                                    disconnect_detail,
-                                   worker->GetProcess().GetId(),
+                                   worker->GetProcess()->GetId(),
                                    creation_task_exception);
   gcs_client_.Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr);
 
@@ -1476,7 +1478,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                       << " Node ID: " << self_node_id_
                       << " Worker IP address: " << worker->IpAddress()
                       << " Worker port: " << worker->Port()
-                      << " Worker PID: " << worker->GetProcess().GetId()
+                      << " Worker PID: " << worker->GetProcess()->GetId()
                       << " Worker exit type: "
                       << rpc::WorkerExitType_Name(disconnect_type)
                       << " Worker exit detail: " << disconnect_detail;
@@ -1543,14 +1545,14 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     worker_pool_.DisconnectDriver(worker);
 
     RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(worker->GetAssignedJobId())
-        << "Driver (pid=" << worker->GetProcess().GetId() << ") is disconnected.";
+        << "Driver (pid=" << worker->GetProcess()->GetId() << ") is disconnected.";
     if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
       RAY_EVENT(ERROR, "RAY_DRIVER_FAILURE")
               .WithField("node_id", self_node_id_.Hex())
               .WithField("job_id", worker->GetAssignedJobId().Hex())
           << "Driver " << worker->WorkerId()
           << " died. Address: " << BuildAddress(worker->IpAddress(), worker->Port())
-          << ", Pid: " << worker->GetProcess().GetId()
+          << ", Pid: " << worker->GetProcess()->GetId()
           << ", JobId: " << worker->GetAssignedJobId();
     }
   }
@@ -1785,7 +1787,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
     const auto &worker = leased_workers_[lease_id];
     RAY_LOG(DEBUG) << "Lease " << lease_id
                    << " is already granted with worker: " << worker->WorkerId();
-    reply->set_worker_pid(worker->GetProcess().GetId());
+    reply->set_worker_pid(worker->GetProcess()->GetId());
     reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
     reply->mutable_worker_address()->set_port(worker->Port());
     reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
@@ -2936,7 +2938,7 @@ void NodeManager::HandleGetWorkerPIDs(rpc::GetWorkerPIDsRequest request,
                      std::make_move_iterator(drivers.begin()),
                      std::make_move_iterator(drivers.end()));
   for (const auto &worker : all_workers) {
-    reply->add_pids(worker->GetProcess().GetId());
+    reply->add_pids(worker->GetProcess()->GetId());
   }
   send_reply_callback(Status::OK(), /* success */ nullptr, /* failure */ nullptr);
 }
@@ -3048,12 +3050,12 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
                 MemorySnapshot system_memory,
                 float usage_threshold) {
     if (high_memory_eviction_target_ != nullptr) {
-      if (!high_memory_eviction_target_->GetProcess().IsAlive()) {
+      if (!high_memory_eviction_target_->GetProcess()->IsAlive()) {
         RAY_LOG(INFO)
                 .WithField(high_memory_eviction_target_->WorkerId())
                 .WithField(high_memory_eviction_target_->GetGrantedLeaseId())
             << "Worker evicted and process killed to reclaim memory. "
-            << "worker pid: " << high_memory_eviction_target_->GetProcess().GetId();
+            << "worker pid: " << high_memory_eviction_target_->GetProcess()->GetId();
         high_memory_eviction_target_ = nullptr;
       }
     }
@@ -3064,7 +3066,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
                 .WithField(high_memory_eviction_target_->WorkerId())
             << "Memory usage above threshold. "
             << "Still waiting for worker eviction to free up memory. "
-            << "worker pid: " << high_memory_eviction_target_->GetProcess().GetId();
+            << "worker pid: " << high_memory_eviction_target_->GetProcess()->GetId();
       } else {
         system_memory.process_used_bytes = MemoryMonitor::GetProcessMemoryUsage();
         auto workers = worker_pool_.GetAllRegisteredWorkers();
@@ -3159,7 +3161,7 @@ std::string NodeManager::CreateOomKillMessageDetails(
       "%.2f", static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024);
   std::stringstream oom_kill_details_ss;
 
-  auto pid = worker->GetProcess().GetId();
+  auto pid = worker->GetProcess()->GetId();
   int64_t used_bytes = 0;
   const auto pid_entry = system_memory.process_used_bytes.find(pid);
   if (pid_entry != system_memory.process_used_bytes.end()) {
@@ -3176,7 +3178,7 @@ std::string NodeManager::CreateOomKillMessageDetails(
       << "Memory on the node (IP: " << worker->IpAddress() << ", ID: " << node_id
       << ") where the lease (" << worker->GetLeaseIdAsDebugString()
       << ", name=" << worker->GetGrantedLease().GetLeaseSpecification().GetTaskName()
-      << ", pid=" << worker->GetProcess().GetId()
+      << ", pid=" << worker->GetProcess()->GetId()
       << ", memory used=" << process_used_bytes_gb << "GB) was running was "
       << used_bytes_gb << "GB / " << total_bytes_gb << "GB (" << usage_fraction
       << "), which exceeds the memory usage threshold of " << usage_threshold
@@ -3371,7 +3373,7 @@ void NodeManager::HandleKillLocalActor(rpc::KillLocalActorRequest request,
         auto current_worker = worker_pool_.GetRegisteredWorker(worker_id);
         if (current_worker) {
           // If the worker is still alive, force kill it
-          RAY_LOG(INFO) << "Worker with PID=" << current_worker->GetProcess().GetId()
+          RAY_LOG(INFO) << "Worker with PID=" << current_worker->GetProcess()->GetId()
                         << " did not exit after "
                         << RayConfig::instance().kill_worker_timeout_milliseconds()
                         << "ms, force killing with SIGKILL.";
@@ -3449,7 +3451,7 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
           auto current_worker = worker_pool_.GetRegisteredWorker(worker_id);
           if (current_worker) {
             // If the worker is still alive, force kill it
-            RAY_LOG(INFO) << "Worker with PID=" << current_worker->GetProcess().GetId()
+            RAY_LOG(INFO) << "Worker with PID=" << current_worker->GetProcess()->GetId()
                           << " did not exit after "
                           << RayConfig::instance().kill_worker_timeout_milliseconds()
                           << "ms, force killing with SIGKILL.";

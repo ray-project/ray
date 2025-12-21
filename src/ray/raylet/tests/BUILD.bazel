@@ -7,6 +7,7 @@ ray_cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//src/ray/raylet:worker_interface",
+        "//src/ray/util:process_factory",
     ],
 )
 
@@ -35,6 +36,8 @@ ray_cc_test(
         "//src/ray/raylet:worker",
         "//src/ray/raylet:worker_pool",
         "//src/ray/util:path_utils",
+        "//src/ray/util:process_factory",
+        "//src/ray/util:process_interface",
         "//src/ray/util:raii",
         "@com_google_googletest//:gtest_main",
     ],

@@ -77,6 +77,37 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "process_interface",
+    hdrs = ["process_interface.h"],
+    deps = [
+        ":compat",
+    ],
+)
+
+ray_cc_library(
+    name = "process_utils",
+    srcs = ["process_utils.cc"],
+    hdrs = ["process_utils.h"],
+    deps = [
+        ":compat",
+        ":logging",
+    ] + select({
+        "@platforms//os:linux": [":filesystem"],
+        "//conditions:default": [],
+    }),
+)
+
+ray_cc_library(
+    name = "process_factory",
+    srcs = ["process_factory.cc"],
+    hdrs = ["process_factory.h"],
+    deps = [
+        ":fake_process",
+        ":process",
+    ],
+)
+
+ray_cc_library(
     name = "process",
     srcs = [
         "process.cc",
@@ -92,9 +123,19 @@ ray_cc_library(
         ":filesystem",
         ":logging",
         ":macros",
+        ":process_interface",
+        ":process_utils",
         "@boost//:asio",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_process",
+    hdrs = ["fake_process.h"],
+    deps = [
+        ":process_interface",
     ],
 )
 

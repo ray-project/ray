@@ -20,7 +20,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/network_util.h"
-#include "ray/util/process.h"
+#include "ray/util/process_factory.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -49,18 +49,20 @@ void ProcessHelper::StartRayNode(const std::string node_id_address,
     cmdargs.insert(cmdargs.end(), head_args.begin(), head_args.end());
   }
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
-  auto spawn_result = Process::Spawn(cmdargs, true);
+  std::pair<std::unique_ptr<ProcessInterface>, std::error_code> spawn_result =
+      ProcessFactory::Spawn(cmdargs, true);
   RAY_CHECK(!spawn_result.second);
-  spawn_result.first.Wait();
+  spawn_result.first->Wait();
   return;
 }
 
 void ProcessHelper::StopRayNode() {
   std::vector<std::string> cmdargs({"ray", "stop"});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
-  auto spawn_result = Process::Spawn(cmdargs, true);
+  std::pair<std::unique_ptr<ProcessInterface>, std::error_code> spawn_result =
+      ProcessFactory::Spawn(cmdargs, true);
   RAY_CHECK(!spawn_result.second);
-  spawn_result.first.Wait();
+  spawn_result.first->Wait();
   return;
 }
 
