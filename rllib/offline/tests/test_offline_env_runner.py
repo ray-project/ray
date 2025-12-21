@@ -51,7 +51,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
         Note, in this case each row of the dataset is an episode
         that could potentially contain hundreds of steps.
         """
-        data_dir = "local://" / self.base_path / "cartpole-episodes"
+        data_dir = pathlib.Path("local://") / self.base_path / "cartpole-episodes"
         config = self.config.offline_data(
             output=data_dir.as_posix(),
             # Store experiences in episodes.
@@ -101,7 +101,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
         Note, in this case each row in the dataset contains only a single
         timestep of the agent.
         """
-        data_dir = "local://" / self.base_path / "cartpole-columns"
+        data_dir = pathlib.Path("local://") / self.base_path / "cartpole-columns"
         config = self.config.offline_data(
             output=data_dir.as_posix(),
             # Store experiences in episodes.
@@ -144,7 +144,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
         Note, `input_compress_columns` will compress only the columns
         listed. `Columns.OBS` will also compress `Columns.NEXT_OBS`.
         """
-        data_dir = "local://" / self.base_path / "cartpole-columns"
+        data_dir = pathlib.Path("local://") / self.base_path / "cartpole-columns"
         config = self.config.offline_data(
             output=data_dir.as_posix(),
             # Store experiences in episodes.

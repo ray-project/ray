@@ -35,7 +35,9 @@ class OfflineRLStatefulTest(unittest.TestCase):
             # configured. The read method needs at least as many blocks
             # as remote learners.
             .offline_data(
-                input_=["s3://ray-example-data/rllib/offline-data/statelesscartpole"],
+                input_=[
+                    "s3://anonymous@ray-example-data/rllib/offline-data/statelesscartpole"
+                ],
                 input_read_episodes=True,
                 input_read_batch_size=1,
                 # Concurrency defines the number of processes that run the
