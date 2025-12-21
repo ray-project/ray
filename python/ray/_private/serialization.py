@@ -70,7 +70,7 @@ class DeserializationError(Exception):
 
 
 def _object_ref_deserializer(
-    binary, call_site, owner_address, object_status, tensor_transport_val
+    binary, call_site, owner_address, object_status, tensor_transport
 ):
     # NOTE(suquark): This function should be a global function so
     # cloudpickle can access it directly. Otherwise cloudpickle
@@ -81,7 +81,7 @@ def _object_ref_deserializer(
     # that the ref count for the ObjectRef is greater than 0 by the
     # time the core worker resolves the value of the object.
     obj_ref = ray.ObjectRef(
-        binary, owner_address, call_site, tensor_transport_val=tensor_transport_val
+        binary, owner_address, call_site, tensor_transport=tensor_transport
     )
 
     # TODO(edoakes): we should be able to just capture a reference
@@ -107,7 +107,7 @@ def _gpu_object_ref_deserializer(
     call_site,
     owner_address,
     object_status,
-    tensor_transport_val,
+    tensor_transport,
     gpu_object_meta,
 ):
     """
@@ -121,14 +121,14 @@ def _gpu_object_ref_deserializer(
         call_site: The call site of the object ref.
         owner_address: The owner address of the object ref.
         object_status: The object status of the object ref.
-        tensor_transport_val: The tensor transport value of the GPU object ref.
+        tensor_transport: The tensor transport value of the GPU object ref.
         gpu_object_meta: The GPU object metadata. This is used to fetch the GPU object later.
 
     Returns:
         The deserialized GPU object ref.
     """
     obj_ref = _object_ref_deserializer(
-        binary, call_site, owner_address, object_status, tensor_transport_val
+        binary, call_site, owner_address, object_status, tensor_transport
     )
     gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
     gpu_object_manager.add_gpu_object_metadata(obj_ref, gpu_object_meta)
@@ -721,12 +721,12 @@ class SerializationContext:
         assert (
             obj_id is not None
         ), "`obj_id` is required, and it is the key to retrieve corresponding tensors from the GPU object store."
-        # Regardless of whether `tensors` is empty, we always store the GPU object
-        # in the GPU object store. This ensures that `__ray_get_tensor_transport_metadata__` is not
+        # Regardless of whether `tensors` is empty, we always store the GPU object in
+        # the GPU object store. This ensures that direct transport system  tasks are not
         # blocked indefinitely.
         worker = ray._private.worker.global_worker
         gpu_object_manager = worker.gpu_object_manager
-        gpu_object_manager.gpu_object_store.add_object(obj_id, tensors, is_primary=True)
+        gpu_object_manager.gpu_object_store.add_object_primary(obj_id, tensors)
 
     def serialize(
         self, value: Any

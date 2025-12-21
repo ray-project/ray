@@ -183,7 +183,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \param arg_index The index of the argument.
   /// \return The tensor transport used to transfer the argument to the task
   /// executor.
-  rpc::TensorTransport ArgTensorTransport(size_t arg_index) const;
+  std::optional<std::string> ArgTensorTransport(size_t arg_index) const;
 
   ObjectID ReturnId(size_t return_index) const;
 
@@ -372,7 +372,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   TaskAttempt GetTaskAttempt() const;
 
-  const rpc::TensorTransport TensorTransport() const;
+  std::optional<std::string> TensorTransport() const;
 
  private:
   void ComputeResources();
