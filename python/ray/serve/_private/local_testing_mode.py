@@ -73,6 +73,7 @@ def make_local_deployment_handle(
         run_user_code_in_separate_thread=True,
         local_testing_mode=True,
         deployment_config=deployment._deployment_config,
+        actor_id="local",
     )
     try:
         logger.info(f"Initializing local replica class for {deployment_id}.")

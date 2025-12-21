@@ -27,16 +27,16 @@ SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 SERVE_NAMESPACE = "serve"
 
 #: HTTP Host
-DEFAULT_HTTP_HOST = get_env_str("RAY_SERVE_DEFAULT_HTTP_HOST", "127.0.0.1")
+DEFAULT_HTTP_HOST = "127.0.0.1"
 
 #: HTTP Port
-DEFAULT_HTTP_PORT = get_env_int("RAY_SERVE_DEFAULT_HTTP_PORT", 8000)
+DEFAULT_HTTP_PORT = 8000
 
 #: Uvicorn timeout_keep_alive Config
 DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 90
 
 #: gRPC Port
-DEFAULT_GRPC_PORT = get_env_int("RAY_SERVE_DEFAULT_GRPC_PORT", 9000)
+DEFAULT_GRPC_PORT = 9000
 
 #: Default Serve application name
 SERVE_DEFAULT_APP_NAME = "default"
@@ -123,6 +123,82 @@ MODEL_LOAD_LATENCY_BUCKETS_MS = parse_latency_buckets(
         get_env_str("MODEL_LOAD_LATENCY_BUCKETS_MS", ""),
     ),
     DEFAULT_LATENCY_BUCKET_MS,
+)
+
+#: Histogram buckets for replica startup and reconfigure latency.
+#: These are longer operations (constructor, model loading) so buckets start higher.
+DEFAULT_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS = [
+    5,
+    20,
+    50,
+    100,
+    250,
+    500,
+    1000,
+    2000,
+    5000,
+    10000,
+    20000,
+    30000,
+    60000,
+    120000,
+    240000,
+]
+REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS = parse_latency_buckets(
+    get_env_str("RAY_SERVE_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS", ""),
+    DEFAULT_REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
+)
+
+#: Histogram buckets for batch execution time in milliseconds.
+BATCH_EXECUTION_TIME_BUCKETS_MS = REQUEST_LATENCY_BUCKETS_MS
+
+#: Histogram buckets for batch wait time in milliseconds.
+BATCH_WAIT_TIME_BUCKETS_MS = REQUEST_LATENCY_BUCKETS_MS
+
+#: Histogram buckets for batch utilization percentage.
+DEFAULT_BATCH_UTILIZATION_BUCKETS_PERCENT = [
+    5,
+    10,
+    20,
+    30,
+    40,
+    50,
+    60,
+    70,
+    80,
+    90,
+    95,
+    99,
+    100,
+]
+BATCH_UTILIZATION_BUCKETS_PERCENT = parse_latency_buckets(
+    get_env_str(
+        "RAY_SERVE_BATCH_UTILIZATION_BUCKETS_PERCENT",
+        "",
+    ),
+    DEFAULT_BATCH_UTILIZATION_BUCKETS_PERCENT,
+)
+
+#: Histogram buckets for actual batch size.
+DEFAULT_BATCH_SIZE_BUCKETS = [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32,
+    64,
+    128,
+    256,
+    512,
+    1024,
+]
+BATCH_SIZE_BUCKETS = parse_latency_buckets(
+    get_env_str(
+        "RAY_SERVE_BATCH_SIZE_BUCKETS",
+        "",
+    ),
+    DEFAULT_BATCH_SIZE_BUCKETS,
 )
 
 #: Name of deployment health check method implemented by user.
@@ -254,13 +330,7 @@ RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = get_env_int_non_negative(
     "RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S", 0
 )
 
-RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
-    get_env_float_non_negative(
-        "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S",
-        get_env_float_non_negative("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0.0),
-    )
-    or None
-)
+RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = 0.0
 
 SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 
@@ -530,3 +600,32 @@ RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
 )
 # Key for the decision counters in default autoscaling policy state
 SERVE_AUTOSCALING_DECISION_COUNTERS_KEY = "__decision_counters"
+
+# Event loop monitoring interval in seconds.
+# This is how often the event loop lag is measured.
+RAY_SERVE_EVENT_LOOP_MONITORING_INTERVAL_S = get_env_float_positive(
+    "RAY_SERVE_EVENT_LOOP_MONITORING_INTERVAL_S", 5.0
+)
+
+# Histogram buckets for event loop scheduling latency in milliseconds.
+# These are tuned for detecting event loop blocking:
+# - < 10ms: healthy
+# - 10-50ms: acceptable under load
+# - 50-100ms: concerning, investigate
+# - 100-500ms: problematic, likely blocking code
+# - > 500ms: severe, definitely blocking
+# - > 5s: catastrophic
+SERVE_EVENT_LOOP_LATENCY_HISTOGRAM_BOUNDARIES_MS = [
+    1,  # 1ms
+    5,  # 5ms
+    10,  # 10ms
+    25,  # 25ms
+    50,  # 50ms
+    100,  # 100ms
+    250,  # 250ms
+    500,  # 500ms
+    1000,  # 1s
+    2500,  # 2.5s
+    5000,  # 5s
+    10000,  # 10s
+]

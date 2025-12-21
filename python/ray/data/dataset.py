@@ -2948,7 +2948,7 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
-    def unique(self, column: str) -> List[Any]:
+    def unique(self, column: str, ignore_nulls: bool = False) -> List[Any]:
         """List the unique elements in a given column.
 
         Examples:
@@ -2982,11 +2982,12 @@ class Dataset:
 
         Args:
             column: The column to collect unique elements over.
+            ignore_nulls: If ``True``, ignore null values in the column.
 
         Returns:
             A list with unique elements in the given column.
         """  # noqa: E501
-        ret = self._aggregate_on(Unique, column, ignore_nulls=False)
+        ret = self._aggregate_on(Unique, column, ignore_nulls=ignore_nulls)
         return self._aggregate_result(ret)
 
     @AllToAllAPI
@@ -3988,15 +3989,10 @@ class Dataset:
                     /arrow.apache.org/docs/python/generated/\
                         pyarrow.parquet.ParquetWriter.html>`_
                 when writing each block to a file. Overrides
-                any duplicate keys from ``arrow_parquet_args``. If `row_group_size` is
-                provided, it will be passed to
-                `pyarrow.parquet.ParquetWriter.write_table() <https:/\
-                    /arrow.apache.org/docs/python/generated/pyarrow\
-                        .parquet.ParquetWriter.html\
-                        #pyarrow.parquet.ParquetWriter.write_table>`_. Use this argument
+                any duplicate keys from ``arrow_parquet_args``. Use this argument
                 instead of ``arrow_parquet_args`` if any of your write arguments
                 can't pickled, or if you'd like to lazily resolve the write
-                arguments for each dataset block.
+                arguments for each dataset block. See the note below for more details.
             min_rows_per_file: [Experimental] The target minimum number of rows to write
                 to each file. If ``None``, Ray Data writes a system-chosen number of
                 rows to each file. If the number of rows per block is larger than the
@@ -4026,6 +4022,22 @@ class Dataset:
                 "ignore", "append". Defaults to "append".
                 NOTE: This method isn't atomic. "Overwrite" first deletes all the data
                 before writing to `path`.
+
+        .. note::
+
+            When using `arrow_parquet_args` or `arrow_parquet_args_fn` to pass extra
+            options to pyarrow, there are some special cases:
+
+            - `partitioning_flavor`: if it's not provided, default is "hive" in Ray Data.
+              Otherwise, it follows pyarrow's behavior: `None` for pyarrow's DirectoryPartitioning,
+              "hive" for HivePartitioning, and "filename" for FilenamePartitioning.
+              See `pyarrow.dataset.partitioning` <https://arrow.apache.org/docs/python/generated/pyarrow.dataset.partitioning.html>_.
+            - `row_group_size`: if provided, it's passed to
+              `pyarrow.parquet.ParquetWriter.write_table() <https:/\
+                  /arrow.apache.org/docs/python/generated/pyarrow\
+                      .parquet.ParquetWriter.html\
+                      #pyarrow.parquet.ParquetWriter.write_table>`_.
+
         """  # noqa: E501
         if arrow_parquet_args_fn is None:
             arrow_parquet_args_fn = lambda: {}  # noqa: E731

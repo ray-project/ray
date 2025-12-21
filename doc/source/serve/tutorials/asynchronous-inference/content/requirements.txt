@@ -1,0 +1,11 @@
+# Ray Serve with async inference dependencies (includes Celery and Redis)
+ray[serve-async-inference]>=2.52.0
+
+# HTTP client for examples
+requests>=2.31.0
+
+# PDF processing
+PyPDF2>=3.0.0
+
+# Celery dependencies
+celery[redis]
