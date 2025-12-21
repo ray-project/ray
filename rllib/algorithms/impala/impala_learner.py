@@ -537,6 +537,7 @@ class _LearnerThread(threading.Thread):
                 do_agg = self.learner._num_updates == BATCHES_PER_AGGREGATION
                 if do_agg:
                     # Reset the update counter inside the lock.
+                    _last_num_updates = self.learner._num_updates
                     self.learner._num_updates = 0
 
             # If we need to aggregate, reduce metrics and queue them.
@@ -560,7 +561,7 @@ class _LearnerThread(threading.Thread):
                             learner_state[COMPONENT_RL_MODULE]
                         )
                     try:
-                        if (self.learner._num_updates % 0xFF) == 0:
+                        if (_last_num_updates % 0xFF) == 0:
                             with self.learner._learner_state_lock:
                                 self.learner.metrics.log_value(
                                     (ALL_MODULES, "learner_thread_state_queue_size"),
