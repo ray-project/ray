@@ -12,6 +12,13 @@
 #
 set -euo pipefail
 
+# Source shared utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/local-build-utils.sh"
+
+# Check Docker is available
+check_docker_prerequisites
+
 # Default GPU platform (matches GPU_PLATFORM in ci/ray_ci/docker_container.py)
 GPU_PLATFORM="12.1.1-cudnn8"
 

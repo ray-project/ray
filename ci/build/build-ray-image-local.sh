@@ -72,12 +72,12 @@
 #
 set -euo pipefail
 
+# Source shared utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/local-build-utils.sh"
+
 # Default GPU platform (matches GPU_PLATFORM in ci/ray_ci/docker_container.py)
 GPU_PLATFORM="12.1.1-cudnn8"
-
-header() {
-    echo -e "\n\033[34;1m===> $1\033[0m"
-}
 
 usage() {
     echo "Usage: $0 [PYTHON_VERSION] [IMAGE_TYPE] [CUDA_VERSION]"
@@ -100,6 +100,9 @@ if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     usage
 fi
 
+# Setup environment
+setup_build_env
+
 # Parse arguments
 if [[ "${1:-}" =~ ^3\.[0-9]+$ ]]; then
     PYTHON_VERSION="$1"
@@ -109,7 +112,6 @@ else
 fi
 IMAGE_TYPE="${1:-cpu}"
 CUDA_VERSION="${2:-}"
-WANDA_BIN="${WANDA_BIN:-/home/ubuntu/rayci/bin/wanda}"
 
 # Handle gpu as alias for cuda with default version
 if [[ "$IMAGE_TYPE" == "gpu" ]]; then
@@ -125,9 +127,9 @@ fi
 
 # Configuration
 export PYTHON_VERSION
-export ARCH_SUFFIX=""
-export HOSTTYPE="x86_64"
-export MANYLINUX_VERSION="251216.3835fc5"
+
+# Check prerequisites
+check_wanda_prerequisites "$WANDA_BIN"
 
 echo "Building Ray docker image for Python ${PYTHON_VERSION}..."
 echo "    Image type: ${IMAGE_TYPE}"
