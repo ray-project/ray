@@ -640,7 +640,15 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         kwargs = {k: self.visit(v) for k, v in expr.kwargs.items()}
 
         # Try to call from actor context (handles both sync and async UDFs)
-        result = call_udf_from_actor_context(expr.fn_constructor_class, args, kwargs)
+        # Pass constructor args/kwargs to look up the correct instance when
+        # the same class is used with different constructor arguments
+        result = call_udf_from_actor_context(
+            expr.fn_constructor_class,
+            expr.fn_constructor_args,
+            expr.fn_constructor_kwargs,
+            args,
+            kwargs,
+        )
 
         if result is None:
             # Not in actor context - use regular function call

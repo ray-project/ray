@@ -325,13 +325,11 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
                     "or be a star() expression."
                 )
 
-    def _detect_and_get_compute_strategy(
-        self, exprs: list["Expr"]
-    ) -> Optional[ComputeStrategy]:
+    def _detect_and_get_compute_strategy(self, exprs: list["Expr"]) -> ComputeStrategy:
         """Detect if expressions contain callable class UDFs and return appropriate compute strategy.
 
         If any expression contains a callable class UDF, returns ActorPoolStrategy.
-        Otherwise returns None (which will default to TaskPoolStrategy).
+        Otherwise returns TaskPoolStrategy.
         """
         from ray.data._internal.planner.plan_expression.expression_visitors import (
             _CallableClassUDFCollector,
@@ -347,8 +345,10 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
 
                 return ActorPoolStrategy(min_size=1, max_size=None)
 
-        # No callable class UDFs found - use default (TaskPoolStrategy)
-        return None
+        # No callable class UDFs found - use task-based execution
+        from ray.data._internal.compute import TaskPoolStrategy
+
+        return TaskPoolStrategy()
 
     def has_star_expr(self) -> bool:
         return self.get_star_expr() is not None
