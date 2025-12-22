@@ -60,12 +60,12 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
 
     @property
     @override
-    def input_buffers(self) -> List["BaseBundleQueue"]:
+    def _input_buffers(self) -> List["BaseBundleQueue"]:
         return self._input_buffers
 
     @property
     @override
-    def output_buffers(self) -> List["BaseBundleQueue"]:
+    def _output_buffers(self) -> List["BaseBundleQueue"]:
         return [self._output_buffer]
 
     def num_outputs_total(self) -> Optional[int]:

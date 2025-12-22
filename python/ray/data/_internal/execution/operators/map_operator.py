@@ -130,7 +130,7 @@ def _get_schema_from_bundle(bundle: RefBundle) -> Optional["pa.Schema"]:
     return None
 
 
-class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
+class MapOperator(A, OneToOneOperator, ABC):
     """A streaming operator that maps input bundles 1:1 to output bundles.
 
     This operator implements the distributed map operation, supporting both task

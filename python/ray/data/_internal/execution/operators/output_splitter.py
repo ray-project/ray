@@ -84,12 +84,12 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
     @property
     @override
-    def input_buffers(self) -> List["BaseBundleQueue"]:
+    def _input_buffers(self) -> List["BaseBundleQueue"]:
         return [self._buffer]
 
     @property
     @override
-    def output_buffers(self) -> List["BaseBundleQueue"]:
+    def _output_buffers(self) -> List["BaseBundleQueue"]:
         return [self._output_queue]
 
     def num_outputs_total(self) -> Optional[int]:

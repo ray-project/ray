@@ -21,13 +21,13 @@ from ray.data.context import DataContext
 class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
     @property
     @abc.abstractmethod
-    def input_buffers(self) -> List["BaseBundleQueue"]:
+    def _input_buffers(self) -> List["BaseBundleQueue"]:
         """Return all the internal input buffer queues for this operator."""
         ...
 
     @property
     @abc.abstractmethod
-    def output_buffers(self) -> List["BaseBundleQueue"]:
+    def _output_buffers(self) -> List["BaseBundleQueue"]:
         """Return all the internal output buffer queues for this operator."""
         ...
 
@@ -143,12 +143,12 @@ class AllToAllOperator(
 
     @property
     @override
-    def input_buffers(self) -> List["BaseBundleQueue"]:
+    def _input_buffers(self) -> List["BaseBundleQueue"]:
         return [self._input_buffer]
 
     @property
     @override
-    def output_buffers(self) -> List["BaseBundleQueue"]:
+    def _output_buffers(self) -> List["BaseBundleQueue"]:
         return [self._output_buffer]
 
     def num_outputs_total(self) -> Optional[int]:
