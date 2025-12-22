@@ -20,6 +20,8 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+import torch
+import torch.nn as nn
 from benchmark import Benchmark, BenchmarkMetric
 
 import ray
@@ -129,6 +131,7 @@ def get_tokenizer():
 def preprocessing_task_pandas(
     batch: pd.DataFrame,
     metadata_columns: List[str],
+    feature_columns: List[str],
     text_columns: List[str],
     metadata_prefix: str = "metadata_",
     max_length: int = 128,
@@ -147,13 +150,9 @@ def preprocessing_task_pandas(
         if col in batch.columns:
             result[f"{metadata_prefix}{col}"] = batch[col]
 
-    # Process columns
-    for col in batch.columns:
-        if col in metadata_columns:
-            continue
-
-        if col in text_columns:
-            # Real tokenization for text columns
+    # Process text columns with tokenization
+    for col in text_columns:
+        if col in batch.columns:
             texts = batch[col].fillna("").astype(str).tolist()
             encoded = tokenizer(
                 texts,
@@ -164,10 +163,15 @@ def preprocessing_task_pandas(
             )
             result[f"input_ids_{col}"] = list(encoded["input_ids"])
             result[f"attention_mask_{col}"] = list(encoded["attention_mask"])
-        elif batch[col].dtype in [np.float64, np.float32, np.int64, np.int32]:
-            # Normalize numeric columns
-            col_data = batch[col].values
-            normalized = (col_data - col_data.mean()) / (col_data.std() + 1e-8)
+
+    # Process feature columns (numeric)
+    # Cast to float64 to handle DECIMAL types from Parquet which become object dtype
+    for col in feature_columns:
+        if col in batch.columns:
+            col_data = pd.to_numeric(batch[col], errors="coerce").values
+            normalized = (col_data - np.nanmean(col_data)) / (
+                np.nanstd(col_data) + 1e-8
+            )
             result[f"feature_{col}"] = normalized
 
     # Add preprocessing timestamp
@@ -177,15 +181,38 @@ def preprocessing_task_pandas(
 
 
 # =============================================================================
-# Inference Actor
+# Inference Model and Actor
 # =============================================================================
+
+
+class InferenceModel(nn.Module):
+    """
+    Simple MLP model for inference benchmarking.
+
+    Architecture mirrors production inference patterns with embedding layers
+    for token inputs and dense layers for feature processing.
+    """
+
+    def __init__(self, input_dim: int, hidden_dim: int = 256, output_dim: int = 10):
+        super().__init__()
+        self.feature_net = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, output_dim),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.feature_net(x)
 
 
 class InferenceActor:
     """
-    Stateful inference actor that mimics production inference patterns.
+    Stateful inference actor that performs actual GPU computation.
 
-    Loads model weights on initialization and performs inference on batches.
+    Loads model weights on initialization and performs inference on batches
+    using PyTorch on the configured device (GPU or CPU).
     Supports metadata passthrough and extra output columns.
     """
 
@@ -196,23 +223,31 @@ class InferenceActor:
         extra_output_columns: Dict[str, Any],
         device: str = "cuda",
     ):
-        self.model_weights = ray.get(model_ref)
+        self.model_config = ray.get(model_ref)
         self.metadata_columns = metadata_columns
         self.extra_output_columns = extra_output_columns
+        self.device = torch.device(device if torch.cuda.is_available() else "cpu")
 
-        # Simulate model initialization
         self._init_model()
 
     def _init_model(self):
         """Initialize model on the appropriate device."""
-        assert self.model_weights is not None
+        input_dim = self.model_config["input_dim"]
+        hidden_dim = self.model_config["hidden_dim"]
+        output_dim = self.model_config["output_dim"]
 
+        self.model = InferenceModel(input_dim, hidden_dim, output_dim)
+        self.model.load_state_dict(self.model_config["state_dict"])
+        self.model.to(self.device)
+        self.model.eval()
+
+    @torch.inference_mode()
     def __call__(self, batch: pd.DataFrame) -> pd.DataFrame:
         """
-        Run inference on a batch.
+        Run inference on a batch using actual GPU computation.
 
-        Mimics production inference with:
-        - Model forward pass simulation using numeric features and tokenized text
+        Performs real neural network forward pass with:
+        - Feature processing through MLP layers on GPU
         - Metadata column passthrough
         - Extra output columns addition
         """
@@ -230,16 +265,14 @@ class InferenceActor:
         # Gather tokenized text (input_ids columns)
         input_ids_cols = [c for c in batch.columns if c.startswith("input_ids_")]
 
-        # Simulate model inference combining numeric and text features
-        # In production, this would be an embedding lookup + neural network forward pass
+        # Build feature matrix from numeric features
         if feature_cols:
             features = batch[feature_cols].values.astype(np.float32)
         else:
             features = np.zeros((batch_size, 1), dtype=np.float32)
 
-        # Simulate processing tokenized inputs (e.g., embedding lookup, transformer)
+        # Process tokenized inputs (embedding-style aggregation)
         if input_ids_cols:
-            # Stack input_ids and compute mean as a simple aggregation
             token_features = []
             for col in input_ids_cols:
                 # Each row is an array of token ids - compute mean as feature
@@ -248,12 +281,22 @@ class InferenceActor:
                 )
                 token_features.append(token_means)
             token_features = np.column_stack(token_features)
-            # Concatenate with numeric features
             features = np.concatenate([features, token_features], axis=1)
 
-        # Simulate inference computation
-        time.sleep(0.001 * batch_size / 100)  # Simulate GPU compute time
-        predictions = np.matmul(features, self.model_weights[: features.shape[1], :])
+        # Pad or truncate features to match model input dimension
+        input_dim = self.model_config["input_dim"]
+        if features.shape[1] < input_dim:
+            padding = np.zeros((batch_size, input_dim - features.shape[1]), np.float32)
+            features = np.concatenate([features, padding], axis=1)
+        elif features.shape[1] > input_dim:
+            features = features[:, :input_dim]
+
+        # Move to GPU and run actual inference
+        features_tensor = torch.from_numpy(features).to(self.device)
+        predictions_tensor = self.model(features_tensor)
+
+        # Move results back to CPU
+        predictions = predictions_tensor.cpu().numpy()
 
         result["predictions"] = [pred.tolist() for pred in predictions]
         result["prediction_confidence"] = predictions.max(axis=1)
@@ -282,6 +325,7 @@ def preprocess_dataset(
         preprocessing_task_pandas,
         fn_kwargs=dict(
             metadata_columns=config.metadata_columns,
+            feature_columns=config.feature_columns,
             text_columns=config.text_columns,
             metadata_prefix="metadata_",
             max_length=config.tokenizer_max_length,
@@ -374,9 +418,21 @@ def main(args):
         tokenizer_max_length=args.tokenizer_max_length,
     )
 
-    # Create dummy model weights and put in object store
-    model_weights = np.random.randn(100, 10).astype(np.float32)
-    model_ref = ray.put(model_weights)
+    # Create model and put config in object store
+    # Input dim: 4 feature columns + 2 text columns (mean of token ids each)
+    # We use a larger input_dim to handle variable feature sizes with padding
+    input_dim = 128
+    hidden_dim = 256
+    output_dim = 10
+
+    model = InferenceModel(input_dim, hidden_dim, output_dim)
+    model_config = {
+        "input_dim": input_dim,
+        "hidden_dim": hidden_dim,
+        "output_dim": output_dim,
+        "state_dict": model.state_dict(),
+    }
+    model_ref = ray.put(model_config)
 
     start_time = time.time()
 
