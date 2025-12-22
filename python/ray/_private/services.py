@@ -588,7 +588,8 @@ def get_node_with_retry(
             node_info = get_node(gcs_address, node_id)
             if node_info is not None:
                 return node_info
-        except Exception:
+        except RuntimeError:
+            # This is expected if the node hasn't registered with GCS yet.
             pass
 
         if time.time() >= end_time:
