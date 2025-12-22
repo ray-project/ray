@@ -36,8 +36,6 @@ def test_cross_language_raise_exception(shutdown_only):
 
 
 def test_function_id(shutdown_only):
-    ray.init(job_config=ray.job_config.JobConfig(code_search_path=sys.path))
-
     cpp_func = ray.cross_language.cpp_function("TestFunctionID")
     func_id = cpp_func._function_descriptor.function_id
     print(func_id)
@@ -45,8 +43,6 @@ def test_function_id(shutdown_only):
 
 
 def test_actor_function_id(shutdown_only):
-    ray.init(job_config=ray.job_config.JobConfig(code_search_path=sys.path))
-
     cpp_actor_class = ray.cross_language.cpp_actor_class(
         "TestActorFunction", "TestActor"
     )
