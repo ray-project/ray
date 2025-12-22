@@ -142,7 +142,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
          bool is_streaming_generator,
          bool should_retry_exceptions,
          int64_t generator_backpressure_num_objects,
-         const rpc::TensorTransport &tensor_transport) {
+         const std::optional<std::string> &tensor_transport) {
         // These 3 parameters are used for Python only, and Java worker
         // will not use them.
         RAY_UNUSED(defined_concurrency_groups);
@@ -261,16 +261,12 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
         return Status::OK();
       };
 
-  auto gc_collect = [](bool triggered_by_global_gc) {
+  auto gc_collect = []() {
     // A Java worker process usually contains more than one worker.
     // A LocalGC request is likely to be received by multiple workers in a short time.
     // Here we ensure that the 1 second interval of `System.gc()` execution is
     // guaranteed no matter how frequent the requests are received and how many workers
     // the process has.
-    if (!triggered_by_global_gc) {
-      RAY_LOG(DEBUG) << "Skipping non-global GC.";
-      return;
-    }
 
     static absl::Mutex mutex;
     static int64_t last_gc_time_ms = 0;

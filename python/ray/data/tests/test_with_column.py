@@ -606,6 +606,33 @@ def test_with_column_floor_division_and_logical_operations(
     reason="with_column requires PyArrow >= 20.0.0",
 )
 @pytest.mark.parametrize(
+    "expr_factory, expected_values",
+    [
+        pytest.param(lambda: col("value").ceil(), [-1, 0, 0, 1, 2], id="ceil"),
+        pytest.param(lambda: col("value").floor(), [-2, -1, 0, 0, 1], id="floor"),
+        pytest.param(lambda: col("value").round(), [-2, 0, 0, 0, 2], id="round"),
+        pytest.param(lambda: col("value").trunc(), [-1, 0, 0, 0, 1], id="trunc"),
+    ],
+)
+def test_with_column_rounding_operations(
+    ray_start_regular_shared,
+    expr_factory,
+    expected_values,
+):
+    """Test ceil, floor, round, and trunc expressions."""
+    values = [-1.75, -0.25, 0.0, 0.25, 1.75]
+    ds = ray.data.from_items([{"value": v} for v in values])
+    expr = expr_factory()
+    result_df = ds.with_column("result", expr).to_pandas()
+    expected_df = pd.DataFrame({"value": values, "result": expected_values})
+    assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_column requires PyArrow >= 20.0.0",
+)
+@pytest.mark.parametrize(
     "test_data, expression, expected_results, test_description",
     [
         # Test with null values

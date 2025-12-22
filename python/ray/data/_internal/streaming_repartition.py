@@ -10,6 +10,21 @@ from ray.data._internal.execution.operators.map_operator import BaseRefBundler
     The task builder submits a map task only after the total number of rows accumulated across pending blocks reaches
     target num rows (except during the final flush, which may emit a smaller tail block). This allows us to create
     target-sized batches without materializing entire large blocks on the driver.
+
+    Detailed Implementation:
+    1. When a new bundle arrives, buffer it in the pending list.
+    2. Whenever the total number of rows in the pending bundles reaches the target row count, try to build a ready bundle.
+    3. Determine the slice needed from the final bundle so the ready bundle holds an exact multiple of the target rows,
+       and add the remaining bundle to the pending bundles for the next iteration.
+    4. Submit that ready bundle to a remote map task; the task slices each block according to the slice metadata stored
+       in the RefBundle (the bundle now contains n × target rows for n ≥ 1).
+    5. We configured the `OutputBlockSizeOption.target_num_rows_per_block` to the target number of rows per block in
+       plan_streaming_repartition_op so the output buffer further splits the n × target rows into n blocks of exactly
+       the target size.
+    6. Once upstream input is exhausted, flush any leftover pending bundles and repeat steps 1‑5 for the tail.
+    7. The resulting blocks have lengths `[target, …, target, (total_rows % target)]`; ordering isn’t guaranteed, but the
+       remainder block should appear near the end.
+
 """
 
 
@@ -27,7 +42,7 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
         self._total_pending_rows = 0
 
     def _try_build_ready_bundle(self, flush_remaining: bool = False):
-        if self._total_pending_rows >= self._target_num_rows or flush_remaining:
+        if self._total_pending_rows >= self._target_num_rows:
             rows_needed_from_last_bundle = (
                 self._pending_bundles[-1].num_rows()
                 - self._total_pending_rows % self._target_num_rows
@@ -50,6 +65,12 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
             if remaining_bundle and remaining_bundle.num_rows() > 0:
                 self._pending_bundles.append(remaining_bundle)
                 self._total_pending_rows += remaining_bundle.num_rows()
+        if flush_remaining and self._total_pending_rows > 0:
+            self._ready_bundles.append(
+                RefBundle.merge_ref_bundles(self._pending_bundles)
+            )
+            self._pending_bundles.clear()
+            self._total_pending_rows = 0
 
     def add_bundle(self, ref_bundle: RefBundle):
         self._total_pending_rows += ref_bundle.num_rows()

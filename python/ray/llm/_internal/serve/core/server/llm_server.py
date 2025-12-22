@@ -27,7 +27,7 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
-from ray.llm._internal.serve.core.protocol import LLMServerProtocol
+from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
 from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
@@ -293,6 +293,7 @@ class LLMServer(LLMServerProtocol):
         *,
         engine_method: str,
         batch_output_stream: bool = False,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Any, None]:
         """Run the engine method on the request + perform batching when stream=True.
 
@@ -300,6 +301,8 @@ class LLMServer(LLMServerProtocol):
             request: The request to run.
             engine_method: The method to call on the engine.
             batch_output_stream: Whether to batch the output stream.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
 
         Returns:
             An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the non-streaming response from engine directly.
@@ -309,17 +312,19 @@ class LLMServer(LLMServerProtocol):
         await self._maybe_resolve_lora_from_multiplex()
 
         is_stream = hasattr(request, "stream") and request.stream
+        engine_stream = getattr(self.engine, engine_method)(request, raw_request_info)
+
         if is_stream and batch_output_stream:
-            stream = self._batch_output_stream(
-                getattr(self.engine, engine_method)(request)
-            )
+            stream = self._batch_output_stream(engine_stream)
         else:
-            stream = getattr(self.engine, engine_method)(request)
+            stream = engine_stream
 
         return stream
 
     async def chat(
-        self, request: "ChatCompletionRequest"
+        self,
+        request: "ChatCompletionRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[
         Union[List[Union[str, "ErrorResponse"]], "ChatCompletionResponse"], None
     ]:
@@ -327,18 +332,26 @@ class LLMServer(LLMServerProtocol):
 
         Args:
             request: A ChatCompletionRequest object.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
 
         Returns:
-            An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of chat streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the ChatCompletionResponse object directly.
+            An AsyncGenerator of the response. If stream is True and batching
+            is enabled, then the generator will yield a list of chat streaming
+            responses (strings of the format data: {response_json}\\n\\n).
+            Otherwise, it will yield the ChatCompletionResponse object directly.
         """
         return await self._run_request(
             request,
             engine_method="chat",
             batch_output_stream=True,
+            raw_request_info=raw_request_info,
         )
 
     async def completions(
-        self, request: "CompletionRequest"
+        self,
+        request: "CompletionRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[
         Union[List[Union[str, "ErrorResponse"]], "CompletionResponse"], None
     ]:
@@ -346,18 +359,26 @@ class LLMServer(LLMServerProtocol):
 
         Args:
             request: A CompletionRequest object.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
 
         Returns:
-            An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of completion streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the CompletionResponse object directly.
+            An AsyncGenerator of the response. If stream is True and batching
+            is enabled, then the generator will yield a list of completion
+            streaming responses (strings of the format data: {response_json}\\n\\n).
+            Otherwise, it will yield the CompletionResponse object directly.
         """
         return await self._run_request(
             request,
             engine_method="completions",
             batch_output_stream=True,
+            raw_request_info=raw_request_info,
         )
 
     async def embeddings(
-        self, request: "EmbeddingRequest"
+        self,
+        request: "EmbeddingRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[List["ErrorResponse"], "EmbeddingResponse"], None]:
         """Runs an embeddings request to the engine and returns the response.
 
@@ -365,6 +386,8 @@ class LLMServer(LLMServerProtocol):
 
         Args:
             request: An EmbeddingRequest object.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
 
         Returns:
             An AsyncGenerator over the EmbeddingResponse object.
@@ -374,10 +397,13 @@ class LLMServer(LLMServerProtocol):
             request,
             engine_method="embeddings",
             batch_output_stream=False,
+            raw_request_info=raw_request_info,
         )
 
     async def transcriptions(
-        self, request: "TranscriptionRequest"
+        self,
+        request: "TranscriptionRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[
         Union[List[Union[str, "ErrorResponse"]], "TranscriptionResponse"], None
     ]:
@@ -386,7 +412,9 @@ class LLMServer(LLMServerProtocol):
         Returns an AsyncGenerator over the TranscriptionResponse object. This is so that the caller can have a consistent interface across all the methods of chat, completions, embeddings and transcriptions.
 
         Args:
-            request: An TranscriptionRequest object.
+            request: A TranscriptionRequest object.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
 
         Returns:
             An AsyncGenerator over the TranscriptionResponse object.
@@ -395,10 +423,13 @@ class LLMServer(LLMServerProtocol):
             request,
             engine_method="transcriptions",
             batch_output_stream=True,
+            raw_request_info=raw_request_info,
         )
 
     async def score(
-        self, request: "ScoreRequest"
+        self,
+        request: "ScoreRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union["ScoreResponse", "ErrorResponse"], None]:
         """Runs a score request to the engine and returns the response.
 
@@ -406,13 +437,18 @@ class LLMServer(LLMServerProtocol):
 
         Args:
             request: A ScoreRequest object.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
 
         Returns:
             An AsyncGenerator over the ScoreResponse object.
         """
         # NOTE: Score does not need batching, similar to embeddings.
         return await self._run_request(
-            request, engine_method="score", batch_output_stream=False
+            request,
+            engine_method="score",
+            batch_output_stream=False,
+            raw_request_info=raw_request_info,
         )
 
     async def check_health(self) -> None:
@@ -428,17 +464,107 @@ class LLMServer(LLMServerProtocol):
             logger.error("Engine health check failed in LLMServer.check_health: %s", e)
             raise e
 
+    async def sleep(self, **kwargs: Any) -> None:
+        """Put the engine to sleep.
+
+        Args:
+            **kwargs: Engine-specific sleep options. Passed through to the engine.
+        """
+        if self.engine is None:
+            return
+        try:
+            await self.engine.sleep(**kwargs)
+        except Exception as e:
+            logger.error("Engine sleep failed in LLMServer.sleep: %s", e)
+            raise e
+
+    async def wakeup(self, **kwargs: Any) -> None:
+        """Wake up the engine from sleep mode.
+
+        Args:
+            **kwargs: Engine-specific wakeup options. Passed through to the engine.
+        """
+        if self.engine is None:
+            return
+        try:
+            await self.engine.wakeup(**kwargs)
+        except Exception as e:
+            logger.error("Engine wakeup failed in LLMServer.wakeup: %s", e)
+            raise e
+
+    async def is_sleeping(self) -> bool:
+        """Check whether the engine is currently sleeping.
+
+        Returns:
+            True if the engine is sleeping, False otherwise.
+        """
+        if self.engine is None:
+            return False
+        try:
+            return await self.engine.is_sleeping()
+        except Exception as e:
+            logger.error("Engine is_sleeping failed in LLMServer.is_sleeping: %s", e)
+            raise e
+
     async def reset_prefix_cache(self) -> None:
-        """Reset the prefix cache of the underlying engine"""
+        """Reset the KV prefix cache on the engine.
+
+        Clears cached key-value pairs from previous requests.
+        """
         if self.engine is None:
             return
         try:
             await self.engine.reset_prefix_cache()
         except Exception as e:
             logger.error(
-                "Engine reset prefix cache failed in LLMServer.reset_prefix_cache: %s",
+                "Engine reset_prefix_cache failed in LLMServer.reset_prefix_cache: %s",
                 e,
             )
+            raise e
+
+    async def pause(self, **kwargs: Any) -> None:
+        """Pause generation on the engine.
+
+        This halts generation requests while keeping model weights
+        in GPU memory. New requests are blocked until resume is called.
+
+        Args:
+            **kwargs: Engine-specific pause options. Passed through to the engine.
+        """
+        if self.engine is None:
+            return
+        try:
+            await self.engine.pause(**kwargs)
+        except Exception as e:
+            logger.error("Engine pause failed in LLMServer.pause: %s", e)
+            raise e
+
+    async def resume(self, **kwargs: Any) -> None:
+        """Resume generation on the engine after pause.
+
+        Args:
+            **kwargs: Engine-specific resume options. Passed through to the engine.
+        """
+        if self.engine is None:
+            return
+        try:
+            await self.engine.resume(**kwargs)
+        except Exception as e:
+            logger.error("Engine resume failed in LLMServer.resume: %s", e)
+            raise e
+
+    async def is_paused(self) -> bool:
+        """Check whether the engine is currently paused.
+
+        Returns:
+            True if the engine is paused, False otherwise.
+        """
+        if self.engine is None:
+            return False
+        try:
+            return await self.engine.is_paused()
+        except Exception as e:
+            logger.error("Engine is_paused failed in LLMServer.is_paused: %s", e)
             raise e
 
     async def start_profile(self) -> None:
@@ -461,6 +587,42 @@ class LLMServer(LLMServerProtocol):
             await self.engine.stop_profile()
         except Exception as e:
             logger.error("Engine stop profile failed in LLMServer.stop_profile: %s", e)
+            raise e
+
+    async def collective_rpc(
+        self,
+        method: str,
+        timeout: Optional[float] = None,
+        args: tuple = (),
+        kwargs: Optional[dict] = None,
+    ) -> list:
+        """Execute a collective RPC call on all workers.
+
+        This is used for RLHF workflows where a trainer needs to execute
+        methods on all TP/PP workers (e.g., for weight synchronization).
+
+        Args:
+            method: Name of the worker method to execute.
+            timeout: Maximum time in seconds to wait for execution.
+            args: Positional arguments to pass to the worker method.
+            kwargs: Keyword arguments to pass to the worker method.
+
+        Returns:
+            A list containing the results from each worker.
+        """
+        if self.engine is None:
+            return []
+        try:
+            return await self.engine.collective_rpc(
+                method=method,
+                timeout=timeout,
+                args=args,
+                kwargs=kwargs,
+            )
+        except Exception as e:
+            logger.error(
+                "Engine collective_rpc failed in LLMServer.collective_rpc: %s", e
+            )
             raise e
 
     async def llm_config(self) -> Optional[LLMConfig]:

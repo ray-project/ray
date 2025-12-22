@@ -112,6 +112,10 @@ serve run config.yaml
 
 ::::
 
+:::{note}
+The default max gRPC message size is ~2GB. To adjust it, set `RAY_SERVE_GRPC_MAX_MESSAGE_SIZE` (in bytes) before starting Ray, e.g., `export RAY_SERVE_GRPC_MAX_MESSAGE_SIZE=104857600` for 100MB.
+:::
+
 (deploy-serve-grpc-applications)=
 ## Deploy gRPC applications
 gRPC applications in Serve works similarly to HTTP applications. The only difference is

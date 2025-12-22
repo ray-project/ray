@@ -25,6 +25,9 @@ from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
 )
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    get_column_references,
+)
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
@@ -37,7 +40,10 @@ from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
-from ray.data.datasource.file_based_datasource import FileShuffleConfig
+from ray.data.datasource.file_based_datasource import (
+    _shuffle_file_metadata,
+    _validate_shuffle_arg,
+)
 from ray.data.datasource.file_meta_provider import (
     FileMetadataProvider,
     _handle_read_os_error,
@@ -52,6 +58,7 @@ from ray.data.datasource.partitioning import (
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
 )
+from ray.data.expressions import BinaryExpr, Expr, Operation
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
@@ -160,13 +167,126 @@ def check_for_legacy_tensor_type(schema):
             )
 
 
+@dataclass
+class _SplitPredicateResult:
+    """Result of splitting a predicate by column type.
+
+    Attributes:
+        data_predicate: Expression containing only data column predicates
+            (for PyArrow pushdown), or None if no data predicates exist.
+        partition_predicate: Expression containing only partition column predicates
+            (for partition pruning), or None if no partition predicates exist.
+    """
+
+    data_predicate: Optional[Expr]
+    partition_predicate: Optional[Expr]
+
+
+def _split_predicate_by_columns(
+    predicate: Expr,
+    partition_columns: set,
+) -> _SplitPredicateResult:
+    """Split a predicate into data-only and partition-only parts.
+
+    This function extracts both data column predicates and partition column
+    predicates from AND chains, enabling both PyArrow pushdown (data part) and
+    partition pruning (partition part).
+
+    Args:
+        predicate: The predicate expression to analyze.
+        partition_columns: Set of partition column names.
+
+    Returns:
+        _SplitPredicateResult containing:
+        - data_predicate: Expression with only data columns (for PyArrow pushdown),
+          or None if no data predicates can be extracted.
+        - partition_predicate: Expression with only partition columns (for pruning),
+          or None if no partition predicates can be extracted.
+
+    Examples:
+        >>> from ray.data.expressions import col
+        >>> # Pure data predicate:
+        >>> result = _split_predicate_by_columns(col("data1") > 5, {"partition_col"})
+        >>> result.data_predicate is not None  # Should have data predicate
+        True
+        >>> result.partition_predicate is None  # Should not have partition predicate
+        True
+
+        >>> # Pure partition predicate:
+        >>> result = _split_predicate_by_columns(col("partition_col") == "US", {"partition_col"})
+        >>> result.data_predicate is None  # Should not have data predicate
+        True
+        >>> result.partition_predicate is not None  # Should have partition predicate
+        True
+
+        >>> # Mixed AND - can split both parts:
+        >>> result = _split_predicate_by_columns(
+        ...     (col("data1") > 5) & (col("partition_col") == "US"),
+        ...     {"partition_col"}
+        ... )
+        >>> result.data_predicate is not None  # Should have data predicate
+        True
+        >>> result.partition_predicate is not None  # Should have partition predicate
+        True
+
+        >>> # Mixed OR - can't split safely:
+        >>> result = _split_predicate_by_columns(
+        ...     (col("data1") > 5) | (col("partition_col") == "US"),
+        ...     {"partition_col"}
+        ... )
+        >>> result.data_predicate is None  # Should not have data predicate
+        True
+        >>> result.partition_predicate is None  # Should not have partition predicate
+        True
+    """
+    referenced_cols = set(get_column_references(predicate))
+    data_cols = referenced_cols - partition_columns
+    partition_cols_in_predicate = referenced_cols & partition_columns
+
+    if not partition_cols_in_predicate:
+        # Pure data predicate
+        return _SplitPredicateResult(data_predicate=predicate, partition_predicate=None)
+
+    if not data_cols:
+        # Pure partition predicate
+        return _SplitPredicateResult(data_predicate=None, partition_predicate=predicate)
+
+    # Mixed predicate - try to split if it's an AND chain
+    if isinstance(predicate, BinaryExpr) and predicate.op == Operation.AND:
+        # Recursively split left and right sides
+        left_result = _split_predicate_by_columns(predicate.left, partition_columns)
+        right_result = _split_predicate_by_columns(predicate.right, partition_columns)
+
+        # Helper to combine predicates from both sides
+        def combine_predicates(
+            left: Optional[Expr], right: Optional[Expr]
+        ) -> Optional[Expr]:
+            if left and right:
+                return left & right
+            return left or right
+
+        data_predicate = combine_predicates(
+            left_result.data_predicate, right_result.data_predicate
+        )
+        partition_predicate = combine_predicates(
+            left_result.partition_predicate, right_result.partition_predicate
+        )
+
+        return _SplitPredicateResult(
+            data_predicate=data_predicate, partition_predicate=partition_predicate
+        )
+
+    # For OR, NOT, or other operations with mixed columns,
+    # we can't safely split - must evaluate the full predicate together
+    return _SplitPredicateResult(data_predicate=None, partition_predicate=None)
+
+
 class ParquetDatasource(Datasource):
     """Parquet datasource, for reading and writing Parquet files.
 
-    The primary difference from ParquetBulkDatasource is that this uses
-    PyArrow's `ParquetDataset` abstraction for dataset reads, and thus offers
-    automatic Arrow dataset schema inference and row count collection at the
-    cost of some potential performance and/or compatibility penalties.
+    This implementation uses PyArrow's `ParquetDataset` abstraction for dataset reads,
+    and thus offers automatic Arrow dataset schema inference and row count collection at
+    the cost of some potential performance and/or compatibility penalties.
     """
 
     _FILE_EXTENSIONS = ["parquet"]
@@ -255,9 +375,13 @@ class ParquetDatasource(Datasource):
         # columns manually.
         data_columns, partition_columns = None, None
         if columns is not None:
-            data_columns, partition_columns = _infer_data_and_partition_columns(
-                columns, pq_ds.fragments[0], partitioning
-            )
+            if pq_ds.fragments:
+                data_columns, partition_columns = _infer_data_and_partition_columns(
+                    columns, pq_ds.fragments[0], partitioning
+                )
+            else:
+                # Empty dataset - can't infer columns without fragments
+                data_columns, partition_columns = [], []
 
         if to_batch_kwargs is None:
             to_batch_kwargs = {}
@@ -274,11 +398,35 @@ class ParquetDatasource(Datasource):
         self._to_batches_kwargs = to_batch_kwargs
         # Store as projection_map (identity mapping if columns specified, None otherwise)
         # Note: Empty list [] means no columns, None means all columns
-        if data_columns is None:
+        # Include partition columns in projection_map if they were requested, so that
+        # projection pushdown can properly track them
+        if data_columns is None and partition_columns is None:
             self._projection_map = None
         else:
-            self._projection_map = {col: col for col in data_columns}
-        self._partition_columns = partition_columns
+            self._projection_map = {}
+            if data_columns is not None:
+                self._projection_map.update({col: col for col in data_columns})
+            if partition_columns is not None:
+                self._projection_map.update({col: col for col in partition_columns})
+
+        # Eagerly compute the actual partition columns for _partition_columns.
+        # This ensures _partition_columns is always a list (never None).
+        actual_partition_columns = partition_columns
+        if partition_columns is None and partitioning is not None and pq_ds.fragments:
+            parse = PathPartitionParser(partitioning)
+            parsed_partitions = parse(pq_ds.fragments[0].path)
+            if parsed_partitions:
+                actual_partition_columns = list(parsed_partitions.keys())
+
+        # Store selected partition columns. Always a list (never None) representing
+        # the actual partition columns to include.
+        self._partition_columns = (
+            actual_partition_columns if actual_partition_columns is not None else []
+        )
+        # Track whether partition columns were explicitly part of the user's column selection
+        self._partition_columns_selected = (
+            partition_columns is not None and len(self._partition_columns) > 0
+        )
         self._read_schema = schema
         self._file_schema = pq_ds.schema
         self._partition_schema = _get_partition_columns_schema(
@@ -287,10 +435,8 @@ class ParquetDatasource(Datasource):
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
         self._partitioning = partitioning
-        if shuffle == "files":
-            self._file_metadata_shuffler = np.random.default_rng()
-        elif isinstance(shuffle, FileShuffleConfig):
-            self._file_metadata_shuffler = np.random.default_rng(shuffle.seed)
+        _validate_shuffle_arg(shuffle)
+        self._shuffle = shuffle
 
         # Sample small number of parquet files to estimate
         #   - Encoding ratio: ratio of file size on disk to approximate expected
@@ -325,27 +471,22 @@ class ParquetDatasource(Datasource):
         return self._estimate_in_mem_size(self._pq_fragments)
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
         # FileBasedDatasource's write side, however.
-        if self._file_metadata_shuffler is not None:
-            files_metadata = list(zip(self._pq_fragments, self._pq_paths))
-            shuffled_files_metadata = [
-                files_metadata[i]
-                for i in self._file_metadata_shuffler.permutation(len(files_metadata))
-            ]
-            pq_fragments, pq_paths = list(map(list, zip(*shuffled_files_metadata)))
-        else:
-            pq_fragments, pq_paths = (
-                self._pq_fragments,
-                self._pq_paths,
-            )
+        execution_idx = data_context._execution_idx if data_context is not None else 0
+        pq_fragments, pq_paths = _shuffle_file_metadata(
+            self._pq_fragments, self._pq_paths, self._shuffle, execution_idx
+        )
 
         # Derive expected target schema of the blocks being read
-        target_schema = _derive_schema(
+        target_schema = self._derive_schema(
             self._read_schema,
             file_schema=self._file_schema,
             partition_schema=self._partition_schema,
@@ -390,7 +531,7 @@ class ParquetDatasource(Datasource):
                 self._default_batch_size,
                 self._get_data_columns(),
                 self.get_column_renames(),
-                self._partition_columns,
+                self._get_partition_columns(),
                 self._read_schema,
                 self._include_paths,
                 self._partitioning,
@@ -441,15 +582,190 @@ class ParquetDatasource(Datasource):
         # NOTE: In case there's no projection both file and partition columns
         #       will be none
         data_columns = self._get_data_columns()
-        if data_columns is None and self._partition_columns is None:
+        partition_columns = self._get_partition_columns()
+        if data_columns is None and partition_columns is None:
             return None
 
-        return (data_columns or []) + (self._partition_columns or [])
+        return (data_columns or []) + (partition_columns or [])
+
+    def _get_partition_columns(self) -> Optional[List[str]]:
+        """Extract partition columns from projection map.
+
+        This method extracts partition columns from _projection_map, which is the
+        source of truth after projection pushdown. Since partition columns are now
+        included in _projection_map during initialization when requested, we can
+        reliably extract them from the map.
+
+        Returns:
+            List of partition column names in the projection, None if there's
+            no projection (meaning include all partition columns), or [] if
+            partition columns aren't in the projection map (meaning include
+            no partition columns).
+        """
+        if self._projection_map is None:
+            return None
+
+        if not self._partition_columns:
+            return None
+
+        # Extract partition columns that are in the projection map
+        partition_cols = [
+            col for col in self._projection_map.keys() if col in self._partition_columns
+        ]
+
+        # If partition columns are found in projection map, return them
+        if partition_cols:
+            return partition_cols
+
+        # No partition columns in projection map.
+        # Since the projection map exists and is the source of truth after
+        # projection pushdown, return [] (no partition columns to include).
+        return []
+
+    def _get_data_columns(self) -> Optional[List[str]]:
+        """Extract data columns from projection map, excluding partition columns.
+
+        Partition columns aren't in the physical file schema, so they must be
+        filtered out before passing to PyArrow's to_batches().
+
+        Returns:
+            List of data column names to read from files, or None if no projection.
+            Can return empty list if only partition columns are projected.
+        """
+        if self._projection_map is None:
+            return None
+
+        # Get partition columns and filter them out from the projection
+        partition_cols = self._partition_columns
+        data_cols = [
+            col for col in self._projection_map.keys() if col not in partition_cols
+        ]
+
+        return data_cols
+
+    def apply_predicate(
+        self,
+        predicate_expr: Expr,
+    ) -> "ParquetDatasource":
+        """Apply a predicate with data pushdown and partition pruning.
+
+        This method optimizes predicates in three ways:
+        1. Data predicates → pushed to PyArrow (row-level filtering)
+        2. Partition predicates → used for partition pruning (file-level filtering)
+        3. Mixed predicates → both optimizations applied together
+        """
+        partition_cols = set(self._partition_columns)
+
+        if not partition_cols:
+            # No partition columns - can push down everything normally
+            return super().apply_predicate(predicate_expr)
+
+        # Split predicate into data and partition parts
+        split_result = _split_predicate_by_columns(predicate_expr, partition_cols)
+
+        # Apply partition pruning if we have a partition predicate
+        if (
+            split_result.partition_predicate is not None
+            and self._partitioning is not None
+        ):
+            parser = PathPartitionParser(self._partitioning)
+            pruned_fragments = []
+            pruned_paths = []
+
+            for fragment, path in zip(self._pq_fragments, self._pq_paths):
+                # Evaluate partition predicate - skip if it doesn't match
+                if parser.evaluate_predicate_on_partition(
+                    path, split_result.partition_predicate
+                ):
+                    pruned_fragments.append(fragment)
+                    pruned_paths.append(path)
+
+            # Apply partition pruning directly to self
+            self._pq_fragments = pruned_fragments
+            self._pq_paths = pruned_paths
+
+        # Push down data predicate to PyArrow if present
+        # Create a copy and push down the data predicate to PyArrow
+        import copy
+
+        datasource = copy.copy(self)
+
+        # Only call apply_predicate if there's a data predicate to push down
+        # If data_predicate is None (pure partition predicate), skip it to avoid
+        # creating invalid expressions like existing_expr & None
+        if split_result.data_predicate is not None:
+            return super(ParquetDatasource, datasource).apply_predicate(
+                split_result.data_predicate
+            )
+
+        return datasource
 
     def _estimate_in_mem_size(self, fragments: List[_ParquetFragment]) -> int:
         in_mem_size = sum([f.file_size for f in fragments]) * self._encoding_ratio
 
         return round(in_mem_size)
+
+    @staticmethod
+    def _derive_schema(
+        read_schema: Optional["pyarrow.Schema"],
+        *,
+        file_schema: "pyarrow.Schema",
+        partition_schema: Optional["pyarrow.Schema"],
+        projected_columns: Optional[List[str]],
+        _block_udf,
+    ) -> "pyarrow.Schema":
+        """Derives target schema for read operation"""
+
+        import pyarrow as pa
+
+        # Use target read schema if provided
+        if read_schema is not None:
+            target_schema = read_schema
+        else:
+            file_schema_fields = list(file_schema)
+            partition_schema_fields = (
+                list(partition_schema) if partition_schema is not None else []
+            )
+
+            # Otherwise, fallback to file + partitioning schema by default
+            target_schema = pa.schema(
+                fields=(
+                    file_schema_fields
+                    + [
+                        f
+                        for f in partition_schema_fields
+                        # Ignore fields from partition schema overlapping with
+                        # file's schema
+                        if file_schema.get_field_index(f.name) == -1
+                    ]
+                ),
+                metadata=file_schema.metadata,
+            )
+
+        # Project schema if necessary
+        if projected_columns is not None:
+            target_schema = pa.schema(
+                [target_schema.field(column) for column in projected_columns],
+                target_schema.metadata,
+            )
+
+        if _block_udf is not None:
+            # Try to infer dataset schema by passing dummy table through UDF.
+            dummy_table = target_schema.empty_table()
+            try:
+                target_schema = _block_udf(dummy_table).schema.with_metadata(
+                    target_schema.metadata
+                )
+            except Exception:
+                logger.debug(
+                    "Failed to infer schema of dataset by passing dummy table "
+                    "through UDF due to the following exception:",
+                    exc_info=True,
+                )
+
+        check_for_legacy_tensor_type(target_schema)
+
+        return target_schema
 
 
 def read_fragments(
@@ -805,9 +1121,25 @@ def get_parquet_dataset(paths, filesystem, dataset_kwargs):
             **dataset_kwargs,
             filesystem=filesystem,
         )
+    except TypeError:
+        # Fallback: resolve filesystem locally in the worker
+        try:
+            resolved_paths, resolved_filesystem = _resolve_paths_and_filesystem(
+                paths, filesystem=None
+            )
+            resolved_filesystem = RetryingPyFileSystem.wrap(
+                resolved_filesystem,
+                retryable_errors=DataContext.get_current().retried_io_errors,
+            )
+            dataset = pq.ParquetDataset(
+                resolved_paths,
+                **dataset_kwargs,
+                filesystem=resolved_filesystem,
+            )
+        except OSError as os_e:
+            _handle_read_os_error(os_e, paths)
     except OSError as e:
         _handle_read_os_error(e, paths)
-
     return dataset
 
 
@@ -887,68 +1219,6 @@ def _get_partition_columns_schema(
         fields.append(pa.field(field_name, field_type))
 
     return pa.schema(fields)
-
-
-def _derive_schema(
-    read_schema: Optional["pyarrow.Schema"],
-    *,
-    file_schema: "pyarrow.Schema",
-    partition_schema: Optional["pyarrow.Schema"],
-    projected_columns: Optional[List[str]],
-    _block_udf,
-) -> "pyarrow.Schema":
-    """Derives target schema for read operation"""
-
-    import pyarrow as pa
-
-    # Use target read schema if provided
-    if read_schema is not None:
-        target_schema = read_schema
-    else:
-        file_schema_fields = list(file_schema)
-        partition_schema_fields = (
-            list(partition_schema) if partition_schema is not None else []
-        )
-
-        # Otherwise, fallback to file + partitioning schema by default
-        target_schema = pa.schema(
-            fields=(
-                file_schema_fields
-                + [
-                    f
-                    for f in partition_schema_fields
-                    # Ignore fields from partition schema overlapping with
-                    # file's schema
-                    if file_schema.get_field_index(f.name) == -1
-                ]
-            ),
-            metadata=file_schema.metadata,
-        )
-
-    # Project schema if necessary
-    if projected_columns is not None:
-        target_schema = pa.schema(
-            [target_schema.field(column) for column in projected_columns],
-            target_schema.metadata,
-        )
-
-    if _block_udf is not None:
-        # Try to infer dataset schema by passing dummy table through UDF.
-        dummy_table = target_schema.empty_table()
-        try:
-            target_schema = _block_udf(dummy_table).schema.with_metadata(
-                target_schema.metadata
-            )
-        except Exception:
-            logger.debug(
-                "Failed to infer schema of dataset by passing dummy table "
-                "through UDF due to the following exception:",
-                exc_info=True,
-            )
-
-    check_for_legacy_tensor_type(target_schema)
-
-    return target_schema
 
 
 def _infer_data_and_partition_columns(

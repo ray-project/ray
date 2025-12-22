@@ -23,11 +23,8 @@ tensorflow_estimator
 # DeepMind's OpenSpiel
 open-spiel==1.4
 
-# Unity3D testing
-mlagents_envs==0.28.0
-
 # Requires libtorrent which is unavailable for arm64
-h5py==3.10.0
+h5py==3.12.1
 
 # Requirements for rendering.
 moviepy

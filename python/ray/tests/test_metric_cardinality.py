@@ -16,6 +16,7 @@ from ray._common.network_utils import build_address
 from ray._private.telemetry.metric_cardinality import (
     WORKER_ID_TAG_KEY,
     TASK_OR_ACTOR_NAME_TAG_KEY,
+    MetricCardinality,
 )
 
 
@@ -25,7 +26,7 @@ except ImportError:
     prometheus_client = None
 
 
-_TO_TEST_METRICS = ["ray_tasks", "ray_actors", "ray_running_jobs"]
+_TO_TEST_METRICS = ["tasks", "actors", "running_jobs"]
 _COMPONENT_TAG_KEY = "Component"
 
 
@@ -86,35 +87,37 @@ def _cardinality_level_test(_setup_cluster_for_test, cardinality_level, metric):
     def _validate():
         timeseries = PrometheusTimeseries()
         metric_samples = fetch_prometheus_metric_timeseries(prom_addresses, timeseries)
-        samples = metric_samples.get(metric)
+        samples = metric_samples.get(f"ray_{metric}")
         assert samples, f"Metric {metric} not found in samples"
         for sample in samples:
-            if cardinality_level == "recommended":
-                # If the cardinality level is recommended, the WorkerId tag should
-                # be removed
-                assert (
-                    sample.labels.get(WORKER_ID_TAG_KEY) is None
-                ), f"Sample {sample} contains WorkerId tag"
-            elif cardinality_level == "legacy":
+            if (
+                cardinality_level == "legacy"
+                or metric not in MetricCardinality.get_high_cardinality_metrics()
+            ):
                 # If the cardinality level is legacy, the WorkerId tag should be
                 # present
                 assert (
                     sample.labels.get(WORKER_ID_TAG_KEY) is not None
                 ), f"Sample {sample} does not contain WorkerId tag"
-                if metric == "ray_tasks" or metric == "ray_actors":
+                if metric == "tasks" or metric == "actors":
                     assert (
                         sample.labels.get(TASK_OR_ACTOR_NAME_TAG_KEY) is not None
                     ), f"Sample {sample} does not contain Name tag"
+            elif cardinality_level == "recommended":
+                # If the cardinality level is recommended, the WorkerId tag should
+                # be removed
+                assert (
+                    sample.labels.get(WORKER_ID_TAG_KEY) is None
+                ), f"Sample {sample} contains WorkerId tag"
             elif cardinality_level == "low":
                 # If the cardinality level is low, the WorkerId and Name tags should
                 # be removed
                 assert (
                     sample.labels.get(WORKER_ID_TAG_KEY) is None
                 ), f"Sample {sample} contains WorkerId tag"
-                if metric == "ray_tasks" or metric == "ray_actors":
-                    assert (
-                        sample.labels.get(TASK_OR_ACTOR_NAME_TAG_KEY) is None
-                    ), f"Sample {sample} contains Name tag"
+                assert (
+                    sample.labels.get(TASK_OR_ACTOR_NAME_TAG_KEY) is None
+                ), f"Sample {sample} contains Name tag"
             else:
                 raise ValueError(f"Unknown cardinality level: {cardinality_level}")
 

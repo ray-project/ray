@@ -194,6 +194,56 @@ def test_lance_write_max_rows_per_file(data_path):
     assert len(ds.get_fragments()) == 10
 
 
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_read_with_version(data_path):
+    # NOTE: Lance only works with PyArrow 12 or above.
+    pyarrow_version = get_pyarrow_version()
+    if pyarrow_version is not None and pyarrow_version < parse_version("12.0.0"):
+        return
+
+    # Write an initial dataset (version 1)
+    df1 = pa.table({"one": [2, 1, 3, 4, 6, 5], "two": ["b", "a", "c", "e", "g", "f"]})
+    setup_data_path = _unwrap_protocol(data_path)
+    path = os.path.join(setup_data_path, "test_version.lance")
+    lance.write_dataset(df1, path)
+
+    # Merge new data to create a later version (latest)
+    ds_lance = lance.dataset(path)
+    # Get the initial version
+    initial_version = ds_lance.version
+
+    df2 = pa.table(
+        {
+            "one": [1, 2, 3, 4, 5, 6],
+            "three": [4, 5, 8, 9, 12, 13],
+            "four": ["u", "v", "w", "x", "y", "z"],
+        }
+    )
+    ds_lance.merge(df2, "one")
+
+    # Default read should return the latest (merged) dataset.
+    ds_latest = ray.data.read_lance(path)
+
+    assert ds_latest.count() == 6
+    # Latest dataset should contain merged columns
+    assert "three" in ds_latest.schema().names
+
+    # Read the initial version and ensure it contains the original columns
+    ds_prev = ray.data.read_lance(path, version=initial_version)
+    assert ds_prev.count() == 6
+    assert ds_prev.schema().names == ["one", "two"]
+
+    values_prev = [[s["one"], s["two"]] for s in ds_prev.take_all()]
+    assert sorted(values_prev) == [
+        [1, "a"],
+        [2, "b"],
+        [3, "c"],
+        [4, "e"],
+        [5, "f"],
+        [6, "g"],
+    ]
+
+
 if __name__ == "__main__":
     import sys
 
