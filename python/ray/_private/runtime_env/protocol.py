@@ -1,8 +1,5 @@
 import enum
 import os
-import shutil
-import urllib.error
-import urllib.request
 from urllib.parse import urlparse
 
 RAY_RUNTIME_ENV_HTTP_USER_AGENT_ENV_VAR = "RAY_RUNTIME_ENV_HTTP_USER_AGENT"
@@ -213,43 +210,27 @@ class ProtocolsProvider:
         }
 
     @classmethod
-    def _download_https_uri(cls, source_uri: str, dest_file: str) -> None:
-        """Download HTTPS URI while mimicking curl's user agent.
+    def _handle_https_protocol(cls):
+        """Set up HTTPS protocol handling with curl-like headers."""
 
-        Some hosts (e.g. gitee.com) serve HTML instead of binaries when the
-        user agent looks like python-requests.  Using a curl-like user agent
-        keeps behaviour consistent with tools such as `wget` or `curl`.
-        """
-
-        headers = cls._http_headers()
-
-        # Prefer smart_open so we get consistent redirect/cert handling with the
-        # rest of our remote protocols.  Fall back to urllib if it is not
-        # available so HTTPS downloads keep working without extra deps.
         try:
             from smart_open import open as smart_open_open
         except ImportError:
-            smart_open_open = None
+            raise ImportError(
+                "You must `pip install smart_open` to fetch HTTPS URIs. "
+                + cls._MISSING_DEPENDENCIES_WARNING
+            )
 
-        if smart_open_open is not None:
-            with smart_open_open(
-                source_uri,
-                "rb",
-                transport_params={
-                    "headers": headers,
-                    "timeout": 60,
-                },
-            ) as fin, open(dest_file, "wb") as fout:
-                shutil.copyfileobj(fin, fout)
-            return
+        def open_file(uri, mode, *, transport_params=None):
+            params = {
+                "headers": cls._http_headers(),
+                "timeout": 60,
+            }
+            if transport_params:
+                params.update(transport_params)
+            return smart_open_open(uri, mode, transport_params=params)
 
-        request = urllib.request.Request(source_uri, headers=headers)
-        try:
-            with urllib.request.urlopen(request, timeout=60) as response:
-                with open(dest_file, "wb") as fout:
-                    shutil.copyfileobj(response, fout)
-        except urllib.error.URLError as exc:
-            raise IOError(f"Failed to download {source_uri} via HTTPS: {exc}") from exc
+        return open_file, None
 
     @classmethod
     def download_remote_uri(cls, protocol: str, source_uri: str, dest_file: str):
@@ -275,9 +256,7 @@ class ProtocolsProvider:
                 return open(uri, mode)
 
         elif protocol == "https":
-            cls._download_https_uri(source_uri=source_uri, dest_file=dest_file)
-            return
-
+            open_file, tp = cls._handle_https_protocol()
         elif protocol == "s3":
             open_file, tp = cls._handle_s3_protocol()
         elif protocol == "gs":
