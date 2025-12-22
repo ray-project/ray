@@ -127,16 +127,21 @@ class _MapActorContext:
         self.udf_map_asyncio_thread = thread
 
 
-def _collect_udf_specs_from_expressions(exprs: List["Expr"]) -> List[UDFSpec]:
+def _collect_udf_specs_from_expressions(
+    exprs: List["Expr"], compute: Optional[ComputeStrategy] = None
+) -> List[UDFSpec]:
     """Collect UDFSpecs for callable class UDFs found in expressions.
 
     Deduplicates by class AND constructor arguments, and applies
-    make_callable_class_concurrent wrapping. This ensures that the same
-    class with different constructor args (e.g., Multiplier(2) vs Multiplier(3))
-    are treated as distinct UDFs with separate instances.
+    make_callable_class_single_threaded wrapping when appropriate. This ensures
+    that the same class with different constructor args (e.g., Multiplier(2) vs
+    Multiplier(3)) are treated as distinct UDFs with separate instances.
 
     Args:
         exprs: List of expressions to collect UDFs from
+        compute: Optional compute strategy. When ActorPoolStrategy with
+            enable_true_multi_threading=False, non-async UDFs are wrapped
+            for single-threaded execution.
 
     Returns:
         List of UDFSpec objects for all unique callable class UDFs found
@@ -160,12 +165,18 @@ def _collect_udf_specs_from_expressions(exprs: List["Expr"]) -> List[UDFSpec]:
         if key not in seen_keys:
             seen_keys.add(key)
 
-            # Apply concurrency wrapper for non-async UDFs (same as _get_udf)
-            wrapped_cls = (
-                make_callable_class_single_threaded(spec.cls)
-                if not _is_async_udf(spec.cls.__call__)
-                else spec.cls
-            )
+            is_async_udf = _is_async_udf(spec.cls.__call__)
+
+            # Apply concurrency wrapper for non-async UDFs when using ActorPoolStrategy
+            # with enable_true_multi_threading=False (same as _get_udf for map_batches)
+            if (
+                not is_async_udf
+                and isinstance(compute, ActorPoolStrategy)
+                and not compute.enable_true_multi_threading
+            ):
+                wrapped_cls = make_callable_class_single_threaded(spec.cls)
+            else:
+                wrapped_cls = spec.cls
 
             udf_specs.append(UDFSpec(spec=spec, instantiation_class=wrapped_cls))
 
@@ -185,8 +196,11 @@ def plan_project_op(
     # datasources with weak references, e.g., PyIceberg tables)
     projection_exprs = op.exprs
 
+    compute = get_compute(op._compute)
+
     # Collect UDF specs from expressions and create init_fn if needed
-    udf_specs = _collect_udf_specs_from_expressions(projection_exprs)
+    # Pass compute strategy to properly handle enable_true_multi_threading flag
+    udf_specs = _collect_udf_specs_from_expressions(projection_exprs, compute)
     init_fn = create_actor_context_init_fn(udf_specs) if udf_specs else None
 
     def _project_block(block: Block) -> Block:
@@ -199,7 +213,6 @@ def plan_project_op(
         except Exception as e:
             _try_wrap_udf_exception(e)
 
-    compute = get_compute(op._compute)
     map_transformer = MapTransformer(
         [
             BlockMapTransformFn(

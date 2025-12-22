@@ -754,11 +754,23 @@ class UDFExpr(Expr):
     callable_class_spec: Optional[_CallableClassSpec] = None
 
     def structurally_equals(self, other: Any) -> bool:
+        if not isinstance(other, UDFExpr):
+            return False
+
+        # For callable class UDFs, compare callable_class_spec only (not fn).
+        # Each call to ExpressionAwareCallableClass.__call__ creates a new
+        # _placeholder function, so fn comparison would always be False even
+        # for semantically equivalent expressions.
+        # For regular function UDFs, compare fn (callable_class_spec is None).
+        if self.callable_class_spec is not None:
+            if self.callable_class_spec != other.callable_class_spec:
+                return False
+        else:
+            if self.fn != other.fn:
+                return False
+
         return (
-            isinstance(other, UDFExpr)
-            and self.fn == other.fn
-            and self.callable_class_spec == other.callable_class_spec
-            and len(self.args) == len(other.args)
+            len(self.args) == len(other.args)
             and all(a.structurally_equals(b) for a, b in zip(self.args, other.args))
             and self.kwargs.keys() == other.kwargs.keys()
             and all(
