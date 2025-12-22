@@ -7,17 +7,7 @@ Structure:
 3. Test validation and cleanup
 """
 
-import subprocess
-import sys
 import os
-
-# Dependency setup
-subprocess.check_call(
-    [sys.executable, "-m", "pip", "install", "--upgrade", "transformers", "datasets"]
-)
-subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "ray[llm]"])
-subprocess.check_call([sys.executable, "-m", "pip", "install", "numpy==1.26.4"])
-
 
 '''
 # __video_message_format_example_start__

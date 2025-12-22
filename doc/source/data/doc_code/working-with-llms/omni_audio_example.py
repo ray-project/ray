@@ -7,17 +7,6 @@ Structure:
 3. Test validation and cleanup
 """
 
-import subprocess
-import sys
-import base64
-
-# Dependency setup
-subprocess.check_call(
-    [sys.executable, "-m", "pip", "install", "--upgrade", "transformers", "datasets"]
-)
-subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "ray[llm]"])
-subprocess.check_call([sys.executable, "-m", "pip", "install", "numpy==1.26.4"])
-
 
 '''
 # __audio_message_format_example_start__
@@ -201,7 +190,6 @@ def run_omni_audio_example():
         print(f"Model: {config.model_source}")
         print(f"Has multimodal support: {config.prepare_multimodal_stage.get('enabled', False)}")
         result = processor(audio_dataset).take_all()
-        print(result)
         return config, processor, result
     # __omni_audio_run_example_end__
     return None, None, None
