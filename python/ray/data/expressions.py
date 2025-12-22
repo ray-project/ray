@@ -691,11 +691,14 @@ class _CallableClassSpec:
             A hashable tuple that uniquely identifies this UDF configuration.
         """
         try:
-            return (
+            key = (
                 id(self.cls),
                 self.args,
                 tuple(sorted(self.kwargs.items())),
             )
+            # Verify the key is actually hashable (args may contain lists)
+            hash(key)
+            return key
         except TypeError:
             # Fallback for unhashable args/kwargs - use repr for comparison
             return (id(self.cls), repr(self.args), repr(self.kwargs))
