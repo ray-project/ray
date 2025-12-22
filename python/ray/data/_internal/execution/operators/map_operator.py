@@ -174,7 +174,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # Bundles block references up to the min_rows_per_bundle target.
         self._block_ref_bundler = ref_bundler
         if self._block_ref_bundler is None:
-            self._block_ref_bundler = RebundleQueue(EstimateSize())
+            self._block_ref_bundler = RebundleQueue(EstimateSize(None))
 
         # Queue for task outputs, either ordered or unordered (this is set by start()).
         self._output_queue: Optional[RebundleQueue] = None

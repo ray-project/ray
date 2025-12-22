@@ -206,12 +206,12 @@ class ActorPoolMapOperator(MapOperator):
 
     @property
     @override
-    def _input_buffers(self) -> List["BaseBundleQueue"]:
+    def _input_queues(self) -> List["BaseBundleQueue"]:
         return [self._block_ref_bundler, self._bundle_queue]
 
     @property
     @override
-    def _output_buffers(self) -> List["BaseBundleQueue"]:
+    def _output_queues(self) -> List["BaseBundleQueue"]:
         return [self._output_queue]
 
     @staticmethod

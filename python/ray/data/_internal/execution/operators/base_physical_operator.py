@@ -21,44 +21,44 @@ from ray.data.context import DataContext
 class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
     @property
     @abc.abstractmethod
-    def _input_buffers(self) -> List["BaseBundleQueue"]:
+    def _input_queues(self) -> List["BaseBundleQueue"]:
         """Return all the internal input buffer queues for this operator."""
         ...
 
     @property
     @abc.abstractmethod
-    def _output_buffers(self) -> List["BaseBundleQueue"]:
+    def _output_queues(self) -> List["BaseBundleQueue"]:
         """Return all the internal output buffer queues for this operator."""
         ...
 
     def internal_input_queue_num_blocks(self) -> int:
         """Returns Operator's internal input queue size (in blocks)"""
-        return sum(input_buffer.num_blocks() for input_buffer in self.input_buffers)
+        return sum(input_buffer.num_blocks() for input_buffer in self._input_queues)
 
     def internal_input_queue_num_bytes(self) -> int:
         """Returns Operator's internal input queue size (in bytes)"""
         return sum(
-            input_buffer.estimate_size_bytes() for input_buffer in self.input_buffers
+            input_buffer.estimate_size_bytes() for input_buffer in self._input_queues
         )
 
     def internal_output_queue_num_blocks(self) -> int:
         """Returns Operator's internal output queue size (in blocks)"""
-        return sum(output_buffer.num_blocks() for output_buffer in self.output_buffers)
+        return sum(output_buffer.num_blocks() for output_buffer in self._output_queues)
 
     def internal_output_queue_num_bytes(self) -> int:
         """Returns Operator's internal output queue size (in bytes)"""
         return sum(
-            output_buffer.estimate_size_bytes() for output_buffer in self.output_buffers
+            output_buffer.estimate_size_bytes() for output_buffer in self._output_queues
         )
 
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queue(s)."""
-        for input_buffer in self.input_buffers:
+        for input_buffer in self._input_queues:
             input_buffer.clear()
 
     def clear_internal_output_queue(self) -> None:
         """Clear internal output queue(s)."""
-        for output_buffer in self.output_buffers:
+        for output_buffer in self._output_queues:
             output_buffer.clear()
 
     def mark_execution_finished(self) -> None:
@@ -143,12 +143,12 @@ class AllToAllOperator(
 
     @property
     @override
-    def _input_buffers(self) -> List["BaseBundleQueue"]:
+    def _input_queues(self) -> List["BaseBundleQueue"]:
         return [self._input_buffer]
 
     @property
     @override
-    def _output_buffers(self) -> List["BaseBundleQueue"]:
+    def _output_queues(self) -> List["BaseBundleQueue"]:
         return [self._output_buffer]
 
     def num_outputs_total(self) -> Optional[int]:

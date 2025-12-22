@@ -37,7 +37,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
 
         # Intermediary buffers used to store blocks from each input dependency.
         # Only used when `self._prserve_order` is True.
-        self._input_buffers: List["BaseBundleQueue"] = [
+        self._input_queues: List["BaseBundleQueue"] = [
             FIFOBundleQueue() for _ in range(len(input_ops))
         ]
 
@@ -52,12 +52,12 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
 
     @property
     @override
-    def _input_buffers(self) -> List["BaseBundleQueue"]:
-        return self._input_buffers
+    def _input_queues(self) -> List["BaseBundleQueue"]:
+        return self._input_queues
 
     @property
     @override
-    def _output_buffers(self) -> List["BaseBundleQueue"]:
+    def _output_queues(self) -> List["BaseBundleQueue"]:
         return [self._output_buffer]
 
     def start(self, options: ExecutionOptions):
@@ -92,7 +92,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
             self._output_buffer.add(refs)
             self._metrics.on_output_queued(refs)
         else:
-            self._input_buffers[input_index].add(refs)
+            self._input_queues[input_index].add(refs)
             self._metrics.on_input_queued(refs)
 
     def all_inputs_done(self) -> None:
@@ -102,7 +102,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
             return
 
         assert len(self._output_buffer) == 0, len(self._output_buffer)
-        for input_buffer in self._input_buffers:
+        for input_buffer in self._input_queues:
             while input_buffer.has_next():
                 refs = input_buffer.get_next()
                 self._metrics.on_input_dequeued(refs)
