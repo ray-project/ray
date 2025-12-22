@@ -771,4 +771,5 @@
       --input-path s3://ray-benchmark-data/tpch/parquet/sf100/lineitem
       --preprocessing-batch-size 4096
       --inference-batch-size 1024
-      --inference-concurrency 1 10
+      --inference-min-actors 1
+      --inference-max-actors 10

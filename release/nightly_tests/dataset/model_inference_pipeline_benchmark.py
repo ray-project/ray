@@ -25,7 +25,7 @@ import torch.nn as nn
 from benchmark import Benchmark, BenchmarkMetric
 
 import ray
-from ray.data import Dataset
+from ray.data import Dataset, ActorPoolStrategy
 
 
 @dataclass
@@ -35,7 +35,9 @@ class WorkerConfig:
     batch_size: int
     num_cpus: float
     num_gpus: float
-    concurrency: Optional[tuple] = None  # Only for inference actors
+    # Actor pool sizing (only for inference actors)
+    min_actors: Optional[int] = None
+    max_actors: Optional[int] = None
 
 
 @dataclass
@@ -90,11 +92,16 @@ def parse_args():
         help="GPUs per inference actor.",
     )
     parser.add_argument(
-        "--inference-concurrency",
+        "--inference-min-actors",
         type=int,
-        nargs=2,
-        default=[1, 10],
-        help="Min and max concurrency for inference actors.",
+        default=1,
+        help="Minimum number of inference actors.",
+    )
+    parser.add_argument(
+        "--inference-max-actors",
+        type=int,
+        default=10,
+        help="Maximum number of inference actors.",
     )
     parser.add_argument(
         "--tokenizer-max-length",
@@ -354,9 +361,12 @@ def infer_dataset(
         ),
         batch_format="pandas",
         batch_size=config.inference_config.batch_size,
+        compute=ActorPoolStrategy(
+            min_size=config.inference_config.min_actors,
+            max_size=config.inference_config.max_actors,
+        ),
         num_cpus=config.inference_config.num_cpus,
         num_gpus=config.inference_config.num_gpus,
-        concurrency=config.inference_config.concurrency,
     )
     inferred._set_name("inference_output")
     return inferred
@@ -382,13 +392,16 @@ def main(args):
     print(f"  Input path: {args.input_path}")
     print(f"  Preprocessing batch size: {args.preprocessing_batch_size}")
     print(f"  Inference batch size: {args.inference_batch_size}")
-    print(f"  Inference concurrency: {args.inference_concurrency}")
+    print(
+        f"  Inference actors: min={args.inference_min_actors}, max={args.inference_max_actors}"
+    )
     print(f"  Tokenizer max length: {args.tokenizer_max_length}")
 
     # Adjust for smoke test
     if args.smoke_test:
         args.inference_num_gpus = 0
-        args.inference_concurrency = [1, 2]
+        args.inference_min_actors = 1
+        args.inference_max_actors = 2
 
     # Build pipeline configuration
     # Use TPC-H lineitem columns:
@@ -406,7 +419,8 @@ def main(args):
             batch_size=args.inference_batch_size,
             num_cpus=args.inference_num_cpus,
             num_gpus=args.inference_num_gpus,
-            concurrency=tuple(args.inference_concurrency),
+            min_actors=args.inference_min_actors,
+            max_actors=args.inference_max_actors,
         ),
         metadata_columns=["column00", "column01"],
         feature_columns=["column04", "column05", "column06", "column07"],
@@ -478,8 +492,8 @@ def main(args):
         BenchmarkMetric.NUM_ROWS: total_rows,
         "preprocessing_batch_size": args.preprocessing_batch_size,
         "inference_batch_size": args.inference_batch_size,
-        "inference_concurrency_min": args.inference_concurrency[0],
-        "inference_concurrency_max": args.inference_concurrency[1],
+        "inference_min_actors": args.inference_min_actors,
+        "inference_max_actors": args.inference_max_actors,
         "tokenizer_max_length": args.tokenizer_max_length,
     }
 
