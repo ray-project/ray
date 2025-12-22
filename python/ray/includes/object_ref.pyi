@@ -1,7 +1,7 @@
 # source: object_ref.pxi
 import asyncio
 import concurrent.futures
-from typing import Any, Awaitable, Callable, Generator, TypeVar, Union
+from typing import Any, Awaitable, Callable, Generator, Optional, TypeVar, Union
 
 from ray.includes.unique_ids import BaseID, JobID, TaskID
 
@@ -19,7 +19,7 @@ class ObjectRef(BaseID, Awaitable[_T]):
 
     def __init__(
             self, id: bytes, owner_addr: str = "", call_site_data: str = "",
-            skip_adding_local_ref: bool = False, tensor_transport_val = 0) -> None: ...
+            skip_adding_local_ref: bool = False, tensor_transport: Optional[str] = None) -> None: ...
 
     def __dealloc__(self) -> None: ...
 
