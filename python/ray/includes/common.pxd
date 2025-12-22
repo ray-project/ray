@@ -203,8 +203,6 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CTaskType "ray::TaskType":
         pass
-    cdef cppclass CTensorTransport "ray::rpc::TensorTransport":
-        pass
     cdef cppclass CPlacementStrategy "ray::core::PlacementStrategy":
         pass
     cdef cppclass CDefaultSchedulingStrategy "ray::rpc::DefaultSchedulingStrategy":  # noqa: E501
@@ -241,7 +239,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         CAddress owner_address() const
         const c_string &object_id() const
         const c_string &call_site() const
-        CTensorTransport tensor_transport() const
+        c_bool has_tensor_transport() const
+        const c_string &tensor_transport() const
     cdef cppclass CNodeLabelSchedulingStrategy "ray::rpc::NodeLabelSchedulingStrategy":  # noqa: E501
         CNodeLabelSchedulingStrategy()
         CLabelMatchExpressions* mutable_hard()
@@ -311,10 +310,6 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_ACTOR_TASK "ray::TaskType::ACTOR_TASK"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
-    cdef CTensorTransport TENSOR_TRANSPORT_OBJECT_STORE "ray::rpc::TensorTransport::OBJECT_STORE"
-    cdef CTensorTransport TENSOR_TRANSPORT_DIRECT_TRANSPORT "ray::rpc::TensorTransport::DIRECT_TRANSPORT"
-
-cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CPlacementStrategy PLACEMENT_STRATEGY_PACK \
         "ray::core::PlacementStrategy::PACK"
     cdef CPlacementStrategy PLACEMENT_STRATEGY_SPREAD \
@@ -352,7 +347,7 @@ cdef extern from "ray/common/ray_object.h" nogil:
         const shared_ptr[CBuffer] &GetData()
         const shared_ptr[CBuffer] &GetMetadata() const
         c_bool IsInPlasmaError() const
-        CTensorTransport GetTensorTransport() const
+        optional[c_string] GetTensorTransport() const
 
 cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CRayFunction "ray::core::RayFunction":
@@ -369,7 +364,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         CTaskArgByReference(const CObjectID &object_id,
                             const CAddress &owner_address,
                             const c_string &call_site,
-                            const CTensorTransport &tensor_transport)
+                            optional[c_string] tensor_transport)
 
     cdef cppclass CTaskArgByValue "ray::TaskArgByValue":
         CTaskArgByValue(const shared_ptr[CRayObject] &data)
@@ -393,7 +388,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      c_bool enable_task_events,
                      const unordered_map[c_string, c_string] &labels,
                      CLabelSelector label_selector,
-                     CTensorTransport tensor_transport,
+                     optional[c_string] tensor_transport,
                      c_vector[CFallbackOption] fallback_strategy)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":

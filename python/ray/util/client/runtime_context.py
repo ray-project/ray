@@ -63,3 +63,8 @@ class _ClientWorkerPropertyAPI:
     @property
     def gcs_client(self) -> str:
         return SimpleNamespace(address=self._fetch_runtime_context().gcs_address)
+
+    @property
+    def node(self):
+        """Emulates the worker.node property for client mode"""
+        return SimpleNamespace(session_name=self._fetch_runtime_context().session_name)

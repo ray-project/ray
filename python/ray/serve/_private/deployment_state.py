@@ -2566,6 +2566,8 @@ class DeploymentState:
         # Exit early if the deployment info hasn't changed. Ensures this method
         # is idempotent.
         if not deployment_settings_changed and not target_capacity_changed:
+            # Emit target replicas metric when the deployment info hasn't changed.
+            self.target_replicas_gauge.set(self._target_state.target_num_replicas)
             return False
 
         logger.debug(f"Deploying '{self._id}': {deployment_info.to_dict()}")

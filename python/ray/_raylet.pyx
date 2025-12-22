@@ -137,8 +137,6 @@ from ray.includes.common cimport (
     PythonGetNodeLabels,
     PythonGetResourcesTotal,
     kGcsPidKey,
-    CTensorTransport,
-    TENSOR_TRANSPORT_OBJECT_STORE,
     GetPortFileName,
     PersistPort,
     WaitForPersistedPort,
@@ -175,9 +173,6 @@ from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 from ray.includes.global_state_accessor cimport (
     RedisDelKeyPrefixSync,
     RedisGetKeySync
-)
-from ray.includes.optional cimport (
-    optional, nullopt
 )
 
 cimport cpython
@@ -242,7 +237,6 @@ import ray.core.generated.common_pb2 as common_pb2
 from ray._common.utils import decode
 from ray._private.utils import DeferSigint
 from ray._private.object_ref_generator import ObjectRefGenerator, DynamicObjectRefGenerator
-from ray._private.custom_types import TensorTransportEnum
 from ray._private.gc_collect_manager import PythonGCThread
 
 # Expose GCC & Clang macro to report
@@ -272,9 +266,12 @@ current_task_id_lock = threading.Lock()
 job_config_initialized = False
 job_config_initialization_lock = threading.Lock()
 
-# It is used to indicate optional::nullopt for
+# It is used to indicate std::nullopt for
 # AllocateDynamicReturnId.
 cdef optional[ObjectIDIndexType] NULL_PUT_INDEX = nullopt
+# Used to indicate std::nullopt for tensor_transport.
+cdef optional[c_string] NULL_TENSOR_TRANSPORT = nullopt
+
 # This argument is used to obtain the correct task id inside
 # an asyncio task. It is because task_id can be obtained
 # by the worker_context_ API, which is per thread, not per
@@ -315,7 +312,7 @@ class SerializedRayObject(NamedTuple):
     metadata: Optional[Buffer]
     # If set to None, use the default object store transport. Data will be
     # either inlined in `data` or found in the plasma object store.
-    tensor_transport: Optional[TensorTransportEnum]
+    tensor_transport: Optional[str]
 
 
 cdef RayObjectsToSerializedRayObjects(
@@ -334,12 +331,17 @@ cdef RayObjectsToSerializedRayObjects(
             if objects[i].get().HasMetadata():
                 metadata = Buffer.make(
                     objects[i].get().GetMetadata()).to_pybytes()
-            tensor_transport = TensorTransportEnum(<int>(objects[i].get().GetTensorTransport()))
+
+            c_tensor_transport = objects[i].get().GetTensorTransport()
+            tensor_transport = None
             if (
-                tensor_transport == TensorTransportEnum.OBJECT_STORE
+                not c_tensor_transport.has_value()
                 and object_refs is not None
             ):
-                tensor_transport = TensorTransportEnum(object_refs[i].tensor_transport())
+                tensor_transport = object_refs[i].tensor_transport()
+            elif c_tensor_transport.has_value():
+                tensor_transport = c_tensor_transport.value().decode("utf-8")
+
             serialized_ray_objects.append(SerializedRayObject(data, metadata, tensor_transport))
     return serialized_ray_objects
 
@@ -348,13 +350,15 @@ cdef VectorToObjectRefs(const c_vector[CObjectReference] &object_refs,
                         skip_adding_local_ref):
     result = []
     for i in range(object_refs.size()):
-        tensor_transport_val = <int>object_refs[i].tensor_transport()
+        tensor_transport = None
+        if object_refs[i].has_tensor_transport():
+            tensor_transport = object_refs[i].tensor_transport().decode("utf-8")
         result.append(ObjectRef(
             object_refs[i].object_id(),
             object_refs[i].owner_address().SerializeAsString(),
             object_refs[i].call_site(),
-            skip_adding_local_ref=skip_adding_local_ref,
-            tensor_transport_val=tensor_transport_val))
+            skip_adding_local_ref,
+            tensor_transport))
     return result
 
 
@@ -743,6 +747,7 @@ cdef prepare_args_internal(
         c_vector[CObjectReference] inlined_refs
         CAddress c_owner_address
         CRayStatus op_status
+        optional[c_string] c_tensor_transport = NULL_TENSOR_TRANSPORT
 
     worker = ray._private.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
@@ -764,8 +769,8 @@ cdef prepare_args_internal(
                     c_arg,
                     c_owner_address,
                     arg.call_site(),
-                    c_tensor_transport)))
-
+                    move(c_tensor_transport))))
+            c_tensor_transport = NULL_TENSOR_TRANSPORT
         else:
             try:
                 serialized_arg = serialization_context.serialize(arg)
@@ -816,13 +821,14 @@ cdef prepare_args_internal(
             else:
                 put_id = CObjectID.FromBinary(
                         core_worker.put_serialized_object_and_increment_local_ref(
-                            serialized_arg, inline_small_object=False))
+                            serialized_arg, c_tensor_transport, pin_object=True,
+                            owner_address=None, inline_small_object=False))
                 args_vector.push_back(unique_ptr[CTaskArg](
                     new CTaskArgByReference(
                             put_id,
                             CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
                             put_arg_call_site,
-                            TENSOR_TRANSPORT_OBJECT_STORE
+                            c_tensor_transport
                         )))
                 incremented_put_arg_ids.push_back(put_id)
 
@@ -913,7 +919,7 @@ cdef store_task_errors(
         const CAddress &caller_address,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         c_string* application_error,
-        CTensorTransport c_tensor_transport=TENSOR_TRANSPORT_OBJECT_STORE):
+        optional[c_string] c_tensor_transport):
     cdef:
         CoreWorker core_worker = worker.core_worker
 
@@ -1503,7 +1509,9 @@ cdef create_generator_error_object(
                 actor_id,  # actor id
                 function_name, task_type, title,
                 caller_address,
-                &intermediate_result, application_error)
+                &intermediate_result,
+                application_error,
+                NULL_TENSOR_TRANSPORT)
 
     error_object[0] = intermediate_result.back()
 
@@ -1571,7 +1579,9 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                         None,  # actor
                         None,  # actor id
                         function_name, task_type, title, caller_address,
-                        dynamic_returns, application_error)
+                        dynamic_returns,
+                        application_error,
+                        NULL_TENSOR_TRANSPORT)
             if num_errors_stored == 0:
                 assert is_reattempt
                 # TODO(swang): The generator task failed and we
@@ -1613,7 +1623,7 @@ cdef void execute_task(
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
         int64_t generator_backpressure_num_objects,
-        CTensorTransport c_tensor_transport) except *:
+        optional[c_string] c_tensor_transport) except *:
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
@@ -1981,7 +1991,7 @@ cdef execute_task_with_cancellation_handler(
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
         int64_t generator_backpressure_num_objects,
-        CTensorTransport c_tensor_transport):
+        optional[c_string] c_tensor_transport):
 
     is_retryable_error[0] = False
 
@@ -2101,7 +2111,8 @@ cdef execute_task_with_cancellation_handler(
                 returns,
                 # application_error: we are passing NULL since we don't want the
                 # cancel tasks to fail.
-                NULL)
+                NULL,
+                NULL_TENSOR_TRANSPORT)
     finally:
         with current_task_id_lock:
             current_task_id = None
@@ -2183,7 +2194,7 @@ cdef CRayStatus task_execution_handler(
         c_bool is_streaming_generator,
         c_bool should_retry_exceptions,
         int64_t generator_backpressure_num_objects,
-        CTensorTransport c_tensor_transport) nogil:
+        optional[c_string] c_tensor_transport) nogil:
     with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
@@ -2470,7 +2481,7 @@ cdef void unhandled_exception_handler(const CRayObject& error) nogil:
             metadata = Buffer.make(error.GetMetadata()).to_pybytes()
         # TODO(ekl) why does passing a ObjectRef.nil() lead to shutdown errors?
         object_ids = [None]
-        worker.raise_errors([SerializedRayObject(data, metadata, TensorTransportEnum.OBJECT_STORE)], object_ids)
+        worker.raise_errors([SerializedRayObject(data, metadata, None)], object_ids)
 
 
 def maybe_initialize_job_config():
@@ -3091,12 +3102,20 @@ cdef class CoreWorker:
             owner_address,
             c_bool inline_small_object,
             c_bool _is_experimental_channel,
-            int tensor_transport_val=0
+            tensor_transport: Optional[str] = None,
     ):
         """Create an object reference with the current worker as the owner.
         """
+        cdef:
+            optional[c_string] c_tensor_transport = NULL_TENSOR_TRANSPORT
+            c_string c_tensor_transport_str
+
+        if tensor_transport is not None:
+            c_tensor_transport_str = tensor_transport.encode()
+            c_tensor_transport.emplace(move(c_tensor_transport_str))
+
         created_object = self.put_serialized_object_and_increment_local_ref(
-            serialized_object, pin_object, owner_address, inline_small_object, _is_experimental_channel, tensor_transport_val)
+            serialized_object, c_tensor_transport, pin_object, owner_address, inline_small_object, _is_experimental_channel)
         if owner_address is None:
             owner_address = CCoreWorkerProcess.GetCoreWorker().GetRpcAddress().SerializeAsString()
 
@@ -3106,18 +3125,18 @@ cdef class CoreWorker:
             created_object,
             owner_address,
             skip_adding_local_ref=True,
-            tensor_transport_val=tensor_transport_val
+            tensor_transport=tensor_transport
         )
 
-    def put_serialized_object_and_increment_local_ref(
+    cdef put_serialized_object_and_increment_local_ref(
             self,
             serialized_object,
+            optional[c_string] c_tensor_transport,
             c_bool pin_object=True,
             owner_address=None,
             c_bool inline_small_object=True,
             c_bool _is_experimental_channel=False,
-            int tensor_transport_val=0
-            ):
+        ):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
@@ -3130,7 +3149,6 @@ cdef class CoreWorker:
                 serialized_object.contained_object_refs)
             size_t total_bytes = serialized_object.total_bytes
 
-        c_tensor_transport_val = <CTensorTransport>tensor_transport_val
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
                 .CreateOwnedAndIncrementLocalRef(
@@ -3142,7 +3160,7 @@ cdef class CoreWorker:
                     &data,
                     c_owner_address,
                     inline_small_object,
-                    c_tensor_transport_val))
+                    c_tensor_transport))
 
         if (data.get() == NULL):
             # Object already exists
@@ -3458,8 +3476,7 @@ cdef class CoreWorker:
                 c_labels,
                 c_label_selector,
                 # `tensor_transport` is currently only supported in Ray Actor tasks.
-                # For Ray tasks, we always use `OBJECT_STORE`.
-                TENSOR_TRANSPORT_OBJECT_STORE,
+                NULL_TENSOR_TRANSPORT,
                 c_fallback_strategy)
 
             current_c_task_id = current_task.native()
@@ -3673,7 +3690,7 @@ cdef class CoreWorker:
                           c_string concurrency_group_name,
                           int64_t generator_backpressure_num_objects,
                           c_bool enable_task_events,
-                          int py_tensor_transport):
+                          tensor_transport: Optional[str]):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -3689,8 +3706,13 @@ cdef class CoreWorker:
             unordered_map[c_string, c_string] c_labels
             CLabelSelector c_label_selector
             c_string call_site
-            CTensorTransport c_tensor_transport_val
             c_vector[CFallbackOption] c_fallback_strategy
+            optional[c_string] c_tensor_transport = NULL_TENSOR_TRANSPORT
+            c_string c_tensor_transport_str
+
+        if tensor_transport is not None:
+            c_tensor_transport_str = tensor_transport.encode("utf-8")
+            c_tensor_transport.emplace(move(c_tensor_transport_str))
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,
@@ -3698,8 +3720,6 @@ cdef class CoreWorker:
 
         if RayConfig.instance().record_task_actor_creation_sites():
             call_site = ''.join(traceback.format_stack())
-
-        c_tensor_transport_val = <CTensorTransport>py_tensor_transport
 
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
@@ -3727,7 +3747,7 @@ cdef class CoreWorker:
                         enable_task_events,
                         c_labels,
                         c_label_selector,
-                        c_tensor_transport_val,
+                        c_tensor_transport,
                         c_fallback_strategy),
                     max_retries,
                     retry_exceptions,
@@ -4092,7 +4112,7 @@ cdef class CoreWorker:
                             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]]
                             *returns,
                             ref_generator_id=None,
-                            CTensorTransport c_tensor_transport=TENSOR_TRANSPORT_OBJECT_STORE):
+                            optional[c_string] c_tensor_transport=NULL_TENSOR_TRANSPORT):
         cdef:
             CObjectID return_id
             size_t data_size
@@ -4174,7 +4194,7 @@ cdef class CoreWorker:
             # TODO(kevin85421): We should consider unifying both serialization logic in the future
             # when GPU objects are more stable. We currently separate the logic to ensure
             # GPU object-related logic does not affect the normal object serialization logic.
-            if <int>c_tensor_transport != <int>TENSOR_TRANSPORT_OBJECT_STORE:
+            if c_tensor_transport.has_value():
                 # `output` contains tensors. We need to retrieve these tensors from `output`
                 # and store them in the GPUObjectManager.
                 serialized_object, tensors = context.serialize_gpu_objects(output)
