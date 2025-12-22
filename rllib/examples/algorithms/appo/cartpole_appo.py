@@ -28,4 +28,9 @@ config = (
 )
 
 if __name__ == "__main__":
+    algo = config.build_algo()
+
+    for _ in range(10):
+        result = algo.train()
+        print(result)
     run_rllib_example_script_experiment(config, args)
