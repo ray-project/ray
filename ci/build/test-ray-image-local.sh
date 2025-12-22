@@ -16,9 +16,10 @@ set -euo pipefail
 GPU_PLATFORM="12.1.1-cudnn8"
 
 PYTHON_VERSION="${PYTHON_VERSION:-3.10}"
-IMAGE_TYPE="${1:-cpu}"
-CUDA_VERSION="${2:-}"
-QUICK_TEST="${QUICK_TEST:-}"
+IMAGE_TYPE="cpu"
+CUDA_VERSION=""
+QUICK_TEST=""
+IMAGE=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -42,16 +43,19 @@ while [[ $# -gt 0 ]]; do
             ;;
         cuda)
             IMAGE_TYPE="cuda"
-            CUDA_VERSION="${2:-$GPU_PLATFORM}"
             shift
-            [[ "${1:-}" != "" && "${1:-}" != "--"* ]] && shift
+            # check if next argument is a version, not a flag
+            if [[ -n "${1:-}" && ! "${1:-}" =~ ^-- ]]; then
+                CUDA_VERSION="$1"
+                shift
+            else
+                # If no version is provided, use default GPU platform
+                CUDA_VERSION="$GPU_PLATFORM"
+            fi
             ;;
         *)
-            # Unknown argument - might be CUDA version
-            if [[ "$IMAGE_TYPE" == "cuda" && -z "$CUDA_VERSION" ]]; then
-                CUDA_VERSION="$1"
-            fi
-            shift
+            echo "Error: Unknown argument: $1" >&2
+            exit 1
             ;;
     esac
 done

@@ -5,9 +5,65 @@
 # This script is for local iteration and testing of wanda-based image builds.
 # It requires the wanda binary to be installed (see WANDA_BIN below).
 #
-# Note: This script will build the ray wheel first if needed (images depend on wheels).
+# ============================================================================
+# IMAGE BUILD HIERARCHY
+# ============================================================================
 #
-# Usage (from repo root):
+# This script builds publishable Ray docker images (ray:nightly-py3.10-cpu, etc).
+# Unlike test containers, these require a wheel build to create distributable images.
+#
+#   ┌─────────────────────────────────────────────────────────────────────────┐
+#   │                     PRE-BUILT ARTIFACTS                                 │
+#   │                                                                         │
+#   │   manylinux2014                                                         │
+#   │        │                                                                │
+#   │        ├──────────────────┬──────────────────┐                          │
+#   │        ▼                  ▼                  ▼                          │
+#   │   ray-core           ray-dashboard       ray-java                       │
+#   │   (C++ via bazel)    (npm build)         (Java JARs)                    │
+#   │        │                  │                  │                          │
+#   │        │  ray_pkg.zip     │  dashboard.tar   │  ray-java.jar            │
+#   │        └──────────────────┴──────────────────┘                          │
+#   │                           │                                             │
+#   │                           ▼                                             │
+#   │                      ray-wheel                                          │
+#   │                   (pip wheel build)                                     │
+#   │                           │                                             │
+#   │                    ray-{ver}.whl                                        │
+#   └───────────────────────────┼─────────────────────────────────────────────┘
+#                               │
+#                               ▼
+#   ┌─────────────────────────────────────────────────────────────────────────┐
+#   │                      BASE IMAGES                                        │
+#   │                                                                         │
+#   │   CPU Path:                        CUDA Path:                           │
+#   │                                                                         │
+#   │   ubuntu:22.04                     nvidia/cuda:{ver}-ubuntu22.04        │
+#   │        │                                  │                             │
+#   │        ▼                                  ▼                             │
+#   │   ray-py{ver}-cpu-base             ray-py{ver}-cu{cuda}-base            │
+#   │   (docker/base-deps/cpu)           (docker/base-deps/cuda)              │
+#   │        │                                  │                             │
+#   └────────┼──────────────────────────────────┼─────────────────────────────┘
+#            │                                  │
+#            ▼                                  ▼
+#   ┌─────────────────────────────────────────────────────────────────────────┐
+#   │                    FINAL RAY IMAGES                                     │
+#   │                                                                         │
+#   │   ray:nightly-py{ver}-cpu          ray:nightly-py{ver}-cu{cuda}         │
+#   │   (ci/docker/ray-image-cpu)        (ci/docker/ray-image-cuda)           │
+#   │                                                                         │
+#   │   Contents:                                                             │
+#   │   • Ray wheel installed                                                 │
+#   │   • Default Ray dependencies                                            │
+#   │   • Ready for: docker run rayproject/ray:nightly-py3.10-cpu             │
+#   └─────────────────────────────────────────────────────────────────────────┘
+#
+# ============================================================================
+# USAGE
+# ============================================================================
+#
+# Examples (from repo root):
 #   ci/build/build-ray-image-local.sh                      # Build CPU image for Python 3.10
 #   ci/build/build-ray-image-local.sh 3.11                 # Build CPU image for Python 3.11
 #   ci/build/build-ray-image-local.sh 3.10 cpu             # Build CPU image (default)
