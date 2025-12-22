@@ -480,8 +480,8 @@ class ReplicaConfig:
         ray_actor_options: Dict,
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
-        bundle_label_selector: Optional[List[Dict[str, str]]] = None,
-        fallback_strategy: Optional[List[Dict[str, Any]]] = None,
+        placement_group_bundle_label_selectors: Optional[List[Dict[str, str]]] = None,
+        placement_group_fallback_strategys: Optional[List[Dict[str, Any]]] = None,
         max_replicas_per_node: Optional[int] = None,
         needs_pickle: bool = True,
     ):
