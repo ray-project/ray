@@ -7,6 +7,7 @@ from ray.data._internal.compute import (
     ComputeStrategy,
     TaskPoolStrategy,
 )
+from ray.data._internal.execution.bundle_queue import ExactSize, RebundleQueue
 from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
@@ -37,7 +38,6 @@ from ray.data._internal.logical.operators.map_operator import (
     MapBatches,
     StreamingRepartition,
 )
-from ray.data._internal.streaming_repartition import StreamingRepartitionRefBundler
 from ray.util.annotations import DeveloperAPI
 
 # Scheduling strategy can be inherited from upstream operator if not specified.
@@ -301,7 +301,7 @@ class FuseOperators(Rule):
             up_op.data_context,
             name=name,
             compute_strategy=compute,
-            ref_bundler=StreamingRepartitionRefBundler(batch_size),
+            ref_bundler=RebundleQueue(ExactSize(batch_size)),
             map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,

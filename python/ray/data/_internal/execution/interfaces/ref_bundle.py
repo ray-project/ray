@@ -239,9 +239,9 @@ class RefBundle:
         assert (
             self.num_rows() is not None
         ), "Cannot slice a RefBundle with unknown number of rows."
-        assert (
-            needed_rows < self.num_rows()
-        ), f"To slice a RefBundle, the number of requested rows must be less than the number of rows in the bundle. Requested {needed_rows} rows but bundle only has {self.num_rows()} rows."
+
+        if needed_rows == self.num_rows():
+            return self, RefBundle(blocks=(), schema=None, owns_blocks=False)
 
         block_slices = []
         for metadata, block_slice in zip(self.metadata, self.slices):

@@ -28,10 +28,10 @@ from ray.data._internal.compute import (
     TaskPoolStrategy,
 )
 from ray.data._internal.execution.bundle_queue import (
-    BlockRefBundler,
+    EstimateSize,
     FIFOBundleQueue,
     OrderedBundleQueue,
-    QueueWithRebundling,
+    RebundleQueue,
 )
 from ray.data._internal.execution.interfaces import (
     BlockSlice,
@@ -130,7 +130,7 @@ def _get_schema_from_bundle(bundle: RefBundle) -> Optional["pa.Schema"]:
     return None
 
 
-class MapOperator(A, OneToOneOperator, ABC):
+class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     """A streaming operator that maps input bundles 1:1 to output bundles.
 
     This operator implements the distributed map operation, supporting both task
@@ -150,7 +150,7 @@ class MapOperator(A, OneToOneOperator, ABC):
         name: str,
         target_max_block_size_override: Optional[int],
         min_rows_per_bundle: Optional[int],
-        ref_bundler: Optional[QueueWithRebundling],
+        ref_bundler: Optional[RebundleQueue],
         supports_fusion: bool,
         map_task_kwargs: Optional[Dict[str, Any]],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
@@ -174,10 +174,10 @@ class MapOperator(A, OneToOneOperator, ABC):
         # Bundles block references up to the min_rows_per_bundle target.
         self._block_ref_bundler = ref_bundler
         if self._block_ref_bundler is None:
-            self._block_ref_bundler = BlockRefBundler(min_rows_per_bundle)
+            self._block_ref_bundler = RebundleQueue(EstimateSize())
 
         # Queue for task outputs, either ordered or unordered (this is set by start()).
-        self._output_queue: Optional[QueueWithRebundling] = None
+        self._output_queue: Optional[RebundleQueue] = None
         # Output metadata, added to on get_next().
         self._output_blocks_stats: List[BlockStats] = []
         # All active `DataOpTask`s.
@@ -277,7 +277,7 @@ class MapOperator(A, OneToOneOperator, ABC):
         # config and not contain implementation code.
         compute_strategy: Optional[ComputeStrategy] = None,
         min_rows_per_bundle: Optional[int] = None,
-        ref_bundler: Optional[QueueWithRebundling] = None,
+        ref_bundler: Optional[RebundleQueue] = None,
         supports_fusion: bool = True,
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,

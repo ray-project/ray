@@ -25,7 +25,7 @@ import ray
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_integer
 from ray.data._internal.compute import ActorPoolStrategy, ComputeStrategy, get_compute
-from ray.data._internal.execution.bundle_queue import StreamingRepartitionRefBundler
+from ray.data._internal.execution.bundle_queue import ExactSize, RebundleQueue
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -171,7 +171,7 @@ def plan_streaming_repartition_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
-        ref_bundler=StreamingRepartitionRefBundler(op.target_num_rows_per_block),
+        ref_bundler=RebundleQueue(ExactSize(op.target_num_rows_per_block)),
         ray_remote_args=op._ray_remote_args,
         ray_remote_args_fn=op._ray_remote_args_fn,
     )

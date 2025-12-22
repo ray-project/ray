@@ -8,7 +8,7 @@ from typing_extensions import override
 
 from ray.data._internal.execution.bundle_queue import (
     BaseBundleQueue,
-    QueueWithRebundling,
+    RebundleQueue,
 )
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
@@ -36,7 +36,7 @@ class TaskPoolMapOperator(MapOperator):
         name: str = "TaskPoolMap",
         target_max_block_size_override: Optional[int] = None,
         min_rows_per_bundle: Optional[int] = None,
-        ref_bundler: Optional[QueueWithRebundling] = None,
+        ref_bundler: Optional[RebundleQueue] = None,
         max_concurrency: Optional[int] = None,
         supports_fusion: bool = True,
         map_task_kwargs: Optional[Dict[str, Any]] = None,

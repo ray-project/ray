@@ -3,21 +3,15 @@ from __future__ import annotations
 from .base import (
     BaseBundleQueue,
     SupportsDequeue,
-    SupportsRebundling,
     SupportsRemoval,
 )
-from .bundler import BlockRefBundler
-from .bundler_exact import StreamingRepartitionRefBundler
+from .bundler import EstimateSize, ExactSize, RebundleQueue
 from .fifo import FIFOBundleQueue
 from .hash_link import HashLinkedQueue
 from .ordered import OrderedBundleQueue
 
 
 class QueueWithRemoval(BaseBundleQueue, SupportsRemoval):
-    pass
-
-
-class QueueWithRebundling(BaseBundleQueue, SupportsRebundling):
     pass
 
 
@@ -30,12 +24,11 @@ __all__ = [
     "create_bundle_queue",
     "SupportsRemoval",
     "HashLinkedQueue",
-    "BlockRefBundler",
-    "StreamingRepartitionRefBundler",
+    "RebundleQueue",
+    "EstimateSize",
     "OrderedBundleQueue",
     "FIFOBundleQueue",
+    "ExactSize",
     "SupportsDequeue",
-    "SupportsRebundling",
     "QueueWithRemoval",
-    "QueueWithRebundling",
 ]

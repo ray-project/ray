@@ -4,10 +4,8 @@ import abc
 from typing import (
     TYPE_CHECKING,
     Any,
-    List,
     Optional,
     Protocol,
-    Tuple,
     runtime_checkable,
 )
 
@@ -150,23 +148,4 @@ class SupportsRemoval(Protocol):
 
     def remove_last(self, bundle: RefBundle) -> RefBundle:
         """Remove the specified bundle from the queue. If multiple instances exist, remove the last one."""
-        ...
-
-
-# TODO(Justin): What I wrote below is not ideal, and will be removed
-# once we are able to track metrics in the queues themselves (as opposed
-# to what we currently do -- track metrics in the operators). We need this method
-# to surface the original bundles to the operators so they can track the bundles
-# correctly.
-@runtime_checkable
-class SupportsRebundling(Protocol):
-    """Protocol for queues that rebundle their input"""
-
-    def get_next_with_original(self) -> Tuple[List[RefBundle], RefBundle]:
-        """Gets the next bundle.
-
-        Returns:
-            A two-tuple. The first element is a list of bundles that were combined into
-            the output bundle. The second element is the output bundle.
-        """
         ...
