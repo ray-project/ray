@@ -981,6 +981,7 @@ py_test_module_list(
     size = "large",
     files = [
         "test_failure_4.py",
+        "test_implicit_resource.py",
         "test_object_spilling.py",
         "test_object_spilling_3.py",
         "test_placement_group_mini_integration.py",
@@ -1000,7 +1001,6 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
-        "test_implicit_resource.py",
         "test_plasma_unlimited.py",
         "test_threaded_actor.py",
     ],
