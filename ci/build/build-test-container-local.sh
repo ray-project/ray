@@ -67,9 +67,9 @@
 #
 set -euo pipefail
 
-header() {
-    echo -e "\n\033[34;1m===> $1\033[0m"
-}
+# Source shared utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/local-build-utils.sh"
 
 usage() {
     echo "Usage: $0 [OPTIONS] [TEAM] [PYTHON_VERSION]"
@@ -103,7 +103,9 @@ SKIP_BASE=false
 SKIP_RAY_CORE=false
 SKIP_RAY_INSTALL=false
 GPU=false
-WANDA_BIN="${WANDA_BIN:-$(which wanda 2>/dev/null || echo /home/ubuntu/.local/bin/wanda)}"
+
+# Setup environment (sets WANDA_BIN if not set)
+setup_build_env
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -193,6 +195,9 @@ export BUILDKITE_BAZEL_CACHE_URL="${BUILDKITE_BAZEL_CACHE_URL:-}"
 export HOSTTYPE="${HOSTTYPE:-x86_64}"
 export ARCH_SUFFIX=""
 export MANYLINUX_VERSION="${MANYLINUX_VERSION:-251216.3835fc5}"
+
+# Check prerequisites
+check_wanda_prerequisites "$WANDA_BIN"
 
 echo "Building test environment for team: $TEAM, Python: $PYTHON_VERSION"
 if [[ "$GPU" == "true" ]]; then

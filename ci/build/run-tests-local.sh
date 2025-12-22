@@ -87,6 +87,10 @@
 #
 set -euo pipefail
 
+# Source shared utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/local-build-utils.sh"
+
 # Defaults
 TEAM=""
 PYTHON_VERSION="3.10"
@@ -217,7 +221,6 @@ fi
 # Determine image name
 BASE_IMAGE="${TEAM}build-py${PYTHON_VERSION}"
 IMAGE="${BASE_IMAGE}-ray:latest"
-WANDA_BIN="${WANDA_BIN:-$(which wanda 2>/dev/null || echo /home/ubuntu/.local/bin/wanda)}"
 
 # Map team to base type: "ml" teams need oss-ci-base_ml, others use oss-ci-base_build
 get_team_base_type() {
@@ -243,9 +246,9 @@ get_team_wanda_file() {
     esac
 }
 
-header() {
-    echo -e "\n\033[34;1m===> $1\033[0m"
-}
+# Setup environment and check prerequisites
+setup_build_env
+check_wanda_prerequisites "$WANDA_BIN"
 
 # Export variables for wanda (needed by all wanda builds)
 export PYTHON_VERSION
