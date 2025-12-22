@@ -60,14 +60,14 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
-)
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    run_rllib_example_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRAINING_ITERATION

@@ -36,7 +36,7 @@ class RangeDatasource(Datasource):
         self,
         parallelism: int,
         per_task_row_limit: Optional[int] = None,
-        epoch_idx: int = 0,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         if self._n == 0:
             return []

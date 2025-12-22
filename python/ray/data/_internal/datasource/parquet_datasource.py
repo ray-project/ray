@@ -432,6 +432,7 @@ class ParquetDatasource(Datasource):
         self._partition_schema = _get_partition_columns_schema(
             partitioning, self._pq_paths
         )
+        self._file_metadata_shuffler = None
         self._include_paths = include_paths
         self._partitioning = partitioning
         _validate_shuffle_arg(shuffle)
@@ -473,14 +474,15 @@ class ParquetDatasource(Datasource):
         self,
         parallelism: int,
         per_task_row_limit: Optional[int] = None,
-        epoch_idx: int = 0,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
         # FileBasedDatasource's write side, however.
+        execution_idx = data_context._execution_idx if data_context is not None else 0
         pq_fragments, pq_paths = _shuffle_file_metadata(
-            self._pq_fragments, self._pq_paths, self._shuffle, epoch_idx
+            self._pq_fragments, self._pq_paths, self._shuffle, execution_idx
         )
 
         # Derive expected target schema of the blocks being read

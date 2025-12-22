@@ -337,6 +337,113 @@ async def test_vllm_wrapper_embed(model_opt_125m):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pooling_params,expect_same_output",
+    [
+        ({}, True),
+        ({"truncate_prompt_tokens": 3}, False),
+        ({"normalize": True}, False),
+    ],
+)
+async def test_vllm_wrapper_embed_pooling_params(
+    model_opt_125m, pooling_params, expect_same_output
+):
+    prompt = "Hello! How's the weather?"
+    wrapper = vLLMEngineWrapper(
+        model=model_opt_125m,
+        model_source=model_opt_125m,
+        idx_in_batch_column="__idx_in_batch",
+        disable_log_stats=True,
+        max_pending_requests=10,
+        # Skip CUDA graph capturing to reduce the start time.
+        enforce_eager=True,
+        gpu_memory_utilization=0.8,
+        max_model_len=2048,
+        task=vLLMTaskType.EMBED,
+    )
+
+    batch = [
+        {
+            "__idx_in_batch": 0,
+            "prompt": prompt,
+            "pooling_params": pooling_params,
+        },
+        {
+            "__idx_in_batch": 1,
+            "prompt": prompt,
+            # By default, no pooling params are applied.
+        },
+    ]
+
+    tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
+
+    outputs = {}
+    for resp in asyncio.as_completed(tasks):
+        request, output, time_taken_llm = await resp
+        idx = request.idx_in_batch
+        outputs[idx] = output
+
+        # Validate pooling params for idx=0
+        if idx == 0 and pooling_params:
+            for key, expected_value in pooling_params.items():
+                assert hasattr(request.params, key)
+                actual_value = getattr(request.params, key)
+                assert actual_value == expected_value
+
+        assert output["embeddings"].shape == (768,)
+        assert time_taken_llm > 0
+
+    assert (
+        outputs[0]["embeddings"] == outputs[1]["embeddings"]
+    ).all() == expect_same_output
+
+    # Clean up GPU memory
+    wrapper.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_vllm_wrapper_embed_long_prompt(model_opt_125m):
+    # Sufficiently long prompt to trigger truncation to max_model_len
+    prompt = "Hello! How's the weather?" * 10_000
+    wrapper = vLLMEngineWrapper(
+        model=model_opt_125m,
+        model_source=model_opt_125m,
+        idx_in_batch_column="__idx_in_batch",
+        disable_log_stats=True,
+        max_pending_requests=10,
+        # Skip CUDA graph capturing to reduce the start time.
+        enforce_eager=True,
+        gpu_memory_utilization=0.8,
+        max_model_len=2048,
+        task=vLLMTaskType.EMBED,
+    )
+
+    batch = [
+        {
+            "__idx_in_batch": 0,
+            "prompt": prompt,
+            # Long prompts shouldn't induce vLLM errors as prommpt length is truncated
+            # to max_model_len when truncate_prompt_tokens is set to -1
+            "pooling_params": {"truncate_prompt_tokens": -1},
+        },
+    ]
+
+    tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
+
+    outputs = {}
+    for resp in asyncio.as_completed(tasks):
+        request, output, time_taken_llm = await resp
+        idx = request.idx_in_batch
+        outputs[idx] = output
+
+        assert output["embeddings"].shape == (768,)
+        assert time_taken_llm > 0
+
+    # Clean up GPU memory
+    wrapper.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora):
     wrapper = vLLMEngineWrapper(
         model=model_llama_3_2_216M,
@@ -538,6 +645,150 @@ def test_vllm_output_data_no_logprobs():
     dumped = output_data.model_dump()
     assert dumped["logprobs"] is None
     assert dumped["prompt_logprobs"] is None
+
+
+@pytest.mark.asyncio
+async def test_vllm_udf_default_raises_on_error(mock_vllm_wrapper):
+    """Default behavior (should_continue_on_error=False) raises on inference error."""
+    mock_vllm_wrapper.return_value.generate_async.side_effect = ValueError(
+        "prompt too long"
+    )
+
+    udf = vLLMEngineStageUDF(
+        data_column="__data",
+        expected_input_keys=["prompt", "sampling_params"],
+        model="/tmp/fake-model",
+        task_type=vLLMTaskType.GENERATE,
+        batch_size=32,
+        max_concurrent_batches=4,
+        engine_kwargs={},
+        should_continue_on_error=False,
+    )
+
+    batch = {"__data": [{"prompt": "test", "sampling_params": {"temperature": 0.7}}]}
+
+    with pytest.raises(ValueError, match="prompt too long"):
+        async for _ in udf(batch):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_vllm_udf_should_continue_on_error_yields_error_row(mock_vllm_wrapper):
+    """With should_continue_on_error=True, errors yield rows with __inference_error__."""
+    mock_vllm_wrapper.return_value.generate_async.side_effect = ValueError(
+        "prompt too long"
+    )
+
+    udf = vLLMEngineStageUDF(
+        data_column="__data",
+        expected_input_keys=["prompt", "sampling_params"],
+        model="/tmp/fake-model",
+        task_type=vLLMTaskType.GENERATE,
+        batch_size=32,
+        max_concurrent_batches=4,
+        engine_kwargs={},
+        should_continue_on_error=True,
+    )
+
+    batch = {
+        "__data": [{"prompt": "test prompt", "sampling_params": {"temperature": 0.7}}]
+    }
+
+    results = []
+    async for result in udf(batch):
+        results.extend(result["__data"])
+
+    assert len(results) == 1
+    assert "__inference_error__" in results[0]
+    assert "ValueError" in results[0]["__inference_error__"]
+    assert "prompt too long" in results[0]["__inference_error__"]
+    # Error rows include the original prompt for debuggability
+    assert results[0]["prompt"] == "test prompt"
+
+
+@pytest.mark.asyncio
+async def test_vllm_udf_mixed_success_and_error(mock_vllm_wrapper):
+    """Mixed batch: some rows succeed, some fail."""
+    call_count = 0
+
+    async def mock_generate(row):
+        nonlocal call_count
+        call_count += 1
+        idx = row["__idx_in_batch"]
+        if idx == 1:
+            raise ValueError("prompt too long")
+        return (
+            MagicMock(
+                request_id=idx,
+                prompt=row["prompt"],
+                params=row["sampling_params"],
+                idx_in_batch=idx,
+            ),
+            {
+                "prompt": row["prompt"],
+                "generated_text": f"Response to: {row['prompt']}",
+            },
+            0.1,
+        )
+
+    mock_vllm_wrapper.return_value.generate_async.side_effect = mock_generate
+
+    udf = vLLMEngineStageUDF(
+        data_column="__data",
+        expected_input_keys=["prompt", "sampling_params"],
+        model="/tmp/fake-model",
+        task_type=vLLMTaskType.GENERATE,
+        batch_size=32,
+        max_concurrent_batches=4,
+        engine_kwargs={},
+        should_continue_on_error=True,
+    )
+
+    batch = {
+        "__data": [
+            {"prompt": "first", "sampling_params": {"temperature": 0.7}},
+            {"prompt": "second", "sampling_params": {"temperature": 0.7}},
+            {"prompt": "third", "sampling_params": {"temperature": 0.7}},
+        ]
+    }
+
+    results = []
+    async for result in udf(batch):
+        results.extend(result["__data"])
+
+    assert len(results) == 3
+
+    errors = [r for r in results if r.get("__inference_error__") is not None]
+    successes = [r for r in results if r.get("__inference_error__") is None]
+
+    assert len(errors) == 1
+    assert len(successes) == 2
+    assert "ValueError" in errors[0]["__inference_error__"]
+
+
+@pytest.mark.asyncio
+async def test_vllm_udf_fatal_error_always_raises(mock_vllm_wrapper):
+    """Fatal errors (EngineDeadError) always propagate, even with should_continue_on_error=True."""
+    from vllm.v1.engine.exceptions import EngineDeadError
+
+    mock_vllm_wrapper.return_value.generate_async.side_effect = EngineDeadError()
+
+    udf = vLLMEngineStageUDF(
+        data_column="__data",
+        expected_input_keys=["prompt", "sampling_params"],
+        model="/tmp/fake-model",
+        task_type=vLLMTaskType.GENERATE,
+        batch_size=32,
+        max_concurrent_batches=4,
+        engine_kwargs={},
+        should_continue_on_error=True,  # Even with this True, fatal errors should raise
+    )
+
+    batch = {"__data": [{"prompt": "test", "sampling_params": {"temperature": 0.7}}]}
+
+    with pytest.raises(EngineDeadError):
+        async for _ in udf(batch):
+            pass
 
 
 if __name__ == "__main__":
