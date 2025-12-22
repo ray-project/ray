@@ -13,9 +13,6 @@ from pyarrow import ArrowInvalid
 
 import ray
 from ray._private.test_utils import run_string_as_driver
-from ray.air.util.tensor_extensions.arrow import (
-    ArrowTensorArray,
-)
 from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
     ArrowBlockBuilder,
@@ -23,6 +20,9 @@ from ray.data._internal.arrow_block import (
     _get_max_chunk_size,
 )
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
+from ray.data._internal.tensor_extensions.arrow import (
+    ArrowTensorArray,
+)
 from ray.data._internal.util import GiB, MiB
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext

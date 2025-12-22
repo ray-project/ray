@@ -17,7 +17,6 @@ from typing import (
 import numpy as np
 
 from ray._private.ray_constants import env_integer
-from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.size_estimator import SizeEstimator
 from ray.data._internal.util import (
@@ -36,6 +35,7 @@ from ray.data.block import (
     KeyType,
     U,
 )
+from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE
 
 if TYPE_CHECKING:

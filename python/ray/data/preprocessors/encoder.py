@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 import pandas.api.types
 
-from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data._internal.util import is_null
 from ray.data.preprocessor import (
     Preprocessor,
@@ -16,6 +15,7 @@ from ray.data.preprocessor import (
 )
 from ray.data.preprocessors.utils import make_post_processor
 from ray.data.preprocessors.version_support import SerializablePreprocessor
+from ray.data.util.data_batch_conversion import BatchFormat
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
