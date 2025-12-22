@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from .base import (
     BaseBundleQueue,
-    SupportsDeque,
+    SupportsDequeue,
     SupportsRebundling,
     SupportsRemoval,
 )
@@ -34,7 +34,7 @@ __all__ = [
     "StreamingRepartitionRefBundler",
     "OrderedBundleQueue",
     "FIFOBundleQueue",
-    "SupportsDeque",
+    "SupportsDequeue",
     "SupportsRebundling",
     "QueueWithRemoval",
     "QueueWithRebundling",

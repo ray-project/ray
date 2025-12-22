@@ -122,7 +122,7 @@ class BaseBundleQueue(_QueueMetricRecorderMixin):
 
 
 @runtime_checkable
-class SupportsDeque(Protocol):
+class SupportsDequeue(Protocol):
     """Protocol for queues that support deque operations (add to front, get from back)."""
 
     def add_to_front(self, bundle: RefBundle):

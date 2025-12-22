@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Deque, Dict, Iterator, Optional
 
 from typing_extensions import override
 
-from .base import BaseBundleQueue, SupportsDeque, SupportsRemoval
+from .base import BaseBundleQueue, SupportsDequeue, SupportsRemoval
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
@@ -19,7 +19,7 @@ class _Node:
     prev: Optional[_Node] = None
 
 
-class HashLinkedQueue(BaseBundleQueue, SupportsRemoval, SupportsDeque):
+class HashLinkedQueue(BaseBundleQueue, SupportsRemoval, SupportsDequeue):
     """A bundle queue that supports these operations quickly:
     - contains(bundle)
     - remove(bundle)

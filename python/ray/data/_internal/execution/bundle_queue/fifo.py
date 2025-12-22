@@ -5,13 +5,13 @@ from typing import TYPE_CHECKING, Any, Deque, Iterator, List, Optional
 
 from typing_extensions import override
 
-from .base import BaseBundleQueue, SupportsDeque
+from .base import BaseBundleQueue, SupportsDequeue
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
 
 
-class FIFOBundleQueue(BaseBundleQueue, SupportsDeque):
+class FIFOBundleQueue(BaseBundleQueue, SupportsDequeue):
     """A bundle queue that follows fifo-policy. Conceptually
     [ ] <- [ ] <- [ ] ...
      ^ where the leftmost is popped first
