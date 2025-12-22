@@ -403,12 +403,12 @@ class RayParams:
                     "between 1024 and 65535."
                 )
         if self.runtime_env_agent_port is not None:
-            if (
+            if self.runtime_env_agent_port != 0 and (
                 self.runtime_env_agent_port < 1024
                 or self.runtime_env_agent_port > 65535
             ):
                 raise ValueError(
-                    "runtime_env_agent_port must be an integer "
+                    "runtime_env_agent_port must be 0 (auto-assign) or an integer "
                     "between 1024 and 65535."
                 )
 

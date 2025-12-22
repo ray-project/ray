@@ -555,6 +555,50 @@ def get_node(gcs_address, node_id):
     return global_state.get_node(node_id)
 
 
+def get_node_with_retry(
+    gcs_address: str,
+    node_id: str,
+    timeout_s: float = 30,
+    retry_interval_s: float = 1,
+) -> dict:
+    """Get node info from GCS with retry logic.
+
+    Keeps retrying until the node is found or timeout is reached.
+
+    Some Ray processes (e.g., ray_client_server) start in parallel
+    with the raylet. When they query GCS for node info, the raylet may not have
+    registered yet. This function retries until the node info is available.
+
+    Args:
+        gcs_address: The address of the GCS server (e.g., "ip:port").
+        node_id: The hex string ID of the node to find.
+        timeout_s: Total timeout in seconds. Default 30s.
+        retry_interval_s: Interval between retries in seconds. Default 1s.
+
+    Returns:
+        A dictionary containing node info.
+
+    Raises:
+        RuntimeError: If the node is not found within the timeout.
+    """
+    end_time = time.time() + timeout_s
+
+    while True:
+        try:
+            node_info = get_node(gcs_address, node_id)
+            if node_info is not None:
+                return node_info
+        except Exception:
+            pass
+
+        if time.time() >= end_time:
+            raise RuntimeError(
+                f"Timed out waiting for node info for node_id={node_id}."
+            )
+
+        time.sleep(retry_interval_s)
+
+
 def get_webui_url_from_internal_kv():
     assert ray.experimental.internal_kv._internal_kv_initialized()
     webui_url = ray.experimental.internal_kv._internal_kv_get(
@@ -1418,6 +1462,8 @@ def start_gcs_server(
     gcs_server_port: Optional[int] = None,
     metrics_agent_port: Optional[int] = None,
     node_ip_address: Optional[str] = None,
+    session_dir: Optional[str] = None,
+    node_id: Optional[str] = None,
 ):
     """Start a gcs server.
 
@@ -1436,11 +1482,13 @@ def start_gcs_server(
         gcs_server_port: Port number of the gcs server.
         metrics_agent_port: The port where metrics agent is bound to.
         node_ip_address: IP Address of a node where gcs server starts.
+        session_dir: Session directory path. Used to write the bound GCS port to a file.
+        node_id: The unique ID of this node.
 
     Returns:
         ProcessInfo for the process that was started.
     """
-    assert gcs_server_port > 0
+    assert gcs_server_port >= 0
 
     command = [
         GCS_SERVER_EXECUTABLE,
@@ -1451,6 +1499,8 @@ def start_gcs_server(
         f"--node-ip-address={node_ip_address}",
         f"--session-name={session_name}",
         f"--ray-commit={ray.__commit__}",
+        f"--session-dir={session_dir}",
+        f"--node-id={node_id}",
     ]
 
     if stdout_filepath:
@@ -1737,6 +1787,7 @@ def start_raylet(
             ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, session_dir
         ),
         os.path.join(RAY_PATH, "dashboard", "agent.py"),
+        f"--node-id={node_id}",
         f"--node-ip-address={node_ip_address}",
         f"--metrics-export-port={metrics_export_port}",
         f"--grpc-port={metrics_agent_port}",
@@ -1788,8 +1839,10 @@ def start_raylet(
             ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, session_dir
         ),
         os.path.join(RAY_PATH, "_private", "runtime_env", "agent", "main.py"),
+        f"--node-id={node_id}",
         f"--node-ip-address={node_ip_address}",
         f"--runtime-env-agent-port={runtime_env_agent_port}",
+        f"--session-dir={session_dir}",
         f"--gcs-address={gcs_address}",
         f"--cluster-id-hex={cluster_id}",
         f"--runtime-env-dir={resource_dir}",
@@ -2295,6 +2348,7 @@ def start_ray_client_server(
     redis_password: Optional[str] = None,
     fate_share: Optional[bool] = None,
     runtime_env_agent_address: Optional[str] = None,
+    node_id: Optional[str] = None,
     server_type: str = "proxy",
     serialized_runtime_env_context: Optional[str] = None,
 ):
@@ -2312,6 +2366,7 @@ def start_ray_client_server(
         redis_password: The password of the Redis server.
         runtime_env_agent_address: Address to the Runtime Env Agent listens on via HTTP.
             Only needed when server_type == "proxy".
+        node_id: The hex ID of this node.
         server_type: Whether to start the proxy version of Ray Client.
         serialized_runtime_env_context (str|None): If specified, the serialized
             runtime_env_context to start the client server in.
@@ -2348,6 +2403,8 @@ def start_ray_client_server(
         assert len(runtime_env_agent_address) > 0
     if runtime_env_agent_address:
         command.append(f"--runtime-env-agent-address={runtime_env_agent_address}")
+    if node_id:
+        command.append(f"--node-id={node_id}")
 
     process_info = start_ray_process(
         command,
