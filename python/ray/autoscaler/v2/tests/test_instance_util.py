@@ -34,7 +34,7 @@ class InstanceUtilTest(unittest.TestCase):
 
         g = InstanceUtil.get_valid_transitions()
 
-        assert g[Instance.QUEUED] == {Instance.REQUESTED}
+        assert g[Instance.QUEUED] == {Instance.REQUESTED, Instance.TERMINATED}
         all_status.remove(Instance.QUEUED)
 
         assert g[Instance.REQUESTED] == {
