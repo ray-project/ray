@@ -640,6 +640,10 @@ class DataContext:
 
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
 
+    # Dataset caching configuration
+    enable_dataset_caching: bool = True
+    dataset_cache_max_size_bytes: int = 1024 * 1024 * 1024  # 1GB default
+
     def __post_init__(self):
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.

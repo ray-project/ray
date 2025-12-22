@@ -13,6 +13,11 @@ from ray.data._internal.execution.interfaces import (
     NodeIdStr,
 )
 from ray.data._internal.logging import configure_logging
+from ray.data._internal.cache import (
+    clear_dataset_cache,
+    get_cache_stats,
+    disable_dataset_caching,
+)
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import (
     Dataset,
@@ -189,4 +194,8 @@ __all__ = [
     "read_webdataset",
     "Preprocessor",
     "TFXReadOptions",
+    # Dataset caching API
+    "clear_dataset_cache",
+    "get_cache_stats",
+    "disable_dataset_caching",
 ]
