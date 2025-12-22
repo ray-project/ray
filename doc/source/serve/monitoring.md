@@ -276,11 +276,6 @@ In the replica `Model` log file, you should see the following:
 {"levelname": "INFO", "asctime": "2024-02-27 10:36:10,127", "deployment": "default_Model", "replica": "rdofcrh4", "request_id": "f4f4b3c0-1cca-4424-9002-c887d7858525", "route": "/", "application": "default", "message": "replica.py:373 - __CALL__ OK 0.6ms"}
 ```
 
-:::{note}
-The `RAY_SERVE_ENABLE_JSON_LOGGING=1` environment variable is getting deprecated in the
-next release. To enable JSON logging globally, use `RAY_SERVE_LOG_ENCODING=JSON`.
-:::
-
 #### Disable access log
 
 :::{note}
