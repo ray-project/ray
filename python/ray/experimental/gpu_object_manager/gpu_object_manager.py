@@ -178,12 +178,12 @@ class GPUObjectManager:
             )
             self._tensor_transport_meta_cv.notify_all()
 
-    def wait_for_tensor_transport_metadata(self, obj_id: str):
+    def wait_for_tensor_transport_metadata(self, obj_id: str, timeout: float) -> bool:
         with self._tensor_transport_meta_cv:
-            self._tensor_transport_meta_cv.wait_for(
+            return self._tensor_transport_meta_cv.wait_for(
                 lambda: self._managed_gpu_object_metadata[obj_id].tensor_transport_meta
                 is not None,
-                timeout=ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS,
+                timeout=timeout,
             )
 
     def queue_transfer(self, obj_id: str, dst_actor: "ray.actor.ActorHandle"):
@@ -421,7 +421,12 @@ class GPUObjectManager:
             )
             if gpu_object_meta.tensor_transport_meta is None:
                 # We can't fetch the object until we know the creator has actually created the object.
-                self.wait_for_tensor_transport_metadata(obj_id)
+                timeout = ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
+                if not self.wait_for_tensor_transport_metadata(obj_id, timeout):
+                    raise TimeoutError(
+                        f"Timed out after {timeout}s waiting for object {obj_id} to be created while trying to get the object. "
+                        "You can increase the timeout by setting RAY_rdt_fetch_fail_timeout_milliseconds."
+                    )
                 gpu_object_meta = self.get_gpu_object_metadata(obj_id)
             assert gpu_object_meta.tensor_transport_meta is not None
             __ray_recv__(
