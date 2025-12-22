@@ -520,7 +520,7 @@ py_test(
         ["external/*.py"],
         exclude = ["external/test_hashes.py"],
     ),
-    exec_compatible_with = ["//bazel:py310"],
+    exec_compatible_with = ["//bazel:py3"],
     main = "external/test_hashes.py",
     tags = ["team:ml"],
     deps = [
@@ -623,6 +623,9 @@ doctest(
         ],
         exclude = [
             "source/rllib/getting-started.rst",
+            "source/rllib/algorithm-config.rst",
+            "source/rllib/checkpoints.rst",
+            "source/rllib/connector-v2.rst",
         ],
     ),
     tags = ["team:rllib"],
@@ -634,6 +637,9 @@ doctest(
     files = glob(
         include = [
             "source/rllib/getting-started.rst",
+            "source/rllib/algorithm-config.rst",
+            "source/rllib/checkpoints.rst",
+            "source/rllib/connector-v2.rst",
         ],
     ),
     tags = ["team:rllib"],
@@ -700,14 +706,26 @@ doctest(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
 )
 
+# --------------------------------------------------------------------
+# Discover the Anyscale Jobs compute configs .yaml for release tests in CI
+# --------------------------------------------------------------------
+
 filegroup(
     name = "example_configs",
-    srcs = glob(["source/ray-overview/examples/**/*.yaml"]),
+    srcs = glob([
+        "source/ray-overview/examples/**/*.yaml"
+    ]),
     visibility = ["//release:__pkg__"],
 )
 
 filegroup(
     name = "deployment_serve_llm_example_configs",
     srcs = glob(["source/serve/tutorials/deployment-serve-llm/**/*.yaml"]),
+    visibility = ["//release:__pkg__"],
+)
+
+filegroup(
+    name = "asynchronous_inference_example_configs",
+    srcs = glob(["source/serve/tutorials/asynchronous-inference/**/*.yaml"]),
     visibility = ["//release:__pkg__"],
 )

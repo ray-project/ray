@@ -129,13 +129,13 @@ class BatchIterator:
         self._shuffle_seed = shuffle_seed
         self._ensure_copy = ensure_copy
         self._prefetch_batches = prefetch_batches
-        self._eager_free = (
-            clear_block_after_read and DataContext.get_current().eager_free
-        )
+        # TODO: pass the dataset's context down instead of fetching the global context here.
+        self._ctx = DataContext.get_current()
+        self._eager_free = clear_block_after_read and self._ctx.eager_free
 
         actor_prefetcher_enabled = (
             prefetch_batches > 0
-            and DataContext.get_current().actor_prefetcher_enabled
+            and self._ctx.actor_prefetcher_enabled
             and not ray.util.client.ray.is_connected()
         )
         self._prefetcher = (
@@ -165,7 +165,21 @@ class BatchIterator:
     def _resolve_block_refs(
         self, block_refs: Iterator[ObjectRef[Block]]
     ) -> Iterator[Block]:
-        return resolve_block_refs(block_ref_iter=block_refs, stats=self._stats)
+        return resolve_block_refs(
+            block_ref_iter=block_refs,
+            stats=self._stats,
+            ctx=self._ctx,
+            max_get_batch_size=self._max_block_get_batch_size,
+        )
+
+    def _max_block_get_batch_size(self) -> int:
+        prefetched_blocks = self._prefetcher.num_prefetched_blocks()
+        if prefetched_blocks <= 0:
+            prefetched_blocks = (
+                self._prefetch_batches if self._prefetch_batches > 0 else 0
+            )
+        limit = max(1, prefetched_blocks + 1)
+        return min(self._ctx.iter_get_block_batch_size, limit)
 
     def _blocks_to_batches(self, blocks: Iterator[Block]) -> Iterator[Batch]:
         return blocks_to_batches(
@@ -373,6 +387,8 @@ def prefetch_batches_locally(
     current_window_size = 0
 
     if num_batches_to_prefetch <= 0:
+        if stats:
+            stats.iter_prefetched_bytes = 0
         for ref_bundle in ref_bundles:
             for block_ref in ref_bundle.block_refs:
                 yield block_ref
@@ -398,6 +414,10 @@ def prefetch_batches_locally(
             break
 
     prefetcher.prefetch_blocks([block_ref for block_ref, _ in list(sliding_window)])
+    if stats:
+        stats.iter_prefetched_bytes = sum(
+            metadata.size_bytes or 0 for _, metadata in sliding_window
+        )
 
     while sliding_window:
         block_ref, metadata = sliding_window.popleft()
@@ -413,6 +433,10 @@ def prefetch_batches_locally(
                 )
             except StopIteration:
                 pass
+        if stats:
+            stats.iter_prefetched_bytes = sum(
+                metadata.size_bytes or 0 for _, metadata in sliding_window
+            )
         yield block_ref
         trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
     prefetcher.stop()

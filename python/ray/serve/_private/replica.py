@@ -81,6 +81,7 @@ from ray.serve._private.default_impl import (
     create_replica_impl,
     create_replica_metrics_manager,
 )
+from ray.serve._private.event_loop_monitoring import EventLoopMonitor
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIArgs,
@@ -98,7 +99,6 @@ from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.task_consumer import TaskConsumerWrapper
 from ray.serve._private.thirdparty.get_asgi_route_name import (
     extract_route_patterns,
-    get_asgi_route_name,
 )
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
@@ -247,8 +247,17 @@ class ReplicaMetricsManager:
 
         self.record_autoscaling_stats_failed_counter = metrics.Counter(
             "serve_record_autoscaling_stats_failed",
+            tag_keys=("exception_name",),
             description="The number of errored record_autoscaling_stats invocations.",
-            tag_keys=("app_name", "deployment_name", "replica_id", "exception_name"),
+        )
+
+        self.user_autoscaling_stats_latency_tracker = metrics.Histogram(
+            "serve_user_autoscaling_stats_latency_ms",
+            description=(
+                "Time taken to execute the user-defined autoscaling stats function "
+                "in milliseconds."
+            ),
+            boundaries=REQUEST_LATENCY_BUCKETS_MS,
         )
 
         self.set_autoscaling_config(autoscaling_config)
@@ -427,10 +436,13 @@ class ReplicaMetricsManager:
         self,
     ) -> Optional[Dict[str, Union[int, float]]]:
         try:
+            start_time = time.time()
             res = await asyncio.wait_for(
                 self._record_autoscaling_stats_fn(),
                 timeout=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
             )
+            latency_ms = (time.time() - start_time) * 1000
+            self.user_autoscaling_stats_latency_tracker.observe(latency_ms)
 
             # Perform validation only first call
             if not self._checked_custom_metrics:
@@ -456,27 +468,17 @@ class ReplicaMetricsManager:
                 self._checked_custom_metrics = True
 
             return res
-        except asyncio.TimeoutError as timeout_err:
+        except asyncio.TimeoutError as e:
             logger.error(
                 f"Replica autoscaling stats timed out after {RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S}s."
             )
             self.record_autoscaling_stats_failed_counter.inc(
-                tags={
-                    "app_name": self._deployment_id.app_name,
-                    "deployment_name": self._deployment_id.name,
-                    "replica_id": self._replica_id.unique_id,
-                    "exception_name": timeout_err.__class__.__name__,
-                }
+                tags={"exception_name": e.__class__.__name__}
             )
-        except Exception as err:
-            logger.error(f"Replica autoscaling stats failed. {err}")
+        except Exception as e:
+            logger.error(f"Replica autoscaling stats failed. {e}")
             self.record_autoscaling_stats_failed_counter.inc(
-                tags={
-                    "app_name": self._deployment_id.app_name,
-                    "deployment_name": self._deployment_id.name,
-                    "replica_id": self._replica_id.unique_id,
-                    "exception_name": err.__class__.__name__,
-                }
+                tags={"exception_name": e.__class__.__name__}
             )
         return None
 
@@ -528,6 +530,7 @@ class ReplicaBase(ABC):
         self._configure_logger_and_profilers(self._deployment_config.logging_config)
         self._event_loop = get_or_create_event_loop()
 
+        actor_id = ray.get_runtime_context().get_actor_id()
         self._user_callable_wrapper = UserCallableWrapper(
             deployment_def,
             init_args,
@@ -537,6 +540,7 @@ class ReplicaBase(ABC):
             run_user_code_in_separate_thread=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
             local_testing_mode=False,
             deployment_config=deployment_config,
+            actor_id=actor_id,
         )
         self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
 
@@ -569,6 +573,18 @@ class ReplicaBase(ABC):
             autoscaling_config=self._deployment_config.autoscaling_config,
             ingress=ingress,
         )
+
+        # Start event loop monitoring for the replica's main event loop.
+        self._main_loop_monitor = EventLoopMonitor(
+            component=EventLoopMonitor.COMPONENT_REPLICA,
+            loop_type=EventLoopMonitor.LOOP_TYPE_MAIN,
+            actor_id=actor_id,
+            extra_tags={
+                "deployment": self._deployment_id.name,
+                "application": self._deployment_id.app_name,
+            },
+        )
+        self._main_loop_monitor.start(self._event_loop)
 
         self._internal_grpc_port: Optional[int] = None
         self._docs_path: Optional[str] = None
@@ -724,36 +740,6 @@ class ReplicaBase(ABC):
         # A new request can be accepted if the semaphore is currently unlocked.
         return not self._semaphore.locked()
 
-    def _maybe_get_http_route(
-        self, request_metadata: RequestMetadata, request_args: Tuple[Any]
-    ) -> Optional[str]:
-        """Get the matched route string for ASGI apps to be used in logs & metrics.
-
-        If this replica does not wrap an ASGI app or there is no matching for the
-        request, returns the existing route from the request metadata.
-        """
-        route = request_metadata.route
-        if self._user_callable_asgi_app is not None:
-            req: StreamingHTTPRequest = request_args[0]
-            try:
-                matched_route = get_asgi_route_name(
-                    self._user_callable_asgi_app, req.asgi_scope
-                )
-            except Exception:
-                matched_route = None
-                logger.exception(
-                    "Failed unexpectedly trying to get route name for request. "
-                    "Routes in metric tags and log messages may be inaccurate. "
-                    "Please file a GitHub issue containing this traceback."
-                )
-
-            # If there is no match in the ASGI app, don't overwrite the route_prefix
-            # from the proxy.
-            if matched_route is not None:
-                route = matched_route
-
-        return route
-
     @contextmanager
     def _handle_errors_and_metrics(
         self, request_metadata: RequestMetadata
@@ -840,9 +826,6 @@ class ReplicaBase(ABC):
             )
 
             request_metadata._http_method = scope.get("method", "WS")
-            request_metadata.route = self._maybe_get_http_route(
-                request_metadata, request_args
-            )
 
             request_args = (scope, receive)
         elif request_metadata.is_grpc_request:
@@ -1462,6 +1445,7 @@ class UserCallableWrapper:
         run_user_code_in_separate_thread: bool,
         local_testing_mode: bool,
         deployment_config: DeploymentConfig,
+        actor_id: str,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
@@ -1493,10 +1477,25 @@ class UserCallableWrapper:
                 asyncio.new_event_loop()
             )
 
+            # Start event loop monitoring for the user code event loop.
+            # We create the monitor here but start it inside the thread function
+            # so the task is created on the correct thread.
+            self._user_code_loop_monitor = EventLoopMonitor(
+                component=EventLoopMonitor.COMPONENT_REPLICA,
+                loop_type=EventLoopMonitor.LOOP_TYPE_USER_CODE,
+                actor_id=actor_id,
+                extra_tags={
+                    "deployment": self._deployment_id.name,
+                    "application": self._deployment_id.app_name,
+                },
+            )
+
             def _run_user_code_event_loop():
                 # Required so that calls to get the current running event loop work
                 # properly in user code.
                 asyncio.set_event_loop(self._user_code_event_loop)
+                # Start monitoring before run_forever so the task is scheduled.
+                self._user_code_loop_monitor.start(self._user_code_event_loop)
                 self._user_code_event_loop.run_forever()
 
             self._user_code_event_loop_thread = threading.Thread(
@@ -1506,6 +1505,7 @@ class UserCallableWrapper:
             self._user_code_event_loop_thread.start()
         else:
             self._user_code_event_loop = asyncio.get_running_loop()
+            self._user_code_loop_monitor = None
 
     @property
     def event_loop(self) -> asyncio.AbstractEventLoop:

@@ -1,8 +1,8 @@
 import json
 import logging
 import warnings
-from dataclasses import dataclass
 from enum import Enum
+from functools import cached_property
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from ray import cloudpickle
@@ -39,7 +39,6 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="alpha")
-@dataclass
 class AutoscalingContext:
     """Rich context provided to custom autoscaling policies.
 
@@ -49,49 +48,120 @@ class AutoscalingContext:
 
     The context includes deployment metadata, current replica state, built-in and
     custom metrics, capacity bounds, policy state, and timing information.
+
+    Note: The aggregated_metrics and raw_metrics fields support lazy evaluation.
+    You can pass callables that will be evaluated only when accessed, with results
+    cached for subsequent accesses.
     """
 
-    # Deployment information
-    deployment_id: DeploymentID  #: Unique identifier for the deployment.
-    deployment_name: str  #: Name of the deployment.
-    app_name: Optional[str]  #: Name of the application containing this deployment.
+    def __init__(
+        self,
+        deployment_id: DeploymentID,
+        deployment_name: str,
+        app_name: Optional[str],
+        current_num_replicas: int,
+        target_num_replicas: int,
+        running_replicas: List[ReplicaID],
+        total_num_requests: Union[float, Callable[[], float]],
+        total_queued_requests: Optional[Union[float, Callable[[], float]]],
+        aggregated_metrics: Optional[
+            Union[
+                Dict[str, Dict[ReplicaID, float]],
+                Callable[[], Dict[str, Dict[ReplicaID, float]]],
+            ]
+        ],
+        raw_metrics: Optional[
+            Union[
+                Dict[str, Dict[ReplicaID, TimeSeries]],
+                Callable[[], Dict[str, Dict[ReplicaID, TimeSeries]]],
+            ]
+        ],
+        capacity_adjusted_min_replicas: int,
+        capacity_adjusted_max_replicas: int,
+        policy_state: Dict[str, Any],
+        last_scale_up_time: Optional[float],
+        last_scale_down_time: Optional[float],
+        current_time: Optional[float],
+        config: Optional[Any],
+    ):
+        # Deployment information
+        self.deployment_id = deployment_id  #: Unique identifier for the deployment.
+        self.deployment_name = deployment_name  #: Name of the deployment.
+        self.app_name = app_name  #: Name of the application containing this deployment.
 
-    # Current state
-    current_num_replicas: int  #: Current number of running replicas.
-    target_num_replicas: int  #: Target number of replicas set by the autoscaler.
-    running_replicas: List[ReplicaID]  #: List of currently running replica IDs.
+        # Current state
+        self.current_num_replicas = (
+            current_num_replicas  #: Current number of running replicas.
+        )
+        self.target_num_replicas = (
+            target_num_replicas  #: Target number of replicas set by the autoscaler.
+        )
+        self.running_replicas = (
+            running_replicas  #: List of currently running replica IDs.
+        )
 
-    # Built-in metrics
-    total_num_requests: float  #: Total number of requests across all replicas.
-    total_queued_requests: Optional[float]  #: Number of requests currently queued.
-    total_running_requests: Optional[
-        float
-    ]  #: Total number of requests currently running.
+        # Built-in metrics
+        self._total_num_requests_value = (
+            total_num_requests  #: Total number of requests across all replicas.
+        )
+        self._total_queued_requests_value = (
+            total_queued_requests  #: Number of requests currently queued.
+        )
 
-    # Custom metrics
-    aggregated_metrics: Dict[
-        str, Dict[ReplicaID, float]
-    ]  #: Time-weighted averages of custom metrics per replica.
-    raw_metrics: Dict[
-        str, Dict[ReplicaID, TimeSeries]
-    ]  #: Raw custom metric timeseries per replica.
+        # Custom metrics - store potentially lazy callables privately
+        self._aggregated_metrics_value = aggregated_metrics
+        self._raw_metrics_value = raw_metrics
 
-    # Capacity and bounds
-    capacity_adjusted_min_replicas: int  #: Minimum replicas adjusted for cluster capacity.
-    capacity_adjusted_max_replicas: int  #: Maximum replicas adjusted for cluster capacity.
+        # Capacity and bounds
+        self.capacity_adjusted_min_replicas = capacity_adjusted_min_replicas  #: Minimum replicas adjusted for cluster capacity.
+        self.capacity_adjusted_max_replicas = capacity_adjusted_max_replicas  #: Maximum replicas adjusted for cluster capacity.
 
-    # Policy state
-    policy_state: Dict[
-        str, Any
-    ]  #: Persistent state dictionary for the autoscaling policy.
+        # Policy state
+        self.policy_state = (
+            policy_state  #: Persistent state dictionary for the autoscaling policy.
+        )
 
-    # Timing
-    last_scale_up_time: Optional[float]  #: Timestamp of last scale-up action.
-    last_scale_down_time: Optional[float]  #: Timestamp of last scale-down action.
-    current_time: Optional[float]  #: Current timestamp.
+        # Timing
+        self.last_scale_up_time = (
+            last_scale_up_time  #: Timestamp of last scale-up action.
+        )
+        self.last_scale_down_time = (
+            last_scale_down_time  #: Timestamp of last scale-down action.
+        )
+        self.current_time = current_time  #: Current timestamp.
 
-    # Config
-    config: Optional[Any]  #: Autoscaling configuration for this deployment.
+        # Config
+        self.config = config  #: Autoscaling configuration for this deployment.
+
+    @cached_property
+    def aggregated_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, float]]]:
+        if callable(self._aggregated_metrics_value):
+            return self._aggregated_metrics_value()
+        return self._aggregated_metrics_value
+
+    @cached_property
+    def raw_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, TimeSeries]]]:
+        if callable(self._raw_metrics_value):
+            return self._raw_metrics_value()
+        return self._raw_metrics_value
+
+    @cached_property
+    def total_num_requests(self) -> float:
+        if callable(self._total_num_requests_value):
+            return self._total_num_requests_value()
+        return self._total_num_requests_value
+
+    @cached_property
+    def total_queued_requests(self) -> float:
+        if callable(self._total_queued_requests_value):
+            return self._total_queued_requests_value()
+        return self._total_queued_requests_value
+
+    @property
+    def total_running_requests(self) -> float:
+        # NOTE: for non-additive aggregation functions, total_running_requests is not
+        # accurate, consider this is an approximation.
+        return self.total_num_requests - self.total_queued_requests
 
 
 @PublicAPI(stability="alpha")
@@ -447,6 +517,22 @@ class AutoscalingConfig(BaseModel):
                 "`RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S` and "
                 "`RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S` in a future release.",
                 DeprecationWarning,
+            )
+        return v
+
+    @validator("look_back_period_s", always=True)
+    def look_back_period_s_valid(cls, v: PositiveFloat, values):
+        # Get metrics_interval_s from values, or use default if not set
+        metrics_interval_s = values.get(
+            "metrics_interval_s", DEFAULT_METRICS_INTERVAL_S
+        )
+        if v <= metrics_interval_s:
+            # Warns currently, will raise an exception in a future release
+            warnings.warn(
+                f"`look_back_period_s` ({v}) must be greater than `metrics_interval_s` "
+                f"({metrics_interval_s}). This will raise an exception in a future "
+                f"release. Please set `look_back_period_s` > `metrics_interval_s`.",
+                FutureWarning,
             )
         return v
 

@@ -17,7 +17,6 @@
 #include <grpcpp/grpcpp.h>
 
 #include <memory>
-#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -29,10 +28,6 @@
 #include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
-
-// Maps from resource name to its allocation.
-using ResourceMappingType =
-    std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 
 namespace ray {
 namespace rpc {
@@ -173,6 +168,10 @@ class RayletClient : public RayletClientInterface {
   /// \param timeout_ms The timeout in milliseconds.
   void GetWorkerPIDs(const gcs::OptionalItemCallback<std::vector<int32_t>> &callback,
                      int64_t timeout_ms);
+
+  void CancelLocalTask(
+      const rpc::CancelLocalTaskRequest &request,
+      const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback) override;
 
  protected:
   /// gRPC client to the NodeManagerService.

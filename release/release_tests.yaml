@@ -467,11 +467,8 @@
 
   cluster:
     byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_compute: tune_rllib/compute_tpl_aws.yaml
 
   run:
@@ -816,12 +813,8 @@
   team: core
   cluster:
     byod:
-      pip:
-        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
-        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -856,12 +849,7 @@
   team: rllib
 
   cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    byod: {}
     cluster_compute: tpl_cpu_1_large.yaml
 
   run:
@@ -899,9 +887,6 @@
   team: core
   cluster:
     byod:
-      pip:
-        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
-        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1.yaml
@@ -941,9 +926,6 @@
   team: core
   cluster:
     byod:
-      pip:
-        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
-        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_4.yaml
@@ -987,11 +969,8 @@
 
   cluster:
     byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_compute: many_ppo.yaml
 
   run:
@@ -1032,9 +1011,6 @@
   team: core
   cluster:
     byod:
-      pip:
-        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
-        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1.yaml
@@ -1074,9 +1050,6 @@
   team: core
   cluster:
     byod:
-      pip:
-        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
-        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1.yaml
@@ -1116,9 +1089,6 @@
   team: core
   cluster:
     byod:
-      pip:
-        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
-        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1.yaml
@@ -1158,9 +1128,6 @@
 
   cluster:
     byod:
-      pip:
-        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
-        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1_large.yaml
@@ -1202,9 +1169,6 @@
 
   cluster:
     byod:
-      pip:
-        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
-        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1_c5.yaml
@@ -1246,9 +1210,6 @@
 
   cluster:
     byod:
-      pip:
-        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
-        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1.yaml
@@ -1421,6 +1382,7 @@
 # Runtime env tests
 ########################
 - name: runtime_env_rte_many_tasks_actors
+  python: "3.10"
   group: Runtime env tests
   working_dir: runtime_env_tests
 
@@ -1853,6 +1815,7 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=ray_data --num_workers=8 --train_batch_size=8192 --validation_batch_size=16384 --num_epochs=1
 
 - name: training_ingest_benchmark-soak_test
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -1910,6 +1873,7 @@
   alert: default
 
 - name: train_async_checkpointing_validation_benchmark
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/async_checkpointing_validation_benchmark
   frequency: nightly
@@ -1950,6 +1914,7 @@
 
 
 - name: torch_local_mode
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/local_mode
 
@@ -1966,6 +1931,7 @@
     script: python torch_local_mode_launcher.py
 
 - name: torch_lightning
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/pytorch_lightning
 
@@ -1983,6 +1949,7 @@
     script: RAY_TRAIN_V2_ENABLED=1 python test_lightning.py
 
 - name: huggingface_transformers
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/huggingface_transformers
 
@@ -2000,6 +1967,7 @@
     script: RAY_TRAIN_V2_ENABLED=1 python test_huggingface_transformers.py
 
 - name: huggingface_accelerate
+  python: "3.10"
   group: Train tests
   working_dir: train_tests/huggingface_accelerate
 
@@ -2049,10 +2017,6 @@
 # RLlib tests
 ########################
 
-# ----------------------------------------------------------
-# Learning and benchmarking tests
-# ----------------------------------------------------------
-
 # --------------------------
 # APPO
 # --------------------------
@@ -2061,240 +2025,40 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  stable: true
-
-  # frequency was nightly.
-  # TODO(#50217): re-enable after fixing the flakiness.
-  frequency: manual
+  frequency: nightly
   team: rllib
+
   cluster:
     byod:
       type: gpu
-      post_build_script: byod_rllib_test.sh
+      post_build_script: byod_rllib.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_compute: 2gpus_64cpus.yaml
+    cluster_compute: 1gpu_16cpus.yaml
 
   run:
-    timeout: 1800
-    script: python learning_tests/tuned_examples/appo/pong_appo.py --num-learners=0 --num-env-runners=46 --stop-reward=19.5 --as-release-test
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: 2gpus_64cpus_gce.yaml
+    timeout: 1500  # expected 1000 seconds
+    script: python example_algorithms/appo/pong_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
 
 - name: rllib_learning_tests_halfcheetah_appo_torch
   python: "3.10"
   group: RLlib tests
   working_dir: rllib_tests
 
-  stable: true
-
   frequency: nightly
   team: rllib
+
   cluster:
     byod:
       type: gpu
-      post_build_script: byod_rllib_test.sh
+      post_build_script: byod_rllib.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_compute: 1gpu_32cpus.yaml
+    cluster_compute: 1gpu_16cpus.yaml
 
   run:
-    timeout: 5400
-    script: python learning_tests/tuned_examples/appo/halfcheetah_appo.py --num-learners=0 --num-env-runners=31 --stop-reward=1000.0 --as-release-test
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: 2gpus_32cpus_gce.yaml
-
-# --------------------------
-# DreamerV3
-# --------------------------
-- name: rllib_learning_tests_pong_dreamerv3_torch
-  python: "3.10"
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  stable: true
-
-  frequency: weekly
-  team: rllib
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_dreamerv3_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_compute: 4gpus_64cpus.yaml
-
-  run:
-    timeout: 36000  # 10h
-    script: python learning_tests/tuned_examples/dreamerv3/atari_100k_dreamerv3.py --framework=torch --env=ale_py:ALE/Pong-v5 --num-learners=4 --stop-reward=18.0 --as-release-test
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: 4gpus_64cpus_gce.yaml
-
-- name: rllib_learning_tests_pendulum_dreamerv3_torch
-  python: "3.10"
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  stable: true
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_dreamerv3_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_compute: 2gpus_32cpus.yaml
-
-  run:
-    timeout: 3600  # 1h
-    script: python learning_tests/tuned_examples/dreamerv3/pendulum_dreamerv3.py --framework=torch --num-learners=2 --stop-reward=-200.0 --as-release-test
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: 2gpus_32cpus_gce.yaml
-
-# --------------------------
-# IMPALA
-# --------------------------
-- name: rllib_learning_tests_pong_impala_torch
-  python: "3.10"
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  stable: true
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_compute: 2gpus_64cpus.yaml
-
-  run:
-    timeout: 1800
-    script: python learning_tests/tuned_examples/impala/pong_impala.py --num-learners=0 --num-env-runners=46 --stop-reward=19.0 --as-release-test
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: 2gpus_64cpus_gce.yaml
-
-# --------------------------
-# PPO
-# --------------------------
-- name: rllib_learning_tests_pong_ppo_torch
-  python: "3.10"
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  stable: true
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_compute: 4gpus_96cpus.yaml
-
-  run:
-    timeout: 1200
-    script: python learning_tests/tuned_examples/ppo/atari_ppo.py --env=ale_py:ALE/Pong-v5 --num-learners=4 --num-env-runners=95 --stop-reward=20.0 --as-release-test
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: 4gpus_96cpus_gce.yaml
-
-
-# --------------------------
-# SAC
-# --------------------------
-- name: rllib_learning_tests_halfcheetah_sac_torch
-  python: "3.10"
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  stable: true
-
-  frequency: nightly
-  team: rllib
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_compute: 4gpus_64cpus.yaml
-
-  run:
-    timeout: 7200
-    script: python learning_tests/tuned_examples/sac/halfcheetah_sac.py --num-learners=4 --num-env-runners=8 --stop-reward=1000.0 --as-release-test
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: 4gpus_64cpus_gce.yaml
-
+    timeout: 3000  # expected 2000 seconds
+    script: python example_algorithms/appo/halfcheetah_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
 
 ########################
 # Core Nightly Tests
@@ -2454,7 +2218,7 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: experimental/compute_gpu_2_aws.yaml
+    cluster_compute: experimental/compute_t4_gpu.yaml
 
   run:
     timeout: 1800
@@ -2476,7 +2240,7 @@
     timeout: 1800
     script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
 
-- name: gpu_object_GPU
+- name: rdt_single_node_T4_microbenchmark
   python: "3.10"
   group: core-daily-test
   team: core
@@ -2486,27 +2250,48 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: experimental/compute_gpu_2_aws.yaml
+    cluster_compute: experimental/compute_t4_gpu.yaml
 
   run:
     timeout: 1800
-    script: python experimental/gpu_object_microbenchmark.py
+    # NIXL currently only works on T4's for <100mb tensors so not enabling.
+    script: python experimental/rdt_single_node_microbenchmark.py
 
-- name: gpu_object_GPU_multinode
-  python: "3.10"
+- name: rdt_single_node_A100_microbenchmark
+  python: "3.11"
   group: core-daily-test
   team: core
-  frequency: nightly
+  frequency: weekly
   working_dir: microbenchmark
 
   cluster:
     byod:
-      type: gpu
-    cluster_compute: experimental/compute_gpu_2x1_aws.yaml
+      type: llm-cu128 # llm image already has nixl
+      runtime_env: # env vars for nixl
+        - UCX_TLS=all
+        - UCX_NET_DEVICES=all
+    cluster_compute: experimental/compute_a100_gpu.yaml
 
   run:
     timeout: 1800
-    script: python experimental/gpu_object_microbenchmark.py --distributed
+    script: python experimental/rdt_single_node_microbenchmark.py --enable_10gb --enable_nixl
+
+# TODO(dayshah): Add multi-node benchmarks with actual hardware RDMA support
+# - name: gpu_object_GPU_multinode
+#   python: "3.10"
+#   group: core-daily-test
+#   team: core
+#   frequency: nightly
+#   working_dir: microbenchmark
+
+#   cluster:
+#     byod:
+#       type: gpu
+#     cluster_compute: experimental/compute_gpu_2x1_aws.yaml
+
+#   run:
+#     timeout: 1800
+#     script: python experimental/gpu_object_microbenchmark.py --distributed
 
 - name: benchmark_worker_startup
   python: "3.10"
@@ -3319,6 +3104,31 @@
 # Core Chaos tests
 ##################
 
+- name: chaos_many_tasks_baseline
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    script: python chaos_test/test_chaos.py --workload=tasks --disable-resource-killer
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
+
 - name: chaos_many_tasks_kill_raylet
   python: "3.10"
   group: core-nightly-test
@@ -3335,7 +3145,7 @@
     wait_for_nodes:
       num_nodes: 10
     prepare: python setup_chaos.py --no-start
-    script: python chaos_test/test_chaos_basic.py --workload=tasks
+    script: python chaos_test/test_chaos.py --workload=tasks
 
   variations:
     - __suffix__: aws
@@ -3361,10 +3171,66 @@
     wait_for_nodes:
       num_nodes: 10
     prepare: python setup_chaos.py --no-start --chaos TerminateEC2Instance
-    script: python chaos_test/test_chaos_basic.py --workload=tasks
+    script: python chaos_test/test_chaos.py --workload=tasks
 
   variations:
     - __suffix__: aws
+
+- name: chaos_many_tasks_iptable_failure_injection
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_health_check_period_ms=10000
+        - RAY_health_check_timeout_ms=100000
+        - RAY_health_check_failure_threshold=10
+        - RAY_gcs_rpc_server_connect_timeout_s=60
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    script: >
+      python simulate_cross_az_network_failure.py --network-failure-interval 60 --network-failure-duration 5 --command python chaos_test/test_chaos.py --workload=tasks --disable-resource-killer
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
+
+- name: chaos_many_actors_baseline
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 4200
+    wait_for_nodes:
+      num_nodes: 10
+    script: python chaos_test/test_chaos.py --workload=actors --disable-resource-killer
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_many_actors_kill_raylet
   python: "3.10"
@@ -3382,7 +3248,7 @@
     wait_for_nodes:
       num_nodes: 10
     prepare: python setup_chaos.py --no-start
-    script: python chaos_test/test_chaos_basic.py --workload=actors
+    script: python chaos_test/test_chaos.py --workload=actors
 
   variations:
     - __suffix__: aws
@@ -3408,10 +3274,247 @@
     wait_for_nodes:
       num_nodes: 10
     prepare: python setup_chaos.py --no-start --chaos TerminateEC2Instance
-    script: python chaos_test/test_chaos_basic.py --workload=actors
+    script: python chaos_test/test_chaos.py --workload=actors
 
   variations:
     - __suffix__: aws
+
+- name: chaos_many_actors_iptable_failure_injection
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_health_check_period_ms=10000
+        - RAY_health_check_timeout_ms=100000
+        - RAY_health_check_failure_threshold=10
+        - RAY_gcs_rpc_server_connect_timeout_s=60
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 4200
+    wait_for_nodes:
+      num_nodes: 10
+    script: >
+      python simulate_cross_az_network_failure.py --network-failure-interval 60 --network-failure-duration 5 --command python chaos_test/test_chaos.py --workload=actors --disable-resource-killer
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
+
+- name: chaos_streaming_generator_baseline
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    script: python chaos_test/test_chaos.py --workload=streaming --disable-resource-killer
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
+
+- name: chaos_streaming_generator_kill_raylet
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    prepare: python setup_chaos.py --no-start --max-to-kill 10
+    script: python chaos_test/test_chaos.py --workload=streaming
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
+
+- name: chaos_streaming_generator_terminate_instance
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    prepare: python setup_chaos.py --no-start --chaos TerminateEC2Instance --max-to-kill 10
+    script: python chaos_test/test_chaos.py --workload=streaming
+
+  variations:
+    - __suffix__: aws
+
+- name: chaos_streaming_generator_iptable_failure_injection
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_health_check_period_ms=10000
+        - RAY_health_check_timeout_ms=100000
+        - RAY_health_check_failure_threshold=10
+        - RAY_gcs_rpc_server_connect_timeout_s=60
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    script: >
+      python simulate_cross_az_network_failure.py --network-failure-interval 60 --network-failure-duration 5 --command python chaos_test/test_chaos.py --workload=streaming --disable-resource-killer
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
+
+- name: chaos_object_ref_borrowing_baseline
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    script: python chaos_test/test_chaos.py --workload=borrowing --disable-resource-killer
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
+
+- name: chaos_object_ref_borrowing_kill_raylet
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    prepare: python setup_chaos.py --no-start
+    script: python chaos_test/test_chaos.py --workload=borrowing
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
+
+- name: chaos_object_ref_borrowing_terminate_instance
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    prepare: python setup_chaos.py --no-start --chaos TerminateEC2Instance
+    script: python chaos_test/test_chaos.py --workload=borrowing
+
+  variations:
+    - __suffix__: aws
+
+- name: chaos_object_ref_borrowing_iptable_failure_injection
+  python: "3.10"
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_health_check_period_ms=10000
+        - RAY_health_check_timeout_ms=100000
+        - RAY_health_check_failure_threshold=10
+        - RAY_gcs_rpc_server_connect_timeout_s=60
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    script: >
+      python simulate_cross_az_network_failure.py --network-failure-interval 60 --network-failure-duration 5 --command python chaos_test/test_chaos.py --workload=borrowing --disable-resource-killer
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_dask_on_ray_large_scale_test_no_spilling
   python: "3.10"
@@ -3527,7 +3630,9 @@
   python: "3.10"
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
-  frequency: nightly
+  # TODO: the test seems to be leaking resources, and will
+  # start failing over time; needs more investigation.
+  frequency: manual
   team: clusters
   cluster:
     byod:
@@ -3915,6 +4020,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1 # For test_llm_serve_prefill_decode_with_data_parallelism
     cluster_compute: llm_2x_4xl4.yaml
 
   run:
@@ -4021,6 +4128,66 @@
     long_running: false
     script: pytest -vs test_llm_serve_integration.py test_llm_serve_fault_tolerance.py
 
+- name: llm_serve_sleep_wakeup
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu128
+    cluster_compute: llm_four_L4_gpu_head_node.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: pytest -vs test_llm_serve_sleep_wakeup.py
+
+- name: llm_serve_pause_resume
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu128
+    cluster_compute: llm_four_L4_gpu_head_node.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: pytest -vs test_llm_serve_pause_resume.py
+
+- name: llm_serve_rlhf
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu128
+    cluster_compute: llm_four_L4_gpu_head_node.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python test_llm_serve_rlhf.py
+
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_1p1d
   frequency: nightly
   python: "3.11"
@@ -4125,7 +4292,8 @@
       pytest -sv test_batch_sglang.py
 
 - name: llm_batch_vllm_multi_node
-  frequency: nightly
+  # TODO(ray-llm): https://github.com/anyscale/ray/issues/572
+  frequency: manual
   python: "3.11"
   group: llm-batch
   team: llm
@@ -4145,7 +4313,7 @@
   python: "3.11"
   group: llm-batch
   working_dir: llm_tests/batch
-  frequency: weekly
+  frequency: nightly
   team: llm
 
   cluster:
@@ -4154,6 +4322,7 @@
         - VLLM_DISABLE_COMPILE_CACHE=1
       type: llm-cu128
       post_build_script: byod_llm_single_node_baseline_benchmark.sh
+      python_depset: llm_batch/llm_batch_single_node_benchmark_py311_cu128.lock
     cluster_compute: llm_single_node_benchmark_l4.yaml
 
   run:
@@ -4218,7 +4387,8 @@
 
 
 - name: e2e_xgboost  # do not use dashes (regex sensitive)
-  frequency: weekly
+  # TODO: https://github.com/anyscale/ray/issues/573
+  frequency: manual
   python: "3.11"
   group: ray-examples
   team: ml
@@ -4294,6 +4464,31 @@
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
+- name: langchain_agent_ray_serve  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: serve
+  working_dir: //doc/source/ray-overview/examples/langchain_agent_ray_serve  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_langchain_agent_ray_serve.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
 
 - name: deployment_serve_llm  # do not use dashes (regex sensitive)
   frequency: weekly
@@ -4307,6 +4502,32 @@
       type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
       post_build_script: byod_deployment_serve_llm.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+
+- name: asynchronous_inference  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: serve
+  working_dir: //doc/source/serve/tutorials/asynchronous-inference
+
+  cluster:
+    byod:
+      type: cpu  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_asynchronous_inference.sh
+    cluster_compute: ci/aws.yaml
 
   run:
     timeout: 3600
@@ -4532,6 +4753,31 @@
     byod:
       type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
       post_build_script: byod_e2e_rag.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+- name: unstructured_data_ingestion  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: data
+  working_dir: //doc/source/data/examples/unstructured_data_ingestion  # use // to access from repo's root
+
+  cluster:
+    byod:
+      type: cpu  # ["gpu", "cpu", "cu123", "llm-cu128"]
+      post_build_script: byod_unstructured_data_ingestion.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:

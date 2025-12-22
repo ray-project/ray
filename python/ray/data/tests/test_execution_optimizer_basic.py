@@ -1,11 +1,14 @@
 import sys
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import numpy as np
 import pandas as pd
 import pytest
 
 import ray
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
@@ -60,7 +63,10 @@ def test_read_operator_emits_warning_for_large_read_tasks():
             return None
 
         def get_read_tasks(
-            self, parallelism: int, per_task_row_limit: Optional[int] = None
+            self,
+            parallelism: int,
+            per_task_row_limit: Optional[int] = None,
+            data_context: Optional["DataContext"] = None,
         ) -> List[ReadTask]:
             large_object = np.zeros((128, 1024, 1024), dtype=np.uint8)  # 128 MiB
 
@@ -214,7 +220,7 @@ def test_map_batches_operator(ray_start_regular_shared_2_cpus):
 def test_map_batches_e2e(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(5)
     ds = ds.map_batches(column_udf("id", lambda x: x))
-    assert extract_values("id", ds.take_all()) == list(range(5)), ds
+    assert sorted(extract_values("id", ds.take_all())) == list(range(5)), ds
     _check_usage_record(["ReadRange", "MapBatches"])
 
 

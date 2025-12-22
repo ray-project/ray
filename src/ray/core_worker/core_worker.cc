@@ -453,10 +453,10 @@ CoreWorker::CoreWorker(
     periodical_runner_->RunFnPeriodically(
         [this] {
           RAY_LOG(INFO) << "Event stats:\n\n"
-                        << io_service_.stats().StatsString() << "\n\n"
+                        << io_service_.stats()->StatsString() << "\n\n"
                         << "-----------------\n"
                         << "Task execution event stats:\n"
-                        << task_execution_service_.stats().StatsString() << "\n\n"
+                        << task_execution_service_.stats()->StatsString() << "\n\n"
                         << "-----------------\n"
                         << "Task Event stats:\n"
                         << task_event_buffer_->DebugString() << "\n";
@@ -1033,7 +1033,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
     std::shared_ptr<Buffer> *data,
     const std::unique_ptr<rpc::Address> &owner_address,
     bool inline_small_object,
-    rpc::TensorTransport tensor_transport) {
+    const std::optional<std::string> &tensor_transport) {
   auto status = WaitForActorRegistered(contained_object_ids);
   if (!status.ok()) {
     return status;
@@ -1055,8 +1055,8 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                        NodeID::FromBinary(rpc_address_.node_id()),
                                        /*tensor_transport=*/tensor_transport);
 
-    // Register the callback to free the GPU object when it is out of scope.
-    if (tensor_transport != rpc::TensorTransport::OBJECT_STORE) {
+    // Register the callback to free the RDT object when it is out of scope.
+    if (tensor_transport.has_value()) {
       reference_counter_->AddObjectOutOfScopeOrFreedCallback(*object_id,
                                                              free_actor_object_callback_);
     }
@@ -1884,8 +1884,7 @@ void CoreWorker::BuildCommonTaskSpec(
     bool enable_task_events,
     const std::unordered_map<std::string, std::string> &labels,
     const LabelSelector &label_selector,
-    const std::vector<FallbackOption> &fallback_strategy,
-    const rpc::TensorTransport &tensor_transport) {
+    const std::vector<FallbackOption> &fallback_strategy) {
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -1935,8 +1934,7 @@ void CoreWorker::BuildCommonTaskSpec(
       enable_task_events,
       labels,
       label_selector,
-      fallback_strategy,
-      tensor_transport);
+      fallback_strategy);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -2420,8 +2418,7 @@ Status CoreWorker::SubmitActorTask(
                       /*enable_task_events=*/task_options.enable_task_events,
                       /*labels=*/{},
                       /*label_selector=*/{},
-                      /*fallback_strategy=*/{},
-                      /*tensor_transport=*/task_options.tensor_transport);
+                      /*fallback_strategy=*/{});
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
@@ -2429,7 +2426,8 @@ Status CoreWorker::SubmitActorTask(
                                  ObjectID::Nil(),
                                  max_retries,
                                  retry_exceptions,
-                                 serialized_retry_exception_allowlist);
+                                 serialized_retry_exception_allowlist,
+                                 task_options.tensor_transport);
   // Submit task.
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
@@ -2460,12 +2458,13 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
   }
 
   if (obj_addr.SerializeAsString() != rpc_address_.SerializeAsString()) {
-    // We don't have CancelRemoteTask for actor_task_submitter_
+    // We don't have RequestOwnerToCancelTask for actor_task_submitter_
     // because it requires the same implementation.
     RAY_LOG(DEBUG).WithField(object_id)
         << "Request to cancel a task of object to an owner "
         << obj_addr.SerializeAsString();
-    normal_task_submitter_->CancelRemoteTask(object_id, obj_addr, force_kill, recursive);
+    normal_task_submitter_->RequestOwnerToCancelTask(
+        object_id, obj_addr, force_kill, recursive);
     return Status::OK();
   }
 
@@ -2492,6 +2491,13 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
     normal_task_submitter_->CancelTask(task_spec.value(), force_kill, recursive);
   }
   return Status::OK();
+}
+
+bool CoreWorker::IsTaskCanceled(const TaskID &task_id) const {
+  // Check if the task is canceled on executor side. Check the canceled_tasks_ which is
+  // populated when CancelTask RPC is received.
+  absl::MutexLock lock(&mutex_);
+  return canceled_tasks_.find(task_id) != canceled_tasks_.end();
 }
 
 Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
@@ -2976,6 +2982,8 @@ Status CoreWorker::ExecuteTask(
     absl::MutexLock lock(&mutex_);
     size_t erased = running_tasks_.erase(task_spec.TaskId());
     RAY_CHECK(erased == 1);
+    // Clean up cancellation state for this task
+    canceled_tasks_.erase(task_spec.TaskId());
     if (task_spec.IsNormalTask()) {
       resource_ids_.clear();
     }
@@ -3170,10 +3178,11 @@ Status CoreWorker::ReportGeneratorItemReturns(
   request.set_attempt_number(attempt_number);
   auto client = core_worker_client_pool_->GetOrConnect(caller_address);
 
+  // This means it is the last report when the task has finished executing.
   if (!dynamic_return_object.first.IsNil()) {
-    auto return_object_proto = request.add_dynamic_return_objects();
-    SerializeReturnObject(
-        dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
+    SerializeReturnObject(dynamic_return_object.first,
+                          dynamic_return_object.second,
+                          request.mutable_returned_object());
     std::vector<ObjectID> deleted;
     // When we allocate a dynamic return ID (AllocateDynamicReturnId),
     // we borrow the object. When the object value is allocatd, the
@@ -3341,12 +3350,12 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       // Python workers need this copy to pass test case
       // test_inline_arg_memory_corruption.
       bool copy_data = options_.language == Language::PYTHON;
-      rpc::TensorTransport tensor_transport = task.ArgTensorTransport(i);
+      auto tensor_transport = task.ArgTensorTransport(i);
       args->push_back(std::make_shared<RayObject>(std::move(data),
                                                   std::move(metadata),
                                                   task.ArgInlinedRefs(i),
                                                   copy_data,
-                                                  tensor_transport));
+                                                  std::move(tensor_transport)));
       auto &arg_ref = arg_refs->emplace_back();
       arg_ref.set_object_id(task.ArgObjectIdBinary(i));
       // The task borrows all ObjectIDs that were serialized in the inlined
@@ -3910,9 +3919,10 @@ void CoreWorker::ProcessSubscribeForRefRemoved(
   reference_counter_->SubscribeRefRemoved(object_id, contained_in_id, owner_address);
 }
 
-void CoreWorker::HandleCancelRemoteTask(rpc::CancelRemoteTaskRequest request,
-                                        rpc::CancelRemoteTaskReply *reply,
-                                        rpc::SendReplyCallback send_reply_callback) {
+void CoreWorker::HandleRequestOwnerToCancelTask(
+    rpc::RequestOwnerToCancelTaskRequest request,
+    rpc::RequestOwnerToCancelTaskReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   auto status = CancelTask(ObjectID::FromBinary(request.remote_object_id()),
                            request.force_kill(),
                            request.recursive());
@@ -3972,6 +3982,10 @@ void CoreWorker::CancelTaskOnExecutor(TaskID task_id,
   {
     absl::MutexLock lock(&mutex_);
     requested_task_running = main_thread_task_id_ == task_id;
+
+    if (requested_task_running) {
+      canceled_tasks_.insert(task_id);
+    }
   }
   bool success = requested_task_running;
 
@@ -4024,6 +4038,10 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
       {
         absl::MutexLock lock(&mutex_);
         is_running = running_tasks_.find(task_id) != running_tasks_.end();
+
+        if (is_running) {
+          canceled_tasks_.insert(task_id);
+        }
       }
 
       // Attempt to cancel the task if it's running.
@@ -4032,8 +4050,9 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
         success = options_.cancel_async_actor_task(task_id);
       } else {
         // If the task wasn't running, it was successfully cancelled by
-        // CancelQueuedActorTask. Else if this isn't an asyncio actor, return success so
-        // the client won't retry.
+        // CancelQueuedActorTask. Else if for non-async actor, we can't interrupt running
+        // tasks, but we've marked it as canceled so IsTaskCanceled() will return true.
+        // Return success so the client won't retry.
         success = true;
       }
     }
