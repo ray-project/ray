@@ -199,6 +199,17 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     default=False,
     help="Run the test in a privileged Docker container",
 )
+@click.option(
+    "--use-wanda-prebuilt",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help=(
+        "Use pre-built ray-core and ray-dashboard images from wanda instead of "
+        "rebuilding the wheel. This skips BuilderContainer.run() and relies on "
+        "images built by prior wanda steps in the pipeline."
+    ),
+)
 def main(
     targets: List[str],
     team: str,
@@ -224,6 +235,7 @@ def main(
     bisect_run_test_target: Optional[str],
     tmp_filesystem: Optional[str],
     privileged: bool,
+    use_wanda_prebuilt: bool,
 ) -> None:
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
@@ -235,7 +247,20 @@ def main(
         # for wheel testing, we first build the wheel and then use it for running tests
         architecture = DEFAULT_ARCHITECTURE if build_type == "wheel" else "aarch64"
         wheel_python_version = python_version or DEFAULT_PYTHON_VERSION
-        BuilderContainer(wheel_python_version, DEFAULT_BUILD_TYPE, architecture).run()
+        if use_wanda_prebuilt:
+            # Skip BuilderContainer.run() - rely on pre-built ray-core and ray-dashboard
+            # images from wanda. The tests.env.Dockerfile will use these images to install
+            # Ray without rebuilding from source.
+            print(
+                "--- Using wanda pre-built images (skipping wheel build)",
+                file=sys.stderr,
+            )
+            # Switch to optimized build type so tests.env.Dockerfile uses pre-built artifacts
+            build_type = "optimized"
+        else:
+            BuilderContainer(
+                wheel_python_version, DEFAULT_BUILD_TYPE, architecture
+            ).run()
     bisect_run_test_target = bisect_run_test_target or os.environ.get(
         "RAYCI_BISECT_TEST_TARGET"
     )
