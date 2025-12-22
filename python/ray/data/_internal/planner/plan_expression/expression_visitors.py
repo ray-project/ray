@@ -148,8 +148,8 @@ class _CallableClassUDFCollector(_ExprVisitorBase):
         Returns:
             None (only collects UDFs as a side effect).
         """
-        # Check if this UDF uses a callable class (indicated by fn_constructor_class being set)
-        if expr.fn_constructor_class is not None:
+        # Check if this UDF uses a callable class (indicated by callable_class_spec being set)
+        if expr.callable_class_spec is not None:
             self._callable_class_udfs.append(expr)
 
         # Continue visiting child expressions
@@ -237,9 +237,7 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
             data_type=expr.data_type,
             args=new_args,
             kwargs=new_kwargs,
-            fn_constructor_args=expr.fn_constructor_args,
-            fn_constructor_kwargs=expr.fn_constructor_kwargs,
-            fn_constructor_class=expr.fn_constructor_class,
+            callable_class_spec=expr.callable_class_spec,
         )
 
     def visit_alias(self, expr: AliasExpr) -> Expr:

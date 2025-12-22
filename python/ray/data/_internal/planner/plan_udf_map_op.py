@@ -20,7 +20,7 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    from ray.data.expressions import Expr
+    from ray.data.expressions import Expr, _CallableClassSpec
 
 import numpy as np
 import pandas as pd
@@ -85,46 +85,12 @@ class UDFSpec:
     """Specification for a callable class UDF to be instantiated in an actor.
 
     Attributes:
-        original_class: The original callable class (used as lookup key)
-        instantiation_class: The class to instantiate (may be wrapped, e.g., with concurrency support)
-        constructor_args: Positional arguments for the constructor
-        constructor_kwargs: Keyword arguments for the constructor
+        spec: The callable class specification (contains class and constructor args)
+        instantiation_class: The class to instantiate (may be wrapped, e.g., for concurrency)
     """
 
-    original_class: type
+    spec: "_CallableClassSpec"
     instantiation_class: type
-    constructor_args: Tuple[Any, ...]
-    constructor_kwargs: Dict[str, Any]
-
-
-def _make_udf_key(
-    cls: type,
-    constructor_args: Tuple[Any, ...],
-    constructor_kwargs: Dict[str, Any],
-) -> Tuple:
-    """Create a hashable key for UDF instance lookup.
-
-    The key uniquely identifies a UDF by its class and constructor arguments.
-    This ensures that the same class with different constructor args
-    (e.g., Multiplier(2) vs Multiplier(3)) are treated as distinct UDFs.
-
-    Args:
-        cls: The callable class type
-        constructor_args: Positional arguments for the constructor
-        constructor_kwargs: Keyword arguments for the constructor
-
-    Returns:
-        A hashable tuple that uniquely identifies this UDF configuration
-    """
-    try:
-        return (
-            id(cls),
-            constructor_args,
-            tuple(sorted(constructor_kwargs.items())),
-        )
-    except TypeError:
-        # Fallback for unhashable args/kwargs - use repr for comparison
-        return (id(cls), repr(constructor_args), repr(constructor_kwargs))
 
 
 class _MapActorContext:
@@ -179,44 +145,29 @@ def _collect_udf_specs_from_expressions(exprs: List["Expr"]) -> List[UDFSpec]:
         _CallableClassUDFCollector,
     )
 
-    # Collect all callable class UDFs from all expressions
-    callable_class_udfs = []
+    # Collect all callable class UDFs from all expressions using a single collector
+    collector = _CallableClassUDFCollector()
     for expr in exprs:
-        collector = _CallableClassUDFCollector()
         collector.visit(expr)
-        callable_class_udfs.extend(collector.get_callable_class_udfs())
 
-    # Deduplicate by (class, constructor_args, constructor_kwargs) and create specs
+    # Deduplicate by spec key and create UDFSpec list
     udf_specs = []
-    seen_specs = set()
+    seen_keys = set()
 
-    for udf_expr in callable_class_udfs:
-        cls = udf_expr.fn_constructor_class
-        # Create a key that includes constructor args to distinguish
-        # same class with different args (e.g., Multiplier(2) vs Multiplier(3))
-        key = _make_udf_key(
-            cls,
-            udf_expr.fn_constructor_args,
-            udf_expr.fn_constructor_kwargs,
-        )
-        if key not in seen_specs:
-            seen_specs.add(key)
+    for udf_expr in collector.get_callable_class_udfs():
+        spec = udf_expr.callable_class_spec
+        key = spec.make_key()
+        if key not in seen_keys:
+            seen_keys.add(key)
 
             # Apply concurrency wrapper for non-async UDFs (same as _get_udf)
             wrapped_cls = (
-                make_callable_class_single_threaded(cls)
-                if not _is_async_udf(cls.__call__)
-                else cls
+                make_callable_class_single_threaded(spec.cls)
+                if not _is_async_udf(spec.cls.__call__)
+                else spec.cls
             )
 
-            udf_specs.append(
-                UDFSpec(
-                    original_class=cls,
-                    instantiation_class=wrapped_cls,
-                    constructor_args=udf_expr.fn_constructor_args,
-                    constructor_kwargs=udf_expr.fn_constructor_kwargs,
-                )
-            )
+            udf_specs.append(UDFSpec(spec=spec, instantiation_class=wrapped_cls))
 
     return udf_specs
 
@@ -443,6 +394,8 @@ def _get_udf(
     fn_kwargs = op_fn_kwargs or {}
 
     if isinstance(udf, CallableClass):
+        from ray.data.expressions import _CallableClassSpec
+
         fn_constructor_args = op_fn_constructor_args or ()
         fn_constructor_kwargs = op_fn_constructor_kwargs or {}
 
@@ -465,24 +418,20 @@ def _get_udf(
             # max_concurrency > 1.
             udf = make_callable_class_single_threaded(udf)
 
-        # Use the shared init function creator (handles both map_batches and expressions)
-        # Pass both original (for dict key) and wrapped (for instantiation) classes
-        init_fn = create_actor_context_init_fn(
-            udf_specs=[
-                UDFSpec(
-                    original_class=original_udf_class,
-                    instantiation_class=udf,
-                    constructor_args=fn_constructor_args,
-                    constructor_kwargs=fn_constructor_kwargs,
-                )
-            ]
+        # Create the callable class spec for this UDF
+        callable_class_spec = _CallableClassSpec(
+            cls=original_udf_class,
+            args=fn_constructor_args,
+            kwargs=fn_constructor_kwargs,
         )
 
-        # Capture the class and constructor args for lookup on the actor
-        # These must be captured for use in the closure
-        captured_udf_class = original_udf_class
-        captured_ctor_args = fn_constructor_args
-        captured_ctor_kwargs = fn_constructor_kwargs
+        # Use the shared init function creator (handles both map_batches and expressions)
+        init_fn = create_actor_context_init_fn(
+            udf_specs=[UDFSpec(spec=callable_class_spec, instantiation_class=udf)]
+        )
+
+        # Capture the spec for lookup on the actor
+        captured_spec = callable_class_spec
 
         if inspect.iscoroutinefunction(udf.__call__):
             # Async coroutine UDF: wrapper must be async to work with async transform machinery
@@ -491,12 +440,8 @@ def _get_udf(
                 assert ray.data._map_actor_context.is_async
 
                 try:
-                    # Use composite key for lookup (includes constructor args)
-                    udf_key = _make_udf_key(
-                        captured_udf_class,
-                        captured_ctor_args,
-                        captured_ctor_kwargs,
-                    )
+                    # Use spec's key for lookup
+                    udf_key = captured_spec.make_key()
                     udf_instance = ray.data._map_actor_context.udf_instances[udf_key]
                     # Direct await - already in async context
                     return await udf_instance(
@@ -514,12 +459,8 @@ def _get_udf(
                 assert ray.data._map_actor_context.is_async
 
                 try:
-                    # Use composite key for lookup (includes constructor args)
-                    udf_key = _make_udf_key(
-                        captured_udf_class,
-                        captured_ctor_args,
-                        captured_ctor_kwargs,
-                    )
+                    # Use spec's key for lookup
+                    udf_key = captured_spec.make_key()
                     udf_instance = ray.data._map_actor_context.udf_instances[udf_key]
                     gen = udf_instance(
                         item,
@@ -541,12 +482,8 @@ def _get_udf(
                 assert ray.data._map_actor_context is not None
                 assert not ray.data._map_actor_context.is_async
                 try:
-                    # Use composite key for lookup (includes constructor args)
-                    udf_key = _make_udf_key(
-                        captured_udf_class,
-                        captured_ctor_args,
-                        captured_ctor_kwargs,
-                    )
+                    # Use spec's key for lookup
+                    udf_key = captured_spec.make_key()
                     udf_instance = ray.data._map_actor_context.udf_instances[udf_key]
                     return udf_instance(
                         item,
@@ -755,9 +692,7 @@ def _call_udf_instance_with_async_bridge(
 
 
 def call_udf_from_actor_context(
-    udf_constructor_class: Optional[type],
-    udf_constructor_args: Tuple[Any, ...],
-    udf_constructor_kwargs: Dict[str, Any],
+    callable_class_spec: Optional["_CallableClassSpec"],
     args: List[Any],
     kwargs: Dict[str, Any],
 ) -> Optional[Any]:
@@ -766,9 +701,7 @@ def call_udf_from_actor_context(
     This reuses the same instance lookup and calling logic as map_batches.
 
     Args:
-        udf_constructor_class: The original callable class type
-        udf_constructor_args: Constructor args used to instantiate the UDF
-        udf_constructor_kwargs: Constructor kwargs used to instantiate the UDF
+        callable_class_spec: The callable class specification (or None for functions)
         args: Positional arguments to pass to the UDF __call__
         kwargs: Keyword arguments to pass to the UDF __call__
 
@@ -778,17 +711,12 @@ def call_udf_from_actor_context(
     import ray
 
     if (
-        udf_constructor_class is not None
+        callable_class_spec is not None
         and ray.data._map_actor_context is not None
         and ray.data._map_actor_context.udf_instances
     ):
-        # Get the instance from the actor context using composite key
-        # that includes constructor args to distinguish same class with different args
-        udf_key = _make_udf_key(
-            udf_constructor_class,
-            udf_constructor_args,
-            udf_constructor_kwargs,
-        )
+        # Get the instance from the actor context using the spec's key
+        udf_key = callable_class_spec.make_key()
         if udf_key in ray.data._map_actor_context.udf_instances:
             instance = ray.data._map_actor_context.udf_instances[udf_key]
             # Use the shared async bridge helper
@@ -828,17 +756,12 @@ def create_actor_context_init_fn(
             # Create instances for all callable class UDFs
             udf_instances = {}
             for spec in udf_specs:
-                # Use composite key that includes constructor args to distinguish
-                # same class with different args (e.g., Multiplier(2) vs Multiplier(3))
-                udf_key = _make_udf_key(
-                    spec.original_class,
-                    spec.constructor_args,
-                    spec.constructor_kwargs,
-                )
+                # Use the spec's key for deduplication and lookup
+                udf_key = spec.spec.make_key()
                 if udf_key not in udf_instances:
                     # Instantiate using the wrapped/processed class
                     udf_instances[udf_key] = spec.instantiation_class(
-                        *spec.constructor_args, **spec.constructor_kwargs
+                        *spec.spec.args, **spec.spec.kwargs
                     )
 
             # Single unified context for all UDFs
