@@ -250,10 +250,15 @@ TEST_F(GcsResourceManagerTest, DrainStateImmediatelyVisibleToScheduler) {
   drain_request->set_reason_message("idle termination");
 
   gcs_node_manager_->AddNode(std::make_shared<rpc::GcsNodeInfo>(*node));
+  drain_request->set_deadline_timestamp_ms(12345);
   gcs_node_manager_->SetNodeDraining(node_id, drain_request);
   io_service_.poll();
 
   ASSERT_TRUE(cluster_resource_manager_.IsNodeDraining(scheduling_node_id));
+  const auto &node_resources =
+      cluster_resource_manager_.GetNodeResources(scheduling_node_id);
+  ASSERT_EQ(node_resources.draining_deadline_timestamp_ms,
+            drain_request->deadline_timestamp_ms());
 }
 
 }  // namespace ray
