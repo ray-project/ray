@@ -55,7 +55,7 @@
 #   │                 + libraries                                             │
 #   └─────────────────────────────────────────────────────────────────────────┘
 #
-#   Output: Wheels are stored in docker images, use 'extract' to copy to .whl/
+#   Output: Wheels are automatically extracted to .whl/
 #
 # ============================================================================
 # USAGE
@@ -64,16 +64,14 @@
 # Examples (from repo root):
 #   ci/build/build-wheel-local.sh                      # Build ray wheel for Python 3.10
 #   ci/build/build-wheel-local.sh 3.11                 # Build ray wheel for Python 3.11
-#   ci/build/build-wheel-local.sh 3.10 extract         # Build and extract wheel to .whl/
 #   ci/build/build-wheel-local.sh 3.10 cpp             # Build ray-cpp wheel
-#   ci/build/build-wheel-local.sh 3.10 cpp extract     # Build and extract ray-cpp wheel
-#   ci/build/build-wheel-local.sh 3.10 all extract     # Build both wheels and extract
+#   ci/build/build-wheel-local.sh 3.10 all             # Build both ray and ray-cpp wheels
 #
 set -euo pipefail
 
-header() {
-    echo -e "\n\033[34;1m===> $1\033[0m"
-}
+# Source shared utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/local-build-utils.sh"
 
 # Extract wheel from a docker image to .whl/ directory
 extract_wheel() {
@@ -87,20 +85,20 @@ extract_wheel() {
 }
 
 usage() {
-    echo "Usage: $0 [PYTHON_VERSION] [BUILD_TYPE] [OPTIONS]"
+    echo "Usage: $0 [PYTHON_VERSION] [BUILD_TYPE]"
     echo ""
     echo "Build types:"
     echo "  ray (default)  - Build ray wheel"
     echo "  cpp            - Build ray-cpp wheel"
     echo "  all            - Build both ray and ray-cpp wheels"
     echo ""
-    echo "Options:"
-    echo "  extract        - Extract wheel(s) to .whl/ directory"
+    echo "Wheels are automatically extracted to .whl/ directory."
     echo ""
     echo "Examples:"
-    echo "  $0 3.10 extract           # Build and extract ray wheel"
-    echo "  $0 3.10 cpp extract       # Build and extract ray-cpp wheel"
-    echo "  $0 3.10 all extract       # Build and extract both wheels"
+    echo "  $0                    # Build ray wheel for Python 3.10"
+    echo "  $0 3.11               # Build ray wheel for Python 3.11"
+    echo "  $0 3.10 cpp           # Build ray-cpp wheel"
+    echo "  $0 3.10 all           # Build both wheels"
     exit 1
 }
 
@@ -112,22 +110,13 @@ fi
 # Parse arguments
 PYTHON_VERSION="${1:-3.10}"
 BUILD_TYPE="${2:-ray}"
-ARG3="${3:-}"
-WANDA_BIN="${WANDA_BIN:-/home/ubuntu/rayci/bin/wanda}"
 
-# Handle "extract" as second argument (backwards compatibility)
-if [[ "$BUILD_TYPE" == "extract" ]]; then
-    BUILD_TYPE="ray"
-    EXTRACT="extract"
-else
-    EXTRACT="${ARG3:-}"
-fi
+# Setup environment and check prerequisites
+setup_build_env
+check_wanda_prerequisites "$WANDA_BIN"
 
-# Configuration
+# Export configuration
 export PYTHON_VERSION
-export ARCH_SUFFIX=""
-export HOSTTYPE="x86_64"
-export MANYLINUX_VERSION="251216.3835fc5"
 
 echo "Building Ray wheel for Python ${PYTHON_VERSION}..."
 echo "    Build type: ${BUILD_TYPE}"
@@ -199,22 +188,20 @@ case "$BUILD_TYPE" in
         ;;
 esac
 
-# Extract wheel(s) if requested
-if [[ "$EXTRACT" == "extract" ]]; then
-    mkdir -p .whl
+# Extract wheel(s) to .whl/
+mkdir -p .whl
 
-    if [[ "$BUILD_TYPE" == "ray" || "$BUILD_TYPE" == "all" ]]; then
-        extract_wheel "cr.ray.io/rayproject/ray-wheel-py${PYTHON_VERSION}:latest" "ray"
-    fi
-
-    if [[ "$BUILD_TYPE" == "cpp" || "$BUILD_TYPE" == "all" ]]; then
-        extract_wheel "cr.ray.io/rayproject/ray-cpp-wheel-py${PYTHON_VERSION}:latest" "ray-cpp"
-    fi
-
-    # Clean up non-wheel files
-    find .whl -type f ! -name '*.whl' -delete 2>/dev/null || true
-    find .whl -type d -empty -delete 2>/dev/null || true
-
-    header "Wheels extracted to .whl/:"
-    ls -la .whl/*.whl 2>/dev/null || echo "    (no wheel files found)"
+if [[ "$BUILD_TYPE" == "ray" || "$BUILD_TYPE" == "all" ]]; then
+    extract_wheel "cr.ray.io/rayproject/ray-wheel-py${PYTHON_VERSION}:latest" "ray"
 fi
+
+if [[ "$BUILD_TYPE" == "cpp" || "$BUILD_TYPE" == "all" ]]; then
+    extract_wheel "cr.ray.io/rayproject/ray-cpp-wheel-py${PYTHON_VERSION}:latest" "ray-cpp"
+fi
+
+# Clean up non-wheel files
+find .whl -type f ! -name '*.whl' -delete 2>/dev/null || true
+find .whl -type d -empty -delete 2>/dev/null || true
+
+header "Wheels extracted to .whl/:"
+ls -la .whl/*.whl 2>/dev/null || echo "    (no wheel files found)"
