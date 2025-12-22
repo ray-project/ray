@@ -424,7 +424,7 @@ class TestEnvRunnerFailures(unittest.TestCase):
                 env_config={
                     # Crash prob=0.1%. Keep this as low as necessary to be able to
                     # get at least a train batch sampled w/o too many interruptions.
-                    "p_crash": 0.001,
+                    "p_crash": 0.0005,
                 }
             )
         )

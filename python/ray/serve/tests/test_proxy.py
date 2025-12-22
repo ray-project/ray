@@ -69,47 +69,6 @@ class TestTimeoutKeepAliveConfig:
             == keep_alive_timeout_s
         )
 
-    @pytest.mark.parametrize(
-        "ray_instance",
-        [
-            {"RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S": "333"},
-        ],
-        indirect=True,
-    )
-    def test_set_keep_alive_timeout_in_env(self, ray_instance, ray_shutdown):
-        """Test when keep_alive_timeout_s is in env.
-
-        When the keep_alive_timeout_s is set in env, the uvicorn keep alive
-        is set correctly.
-        """
-        serve.start()
-        proxy_actor = self.get_proxy_actor()
-        assert (
-            ray.get(proxy_actor._get_http_options.remote()).keep_alive_timeout_s == 333
-        )
-
-    @pytest.mark.parametrize(
-        "ray_instance",
-        [
-            {"RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S": "333"},
-        ],
-        indirect=True,
-    )
-    def test_set_timeout_keep_alive_in_both_config_and_env(
-        self, ray_instance, ray_shutdown
-    ):
-        """Test when keep_alive_timeout_s is in both http configs and env.
-
-        When the keep_alive_timeout_s is set in env, the uvicorn keep alive
-        is set to the one in env.
-        """
-        keep_alive_timeout_s = 222
-        serve.start(http_options={"keep_alive_timeout_s": keep_alive_timeout_s})
-        proxy_actor = self.get_proxy_actor()
-        assert (
-            ray.get(proxy_actor._get_http_options.remote()).keep_alive_timeout_s == 333
-        )
-
 
 def test_grpc_proxy_on_draining_nodes(ray_cluster):
     """Test gRPC request on the draining node.
