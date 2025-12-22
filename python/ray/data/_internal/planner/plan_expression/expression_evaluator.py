@@ -633,6 +633,7 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
             The result of the UDF call as a BlockColumn.
         """
         from ray.data._internal.planner.plan_udf_map_op import (
+            NOT_IN_ACTOR_CONTEXT,
             call_udf_from_actor_context,
         )
 
@@ -646,7 +647,7 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
             kwargs,
         )
 
-        if result is None:
+        if result is NOT_IN_ACTOR_CONTEXT:
             # Not in actor context - use regular function call
             result = expr.fn(*args, **kwargs)
 

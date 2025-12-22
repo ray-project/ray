@@ -691,11 +691,24 @@ def _call_udf_instance_with_async_bridge(
         return instance(*args, **kwargs)
 
 
+class _NotInActorContext:
+    """Sentinel class to indicate call_udf_from_actor_context was not in actor context.
+
+    This is distinct from None to properly handle UDFs that legitimately return None.
+    """
+
+    pass
+
+
+# Singleton sentinel instance
+NOT_IN_ACTOR_CONTEXT = _NotInActorContext()
+
+
 def call_udf_from_actor_context(
     callable_class_spec: Optional["_CallableClassSpec"],
     args: List[Any],
     kwargs: Dict[str, Any],
-) -> Optional[Any]:
+) -> Any:
     """Call a UDF from actor context if available.
 
     This reuses the same instance lookup and calling logic as map_batches.
@@ -706,7 +719,10 @@ def call_udf_from_actor_context(
         kwargs: Keyword arguments to pass to the UDF __call__
 
     Returns:
-        The result of calling the UDF, or None if not in actor context
+        The result of calling the UDF, or NOT_IN_ACTOR_CONTEXT sentinel if not
+        in actor context. Callers should check for this sentinel using
+        `result is NOT_IN_ACTOR_CONTEXT` rather than `result is None` to properly
+        handle UDFs that legitimately return None.
     """
     import ray
 
@@ -727,7 +743,7 @@ def call_udf_from_actor_context(
                 **kwargs,
             )
 
-    return None  # Caller should handle fallback
+    return NOT_IN_ACTOR_CONTEXT
 
 
 def create_actor_context_init_fn(
