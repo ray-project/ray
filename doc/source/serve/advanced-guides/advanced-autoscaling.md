@@ -162,12 +162,10 @@ downscaling.
 * **[`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.metrics_interval_s.rst) [default_value=10]**: In future this deployment level
 config will be removed in favor of cross-application level global config.
   
-This controls how often each replica and handle sends reports on current ongoing
-requests to the autoscaler. Note that the autoscaler can't make new decisions if
-it doesn't receive updated metrics, so you most likely want to set these values to
-be less than or equal to the upscale and downscale delay values. For instance, if
-you set `upscale_delay_s = 3`, but keep the push interval at 10s, the autoscaler
-only upscales roughly every 10 seconds.
+This controls how often each replica and handle sends reports on current ongoing requests to the autoscaler.
+::{note}
+If metrics are reported infrequently, Ray Serve can take longer to notice a change in autoscaling metrics, so scaling can start later even if your delays are short. For example, if you set `upscale_delay_s = 3` but metrics are pushed every 10 seconds, Ray Serve might not see a change until the next push, so scaling up can be limited to about once every 10 seconds.
+::
 
 * **[`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) [default_value=30]**: This is the window over which the
 average number of ongoing requests per replica is calculated.
@@ -269,7 +267,7 @@ The timing parameters interact in important ways:
 - With default values: Each push contains 1 data points (10s ÷ 10s)
 
 **Push interval vs look-back period:**
-- [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) (30s) should be ≥ push interval (10s)
+- [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.look_back_period_s.rst) (30s) should be > push interval (10s)
 - If look-back is too short, you won't have enough data for stable decisions
 - If look-back is too long, autoscaling becomes less responsive
 
@@ -279,10 +277,10 @@ The timing parameters interact in important ways:
 - New scaling decisions only happen when fresh metrics arrive
 
 **Push interval vs upscale/downscale delays:**
-- Delays (30s/600s) should be ≥ push interval (10s)
-- Generally the delay should be set to some multiples of push interval, so the autoscaler only reacts after 
-  multiple consecutive metric breaches—this filters out short-lived spikes and prevents noisy, oscillating scale-ups.
-- Example: `upscale_delay_s = 5` but push interval = 10s means actual delay ≈ 10s
+- Delays control when Ray Serve applies a scale up or scale down.
+- The metrics push interval controls how quickly Ray Serve receives fresh metrics.
+- If the push interval < delay, Ray Serve can use multiple metric updates before it scales.
+- Example: push every 10s with `upscale_delay_s = 20` means up to 2 new metric updates before scaling
 
 **Recommendation:** Keep default values unless you have specific needs. If you
 need faster autoscaling, decrease push intervals first, then adjust delays.
@@ -611,6 +609,7 @@ Custom policies let you implement scaling logic based on any metrics or rules yo
 
 A custom autoscaling policy is a user-provided Python function that takes an [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst) and returns a tuple `(target_replicas, policy_state)` for a single Deployment.
 
+An `AutoscalingContext` object provides the following information to the custom autoscaling policy:
 * **Current state:** Current replica count and deployment metadata.
 * **Built-in metrics:** Total requests, queued requests, per-replica counts.
 * **Custom metrics:** Values your deployment reports via `record_autoscaling_stats()`. (See below.)
@@ -620,12 +619,14 @@ A custom autoscaling policy is a user-provided Python function that takes an [`A
 
 The following example showcases a policy that scales up during business hours and evening batch processing, and scales down during off-peak hours:
 
+`autoscaling_policy.py` file:
 ```{literalinclude} ../doc_code/autoscaling_policy.py
 :language: python
 :start-after: __begin_scheduled_batch_processing_policy__
 :end-before: __end_scheduled_batch_processing_policy__
 ```
 
+`main.py` file:
 ```{literalinclude} ../doc_code/scheduled_batch_processing.py
 :language: python
 :start-after: __serve_example_begin__
@@ -647,12 +648,14 @@ You can make richer decisions by emitting your own metrics from the deployment. 
 
 This example demonstrates how deployments can provide their own metrics (CPU usage, memory usage) and how autoscaling policies can use these metrics to make scaling decisions:
 
+`autoscaling_policy.py` file:
 ```{literalinclude} ../doc_code/autoscaling_policy.py
 :language: python
 :start-after: __begin_custom_metrics_autoscaling_policy__
 :end-before: __end_custom_metrics_autoscaling_policy__
 ```
 
+`main.py` file:
 ```{literalinclude} ../doc_code/custom_metrics_autoscaling.py
 :language: python
 :start-after: __serve_example_begin__
@@ -676,20 +679,33 @@ By default, each deployment in Ray Serve autoscales independently. When you have
 
 #### Define an application level policy
 
-An application-level autoscaling policy is a function that takes a Dict[DeploymentID, [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst)] objects (one per deployment) and returns a tuple of `(decisions, policy_state)`. Each context contains metrics and bounds for one deployment, and the policy returns target replica counts for all deployments.
+An application-level autoscaling policy is a function that takes a `dict[DeploymentID, AutoscalingContext]` objects (one per deployment) and returns a tuple of `(decisions, policy_state)`. Each context contains metrics and bounds for one deployment, and the policy returns target replica counts for all deployments.
 
+The `policy_state` returned from an application-level policy must be a `dict[DeploymentID, dict]`— a dictionary mapping each deployment ID to its own state dictionary. Serve stores this per-deployment state and on the next control-loop iteration, injects each deployment's state back into that deployment's `AutoscalingContext.policy_state`. 
+
+Serve itself does not interpret the contents of `policy_state`. All the keys in each deployment's state dictionary are user-controlled.
 The following example shows a policy that scales deployments based on their relative load, ensuring that downstream deployments have enough capacity for upstream traffic:
 
+`autoscaling_policy.py` file:
 ```{literalinclude} ../doc_code/autoscaling_policy.py
 :language: python
 :start-after: __begin_application_level_autoscaling_policy__
 :end-before: __end_application_level_autoscaling_policy__
+```
+The following example shows a stateful application-level policy that persists state between control-loop iterations:
+
+`autoscaling_policy.py` file:
+```{literalinclude} ../doc_code/autoscaling_policy.py
+:language: python
+:start-after: __begin_stateful_application_level_policy__
+:end-before: __end_stateful_application_level_policy__
 ```
 
 #### Configure application level autoscaling
 
 To use an application-level policy, you need to define your deployments:
 
+`main.py` file:
 ```{literalinclude} ../doc_code/application_level_autoscaling.py
 :language: python
 :start-after: __serve_example_begin__
@@ -698,6 +714,7 @@ To use an application-level policy, you need to define your deployments:
 
 Then specify the application-level policy in your application config:
 
+`serve.yaml` file:
 ```{literalinclude} ../doc_code/application_level_autoscaling.yaml
 :language: yaml
 :emphasize-lines: 4-5
@@ -723,3 +740,96 @@ When your custom autoscaling policy has complex dependencies or you want better 
 - **Contribute to Ray Serve**: If your policy is general-purpose and might benefit others, consider contributing it to Ray Serve as a built-in policy by opening a feature request or pull request on the [Ray GitHub repository](https://github.com/ray-project/ray/issues). The recommended location for the implementation is `python/ray/serve/autoscaling_policy.py`.
 - **Ensure dependencies in your environment**: Make sure that the external dependencies are installed in your Docker image or environment.
 :::
+
+
+(serve-external-scale-api)=
+
+### External scaling API
+
+:::{warning}
+This API is in alpha and may change before becoming stable.
+:::
+
+The external scaling API provides programmatic control over the number of replicas for any deployment in your Ray Serve application. Unlike Ray Serve's built-in autoscaling, which scales based on queue depth and ongoing requests, this API allows you to scale based on any external criteria you define.
+
+#### Example: Predictive scaling
+
+This example shows how to implement predictive scaling based on historical patterns or forecasts. You can preemptively scale up before anticipated traffic spikes by running an external script that adjusts replica counts based on time of day.
+
+##### Define the deployment
+
+The following example creates a simple text processing deployment that you can scale externally. Save this code to a file named `external_scaler_predictive.py`:
+
+```{literalinclude} ../doc_code/external_scaler_predictive.py
+:language: python
+:start-after: __serve_example_begin__
+:end-before: __serve_example_end__
+```
+
+##### Configure external scaling
+
+Before using the external scaling API, enable it in your application configuration by setting `external_scaler_enabled: true`. Save this configuration to a file named `external_scaler_config.yaml`:
+
+```{literalinclude} ../doc_code/external_scaler_config.yaml
+:language: yaml
+:start-after: __external_scaler_config_begin__
+:end-before: __external_scaler_config_end__
+```
+
+:::{warning}
+External scaling and built-in autoscaling are mutually exclusive. You can't use both for the same application. If you set `external_scaler_enabled: true`, you **must not** configure `autoscaling_config` on any deployment in that application. Attempting to use both results in an error.
+:::
+
+##### Implement the scaling logic
+
+The following script implements predictive scaling based on time of day and historical traffic patterns. Save this script to a file named `external_scaler_predictive_client.py`:
+
+```{literalinclude} ../doc_code/external_scaler_predictive_client.py
+:language: python
+:start-after: __client_script_begin__
+:end-before: __client_script_end__
+```
+
+The script uses the external scaling API endpoint to scale deployments:
+- **API endpoint**: `POST http://localhost:8265/api/v1/applications/{application_name}/deployments/{deployment_name}/scale`
+- **Request body**: `{"target_num_replicas": <number>}` (must conform to the [`ScaleDeploymentRequest`](../api/doc/ray.serve.schema.ScaleDeploymentRequest.rst) schema)
+
+The scaling client continuously adjusts the number of replicas based on the time of day:
+- Business hours (9 AM - 5 PM): 10 replicas
+- Off-peak hours: 3 replicas
+
+##### Run the example
+
+Follow these steps to run the complete example:
+
+1. Start the Ray Serve application with the configuration:
+
+```bash
+serve run external_scaler_config.yaml
+```
+
+2. Run the predictive scaling client in a separate terminal:
+
+```bash
+python external_scaler_predictive_client.py
+```
+
+The client adjusts replica counts automatically based on the time of day. You can monitor the scaling behavior in the Ray dashboard or by checking the application logs.
+
+#### Important considerations
+
+Understanding how the external scaler interacts with your deployments helps you build reliable scaling logic:
+
+- **Idempotent API calls**: The scaling API is idempotent. You can safely call it multiple times with the same `target_num_replicas` value without side effects. This makes it safe to run your scaling logic on a schedule or in response to repeated metric updates.
+
+- **Interaction with serve deploy**: When you upgrade your service with `serve deploy`, the number of replicas you set through the external scaler API stays intact. This behavior matches what you'd expect from Ray Serve's built-in autoscaler—deployment updates don't reset replica counts.
+
+- **Query current replica count**: You can get the current number of replicas for any deployment by querying the GET `/applications` API:
+
+  ```bash
+  curl -X GET http://localhost:8265/api/serve/applications/ \
+  ```
+
+  The response follows the [`ServeInstanceDetails`](../api/doc/ray.serve.schema.ServeInstanceDetails.rst) schema, which includes an `applications` field containing a dictionary with application names as keys. Each application includes detailed information about all its deployments, including current replica counts. Use this information to make informed scaling decisions. For example, you might scale up gradually by adding a percentage of existing replicas rather than jumping to a fixed number.
+
+- **Initial replica count**: When you deploy an application for the first time, Ray Serve creates the number of replicas specified in the `num_replicas` field of your deployment configuration. The external scaler can then adjust this count dynamically based on your scaling logic.

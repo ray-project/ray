@@ -16,7 +16,7 @@ subprocess.check_call([sys.executable, "-m", "pip", "install", "numpy==1.26.4"])
 
 # __basic_llm_example_start__
 import ray
-from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
+from ray.data.llm import vLLMEngineProcessorConfig, build_processor
 
 # __basic_config_example_start__
 # Basic vLLM configuration
@@ -32,7 +32,7 @@ config = vLLMEngineProcessorConfig(
 )
 # __basic_config_example_end__
 
-processor = build_llm_processor(
+processor = build_processor(
     config,
     preprocess=lambda row: dict(
         messages=[
@@ -185,7 +185,7 @@ embedding_config = vLLMEngineProcessorConfig(
 
 # Example usage for embeddings
 def create_embedding_processor():
-    return build_llm_processor(
+    return build_processor(
         embedding_config,
         preprocess=lambda row: dict(prompt=row["text"]),
         postprocess=lambda row: {
@@ -197,10 +197,45 @@ def create_embedding_processor():
 
 # __embedding_config_example_end__
 
+# __classification_config_example_start__
+# Sequence classification model configuration
+# Use task_type="classify" for classification models (e.g., sentiment, quality scoring)
+# Use task_type="score" for cross-encoder scoring models
+classification_config = vLLMEngineProcessorConfig(
+    model_source="nvidia/nemocurator-fineweb-nemotron-4-edu-classifier",
+    task_type="classify",
+    engine_kwargs=dict(
+        max_model_len=512,
+        enforce_eager=True,
+    ),
+    batch_size=8,
+    concurrency=1,
+    apply_chat_template=False,
+    detokenize=False,
+)
+
+
+# Example usage for classification
+def create_classification_processor():
+    return build_processor(
+        classification_config,
+        preprocess=lambda row: dict(prompt=row["text"]),
+        postprocess=lambda row: {
+            "text": row["prompt"],
+            # Classification models return logits in the 'embeddings' field
+            "score": float(row["embeddings"][0])
+            if row.get("embeddings") is not None and len(row["embeddings"]) > 0
+            else None,
+        },
+    )
+
+
+# __classification_config_example_end__
+
 # __shared_vllm_engine_config_example_start__
 import ray
 from ray import serve
-from ray.data.llm import ServeDeploymentProcessorConfig, build_llm_processor
+from ray.data.llm import ServeDeploymentProcessorConfig, build_processor
 from ray.serve.llm import (
     LLMConfig,
     ModelLoadingConfig,
@@ -245,7 +280,7 @@ config = ServeDeploymentProcessorConfig(
     batch_size=64,
 )
 
-processor1 = build_llm_processor(
+processor1 = build_processor(
     config,
     preprocess=lambda row: dict(
         method="completions",
@@ -261,7 +296,7 @@ processor1 = build_llm_processor(
     ),
 )
 
-processor2 = build_llm_processor(
+processor2 = build_processor(
     config,
     preprocess=lambda row: dict(
         method="completions",

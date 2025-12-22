@@ -529,7 +529,7 @@ class CoreWorker {
       std::shared_ptr<Buffer> *data,
       const std::unique_ptr<rpc::Address> &owner_address = nullptr,
       bool inline_small_object = true,
-      rpc::TensorTransport tensor_transport = rpc::TensorTransport::OBJECT_STORE);
+      const std::optional<std::string> &tensor_transport = std::nullopt);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
@@ -770,7 +770,7 @@ class CoreWorker {
   /// NOTE: The API doesn't guarantee the ordering of the report. The
   /// caller is supposed to reorder the report based on the item_index.
   ///
-  /// \param[in] dynamic_return_object A intermediate ray object to report
+  /// \param[in] returned_object A intermediate ray object to report
   /// to the caller before the task terminates. This object must have been
   /// created dynamically from this worker via AllocateReturnObject.
   /// If the Object ID is nil, it means it is the end of the task return.
@@ -787,7 +787,7 @@ class CoreWorker {
   /// \param[in] waiter The class to pause the thread if generator backpressure limit
   /// is reached.
   Status ReportGeneratorItemReturns(
-      const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
+      const std::pair<ObjectID, std::shared_ptr<RayObject>> &returned_object,
       const ObjectID &generator_id,
       const rpc::Address &caller_address,
       int64_t item_index,
@@ -864,6 +864,9 @@ class CoreWorker {
       const TaskID current_task_id = TaskID::Nil());
 
   /// Create an actor.
+  ///
+  /// NOTE: RAY CHECK fails if an actor handle with the same actor id has already been
+  /// added, or if the scheduling strategy for actor creation is not set.
   ///
   /// \param[in] caller_id ID of the task submitter.
   /// \param[in] function The remote function that generates the actor object.
@@ -960,6 +963,12 @@ class CoreWorker {
   /// \param[in] recursive Whether to cancel tasks submitted by the task to cancel.
   /// \param[out] Status
   Status CancelTask(const ObjectID &object_id, bool force_kill, bool recursive);
+
+  /// Check if a task has been canceled.
+  ///
+  /// \param[in] task_id The task ID to check.
+  /// \return Whether the task has been canceled.
+  bool IsTaskCanceled(const TaskID &task_id) const;
 
   /// Decrease the reference count for this actor. Should be called by the
   /// language frontend when a reference to the ActorHandle destroyed.
@@ -1205,9 +1214,9 @@ class CoreWorker {
                         rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
-  void HandleCancelRemoteTask(rpc::CancelRemoteTaskRequest request,
-                              rpc::CancelRemoteTaskReply *reply,
-                              rpc::SendReplyCallback send_reply_callback);
+  void HandleRequestOwnerToCancelTask(rpc::RequestOwnerToCancelTaskRequest request,
+                                      rpc::RequestOwnerToCancelTaskReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
@@ -1390,8 +1399,8 @@ class CoreWorker {
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
       const LabelSelector &label_selector = {},
-      const std::vector<FallbackOption> &fallback_strategy = {},
-      const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::OBJECT_STORE);
+      const std::vector<FallbackOption> &fallback_strategy = {});
+
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);
@@ -1456,25 +1465,21 @@ class CoreWorker {
 
   /// Execute a task.
   ///
-  /// \param spec[in] task_spec Task specification.
-  /// \param spec[in] resource_ids Resource IDs of resources assigned to this
-  ///                 worker. If nullopt, reuse the previously assigned
-  ///                 resources.
-  /// \param results[out] return_objects Result objects that should be returned
+  /// \param task_spec[in] Task specification.
+  /// \param resource_ids[in] Resource IDs of resources assigned to this
+  /// worker. If nullopt, reuse the previously assigned resources.
+  /// \param return_objects[out] Result objects that should be returned
   /// to the caller.
-  /// \param results[out] dynamic_return_objects Result objects whose
-  /// ObjectRefs were dynamically allocated during task execution by using a
-  /// generator. The language-level ObjectRefs should be returned inside the
-  /// statically allocated return_objects.
-  /// \param results[out] borrowed_refs Refs that this task (or a nested task)
-  ///                     was or is still borrowing. This includes all
-  ///                     objects whose IDs we passed to the task in its
-  ///                     arguments and recursively, any object IDs that were
-  ///                     contained in those objects.
-  /// \param results[out] is_retryable_error Whether the task failed with a retryable
-  ///                     error.
-  /// \param results[out] application_error The error message if the
-  ///                     task failed during execution or cancelled.
+  /// \param dynamic_return_objects[out]  Result objects whose ObjectRefs were dynamically
+  /// allocated during task execution by using a generator. The language-level ObjectRefs
+  /// should be returned inside the statically allocated return_objects.
+  /// \param borrowed_refs[out]  Refs that this task (or a nested task) was or is still
+  /// borrowing. This includes all objects whose IDs we passed to the task in its
+  /// arguments and recursively, any object IDs that were contained in those objects.
+  /// \param is_retryable_error[out] Whether the task failed with a retryable
+  /// error.
+  /// \param application_error[out] The error message if the task failed during
+  /// execution or cancelled.
   /// \return Status.
   Status ExecuteTask(
       const TaskSpecification &task_spec,
@@ -1836,6 +1841,14 @@ class CoreWorker {
   /// contexts from GetCoreWorkerStats().
   absl::flat_hash_map<TaskID, TaskSpecification> running_tasks_ ABSL_GUARDED_BY(mutex_);
 
+  /// Tracks which tasks have been marked as canceled. For single-threaded, non-async
+  /// actors this will contain at most one task ID.
+  ///
+  /// We have to track this separately because cancellation requests come from submitter
+  /// thread than the thread executing the task, so we cannot get the cancellation status
+  /// from the thread-local WorkerThreadContext.
+  absl::flat_hash_set<TaskID> canceled_tasks_ ABSL_GUARDED_BY(mutex_);
+
   /// Key value pairs to be displayed on Web UI.
   std::unordered_map<std::string, std::string> webui_display_ ABSL_GUARDED_BY(mutex_);
 
@@ -1942,7 +1955,7 @@ class CoreWorker {
   // the shutdown procedure without exposing additional public APIs.
   friend class CoreWorkerShutdownExecutor;
 
-  /// Used to block in certain spots if the GCS node cache is needed.
+  /// Used to block in certain spots if the GCS node address and liveness cache is needed.
   std::mutex gcs_client_node_cache_populated_mutex_;
   std::condition_variable gcs_client_node_cache_populated_cv_;
   bool gcs_client_node_cache_populated_ = false;

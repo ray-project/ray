@@ -91,5 +91,43 @@ def coordinated_scaling_policy(
 
     return decisions, {}
 
-
 # __end_application_level_autoscaling_policy__
+
+# __begin_stateful_application_level_policy__
+from typing import Dict, Tuple, Any
+from ray.serve.config import AutoscalingContext
+from ray.serve._private.common import DeploymentID
+
+def stateful_application_level_policy(
+    contexts: Dict[DeploymentID, AutoscalingContext]
+) -> Tuple[Dict[DeploymentID, int], Dict[DeploymentID, Dict[str, Any]]]:
+    """Example policy demonstrating per-deployment state persistence."""
+    decisions = {}
+    policy_state = {}
+
+    for deployment_id, ctx in contexts.items():
+        # Read previous state for this deployment (persisted from last iteration)
+        prev_state = ctx.policy_state or {}
+        scale_count = prev_state.get("scale_count", 0)
+        last_replicas = prev_state.get("last_replicas", ctx.current_num_replicas)
+
+        # Simple scaling logic: scale based on queue depth
+        desired_replicas = max(
+            ctx.capacity_adjusted_min_replicas,
+            min(
+                ctx.capacity_adjusted_max_replicas,
+                ctx.total_num_requests // 10,
+            ),
+        )
+        decisions[deployment_id] = desired_replicas
+
+        # Store per-deployment state that persists across iterations
+        policy_state[deployment_id] = {
+            "scale_count": scale_count + 1,
+            "last_replicas": desired_replicas,
+        }
+
+    return decisions, policy_state
+
+
+# __end_stateful_application_level_policy__
