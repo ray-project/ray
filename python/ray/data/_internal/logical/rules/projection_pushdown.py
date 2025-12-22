@@ -402,6 +402,7 @@ class ProjectionPushdown(Rule):
                 return Project(
                     projected_input_op,
                     exprs=current_project.exprs,
+                    compute=current_project._compute,
                     ray_remote_args=current_project._ray_remote_args,
                 )
 
