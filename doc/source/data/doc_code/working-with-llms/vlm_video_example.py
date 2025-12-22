@@ -51,7 +51,7 @@ video_processor_config = vLLMEngineProcessorConfig(
     batch_size=1,
     accelerator_type="L4",
     concurrency=1,
-    prepare_multimodal_stage={"enabled": True,
+    prepare_multimodal_stage={
         "enabled": True,
         "model_config_kwargs": dict(
             # See available model config kwargs at https://docs.vllm.ai/en/latest/api/vllm/config/#vllm.config.ModelConfig
