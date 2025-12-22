@@ -126,6 +126,12 @@ bool ClusterResourceManager::SetNodeDraining(const scheduling::NodeID &node_id,
   auto *local_view = it->second.GetMutableLocalView();
   local_view->is_draining = is_draining;
   local_view->draining_deadline_timestamp_ms = draining_deadline_timestamp_ms;
+  auto rnr_it = received_node_resources_.find(node_id);
+  if (rnr_it != received_node_resources_.end()) {
+    rnr_it->second.is_draining = is_draining;
+    rnr_it->second.draining_deadline_timestamp_ms = draining_deadline_timestamp_ms;
+  }
+
   return true;
 }
 
