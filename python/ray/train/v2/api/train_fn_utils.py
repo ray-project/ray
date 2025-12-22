@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.train.v2._internal.util import requires_train_worker
@@ -114,6 +115,14 @@ def report(
     # TODO: figure out how to validate validate_fn itself
     if validate_config and not validate_fn:
         raise ValueError("validate_fn must be provided together with validate_config")
+
+    if checkpoint:
+        record_extra_usage_tag(
+            TagKey.TRAIN_CHECKPOINT_MODE, checkpoint_upload_mode.value
+        )
+
+    if validate_fn:
+        record_extra_usage_tag(TagKey.TRAIN_ASYNCHRONOUS_VALIDATION, "1")
 
     get_train_fn_utils().report(
         metrics=metrics,

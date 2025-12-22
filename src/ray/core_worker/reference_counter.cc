@@ -226,15 +226,16 @@ void ReferenceCounter::AddObjectRefStats(
   stats->set_objects_total(total);
 }
 
-void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
-                                      const std::vector<ObjectID> &inner_ids,
-                                      const rpc::Address &owner_address,
-                                      const std::string &call_site,
-                                      const int64_t object_size,
-                                      bool is_reconstructable,
-                                      bool add_local_ref,
-                                      const std::optional<NodeID> &pinned_at_node_id,
-                                      rpc::TensorTransport tensor_transport) {
+void ReferenceCounter::AddOwnedObject(
+    const ObjectID &object_id,
+    const std::vector<ObjectID> &inner_ids,
+    const rpc::Address &owner_address,
+    const std::string &call_site,
+    const int64_t object_size,
+    bool is_reconstructable,
+    bool add_local_ref,
+    const std::optional<NodeID> &pinned_at_node_id,
+    const std::optional<std::string> &tensor_transport) {
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(AddOwnedObjectInternal(object_id,
                                    inner_ids,
@@ -273,7 +274,8 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
                                     /*object_size=*/-1,
                                     outer_it->second.is_reconstructable_,
                                     /*add_local_ref=*/false,
-                                    std::optional<NodeID>()));
+                                    std::optional<NodeID>(),
+                                    /*tensor_transport=*/std::nullopt));
   AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
 }
 
@@ -308,7 +310,8 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
                                     /*object_size=*/-1,
                                     outer_it->second.is_reconstructable_,
                                     /*add_local_ref=*/true,
-                                    std::optional<NodeID>()));
+                                    std::optional<NodeID>(),
+                                    /*tensor_transport=*/std::nullopt));
 }
 
 void ReferenceCounter::TryReleaseLocalRefs(const std::vector<ObjectID> &object_ids,
@@ -358,7 +361,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     bool is_reconstructable,
     bool add_local_ref,
     const std::optional<NodeID> &pinned_at_node_id,
-    rpc::TensorTransport tensor_transport) {
+    const std::optional<std::string> &tensor_transport) {
   if (object_id_refs_.contains(object_id)) {
     return false;
   }
@@ -1817,12 +1820,12 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref,
   }
 }
 
-std::optional<rpc::TensorTransport> ReferenceCounter::GetTensorTransport(
+std::optional<std::string> ReferenceCounter::GetTensorTransport(
     const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return it->second.tensor_transport_;
 }

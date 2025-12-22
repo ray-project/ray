@@ -25,10 +25,6 @@ should step.
     The simulator sends batches of data from time to time to the server and in turn receives weights updates.
     For better performance, actions are computed locally on the client side.
 
-.. todo (sven): show new image here with UE5
-.. .. figure:: images/rllib-training-inside-a-unity3d-env.png
-.. scale: 75 %
-..    A Unity3D soccer game being learnt by RLlib via the ExternalEnv API.
 
 RLlib provides an `external messaging protocol <https://github.com/ray-project/ray/blob/master/rllib/env/external/rllink.py>`__
 called :ref:`RLlink <rllink-protocol-docs>` for this purpose as well as the option to customize your :py:class:`~ray.rllib.env.env_runner.EnvRunner` class
