@@ -4,13 +4,22 @@
 
 This guide covers how to enable Ray resource isolation on GKE using [writable cgroups](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/writable-cgroups).
 Ray resource isolation (introduced in v2.51.0) significantly improves Ray's reliability by using cgroupsv2 to reserve dedicated CPU and memory
-resources for critical system processes. Historically, enabling resource isolation required privileged containers capable of writing to
-the `/sys/fs/cgroup` file system. This approach was not recommended due to the security risks associated with privileged containers. In newer versions of GKE,
+resources for critical system processes.
+
+Historically, enabling resource isolation required privileged containers capable of writing to the `/sys/fs/cgroup` file system.
+This approach was not recommended due to the security risks associated with privileged containers. In newer versions of GKE,
 you can enable writable cgroups, granting containers read-write access to the cgroups API without requiring privileged mode.
+
+## Prerequisites
+
+* `kubectl` installed and configured to interact with your cluster.
+* `gcloud` CLI installed and configured.
+* [Helm](https://helm.sh/) installed.
+* Ray 2.51.0 or newer.
 
 ## Create a GKE Cluster with writable cgroups enabled
 
-To use Ray resource isolation on Kubernetes without privileged containers, you must use a platform that supports cgroupsv2 and writable cgroups.
+To use Ray resource isolation on Kubernetes without privileged containers, you must use a platform that supports cgroups v2 and writable cgroups.
 
 On GKE, create a cluster with writable cgroups enabled as follows:
 ```bash
@@ -25,6 +34,10 @@ $ gcloud container clusters create ray-resource-isolation \
     --num-nodes=3 \
     --containerd-config-from-file=containerd_config.yaml
 ```
+
+## Install the KubeRay Operator
+
+Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository.
 
 ## Create a RayCluster with resource isolation enabled
 
@@ -75,6 +88,7 @@ All remaining resources are reserved for user processes (e.g. Ray workers).
 Verify that resource isolation is enabled by inspecting the cgroup filesystem within a Ray container.
 ```bash
 $ HEAD_POD=$(kubectl get po -l ray.io/cluster=raycluster-resource-isolation,ray.io/node-type=head -o custom-columns=NAME:.metadata.name --no-headers)
+
 $ kubectl exec -ti $HEAD_POD -- bash
 (base) ray@raycluster-resource-isolation-head-p2xqx:~$ # check system cgroup folder
 (base) ray@raycluster-resource-isolation-head-p2xqx:~$ ls /sys/fs/cgroup/ray-node*/system
@@ -86,6 +100,7 @@ cgroup.max.depth        cpu.idle                io.pressure      memory.min     
 cgroup.max.descendants  cpu.max                 leaf             memory.numa_stat     memory.swap.high
 cgroup.pressure         cpu.max.burst           memory.current   memory.oom.group     memory.swap.max
 cgroup.procs            cpu.pressure            memory.events    memory.peak          memory.swap.peak
+
 (base) ray@raycluster-resource-isolation-head-p2xqx:~$ # check user cgroup folder
 (base) ray@raycluster-resource-isolation-head-p2xqx:~$ ls /sys/fs/cgroup/ray-node*/user
 cgroup.controllers      cgroup.subtree_control  cpu.weight           memory.min           memory.swap.high
