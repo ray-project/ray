@@ -5,7 +5,63 @@
 # This script is for local iteration and testing of wanda-based wheel builds.
 # It requires the wanda binary to be installed (see WANDA_BIN below).
 #
-# Usage (from repo root):
+# ============================================================================
+# WHEEL BUILD HIERARCHY
+# ============================================================================
+#
+# This script builds distributable Ray wheel files (.whl) using pre-built
+# artifacts from wanda images. The C++ compilation happens once in ray-core,
+# then gets packaged into wheels.
+#
+#   ┌─────────────────────────────────────────────────────────────────────────┐
+#   │                     PRE-BUILT ARTIFACTS                                 │
+#   │                                                                         │
+#   │   manylinux2014 (glibc compatible base)                                 │
+#   │        │                                                                │
+#   │        ├──────────────────┬──────────────────┐                          │
+#   │        ▼                  ▼                  ▼                          │
+#   │   ray-core           ray-dashboard       ray-java                       │
+#   │   (bazel build)      (npm build)         (maven build)                  │
+#   │        │                  │                  │                          │
+#   │   ray_pkg.zip        dashboard.tar.gz    ray-java.jar                   │
+#   │   ray_py_proto.zip                                                      │
+#   │        │                  │                  │                          │
+#   └────────┼──────────────────┼──────────────────┼──────────────────────────┘
+#            │                  │                  │
+#            └──────────────────┴──────────────────┘
+#                               │
+#   ┌───────────────────────────┼─────────────────────────────────────────────┐
+#   │                           ▼                                             │
+#   │   RAY WHEEL BUILD (ray-wheel.wanda.yaml)                                │
+#   │                                                                         │
+#   │   1. Extract ray_pkg.zip (C++ binaries)                                 │
+#   │   2. Extract dashboard.tar.gz                                           │
+#   │   3. Copy ray-java.jar                                                  │
+#   │   4. pip wheel . (packages everything, NO C++ compile)                  │
+#   │                           │                                             │
+#   │                           ▼                                             │
+#   │                  ray-{version}-{platform}.whl                           │
+#   │                                                                         │
+#   └─────────────────────────────────────────────────────────────────────────┘
+#
+#   ┌─────────────────────────────────────────────────────────────────────────┐
+#   │   RAY-CPP WHEEL BUILD (optional, for C++ API users)                     │
+#   │                                                                         │
+#   │   ray-core ──► ray-cpp-core ──► ray-cpp-wheel                           │
+#   │                (gen_ray_cpp_pkg)   (pip wheel)                          │
+#   │                      │                  │                               │
+#   │                      ▼                  ▼                               │
+#   │                 C++ headers      ray_cpp-{version}.whl                  │
+#   │                 + libraries                                             │
+#   └─────────────────────────────────────────────────────────────────────────┘
+#
+#   Output: Wheels are stored in docker images, use 'extract' to copy to .whl/
+#
+# ============================================================================
+# USAGE
+# ============================================================================
+#
+# Examples (from repo root):
 #   ci/build/build-wheel-local.sh                      # Build ray wheel for Python 3.10
 #   ci/build/build-wheel-local.sh 3.11                 # Build ray wheel for Python 3.11
 #   ci/build/build-wheel-local.sh 3.10 extract         # Build and extract wheel to .whl/
