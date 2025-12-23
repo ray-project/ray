@@ -173,6 +173,7 @@ class RebundleQueue(BaseBundleQueue):
                     num_pending_rows=pending_row_count_prefix_sum,
                     pending_bundle=pending_bundle,
                 )
+
                 sliced_bundle, remaining_bundle = pending_bundle.slice(rows_needed)
                 pending_to_ready_bundles.append(sliced_bundle)
                 if remaining_bundle.num_rows():
