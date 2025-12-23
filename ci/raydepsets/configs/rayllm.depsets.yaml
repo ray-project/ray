@@ -13,6 +13,8 @@ build_arg_sets:
     - --unsafe-package ray
     - --python-platform=linux
     - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+    # vllm 0.13.0 -> mcp -> anyio>=4.5, but requirements_compiled.txt has anyio==3.7.1
+    - --upgrade-package anyio
   build_arg_sets:
     - cpu
     - cu128
