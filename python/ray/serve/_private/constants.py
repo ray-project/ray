@@ -207,8 +207,6 @@ HEALTH_CHECK_METHOD = "check_health"
 #: Name of deployment reconfiguration method implemented by user.
 RECONFIGURE_METHOD = "reconfigure"
 
-RAY_SERVE_ROOT_URL = get_env_str("RAY_SERVE_ROOT_URL", "")
-
 #: Limit the number of cached handles because each handle has long poll
 #: overhead. See https://github.com/ray-project/ray/issues/18980
 MAX_CACHED_HANDLES = get_env_int_positive(
