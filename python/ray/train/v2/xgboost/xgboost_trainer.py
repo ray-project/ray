@@ -6,7 +6,7 @@ from ray.train import Checkpoint
 from ray.train.trainer import GenDataset
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
-from ray.train.v2.api.report_config import ValidateFn
+from ray.train.v2.api.report_config import ValidationConfig
 from ray.util.annotations import Deprecated
 
 if TYPE_CHECKING:
@@ -104,9 +104,10 @@ class XGBoostTrainer(DataParallelTrainer):
         dataset_config: The configuration for ingesting the input ``datasets``.
             By default, all the Ray Dataset are split equally across workers.
             See :class:`~ray.train.DataConfig` for more details.
-        validate_fn: If the user registers a ``validate_fn`` here and calls
-            ``ray.train.report`` with the ``validation`` argument, Ray Train will
-            validate the reported checkpoint using this function.
+        validation_config: Configuration for checkpoint validation.
+            If provided and ``ray.train.report`` is called with the ``validation``
+            argument, Ray Train will validate the reported checkpoint using
+            the validation function specified in this config.
         resume_from_checkpoint: [Deprecated]
         metadata: [Deprecated]
     """
@@ -121,7 +122,7 @@ class XGBoostTrainer(DataParallelTrainer):
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         dataset_config: Optional[ray.train.DataConfig] = None,
-        validate_fn: Optional[ValidateFn] = None,
+        validation_config: Optional[ValidationConfig] = None,
         # TODO: [Deprecated]
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
@@ -155,7 +156,7 @@ class XGBoostTrainer(DataParallelTrainer):
             datasets=datasets,
             resume_from_checkpoint=resume_from_checkpoint,
             metadata=metadata,
-            validate_fn=validate_fn,
+            validation_config=validation_config,
         )
 
     @classmethod

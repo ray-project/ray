@@ -125,7 +125,7 @@ def validate_fn(checkpoint: ray.train.Checkpoint, dataset: ray.data.Dataset) -> 
 # __validate_fn_report_start__
 import tempfile
 
-from ray.train.v2.api.report_config import ValidationConfig
+from ray.train.v2.api.report_config import ValidationConfig, ValidationTaskConfig
 
 
 def train_func(config: dict) -> None:
@@ -146,7 +146,7 @@ def train_func(config: dict) -> None:
                 training_metrics,
                 checkpoint=ray.train.Checkpoint.from_directory(local_checkpoint_dir),
                 checkpoint_upload_mode=ray.train.CheckpointUploadMode.ASYNC,
-                validation=ValidationConfig(func_kwargs={
+                validation=ValidationTaskConfig(func_kwargs={
                     "dataset": config["validation_dataset"],
                     "train_run_name": ray.train.get_context().get_experiment_name(),
                     "epoch": epoch,
@@ -161,7 +161,7 @@ def run_trainer() -> ray.train.Result:
     validation_dataset = ray.data.read_parquet(...)
     trainer = ray.train.torch.TorchTrainer(
         train_func,
-        validate_fn=validate_fn,
+        validation_config=ValidationConfig(validate_fn=validate_fn),
         # Pass training dataset in datasets arg to split it across training workers
         datasets={"train": train_dataset},
         # Pass validation dataset in train_loop_config so validate_fn can choose how to use it later

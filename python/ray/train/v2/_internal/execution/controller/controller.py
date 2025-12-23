@@ -68,7 +68,7 @@ from ray.train.v2.api.exceptions import (
     ControllerError,
     TrainingFailedError,
 )
-from ray.train.v2.api.report_config import CheckpointConsistencyMode, ValidateFn
+from ray.train.v2.api.report_config import CheckpointConsistencyMode, ValidationConfig
 from ray.train.v2.api.result import Result
 
 if TYPE_CHECKING:
@@ -118,7 +118,7 @@ class TrainController:
         scaling_policy: ScalingPolicy,
         failure_policy: FailurePolicy,
         callbacks: Optional[List[RayTrainCallback]] = None,
-        validate_fn: Optional[ValidateFn] = None,
+        validation_config: Optional[ValidationConfig] = None,
     ):
         self._train_run_context = train_run_context
         if ray_constants.env_bool(
@@ -137,10 +137,10 @@ class TrainController:
             checkpoint_config=self._run_config.checkpoint_config,
             storage_context=self._storage_context,
         )
-        if validate_fn:
+        if validation_config:
             validation_manager = ValidationManager(
                 checkpoint_manager=self._checkpoint_manager,
-                validate_fn=validate_fn,
+                validation_config=validation_config,
             )
         else:
             validation_manager = None

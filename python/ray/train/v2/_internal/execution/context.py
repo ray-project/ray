@@ -5,7 +5,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from queue import Queue
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 import ray
 from ray._common.retry import retry
@@ -25,7 +25,7 @@ from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.report_config import (
     CheckpointConsistencyMode,
     CheckpointUploadMode,
-    ValidationConfig,
+    ValidationTaskConfig,
 )
 
 if TYPE_CHECKING:
@@ -230,7 +230,7 @@ class TrainContext:
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validation: Optional["ValidationConfig"] = None,
+        validation: Optional["ValidationTaskConfig"] = None,
     ) -> _TrainingReport:
         """Save the checkpoint to remote storage.
 
@@ -327,7 +327,7 @@ class TrainContext:
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validation: Optional[ValidationConfig] = None,
+        validation: Optional[Union[bool, ValidationTaskConfig]] = None,
     ) -> None:
         """
         Upload checkpoint to remote storage and put a training
@@ -350,9 +350,15 @@ class TrainContext:
                     "or save tensors as part of the checkpoint files instead."
                 )
 
+        # Convert bool to ValidationTaskConfig if needed
+        if validation is True:
+            validation = ValidationTaskConfig()
+        elif validation is False:
+            validation = None
+
         if validation and not self.has_validation_fn:
             raise ValueError(
-                "`validate_fn` was not registered with the trainer, but a validation was reported."
+                "`validation_config` was not set on the trainer, but a validation was requested."
             )
 
         with invoke_context_managers(

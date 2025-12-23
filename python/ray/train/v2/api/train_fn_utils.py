@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
@@ -7,7 +7,7 @@ from ray.train.v2.api.context import TrainContext
 from ray.train.v2.api.report_config import (
     CheckpointConsistencyMode,
     CheckpointUploadMode,
-    ValidationConfig,
+    ValidationTaskConfig,
 )
 from ray.util.annotations import PublicAPI
 
@@ -26,7 +26,7 @@ def report(
     checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
     delete_local_checkpoint_after_upload: Optional[bool] = None,
     checkpoint_upload_fn: Optional[Callable[["Checkpoint", str], "Checkpoint"]] = None,
-    validation: Optional[ValidationConfig] = None,
+    validation: Optional[Union[bool, ValidationTaskConfig]] = None,
 ):
     """Report metrics and optionally save a checkpoint.
 
@@ -101,8 +101,9 @@ def report(
         checkpoint_upload_fn: A user defined function that will be called with the
             checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
             utility for copying to the destination `storage_path`.
-        validation: Configuration passed to the validate_fn. Can contain info
-            like the validation dataset.
+        validation: If True, triggers validation with default kwargs from validation_config.
+            If a ValidationTaskConfig, triggers validation with the specified func_kwargs
+            (merged with defaults from validation_config). If None or False, no validation.
     """
     if delete_local_checkpoint_after_upload is None:
         delete_local_checkpoint_after_upload = (

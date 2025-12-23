@@ -52,7 +52,28 @@ class ValidateFn(Protocol):
 @dataclass
 @PublicAPI(stability="alpha")
 class ValidationConfig:
-    """Configuration for validating your reported checkpoint.
+    """Configuration for validation, passed to the trainer.
+
+    Args:
+        validate_fn: The validation function to run on checkpoints.
+            This function should accept a checkpoint as the first argument
+            and return a dictionary of metrics.
+        func_kwargs: Default keyword arguments to pass to the validation function.
+            These can be overridden by ValidationTaskConfig in report().
+    """
+
+    validate_fn: ValidateFn
+    func_kwargs: Dict[str, Any] = None
+
+    def __post_init__(self):
+        if self.func_kwargs is None:
+            self.func_kwargs = {}
+
+
+@dataclass
+@PublicAPI(stability="alpha")
+class ValidationTaskConfig:
+    """Configuration for a specific validation task, passed to report().
 
     Args:
         func_kwargs: Keyword arguments to pass to the validation function.
@@ -60,4 +81,8 @@ class ValidationConfig:
             validation function.
     """
 
-    func_kwargs: Dict[str, Any]
+    func_kwargs: Dict[str, Any] = None
+
+    def __post_init__(self):
+        if self.func_kwargs is None:
+            self.func_kwargs = {}

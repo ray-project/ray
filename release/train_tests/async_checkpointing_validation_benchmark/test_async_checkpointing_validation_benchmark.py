@@ -15,7 +15,11 @@ from torchvision.transforms import ToTensor, Normalize
 import ray
 import ray.train
 import ray.train.torch
-from ray.train.v2.api.report_config import CheckpointUploadMode, ValidationConfig
+from ray.train.v2.api.report_config import (
+    CheckpointUploadMode,
+    ValidationConfig,
+    ValidationTaskConfig,
+)
 from ray._private.test_utils import safe_write_to_results_json
 
 
@@ -188,7 +192,7 @@ def validate_and_report(
         )
         start_time = time.time()
         if should_async_validate:
-            validate_config = ValidationConfig(
+            validate_task_config = ValidationTaskConfig(
                 func_kwargs={
                     "dataset": config["test"],
                     "parent_run_name": ray.train.get_context().get_experiment_name(),
@@ -197,12 +201,12 @@ def validate_and_report(
                 }
             )
         else:
-            validate_config = None
+            validate_task_config = None
         ray.train.report(
             metrics,
             checkpoint=ray.train.Checkpoint.from_directory(iteration_checkpoint_dir),
             checkpoint_upload_mode=checkpoint_upload_mode,
-            validation=validate_config,
+            validation=validate_task_config,
         )
         blocked_times.append(time.time() - start_time)
     else:
@@ -281,7 +285,9 @@ def run_training_with_validation(
         train_loop_config["test"] = test_dataset
     trainer = ray.train.torch.TorchTrainer(
         train_func,
-        validate_fn=validate_fn,
+        validation_config=ValidationConfig(validate_fn=validate_fn)
+        if validate_fn
+        else None,
         train_loop_config=train_loop_config,
         scaling_config=scaling_config,
         datasets=datasets,

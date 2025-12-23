@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
     from ray.train import Checkpoint
-    from ray.train.v2.api.report_config import ValidationConfig
+    from ray.train.v2.api.report_config import ValidationTaskConfig
 
 
 class _TrainingReport:
@@ -12,7 +12,7 @@ class _TrainingReport:
         self,
         checkpoint: Optional["Checkpoint"],
         metrics: Dict[str, Any],
-        validation: Optional["ValidationConfig"],
+        validation: Optional["ValidationTaskConfig"],
     ):
         self.checkpoint = checkpoint
         self.metrics = metrics

@@ -36,12 +36,15 @@ because the validation task always runs on cpu; for a more realistic example, se
     serializes all captured variables. Instead, package large objects in the ``Checkpoint`` and
     access them from shared storage later as explained in :ref:`train-checkpointing`.
 
-Next, within your rank 0 worker's training loop, call :func:`ray.train.report` with ``validation`` set to
-a :class:`ray.train.v2.api.report_config.ValidationConfig` object that contains the keyword
-arguments you want to pass to the ``validate_fn``. If ``validation`` is ``None``,
-Ray Train will not run validation.
+Next, register your ``validate_fn`` with your trainer by settings its ``validation_config`` argument to a
+:class:`ray.train.v2.api.report_config.ValidationConfig` object that contains your ``validate_fn``
+and any default keyword arguments you want to pass to your ``validate_fn``.
 
-Also, register your ``validate_fn`` with your trainer by passing it to its ``validate_fn`` argument.
+Next, within your rank 0 worker's training loop, call :func:`ray.train.report` with ``validation``
+set to True, which will call your ``validate_fn`` with the default keyword arguments you passed to the trainer.
+Alternatively, you can set ``validation`` to a :class:`ray.train.v2.api.report_config.ValidationTaskConfig` object
+that contains keyword arguments that will override matching keyword arguments you passed to the trainer. If
+``validation`` is None or False, Ray Train will not run validation.
 
 .. literalinclude:: ../doc_code/asynchronous_validation.py
     :language: python
@@ -115,7 +118,7 @@ Checkpoint metrics lifecycle
 During the training loop the following happens to your checkpoints and metrics :
 
 1. You report a checkpoint with some initial metrics, such as training loss, as well as a
-   :class:`ray.train.v2.api.report_config.ValidationConfig` object that contains the keyword
+   :class:`ray.train.v2.api.report_config.ValidationTaskConfig` object that contains the keyword
    arguments to pass to the ``validate_fn``.
 2. Ray Train asynchronously runs your ``validate_fn`` with that checkpoint and configuration.
 3. When that validation task completes, Ray Train associates the metrics returned by your ``validate_fn``
