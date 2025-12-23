@@ -41,7 +41,7 @@ search space, collectively defined for each *hyperparameter* in a ``config`` dic
 .. TODO: We *really* need to improve this section.
 
 Which search algorithm/scheduler should you choose?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Ray Tune offers :ref:`many different search algorithms <tune-search-alg>`
 and :ref:`schedulers <tune-schedulers>`.
 Deciding on which to use mostly depends on your problem:
@@ -680,7 +680,7 @@ for more context and a workaround if you run into this issue.
 .. _tune-iterative-experimentation:
 
 How can you continue training a completed Tune experiment for longer and with new configurations (iterative experimentation)?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Say a Tune experiment has completed with the following configurations:
 

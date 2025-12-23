@@ -53,9 +53,9 @@ You should use :meth:`Tuner.restore <ray.tune.Tuner.restore>` in the following c
 
 .. note::
 
-Bugs in your user-defined training loop can't be fixed with restoration. Instead, the issue
-that caused the experiment to crash in the first place should be *ephemeral*,
-meaning that the retry attempt after restoring can succeed the next time.
+    Bugs in your user-defined training loop can't be fixed with restoration. Instead, the issue
+    that caused the experiment to crash in the first place should be *ephemeral*,
+    meaning that the retry attempt after restoring can succeed the next time.
 
 
 .. _tune-experiment-restore-example:

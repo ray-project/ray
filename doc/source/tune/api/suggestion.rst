@@ -153,7 +153,7 @@ Bayesian Optimization (tune.search.bayesopt.BayesOptSearch)
 .. vale Google.Spacing = NO
 
 Bayesian Optimization HyperBand (tune.search.bohb.TuneBOHB)
---------------------------------
+-----------------------------------------------------------
 
 .. vale Google.Spacing = YES
 
@@ -181,12 +181,13 @@ See the `BOHB paper <https://arxiv.org/abs/1807.01774>`_ for more details.
 
 .. vale Google.Spacing = NO
 
-Heteroscedastic and Evolutionary Bayesian Optimisation (tune.search.hebo.HEBOSearch)
+HEBO (tune.search.hebo.HEBOSearch)
 ----------------------------------
 
 .. vale Google.Spacing = YES
 
-Heteroscedastic and Evolutionary Bayesian Optimisation (HEBO) is a Bayesian optimization library.
+Heteroscedastic and Evolutionary Bayesian Optimisation (HEBO) is an optimization algorithm that efficiently searches hyperparameter spaces with mixed continuous, discrete, and categorical hyperparameters under noisy evaluations.
+
 .. autosummary::
     :nosignatures:
     :toctree: doc/
