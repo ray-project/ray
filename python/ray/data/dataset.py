@@ -110,6 +110,7 @@ from ray.data.block import (
     VALID_BATCH_FORMATS,
     Block,
     BlockAccessor,
+    BlockMetadata,
     DataBatch,
     DataBatchColumn,
     T,
@@ -7023,8 +7024,18 @@ def _repr_format_dtype(dtype: Any) -> str:
 def _collect_materialized_rows_for_repr(
     dataset: "Dataset", num_rows: Optional[int]
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], bool]:
+    block_entries: List[Tuple[ObjectRef, BlockMetadata]] = []
     snapshot = dataset._plan._snapshot_bundle
-    if snapshot is None:
+    if snapshot is not None:
+        block_entries.extend(snapshot.blocks)
+    else:
+        dag = dataset._logical_plan.dag
+        if isinstance(dag, InputData):
+            input_data = dag.output_data() or []
+            for bundle in input_data:
+                block_entries.extend(bundle.blocks)
+
+    if not block_entries:
         return [], [], False
 
     head_target, tail_target = _determine_preview_row_targets(num_rows)
@@ -7037,7 +7048,7 @@ def _collect_materialized_rows_for_repr(
 
     head_rows: List[Dict[str, Any]] = []
     head_remaining = head_target
-    for block_ref, _ in snapshot.blocks:
+    for block_ref, _ in block_entries:
         if head_remaining <= 0:
             break
         block = _resolve_block(block_ref)
@@ -7050,8 +7061,9 @@ def _collect_materialized_rows_for_repr(
 
     tail_rows: List[Dict[str, Any]] = []
     tail_remaining = tail_target
+    tail_parts: List[List[Dict[str, Any]]] = []
     if tail_remaining > 0:
-        for block_ref, metadata in reversed(snapshot.blocks):
+        for block_ref, metadata in reversed(block_entries):
             if tail_remaining <= 0:
                 break
             block = _resolve_block(block_ref)
@@ -7065,12 +7077,15 @@ def _collect_materialized_rows_for_repr(
             sliced_block = accessor.slice(start, total_rows, copy=False)
             slice_accessor = BlockAccessor.for_block(sliced_block)
             block_rows = list(slice_accessor.iter_rows(public_row_format=True))
-            tail_rows = block_rows + tail_rows
+            tail_parts.append(block_rows)
             tail_remaining -= len(block_rows)
             if tail_remaining <= 0:
                 break
 
-    show_gap = tail_rows != []
+    for part in reversed(tail_parts):
+        tail_rows.extend(part)
+
+    show_gap = bool(tail_rows)
     return head_rows, tail_rows, show_gap
 
 
