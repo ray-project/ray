@@ -450,15 +450,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._metrics.on_input_queued(refs)
 
         if self._block_ref_bundler.has_next():
-            # The ref bundler combines one or more RefBundles into a new larger
-            # RefBundle. Rather than dequeuing the new RefBundle, which was never
-            # enqueued in the first place, we dequeue the original RefBundles.
-            (
-                input_refs,
-                bundled_input,
-            ) = self._block_ref_bundler.get_next_with_original()
-            for bundle in input_refs:
-                self._metrics.on_input_dequeued(bundle)
+            bundled_input = self._block_ref_bundler.get_next()
+            self._metrics.on_input_dequeued(bundled_input)
 
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue

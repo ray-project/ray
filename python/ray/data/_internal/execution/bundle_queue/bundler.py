@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import abc
 from collections import deque
-from typing import TYPE_CHECKING, Any, Deque, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Deque, List, Optional
 
 from typing_extensions import override
 
@@ -133,13 +133,11 @@ class RebundleQueue(BaseBundleQueue):
         self._pending_bundles: Deque[RefBundle] = deque()
         self._ready_bundles: Deque[RefBundle] = deque()
         self._total_pending_rows: int = 0
-        self._consumed_input_bundles: Deque[List[RefBundle]] = deque()
 
     def _merge_bundles(self, pending_to_ready_bundles: List[RefBundle]):
         from ray.data._internal.execution.interfaces import RefBundle
 
         merged_bundle = RefBundle.merge_ref_bundles(pending_to_ready_bundles)
-        self._consumed_input_bundles.append(pending_to_ready_bundles)
         self._ready_bundles.append(merged_bundle)
         self._on_enqueue(merged_bundle)
 
@@ -212,8 +210,11 @@ class RebundleQueue(BaseBundleQueue):
     def get_next(
         self,
     ) -> RefBundle:
-        _, merged = self.get_next_with_original()
-        return merged
+        if not self.has_next():
+            raise ValueError("You can't pop from empty queue")
+        ready_bundle = self._ready_bundles.popleft()
+        self._on_dequeue(ready_bundle)
+        return ready_bundle
 
     @override
     def peek_next(self) -> Optional[RefBundle]:
@@ -232,17 +233,3 @@ class RebundleQueue(BaseBundleQueue):
         self._pending_bundles.clear()
         self._ready_bundles.clear()
         self._total_pending_rows = 0
-        self._consumed_input_bundles.clear()
-
-    # TODO(Justin): What I wrote below is not ideal, and will be removed
-    # once we are able to track metrics in the queues themselves (as opposed
-    # to what we currently do -- track metrics in the operators). We need this method
-    # to surface the original bundles to the operators so they can track the bundles
-    # correctly.
-    def get_next_with_original(self) -> Tuple[List[RefBundle], RefBundle]:
-        if not self.has_next():
-            raise ValueError("You can't pop from empty queue")
-        consumed_input_bundles = self._consumed_input_bundles.popleft()
-        ready_bundle = self._ready_bundles.popleft()
-        self._on_dequeue(ready_bundle)
-        return consumed_input_bundles, ready_bundle

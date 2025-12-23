@@ -1295,11 +1295,11 @@ def test_block_ref_bundler_uniform(
     for bundle in bundles:
         bundler.add(bundle)
         while bundler.has_next():
-            _, out_bundle = bundler.get_next_with_original()
+            out_bundle = bundler.get_next()
             out_bundles.append(out_bundle)
     bundler.finalize()
     if bundler.has_next():
-        _, out_bundle = bundler.get_next_with_original()
+        out_bundle = bundler.get_next()
         out_bundles.append(out_bundle)
     assert len(out_bundles) == num_out_bundles
     for out_bundle in out_bundles:
