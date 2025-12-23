@@ -3,7 +3,7 @@ import sys
 import pytest
 import torch
 
-from ray.air._internal.torch_utils import (
+from ray.data.util.torch_utils import (
     concat_tensors_to_device,
     move_tensors_to_device,
 )

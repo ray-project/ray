@@ -14,6 +14,9 @@
 
 #include "ray/rpc/authentication/authentication_token_validator.h"
 
+#include <memory>
+#include <string>
+
 #include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/k8s_util.h"
 #include "ray/util/logging.h"
@@ -29,19 +32,27 @@ AuthenticationTokenValidator &AuthenticationTokenValidator::instance() {
 }
 
 bool AuthenticationTokenValidator::ValidateToken(
-    const std::optional<AuthenticationToken> &expected_token,
-    const AuthenticationToken &provided_token) {
+    const std::shared_ptr<const AuthenticationToken> &expected_token,
+    std::string_view provided_metadata) {
   if (GetAuthenticationMode() == AuthenticationMode::TOKEN) {
-    RAY_CHECK(expected_token.has_value() && !expected_token->empty())
+    RAY_CHECK(expected_token && !expected_token->empty())
         << "Ray token authentication is enabled but expected token is empty";
 
-    return expected_token->Equals(provided_token);
+    // Use constant-time comparison directly on metadata without constructing object
+    return expected_token->CompareWithMetadata(provided_metadata);
   }
 
   if (GetAuthenticationMode() == AuthenticationMode::K8S) {
     std::call_once(k8s::k8s_client_config_flag, k8s::InitK8sClientConfig);
     if (!k8s::k8s_client_initialized) {
       RAY_LOG(WARNING) << "Kubernetes client not initialized, K8s authentication failed.";
+      return false;
+    }
+
+    // Parse metadata into token for K8S validation (needed for cache and API call)
+    AuthenticationToken provided_token =
+        AuthenticationToken::FromMetadata(provided_metadata);
+    if (provided_token.empty()) {
       return false;
     }
 

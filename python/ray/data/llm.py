@@ -457,10 +457,9 @@ class PrepareMultimodalStageConfig(_PrepareMultimodalStageConfig):
 
     Args:
         enabled: Whether this stage is enabled. Defaults to True.
-        model_source: Name or path of the Hugging Face model to use for the
-            multimodal processor. This is required to process multimodal data
-            according to a specific model. If not specified, will use the
-            processor-level model_source.
+        model_config_kwargs: Optional kwargs to pass to the model config.
+            See available model config kwargs at
+            https://docs.vllm.ai/en/latest/api/vllm/config/#vllm.config.ModelConfig.
         chat_template_content_format: The content format to use for the chat
             template. This is used to format the chat template content according
             to a specific model. Choices are "string" or "openai". Defaults to
