@@ -16,6 +16,10 @@ RUN <<EOF
 
 set -ex
 
+BUILD=1 ./ci/ci.sh init
+
+pip uninstall -y ray
+
 DATA_PROCESSING_TESTING=1 ARROW_VERSION=$ARROW_VERSION \
   ARROW_MONGO_VERSION=$ARROW_MONGO_VERSION ./ci/env/install-dependencies.sh
 if [[ -n "$ARROW_MONGO_VERSION" ]]; then
