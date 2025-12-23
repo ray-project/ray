@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, Dict, List, Union
 
 import numpy as np
 
-from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
+from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.util.annotations import Deprecated, DeveloperAPI
 
 if TYPE_CHECKING:
