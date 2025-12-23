@@ -151,8 +151,8 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadTokenFromSources() {
     }
   }
 
-  // Precedence 3 (ENABLE_K8S_TOKEN_RBAC only): Load Kubernetes service account token
-  if (IsK8sTokenRBACEnabled()) {
+  // Precedence 3 (ENABLE_K8S_TOKEN_AUTH only): Load Kubernetes service account token
+  if (IsK8sTokenAuthEnabled()) {
     const std::string k8s_token_path(k8s::kK8sSaTokenPath);
     std::string token_str = TrimWhitespace(ReadTokenFromFile(k8s_token_path));
     if (!token_str.empty()) {

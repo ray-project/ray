@@ -3,7 +3,7 @@ from libcpp.memory cimport shared_ptr
 from ray.includes.rpc_token_authentication cimport (
     CAuthenticationMode,
     GetAuthenticationMode,
-    IsK8sTokenRBACEnabled,
+    IsK8sTokenAuthEnabled,
     CAuthenticationToken,
     CAuthenticationTokenLoader,
     CAuthenticationTokenValidator,
@@ -30,13 +30,13 @@ def get_authentication_mode():
     return GetAuthenticationMode()
 
 
-def is_k8s_token_rbac_enabled():
+def is_k8s_token_auth_enabled():
     """Returns whether Kubernetes token authentication is enabled.
 
     Returns:
         bool: True if Kubernetes token auth is enabled, false otherwise.
     """
-    return IsK8sTokenRBACEnabled()
+    return IsK8sTokenAuthEnabled()
 
 
 def validate_authentication_token(provided_metadata: str) -> bool:
@@ -53,7 +53,7 @@ def validate_authentication_token(provided_metadata: str) -> bool:
     """
     cdef shared_ptr[const CAuthenticationToken] expected_ptr
 
-    if get_authentication_mode() == CAuthenticationMode.TOKEN and not is_k8s_token_rbac_enabled():
+    if get_authentication_mode() == CAuthenticationMode.TOKEN and not is_k8s_token_auth_enabled():
         expected_ptr = CAuthenticationTokenLoader.instance().GetToken(False)
         if not expected_ptr:
             return False

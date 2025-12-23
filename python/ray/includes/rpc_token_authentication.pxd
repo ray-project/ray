@@ -10,7 +10,7 @@ cdef extern from "ray/rpc/authentication/authentication_mode.h" namespace "ray::
         TOKEN "ray::rpc::AuthenticationMode::TOKEN"
 
     CAuthenticationMode GetAuthenticationMode()
-    c_bool IsK8sTokenRBACEnabled()
+    c_bool IsK8sTokenAuthEnabled()
 
 cdef extern from "ray/rpc/authentication/authentication_token.h" namespace "ray::rpc" nogil:
     cdef cppclass CAuthenticationToken "ray::rpc::AuthenticationToken":
