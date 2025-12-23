@@ -1,13 +1,18 @@
 import logging
 import math
 from contextlib import contextmanager
-from typing import Any, Callable, Iterable, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, List, Optional
 
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 
 Connection = Any  # A Python DB API2-compliant `Connection` object.
 Cursor = Any  # A Python DB API2-compliant `Cursor` object.
+
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
+
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +130,7 @@ class SQLDatasource(Datasource):
         self,
         parallelism: int,
         per_task_row_limit: Optional[int] = None,
-        epoch_idx: int = 0,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         def fallback_read_fn() -> Iterable[Block]:
             """Read all data in a single block when sharding is not supported."""

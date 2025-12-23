@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import time
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 from urllib.parse import urljoin
 
 import numpy as np
@@ -12,6 +12,9 @@ import requests
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +207,7 @@ class DatabricksUCDatasource(Datasource):
         self,
         parallelism: int,
         per_task_row_limit: Optional[int] = None,
-        epoch_idx: int = 0,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         # Handle empty dataset case
         if self.num_chunks == 0:
