@@ -39,12 +39,8 @@ helm install kuberay-operator kuberay/kuberay-operator --version 1.5.1 --set bat
 ```
 
 ### Step 4: Install a RayCluster with the Volcano scheduler
-
-The RayCluster custom resource must include the `ray.io/scheduler-name: volcano` label to submit the cluster Pods to Volcano for scheduling.
-
 ```shell
 # Path: kuberay/ray-operator/config/samples
-# Includes label `ray.io/scheduler-name: volcano` in the metadata.labels
 curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.5.1/ray-operator/config/samples/ray-cluster.volcano-scheduler.yaml
 kubectl apply -f ray-cluster.volcano-scheduler.yaml
 
@@ -60,18 +56,28 @@ You can also be provide the following labels in the RayCluster metadata:
   - This label only works after you create a `PriorityClass` resource
   - ```shell
     labels:
-      ray.io/scheduler-name: volcano
       ray.io/priority-class-name: <replace with correct PriorityClass resource name>
     ```
 - `volcano.sh/queue-name`: The Volcano [queue](https://volcano.sh/en/docs/queue/) name the cluster submits to.
   - This label only works after you create a `Queue` resource
   - ```shell
     labels:
-      ray.io/scheduler-name: volcano
       volcano.sh/queue-name: <replace with correct Queue resource name>
     ```
+- `volcano.sh/network-topology-mode`: Specifies the [network topology-aware scheduling mode](https://volcano.sh/en/docs/network_topology_aware_scheduling/) for optimizing pod placement based on network proximity. Valid values are `Soft` (best-effort) or `Hard` (strict enforcement).
+  - ```shell
+    labels:
+      volcano.sh/network-topology-mode: "Soft"  # or "Hard"
+    ```
+- `volcano.sh/network-topology-highest-tier-allowed`: Specifies the highest network topology tier allowed for pod placement. This label restricts pods to be scheduled within the specified tier boundary.
+  - ```shell
+    labels:
+      volcano.sh/network-topology-highest-tier-allowed: <replace with the specific tier>
+    ```
 
-If autoscaling is enabled, `minReplicas` is used for gang scheduling, otherwise the desired `replicas` is used.
+**Note**:
+- Starting from KubeRay v1.5.0, you no longer need to add the `volcano.sh/scheduler-name: volcano` label to your RayCluster/RayJob. The batch scheduler is now configured at the operator level using the `--batch-scheduler=volcano` flag.
+- When autoscaling is enabled, KubeRay uses `minReplicas` to calculate the minimum resources required for gang scheduling. Otherwise, it uses the `desired` replicas value.
 
 ### Step 5: Use Volcano for batch scheduling
 
@@ -112,7 +118,7 @@ Next, create a RayCluster with a head node (1 CPU + 2Gi of RAM) and two workers 
 
 ```shell
 # Path: kuberay/ray-operator/config/samples
-# Includes  the `ray.io/scheduler-name: volcano` and `volcano.sh/queue-name: kuberay-test-queue` labels in the metadata.labels
+# Includes the `volcano.sh/queue-name: kuberay-test-queue` label in the metadata.labels
 curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.5.1/ray-operator/config/samples/ray-cluster.volcano-scheduler-queue.yaml
 kubectl apply -f ray-cluster.volcano-scheduler-queue.yaml
 ```
@@ -186,7 +192,7 @@ Next, add an additional RayCluster with the same configuration of head and worke
 
 ```shell
 # Path: kuberay/ray-operator/config/samples
-# Includes the `ray.io/scheduler-name: volcano` and `volcano.sh/queue-name: kuberay-test-queue` labels in the metadata.labels
+# Includes the `volcano.sh/queue-name: kuberay-test-queue` label in the metadata.labels
 # Replaces the name to test-cluster-1
 sed 's/test-cluster-0/test-cluster-1/' ray-cluster.volcano-scheduler-queue.yaml | kubectl apply -f-
 ```
