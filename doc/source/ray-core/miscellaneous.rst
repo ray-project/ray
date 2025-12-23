@@ -281,7 +281,7 @@ Test workload:
      - Actor launch time
      - Actor ready time
      - Total time
-  * - 20k (10 actors / node)
-    - 14.5 s
-    - 136.1 s
-    - 150.7 s
+   * - 20k (10 actors / node)
+     - 14.5 s
+     - 136.1 s
+     - 150.7 s

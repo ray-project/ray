@@ -84,7 +84,7 @@ For any long-polling RPC, you should be **particularly careful** about idempoten
 client's retry won't necessarily wait for the response to be sent.
 
 Retry-able gRPC client
----------------------
+----------------------
 
 The retry-able gRPC client was updated during the RPC fault tolerance project. This section 
 describes how it works and some gotchas to watch out for.

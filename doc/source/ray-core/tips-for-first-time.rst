@@ -13,9 +13,9 @@ For an in-depth treatment of advanced design patterns, read :ref:`core design pa
      - Description
    * - ``ray.init()``
      - Initialize Ray context.
-  * - ``@ray.remote``
-    - | Function or class decorator specifying that the function is
-      | executed as a task or the class as an actor in a different process.
+   * - ``@ray.remote``
+     - | Function or class decorator specifying that the function is
+       | executed as a task or the class as an actor in a different process.
    * - ``.remote()``
      - | Postfix to every remote function, remote class declaration, or
        | invocation of a remote class method.

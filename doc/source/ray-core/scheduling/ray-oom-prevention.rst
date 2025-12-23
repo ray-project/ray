@@ -30,7 +30,7 @@ How do you disable the memory monitor?
 The memory monitor is enabled by default and can be disabled by setting the environment variable ``RAY_memory_monitor_refresh_ms`` to zero when Ray starts (for example, ``RAY_memory_monitor_refresh_ms=0 ray start ...``).
 
 How do you configure the memory monitor?
---------------------------------------
+-----------------------------------------
 
 The memory monitor is controlled by the following environment variables:
 
