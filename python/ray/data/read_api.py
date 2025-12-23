@@ -369,7 +369,7 @@ def read_datasource(
     memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
     concurrency: Optional[int] = None,
-    compute: Optional["ComputeStrategy"] = None,
+    compute: Optional[ComputeStrategy] = None,
     override_num_blocks: Optional[int] = None,
     **read_args,
 ) -> Dataset:
