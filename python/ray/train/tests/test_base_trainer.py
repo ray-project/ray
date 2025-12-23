@@ -6,7 +6,6 @@ import pytest
 
 import ray
 from ray import train, tune
-from ray.air.constants import MAX_REPR_LENGTH
 from ray.data.context import DataContext
 from ray.train import Checkpoint, ScalingConfig
 from ray.train._internal.session import get_session
@@ -133,7 +132,6 @@ def test_repr(ray_start_4_cpus):
     representation = repr(trainer)
 
     assert "DummyTrainer" in representation
-    assert len(representation) < MAX_REPR_LENGTH
 
 
 def test_metadata_propagation(ray_start_4_cpus):

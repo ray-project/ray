@@ -68,6 +68,24 @@ _RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING = (
 )
 
 
+def _format_datasets_for_repr(value: Any) -> Any:
+    """Format datasets for BaseTrainer repr using plan strings."""
+    if not isinstance(value, dict):
+        return value
+    try:
+        from ray.data import Dataset
+    except Exception:
+        return value
+
+    formatted = {}
+    for key, dataset in value.items():
+        if isinstance(dataset, Dataset):
+            formatted[key] = dataset._plan.get_plan_as_string(type(dataset))
+        else:
+            formatted[key] = dataset
+    return formatted
+
+
 @PublicAPI(stability="beta")
 class TrainingFailedError(RuntimeError):
     """An error indicating that training has failed."""
@@ -459,6 +477,8 @@ class BaseTrainer(abc.ABC):
         for parameter, default_value in default_values.items():
             value = getattr(self, parameter)
             if value != default_value:
+                if parameter == "datasets":
+                    value = _format_datasets_for_repr(value)
                 non_default_arguments.append(f"{parameter}={value!r}")
 
         if non_default_arguments:
