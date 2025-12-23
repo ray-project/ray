@@ -87,6 +87,9 @@ class GPUTestActor:
     def block_background_thread(self, signal_actor):
         ray.get(signal_actor.wait.remote())
 
+    def borrow_and_sum(self, ref_list):
+        return ray.get(ref_list[0]).sum().item()
+
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_ray_get_gpu_ref_created_by_actor_task(ray_start_regular):
@@ -205,27 +208,43 @@ def test_send_duplicate_tensor(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
-def test_nixl_abort(ray_start_regular):
+def test_nixl_abort_sender_dies_before_sending(ray_start_regular):
     actors = [GPUTestActor.remote() for _ in range(2)]
 
-    # Trigger transfer and kill sender before the receiver starts receiving
+    """
+    1. Block background thread on receiver so receive doesn't start
+    2. Wait until the object is created so the transfer gets triggered
+    3. Kill the sender
+    4. Unblock the receiver
+    """
     signal_actor = SignalActor.remote()
     actors[1].block_background_thread.remote(signal_actor)
     ref = actors[0].echo.remote(torch.randn((100, 100)), "cuda")
     result = actors[1].sum.remote(ref, "cuda")
+    ray.wait([ref])
     ray.kill(actors[0])
     signal_actor.send.remote()
 
     with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
         ray.get(result)
 
-    assert "ActorDiedError" in str(excinfo.value)
+    assert "nixlBackendError" in str(excinfo.value)
 
     # Try a transfer with actor[1] receiving again
     new_actor = GPUTestActor.remote()
     ref = new_actor.echo.remote(torch.tensor([4, 5, 6]), "cuda")
     result = actors[1].sum.remote(ref, "cuda")
     assert ray.get(result) == 15
+
+
+@pytest.mark.skip(
+    "If the tensor metadata doesn't exist at the time of borrowing, this will fail."
+)
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_borrow_after_abort(ray_start_regular):
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    nixl_ref = actors[0].echo.remote(torch.tensor([4, 5, 6]), "cuda")
+    assert ray.get(actors[1].borrow_and_sum.remote([nixl_ref])) == 15
 
 
 if __name__ == "__main__":
