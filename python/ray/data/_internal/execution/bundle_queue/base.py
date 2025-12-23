@@ -80,9 +80,8 @@ class BaseBundleQueue(_QueueMetricRecorderMixin):
         self._on_enqueue(bundle)
         self._add_inner(bundle)
 
-    @abc.abstractmethod
     def _add_inner(self, bundle: RefBundle, **kwargs: Any) -> None:
-        ...
+        return
 
     @abc.abstractmethod
     def get_next(self) -> RefBundle:
@@ -102,7 +101,7 @@ class BaseBundleQueue(_QueueMetricRecorderMixin):
 
     @abc.abstractmethod
     def _get_next_inner(self) -> RefBundle:
-        ...
+        return None
 
     @abc.abstractmethod
     def peek_next(self) -> Optional[RefBundle]:
@@ -142,7 +141,7 @@ class SupportsDequeue(_QueueMetricRecorderMixin, Protocol):
         self._add_to_front_inner(bundle)
 
     def _add_to_front_inner(self, bundle: RefBundle):
-        ...
+        return None
 
     def get_last(self) -> RefBundle:
         bundle = self._get_last_inner()
