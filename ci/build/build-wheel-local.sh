@@ -1,9 +1,25 @@
 #!/bin/bash
 #
-# [WIP] Local development script for building Ray wheels using wanda.
+# Local development script for building Ray wheels using wanda.
 #
-# This script is for local iteration and testing of wanda-based wheel builds.
-# It requires the wanda binary to be installed (see WANDA_BIN below).
+# ============================================================================
+# USAGE
+# ============================================================================
+#
+#   ci/build/build-wheel-local.sh [PYTHON_VERSION] [BUILD_TYPE]
+#
+# Build types:
+#   ray (default)  - Build ray wheel
+#   cpp            - Build ray-cpp wheel
+#   all            - Build both ray and ray-cpp wheels
+#
+# Examples (from repo root):
+#   ci/build/build-wheel-local.sh                      # Build ray wheel for Python 3.10
+#   ci/build/build-wheel-local.sh 3.11                 # Build ray wheel for Python 3.11
+#   ci/build/build-wheel-local.sh 3.10 cpp             # Build ray-cpp wheel
+#   ci/build/build-wheel-local.sh 3.10 all             # Build both ray and ray-cpp wheels
+#
+# Output: Wheels are extracted to .whl/
 #
 # ============================================================================
 # WHEEL BUILD HIERARCHY
@@ -54,18 +70,6 @@
 #   │                 C++ headers      ray_cpp-{version}.whl                  │
 #   │                 + libraries                                             │
 #   └─────────────────────────────────────────────────────────────────────────┘
-#
-#   Output: Wheels are automatically extracted to .whl/
-#
-# ============================================================================
-# USAGE
-# ============================================================================
-#
-# Examples (from repo root):
-#   ci/build/build-wheel-local.sh                      # Build ray wheel for Python 3.10
-#   ci/build/build-wheel-local.sh 3.11                 # Build ray wheel for Python 3.11
-#   ci/build/build-wheel-local.sh 3.10 cpp             # Build ray-cpp wheel
-#   ci/build/build-wheel-local.sh 3.10 all             # Build both ray and ray-cpp wheels
 #
 set -euo pipefail
 
@@ -147,10 +151,8 @@ build_wheel_deps() {
     docker tag "cr.ray.io/rayproject/ray-dashboard:latest" "ray-dashboard:latest"
 }
 
-# Build ray wheel
+# Build ray wheel (assumes deps already built)
 build_ray_wheel() {
-    build_wheel_deps
-
     header "Building ray-wheel..."
     $WANDA_BIN ci/docker/ray-wheel.wanda.yaml
 
@@ -161,10 +163,8 @@ build_ray_wheel() {
     echo "    Image: cr.ray.io/rayproject/ray-wheel-py${PYTHON_VERSION}:latest"
 }
 
-# Build ray-cpp wheel
+# Build ray-cpp wheel (assumes deps already built)
 build_cpp_wheel() {
-    build_wheel_deps
-
     header "Building ray-cpp-core..."
     $WANDA_BIN ci/docker/ray-cpp-core.wanda.yaml
 
@@ -178,7 +178,9 @@ build_cpp_wheel() {
     echo "    Image: cr.ray.io/rayproject/ray-cpp-wheel-py${PYTHON_VERSION}:latest"
 }
 
-# Main build logic
+# Main build logic - always build deps first, then specific wheel type
+build_wheel_deps
+
 case "$BUILD_TYPE" in
     ray)
         build_ray_wheel
