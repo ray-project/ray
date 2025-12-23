@@ -22,15 +22,16 @@ pip uninstall -y ray
 
 DATA_PROCESSING_TESTING=1 ARROW_VERSION=$ARROW_VERSION \
   ARROW_MONGO_VERSION=$ARROW_MONGO_VERSION ./ci/env/install-dependencies.sh
-if [[ -n "$ARROW_MONGO_VERSION" ]]; then
-  # Older versions of Arrow Mongo require an older version of NumPy.
-  pip install numpy==1.23.5
-fi
 
-# Install MongoDB
-sudo apt-get purge -y mongodb*
-sudo apt-get install -y mongodb
-sudo rm -rf /var/lib/mongodb/mongod.lock
+# if [[ -n "$ARROW_MONGO_VERSION" ]]; then
+#   # Older versions of Arrow Mongo require an older version of NumPy.
+#   pip install numpy==1.23.5
+# fi
+
+# # Install MongoDB
+# sudo apt-get purge -y mongodb*
+# sudo apt-get install -y mongodb
+# sudo rm -rf /var/lib/mongodb/mongod.lock
 
 if [[ $RAY_CI_JAVA_BUILD == 1 ]]; then
   # These packages increase the image size quite a bit, so we only install them
