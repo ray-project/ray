@@ -25,7 +25,7 @@ def test_read_videos():
     frame_type, frame_index_type, _ = ds.schema().types
 
     assert frame_type.shape == (720, 1280, 3)
-    assert frame_type.scalar_type == pa.uint8()
+    assert frame_type.value_type == pa.uint8()
     assert frame_index_type == pa.int64()
 
 

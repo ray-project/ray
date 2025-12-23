@@ -5,6 +5,9 @@ from ray.air.util.tensor_extensions.arrow import (  # noqa: F401
     ArrowTensorTypeV2,
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
+    FixedShapeTensorArray,
+    FixedShapeTensorScalar,
+    FixedShapeTensorType,
 )
 from ray.air.util.tensor_extensions.pandas import (  # noqa: F401
     TensorArray,
