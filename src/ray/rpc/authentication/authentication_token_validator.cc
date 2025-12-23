@@ -34,6 +34,11 @@ AuthenticationTokenValidator &AuthenticationTokenValidator::instance() {
 bool AuthenticationTokenValidator::ValidateToken(
     const std::shared_ptr<const AuthenticationToken> &expected_token,
     std::string_view provided_metadata) {
+  if (GetAuthenticationMode() == AuthenticationMode::DISABLED) {
+    RAY_LOG(DEBUG) << "Authentication mode is disabled, token considered valid.";
+    return true;
+  }
+      
   if (GetAuthenticationMode() == AuthenticationMode::TOKEN) {
     RAY_CHECK(expected_token && !expected_token->empty())
         << "Ray token authentication is enabled but expected token is empty";
@@ -89,8 +94,37 @@ bool AuthenticationTokenValidator::ValidateToken(
     return is_allowed;
   }
 
-  RAY_LOG(DEBUG) << "Authentication mode is disabled, token considered valid.";
-  return true;
+  // Check cache first.
+  {
+    std::lock_guard<std::mutex> lock(k8s_token_cache_mutex_);
+    auto it = k8s_token_cache_.find(provided_token);
+    if (it != k8s_token_cache_.end()) {
+      if (std::chrono::steady_clock::now() < it->second.expiration) {
+        RAY_LOG(DEBUG) << "K8s token found in cache and is valid.";
+        return it->second.allowed;
+      } else {
+        RAY_LOG(DEBUG) << "K8s token in cache expired, removing from cache.";
+        k8s_token_cache_.erase(it);
+      }
+    }
+  }
+
+  bool is_allowed = false;
+  is_allowed = k8s::ValidateToken(provided_token);
+
+  // Only cache validated tokens for now. We don't want to invalidate a token
+  // due to unrelated errors from Kubernetes API server. This has the downside of
+  // causing more load if an unauthenticated client continues to make calls.
+  // TODO(andrewsykim): cache invalid tokens once k8s::ValidateToken can distinguish
+  // between invalid token errors and server errors.
+  if (is_allowed) {
+    std::lock_guard<std::mutex> lock(k8s_token_cache_mutex_);
+    k8s_token_cache_[provided_token] = {is_allowed,
+                                        std::chrono::steady_clock::now() + kCacheTTL};
+    RAY_LOG(DEBUG) << "K8s token validated and saved to cache.";
+  }
+
+  return is_allowed;
 }
 
 }  // namespace rpc
