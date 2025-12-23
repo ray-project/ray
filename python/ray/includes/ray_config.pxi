@@ -139,7 +139,3 @@ cdef class Config:
     @staticmethod
     def start_python_gc_manager_thread():
         return RayConfig.instance().start_python_gc_manager_thread()
-
-    @staticmethod
-    def enable_k8s_token_rbac():
-        return RayConfig.instance().ENABLE_K8S_TOKEN_RBAC()
