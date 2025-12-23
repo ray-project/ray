@@ -9,8 +9,10 @@ import numpy as np
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray._raylet import NodeID
+from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -1180,6 +1182,69 @@ class TestDataOpTask:
 
         # We should now be able to read the 128 MiB block.
         assert bytes_read == pytest.approx(128 * MiB)
+
+
+def test_process_completed_tasks_cleans_up_when_actor_dies_mid_task(
+    ray_start_regular_shared, restore_data_context
+):
+    """Regression test: ensure task cleanup runs even when `on_data_ready` raises.
+
+    In particular, if an actor is killed mid-task, `DataOpTask.on_data_ready()` can raise
+    without executing the task-done callback chain, leaving operator bookkeeping stuck.
+    """
+
+    @ray.remote(num_cpus=0)
+    class BlockingSignal:
+        def wait_forever(self):
+            time.sleep(999999)
+
+    signal = BlockingSignal.remote()
+    ctx = DataContext.get_current()
+
+    def block_forever_then_passthrough(block_iter):
+        # Block the actor task so we can kill the map worker mid-execution.
+        ray.get(signal.wait_forever.remote())
+        yield from block_iter
+
+    transformer = MapTransformer([BlockMapTransformFn(block_forever_then_passthrough)])
+    input_op = InputDataBuffer(ctx, make_ref_bundles([[0]]))
+
+    # Disable actor restarts/retries to make the failure mode deterministic.
+    op = MapOperator.create(
+        transformer,
+        input_op=input_op,
+        data_context=ctx,
+        name="TestActorDiesCleanup",
+        compute_strategy=ActorPoolStrategy(size=1),
+        ray_remote_args={"max_restarts": 0},
+    )
+    topology = build_streaming_topology(op, ExecutionOptions())
+
+    # Drive metadata tasks until the actor is running and input can be accepted.
+    def _check_actor_pool_started():
+        process_completed_tasks(topology, [], max_errored_blocks=-1)
+        return op.should_add_input()
+
+    wait_for_condition(_check_actor_pool_started, timeout=3)
+
+    # Submit one input, which should dispatch a data task to the actor pool.
+    op.add_input(topology[input_op].output_queue.pop(), 0)
+    assert op._actor_pool.num_tasks_in_flight() == 1
+    assert len(op._data_tasks) == 1
+
+    # Kill the single running map worker actor while the task is blocked.
+    actor = next(iter(op._actor_pool.running_actors().keys()))
+    ray.kill(actor, no_restart=True)
+
+    # Now the streaming generator should error; `process_completed_tasks` must still
+    # run the task cleanup callbacks to release the task slot.
+    def _check_task_failure_processed():
+        return process_completed_tasks(topology, [], max_errored_blocks=-1) > 0
+
+    wait_for_condition(_check_task_failure_processed, timeout=3)
+
+    assert op._actor_pool.num_tasks_in_flight() == 0
+    assert len(op._data_tasks) == 0
 
 
 if __name__ == "__main__":
