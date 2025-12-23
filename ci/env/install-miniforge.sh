@@ -57,6 +57,8 @@ install_miniforge() {
       *)
         if [ "${MINIMAL_INSTALL-}" = 1 ]; then
           rm -rf "${miniforge_dir}"
+          # Clear CONDA_PYTHON_EXE to force re-activation after fresh install
+          unset CONDA_PYTHON_EXE
         fi
         mkdir -p -- "${miniforge_dir}"
         # We're forced to pass -b for non-interactive mode.
