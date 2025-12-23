@@ -50,7 +50,6 @@ Alpaca
 [Aa]nyscale
 API(s)?
 ARM
-[Aa]sync
 autoscales
 bool
 breakpoint
@@ -64,17 +63,13 @@ CPU(s)?
 CRD(s)?
 (?i)DeepSpeed
 deserialization
-deserialization
-deserialize
-deserializes
+deserializes?
 dev
 dev to prod
-[d|D]isable[d]
-[d|D]isable
+[d|D]isabled?
 DLinear
 Dockerfile
-(?i)docstrings
-docstring
+(?i)docstrings?
 DPO
 Dream[Bb]ooth
 (?i)EKS
@@ -191,7 +186,6 @@ JDK
 (?i)vSphere
 vCenter
 Aliyun
-Istio
 Kiali
 Fluentd
 Filebeat
@@ -236,7 +230,7 @@ macOS's
 runtime's
 submitter's
 CA's
-(?i)Istio
+(?i)istio
 (?i)rayjob
 RBAC
 NGINX
