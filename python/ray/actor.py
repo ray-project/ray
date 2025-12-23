@@ -871,7 +871,7 @@ class ActorMethod:
             invocation = self._decorator(invocation)
 
         object_refs = invocation(args, kwargs)
-        if tensor_transport != TensorTransportEnum.OBJECT_STORE.name:
+        if tensor_transport is not None:
             # Currently, we only support transfer tensor out-of-band when
             # num_returns is 1.
             object_ref = object_refs if isinstance(object_refs, ObjectRef) else object_refs._generator_ref
