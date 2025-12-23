@@ -868,7 +868,7 @@ async def test_reporter_worker_cpu_percent():
         def _get_agent_proc(self):
             return psutil.Process(agent_mock.pid)
 
-        def _generate_worker_key(self, proc):
+        def _generate_proc_key(self, proc):
             return (proc.pid, proc.create_time())
 
         async def _async_get_worker_pids_from_raylet(self):
@@ -890,12 +890,12 @@ async def test_reporter_worker_cpu_percent():
         for child_proc in children:
             child_proc.start()
         children_pids = {p.pid for p in children}
-        workers = await ReporterAgent._async_get_workers(obj)
+        workers = await ReporterAgent._async_get_workers_and_agents(obj)
         # In the first run, the percent should be 0.
         assert all([worker["cpu_percent"] == 0.0 for worker in workers])
         for _ in range(10):
             time.sleep(0.1)
-            workers = await ReporterAgent._async_get_workers(obj)
+            workers = await ReporterAgent._async_get_workers_and_agents(obj)
             workers_pids = {w["pid"] for w in workers}
 
             # Make sure all children are registered.
@@ -911,14 +911,14 @@ async def test_reporter_worker_cpu_percent():
         print("killed ", children[0].pid)
         children[0].kill()
         wait_for_condition(lambda: not children[0].is_alive())
-        workers = await ReporterAgent._async_get_workers(obj)
+        workers = await ReporterAgent._async_get_workers_and_agents(obj)
         workers_pids = {w["pid"] for w in workers}
         assert children[0].pid not in workers_pids
         assert children[1].pid in workers_pids
 
         children[1].kill()
         wait_for_condition(lambda: not children[1].is_alive())
-        workers = await ReporterAgent._async_get_workers(obj)
+        workers = await ReporterAgent._async_get_workers_and_agents(obj)
         workers_pids = {w["pid"] for w in workers}
         assert children[0].pid not in workers_pids
         assert children[1].pid not in workers_pids

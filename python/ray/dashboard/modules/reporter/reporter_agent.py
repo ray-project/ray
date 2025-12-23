@@ -920,7 +920,7 @@ class ReporterAgent(
         # This method is not necessary, but we have it for mock testing.
         return psutil.Process()
 
-    def _generate_worker_key(self, proc: psutil.Process) -> Tuple[int, float]:
+    def _generate_proc_key(self, proc: psutil.Process) -> Tuple[int, float]:
         return (proc.pid, proc.create_time())
 
     async def _async_get_worker_processes(self):
@@ -932,7 +932,7 @@ class ReporterAgent(
         for pid in pids:
             try:
                 proc = psutil.Process(pid)
-                workers[self._generate_worker_key(proc)] = proc
+                workers[self._generate_proc_key(proc)] = proc
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 logger.error(f"Failed to access worker process {pid}")
                 continue
@@ -947,13 +947,15 @@ class ReporterAgent(
         for pid in pids:
             try:
                 proc = psutil.Process(pid)
-                agents[self._generate_worker_key(proc)] = proc
+                agents[self._generate_proc_key(proc)] = proc
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 logger.error(f"Failed to access agent process {pid}")
                 continue
         return agents
 
-    async def _async_get_workers(self, gpus: Optional[List[GpuUtilizationInfo]] = None):
+    async def _async_get_workers_and_agents(
+        self, gpus: Optional[List[GpuUtilizationInfo]] = None
+    ):
         workers = await self._async_get_worker_processes()
         agents = await self._async_get_agent_processes()
         workers.update(agents)
@@ -1116,7 +1118,7 @@ class ReporterAgent(
             "mem": self._get_mem_usage(),
             # Unit is in bytes. None if
             "shm": self._get_shm_usage(),
-            "workers": await self._async_get_workers(gpus),
+            "workers": await self._async_get_workers_and_agents(gpus),
             "raylet": raylet,
             "agent": self._get_agent(),
             "bootTime": self._get_boot_time(),

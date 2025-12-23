@@ -409,7 +409,8 @@ message GetWorkerPIDsReply {
 message GetAgentPIDsRequest {}
 
 message GetAgentPIDsReply {
-  // PIDs of all Agent managed by the local raylet.
+  // PIDs of all agents (dashboard agent and runtime env agent) managed by the local
+  // raylet.
   repeated int32 pids = 1;
 }
 
