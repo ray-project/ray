@@ -72,7 +72,7 @@ RLlink messages consist of a header and a body:
   - **Body**: JSON-encoded content with a `type` field indicating the message type.
 
 Example Messages: `PING` and `EPISODES_AND_GET_STATE`
-+++++++++++++++++++++++++++++++++++++++++++++++++
++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 Here is a complete simple example message for the `PING` message. Note the 8-byte header
 encoding the size of the following body to be of length `16`, followed by the message body with the mandatory "type" field.
