@@ -315,6 +315,24 @@
           python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names
           "_RayTrainWorker__execute.get_next"
 
+- name: training_ingest_micro_benchmark
+  python: "3.10"
+  working_dir: nightly_tests
+
+  cluster:
+    cluster_compute: dataset/fixed_size_xlarge_cpu_compute_microbenchmark.yaml
+
+  variations:
+    - __suffix__: small
+      run:
+        timeout: 3600
+        script: python dataset/training_ingest_micro_benchmark.py --num-batches 8
+
+    - __suffix__: large
+      run:
+        timeout: 3600
+        script: python dataset/training_ingest_micro_benchmark.py --num-batches 128
+
 #################
 # Iteration tests
 #################
