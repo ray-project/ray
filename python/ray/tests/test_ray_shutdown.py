@@ -26,11 +26,14 @@ def get_all_ray_worker_processes():
     result = []
     for p in processes:
         cmdline = p.info["cmdline"]
+        # Skip agent processes. cmdline might be truncated on linux so match by substring.
         if (
             cmdline is not None
             and len(cmdline) > 0
             and "ray::" in cmdline[0]
-            and cmdline[0] not in ray_constants.AGENT_PROCESS_LIST
+            and not any(
+                cmdline[0] in agent for agent in ray_constants.AGENT_PROCESS_LIST
+            )
         ):
             result.append(p)
     print(f"all ray worker processes: {result}")
@@ -286,7 +289,8 @@ def test_raylet_graceful_exit_upon_agent_exit(ray_start_cluster):
         def verify():
             nonlocal agent
             children = psutil.Process(raylet.pid).children()
-            target_path = ray_constants.AGENT_PROCESS_TYPE_DASHBOARD_AGENT
+            # in case linux truncates the proctitle
+            target_path = ray_constants.AGENT_PROCESS_TYPE_DASHBOARD_AGENT[:15]
             for child in children:
                 if target_path in " ".join(child.cmdline()):
                     agent = child
@@ -332,7 +336,8 @@ def test_raylet_graceful_exit_upon_runtime_env_agent_exit(ray_start_cluster):
         assert raylet is not None
 
         children = psutil.Process(raylet.pid).children()
-        target_path = os.path.join("runtime_env", "agent", "main.py")
+        # in case linux truncates the proctitle
+        target_path = ray_constants.AGENT_PROCESS_TYPE_DASHBOARD_AGENT[:15]
         for child in children:
             if target_path in " ".join(child.cmdline()):
                 return raylet, child

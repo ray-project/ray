@@ -100,7 +100,8 @@ def search_agent(processes):
     for p in processes:
         try:
             for c in p.cmdline():
-                if AGENT_PROCESS_TYPE_DASHBOARD_AGENT in c:
+                # in case linux truncates the proctitle
+                if AGENT_PROCESS_TYPE_DASHBOARD_AGENT[:15] in c:
                     return p
         except Exception:
             pass
