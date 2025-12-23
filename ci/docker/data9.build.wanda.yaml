@@ -2,6 +2,10 @@ name: "data9build-py$PYTHON"
 froms: ["cr.ray.io/rayproject/oss-ci-base_test-py$PYTHON"]
 dockerfile: ci/docker/data.build.Dockerfile
 srcs:
+  - .bazelrc
+  - ci/ci.sh
+  - ci/env/install-llvm-binaries.sh
+  - ci/suppress_output
   - ci/env/install-dependencies.sh
   - python/requirements.txt
   - python/requirements_compiled.txt

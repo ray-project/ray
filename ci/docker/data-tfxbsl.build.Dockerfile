@@ -14,6 +14,12 @@ COPY . .
 RUN <<EOF
 #!/bin/bash
 
+set -ex
+
+BUILD=1 ./ci/ci.sh init
+
+pip uninstall -y ray
+
 DATA_PROCESSING_TESTING=1 ARROW_VERSION=$ARROW_VERSION ./ci/env/install-dependencies.sh
 # We manually install tfx-bsl here. Adding the library via data- or
 # test-requirements.txt files causes unresolvable dependency conflicts with pandas.
