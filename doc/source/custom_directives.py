@@ -1267,8 +1267,8 @@ def pregenerate_example_rsts(
         example_config = ExampleConfig(config_path, app.srcdir)
         for example in example_config:
             if not example.link.startswith("http"):
-                link_path = pathlib.Path(example.link)
-                normalized_path = pathlib.PurePosixPath(link_path.as_posix()) # (resolves . and ..)
+                normalized_path = os.path.normpath(example.link) # (resolves . and ..)
+                normalized_path = pathlib.PurePosixPath(normalized_path)
                 if normalized_path.suffix:
                     normalized_path = normalized_path.with_suffix('')
                 orphan_documents.add(str(normalized_path))
