@@ -332,7 +332,6 @@ ray_cc_test(
     ],
     deps = [
         "//src/ray/util:process",
-        "//src/ray/util:process_factory",
         "@com_google_googletest//:gtest_main",
     ],
 )

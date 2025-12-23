@@ -21,7 +21,7 @@
 
 #include "ray/raylet/worker.h"
 #include "ray/raylet_ipc_client/client_connection.h"
-#include "ray/util/process_factory.h"
+#include "ray/util/fake_process.h"
 
 namespace ray {
 namespace raylet {
@@ -31,7 +31,7 @@ class FakeWorker : public WorkerInterface {
   FakeWorker(WorkerID worker_id, int port, instrumented_io_context &io_context)
       : worker_id_(worker_id),
         port_(port),
-        proc_(ProcessFactory::CreateNewDummy()),
+        proc_(std::make_unique<FakeProcess>()),
         connection_([&io_context]() {
           local_stream_socket socket(io_context);
           return ClientConnection::Create(

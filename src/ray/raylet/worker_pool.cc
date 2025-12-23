@@ -37,17 +37,12 @@
 #include "ray/util/container_util.h"
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
-#include "ray/util/process_factory.h"
 #include "ray/util/process_utils.h"
 #include "ray/util/time.h"
 
 namespace ray {
 
 namespace raylet {
-
-// Static null process for returning references in error cases.
-const std::unique_ptr<ProcessInterface> WorkerPool::kNullProcess =
-    ProcessFactory::CreateNull();
 
 namespace {
 
@@ -682,14 +677,14 @@ std::unique_ptr<ProcessInterface> WorkerPool::StartProcess(
   // per-worker cleanup via killpg on worker death.
   const bool new_process_group = RayConfig::instance().process_group_cleanup_enabled();
   std::unique_ptr<ProcessInterface> child =
-      ProcessFactory::Create(argv.data(),
-                             io_service_,
-                             ec,
-                             /*decouple=*/false,
-                             env,
-                             /*pipe_to_stdin=*/false,
-                             add_to_cgroup_hook_,
-                             new_process_group);
+      std::make_unique<Process>(argv.data(),
+                                io_service_,
+                                ec,
+                                /*decouple=*/false,
+                                env,
+                                /*pipe_to_stdin=*/false,
+                                add_to_cgroup_hook_,
+                                new_process_group);
   if (!child->IsValid() || ec) {
     // errorcode 24: Too many files. This is caused by ulimit.
     if (ec.value() == 24) {
@@ -812,7 +807,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     return status;
   }
 
-  std::unique_ptr<ProcessInterface> process = ProcessFactory::FromPid(pid);
+  std::unique_ptr<ProcessInterface> process = std::make_unique<Process>(pid);
   worker->SetProcess(std::move(process));
 #if !defined(_WIN32)
   // Save the worker's actual PGID at registration for safe cleanup later.

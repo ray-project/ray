@@ -20,11 +20,12 @@
 #include <unistd.h>
 
 #include <chrono>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
 
-#include "ray/util/process_factory.h"
+#include "ray/util/process.h"
 
 namespace ray {
 
@@ -33,12 +34,14 @@ namespace {
 TEST(ProcessSpawnPGTest, SpawnWithNewProcessGroupRequestedChildBecomesLeader) {
   setenv("RAY_process_group_cleanup_enabled", "true", 1);
   std::vector<std::string> args = {"/bin/sleep", "5"};
-  auto [proc, ec] = ProcessFactory::Spawn(args,
-                                          /*decouple=*/false,
-                                          /*pid_file=*/"",
-                                          /*env=*/{},
-                                          /*new_process_group=*/true);
-  ASSERT_FALSE(ec) << ec.message();
+  StatusOr<std::unique_ptr<ProcessInterface>> result =
+      Process::Spawn(args,
+                     /*decouple=*/false,
+                     /*pid_file=*/"",
+                     /*env=*/{},
+                     /*new_process_group=*/true);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  std::unique_ptr<ProcessInterface> &proc = result.value();
   ASSERT_TRUE(proc->IsValid());
 
   pid_t pid = proc->GetId();
@@ -77,12 +80,14 @@ TEST(ProcessSpawnPGTest, SpawnWithNewProcessGroupRequestedChildBecomesLeader) {
 TEST(ProcessSpawnPGTest, SpawnWithoutNewProcessGroupChildInheritsParentGroup) {
   setenv("RAY_process_group_cleanup_enabled", "true", 1);
   std::vector<std::string> args = {"/bin/sleep", "5"};
-  auto [proc, ec] = ProcessFactory::Spawn(args,
-                                          /*decouple=*/false,
-                                          /*pid_file=*/"",
-                                          /*env=*/{},
-                                          /*new_process_group=*/false);
-  ASSERT_FALSE(ec) << ec.message();
+  StatusOr<std::unique_ptr<ProcessInterface>> result =
+      Process::Spawn(args,
+                     /*decouple=*/false,
+                     /*pid_file=*/"",
+                     /*env=*/{},
+                     /*new_process_group=*/false);
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  std::unique_ptr<ProcessInterface> &proc = result.value();
   ASSERT_TRUE(proc->IsValid());
 
   pid_t pid = proc->GetId();

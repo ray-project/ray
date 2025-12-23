@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/status_or.h"
 #include "ray/util/logging.h"
 #include "ray/util/process_interface.h"
 
@@ -33,8 +34,6 @@ class ProcessFD;
 
 class Process : public ProcessInterface {
  public:
-  ~Process() override;
-
   /// Creates a null process object. Two null process objects are assumed equal.
   Process();
 
@@ -67,22 +66,37 @@ class Process : public ProcessInterface {
       AddProcessToCgroupHook add_to_cgroup_hook = [](const std::string &) {},
       bool new_process_group = false);
 
+  // Creates a process object from an existing PID.
+  /// \param[in] pid The PID of the process to create.
+  /// \return A unique pointer to the process object.
   explicit Process(pid_t pid);
 
-  Process(const Process &) = default;
-  Process(Process &&) = default;
-  Process &operator=(const Process &) = default;
-  Process &operator=(Process &&) = default;
+  /// Convenience function to run the given command line and wait for it to finish.
+  /// \param[in] args The command-line arguments.
+  /// \param[in] env Additional environment variables.
+  /// \return Any error that occurred.
+  static std::error_code Call(const std::vector<std::string> &args,
+                              const ProcessEnvironment &env = {});
 
- protected:
-  std::shared_ptr<ProcessFD> p_;
-
- public:
   /// Executes command line operation.
   ///
   /// \param[in] argv The command line command to execute.
   /// \return The output from the command.
   static std::string Exec(const std::string command);
+
+  /// Convenience function to start a process in the background.
+  /// \param[in] args The command-line arguments.
+  /// \param[in] decouple True iff the parent will not wait for the child to exit.
+  /// \param[in] pid_file A file to write the PID of the spawned process in.
+  /// \param[in] env Additional environment variables.
+  /// \param[in] new_process_group Whether to create a new process group.
+  /// \return A StatusOr containing the process object on success, or an error status.
+  static StatusOr<std::unique_ptr<ProcessInterface>> Spawn(
+      const std::vector<std::string> &args,
+      bool decouple,
+      const std::string &pid_file = std::string(),
+      const ProcessEnvironment &env = {},
+      bool new_process_group = false);
 
   pid_t GetId() const override;
 
@@ -103,6 +117,9 @@ class Process : public ProcessInterface {
   /// Waits for process to terminate. Not supported for unowned processes.
   /// \return The process's exit code. Returns 0 for a dummy process, -1 for a null one.
   int Wait() const override;
+
+ private:
+  std::shared_ptr<ProcessFD> p_;
 };
 
 }  // namespace ray

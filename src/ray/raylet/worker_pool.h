@@ -43,6 +43,7 @@
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/stats/metric.h"
+#include "ray/util/process.h"
 #include "ray/util/process_interface.h"
 
 namespace ray {
@@ -934,7 +935,8 @@ class WorkerPool : public WorkerPoolInterface {
   WorkerPoolMetrics worker_pool_metrics_;
 
   /// A static null process used for returning references in error cases.
-  static const std::unique_ptr<ProcessInterface> kNullProcess;
+  static inline const std::unique_ptr<ProcessInterface> kNullProcess =
+      std::make_unique<Process>();
 
   friend class WorkerPoolTest;
   friend class WorkerPoolDriverRegisteredTest;

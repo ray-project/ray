@@ -23,7 +23,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
-#include "ray/util/process_factory.h"
 #include "ray/util/process_utils.h"
 #include "ray/util/thread_utils.h"
 
@@ -63,7 +62,7 @@ void AgentManager::StartAgent(AddProcessToCgroupHook add_to_cgroup) {
   // NOTE: we pipe to stdin so that agent can read stdin to detect when
   // the parent dies. See
   // https://stackoverflow.com/questions/12193581/detect-death-of-parent-process
-  process_ = ProcessFactory::Create(
+  process_ = std::make_unique<Process>(
       argv.data(),
       nullptr,
       ec,
