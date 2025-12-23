@@ -67,7 +67,7 @@ class BaseBundleQueue(_QueueMetricRecorderMixin):
     "last", "back", or "tail" is the last bundle to be dequeued.
     """
 
-    def add(self, bundle: RefBundle, **kwargs: Any) -> None:
+    def add(self, bundle: RefBundle, **kwargs: Any):
         """Add a bundle to the tail(end) of the queue. Base classes should override
         the `_add_inner` method for simple use cases. For more complex metrics tracking,
         they can override this method.
@@ -78,12 +78,11 @@ class BaseBundleQueue(_QueueMetricRecorderMixin):
                 This is used for `finalize`.
         """
         self._on_enqueue(bundle)
-        self._add_inner(bundle)
+        self._add_inner(bundle, **kwargs)
 
-    def _add_inner(self, bundle: RefBundle, **kwargs: Any) -> None:
-        return
+    def _add_inner(self, bundle: RefBundle, **kwargs: Any):
+        raise NotImplementedError
 
-    @abc.abstractmethod
     def get_next(self) -> RefBundle:
         """Remove and return the head of the queue. Base classes should override
         the `_add_inner` method for simple use cases. For more complex metrics tracking,
@@ -99,9 +98,8 @@ class BaseBundleQueue(_QueueMetricRecorderMixin):
         self._on_dequeue(bundle)
         return bundle
 
-    @abc.abstractmethod
     def _get_next_inner(self) -> RefBundle:
-        return None
+        raise NotImplementedError
 
     @abc.abstractmethod
     def peek_next(self) -> Optional[RefBundle]:

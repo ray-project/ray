@@ -207,13 +207,10 @@ class RebundleQueue(BaseBundleQueue):
         return len(self._ready_bundles) > 0
 
     @override
-    def get_next(
-        self,
-    ) -> RefBundle:
+    def _get_next_inner(self) -> RefBundle:
         if not self.has_next():
             raise ValueError("You can't pop from empty queue")
         ready_bundle = self._ready_bundles.popleft()
-        self._on_dequeue(ready_bundle)
         return ready_bundle
 
     @override
