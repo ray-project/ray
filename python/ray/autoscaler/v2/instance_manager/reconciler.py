@@ -1177,7 +1177,16 @@ class Reconciler:
         # Add terminating instances.
         for terminate_request in to_terminate:
             instance_id = terminate_request.instance_id
-            if terminate_request.instance_status == IMInstance.ALLOCATED:
+            if terminate_request.instance_status == IMInstance.QUEUED:
+                # QUEUED instances have no cloud resources allocated yet.
+                # Cancel the allocation request by transitioning directly to TERMINATED.
+                updates[terminate_request.instance_id] = IMInstanceUpdateEvent(
+                    instance_id=instance_id,
+                    new_instance_status=IMInstance.TERMINATED,
+                    termination_request=terminate_request,
+                    details=f"allocation canceled: {terminate_request.details}",
+                )
+            elif terminate_request.instance_status == IMInstance.ALLOCATED:
                 # The instance is not yet running, so we can't request to stop/drain Ray.
                 # Therefore, we can skip the RAY_STOP_REQUESTED state and directly terminate the node.
                 im_instance_to_terminate = im_instances_by_instance_id[instance_id]

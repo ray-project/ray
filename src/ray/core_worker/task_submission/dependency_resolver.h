@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -29,7 +30,7 @@ namespace ray {
 namespace core {
 
 using TensorTransportGetter =
-    std::function<std::optional<rpc::TensorTransport>(const ObjectID &object_id)>;
+    std::function<std::optional<std::string>(const ObjectID &object_id)>;
 
 // This class is thread-safe.
 class LocalDependencyResolver {

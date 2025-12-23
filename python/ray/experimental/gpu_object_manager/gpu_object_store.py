@@ -108,11 +108,10 @@ def __ray_recv__(
             tensor_transport_meta,
             communicator_meta,
         )
-        gpu_object_store.add_object(obj_id, tensors, is_primary=False)
+        gpu_object_store.add_object(obj_id, tensors)
     except Exception as e:
-        # Store the error as a gpu object if the recv fails,
-        # so waiters will raise the error.
-        gpu_object_store.add_object(obj_id, e, is_primary=False)
+        # Store the error as a gpu object if the recv fails, so waiters will raise the error.
+        gpu_object_store.add_object(obj_id, e)
 
 
 def __ray_abort_transport__(
@@ -222,7 +221,7 @@ class GPUObjectStore:
         self,
         obj_id: str,
         gpu_object: Union[List["torch.Tensor"], Exception],
-        is_primary: bool,
+        is_primary: bool = False,
     ):
         """
         Add a GPU object to the GPU object store.
@@ -248,6 +247,9 @@ class GPUObjectStore:
                     )
                 )
             self._object_present_cv.notify_all()
+
+    def add_object_primary(self, obj_id: str, tensors: List["torch.Tensor"]):
+        self.add_object(obj_id, tensors, is_primary=True)
 
     def is_primary_copy(self, obj_id: str) -> bool:
         with self._lock:
