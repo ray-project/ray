@@ -649,7 +649,7 @@ def get_compute_strategy(
 
 
 def get_compute_strategy_for_read_api(
-    compute: Optional[ComputeStrategy] = None,
+    compute: Optional["ComputeStrategy"] = None,
     concurrency: Optional[int] = None,
 ) -> "ComputeStrategy":
     """Get `ComputeStrategy` for read APIs.
