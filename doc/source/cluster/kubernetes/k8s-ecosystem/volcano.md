@@ -76,7 +76,7 @@ You can also be provide the following labels in the RayCluster metadata:
     ```
 
 **Note**:
-- Starting from KubeRay v1.5.0, you no longer need to add the `volcano.sh/scheduler-name: volcano` label to your RayCluster/RayJob. The batch scheduler is now configured at the operator level using the `--batch-scheduler=volcano` flag.
+- Starting from KubeRay v1.5.0, you **no** longer need to add the `ray.io/scheduler-name: volcano` label to your RayCluster/RayJob. The batch scheduler is now configured at the operator level using the `--batch-scheduler=volcano` flag.
 - When autoscaling is enabled, KubeRay uses `minReplicas` to calculate the minimum resources required for gang scheduling. Otherwise, it uses the `desired` replicas value.
 
 ### Step 5: Use Volcano for batch scheduling
