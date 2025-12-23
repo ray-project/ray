@@ -819,12 +819,8 @@ class ReplicaBase(ABC):
         #
         # Context: When tracing is enabled, Ray's tracing decorators inject
         # _ray_trace_ctx into ServeReplica actor method calls. The ServeReplica
-        # actor methods properly handle this (via the fix in actor.py), but we
+        # actor methods properly handle this, but we
         # need to extract it before calling user-defined deployment methods.
-        #
-        # Why here? This method is called by both handle_request() and
-        # handle_request_streaming(), making it the perfect single point to
-        # extract _ray_trace_ctx before it reaches any user code.
         #
         # Design: We return it so it can be passed to _wrap_request() which
         # stores it in _RequestContext. Users can then access it via serve.context
