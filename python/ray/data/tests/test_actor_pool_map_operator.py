@@ -679,10 +679,10 @@ def test_min_max_resource_requirements(restore_data_context):
         max_resource_usage_bound,
     ) = op.min_max_resource_requirements()
 
-    assert (
-        min_resource_usage_bound == ExecutionResources(cpu=1, object_store_memory=3)
-        and max_resource_usage_bound == ExecutionResources.for_limits()
-    )
+    # min_resource_usage: 1 actor * (1 cpu, 3 obj_store_mem)
+    # max_resource_usage: 2 actors * (1 cpu, 3 obj_store_mem)
+    assert min_resource_usage_bound == ExecutionResources(cpu=1, object_store_memory=3)
+    assert max_resource_usage_bound == ExecutionResources(cpu=2, object_store_memory=6)
 
 
 def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):

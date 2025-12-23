@@ -453,6 +453,7 @@ class ActorPoolMapOperator(MapOperator):
         self,
     ) -> Tuple[ExecutionResources, ExecutionResources]:
         min_actors = self._actor_pool.min_size()
+        max_actors = self._actor_pool.max_size()
         assert min_actors is not None, min_actors
 
         num_cpus_per_actor = self._ray_remote_args.get("num_cpus", 0)
@@ -471,7 +472,17 @@ class ActorPoolMapOperator(MapOperator):
             * min_actors,
         )
 
-        return min_resource_usage, ExecutionResources.for_limits()
+        max_resource_usage = ExecutionResources(
+            cpu=num_cpus_per_actor * max_actors,
+            gpu=num_gpus_per_actor * max_actors,
+            memory=memory_per_actor * max_actors,
+            object_store_memory=(
+                self._metrics.obj_store_mem_max_pending_output_per_task or 0
+            )
+            * max_actors,
+        )
+
+        return min_resource_usage, max_resource_usage
 
     def current_processor_usage(self) -> ExecutionResources:
         # Both pending and running actors count towards our current resource usage.
