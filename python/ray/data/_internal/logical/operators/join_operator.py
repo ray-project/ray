@@ -153,6 +153,9 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
 
         The predicate must reference columns from exactly one side of the join,
         OR reference only join key columns that all exist on one side.
+
+        When column suffixes are used, this method strips the suffixes to match
+        against the original column names in the input schemas.
         """
         # Get predicate columns and schemas
         predicate_columns = self._get_referenced_columns(predicate_expr)
@@ -172,17 +175,24 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         can_push_left, can_push_right = self._get_pushdown_rules()
 
         # Check if predicate can be evaluated on left side
-        # Condition: ALL predicate columns must exist on left (either as regular columns or join keys)
-        can_evaluate_on_left = predicate_columns.issubset(
+        # Strip left suffix from predicate columns and check against left schema
+        predicate_cols_without_left_suffix = self._strip_suffix_from_columns(
+            predicate_columns, self._left_columns_suffix
+        )
+        can_evaluate_on_left = predicate_cols_without_left_suffix.issubset(
             left_columns
-        ) or predicate_columns.issubset(left_join_keys)
+        ) or predicate_cols_without_left_suffix.issubset(left_join_keys)
         if can_evaluate_on_left and can_push_left:
             return JoinSide.LEFT
 
         # Check if predicate can be evaluated on right side
-        can_evaluate_on_right = predicate_columns.issubset(
+        # Strip right suffix from predicate columns and check against right schema
+        predicate_cols_without_right_suffix = self._strip_suffix_from_columns(
+            predicate_columns, self._right_columns_suffix
+        )
+        can_evaluate_on_right = predicate_cols_without_right_suffix.issubset(
             right_columns
-        ) or predicate_columns.issubset(right_join_keys)
+        ) or predicate_cols_without_right_suffix.issubset(right_join_keys)
         if can_evaluate_on_right and can_push_right:
             return JoinSide.RIGHT
 
@@ -217,3 +227,72 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         visitor = _ColumnReferenceCollector()
         visitor.visit(expr)
         return set(visitor.get_column_refs())
+
+    def _strip_suffix_from_columns(
+        self, columns: set[str], suffix: Optional[str]
+    ) -> set[str]:
+        """Strip a suffix from column names if present.
+
+        Args:
+            columns: Set of column names (potentially with suffixes)
+            suffix: The suffix to strip (e.g., "_l" or "_r")
+
+        Returns:
+            Set of column names with the suffix removed (if it was present)
+        """
+        if suffix is None or suffix == "":
+            return columns
+
+        return {col[: -len(suffix)] if col.endswith(suffix) else col for col in columns}
+
+    def get_column_substitutions(
+        self, side: Optional[JoinSide] = None
+    ) -> dict[str, str]:
+        """Get column substitutions for predicate pushdown.
+
+        This method implements the standard predicate passthrough interface.
+        For Join operators, column substitutions depend on which side is being
+        pushed to, so the `side` parameter must be provided.
+
+        Args:
+            side: Which side of the join to get substitutions for. Required for
+                  Join operators, optional for compatibility with other operators.
+
+        Returns:
+            Dictionary mapping from original_name -> suffixed_name for the specified
+            side, or empty dict if no substitutions are needed or no side specified.
+
+            Note: Join key columns are NOT included in the mapping because they
+            don't receive suffixes in the output schema - only non-key overlapping
+            columns are suffixed.
+        """
+        if side is None:
+            # Join requires side context for substitutions
+            return {}
+
+        # Get suffix and schema for the specified side
+        suffix = (
+            self._left_columns_suffix
+            if side == JoinSide.LEFT
+            else self._right_columns_suffix
+        )
+        input_op = self.input_dependencies[side.value]
+        schema = input_op.infer_schema()
+
+        if not schema or suffix is None:
+            return {}
+
+        # Get join key columns for this side
+        join_keys = set(
+            self._left_key_columns if side == JoinSide.LEFT else self._right_key_columns
+        )
+
+        # Create mapping: original_name -> suffixed_name
+        # Exclude join key columns - they don't get suffixed in the output
+        # This will be inverted by _substitute_predicate_columns to map:
+        # suffixed_name -> col(original_name)
+        return {
+            col_name: col_name + suffix
+            for col_name in schema.names
+            if col_name not in join_keys
+        }
