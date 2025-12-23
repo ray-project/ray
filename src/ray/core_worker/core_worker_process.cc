@@ -795,7 +795,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // for java worker or in constructor of CoreWorker for python worker.
 
   // We need init stats before using it/spawning threads.
-  stats::Init(global_tags, options_.metrics_agent_port, worker_id_);
+  stats::Init(global_tags, worker_id_);
   task_by_state_gauge_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetTaskByStateGaugeMetric()));
   actor_by_state_gauge_ = std::unique_ptr<ray::stats::Gauge>(
@@ -835,6 +835,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
         "127.0.0.1", options_.metrics_agent_port, io_service_, *client_call_manager_);
     metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
       if (server_status.ok()) {
+        stats::ConnectOpenCensusExporter(options_.metrics_agent_port);
         stats::InitOpenTelemetryExporter(options_.metrics_agent_port);
       } else {
         RAY_LOG(ERROR) << "Failed to establish connection to the metrics exporter agent. "
