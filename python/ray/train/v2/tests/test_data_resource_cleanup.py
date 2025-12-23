@@ -12,7 +12,7 @@ from ray.data._internal.iterator.stream_split_iterator import (
     SplitCoordinator,
     _DatasetWrapper,
 )
-from ray.train.v2._internal.callbacks.datasets import DatasetsSetupCallback
+from ray.train.v2._internal.callbacks.datasets import DatasetsCallback
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
     WorkerGroupContext,
@@ -23,7 +23,7 @@ pytestmark = pytest.mark.usefixtures("mock_runtime_context")
 
 
 def test_datasets_callback_multiple_datasets(ray_start_4_cpus):
-    """Test that the DatasetsSetupCallback properly collects the coordinator actors for multiple datasets"""
+    """Test that the DatasetsCallback properly collects the coordinator actors for multiple datasets"""
     # Start worker group
     worker_group_context = WorkerGroupContext(
         run_attempt_id="test",
@@ -49,7 +49,7 @@ def test_datasets_callback_multiple_datasets(ray_start_4_cpus):
         datasets=datasets, dataset_config=dataset_config
     )
 
-    callback = DatasetsSetupCallback(train_run_context)
+    callback = DatasetsCallback(train_run_context)
     callback.before_init_train_context(wg.get_workers())
 
     # Two coordinator actors, one for each sharded dataset
@@ -58,7 +58,7 @@ def test_datasets_callback_multiple_datasets(ray_start_4_cpus):
 
 
 def test_after_worker_group_abort():
-    callback = DatasetsSetupCallback(create_dummy_run_context())
+    callback = DatasetsCallback(create_dummy_run_context())
 
     # Mock SplitCoordinator shutdown_executor method
     coord_mock = create_autospec(SplitCoordinator)
@@ -79,7 +79,7 @@ def test_after_worker_group_abort():
 
 
 def test_after_worker_group_shutdown():
-    callback = DatasetsSetupCallback(create_dummy_run_context())
+    callback = DatasetsCallback(create_dummy_run_context())
 
     # Mock SplitCoordinator shutdown_executor method
     coord_mock = create_autospec(SplitCoordinator)

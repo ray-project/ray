@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import pyarrow as pa
 
-from ray.air.util.tensor_extensions.arrow import (
+from ray.data._internal.tensor_extensions.arrow import (
     _infer_pyarrow_type,
 )
 from ray.util.annotations import PublicAPI
@@ -475,7 +475,7 @@ class DataType:
             >>> DataType.tensor(shape=(3, 4), dtype=DataType.float32())  # doctest: +ELLIPSIS
             DataType(arrow:ArrowTensorType(...))
         """
-        from ray.air.util.tensor_extensions.arrow import ArrowTensorType
+        from ray.data._internal.tensor_extensions.arrow import ArrowTensorType
 
         element_arrow_type = dtype.to_arrow_dtype()
         return cls.from_arrow(ArrowTensorType(shape, element_arrow_type))
@@ -500,7 +500,9 @@ class DataType:
             >>> DataType.variable_shaped_tensor(dtype=DataType.float32(), ndim=2)  # doctest: +ELLIPSIS
             DataType(arrow:ArrowVariableShapedTensorType(...))
         """
-        from ray.air.util.tensor_extensions.arrow import ArrowVariableShapedTensorType
+        from ray.data._internal.tensor_extensions.arrow import (
+            ArrowVariableShapedTensorType,
+        )
 
         element_arrow_type = dtype.to_arrow_dtype()
         return cls.from_arrow(ArrowVariableShapedTensorType(element_arrow_type, ndim))
@@ -610,7 +612,7 @@ class DataType:
         if not self.is_arrow_type():
             return False
 
-        from ray.air.util.tensor_extensions.arrow import (
+        from ray.data._internal.tensor_extensions.arrow import (
             get_arrow_extension_tensor_types,
         )
 

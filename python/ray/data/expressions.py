@@ -418,6 +418,46 @@ class Expr(ABC):
             data_type=self.data_type, expr=self, _name=name, _is_rename=False
         )
 
+    # rounding helpers
+    def ceil(self) -> "UDFExpr":
+        """Round values up to the nearest integer."""
+        return _create_pyarrow_compute_udf(pc.ceil)(self)
+
+    def floor(self) -> "UDFExpr":
+        """Round values down to the nearest integer."""
+        return _create_pyarrow_compute_udf(pc.floor)(self)
+
+    def round(self) -> "UDFExpr":
+        """Round values to the nearest integer using PyArrow semantics."""
+        return _create_pyarrow_compute_udf(pc.round)(self)
+
+    def trunc(self) -> "UDFExpr":
+        """Truncate fractional values toward zero."""
+        return _create_pyarrow_compute_udf(pc.trunc)(self)
+
+    # logarithmic helpers
+    def ln(self) -> "UDFExpr":
+        """Compute the natural logarithm of the expression."""
+        return _create_pyarrow_compute_udf(pc.ln, return_dtype=DataType.float64())(self)
+
+    def log10(self) -> "UDFExpr":
+        """Compute the base-10 logarithm of the expression."""
+        return _create_pyarrow_compute_udf(pc.log10, return_dtype=DataType.float64())(
+            self
+        )
+
+    def log2(self) -> "UDFExpr":
+        """Compute the base-2 logarithm of the expression."""
+        return _create_pyarrow_compute_udf(pc.log2, return_dtype=DataType.float64())(
+            self
+        )
+
+    def exp(self) -> "UDFExpr":
+        """Compute the natural exponential of the expression."""
+        return _create_pyarrow_compute_udf(pc.exp, return_dtype=DataType.float64())(
+            self
+        )
+
     @property
     def list(self) -> "_ListNamespace":
         """Access list operations for this expression.
@@ -863,6 +903,22 @@ def pyarrow_udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
         return _create_udf_callable(wrapped_fn, return_dtype)
 
     return decorator
+
+
+def _create_pyarrow_compute_udf(
+    pc_func: Callable[..., pyarrow.Array],
+    return_dtype: DataType | None = None,
+) -> Callable[..., "UDFExpr"]:
+    """Create an expression UDF backed by a PyArrow compute function."""
+
+    def wrapper(expr: "Expr", *positional: Any, **kwargs: Any) -> "UDFExpr":
+        @pyarrow_udf(return_dtype=return_dtype or expr.data_type)
+        def udf(arr: pyarrow.Array) -> pyarrow.Array:
+            return pc_func(arr, *positional, **kwargs)
+
+        return udf(expr)
+
+    return wrapper
 
 
 @DeveloperAPI(stability="alpha")
