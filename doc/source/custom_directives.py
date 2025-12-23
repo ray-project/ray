@@ -1241,6 +1241,9 @@ def pregenerate_example_rsts(
     See `add_custom_assets` for more information about the custom template
     that gets rendered from these configuration files.
 
+    Additionally, this function collects all example document paths from the
+    examples.yml files to mark them as orphan documents during the build.
+
     Parameters
     ----------
     *example_configs : Optional[List[str]]
@@ -1249,6 +1252,9 @@ def pregenerate_example_rsts(
     if not example_configs:
         example_configs = EXAMPLE_GALLERY_CONFIGS
 
+    # Collect all example links to mark as orphan
+    orphan_documents = set()
+
     for config in example_configs:
         # Depending on where the sphinx build command is run from, the path to the
         # target config file can change. Handle these paths manually to ensure it
@@ -1256,6 +1262,18 @@ def pregenerate_example_rsts(
         config_path = pathlib.Path(app.confdir) / pathlib.Path(config).relative_to(
             "source"
         )
+        
+        # Parse the examples.yml to extract links
+        example_config = ExampleConfig(config_path, app.srcdir)
+        for example in example_config:
+            if not example.link.startswith("http"):
+                link_path = pathlib.Path(example.link)
+                normalized_path = pathlib.PurePosixPath(link_path.as_posix()) # (resolves . and ..)
+                if normalized_path.suffix:
+                    normalized_path = normalized_path.with_suffix('')
+                orphan_documents.add(str(normalized_path))
+        
+        # Generate the examples.rst file
         page_title = "Examples"
         title_decoration = "=" * len(page_title)
         with open(config_path.with_suffix(".rst"), "w") as f:
@@ -1264,6 +1282,9 @@ def pregenerate_example_rsts(
                 "  .. this file is pregenerated; please edit ./examples.yml to "
                 "modify examples for this library."
             )
+ 
+    # Store `orphan_documents` to be used by mark_documents_as_orphan hook
+    app._example_orphan_documents = orphan_documents
 
 
 def generate_version_url(version):

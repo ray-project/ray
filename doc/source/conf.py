@@ -623,17 +623,13 @@ def setup(app):
 
     logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
 
-    # Apply orphan metadata to avoid warnings and CI failures
-    app.add_config_value("mark_orphan_patterns", [], "env")
-    app.add_config_value("mark_orphan_exclude_patterns", [], "env")
+    # Apply orphan metadata to documents from examples.yml files
     app.connect('source-read', mark_documents_as_orphan)
     
     # Apply ipython3 lexer to avoid warnings and CI failures
     app.add_config_value("ipython3_lexer_patterns", [], "env")
     app.add_config_value("ipython3_lexer_exclude_patterns", [], "env")
     app.connect('source-read', apply_ipython3_lexer)
-    
-    # Compile and save pattern matchers
     app.connect('config-inited', _compile_pattern_matchers)
 
 
@@ -778,14 +774,21 @@ os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
 
 os.environ["RAY_DOC_BUILD"] = "1"
 
-# apply orphan metadata to
-mark_orphan_patterns = [
-    "serve/tutorials/**/content/**.ipynb",
-    "data/examples/**/content/**.ipynb",
-    "train/examples/**/content/**.ipynb",
-]
-# Exclude patterns here
-mark_orphan_exclude_patterns = []
+
+def mark_documents_as_orphan(app, docname, source):
+    """
+    Apply orphan metadata to documents referenced in examples.yml files.
+    
+    This function marks documents as orphan if they appear in any of the
+    examples.yml files processed during pregenerate_example_rsts().
+    This prevents Sphinx from warning about documents not included in any toctree.
+    """
+    # Check if this document is in our collected list from examples.yml
+    if docname in app._example_orphan_documents:
+        # (MyST-NB expects this to exist when it writes to it)
+        app.env.metadata.setdefault(docname, {})
+        app.env.metadata[docname]["orphan"] = True
+
 
 # apply ipython3 lexer to
 ipython3_lexer_patterns = [
@@ -801,15 +804,8 @@ ipython3_lexer_exclude_patterns = []
 
 def _compile_pattern_matchers(app, config):
     """
-    Hook to compile and save pattern matchers.
+    Hook to compile and save pattern matchers for ipython3 lexer.
     """
-    # orphan matchers
-    app.mark_orphan_patterns = compile_matchers(
-        config.mark_orphan_patterns or []
-    )
-    app.mark_orphan_exclude_patterns = compile_matchers(
-        config.mark_orphan_exclude_patterns or []
-    )
     # lexer matchers
     app.ipython3_lexer_patterns = compile_matchers(
         config.ipython3_lexer_patterns or []
@@ -817,23 +813,6 @@ def _compile_pattern_matchers(app, config):
     app.ipython3_lexer_exclude_patterns = compile_matchers(
         config.ipython3_lexer_exclude_patterns or []
     )
-
-def mark_documents_as_orphan(app, docname, source):
-    """
-    Apply orphan metadata to True to documents matching mark_orphan_patterns.
-    
-    If you want to preserve a document's existing orphan metadata, add it to mark_orphan_exclude_patterns.
-    """
-    doc_source = app.env.doc2path(docname, base=False)
-    
-    # exclude patterns takes priority
-    if any(matcher(doc_source) for matcher in app.mark_orphan_exclude_patterns):
-        return
-    if any(matcher(doc_source) for matcher in app.mark_orphan_patterns):
-        # (MyST-NB expects this to exist when it writes to it)
-        app.env.metadata.setdefault(docname, {})
-        app.env.metadata[docname]["orphan"] = True
-
 
 def apply_ipython3_lexer(app, docname, source):
     """
