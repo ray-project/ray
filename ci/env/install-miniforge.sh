@@ -82,11 +82,35 @@ install_miniforge() {
   local python_version
   python_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
   if [ -n "${PYTHON-}" ] && [ "${PYTHON}" != "${python_version}" ]; then  # Update Python version
-    (
-      set +x
-      echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
-      "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
-    )
+    # For Python 3.14+, we need to create a separate environment because
+    # conda itself doesn't have builds for Python 3.14 yet, and upgrading
+    # the base environment would remove conda without replacement.
+    if [ "$(printf '%s\n' "3.14" "${PYTHON}" | sort -V | head -n1)" = "3.14" ]; then
+      (
+        set +x
+        echo "Creating new conda environment for Python ${PYTHON}..."
+      )
+      local env_name="py${PYTHON}"
+      local conda_prefix
+      conda_prefix="$(conda info --base)"
+      "${WORKSPACE_DIR}"/ci/suppress_output conda create -q -y -n "${env_name}" python="${PYTHON}"
+      # Symlink the new environment's binaries to the base conda bin directory
+      # so they take precedence (base conda bin is already in PATH)
+      local env_path="${conda_prefix}/envs/${env_name}"
+      ln -sf "${env_path}/bin/python" "${conda_prefix}/bin/python"
+      ln -sf "${env_path}/bin/python${PYTHON}" "${conda_prefix}/bin/python${PYTHON}"
+      ln -sf "${env_path}/bin/python3" "${conda_prefix}/bin/python3"
+      ln -sf "${env_path}/bin/pip" "${conda_prefix}/bin/pip"
+      ln -sf "${env_path}/bin/pip3" "${conda_prefix}/bin/pip3"
+      # Update CONDA_PYTHON_EXE for the current session
+      export CONDA_PYTHON_EXE="${env_path}/bin/python"
+    else
+      (
+        set +x
+        echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
+        "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
+      )
+    fi
   elif [ "${MINIMAL_INSTALL-}" = "1" ]; then  # Reset environment
     (
       set +x
