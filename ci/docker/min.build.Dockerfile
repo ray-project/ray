@@ -20,6 +20,13 @@ set -euo pipefail
 BUILD=1 MINIMAL_INSTALL=1 PYTHON=${PYTHON_VERSION} ./ci/ci.sh init
 rm -rf python/ray/thirdparty_files
 
+# Re-activate conda environment (ci.sh runs in a subprocess so PATH changes are lost)
+eval "$(/opt/miniforge/bin/conda shell.bash hook)"
+# For Python 3.14+, activate the environment to get pip-installed binaries in PATH
+if [[ -d /opt/miniforge/envs/py${PYTHON_VERSION} ]]; then
+  conda activate py${PYTHON_VERSION}
+fi
+
 # install test requirements
 python -m pip install -U pytest==7.4.4 pip-tools==7.4.1
 
