@@ -230,7 +230,9 @@ install_pip_packages() {
   # files.
   delayed_packages=()
 
-  requirements_files+=("${WORKSPACE_DIR}/python/requirements/test-requirements.txt")
+  if [[ "${DATA_PROCESSING_TESTING-}" != "1" ]]; then
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/test-requirements.txt")
+  fi
 
   if [[ "${LINT-}" == 1 ]]; then
     install_linters
