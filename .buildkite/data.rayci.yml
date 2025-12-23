@@ -1,7 +1,7 @@
 group: data tests
 depends_on:
   - forge
-  - oss-ci-base_ml-multipy
+  - oss-ci-base_test-multipy
   - ray-core-build
   - ray-dashboard-build
 steps:

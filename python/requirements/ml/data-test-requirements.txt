@@ -1,28 +1,109 @@
-# Used by CI for datasets tests.
-# https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
-
+numpy
+pandas
+pyarrow
+polars
+dask
+modin
 python-snappy
-tensorflow-datasets==4.9.3
-datasets>=3.0.2
-pytest-repeat
-soundfile
+
+# Integrations
+pyiceberg[sql-sqlite]==0.10.0
+delta-sharing
+hudi==0.4.0
+
+## Lance
+pylance==0.22
+
+## Avro
 fastavro
+
+## Clickhouse
+clickhouse-connect
+
+
+
+# Webdataset
+msgpack
+webdataset
+
+# Mongo
+pymongo
+pymongoarrow
+bson
+
+
+# Snowflake
+snowflake-connector-python>=3.15.0
+
+# BigQueryDatasource
 google-cloud-bigquery
 google-cloud-core
 google-cloud-bigquery-storage
 google-api-core
-webdataset
-raydp==1.7.0b20250423.dev0
-pylance==0.22
-delta-sharing
-deltalake==0.9.0
-pytest-mock
-decord
-snowflake-connector-python>=3.15.0
-pyiceberg[sql-sqlite]==0.10.0
-clickhouse-connect
+
+# KafkaDatasource
 kafka-python
-pybase64
-hudi==0.4.0
+
+# MCAPDatasource
+mcap
+
+
+# TorchDatasource
+torch
+
+# TorchVision preprocessor
+torchvision
+
+
+# `test_sql`
+pymysql
+
+# TFRecords
+tensorflow
+tensorflow-datasets==4.9.3
+tensorflow-metadata
+crc32c==2.3
+# tfx-bsl
+
+pyspark
+transformers
+datasets>=3.0.2
+
+Pillow
+soundfile
+# decord
+av
+
+fsspec
+requests
+aiohttp
+pydantic
+packaging
+cloudpickle
+rich
+tqdm
+IPython
+ipywidgets
+PyYAML
 datasketches
+getdaft==0.4.3
+pytest
 testcontainers[kafka]
+
+
+pytest-repeat
+pytest-mock
+
+
+
+raydp==1.7.0b20250423.dev0
+
+deltalake==0.9.0
+
+pybase64
+
+dask[complete]==2023.6.1; python_version < '3.12'
+distributed==2023.6.1; python_version < '3.12'
+dask[complete]==2025.5.0; python_version >= '3.12'
+distributed==2025.5.0; python_version >= '3.12'
+# pymars>=0.8.3; python_version < "3.12"
