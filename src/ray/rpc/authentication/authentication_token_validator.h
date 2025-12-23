@@ -14,7 +14,8 @@
 
 #pragma once
 
-#include <optional>
+#include <memory>
+#include <string_view>
 #include <unordered_map>
 
 #include "ray/rpc/authentication/authentication_token.h"
@@ -25,14 +26,14 @@ namespace rpc {
 class AuthenticationTokenValidator {
  public:
   static AuthenticationTokenValidator &instance();
-  /// Validate the provided authentication token against the expected token.
-  /// When auth_mode=token, this is a simple equality check.
-  /// When auth_mode=k8s, provided_token is validated against Kubernetes API.
-  /// \param expected_token The expected token (optional).
-  /// \param provided_token The token to validate.
-  /// \return true if the tokens are equal, false otherwise.
-  bool ValidateToken(const std::optional<AuthenticationToken> &expected_token,
-                     const AuthenticationToken &provided_token);
+  /// Validate the provided authentication metadata against the expected token.
+  /// When auth_mode=token, uses constant-time comparison via CompareWithMetadata.
+  /// When auth_mode=k8s, provided_metadata is parsed and validated against Kubernetes
+  /// API. \param expected_token The expected token (nullptr if auth disabled or K8S
+  /// mode). \param provided_metadata The authorization header value (e.g., "Bearer
+  /// <token>"). \return true if the token is valid, false otherwise.
+  bool ValidateToken(const std::shared_ptr<const AuthenticationToken> &expected_token,
+                     std::string_view provided_metadata);
 
  private:
   // Cache for K8s tokens.
