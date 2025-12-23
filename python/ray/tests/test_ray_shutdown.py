@@ -335,12 +335,23 @@ def test_raylet_graceful_exit_upon_runtime_env_agent_exit(ray_start_cluster):
                 raylet = p[1]
         assert raylet is not None
 
-        children = psutil.Process(raylet.pid).children()
-        # in case linux truncates the proctitle
-        target_path = ray_constants.AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT[:15]
-        for child in children:
-            if target_path in " ".join(child.cmdline()):
-                return raylet, child
+        agent = None
+
+        def verify():
+            nonlocal agent
+            children = psutil.Process(raylet.pid).children()
+            # in case linux truncates the proctitle
+            target_path = ray_constants.AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT[:15]
+            for child in children:
+                if target_path in " ".join(child.cmdline()):
+                    agent = child
+                    return True
+            return False
+
+        # wait until proctitle is updated
+        wait_for_condition(verify, timeout=1, retry_interval_ms=100)
+        if agent is not None:
+            return raylet, agent
         raise ValueError("runtime env agent not found")
 
     # Make sure raylet exits gracefully upon agent terminated by SIGKILL.
