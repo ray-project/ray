@@ -19,15 +19,24 @@
 #include <memory>
 #include <vector>
 
+#include "ray/rpc/authentication/authentication_token.h"
+
 namespace ray {
 namespace rpc {
 
 /// Client interceptor that automatically adds Ray authentication tokens to outgoing RPCs.
-/// The token is loaded from AuthenticationTokenLoader and added as a Bearer token
-/// in the "authorization" metadata key.
+/// The token is loaded from AuthenticationTokenLoader at construction time and cached.
+/// It is added as a Bearer token in the "authorization" metadata key.
 class RayTokenAuthClientInterceptor : public grpc::experimental::Interceptor {
  public:
+  /// Constructor that loads and caches the authentication token.
+  RayTokenAuthClientInterceptor();
+
   void Intercept(grpc::experimental::InterceptorBatchMethods *methods) override;
+
+ private:
+  /// Cached authentication token (loaded once at construction)
+  std::shared_ptr<const AuthenticationToken> token_;
 };
 
 /// Factory for creating RayTokenAuthClientInterceptor instances
