@@ -1,3 +1,4 @@
+import glob
 import logging
 import os
 import re
@@ -13,6 +14,31 @@ NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICE
 # TODO(Alex): This pattern may not work for non NVIDIA Tesla GPUs (which have
 # the form "Tesla V100-SXM2-16GB" or "Tesla K80").
 NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+([A-Z0-9]+)")
+
+
+def _detect_nvidia_device_files() -> int:
+    """Detect NVIDIA GPUs by counting /dev/nvidia* device files.
+
+    Returns the number of GPU device files found (excluding nvidiactl, nvidia-uvm, etc.)
+    """
+    try:
+        # Match /dev/nvidia0, /dev/nvidia1, etc. but not nvidiactl, nvidia-uvm, etc.
+        device_files = glob.glob("/dev/nvidia[0-9]*")
+        return len(device_files)
+    except Exception:
+        return 0
+
+
+def _count_cuda_visible_devices() -> int:
+    """Count GPUs from CUDA_VISIBLE_DEVICES environment variable.
+
+    Returns the number of devices specified, or 0 if not set or empty.
+    """
+    cuda_visible_devices = os.environ.get(CUDA_VISIBLE_DEVICES_ENV_VAR)
+    if not cuda_visible_devices or cuda_visible_devices == "NoDevFiles":
+        return 0
+    # CUDA_VISIBLE_DEVICES can be comma-separated IDs like "0,1,2" or UUIDs
+    return len(cuda_visible_devices.split(","))
 
 
 class NvidiaGPUAcceleratorManager(AcceleratorManager):
@@ -46,13 +72,57 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
     def get_current_node_num_accelerators() -> int:
         import ray._private.thirdparty.pynvml as pynvml
 
+        nvml_error = None
+        nvml_initialized = False
         try:
             pynvml.nvmlInit()
-        except pynvml.NVMLError:
-            return 0  # pynvml init failed
-        device_count = pynvml.nvmlDeviceGetCount()
-        pynvml.nvmlShutdown()
-        return device_count
+            nvml_initialized = True
+            device_count = pynvml.nvmlDeviceGetCount()
+            return device_count
+        except pynvml.NVMLError as e:
+            nvml_error = e
+            # NVML failed - try fallback detection methods
+        finally:
+            if nvml_initialized:
+                try:
+                    pynvml.nvmlShutdown()
+                except pynvml.NVMLError:
+                    pass  # Ignore shutdown errors
+
+        # Fallback 1: Check /dev/nvidia* device files
+        device_file_count = _detect_nvidia_device_files()
+
+        # Fallback 2: Check CUDA_VISIBLE_DEVICES environment variable
+        cuda_env_count = _count_cuda_visible_devices()
+
+        # Determine if GPUs are likely present despite NVML failure
+        evidence_of_gpus = device_file_count > 0 or cuda_env_count > 0
+
+        if evidence_of_gpus:
+            # Use the maximum of fallback counts as our best estimate
+            fallback_count = max(device_file_count, cuda_env_count)
+            logger.warning(
+                "NVML failed to detect GPUs (error: %s), but found evidence of "
+                "GPU devices: %d device file(s) in /dev/nvidia*, "
+                "CUDA_VISIBLE_DEVICES indicates %d device(s). "
+                "Ray will report 0 GPUs since NVML-based detection failed. "
+                "To use GPUs, specify the GPU count manually with "
+                "'ray start --num-gpus=%d' or set 'num_gpus' in ray.init(). "
+                "This may happen if the NVIDIA driver is not fully loaded or "
+                "NVML library is not accessible in this environment.",
+                nvml_error,
+                device_file_count,
+                cuda_env_count,
+                fallback_count,
+            )
+        else:
+            logger.debug(
+                "NVML initialization failed (error: %s) and no GPU device files "
+                "or CUDA_VISIBLE_DEVICES found. Assuming no GPUs are available.",
+                nvml_error,
+            )
+
+        return 0
 
     @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:
