@@ -36,6 +36,7 @@ class GPUObjectMeta(NamedTuple):
     # For ray.put the owner is the creator so it's immediately set.
     tensor_transport_meta: Optional["TensorTransportMetadata"]
     # sent_dest_actors tracks the set of actor IDs that this object has been sent to.
+    # Note that since the set is mutable, it shouldn't be accessed without a lock.
     sent_dest_actors: Set[str]
     # sent_to_src_actor_and_others_warned indicates whether the object has already triggered a warning about being sent back to the source actor and other actors simultaneously.
     sent_to_src_actor_and_others_warned: bool
@@ -507,34 +508,35 @@ class GPUObjectManager:
             get_tensor_transport_manager,
         )
 
-        gpu_object_meta = self.get_gpu_object_metadata(obj_id)
-        src_actor = gpu_object_meta.src_actor
-        tensor_transport_meta = gpu_object_meta.tensor_transport_meta
+        with self._lock:
+            # Since sent_dest_actors is mutable, this whole block needs to be protected.
+            gpu_object_meta = self._managed_gpu_object_metadata[obj_id]
+            src_actor = gpu_object_meta.src_actor
+            tensor_transport_meta = gpu_object_meta.tensor_transport_meta
 
-        # Update the set of destination actors for this object
-        # The set inside NamedTuple is mutable, so we can modify it directly
-        gpu_object_meta.sent_dest_actors.add(dst_actor._actor_id)
-        # Check if a warning should be triggered for this object:
-        # 1. object has not triggered a warning yet.
-        # 2. object is sent back to its source actor.
-        # 3. object is also sent to at least one other actor
-        if (
-            not gpu_object_meta.sent_to_src_actor_and_others_warned
-            and src_actor._actor_id in gpu_object_meta.sent_dest_actors
-            and len(gpu_object_meta.sent_dest_actors) > 1
-        ):
-            warnings.warn(
-                f"GPU ObjectRef({obj_id}) is being passed back to the actor that created it {src_actor}. "
-                "Note that GPU objects are mutable. If the tensor is modified, Ray's internal copy will "
-                "also be updated, and subsequent passes to other actors will receive the updated version "
-                "instead of the original.",
-                UserWarning,
-            )
-            # Mark the object as warned so that we don't warn again for this object.
-            self.set_gpu_object_metadata(
-                obj_id,
-                gpu_object_meta._replace(sent_to_src_actor_and_others_warned=True),
-            )
+            # Update the set of destination actors for this object
+            # The set inside NamedTuple is mutable, so we can modify it directly
+            gpu_object_meta.sent_dest_actors.add(dst_actor._actor_id)
+            # Check if a warning should be triggered for this object:
+            # 1. object has not triggered a warning yet.
+            # 2. object is sent back to its source actor.
+            # 3. object is also sent to at least one other actor
+            if (
+                not gpu_object_meta.sent_to_src_actor_and_others_warned
+                and src_actor._actor_id in gpu_object_meta.sent_dest_actors
+                and len(gpu_object_meta.sent_dest_actors) > 1
+            ):
+                warnings.warn(
+                    f"GPU ObjectRef({obj_id}) is being passed back to the actor that created it {src_actor}. "
+                    "Note that GPU objects are mutable. If the tensor is modified, Ray's internal copy will "
+                    "also be updated, and subsequent passes to other actors will receive the updated version "
+                    "instead of the original.",
+                    UserWarning,
+                )
+                # Mark the object as warned so that we don't warn again for this object.
+                self._managed_gpu_object_metadata[obj_id] = gpu_object_meta._replace(
+                    sent_to_src_actor_and_others_warned=True
+                )
 
         if src_actor._actor_id == dst_actor._actor_id:
             # If the source and destination actors are the same, the tensors can
