@@ -42,7 +42,7 @@ bool AuthenticationTokenValidator::ValidateToken(
     return expected_token->CompareWithMetadata(provided_metadata);
   }
 
-  if (RayConfig::instance().ENABLE_K8S_TOKEN_RBAC()) {
+  if (IsK8sTokenRBACEnabled()) {
     std::call_once(k8s::k8s_client_config_flag, k8s::InitK8sClientConfig);
     if (!k8s::k8s_client_initialized) {
       RAY_LOG(WARNING) << "Kubernetes client not initialized, K8s authentication failed.";
