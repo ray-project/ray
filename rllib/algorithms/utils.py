@@ -179,13 +179,6 @@ def _get_offline_eval_runner_bundles(config):
 
 
 def _get_learner_bundles(config):
-    try:
-        from ray.rllib.extensions.algorithm_utils import _get_learner_bundles as func
-
-        return func(config)
-    except Exception:
-        pass
-
     if config.num_learners == 0:
         if config.num_aggregator_actors_per_learner > 0:
             return [{"CPU": config.num_aggregator_actors_per_learner}]
@@ -200,12 +193,13 @@ def _get_learner_bundles(config):
         else 0
     )
 
+    # aggregator actors are co-located with learners and use 1 CPU each
     bundles = [
         {
-            "CPU": config.num_learners
-            * (num_cpus_per_learner + config.num_aggregator_actors_per_learner),
-            "GPU": config.num_learners * config.num_gpus_per_learner,
+            "CPU": num_cpus_per_learner + config.num_aggregator_actors_per_learner,
+            "GPU": config.num_gpus_per_learner,
         }
+        for _ in range(config.num_learners)
     ]
 
     return bundles
