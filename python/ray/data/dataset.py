@@ -151,6 +151,11 @@ from ray.data.expressions import Expr, StarExpr, col
 
 logger = logging.getLogger(__name__)
 
+_DATASET_REPR_MAX_ROWS = 10
+_DATASET_REPR_HEAD_ROWS = 5
+_DATASET_REPR_MAX_CELL_WIDTH = 40
+_DATASET_REPR_ELLIPSIS = "…"
+
 # Special column name for train/test split to avoid collision with user columns
 _TRAIN_TEST_SPLIT_COLUMN = "__ray_train_test_split_is_train__"
 
@@ -6685,7 +6690,19 @@ class Dataset:
         return Tab(children, titles=["Metadata", "Schema"])
 
     def __repr__(self) -> str:
-        return self._plan.get_plan_as_string(self.__class__)
+        try:
+            return self._tabular_repr()
+        except Exception:
+            logger.debug("Falling back to plan-based Dataset repr.", exc_info=True)
+            return self._plan.get_plan_as_string(self.__class__)
+
+    def _tabular_repr(self) -> str:
+        schema = self.schema(fetch_if_missing=False)
+        if schema is None or not isinstance(schema, Schema):
+            return self._plan.get_plan_as_string(self.__class__)
+
+        is_materialized = isinstance(self, MaterializedDataset)
+        return _build_dataset_ascii_repr(self, schema, is_materialized)
 
     def __str__(self) -> str:
         return repr(self)
@@ -6935,3 +6952,234 @@ def _block_to_ndarray(block: Block, column: Optional[str]):
 def _block_to_arrow(block: Block):
     block = BlockAccessor.for_block(block)
     return block.to_arrow()
+
+
+def _build_dataset_ascii_repr(
+    dataset: "Dataset", schema: "Schema", is_materialized: bool
+) -> str:
+    columns = list(schema.names)
+    if not columns:
+        return dataset._plan.get_plan_as_string(dataset.__class__)
+
+    dtype_strings = [_repr_format_dtype(t) for t in schema.types]
+    column_headers = [_truncate_repr_value(str(col)) for col in columns]
+    dtype_headers = [_truncate_repr_value(dtype) for dtype in dtype_strings]
+    separator_row = ["---"] * len(columns)
+
+    num_rows = dataset._meta_count()
+    num_cols = len(columns)
+    shape_line = f"shape: ({num_rows if num_rows is not None else '?'}, {num_cols})"
+
+    head_rows: List[List[str]] = []
+    tail_rows: List[List[str]] = []
+    rows_shown = 0
+    show_gap = False
+    if is_materialized:
+        (
+            head_data,
+            tail_data,
+            show_gap,
+        ) = _collect_materialized_rows_for_repr(dataset, num_rows)
+        head_rows = _format_rows_for_repr(head_data, columns)
+        tail_rows = _format_rows_for_repr(tail_data, columns)
+        rows_shown = len(head_rows) + len(tail_rows)
+
+    display_rows: List[List[str]] = []
+    display_rows.extend(head_rows)
+    if show_gap:
+        display_rows.append([_DATASET_REPR_ELLIPSIS] * len(columns))
+    display_rows.extend(tail_rows)
+
+    column_widths = _compute_column_widths(
+        column_headers, dtype_headers, separator_row, display_rows
+    )
+
+    table_lines = _render_table_lines(
+        column_headers,
+        dtype_headers,
+        separator_row,
+        display_rows,
+        column_widths,
+    )
+
+    summary_line = (
+        f"(Showing {rows_shown} of {num_rows} rows)"
+        if is_materialized
+        else "(Dataset isn't materialized)"
+    )
+    if is_materialized and num_rows is None:
+        summary_line = f"(Showing {rows_shown} of ? rows)"
+
+    components = [shape_line, "\n".join(table_lines), summary_line]
+    return "\n".join(components)
+
+
+def _repr_format_dtype(dtype: Any) -> str:
+    if hasattr(dtype, "__name__"):
+        return dtype.__name__
+    return str(dtype)
+
+
+def _collect_materialized_rows_for_repr(
+    dataset: "Dataset", num_rows: Optional[int]
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], bool]:
+    snapshot = dataset._plan._snapshot_bundle
+    if snapshot is None:
+        return [], [], False
+
+    head_target, tail_target = _determine_preview_row_targets(num_rows)
+    block_cache: Dict[ObjectRef, Block] = {}
+
+    def _resolve_block(block_ref: ObjectRef) -> Block:
+        if block_ref not in block_cache:
+            block_cache[block_ref] = ray.get(block_ref)
+        return block_cache[block_ref]
+
+    head_rows: List[Dict[str, Any]] = []
+    head_remaining = head_target
+    for block_ref, _ in snapshot.blocks:
+        if head_remaining <= 0:
+            break
+        block = _resolve_block(block_ref)
+        accessor = BlockAccessor.for_block(block)
+        for row in accessor.iter_rows(public_row_format=True):
+            head_rows.append(row)
+            head_remaining -= 1
+            if head_remaining <= 0:
+                break
+
+    tail_rows: List[Dict[str, Any]] = []
+    tail_remaining = tail_target
+    if tail_remaining > 0:
+        for block_ref, metadata in reversed(snapshot.blocks):
+            if tail_remaining <= 0:
+                break
+            block = _resolve_block(block_ref)
+            accessor = BlockAccessor.for_block(block)
+            total_rows = metadata.num_rows
+            if total_rows is None:
+                total_rows = accessor.num_rows()
+            if total_rows == 0:
+                continue
+            start = max(0, total_rows - tail_remaining)
+            sliced_block = accessor.slice(start, total_rows, copy=False)
+            slice_accessor = BlockAccessor.for_block(sliced_block)
+            block_rows = list(slice_accessor.iter_rows(public_row_format=True))
+            tail_rows = block_rows + tail_rows
+            tail_remaining -= len(block_rows)
+            if tail_remaining <= 0:
+                break
+
+    show_gap = tail_rows != []
+    return head_rows, tail_rows, show_gap
+
+
+def _determine_preview_row_targets(
+    num_rows: Optional[int],
+) -> Tuple[int, int]:
+    if num_rows is None or num_rows <= _DATASET_REPR_MAX_ROWS:
+        head = num_rows or 0
+        tail = 0
+        if num_rows is None:
+            head = _DATASET_REPR_MAX_ROWS
+        return head, tail
+
+    head = min(_DATASET_REPR_HEAD_ROWS, _DATASET_REPR_MAX_ROWS)
+    tail = _DATASET_REPR_MAX_ROWS - head
+    return head, tail
+
+
+def _format_rows_for_repr(
+    rows: List[Dict[str, Any]], columns: List[str]
+) -> List[List[str]]:
+    formatted_rows: List[List[str]] = []
+    for row in rows:
+        formatted_row = []
+        for column in columns:
+            value = row.get(column)
+            formatted_row.append(_truncate_repr_value(_repr_format_value(value)))
+        formatted_rows.append(formatted_row)
+    return formatted_rows
+
+
+def _repr_format_value(value: Any) -> str:
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, bytes):
+        try:
+            return value.decode()
+        except Exception:
+            return repr(value)
+    if isinstance(value, bytearray):
+        try:
+            return value.decode()
+        except Exception:
+            return repr(bytes(value))
+    if value is None:
+        return "None"
+    return str(value)
+
+
+def _truncate_repr_value(value: str) -> str:
+    if len(value) <= _DATASET_REPR_MAX_CELL_WIDTH:
+        return value
+    return value[: _DATASET_REPR_MAX_CELL_WIDTH - 1] + _DATASET_REPR_ELLIPSIS
+
+
+def _compute_column_widths(
+    headers: List[str],
+    dtype_headers: List[str],
+    separator_row: List[str],
+    data_rows: List[List[str]],
+) -> List[int]:
+    column_widths: List[int] = []
+    for idx in range(len(headers)):
+        widths = [
+            len(headers[idx]),
+            len(dtype_headers[idx]),
+            len(separator_row[idx]),
+        ]
+        for row in data_rows:
+            widths.append(len(row[idx]))
+        column_widths.append(max(widths))
+    return column_widths
+
+
+def _render_table_lines(
+    headers: List[str],
+    dtype_headers: List[str],
+    separator_row: List[str],
+    data_rows: List[List[str]],
+    column_widths: List[int],
+) -> List[str]:
+    lines: List[str] = []
+    top = _render_border("┌", "┬", "┐", "─", column_widths)
+    header_row = _render_row(headers, column_widths)
+    separator_line = _render_row(separator_row, column_widths)
+    dtype_row = _render_row(dtype_headers, column_widths)
+    lines.extend([top, header_row, separator_line, dtype_row])
+
+    if data_rows:
+        middle = _render_border("╞", "╪", "╡", "═", column_widths)
+        lines.append(middle)
+        for row in data_rows:
+            lines.append(_render_row(row, column_widths))
+
+    bottom = _render_border("└", "┴", "┘", "─", column_widths)
+    lines.append(bottom)
+    return lines
+
+
+def _render_border(
+    left: str, middle: str, right: str, fill: str, column_widths: List[int]
+) -> str:
+    segments = [fill * (width + 2) for width in column_widths]
+    return f"{left}{middle.join(segments)}{right}"
+
+
+def _render_row(values: List[str], column_widths: List[int]) -> str:
+    cells = []
+    for idx, value in enumerate(values):
+        padded = value.ljust(column_widths[idx])
+        cells.append(f" {padded} ")
+    return f"│{'┆'.join(cells)}│"

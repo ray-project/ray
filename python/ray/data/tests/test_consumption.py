@@ -380,21 +380,24 @@ def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     _check_none_computed(ds)
 
 
-def test_dataset_repr(ray_start_regular_shared):
+def test_dataset_plan_string(ray_start_regular_shared):
     ds = ray.data.range(10, override_num_blocks=10)
-    assert repr(ds) == "Dataset(num_rows=10, schema={id: int64})"
+    assert (
+        ds._plan.get_plan_as_string(type(ds))
+        == "Dataset(num_rows=10, schema={id: int64})"
+    )
     ds = ds.map_batches(lambda x: x)
-    assert repr(ds) == (
+    assert ds._plan.get_plan_as_string(type(ds)) == (
         "MapBatches(<lambda>)\n+- Dataset(num_rows=10, schema={id: int64})"
     )
     ds = ds.filter(lambda x: x["id"] > 0)
-    assert repr(ds) == (
+    assert ds._plan.get_plan_as_string(type(ds)) == (
         "Filter(<lambda>)\n"
         "+- MapBatches(<lambda>)\n"
         "   +- Dataset(num_rows=10, schema={id: int64})"
     )
     ds = ds.random_shuffle()
-    assert repr(ds) == (
+    assert ds._plan.get_plan_as_string(type(ds)) == (
         "RandomShuffle\n"
         "+- Filter(<lambda>)\n"
         "   +- MapBatches(<lambda>)\n"
@@ -402,20 +405,23 @@ def test_dataset_repr(ray_start_regular_shared):
     )
     ds = ds.materialize()
     assert (
-        repr(ds) == "MaterializedDataset(num_blocks=10, num_rows=9, schema={id: int64})"
+        ds._plan.get_plan_as_string(type(ds))
+        == "MaterializedDataset(num_blocks=10, num_rows=9, schema={id: int64})"
     )
     ds = ds.map_batches(lambda x: x)
 
-    assert repr(ds) == (
+    assert ds._plan.get_plan_as_string(type(ds)) == (
         "MapBatches(<lambda>)\n+- Dataset(num_rows=9, schema={id: int64})"
     )
     ds1, ds2 = ds.split(2)
     assert (
-        repr(ds1) == f"MaterializedDataset(num_blocks=5, num_rows={ds1.count()}, "
+        ds1._plan.get_plan_as_string(type(ds1))
+        == f"MaterializedDataset(num_blocks=5, num_rows={ds1.count()}, "
         "schema={id: int64})"
     )
     assert (
-        repr(ds2) == f"MaterializedDataset(num_blocks=5, num_rows={ds2.count()}, "
+        ds2._plan.get_plan_as_string(type(ds2))
+        == f"MaterializedDataset(num_blocks=5, num_rows={ds2.count()}, "
         "schema={id: int64})"
     )
 
@@ -437,9 +443,29 @@ def test_dataset_repr(ray_start_regular_shared):
 
     ds = ray.data.range(10, override_num_blocks=10)
     ds = ds.map_batches(my_dummy_fn)
-    assert repr(ds) == (
+    assert ds._plan.get_plan_as_string(type(ds)) == (
         "MapBatches(my_dummy_fn)\n+- Dataset(num_rows=10, schema={id: int64})"
     )
+
+
+def test_dataset_repr(ray_start_regular_shared):
+    ds = ray.data.range(5)
+    text = repr(ds)
+    assert "Dataset isn't materialized" in text
+    assert "shape: (5, 1)" in text
+    assert "│ id" in text
+
+    materialized = ds.materialize()
+    materialized_text = repr(materialized)
+    assert "Dataset isn't materialized" not in materialized_text
+    assert "(Showing 5 of 5 rows)" in materialized_text
+    assert "│ id" in materialized_text
+    assert "0" in materialized_text and "4" in materialized_text
+
+    ds_with_gap = ray.data.range(20).materialize()
+    gap_text = repr(ds_with_gap)
+    assert "(Showing 10 of 20 rows)" in gap_text
+    assert "…" in gap_text
 
 
 def test_dataset_explain(ray_start_regular_shared, capsys):
