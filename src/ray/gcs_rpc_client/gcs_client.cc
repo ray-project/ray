@@ -25,6 +25,7 @@
 #include "ray/gcs_rpc_client/accessor.h"
 #include "ray/gcs_rpc_client/accessor_factory_interface.h"
 #include "ray/gcs_rpc_client/accessors/actor_info_accessor.h"
+#include "ray/gcs_rpc_client/accessors/internal_kv_accessor.h"
 #include "ray/gcs_rpc_client/default_accessor_factory.h"
 #include "ray/gcs_rpc_client/default_gcs_client_context.h"
 #include "ray/pubsub/subscriber.h"
@@ -162,13 +163,14 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
   }
 
   actor_accessor_ = accessor_factory_->CreateActorInfoAccessor(client_context_.get());
+  internal_kv_accessor_ =
+      accessor_factory_->CreateInternalKVAccessor(client_context_.get());
   job_accessor_ = std::make_unique<JobInfoAccessor>(this);
   node_accessor_ = std::make_unique<NodeInfoAccessor>(this);
   node_resource_accessor_ = std::make_unique<NodeResourceInfoAccessor>(this);
   error_accessor_ = std::make_unique<ErrorInfoAccessor>(this);
   worker_accessor_ = std::make_unique<WorkerInfoAccessor>(this);
   placement_group_accessor_ = std::make_unique<PlacementGroupInfoAccessor>(this);
-  internal_kv_accessor_ = std::make_unique<InternalKVAccessor>(this);
   task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
   runtime_env_accessor_ = std::make_unique<RuntimeEnvAccessor>(this);
   autoscaler_state_accessor_ = std::make_unique<AutoscalerStateAccessor>(this);

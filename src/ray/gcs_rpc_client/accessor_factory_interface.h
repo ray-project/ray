@@ -21,6 +21,7 @@ namespace gcs {
 
 // Forward declarations for accessor interfaces
 class ActorInfoAccessorInterface;
+class InternalKVAccessorInterface;
 class GcsClientContext;
 
 /**
@@ -40,6 +41,16 @@ class AccessorFactoryInterface {
     ActorInfoAccessor.
    */
   virtual std::unique_ptr<ActorInfoAccessorInterface> CreateActorInfoAccessor(
+      GcsClientContext *context) = 0;
+
+  /**
+    Create an InternalKVAccessor instance.
+
+    @param context The GCS client implementation.
+    @return unique_ptr<InternalKVAccessorInterface> A unique pointer to the created
+    InternalKVAccessor.
+ */
+  virtual std::unique_ptr<InternalKVAccessorInterface> CreateInternalKVAccessor(
       GcsClientContext *context) = 0;
 };
 
