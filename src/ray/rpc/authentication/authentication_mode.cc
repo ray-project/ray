@@ -33,7 +33,7 @@ AuthenticationMode GetAuthenticationMode() {
   }
 }
 
-bool IsK8sTokenRBACEnabled() { return RayConfig::instance().ENABLE_K8S_TOKEN_RBAC(); }
+bool IsK8sTokenAuthEnabled() { return RayConfig::instance().ENABLE_K8S_TOKEN_AUTH(); }
 
 }  // namespace rpc
 }  // namespace ray

@@ -29,7 +29,7 @@ enum class AuthenticationMode {
 /// the authentication mode is not set or is invalid.
 AuthenticationMode GetAuthenticationMode();
 
-bool IsK8sTokenRBACEnabled();
+bool IsK8sTokenAuthEnabled();
 
 }  // namespace rpc
 }  // namespace ray

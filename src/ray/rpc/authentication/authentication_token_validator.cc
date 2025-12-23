@@ -39,7 +39,7 @@ bool AuthenticationTokenValidator::ValidateToken(
     return true;
   }
 
-  if (!IsK8sTokenRBACEnabled()) {
+  if (!IsK8sTokenAuthEnabled()) {
     RAY_CHECK(expected_token && !expected_token->empty())
         << "Ray token authentication is enabled but expected token is empty";
 
