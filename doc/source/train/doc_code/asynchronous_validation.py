@@ -125,7 +125,7 @@ def validate_fn(checkpoint: ray.train.Checkpoint, dataset: ray.data.Dataset) -> 
 # __validate_fn_report_start__
 import tempfile
 
-from ray.train.v2.api.report_config import ValidationConfig, ValidationTaskConfig
+from ray.train import ValidationConfig, ValidationTaskConfig
 
 
 def train_func(config: dict) -> None:
