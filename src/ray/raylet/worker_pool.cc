@@ -257,6 +257,10 @@ const std::unique_ptr<ProcessInterface> &WorkerPool::AddWorkerProcess(
                         runtime_env_info,
                         dynamic_options,
                         worker_startup_keep_alive_duration});
+  RAY_CHECK(inserted)
+      << "Failed to add worker process to worker pool due to unexpected duplicate "
+         "startup token"
+      << " something might have went wrong when starting a previous worker process.";
   return it->second.proc;
 }
 
