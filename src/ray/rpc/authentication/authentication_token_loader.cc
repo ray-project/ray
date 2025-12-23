@@ -19,14 +19,7 @@
 #include <string>
 #include <utility>
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 #include "ray/rpc/authentication/authentication_mode.h"
-=======
-#include "ray/common/ray_config.h"
->>>>>>> a6a01cf981 (replace RAY_AUTH_MODE=k8s with RAY_ENABLE_K8S_TOKEN_RBAC=true which must be set with RAY_AUTH_MODE=token)
-=======
->>>>>>> f175921cb1 (refactor check for ENABLE_K8S_TOKEN_RBAC into authentication_mode.cc)
 #include "ray/rpc/authentication/k8s_constants.h"
 #include "ray/util/logging.h"
 
@@ -158,16 +151,10 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadTokenFromSources() {
     }
   }
 
-<<<<<<< HEAD
-  // Precedence 3 (auth_mode=k8s only): Load Kubernetes service account token
-  if (GetAuthenticationMode() == AuthenticationMode::K8S) {
-    const std::string k8s_token_path(k8s::kK8sSaTokenPath);
-    std::string token_str = TrimWhitespace(ReadTokenFromFile(k8s_token_path));
-=======
   // Precedence 3 (ENABLE_K8S_TOKEN_RBAC only): Load Kubernetes service account token
   if (IsK8sTokenRBACEnabled()) {
-    std::string token_str = TrimWhitespace(ReadTokenFromFile(k8s::kK8sSaTokenPath));
->>>>>>> a6a01cf981 (replace RAY_AUTH_MODE=k8s with RAY_ENABLE_K8S_TOKEN_RBAC=true which must be set with RAY_AUTH_MODE=token)
+    const std::string k8s_token_path(k8s::kK8sSaTokenPath);
+    std::string token_str = TrimWhitespace(ReadTokenFromFile(k8s_token_path));
     if (!token_str.empty()) {
       RAY_LOG(DEBUG)
           << "Loaded authentication token from Kubernetes service account path: "

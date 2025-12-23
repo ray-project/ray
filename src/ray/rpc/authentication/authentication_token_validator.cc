@@ -38,8 +38,8 @@ bool AuthenticationTokenValidator::ValidateToken(
     RAY_LOG(DEBUG) << "Authentication mode is disabled, token considered valid.";
     return true;
   }
-      
-  if (GetAuthenticationMode() == AuthenticationMode::TOKEN) {
+
+  if (!IsK8sTokenRBACEnabled()) {
     RAY_CHECK(expected_token && !expected_token->empty())
         << "Ray token authentication is enabled but expected token is empty";
 
@@ -47,51 +47,17 @@ bool AuthenticationTokenValidator::ValidateToken(
     return expected_token->CompareWithMetadata(provided_metadata);
   }
 
-  if (IsK8sTokenRBACEnabled()) {
-    std::call_once(k8s::k8s_client_config_flag, k8s::InitK8sClientConfig);
-    if (!k8s::k8s_client_initialized) {
-      RAY_LOG(WARNING) << "Kubernetes client not initialized, K8s authentication failed.";
-      return false;
-    }
+  std::call_once(k8s::k8s_client_config_flag, k8s::InitK8sClientConfig);
+  if (!k8s::k8s_client_initialized) {
+    RAY_LOG(WARNING) << "Kubernetes client not initialized, K8s authentication failed.";
+    return false;
+  }
 
-    // Parse metadata into token for K8S validation (needed for cache and API call)
-    AuthenticationToken provided_token =
-        AuthenticationToken::FromMetadata(provided_metadata);
-    if (provided_token.empty()) {
-      return false;
-    }
-
-    // Check cache first.
-    {
-      std::lock_guard<std::mutex> lock(k8s_token_cache_mutex_);
-      auto it = k8s_token_cache_.find(provided_token);
-      if (it != k8s_token_cache_.end()) {
-        if (std::chrono::steady_clock::now() < it->second.expiration) {
-          RAY_LOG(DEBUG) << "K8s token found in cache and is valid.";
-          return it->second.allowed;
-        } else {
-          RAY_LOG(DEBUG) << "K8s token in cache expired, removing from cache.";
-          k8s_token_cache_.erase(it);
-        }
-      }
-    }
-
-    bool is_allowed = false;
-    is_allowed = k8s::ValidateToken(provided_token);
-
-    // Only cache validated tokens for now. We don't want to invalidate a token
-    // due to unrelated errors from Kubernetes API server. This has the downside of
-    // causing more load if an unauthenticated client continues to make calls.
-    // TODO(andrewsykim): cache invalid tokens once k8s::ValidateToken can distinguish
-    // between invalid token errors and server errors.
-    if (is_allowed) {
-      std::lock_guard<std::mutex> lock(k8s_token_cache_mutex_);
-      k8s_token_cache_[provided_token] = {is_allowed,
-                                          std::chrono::steady_clock::now() + kCacheTTL};
-      RAY_LOG(DEBUG) << "K8s token validated and saved to cache.";
-    }
-
-    return is_allowed;
+  // Parse metadata into token for K8S validation (needed for cache and API call)
+  AuthenticationToken provided_token =
+      AuthenticationToken::FromMetadata(provided_metadata);
+  if (provided_token.empty()) {
+    return false;
   }
 
   // Check cache first.
