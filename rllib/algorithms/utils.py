@@ -181,7 +181,7 @@ def _get_offline_eval_runner_bundles(config):
 def _get_learner_bundles(config):
     if config.num_learners == 0:
         if config.num_aggregator_actors_per_learner > 0:
-            return [{"CPU": config.num_aggregator_actors_per_learner}]
+            return [{"CPU": 1} for _ in range(config.num_aggregator_actors_per_learner)]
         else:
             return []
 
