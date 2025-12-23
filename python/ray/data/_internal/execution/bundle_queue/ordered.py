@@ -34,21 +34,19 @@ class OrderedBundleQueue(BaseBundleQueue):
         self._current_index += 1
 
     @override
-    def add(self, bundle: RefBundle, key: int) -> None:
+    def _add_inner(self, bundle: RefBundle, key: int) -> None:
         assert key is not None
         self._inner[key].append(bundle)
-        self._on_enqueue(bundle)
 
     @override
     def has_next(self) -> bool:
         return len(self._inner[self._current_index]) > 0
 
     @override
-    def get_next(self) -> RefBundle:
+    def _get_next_inner(self) -> RefBundle:
         if not self._inner[self._current_index]:
             raise ValueError("Cannot pop from empty queue.")
         next_bundle = self._inner[self._current_index].popleft()
-        self._on_dequeue(next_bundle)
         if len(self._inner[self._current_index]) == 0:
             if self._current_index in self._completed_keys:
                 self._move_to_next_index()

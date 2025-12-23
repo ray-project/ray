@@ -42,7 +42,7 @@ class HashLinkedQueue(BaseBundleQueue, SupportsRemoval, SupportsDequeue):
         return bundle in self._bundle_to_nodes
 
     @override
-    def add(self, bundle: RefBundle, **kwargs: Any):
+    def _add_inner(self, bundle: RefBundle, **kwargs: Any):
         new_node = _Node(value=bundle, next=None, prev=self._tail)
         # Case 1: The queue is empty.
         if self._head is None:
@@ -56,10 +56,8 @@ class HashLinkedQueue(BaseBundleQueue, SupportsRemoval, SupportsDequeue):
 
         self._bundle_to_nodes[bundle].append(new_node)
 
-        self._on_enqueue(bundle)
-
     @override
-    def add_to_front(self, bundle: RefBundle):
+    def _add_to_front_inner(self, bundle: RefBundle):
         new_node = _Node(value=bundle, next=self._head, prev=None)
         # Case 1: The queue is empty.
         if self._head is None:
@@ -72,8 +70,6 @@ class HashLinkedQueue(BaseBundleQueue, SupportsRemoval, SupportsDequeue):
             self._head = new_node  # Update head pointer
 
         self._bundle_to_nodes[bundle].appendleft(new_node)
-
-        self._on_enqueue(bundle)
 
     @override
     def get_next(self) -> RefBundle:

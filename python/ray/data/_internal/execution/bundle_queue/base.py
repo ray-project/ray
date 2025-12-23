@@ -67,20 +67,28 @@ class BaseBundleQueue(_QueueMetricRecorderMixin):
     "last", "back", or "tail" is the last bundle to be dequeued.
     """
 
-    @abc.abstractmethod
     def add(self, bundle: RefBundle, **kwargs: Any) -> None:
-        """Add a bundle to the tail(end) of the queue.
+        """Add a bundle to the tail(end) of the queue. Base classes should override
+        the `_add_inner` method for simple use cases. For more complex metrics tracking,
+        they can override this method.
 
         Args:
             bundle: The bundle to add.
             **kwargs: Additional queue-specific parameters (e.g., `key` for ordered queues).
                 This is used for `finalize`.
         """
+        self._on_enqueue(bundle)
+        self._add_inner(bundle)
+
+    @abc.abstractmethod
+    def _add_inner(self, bundle: RefBundle, **kwargs: Any) -> None:
         ...
 
     @abc.abstractmethod
     def get_next(self) -> RefBundle:
-        """Remove and return the head of the queue.
+        """Remove and return the head of the queue. Base classes should override
+        the `_add_inner` method for simple use cases. For more complex metrics tracking,
+        they can override this method.
 
         Raises:
             ValueError: If the queue is empty.
@@ -88,6 +96,12 @@ class BaseBundleQueue(_QueueMetricRecorderMixin):
         Returns:
             A Refbundle if has_next() is True
         """
+        bundle = self._get_next_inner()
+        self._on_dequeue(bundle)
+        return bundle
+
+    @abc.abstractmethod
+    def _get_next_inner(self) -> RefBundle:
         ...
 
     @abc.abstractmethod
@@ -120,13 +134,22 @@ class BaseBundleQueue(_QueueMetricRecorderMixin):
 
 
 @runtime_checkable
-class SupportsDequeue(Protocol):
+class SupportsDequeue(_QueueMetricRecorderMixin, Protocol):
     """Protocol for queues that support deque operations (add to front, get from back)."""
 
     def add_to_front(self, bundle: RefBundle):
+        self._on_enqueue(bundle)
+        self._add_to_front_inner(bundle)
+
+    def _add_to_front_inner(self, bundle: RefBundle):
         ...
 
     def get_last(self) -> RefBundle:
+        bundle = self._get_last_inner()
+        self._on_dequeue(bundle)
+        return bundle
+
+    def _get_last_inner(self) -> RefBundle:
         ...
 
     def peek_last(self) -> Optional[RefBundle]:
