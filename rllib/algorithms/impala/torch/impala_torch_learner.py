@@ -243,7 +243,7 @@ class IMPALATorchLearner(IMPALALearner, TorchLearner):
 
         # 5. Manually All-Reduce gradients (outside no_sync).
         # We iterate over all known parameters (`self._params`). This is important
-        # to ensure the
+        # to ensure the `all_reduce`` calls are made on all ranks for all params.
         for param in self._params.values():
             # Is the parameter present on this rank?
             present = 1
@@ -296,6 +296,8 @@ class IMPALATorchLearner(IMPALALearner, TorchLearner):
             missing modules will correctly have a `None` gradient. This is
             expected and handled by the zero-padding logic in
             `_uncompiled_update`'s `all_reduce` loop.
+        3. If the loss is zero (i.e., no modules were trained on this rank),
+            this method returns an empty dict.
         """
         # If a single learner is used, fall back to the super's method.
         if self.config.num_learners < 2 or not self.config.is_multi_agent:

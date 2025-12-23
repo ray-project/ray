@@ -560,7 +560,10 @@ class _LearnerThread(threading.Thread):
                             learner_state[COMPONENT_RL_MODULE]
                         )
                     try:
-                        if (self.learner._submitted_updates % 0xFF) == 0:
+                        if (self.learner._submitted_updates & ~0xFF) != (
+                            self._learner_submitted_updates - BATCHES_PER_AGGREGATION
+                            & ~0xFF
+                        ):
                             with self.learner._learner_state_lock:
                                 self.learner.metrics.log_value(
                                     (ALL_MODULES, "learner_thread_state_queue_size"),
@@ -585,7 +588,7 @@ class _LearnerThread(threading.Thread):
                 # Notify all listeners that aggregation is done and results can be
                 # retrieved.
                 self.learner._agg_event.set()
-                if self.learner.config.num_learners > 1:
+                if torch.distributed.is_initialized():
                     torch.distributed.barrier()
 
         # Keep running (see `run` method).
