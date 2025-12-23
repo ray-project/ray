@@ -72,6 +72,12 @@ The `http_options` are as follows. Note that the HTTP config is global to your R
 - **`request_timeout_s`**: Allows you to set the end-to-end timeout for a request before terminating and retrying at another replica. By default, there is no request timeout.
 - **`keep_alive_timeout_s`**: Allows you to set the keep alive timeout for the HTTP proxy. For more details, see [here](serve-http-guide-keep-alive-timeout)
 
+You can also set the `RAY_SERVE_ROOT_URL` environment variable to override the root URL returned by Serve. For example:
+
+```bash
+export RAY_SERVE_ROOT_URL="https://my-load-balancer.example.com"
+```
+
 (grpc-config)=
 
 ## gRPC config 

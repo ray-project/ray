@@ -347,6 +347,29 @@ You can also update logging configuration similar above to the Serve controller 
 :language: python
 ```
 
+#### Run custom initialization code in the controller
+
+For advanced use cases, you can run custom initialization code when the Serve Controller starts by setting the `RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH` environment variable. This variable should point to a callback function that runs during controller initialization. The function doesn't need to return anything.
+
+For example, to add a custom log handler:
+
+```python
+# mymodule/callbacks.py
+import logging
+
+def setup_custom_logging():
+    logger = logging.getLogger("ray.serve")
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("[CUSTOM] %(message)s"))
+    logger.addHandler(handler)
+```
+
+Then set the environment variable before starting Ray:
+
+```bash
+export RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH="mymodule.callbacks:setup_custom_logging"
+```
+
 ### Set Request ID
 You can set a custom request ID for each HTTP request by including `X-Request-ID` in the request header and retrieve request ID from response. For example
 

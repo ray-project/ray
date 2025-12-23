@@ -207,7 +207,7 @@ HEALTH_CHECK_METHOD = "check_health"
 #: Name of deployment reconfiguration method implemented by user.
 RECONFIGURE_METHOD = "reconfigure"
 
-SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
+RAY_SERVE_ROOT_URL = get_env_str("RAY_SERVE_ROOT_URL", "")
 
 #: Limit the number of cached handles because each handle has long poll
 #: overhead. See https://github.com/ray-project/ray/issues/18980
@@ -218,8 +218,7 @@ MAX_CACHED_HANDLES = get_env_int_positive(
 #: Because ServeController will accept one long poll request per handle, its
 #: concurrency needs to scale as O(num_handles)
 CONTROLLER_MAX_CONCURRENCY = get_env_int_positive(
-    "RAY_SERVE_CONTROLLER_MAX_CONCURRENCY",
-    get_env_int_positive("CONTROLLER_MAX_CONCURRENCY", 15_000),
+    "RAY_SERVE_CONTROLLER_MAX_CONCURRENCY", 15_000
 )
 
 DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
