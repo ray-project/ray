@@ -173,7 +173,7 @@ Security Group
 .. _cluster-configuration-vsphere-config-type:
 
 vSphere configuration
-~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
 
 .. tab-set::
 
@@ -206,7 +206,7 @@ vSphere Credentials
 .. _cluster-configuration-vsphere-frozen-vm-configs:
 
 vSphere frozen VM configurations
-~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tab-set::
 
@@ -223,7 +223,7 @@ vSphere frozen VM configurations
 .. _cluster-configuration-vsphere-gpu-configs:
 
 vSphere GPU configurations
-~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tab-set::
 

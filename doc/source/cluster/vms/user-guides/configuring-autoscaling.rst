@@ -18,7 +18,7 @@ A node is considered idle if it has no active tasks, actors, or objects.
   Start with non-autoscaling clusters if you're new to Ray.
 
 Cluster configuration parameters
--------------------------
+--------------------------------
 
 The following options are available in your cluster config file.
 It's recommended that you set these before launching your cluster, but you can also modify them at run-time by updating the cluster config.
