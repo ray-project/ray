@@ -337,7 +337,7 @@ def test_raylet_graceful_exit_upon_runtime_env_agent_exit(ray_start_cluster):
 
         children = psutil.Process(raylet.pid).children()
         # in case linux truncates the proctitle
-        target_path = ray_constants.AGENT_PROCESS_TYPE_DASHBOARD_AGENT[:15]
+        target_path = ray_constants.AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT[:15]
         for child in children:
             if target_path in " ".join(child.cmdline()):
                 return raylet, child
