@@ -1,5 +1,6 @@
 import inspect
 import logging
+from functools import partial
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -2177,25 +2178,18 @@ class ActorHandle(Generic[T]):
             assert len(object_refs) == 1
             generator_ref = object_refs[0]
 
-            def add_gpu_object_ref(
-                object_ref: "ray.ObjectRef",
-                actor: "ray.actor.ActorHandle",
-                tensor_transport: Optional[str] = None
-            ):
-                if tensor_transport is not None and tensor_transport != TensorTransportEnum.OBJECT_STORE.name:
-                    gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-                    gpu_object_manager.add_gpu_object_ref(
-                        object_ref, actor, tensor_transport
-                    )
-
+            if tensor_transport is not None:
+                add_gpu_object_ref = partial(
+                    ray._private.worker.global_worker.gpu_object_manager.add_gpu_object_ref,
+                    src_actor=self,
+                    tensor_transport=tensor_transport
+                )
+            else:
+                add_gpu_object_ref = None
             return ObjectRefGenerator(
                 generator_ref,
                 worker,
-                lambda obj_ref: add_gpu_object_ref(
-                    object_ref=obj_ref,
-                    actor=self,
-                    tensor_transport=tensor_transport
-                )
+                add_gpu_object_ref,
             )
         if len(object_refs) == 1:
             object_refs = object_refs[0]
