@@ -87,301 +87,258 @@ py_library(
 )
 
 # --------------------------------------------------------------------
-# Algorithms learning regression tests.
+# Algorithms learning regression tests (rllib/examples/algorithm/[algo-name]).
 #
 # Tag: learning_tests
 #
-# This will test python/yaml config files
-# inside rllib/examples/algorithms/[algo-name] for actual learning success.
+# These tests check that the algorithm achieves above random performance within a relatively short period of time,
+#   not that the algorithm reaches the optimal policy.
+#
+# For single to multi-learner tests, the expected output should change,
+#   either reducing the maximum iterations or samples, or increasing the max return
+#   to ensure that the multi-learner is achieving something that the single shouldn’t be able to normally achieve.
+#
+# Compute Config
+#   - local (CPU) = 7 CPUs, 0 GPU: 5 Env Runners, 0 Learners on CPU, 2 Aggregator Actors per Learner on CPU
+#   - single (CPU) = 8 CPUs, 0 GPU: 5 Env Runner, 1 Learners on CPU, 2 Aggregator Actors per Learner on CPU
+#   - single (GPU) = 8 CPUs, 1 GPU: 5 Env Runner, 1 Learners on GPU, 2 Aggregator Actors per Learner on CPU
+#   - multi (GPU) = 16 CPUs, 2 GPUs: 10 Env Runners, 2 Learners on GPU, 2 Aggregator Actors per Learner on CPU (4 total CPUs)
+#
+# Legend
+#   - SA = Single Agent Environment
+#   - MA = Multi Agent Environment
+#   - D = Discrete actions
+#   - C = Continuous actions
+#   - LSTM = recurrent policy through lstms
 # --------------------------------------------------------------------
 
-# APPO
-# CartPole
+# | APPO (14 total tests)          |         |                Number of Learners (Device)                 |
+# | Environment                    | Success | Local (CPU) | Single (CPU)    | Single (GPU) | Multi (GPU) |
+# |--------------------------------|---------|-------------|-----------------|--------------|-------------|
+# | (SA/D) Cartpole                | 200     | ✅          | ✅              | ❌           | ❌         |
+# | (SA/D/LSTM) Stateless Cartpole | 150     | ✅          | ❌              | ✅           | ❌         |
+# | (MA/D) TicTacToe               | -0.2    | ✅          | ❌              | ✅           | ✅         |
+# | (SA/D) Atari (Pong)            | 5       | ❌          | ❌              | ✅           | ✅         |
+# | (SA/C) MuJoCo (Humanoid)       | 200     | ❌          | ✅              | ❌           | ✅         |
+# | (MA/D) Footsies                |         | ❌          | ❌              | ✅           | ✅         |
+# | (SA/C) IsaacLab (Humanoid)     |         | ❌          | ✅ (with 1 GPU) | ⚠️           | ❌         |
+
 py_test(
-    name = "learning_tests_cartpole_appo",
+    name = "learning_test_appo_cartpole_local",
     size = "large",
     srcs = ["examples/algorithms/appo/cartpole_appo.py"],
     args = [
         "--as-test",
         "--num-cpus=7",
-        "--num-env-runners=5",
+        "--num-env-runners=7",
+        "--num-learners=0",
+        "--stop-reward=200",
     ],
     main = "examples/algorithms/appo/cartpole_appo.py",
     tags = [
-        "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "team:rllib",
-        "torch_only",
     ],
 )
 
 py_test(
-    name = "learning_tests_cartpole_appo_multi_cpu",
+    name = "learning_test_appo_cartpole_single_cpu",
     size = "large",
     srcs = ["examples/algorithms/appo/cartpole_appo.py"],
-    args = [
-        "--as-test",
-        "--num-learners=2",
-        "--num-cpus=9",
-        "--num-env-runners=6",
-    ],
-    main = "examples/algorithms/appo/cartpole_appo.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
-        "team:rllib",
-        "torch_only",
-    ],
-)
-
-py_test(
-    name = "learning_tests_cartpole_appo_multi_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/appo/cartpole_appo.py"],
-    args = [
-        "--as-test",
-        "--num-learners=2",
-        "--num-gpus-per-learner=1",
-        "--num-cpus=7",
-        "--num-env-runners=6",
-    ],
-    main = "examples/algorithms/appo/cartpole_appo.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
-        "multi_gpu",
-        "team:rllib",
-        "torch_only",
-    ],
-)
-
-# MultiAgentCartPole
-py_test(
-    name = "learning_tests_multi_agent_cartpole_appo",
-    size = "large",
-    srcs = ["examples/algorithms/appo/multi_agent_cartpole_appo.py"],
-    args = [
-        "--as-test",
-        "--num-agents=2",
-        "--num-cpus=8",
-        "--num-env-runners=6",
-    ],
-    main = "examples/algorithms/appo/multi_agent_cartpole_appo.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_discrete",
-        "team:rllib",
-        "torch_only",
-    ],
-)
-
-py_test(
-    name = "learning_tests_multi_agent_cartpole_appo_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/appo/multi_agent_cartpole_appo.py"],
-    args = [
-        "--as-test",
-        "--num-agents=2",
-        "--num-gpus-per-learner=1",
-        "--num-cpus=7",
-        "--num-env-runners=5",
-    ],
-    main = "examples/algorithms/appo/multi_agent_cartpole_appo.py",
-    tags = [
-        "exclusive",
-        "gpu",
-        "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
-        "team:rllib",
-        "torch_only",
-    ],
-)
-
-py_test(
-    name = "learning_tests_multi_agent_cartpole_appo_multi_cpu",
-    size = "large",
-    srcs = ["examples/algorithms/appo/multi_agent_cartpole_appo.py"],
-    args = [
-        "--as-test",
-        "--num-agents=2",
-        "--num-learners=2",
-        "--num-cpus=9",
-        "--num-env-runners=6",
-    ],
-    main = "examples/algorithms/appo/multi_agent_cartpole_appo.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
-        "team:rllib",
-        "torch_only",
-        # Test is failing: https://github.com/ray-project/ray/issues/52270
-        "manual",
-    ],
-)
-
-py_test(
-    name = "learning_tests_multi_agent_cartpole_appo_multi_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/appo/multi_agent_cartpole_appo.py"],
-    args = [
-        "--as-test",
-        "--num-agents=2",
-        "--num-learners=2",
-        "--num-gpus-per-learner=1",
-        "--num-cpus=7",
-        "--num-env-runners=6",
-    ],
-    main = "examples/algorithms/appo/multi_agent_cartpole_appo.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
-        "multi_gpu",
-        "team:rllib",
-        "torch_only",
-    ],
-)
-
-# StatelessCartPole
-py_test(
-    name = "learning_tests_stateless_cartpole_appo",
-    size = "large",
-    srcs = ["examples/algorithms/appo/stateless_cartpole_appo.py"],
     args = [
         "--as-test",
         "--num-cpus=8",
-        "--num-env-runners=6",
+        "--num-env-runners=5",
+        "--num-learners=1",
+        "--stop-reward=200",
     ],
-    main = "examples/algorithms/appo/stateless_cartpole_appo.py",
+    main = "examples/algorithms/appo/cartpole_appo.py",
     tags = [
-        "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
         "team:rllib",
-        "torch_only",
     ],
 )
 
 py_test(
-    name = "learning_tests_stateless_cartpole_appo_gpu",
+    name = "learning_test_appo_stateless_cartpole_local",
     size = "large",
-    srcs = ["examples/algorithms/appo/stateless_cartpole_appo.py"],
+    srcs = ["examples/algorithms/appo/stateless_cartpole_appo_with_lstm.py"],
     args = [
         "--as-test",
-        "--num-agents=2",
-        "--num-gpus-per-learner=1",
         "--num-cpus=7",
         "--num-env-runners=5",
+        "--num-learners=0",
+        "--stop-reward=150",
     ],
-    main = "examples/algorithms/appo/stateless_cartpole_appo.py",
+    main = "examples/algorithms/appo/stateless_cartpole_appo_with_lstm.py",
     tags = [
-        "exclusive",
+        "learning_tests",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "learning_test_appo_stateless_cartpole_single_gpu",
+    size = "large",
+    srcs = ["examples/algorithms/appo/stateless_cartpole_appo_with_lstm.py"],
+    args = [
+        "--as-test",
+        "--num-cpus=8",
+        "--num-env-runners=5",
+        "--num-learners=1",
+        "--num-gpus-per-learner=1",
+        "--stop-reward=150",
+    ],
+    main = "examples/algorithms/appo/stateless_cartpole_appo_with_lstm.py",
+    tags = [
         "gpu",
         "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
         "team:rllib",
-        "torch_only",
     ],
 )
 
 py_test(
-    name = "learning_tests_stateless_cartpole_appo_multi_cpu",
+    name = "learning_test_appo_tictactoe_local",
     size = "large",
-    srcs = ["examples/algorithms/appo/stateless_cartpole_appo.py"],
+    srcs = ["examples/algorithms/appo/tictactoe_appo.py"],
     args = [
         "--as-test",
-        "--num-learners=2",
-        "--num-cpus=9",
-        "--num-env-runners=6",
-    ],
-    main = "examples/algorithms/appo/stateless_cartpole_appo.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
-        "team:rllib",
-        "torch_only",
-    ],
-)
-
-py_test(
-    name = "learning_tests_stateless_cartpole_appo_multi_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/appo/stateless_cartpole_appo.py"],
-    args = [
-        "--as-test",
-        "--num-learners=2",
-        "--num-gpus-per-learner=1",
         "--num-cpus=7",
-        "--num-env-runners=6",
+        "--num-env-runners=5",
+        "--num-learners=0",
+        "--stop-reward=-2",
     ],
-    main = "examples/algorithms/appo/stateless_cartpole_appo.py",
+    main = "examples/algorithms/appo/tictactoe_appo.py",
     tags = [
-        "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
-        "learning_tests_pytorch_use_all_core",
-        "multi_gpu",
         "team:rllib",
-        "torch_only",
     ],
 )
 
-# Pendulum
 py_test(
-    name = "learning_tests_pendulum_appo",
+    name = "learning_test_appo_tictactoe_single_gpu",
     size = "large",
-    srcs = ["examples/algorithms/appo/pendulum_appo.py"],
+    srcs = ["examples/algorithms/appo/tictactoe_appo.py"],
     args = [
         "--as-test",
-        "--num-cpus=6",
-        "--num-env-runners=4",
+        "--num-cpus=8",
+        "--num-env-runners=5",
+        "--num-learners=1",
+        "--num-gpus-per-learner=1",
+        "--stop-reward=-2",
     ],
-    main = "examples/algorithms/appo/pendulum_appo.py",
+    main = "examples/algorithms/appo/tictactoe_appo.py",
     tags = [
-        "exclusive",
+        "gpu",
         "learning_tests",
-        "learning_tests_continuous",
         "team:rllib",
-        "torch_only",
     ],
 )
 
-# MultiAgentPong (multi-GPU smoke test)
 py_test(
-    name = "learning_tests_multi_agent_pong_appo_multi_gpu",
+    name = "learning_test_appo_tictactoe_multi_gpu",
     size = "large",
-    srcs = ["examples/algorithms/appo/multi_agent_pong_appo.py"],
+    srcs = ["examples/algorithms/appo/tictactoe_appo.py"],
     args = [
-        "--stop-iters=3",
-        "--num-agents=2",
+        "--as-test",
+        "--num-cpus=16",
+        "--num-env-runners=10",
         "--num-learners=2",
         "--num-gpus-per-learner=1",
-        "--num-aggregator-actors-per-learner=1",
+        "--stop-reward=-2",
     ],
-    main = "examples/algorithms/appo/multi_agent_pong_appo.py",
+    main = "examples/algorithms/appo/tictactoe_appo.py",
     tags = [
-        "exclusive",
         "learning_tests",
-        "learning_tests_discrete",
         "multi_gpu",
         "team:rllib",
-        "torch_only",
     ],
 )
+
+py_test(
+    name = "learning_test_appo_atari_single_gpu",
+    size = "large",
+    srcs = ["examples/algorithms/appo/atari_appo.py"],
+    args = [
+        "--as-test",
+        "--num-cpus=8",
+        "--num-env-runners=5",
+        "--num-learners=1",
+        "--num-gpus-per-learner=1",
+        "--stop-iters=50",
+        "--stop-reward=5.0",
+    ],
+    main = "examples/algorithms/appo/atari_appo.py",
+    tags = [
+        "gpu",
+        "learning_tests",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "learning_test_appo_atari_multi_gpu",
+    size = "large",
+    srcs = ["examples/algorithms/appo/atari_appo.py"],
+    args = [
+        "--as-test",
+        "--num-cpus=16",
+        "--num-env-runners=10",
+        "--num-learners=2",
+        "--num-gpus-per-learner=1",
+        "--stop-iters=50",
+        "--stop-reward=5.0",
+    ],
+    main = "examples/algorithms/appo/atari_appo.py",
+    tags = [
+        "learning_tests",
+        "multi_gpu",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "learning_test_appo_mujoco_single_cpu",
+    size = "large",
+    srcs = ["examples/algorithms/appo/mujoco_appo.py"],
+    args = [
+        "--as-test",
+        "--num-cpus=8",
+        "--num-env-runners=5",
+        "--num-learners=1",
+        "--stop-reward=200.0",
+    ],
+    main = "examples/algorithms/appo/mujoco_appo.py",
+    tags = [
+        "learning_tests",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "learning_test_appo_mujoco_multi_gpu",
+    size = "large",
+    srcs = ["examples/algorithms/appo/mujoco_appo.py"],
+    args = [
+        "--as-test",
+        "--num-cpus=16",
+        "--num-env-runners=10",
+        "--num-learners=2",
+        "--num-gpus-per-learner=1",
+        "--stop-reward=200.0",
+    ],
+    main = "examples/algorithms/appo/mujoco_appo.py",
+    tags = [
+        "learning_tests",
+        "multi_gpu",
+        "team:rllib",
+    ],
+)
+
+# TODO: Add Footsies single GPU learner
+# TODO: Add Footsies multi GPU learner
+# TODO: Add IsaacLab single CPU learner
+# TODO: Add IsaacLab single GPU learner
 
 # BC
 # CartPole
