@@ -1,10 +1,19 @@
 import os
 import tempfile
+from datetime import timedelta
 
 import torch
 from torch.nn import CrossEntropyLoss
 from torch.optim import Adam
-from torch.utils.data import DataLoader
+from torchdata.stateful_dataloader import StatefulDataLoader
+from torchft import (
+    DistributedDataParallel,
+    DistributedSampler,
+    Manager,
+    Optimizer,
+    ProcessGroupNCCL,
+)
+from torchft.checkpointing.pg_transport import PGTransport
 from torchvision.datasets import FashionMNIST
 from torchvision.models import resnet18
 from torchvision.transforms import Compose, Normalize, ToTensor
@@ -13,16 +22,46 @@ import ray.train.torch
 
 
 def train_func():
+    os.environ["TORCHFT_LIGHTHOUSE"] = "http://ip-10-0-50-13:29510"
+
     # Model, Loss, Optimizer
     model = resnet18(num_classes=10)
     model.conv1 = torch.nn.Conv2d(
         1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
     )
-    # [1] Prepare model.
-    model = ray.train.torch.prepare_model(model)
-    # model.to("cuda")  # This is done by `prepare_model`
+    model.to("cuda")
     criterion = CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=0.001)
+
+    # Wrap model and optimizer with torchft primitives
+    def load_state_dict(state_dict):
+        model.load_state_dict(state_dict["model"])
+        optimizer.load_state_dict(state_dict["optim"])
+
+    def state_dict():
+        return {
+            "model": model.state_dict(),
+            "optim": optimizer.state_dict(),
+        }
+
+    pg = ProcessGroupNCCL(timeout=timedelta(seconds=30))
+    transport = PGTransport(
+        pg,
+        timeout=timedelta(seconds=10),
+        device="cuda",
+    )
+    manager = Manager(
+        pg=pg,
+        min_replica_size=1,
+        load_state_dict=load_state_dict,
+        state_dict=state_dict,
+        # example does REPLICA_GROUP_ID, but we will do N replica groups and 1 worker per replica group
+        replica_id=f"train_ddp_{ray.train.get_context().get_world_rank()}",
+        timeout=timedelta(seconds=30),
+        checkpoint_transport=transport,
+    )
+    model = DistributedDataParallel(manager, model)
+    optimizer = Optimizer(manager, optimizer)
 
     # Data
     transform = Compose([ToTensor(), Normalize((0.28604,), (0.32025,))])
@@ -30,9 +69,25 @@ def train_func():
     train_data = FashionMNIST(
         root=data_dir, train=True, download=True, transform=transform
     )
-    train_loader = DataLoader(train_data, batch_size=128, shuffle=True)
-    # [2] Prepare dataloader.
-    train_loader = ray.train.torch.prepare_data_loader(train_loader)
+
+    # Wrap dataloader with torchft primitives
+    # This shards the training set across all ranks and replica groups. We manage
+    # the dataloaders on a per replica group basis with the assumption that the
+    # majority of groups will be available so few batches will be dropped.
+    sampler = DistributedSampler(
+        train_data,
+        replica_rank=ray.train.get_context().get_world_rank(),
+        num_replica_groups=ray.train.get_context().get_world_size(),
+        group_rank=0,
+        # for DDP we can use replica groups of size 1, FSDP/PP/CP would need more.
+        num_replicas=1,
+        shuffle=True,
+    )
+    # This uses the torchdata StatefulDataLoader to be able to checkpoint and
+    # restore the per worker dataloader position.
+    train_loader = StatefulDataLoader(
+        train_data, batch_size=64, num_workers=2, sampler=sampler
+    )
 
     # Training
     for epoch in range(10):
@@ -40,8 +95,7 @@ def train_func():
             train_loader.sampler.set_epoch(epoch)
 
         for images, labels in train_loader:
-            # This is done by `prepare_data_loader`!
-            # images, labels = images.to("cuda"), labels.to("cuda")
+            images, labels = images.to("cuda"), labels.to("cuda")
             outputs = model(images)
             loss = criterion(outputs, labels)
             optimizer.zero_grad()
