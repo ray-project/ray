@@ -93,18 +93,18 @@ identifier:
       os.path.join("~/my_results", "my-experiment-1")
     )
 
-.. _tune-basicvariant:
-
 .. vale Google.Spacing = NO
+
+.. _tune-basicvariant:
 
 Random search and grid search (tune.search.basic_variant.BasicVariantGenerator)
 -------------------------------------------------------------------------------
 
-.. vale Google.Spacing = YES
-
 The default and most basic way to do hyperparameter search is through random and grid search.
 Ray Tune does this through the :class:`BasicVariantGenerator <ray.tune.search.basic_variant.BasicVariantGenerator>`
 class that generates trial variants given a search space definition.
+
+.. vale Google.Spacing = YES
 
 The :class:`BasicVariantGenerator <ray.tune.search.basic_variant.BasicVariantGenerator>` is used per
 default if no search algorithm is passed to
@@ -118,9 +118,9 @@ default if no search algorithm is passed to
 
     basic_variant.BasicVariantGenerator
 
-.. _tune-ax:
-
 .. vale Google.Spacing = NO
+
+.. _tune-ax:
 
 Ax (tune.search.ax.AxSearch)
 ----------------------------
@@ -133,9 +133,10 @@ Ax (tune.search.ax.AxSearch)
 
     ax.AxSearch
 
-.. _bayesopt:
 
 .. vale Google.Spacing = NO
+
+.. _bayesopt:
 
 Bayesian Optimization (tune.search.bayesopt.BayesOptSearch)
 -----------------------------------------------------------
@@ -148,9 +149,9 @@ Bayesian Optimization (tune.search.bayesopt.BayesOptSearch)
 
     bayesopt.BayesOptSearch
 
-.. _suggest-TuneBOHB:
-
 .. vale Google.Spacing = NO
+
+.. _suggest-TuneBOHB:
 
 Bayesian Optimization HyperBand (tune.search.bohb.TuneBOHB)
 -----------------------------------------------------------
@@ -177,9 +178,9 @@ See the `BOHB paper <https://arxiv.org/abs/1807.01774>`_ for more details.
 
     bohb.TuneBOHB
 
-.. _tune-hebo:
-
 .. vale Google.Spacing = NO
+
+.. _tune-hebo:
 
 HEBO (tune.search.hebo.HEBOSearch)
 ----------------------------------
@@ -194,9 +195,9 @@ Heteroscedastic and Evolutionary Bayesian Optimisation (HEBO) is an optimization
 
     hebo.HEBOSearch
 
-.. _tune-hyperopt:
-
 .. vale Google.Spacing = NO
+
+.. _tune-hyperopt:
 
 Hyperopt (tune.search.hyperopt.HyperOptSearch)
 ----------------------------------------------
@@ -209,9 +210,9 @@ Hyperopt (tune.search.hyperopt.HyperOptSearch)
 
     hyperopt.HyperOptSearch
 
-.. _nevergrad:
-
 .. vale Google.Spacing = NO
+
+.. _nevergrad:
 
 Nevergrad (tune.search.nevergrad.NevergradSearch)
 -------------------------------------------------
@@ -224,9 +225,9 @@ Nevergrad (tune.search.nevergrad.NevergradSearch)
 
     nevergrad.NevergradSearch
 
-.. _tune-optuna:
-
 .. vale Google.Spacing = NO
+
+.. _tune-optuna:
 
 Optuna (tune.search.optuna.OptunaSearch)
 ----------------------------------------
@@ -240,9 +241,9 @@ Optuna (tune.search.optuna.OptunaSearch)
     optuna.OptunaSearch
 
 
-.. _zoopt:
-
 .. vale Google.Spacing = NO
+
+.. _zoopt:
 
 ZOOpt (tune.search.zoopt.ZOOptSearch)
 -------------------------------------
@@ -255,9 +256,9 @@ ZOOpt (tune.search.zoopt.ZOOptSearch)
 
     zoopt.ZOOptSearch
 
-.. _repeater:
-
 .. vale Google.Spacing = NO
+
+.. _repeater:
 
 Repeated Evaluations (tune.search.Repeater)
 -------------------------------------------
@@ -283,9 +284,9 @@ runs ``repeat`` trials of the configuration. It then averages the
 
     Repeater
 
-.. _limiter:
-
 .. vale Google.Spacing = NO
+
+.. _limiter:
 
 ConcurrencyLimiter (tune.search.ConcurrencyLimiter)
 ---------------------------------------------------
@@ -301,9 +302,9 @@ This is useful when a given optimization algorithm doesn't parallelize very well
 
     ConcurrencyLimiter
 
-.. _byo-algo:
-
 .. vale Google.Spacing = NO
+
+.. _byo-algo:
 
 Custom Search Algorithms (tune.search.Searcher)
 -----------------------------------------------
