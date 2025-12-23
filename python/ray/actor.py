@@ -819,7 +819,7 @@ class ActorMethod:
             )
         if tensor_transport is None:
             tensor_transport = self._tensor_transport
-        if tensor_transport != TensorTransportEnum.OBJECT_STORE.name:
+        if tensor_transport is not None:
             if not self._actor._ray_enable_tensor_transport:
                 raise ValueError(
                     f'Currently, methods with .options(tensor_transport="{tensor_transport}") are not supported when enable_tensor_transport=False. '
