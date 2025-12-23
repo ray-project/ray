@@ -11,13 +11,17 @@ WORKDIR /home/forge/ray
 
 COPY . .
 
-RUN <<EOF
+# Mounting cache dir for faster local rebuilds
+RUN --mount=type=cache,target=/home/forge/.cache,uid=2000,gid=100 \
+    <<EOF
 #!/bin/bash
 
 set -euo pipefail
 
 export RAY_BUILD_ENV="manylinux"
 
+# Configure remote cache: use provided URL, or disable if not set (overrides base image default)
+echo "build:ci --remote_cache=${BUILDKITE_BAZEL_CACHE_URL:-}" >> "$HOME/.bazelrc"
 if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
   echo "build --remote_upload_local_results=false" >> "$HOME/.bazelrc"
 fi

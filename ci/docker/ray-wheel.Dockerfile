@@ -46,26 +46,38 @@ ENV BUILDKITE_COMMIT=${BUILDKITE_COMMIT:-unknown} \
 WORKDIR /home/forge/ray
 
 # Copy artifacts from all stages
-# Note: ray-cpp-core may be "scratch" (empty) for ray-only builds
 COPY --from=ray-core /ray_pkg.zip /tmp/
 COPY --from=ray-core /ray_py_proto.zip /tmp/
 COPY --from=ray-java /ray_java_pkg.zip /tmp/
 COPY --from=ray-dashboard /dashboard.tar.gz /tmp/
 
 # Source files needed for wheel build
-COPY --chown=2000:100 ci/build/build-manylinux-wheel.sh ci/build/
+COPY --chown=2000:100 \
+  ci/build/build-manylinux-wheel.sh \
+  ci/build/glibc-check.sh \
+  ci/build/
 COPY --chown=2000:100 README.rst pyproject.toml ./
 COPY --chown=2000:100 rllib/ rllib/
 COPY --chown=2000:100 python/ python/
 
-# Build the wheel using cached artifacts
 USER forge
-RUN --mount=from=ray-cpp-core,source=/,target=/ray-cpp-core,ro <<EOF
+# Note: ray-cpp-core may be "scratch" (empty) for ray-only builds
+RUN --mount=from=ray-cpp-core,source=/,target=/ray-cpp-core,ro \
+    <<'EOF'
 #!/bin/bash
 set -euo pipefail
 
 PY_VERSION="${PYTHON_VERSION//./}"
 PY_BIN="cp${PY_VERSION}-cp${PY_VERSION}"
+
+# Verify required artifacts exist before unpacking
+for f in /tmp/ray_pkg.zip /tmp/ray_py_proto.zip /tmp/ray_java_pkg.zip /tmp/dashboard.tar.gz; do
+  [[ -f "$f" ]] || { echo "ERROR: missing artifact: $f"; exit 1; }
+done
+
+# Clean extraction dirs to avoid stale leftovers
+rm -rf /tmp/ray_pkg /tmp/ray_java_pkg /tmp/ray_cpp_pkg
+mkdir -p /tmp/ray_pkg /tmp/ray_java_pkg
 
 # Unpack common pre-built artifacts
 unzip -o /tmp/ray_pkg.zip -d /tmp/ray_pkg
@@ -75,26 +87,25 @@ mkdir -p python/ray/dashboard/client/build
 tar -xzf /tmp/dashboard.tar.gz -C python/ray/dashboard/client/build/
 
 # C++ core artifacts
-# CRITICAL: The zip has 'ray/' at root, so we must copy ray/* (not /tmp/ray_pkg/*)
-# to python/ray/. Wrong paths cause _raylet.so to be rebuilt with wrong GLIBC.
 cp -r /tmp/ray_pkg/ray/* python/ray/
 
-# Java JARs (needed for ray wheel build)
+# Java JARs
 cp -r /tmp/ray_java_pkg/ray/* python/ray/
 
 # Handle wheel type specific setup
 if [[ "$WHEEL_TYPE" == "cpp" ]]; then
-    # C++ API artifacts (headers, libs, examples)
-    if [[ -f /ray-cpp-core/ray_cpp_pkg.zip ]]; then
-        unzip -o /ray-cpp-core/ray_cpp_pkg.zip -d /tmp/ray_cpp_pkg
-        cp -r /tmp/ray_cpp_pkg/ray/cpp python/ray/
-    else
-        echo "ERROR: ray_cpp_pkg.zip not found for cpp wheel build"
-        exit 1
-    fi
-    export RAY_DISABLE_EXTRA_CPP=0
+  # C++ API artifacts (headers, libs, examples)
+  if [[ -f /ray-cpp-core/ray_cpp_pkg.zip ]]; then
+    mkdir -p /tmp/ray_cpp_pkg
+    unzip -o /ray-cpp-core/ray_cpp_pkg.zip -d /tmp/ray_cpp_pkg
+    cp -r /tmp/ray_cpp_pkg/ray/cpp python/ray/
+  else
+    echo "ERROR: ray_cpp_pkg.zip not found for cpp wheel build"
+    exit 1
+  fi
+  export RAY_DISABLE_EXTRA_CPP=0
 else
-    export RAY_DISABLE_EXTRA_CPP=1
+  export RAY_DISABLE_EXTRA_CPP=1
 fi
 
 # Build wheels
@@ -102,11 +113,24 @@ fi
 
 # Filter output based on wheel type
 if [[ "$WHEEL_TYPE" == "cpp" ]]; then
-    # Keep only ray-cpp wheel
-    rm -f .whl/ray-[0-9]*.whl
+  # Keep only ray-cpp wheel
+  rm -f .whl/ray-[0-9]*.whl
 fi
+
+# Verify GLIBC compatibility (manylinux2014 requires <= 2.17)
+source ci/build/glibc-check.sh
+check_wheels_shared_libs_glibc .whl/ "2.17"
+
+# Sanity check: ensure wheels exist
+shopt -s nullglob
+wheels=(.whl/*.whl)
+if (( ${#wheels[@]} == 0 )); then
+  echo "ERROR: No wheels produced in .whl/"
+  ls -la .whl || true
+  exit 1
+fi
+
 EOF
 
-# Output wheel files
 FROM scratch
 COPY --from=builder /home/forge/ray/.whl/*.whl /

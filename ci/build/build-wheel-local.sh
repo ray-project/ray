@@ -118,7 +118,15 @@ check_wanda_prerequisites "$WANDA_BIN"
 # Export configuration
 export PYTHON_VERSION
 
+# Set BUILDKITE_COMMIT from git if not already set.
+# This populates ray.__commit__ in the built wheel.
+if [[ -z "${BUILDKITE_COMMIT:-}" ]]; then
+    BUILDKITE_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+fi
+export BUILDKITE_COMMIT
+
 echo "Building Ray wheel for Python ${PYTHON_VERSION}..."
+echo "    Commit: ${BUILDKITE_COMMIT}"
 echo "    Build type: ${BUILD_TYPE}"
 
 # Build common wheel dependencies (these are cached by wanda)
