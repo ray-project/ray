@@ -16,12 +16,8 @@ Other stopping behaviors are described :ref:`in the user guide <tune-stopping-re
 
 .. _tune-stop-ref:
 
-.. vale Google.Spacing = NO
-
 Stopper Interface (tune.Stopper)
 --------------------------------
-
-.. vale Google.Spacing = YES
 
 .. currentmodule:: ray.tune.stopper
 

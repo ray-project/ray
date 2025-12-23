@@ -35,12 +35,8 @@ Trainable and is maximized or minimized according to ``mode``.
 
 .. _tune-scheduler-hyperband:
 
-.. vale Google.Spacing = NO
-
 ASHA (tune.schedulers.ASHAScheduler)
 ------------------------------------
-
-.. vale Google.Spacing = YES
 
 Adaptive Successive Halving Algorithm (ASHA) is an asynchronous version of Successive Halving.
 
@@ -86,12 +82,8 @@ This is the default used if no value is provided for the ``brackets`` argument.
 
 .. _tune-original-hyperband:
 
-.. vale Google.Spacing = NO
-
 HyperBand (tune.schedulers.HyperBandScheduler)
 ----------------------------------------------
-
-.. vale Google.Spacing = YES
 
 Tune implements the `standard version of HyperBand <https://arxiv.org/abs/1603.06560>`__.
 **Using the ASHA Scheduler over the standard HyperBand scheduler is recommended.**
@@ -139,12 +131,8 @@ and exposes ``max_t``, which isn't a parameter in the paper.
 
 .. _tune-scheduler-msr:
 
-.. vale Google.Spacing = NO
-
 Median Stopping Rule (tune.schedulers.MedianStoppingRule)
 ---------------------------------------------------------
-
-.. vale Google.Spacing = YES
 
 The Median Stopping Rule implements the simple strategy of stopping a trial if its performance falls
 below the median of other trials at similar points in time.
@@ -157,12 +145,8 @@ below the median of other trials at similar points in time.
 
 .. _tune-scheduler-pbt:
 
-.. vale Google.Spacing = NO
-
 Population Based Training (tune.schedulers.PopulationBasedTraining)
 -------------------------------------------------------------------
-
-.. vale Google.Spacing = YES
 
 Population Based Training (PBT) is a hyperparameter optimization algorithm.
 
@@ -215,12 +199,8 @@ of PBT usage.
 
 .. _tune-scheduler-pbt-replay:
 
-.. vale Google.Spacing = NO
-
 Population Based Training Replay (tune.schedulers.PopulationBasedTrainingReplay)
 --------------------------------------------------------------------------------
-
-.. vale Google.Spacing = YES
 
 Tune includes a utility to replay hyperparameter schedules of Population Based Training runs.
 You just specify an existing experiment directory and the ID of the trial you would
@@ -308,12 +288,8 @@ The example uses the ``BipedalWalker`` environment so it doesn't require any add
 
 .. _tune-scheduler-bohb:
 
-.. vale Google.Spacing = NO
-
 BOHB (tune.schedulers.HyperBandForBOHB)
 ---------------------------------------
-
-.. vale Google.Spacing = YES
 
 This class is a variant of HyperBand that enables the `Bayesian Optimization HyperBand (BOHB) Algorithm <https://arxiv.org/abs/1807.01774>`_.
 This implementation is true to the original HyperBand implementation and doesn't implement pipelining nor

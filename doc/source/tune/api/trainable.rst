@@ -196,8 +196,6 @@ to reserve extra resource slots.
 For example, if a trainable class requires 1 GPU itself, but also launches 4 actors, each using another GPU,
 then you should use :func:`tune.with_resources <ray.tune.with_resources>` like this:
 
-.. vale Google.Spacing = NO
-
 .. code-block:: python
    :emphasize-lines: 4-10
 
@@ -211,8 +209,6 @@ then you should use :func:`tune.with_resources <ray.tune.with_resources>` like t
         ])),
         run_config=RunConfig(name="my_trainable")
     )
-
-.. vale Google.Spacing = YES
 
 The ``Trainable`` also provides the ``default_resource_requests`` interface to automatically
 declare the resources per trial based on the given configuration.
