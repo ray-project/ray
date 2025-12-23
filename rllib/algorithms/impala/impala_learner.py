@@ -561,7 +561,7 @@ class _LearnerThread(threading.Thread):
                         )
                     try:
                         if (self.learner._submitted_updates & ~0xFF) != (
-                            self._learner_submitted_updates - BATCHES_PER_AGGREGATION
+                            self.learner._submitted_updates - BATCHES_PER_AGGREGATION
                             & ~0xFF
                         ):
                             with self.learner._learner_state_lock:
