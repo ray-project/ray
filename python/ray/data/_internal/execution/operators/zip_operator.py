@@ -48,7 +48,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             input_ops: Operators generating input data for this operator to zip.
         """
         assert len(input_ops) >= 2
-        self._input_queues: List[FIFOBundleQueue] = [
+        self._input_buffers: List[FIFOBundleQueue] = [
             FIFOBundleQueue() for _ in range(len(input_ops))
         ]
         self._output_buffer: FIFOBundleQueue = FIFOBundleQueue()
@@ -61,7 +61,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
     @property
     @override
     def _input_queues(self) -> List["BaseBundleQueue"]:
-        return self._input_queues
+        return self._input_buffers
 
     @property
     @override
@@ -95,20 +95,20 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
         assert 0 <= input_index <= len(self._input_dependencies), input_index
-        self._input_queues[input_index].add(refs)
+        self._input_buffers[input_index].add(refs)
         self._metrics.on_input_queued(refs)
 
     def all_inputs_done(self) -> None:
         assert len(self._output_buffer) == 0, len(self._output_buffer)
 
         # Start with the first input buffer
-        while self._input_queues[0].has_next():
-            refs = self._input_queues[0].get_next()
+        while self._input_buffers[0].has_next():
+            refs = self._input_buffers[0].get_next()
             self._output_buffer.add(refs)
             self._metrics.on_input_dequeued(refs)
 
         # Process each additional input buffer
-        for input_buffer in self._input_queues[1:]:
+        for input_buffer in self._input_buffers[1:]:
             output_buffer, self._stats = self._zip(self._output_buffer, input_buffer)
             self._output_buffer = FIFOBundleQueue(bundles=output_buffer)
 

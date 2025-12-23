@@ -73,7 +73,7 @@ class EstimateSize(RebundlingStrategy):
         self, num_pending_rows: int, pending_bundle: RefBundle
     ) -> int:
         """Returns all the rows in the pending bundle, since we only care about an estimate"""
-        return pending_bundle.num_rows()
+        return pending_bundle.num_rows() or 0
 
 
 class ExactSize(RebundlingStrategy):
@@ -163,8 +163,8 @@ class RebundleQueue(BaseBundleQueue):
 
             pending_bundle = self._pending_bundles.popleft()
             self._on_dequeue(pending_bundle)  # Exit the original bundle
-            self._total_pending_rows -= pending_bundle.num_rows()
-            pending_row_count_prefix_sum += pending_bundle.num_rows()
+            self._total_pending_rows -= pending_bundle.num_rows() or 0
+            pending_row_count_prefix_sum += pending_bundle.num_rows() or 0
 
             if self._strategy.can_build_ready_bundle(pending_row_count_prefix_sum):
                 # We now know `pending_bundle` is the bundle that enabled us to
@@ -175,10 +175,10 @@ class RebundleQueue(BaseBundleQueue):
                 )
                 sliced_bundle, remaining_bundle = pending_bundle.slice(rows_needed)
                 pending_to_ready_bundles.append(sliced_bundle)
-                if remaining_bundle.num_rows() > 0:
+                if remaining_bundle.num_rows():
                     self._pending_bundles.appendleft(remaining_bundle)
                     self._on_enqueue(remaining_bundle)  # Enter the remaining portion
-                    self._total_pending_rows += remaining_bundle.num_rows()
+                    self._total_pending_rows += remaining_bundle.num_rows() or 0
 
                 self._merge_bundles(pending_to_ready_bundles)
 
