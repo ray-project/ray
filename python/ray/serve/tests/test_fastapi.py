@@ -1110,6 +1110,120 @@ def test_ingress_with_starlette_builder_with_deployment_class(serve_instance):
     assert docs_path is None
 
 
+def test_ingress_multi_level_inheritance(serve_instance):
+    """Test multi-level inheritance works correctly with serve.ingress.
+
+    Tests: Grandparent -> Parent -> Child -> ServedIngress
+
+    This tests the fix in make_fastapi_class_based_view that properly handles
+    inherited methods by checking the MRO instead of just the immediate class.
+
+    Without the fix, inherited endpoints would fail with:
+    'Field required at ('query', 'self')'
+
+    Also tests that unrelated classes whose names CONTAIN an MRO class name
+    as a substring don't cause false positives. For example, if MRO contains
+    "Child", an unrelated class "ChildExtra" should not have its routes matched
+    because "Child" in "ChildExtra.method" would be True with substring matching.
+    This validates that the matching uses prefix matching with a dot delimiter.
+    """
+    app = FastAPI()
+
+    class Grandparent:
+        @app.get("/grandparent")
+        def grandparent_endpoint(self):
+            return {"level": "grandparent"}
+
+    class Parent(Grandparent):
+        @app.get("/parent")
+        def parent_endpoint(self):
+            return {"level": "parent"}
+
+    class Child(Parent):
+        @app.get("/child")
+        def child_endpoint(self):
+            return {"level": "child"}
+
+    # Unrelated class whose name CONTAINS "Child" (an MRO class) as a substring.
+    # With substring matching, "Child" in "ChildExtra.extra_endpoint" would be
+    # True, causing incorrect self injection into this unrelated route.
+    class ChildExtra:
+        @app.get("/extra")
+        def extra_endpoint(self):
+            # This should NOT have self injection since ChildExtra is not in MRO
+            return {"level": "extra"}
+
+    @serve.deployment
+    @serve.ingress(app)
+    class ServedIngress(Child):
+        pass
+
+    serve.run(ServedIngress.bind())
+
+    url = get_application_url("HTTP")
+
+    # Test all inherited endpoints
+    resp = httpx.get(f"{url}/grandparent")
+    assert resp.status_code == 200, f"Grandparent failed: {resp.text}"
+    assert resp.json() == {"level": "grandparent"}
+
+    resp = httpx.get(f"{url}/parent")
+    assert resp.status_code == 200, f"Parent failed: {resp.text}"
+    assert resp.json() == {"level": "parent"}
+
+    resp = httpx.get(f"{url}/child")
+    assert resp.status_code == 200, f"Child failed: {resp.text}"
+    assert resp.json() == {"level": "child"}
+
+    # Test that the unrelated ChildExtra route is NOT processed.
+    # With substring matching bug, "Child" in "ChildExtra.extra_endpoint" would
+    # be True, incorrectly applying self injection and making this route work.
+    # With the fix, the route is correctly excluded from processing, so `self`
+    # is not injected. FastAPI then treats `self` as a required query parameter,
+    # which fails with 422 (unprocessable entity).
+    resp = httpx.get(f"{url}/extra")
+    assert resp.status_code == 422, f"Expected 422 for unprocessed route: {resp.text}"
+
+
+def test_ingress_direct_inheritance(serve_instance):
+    """Test direct inheritance works correctly with serve.ingress.
+
+    Tests: BaseIngress -> DirectServedIngress (with own endpoint)
+
+    This tests the fix in make_fastapi_class_based_view that properly handles
+    inherited methods by checking the MRO instead of just the immediate class.
+
+    Without the fix, inherited endpoints would fail with:
+    'Field required at ('query', 'self')'
+    """
+    app = FastAPI()
+
+    class BaseIngress:
+        @app.get("/base")
+        def base_endpoint(self):
+            return {"level": "base"}
+
+    @serve.deployment
+    @serve.ingress(app)
+    class DirectServedIngress(BaseIngress):
+        @app.get("/direct")
+        def direct_endpoint(self):
+            return {"level": "direct"}
+
+    serve.run(DirectServedIngress.bind())
+
+    url = get_application_url("HTTP")
+
+    # Test both inherited and own endpoints
+    resp = httpx.get(f"{url}/base")
+    assert resp.status_code == 200, f"Base failed: {resp.text}"
+    assert resp.json() == {"level": "base"}
+
+    resp = httpx.get(f"{url}/direct")
+    assert resp.status_code == 200, f"Direct failed: {resp.text}"
+    assert resp.json() == {"level": "direct"}
+
+
 if __name__ == "__main__":
     import sys
 
