@@ -2,7 +2,7 @@
 :orphan:
 
 ``torch_regression_example``
-========================
+============================
 
 .. raw:: html
 
