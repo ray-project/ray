@@ -23,7 +23,7 @@ def search_agents(cluster):
         for p in processes:
             try:
                 for c in p.cmdline():
-                    if ray_constants.AGENT_PROCESS_TYPE_DASHBOARD_AGENT in c:
+                    if ray_constants.AGENT_PROCESS_TYPE_DASHBOARD_AGENT[:15] in c:
                         return p
             except Exception:
                 pass
