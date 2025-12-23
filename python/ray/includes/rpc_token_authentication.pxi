@@ -18,14 +18,13 @@ logger = logging.getLogger(__name__)
 class AuthenticationMode:
     DISABLED = CAuthenticationMode.DISABLED
     TOKEN = CAuthenticationMode.TOKEN
-    K8S = CAuthenticationMode.K8S
 
 
 def get_authentication_mode():
     """Get the current authentication mode.
 
     Returns:
-        AuthenticationMode enum value (DISABLED or TOKEN or K8S)
+        AuthenticationMode enum value (DISABLED or TOKEN)
     """
     return GetAuthenticationMode()
 
