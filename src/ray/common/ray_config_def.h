@@ -38,6 +38,9 @@ RAY_CONFIG(bool, enable_cluster_auth, true)
 /// use GetAuthenticationMode() to get the authentication mode enum value.
 RAY_CONFIG(std::string, AUTH_MODE, "disabled")
 
+/// Whether to enable Kubernetes token-based RBAC for RPC calls.
+RAY_CONFIG(bool, ENABLE_K8S_TOKEN_RBAC, false)
+
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available
 /// in the associated process's log file.
