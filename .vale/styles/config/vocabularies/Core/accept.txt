@@ -30,7 +30,6 @@ IPython
 autograd
 [Dd]eregister
 aioredis
-subreaper
 PGs
 reparent(ed)?
 [Ss]ubreaper
