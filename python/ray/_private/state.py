@@ -815,11 +815,6 @@ class GlobalState:
         accessor = self._connect_and_get_accessor()
         return json.loads(accessor.get_system_config())
 
-    def get_node_to_connect_for_driver(self, node_ip_address):
-        """Get the node to connect for a Ray driver."""
-        accessor = self._connect_and_get_accessor()
-        return accessor.get_node_to_connect_for_driver(node_ip_address)
-
     def get_node(self, node_id: str):
         """Get the node information for a node id."""
         accessor = self._connect_and_get_accessor()

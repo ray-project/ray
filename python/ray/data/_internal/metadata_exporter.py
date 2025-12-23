@@ -84,6 +84,36 @@ class Operator:
 
 
 @dataclass
+class DataContextMetadata:
+    """Represents sanitized DataContext metadata for export.
+
+    This class wraps the sanitized dictionary representation of DataContext to provide
+    type safety and consistency with other metadata structures. The actual data is stored
+    as a dictionary that has been processed by sanitize_for_struct() to ensure it can be
+    safely serialized without module dependency issues.
+
+    Attributes:
+        config: Dictionary containing sanitized DataContext configuration values.
+            All complex objects have been converted to basic types (strings, numbers,
+            lists, dicts) suitable for protobuf Struct format.
+    """
+
+    config: Dict[str, Any] = field(default_factory=dict)
+
+    @staticmethod
+    def from_data_context(data_context: "DataContext") -> "DataContextMetadata":
+        """Create DataContextMetadata from a DataContext object.
+
+        Args:
+            data_context: The DataContext object to convert.
+
+        Returns:
+            A DataContextMetadata instance with sanitized configuration.
+        """
+        return DataContextMetadata(config=sanitize_for_struct(data_context))
+
+
+@dataclass
 class Topology:
     """Represents the complete structure of the operator DAG.
 
@@ -148,7 +178,9 @@ class DatasetMetadata:
         topology: The structure of the dataset's operator DAG.
         dataset_id: The unique ID of the dataset.
         start_time: The timestamp when the dataset is registered.
-        data_context: The DataContext attached to the dataset.
+        data_context: DataContextMetadata containing sanitized DataContext configuration.
+            This is pre-processed using sanitize_for_struct() to avoid serialization
+            issues with module dependencies.
         execution_start_time: The timestamp when the dataset execution starts.
         execution_end_time: The timestamp when the dataset execution ends.
         state: The state of the dataset.
@@ -158,7 +190,7 @@ class DatasetMetadata:
     topology: Topology
     dataset_id: str
     start_time: float
-    data_context: DataContext
+    data_context: DataContextMetadata
     execution_start_time: Optional[float]
     execution_end_time: Optional[float]
     state: str
@@ -265,7 +297,7 @@ def dataset_metadata_to_proto(
     # Populate the data metadata proto
     data_context = Struct()
     if include_data_context:
-        data_context.update(sanitize_for_struct(dataset_metadata.data_context))
+        data_context.update(dataset_metadata.data_context.config)
     proto_dataset_metadata = ProtoDatasetMetadata(
         dataset_id=dataset_metadata.dataset_id,
         job_id=dataset_metadata.job_id,

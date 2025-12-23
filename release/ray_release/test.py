@@ -36,7 +36,7 @@ MICROCHECK_COMMAND = "@microcheck"
 AWS_TEST_KEY = "ray_tests"
 AWS_TEST_RESULT_KEY = "ray_test_results"
 DEFAULT_PYTHON_VERSION = tuple(
-    int(v) for v in os.environ.get("RELEASE_PY", "3.9").split(".")
+    int(v) for v in os.environ.get("RELEASE_PY", "3.10").split(".")
 )
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
@@ -476,7 +476,7 @@ class Test(dict):
     def get_ray_version(self) -> Optional[str]:
         """
         Returns the Ray version to use from DockerHub if specified in cluster config.
-        If set, this will use released Ray images like anyscale/ray:2.50.0-py39-cpu
+        If set, this will use released Ray images like anyscale/ray:2.50.0-py310-cpu
         instead of building custom BYOD images.
         """
         return self["cluster"].get("ray_version", None)

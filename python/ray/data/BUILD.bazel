@@ -1805,9 +1805,9 @@ py_test(
 )
 
 py_test(
-    name = "test_custom_agg",
+    name = "test_aggregations",
     size = "medium",
-    srcs = ["tests/test_custom_agg.py"],
+    srcs = ["tests/test_aggregations.py"],
     tags = [
         "exclusive",
         "team:data",
