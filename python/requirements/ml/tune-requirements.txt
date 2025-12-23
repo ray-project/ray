@@ -1,5 +1,5 @@
 # Searchers
-ax-platform==0.3.2
+ax-platform==1.2.1
 
 bayesian-optimization==1.4.0
 
