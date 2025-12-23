@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
-from typing import TYPE_CHECKING, Deque, Iterator, Optional
+from typing import TYPE_CHECKING, Deque, Iterator, Optional, Callable
 
 import ray
 from ray.exceptions import ObjectRefStreamEndOfStreamError
@@ -54,7 +54,7 @@ class ObjectRefGenerator:
             print("Got:", ray.get(obj_ref))
     """
 
-    def __init__(self, generator_ref: "ray.ObjectRef", worker: "Worker", add_gpu_object_ref = None):
+    def __init__(self, generator_ref: "ray.ObjectRef", worker: "Worker", add_gpu_object_ref: Optional[Callable[["ray.ObjectRef"], None]] = None):
         # The reference to a generator task.
         self._generator_ref = generator_ref
         # True if an exception has been raised from the generator task.
@@ -240,7 +240,8 @@ class ObjectRefGenerator:
                 # The task finished without an exception.
                 raise StopIteration from None
 
-        self.add_gpu_object_ref(ref)
+        if self.add_gpu_object_ref:
+            self.add_gpu_object_ref(ref)
         return ref
 
     async def _suppress_exceptions(self, ref: "ray.ObjectRef") -> None:
@@ -286,7 +287,8 @@ class ObjectRefGenerator:
                 # Meaning the task succeed without failure raise StopAsyncIteration.
                 raise StopAsyncIteration from None
 
-        self.add_gpu_object_ref(ref)
+        if self.add_gpu_object_ref:
+            self.add_gpu_object_ref(ref)
         return ref
 
     def __del__(self):
