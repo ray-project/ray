@@ -270,6 +270,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 )
                 ctx.gcs_address = rtc.gcs_address
                 ctx.runtime_env = rtc.get_runtime_env_string()
+                ctx.session_name = rtc.get_session_name()
             resp.runtime_context.CopyFrom(ctx)
         else:
             with disable_client_hook():

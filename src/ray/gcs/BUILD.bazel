@@ -558,6 +558,7 @@ ray_cc_binary(
         ":gcs_server_lib",
         "//src/ray/common:metrics",
         "//src/ray/observability:metrics",
+        "//src/ray/raylet:metrics",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:event",
         "//src/ray/util:raii",

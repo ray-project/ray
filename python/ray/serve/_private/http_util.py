@@ -41,6 +41,7 @@ from ray.serve._private.constants import (
     SERVE_HTTP_REQUEST_ID_HEADER,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.constants_utils import warn_if_deprecated_env_var_set
 from ray.serve._private.proxy_request_response import ResponseStatus
 from ray.serve._private.utils import (
     call_function_from_import_path,
@@ -449,7 +450,16 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         # NOTE(simon): we can't use `route.endpoint in inspect.getmembers(cls)`
         # because the FastAPI supports different routes for the methods with
         # same name. See #17559.
-        and (cls.__qualname__ in route.endpoint.__qualname__)
+        # NOTE: We check against all classes in the MRO to handle inherited
+        # methods. When a method is inherited, its __qualname__ still references
+        # the parent class (e.g., "ParentClass.method" not "ChildClass.method").
+        # We use "ClassName." prefix matching (not substring) to avoid false
+        # positives where class "A" would incorrectly match routes from "AA".
+        and any(
+            route.endpoint.__qualname__.startswith(base.__qualname__ + ".")
+            for base in cls.__mro__
+            if base is not object
+        )
     ]
 
     # Modify these routes and mount it to a new APIRouter.
@@ -816,6 +826,9 @@ def configure_http_options_with_defaults(http_options: HTTPOptions) -> HTTPOptio
     """Enhanced configuration with component-specific options."""
 
     http_options = deepcopy(http_options)
+
+    # Warn if deprecated env var is set
+    warn_if_deprecated_env_var_set("RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S")
 
     # Apply environment defaults
     if (RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S or 0) > 0:

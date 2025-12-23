@@ -596,7 +596,7 @@ class OpenCensusProxyCollector:
                         # metrics. The aggregation of histogram metrics from worker
                         # level to node level is not well defined. In addition, we
                         # currently have very few histogram metrics in Ray
-                        # (metric_defs.cc) so the impact of them is negligible.
+                        # so the impact of them is negligible.
                         to_lower_cardinality[metric.name].append(metric)
                     else:
                         open_cencus_metrics.append(metric)

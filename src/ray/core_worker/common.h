@@ -65,18 +65,17 @@ class RayFunction {
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() = default;
-  TaskOptions(
-      std::string name_p,
-      int num_returns_p,
-      std::unordered_map<std::string, double> &resources_p,
-      std::string concurrency_group_name_p = "",
-      int64_t generator_backpressure_num_objects_p = -1,
-      std::string serialized_runtime_env_info_p = "{}",
-      bool enable_task_events_p = kDefaultTaskEventEnabled,
-      std::unordered_map<std::string, std::string> labels_p = {},
-      LabelSelector label_selector_p = {},
-      rpc::TensorTransport tensor_transport_p = rpc::TensorTransport::OBJECT_STORE,
-      std::vector<FallbackOption> fallback_strategy_p = {})
+  TaskOptions(std::string name_p,
+              int num_returns_p,
+              std::unordered_map<std::string, double> &resources_p,
+              std::string concurrency_group_name_p = "",
+              int64_t generator_backpressure_num_objects_p = -1,
+              std::string serialized_runtime_env_info_p = "{}",
+              bool enable_task_events_p = kDefaultTaskEventEnabled,
+              std::unordered_map<std::string, std::string> labels_p = {},
+              LabelSelector label_selector_p = {},
+              std::optional<std::string> tensor_transport_p = std::nullopt,
+              std::vector<FallbackOption> fallback_strategy_p = {})
       : name(std::move(name_p)),
         num_returns(num_returns_p),
         resources(resources_p),
@@ -87,7 +86,7 @@ struct TaskOptions {
         labels(std::move(labels_p)),
         label_selector(std::move(label_selector_p)),
         fallback_strategy(std::move(fallback_strategy_p)),
-        tensor_transport(tensor_transport_p) {}
+        tensor_transport(std::move(tensor_transport_p)) {}
 
   /// The name of this task.
   std::string name;
@@ -114,7 +113,7 @@ struct TaskOptions {
   // A list of fallback options defining scheduling strategies.
   std::vector<FallbackOption> fallback_strategy;
   // The tensor transport (e.g., NCCL, GLOO, etc.) to use for this task.
-  rpc::TensorTransport tensor_transport;
+  std::optional<std::string> tensor_transport;
 };
 
 /// Options for actor creation tasks.
