@@ -15,11 +15,7 @@ from torchvision.transforms import ToTensor, Normalize
 import ray
 import ray.train
 import ray.train.torch
-from ray.train.v2.api.report_config import (
-    CheckpointUploadMode,
-    ValidationConfig,
-    ValidationTaskConfig,
-)
+from ray.train import CheckpointUploadMode, ValidationConfig, ValidationTaskConfig
 from ray._private.test_utils import safe_write_to_results_json
 
 
