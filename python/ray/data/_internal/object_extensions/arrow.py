@@ -5,7 +5,7 @@ import numpy as np
 import pyarrow as pa
 from packaging.version import parse as parse_version
 
-import ray.air.util.object_extensions.pandas
+import ray.data._internal.object_extensions.pandas
 from ray._common.serialization import pickle_dumps
 from ray._private.arrow_utils import _check_pyarrow_version, get_pyarrow_version
 from ray.util.annotations import PublicAPI
@@ -67,7 +67,7 @@ class ArrowPythonObjectType(pa.ExtensionType):
         to the Arrow type. See https://pandas.pydata.org/docs/development/extending.html
         for more information.
         """
-        return ray.air.util.object_extensions.pandas.PythonObjectDtype()
+        return ray.data._internal.object_extensions.pandas.PythonObjectDtype()
 
     def __reduce__(self):
         # Earlier PyArrow versions require custom pickling behavior.

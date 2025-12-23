@@ -9,8 +9,7 @@ import pyarrow
 import pytest
 
 import ray
-from ray.air.constants import MAX_REPR_LENGTH
-from ray.air.util.data_batch_conversion import BatchFormat
+from ray.data.constants import MAX_REPR_LENGTH
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import (
     Categorizer,
@@ -33,6 +32,7 @@ from ray.data.preprocessors import (
     Tokenizer,
     TorchVisionPreprocessor,
 )
+from ray.data.util.data_batch_conversion import BatchFormat
 
 
 @pytest.fixture
