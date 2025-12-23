@@ -50,6 +50,6 @@ class CoreContextFilter(logging.Filter):
     def filter(self, record):
         context = self.get_ray_core_logging_context()
         for key, value in context.items():
-            if value:
+            if value is not None and value != "":
                 setattr(record, key, value)
         return True
