@@ -685,6 +685,29 @@ def test_min_max_resource_requirements(restore_data_context):
     assert max_resource_usage_bound == ExecutionResources(cpu=2, object_store_memory=6)
 
 
+def test_min_max_resource_requirements_unbounded(restore_data_context):
+    """Test that unbounded actor pools return infinite max resources."""
+    data_context = ray.data.DataContext.get_current()
+    # ActorPoolStrategy() with no max_size defaults to unbounded (max_size=inf)
+    op = ActorPoolMapOperator(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=ray.data.ActorPoolStrategy(),
+        ray_remote_args={"num_cpus": 1},
+    )
+    op._metrics = MagicMock(obj_store_mem_max_pending_output_per_task=3)
+
+    (
+        min_resource_usage_bound,
+        max_resource_usage_bound,
+    ) = op.min_max_resource_requirements()
+
+    # Unbounded pools should return infinite max resources
+    assert min_resource_usage_bound == ExecutionResources(cpu=1, object_store_memory=3)
+    assert max_resource_usage_bound == ExecutionResources.for_limits()
+
+
 def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
     """Tests that ActorPoolMapOperator raises an exception on
     timeout while waiting for actors."""

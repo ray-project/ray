@@ -1,5 +1,6 @@
 import abc
 import logging
+import math
 import time
 import uuid
 import warnings
@@ -472,15 +473,20 @@ class ActorPoolMapOperator(MapOperator):
             * min_actors,
         )
 
-        max_resource_usage = ExecutionResources(
-            cpu=num_cpus_per_actor * max_actors,
-            gpu=num_gpus_per_actor * max_actors,
-            memory=memory_per_actor * max_actors,
-            object_store_memory=(
-                self._metrics.obj_store_mem_max_pending_output_per_task or 0
+        # If max_actors is infinite (unbounded pool), return infinite resources.
+        # Otherwise, compute the max resources based on max_actors.
+        if math.isinf(max_actors):
+            max_resource_usage = ExecutionResources.for_limits()
+        else:
+            max_resource_usage = ExecutionResources(
+                cpu=num_cpus_per_actor * max_actors,
+                gpu=num_gpus_per_actor * max_actors,
+                memory=memory_per_actor * max_actors,
+                object_store_memory=(
+                    self._metrics.obj_store_mem_max_pending_output_per_task or 0
+                )
+                * max_actors,
             )
-            * max_actors,
-        )
 
         return min_resource_usage, max_resource_usage
 
