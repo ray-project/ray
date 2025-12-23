@@ -138,7 +138,7 @@ Bayesian Optimization (tune.search.bayesopt.BayesOptSearch)
 
 .. _suggest-TuneBOHB:
 
-Bayesian Optimization HyperBand (tune.search.bohb.TuneBOHB)
+BOHB (tune.search.bohb.TuneBOHB)
 --------------------------------
 
 Bayesian Optimization HyperBand (BOHB) is an algorithm that both terminates bad trials
@@ -163,10 +163,11 @@ See the `BOHB paper <https://arxiv.org/abs/1807.01774>`_ for more details.
 
 .. _tune-hebo:
 
-Heteroscedastic and Evolutionary Bayesian Optimisation (tune.search.hebo.HEBOSearch)
+HEBO (tune.search.hebo.HEBOSearch)
 ----------------------------------
 
 Heteroscedastic and Evolutionary Bayesian Optimisation (HEBO) is a Bayesian optimization library.
+
 .. autosummary::
     :nosignatures:
     :toctree: doc/
