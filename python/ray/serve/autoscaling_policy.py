@@ -2,11 +2,14 @@ import logging
 import math
 from typing import Any, Dict, Optional, Tuple
 
+import ray
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     SERVE_AUTOSCALING_DECISION_COUNTERS_KEY,
     SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
 )
+from ray.serve._private.queue_monitor import QUEUE_MONITOR_ACTOR_PREFIX
 from ray.serve.config import AutoscalingConfig, AutoscalingContext
 from ray.util.annotations import PublicAPI
 
@@ -119,8 +122,6 @@ def replica_queue_length_autoscaling_policy(
             )
         return curr_target_num_replicas, policy_state
 
-    decision_num_replicas = curr_target_num_replicas
-
     desired_num_replicas = _calculate_desired_num_replicas(
         config,
         total_num_requests,
@@ -128,53 +129,204 @@ def replica_queue_length_autoscaling_policy(
         override_min_replicas=capacity_adjusted_min_replicas,
         override_max_replicas=capacity_adjusted_max_replicas,
     )
-    # Scale up.
+
+    decision_num_replicas, decision_counter = _apply_scaling_decision_smoothing(
+        desired_num_replicas=desired_num_replicas,
+        curr_target_num_replicas=curr_target_num_replicas,
+        decision_counter=decision_counter,
+        config=config,
+    )
+
+    policy_state["decision_counter"] = decision_counter
+    policy_state[SERVE_AUTOSCALING_DECISION_COUNTERS_KEY] = decision_counter
+    return decision_num_replicas, policy_state
+
+
+@PublicAPI(stability="alpha")
+def queue_based_autoscaling_policy(
+    ctx: AutoscalingContext,
+) -> Tuple[int, Dict[str, Any]]:
+    """
+    Autoscaling policy for TaskConsumer deployments based on queue depth.
+
+    This policy scales replicas based on the number of pending tasks in the
+    message queue, rather than HTTP request load.
+
+    Formula:
+        desired_replicas = ceil(queue_length / target_ongoing_requests)
+
+    Behavior:
+        - Queries QueueMonitor Ray actor directly via ray.get_actor()
+        - If QueueMonitor unavailable, maintains current replica count
+        - Uses same smoothing/delay logic as default policy to prevent oscillation
+
+    Args:
+        ctx: AutoscalingContext containing metrics, config, and state
+
+    Returns:
+        Tuple of (desired_num_replicas, updated_policy_state)
+    """
+
+    # Extract state
+    policy_state: Dict[str, Any] = ctx.policy_state
+    current_num_replicas: int = ctx.current_num_replicas
+    curr_target_num_replicas: int = ctx.target_num_replicas
+    config: Optional[AutoscalingConfig] = ctx.config
+    capacity_adjusted_min_replicas: int = ctx.capacity_adjusted_min_replicas
+    capacity_adjusted_max_replicas: int = ctx.capacity_adjusted_max_replicas
+
+    # Get decision counter from state (for smoothing)
+    decision_counter = policy_state.get("decision_counter", 0)
+
+    # === STEP 1: Get queue length from QueueMonitor actor ===
+    # Actor name format: "QUEUE_MONITOR::<deployment_name>"
+    queue_monitor_actor_name = f"{QUEUE_MONITOR_ACTOR_PREFIX}{ctx.deployment_name}"
+    queue_monitor_actor, actor_found = _get_queue_monitor_actor(
+        queue_monitor_actor_name=queue_monitor_actor_name,
+    )
+
+    if not actor_found:
+        logger.warning(
+            f"[{ctx.deployment_name}] QueueMonitor actor unavailable, maintaining {curr_target_num_replicas} replicas"
+        )
+        return curr_target_num_replicas, policy_state
+
+    try:
+        queue_length = ray.get(
+            queue_monitor_actor.get_queue_length.remote(), timeout=5.0
+        )
+    except Exception as e:
+        # Error querying actor - maintain current replicas
+        logger.warning(
+            f"[{ctx.deployment_name}] Could not query QueueMonitor ({e}), maintaining {curr_target_num_replicas} replicas"
+        )
+        return curr_target_num_replicas, policy_state
+
+    # === STEP 2: Calculate desired replicas ===
+    target_ongoing_requests = config.get_target_ongoing_requests()
+
+    policy_state["last_queue_length"] = queue_length
+
+    # Handle scale from zero
+    if current_num_replicas == 0:
+        if queue_length > 0:
+            desired = math.ceil(queue_length / target_ongoing_requests)
+            desired = max(1, min(desired, capacity_adjusted_max_replicas))
+            return desired, policy_state
+        return 0, policy_state
+
+    # Calculate desired replicas based on queue depth
+    desired_num_replicas = math.ceil(queue_length / target_ongoing_requests)
+
+    # Clamp to min/max bounds
+    desired_num_replicas = max(
+        capacity_adjusted_min_replicas,
+        min(capacity_adjusted_max_replicas, desired_num_replicas),
+    )
+
+    # === STEP 3: Apply smoothing (same logic as default policy) ===
+    decision_num_replicas, decision_counter = _apply_scaling_decision_smoothing(
+        desired_num_replicas=desired_num_replicas,
+        curr_target_num_replicas=curr_target_num_replicas,
+        decision_counter=decision_counter,
+        config=config,
+    )
+
+    # Update policy state
+    policy_state["decision_counter"] = decision_counter
+
+    policy_state[SERVE_AUTOSCALING_DECISION_COUNTERS_KEY] = decision_counter
+    return decision_num_replicas, policy_state
+
+
+def _apply_scaling_decision_smoothing(
+    desired_num_replicas: int,
+    curr_target_num_replicas: int,
+    decision_counter: int,
+    config: AutoscalingConfig,
+) -> Tuple[int, int]:
+    """
+    Apply smoothing logic to prevent oscillation in scaling decisions.
+
+    This function implements delay-based smoothing: a scaling decision must be
+    made for a consecutive number of periods before actually scaling.
+
+    Args:
+        desired_num_replicas: The calculated desired number of replicas.
+        curr_target_num_replicas: Current target number of replicas.
+        decision_counter: Counter tracking consecutive scaling decisions.
+            Positive = consecutive scale-up decisions, negative = scale-down.
+        config: Autoscaling configuration containing delay settings.
+
+    Returns:
+        Tuple of (decision_num_replicas, updated_decision_counter).
+    """
+    decision_num_replicas = curr_target_num_replicas
+
+    # Scale up
     if desired_num_replicas > curr_target_num_replicas:
-        # If the previous decision was to scale down (the counter was
-        # negative), we reset it and then increment it (set to 1).
-        # Otherwise, just increment.
         if decision_counter < 0:
             decision_counter = 0
         decision_counter += 1
 
-        # Only actually scale the replicas if we've made this decision for
-        # 'scale_up_consecutive_periods' in a row.
+        # Only scale after upscale_delay_s
         if decision_counter > int(config.upscale_delay_s / CONTROL_LOOP_INTERVAL_S):
             decision_counter = 0
             decision_num_replicas = desired_num_replicas
 
-    # Scale down.
+    # Scale down
     elif desired_num_replicas < curr_target_num_replicas:
-        # If the previous decision was to scale up (the counter was
-        # positive), reset it to zero before decrementing.
-
         if decision_counter > 0:
             decision_counter = 0
         decision_counter -= 1
+
         # Downscaling to zero is only allowed from 1 -> 0
-        is_scaling_to_zero = curr_target_num_replicas == 1
-        # Determine the delay to use
+        is_scaling_to_zero = curr_target_num_replicas == 1 and desired_num_replicas == 0
         if is_scaling_to_zero:
-            # Check if the downscale_to_zero_delay_s is set
+            # Use downscale_to_zero_delay_s if set, otherwise fall back to downscale_delay_s
             if config.downscale_to_zero_delay_s is not None:
                 delay_s = config.downscale_to_zero_delay_s
             else:
                 delay_s = config.downscale_delay_s
         else:
             delay_s = config.downscale_delay_s
-            # The desired_num_replicas>0 for downscaling cases other than 1->0
+            # Ensure desired_num_replicas >= 1 for non-zero scaling cases
             desired_num_replicas = max(1, desired_num_replicas)
-        # Only actually scale the replicas if we've made this decision for
-        # 'scale_down_consecutive_periods' in a row.
+
+        # Only scale after delay
         if decision_counter < -int(delay_s / CONTROL_LOOP_INTERVAL_S):
             decision_counter = 0
             decision_num_replicas = desired_num_replicas
-    # Do nothing.
+
+    # No change
     else:
         decision_counter = 0
 
-    policy_state[SERVE_AUTOSCALING_DECISION_COUNTERS_KEY] = decision_counter
-    return decision_num_replicas, policy_state
+    return decision_num_replicas, decision_counter
+
+
+def _get_queue_monitor_actor(
+    queue_monitor_actor_name: str,
+) -> Tuple[Optional[ray.actor.ActorHandle], bool]:
+    """
+    Try to get an existing QueueMonitor actor.
+
+    Args:
+        queue_monitor_actor_name: The name of the QueueMonitor actor to look up.
+
+    Returns:
+        Tuple of (queue_monitor_actor, actor_found). If actor_found is False,
+        queue_monitor_actor will be None.
+    """
+    try:
+        queue_monitor_actor = ray.get_actor(
+            queue_monitor_actor_name, namespace=SERVE_NAMESPACE
+        )
+        return queue_monitor_actor, True
+    except ValueError:
+        return None, False
 
 
 default_autoscaling_policy = replica_queue_length_autoscaling_policy
+
+default_queue_based_autoscaling_policy = queue_based_autoscaling_policy
