@@ -5,6 +5,7 @@ import itertools
 import logging
 import time
 import warnings
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -118,7 +119,18 @@ from ray.data.block import (
     UserDefinedFunction,
     _apply_batch_format,
 )
-from ray.data.context import DataContext
+from ray.data.context import (
+    DEFAULT_DATASET_REPR_HEAD_COLUMNS,
+    DEFAULT_DATASET_REPR_HEAD_ROWS,
+    DEFAULT_DATASET_REPR_MAX_BYTES_LENGTH,
+    DEFAULT_DATASET_REPR_MAX_COLLECTION_ITEMS,
+    DEFAULT_DATASET_REPR_MAX_COLUMN_WIDTH,
+    DEFAULT_DATASET_REPR_MAX_COLUMNS,
+    DEFAULT_DATASET_REPR_MAX_ROWS,
+    DEFAULT_DATASET_REPR_MAX_STRING_LENGTH,
+    DEFAULT_DATASET_REPR_MAX_TENSOR_ELEMENTS,
+    DataContext,
+)
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
 from ray.data.datasource.datasink import WriteResult, _gen_datasink_write_result
 from ray.data.datasource.file_datasink import _FileDatasink
@@ -152,10 +164,8 @@ from ray.data.expressions import Expr, StarExpr, col
 
 logger = logging.getLogger(__name__)
 
-_DATASET_REPR_MAX_ROWS = 10
-_DATASET_REPR_HEAD_ROWS = 5
-_DATASET_REPR_MAX_CELL_WIDTH = 40
 _DATASET_REPR_ELLIPSIS = "…"
+_DATASET_REPR_PREVIEW_MAX_DEPTH = 2
 
 # Special column name for train/test split to avoid collision with user columns
 _TRAIN_TEST_SPLIT_COLUMN = "__ray_train_test_split_is_train__"
@@ -6703,7 +6713,8 @@ class Dataset:
             return self._plan.get_plan_as_string(self.__class__)
 
         is_materialized = isinstance(self, MaterializedDataset)
-        return _build_dataset_ascii_repr(self, schema, is_materialized)
+        config = _dataset_repr_config_from_context(self.context)
+        return _build_dataset_ascii_repr(self, schema, is_materialized, config)
 
     def __str__(self) -> str:
         return repr(self)
@@ -6955,17 +6966,149 @@ def _block_to_arrow(block: Block):
     return block.to_arrow()
 
 
+@dataclass
+class _DatasetReprConfig:
+    max_rows: int
+    head_rows: int
+    max_columns: int
+    head_columns: int
+    max_column_width: int
+    max_string_length: int
+    max_bytes_length: int
+    max_collection_items: int
+    max_tensor_elements: int
+
+
+def _dataset_repr_config_from_context(
+    context: Optional[DataContext],
+) -> _DatasetReprConfig:
+    def _get_value(name: str, default: int) -> int:
+        if context is None:
+            return default
+        value = getattr(context, name, default)
+        if value is None:
+            return default
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    return _DatasetReprConfig(
+        max_rows=_get_value("dataset_repr_max_rows", DEFAULT_DATASET_REPR_MAX_ROWS),
+        head_rows=_get_value("dataset_repr_head_rows", DEFAULT_DATASET_REPR_HEAD_ROWS),
+        max_columns=_get_value(
+            "dataset_repr_max_columns", DEFAULT_DATASET_REPR_MAX_COLUMNS
+        ),
+        head_columns=_get_value(
+            "dataset_repr_head_columns", DEFAULT_DATASET_REPR_HEAD_COLUMNS
+        ),
+        max_column_width=_get_value(
+            "dataset_repr_max_column_width", DEFAULT_DATASET_REPR_MAX_COLUMN_WIDTH
+        ),
+        max_string_length=_get_value(
+            "dataset_repr_max_string_length", DEFAULT_DATASET_REPR_MAX_STRING_LENGTH
+        ),
+        max_bytes_length=_get_value(
+            "dataset_repr_max_bytes_length", DEFAULT_DATASET_REPR_MAX_BYTES_LENGTH
+        ),
+        max_collection_items=_get_value(
+            "dataset_repr_max_collection_items",
+            DEFAULT_DATASET_REPR_MAX_COLLECTION_ITEMS,
+        ),
+        max_tensor_elements=_get_value(
+            "dataset_repr_max_tensor_elements",
+            DEFAULT_DATASET_REPR_MAX_TENSOR_ELEMENTS,
+        ),
+    )
+
+
+@dataclass
+class _ColumnDisplaySpec:
+    name: Optional[str]
+    dtype: Optional[str]
+    is_gap: bool = False
+
+
+def _prepare_columns_for_repr(
+    columns: List[str],
+    dtype_strings: List[str],
+    config: _DatasetReprConfig,
+) -> Tuple[List[_ColumnDisplaySpec], bool, int]:
+    if not columns:
+        return [], False, 0
+
+    max_columns = config.max_columns
+    if max_columns is None or max_columns <= 0:
+        max_columns = len(columns)
+    max_columns = max(1, max_columns)
+
+    num_columns = len(columns)
+    display: List[_ColumnDisplaySpec] = []
+
+    if num_columns <= max_columns:
+        for name, dtype in zip(columns, dtype_strings):
+            display.append(_ColumnDisplaySpec(name=name, dtype=dtype))
+        return display, False, len(display)
+
+    # We need to truncate columns.
+    if max_columns == 1:
+        display.append(_ColumnDisplaySpec(name=columns[0], dtype=dtype_strings[0]))
+        return display, True, 1
+
+    head_target = min(config.head_columns, max_columns - 1)
+    if head_target < 0:
+        head_target = 0
+    tail_slots = max_columns - head_target - 1
+    if tail_slots < 0:
+        tail_slots = 0
+
+    for idx in range(head_target):
+        display.append(_ColumnDisplaySpec(name=columns[idx], dtype=dtype_strings[idx]))
+
+    display.append(_ColumnDisplaySpec(name=None, dtype=None, is_gap=True))
+
+    tail_start = max(num_columns - tail_slots, head_target)
+    for idx in range(tail_start, num_columns):
+        if len(display) >= max_columns:
+            break
+        display.append(_ColumnDisplaySpec(name=columns[idx], dtype=dtype_strings[idx]))
+
+    shown_columns = sum(1 for spec in display if not spec.is_gap)
+    return display, True, shown_columns
+
+
 def _build_dataset_ascii_repr(
-    dataset: "Dataset", schema: "Schema", is_materialized: bool
+    dataset: "Dataset",
+    schema: "Schema",
+    is_materialized: bool,
+    config: _DatasetReprConfig,
 ) -> str:
     columns = list(schema.names)
     if not columns:
         return dataset._plan.get_plan_as_string(dataset.__class__)
 
     dtype_strings = [_repr_format_dtype(t) for t in schema.types]
-    column_headers = [_truncate_repr_value(str(col)) for col in columns]
-    dtype_headers = [_truncate_repr_value(dtype) for dtype in dtype_strings]
-    separator_row = ["---"] * len(columns)
+    (
+        display_specs,
+        columns_truncated,
+        num_columns_shown,
+    ) = _prepare_columns_for_repr(columns, dtype_strings, config)
+
+    column_headers: List[str] = []
+    dtype_headers: List[str] = []
+    preview_column_names: List[Optional[str]] = []
+    for spec in display_specs:
+        header_value = spec.name if spec.name is not None else _DATASET_REPR_ELLIPSIS
+        dtype_value = spec.dtype if spec.dtype is not None else _DATASET_REPR_ELLIPSIS
+        column_headers.append(
+            _truncate_to_cell_width(str(header_value), config.max_column_width)
+        )
+        dtype_headers.append(
+            _truncate_to_cell_width(str(dtype_value), config.max_column_width)
+        )
+        preview_column_names.append(spec.name)
+
+    separator_row = ["---"] * len(display_specs)
 
     num_rows = dataset._meta_count()
     num_cols = len(columns)
@@ -6980,15 +7123,15 @@ def _build_dataset_ascii_repr(
             head_data,
             tail_data,
             show_gap,
-        ) = _collect_materialized_rows_for_repr(dataset, num_rows)
-        head_rows = _format_rows_for_repr(head_data, columns)
-        tail_rows = _format_rows_for_repr(tail_data, columns)
+        ) = _collect_materialized_rows_for_repr(dataset, num_rows, config)
+        head_rows = _format_rows_for_repr(head_data, preview_column_names, config)
+        tail_rows = _format_rows_for_repr(tail_data, preview_column_names, config)
         rows_shown = len(head_rows) + len(tail_rows)
 
     display_rows: List[List[str]] = []
     display_rows.extend(head_rows)
     if show_gap:
-        display_rows.append([_DATASET_REPR_ELLIPSIS] * len(columns))
+        display_rows.append([_DATASET_REPR_ELLIPSIS] * len(display_specs))
     display_rows.extend(tail_rows)
 
     column_widths = _compute_column_widths(
@@ -7011,7 +7154,11 @@ def _build_dataset_ascii_repr(
     if is_materialized and num_rows is None:
         summary_line = f"(Showing {rows_shown} of ? rows)"
 
-    components = [shape_line, "\n".join(table_lines), summary_line]
+    summary_lines = [summary_line]
+    if columns_truncated:
+        summary_lines.append(f"(Showing {num_columns_shown} of {num_cols} columns)")
+
+    components = [shape_line, "\n".join(table_lines), "\n".join(summary_lines)]
     return "\n".join(components)
 
 
@@ -7022,7 +7169,9 @@ def _repr_format_dtype(dtype: Any) -> str:
 
 
 def _collect_materialized_rows_for_repr(
-    dataset: "Dataset", num_rows: Optional[int]
+    dataset: "Dataset",
+    num_rows: Optional[int],
+    config: _DatasetReprConfig,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], bool]:
     block_entries: List[Tuple[ObjectRef, BlockMetadata]] = []
     snapshot = dataset._plan._snapshot_bundle
@@ -7038,7 +7187,7 @@ def _collect_materialized_rows_for_repr(
     if not block_entries:
         return [], [], False
 
-    head_target, tail_target = _determine_preview_row_targets(num_rows)
+    head_target, tail_target = _determine_preview_row_targets(num_rows, config)
     block_cache: Dict[ObjectRef, Block] = {}
 
     def _resolve_block(block_ref: ObjectRef) -> Block:
@@ -7091,54 +7240,194 @@ def _collect_materialized_rows_for_repr(
 
 def _determine_preview_row_targets(
     num_rows: Optional[int],
+    config: _DatasetReprConfig,
 ) -> Tuple[int, int]:
-    if num_rows is None or num_rows <= _DATASET_REPR_MAX_ROWS:
-        head = num_rows or 0
-        tail = 0
-        if num_rows is None:
-            head = _DATASET_REPR_MAX_ROWS
-        return head, tail
+    max_rows = config.max_rows
+    if max_rows is None or max_rows <= 0:
+        return 0, 0
 
-    head = min(_DATASET_REPR_HEAD_ROWS, _DATASET_REPR_MAX_ROWS)
-    tail = _DATASET_REPR_MAX_ROWS - head
+    if num_rows is None or num_rows <= max_rows:
+        head = num_rows if num_rows is not None else max_rows
+        return head, 0
+
+    head = min(config.head_rows, max_rows)
+    tail = max_rows - head
+    if tail < 0:
+        tail = 0
     return head, tail
 
 
 def _format_rows_for_repr(
-    rows: List[Dict[str, Any]], columns: List[str]
+    rows: List[Dict[str, Any]],
+    column_names: List[Optional[str]],
+    config: _DatasetReprConfig,
 ) -> List[List[str]]:
     formatted_rows: List[List[str]] = []
     for row in rows:
         formatted_row = []
-        for column in columns:
+        for column in column_names:
+            if column is None:
+                formatted_row.append(_DATASET_REPR_ELLIPSIS)
+                continue
             value = row.get(column)
-            formatted_row.append(_truncate_repr_value(_repr_format_value(value)))
+            formatted_value = _repr_format_value(value, config)
+            formatted_row.append(
+                _truncate_to_cell_width(formatted_value, config.max_column_width)
+            )
         formatted_rows.append(formatted_row)
     return formatted_rows
 
 
-def _repr_format_value(value: Any) -> str:
+def _truncate_to_cell_width(value: str, max_width: int) -> str:
+    if max_width is None:
+        return value
+    if max_width <= 0:
+        return _DATASET_REPR_ELLIPSIS if value else ""
+    if len(value) <= max_width:
+        return value
+    if max_width == 1:
+        return _DATASET_REPR_ELLIPSIS
+    return value[: max_width - 1] + _DATASET_REPR_ELLIPSIS
+
+
+def _repr_format_value(
+    value: Any,
+    config: _DatasetReprConfig,
+    depth: int = 0,
+) -> str:
+    if depth >= _DATASET_REPR_PREVIEW_MAX_DEPTH:
+        return _DATASET_REPR_ELLIPSIS
+
     if isinstance(value, np.generic):
         value = value.item()
-    if isinstance(value, bytes):
-        try:
-            return value.decode()
-        except Exception:
-            return repr(value)
-    if isinstance(value, bytearray):
-        try:
-            return value.decode()
-        except Exception:
-            return repr(bytes(value))
     if value is None:
         return "None"
+    if isinstance(value, str):
+        return _truncate_text_value(value, config.max_string_length)
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        if isinstance(value, memoryview):
+            value = value.tobytes()
+        elif isinstance(value, bytearray):
+            value = bytes(value)
+        return _format_binary_value(value, config)
+    if isinstance(value, np.ndarray):
+        return _format_ndarray_value(value, config, depth)
+    if isinstance(value, dict):
+        return _format_mapping_value(value, config, depth)
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return _format_sequence_value(value, config, depth)
     return str(value)
 
 
-def _truncate_repr_value(value: str) -> str:
-    if len(value) <= _DATASET_REPR_MAX_CELL_WIDTH:
+def _truncate_text_value(value: str, limit: int) -> str:
+    if limit is None:
         return value
-    return value[: _DATASET_REPR_MAX_CELL_WIDTH - 1] + _DATASET_REPR_ELLIPSIS
+    if limit < 0:
+        return value
+    if limit == 0:
+        return _DATASET_REPR_ELLIPSIS if value else ""
+    if len(value) <= limit:
+        return value
+    if limit == 1:
+        return _DATASET_REPR_ELLIPSIS
+    return value[: limit - 1] + _DATASET_REPR_ELLIPSIS
+
+
+def _format_binary_value(value: bytes, config: _DatasetReprConfig) -> str:
+    try:
+        decoded = value.decode()
+        return _truncate_text_value(decoded, config.max_bytes_length)
+    except Exception:
+        return _truncate_text_value(repr(value), config.max_bytes_length)
+
+
+def _format_sequence_value(
+    value: Union[List[Any], Tuple[Any, ...], set, frozenset],
+    config: _DatasetReprConfig,
+    depth: int,
+) -> str:
+    limit = config.max_collection_items
+    preview, truncated = _preview_iterable(value, limit)
+    rendered = [_repr_format_value(item, config, depth + 1) for item in preview]
+    body = ", ".join(rendered)
+    if truncated:
+        body = f"{body}, {_DATASET_REPR_ELLIPSIS}" if body else _DATASET_REPR_ELLIPSIS
+
+    if isinstance(value, tuple):
+        if not truncated and len(preview) == 1:
+            body = f"{body},"
+        return f"({body})"
+
+    if isinstance(value, list):
+        return f"[{body}]"
+
+    if isinstance(value, set):
+        if not body and not truncated:
+            return "set()"
+        return f"{{{body}}}"
+
+    if isinstance(value, frozenset):
+        if not body and not truncated:
+            return "frozenset()"
+        return f"frozenset({{{body}}})"
+
+    return f"[{body}]"
+
+
+def _format_mapping_value(
+    mapping: Mapping[Any, Any],
+    config: _DatasetReprConfig,
+    depth: int,
+) -> str:
+    limit = config.max_collection_items
+    preview_items, truncated = _preview_iterable(mapping.items(), limit)
+    rendered = []
+    for key, val in preview_items:
+        key_repr = _repr_format_value(key, config, depth + 1)
+        val_repr = _repr_format_value(val, config, depth + 1)
+        rendered.append(f"{key_repr}: {val_repr}")
+
+    body = ", ".join(rendered)
+    if truncated:
+        body = f"{body}, {_DATASET_REPR_ELLIPSIS}" if body else _DATASET_REPR_ELLIPSIS
+    return f"{{{body}}}"
+
+
+def _format_ndarray_value(
+    array: np.ndarray,
+    config: _DatasetReprConfig,
+    depth: int,
+) -> str:
+    max_elements = config.max_tensor_elements
+    if max_elements is None or max_elements < 0:
+        max_elements = array.size
+    preview = list(itertools.islice(array.flat, max_elements))
+    truncated = array.size > max_elements
+    rendered = [_repr_format_value(val, config, depth + 1) for val in preview]
+    body = ", ".join(rendered)
+    if truncated:
+        body = f"{body}, {_DATASET_REPR_ELLIPSIS}" if body else _DATASET_REPR_ELLIPSIS
+    return f"array(shape={array.shape}, dtype={array.dtype}, data=[{body}])"
+
+
+def _preview_iterable(values: Iterable[Any], limit: int) -> Tuple[List[Any], bool]:
+    iterator = iter(values)
+    if limit is None or limit < 0:
+        return list(iterator), False
+    if limit == 0:
+        try:
+            next(iterator)
+            return [], True
+        except StopIteration:
+            return [], False
+
+    preview = list(itertools.islice(iterator, limit))
+    try:
+        next(iterator)
+        truncated = True
+    except StopIteration:
+        truncated = False
+    return preview, truncated
 
 
 def _compute_column_widths(
@@ -7168,7 +7457,7 @@ def _render_table_lines(
     column_widths: List[int],
 ) -> List[str]:
     lines: List[str] = []
-    top = _render_border("┌", "┬", "┐", "─", column_widths)
+    top = _render_border("╭", "┬", "╮", "─", column_widths)
     header_row = _render_row(headers, column_widths)
     separator_line = _render_row(separator_row, column_widths)
     dtype_row = _render_row(dtype_headers, column_widths)
@@ -7180,7 +7469,7 @@ def _render_table_lines(
         for row in data_rows:
             lines.append(_render_row(row, column_widths))
 
-    bottom = _render_border("└", "┴", "┘", "─", column_widths)
+    bottom = _render_border("╰", "┴", "╯", "─", column_widths)
     lines.append(bottom)
     return lines
 

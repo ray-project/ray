@@ -155,6 +155,26 @@ DEFAULT_ENFORCE_SCHEMAS = env_bool("RAY_DATA_ENFORCE_SCHEMAS", False)
 
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
+DEFAULT_DATASET_REPR_MAX_ROWS = env_integer("RAY_DATASET_REPR_MAX_ROWS", 10)
+DEFAULT_DATASET_REPR_HEAD_ROWS = env_integer("RAY_DATASET_REPR_HEAD_ROWS", 5)
+DEFAULT_DATASET_REPR_MAX_COLUMNS = env_integer("RAY_DATASET_REPR_MAX_COLUMNS", 10)
+DEFAULT_DATASET_REPR_HEAD_COLUMNS = env_integer("RAY_DATASET_REPR_HEAD_COLUMNS", 5)
+DEFAULT_DATASET_REPR_MAX_COLUMN_WIDTH = env_integer(
+    "RAY_DATASET_REPR_MAX_COLUMN_WIDTH", 40
+)
+DEFAULT_DATASET_REPR_MAX_STRING_LENGTH = env_integer(
+    "RAY_DATASET_REPR_MAX_STRING_LENGTH", 40
+)
+DEFAULT_DATASET_REPR_MAX_BYTES_LENGTH = env_integer(
+    "RAY_DATASET_REPR_MAX_BYTES_LENGTH", 40
+)
+DEFAULT_DATASET_REPR_MAX_COLLECTION_ITEMS = env_integer(
+    "RAY_DATASET_REPR_MAX_COLLECTION_ITEMS", 5
+)
+DEFAULT_DATASET_REPR_MAX_TENSOR_ELEMENTS = env_integer(
+    "RAY_DATASET_REPR_MAX_TENSOR_ELEMENTS", 8
+)
+
 
 # `write_file_retry_on_errors` is deprecated in favor of `retried_io_errors`. You
 # shouldn't need to modify `DEFAULT_WRITE_FILE_RETRY_ON_ERRORS`.
@@ -493,6 +513,24 @@ class DataContext:
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
+        dataset_repr_max_rows: Maximum number of preview rows rendered in
+            ``Dataset.__repr__``. This controls how many rows are fetched from a
+            materialized dataset before truncation is applied.
+        dataset_repr_head_rows: Number of leading rows to show when both the head and
+            tail of a materialized dataset are displayed in ``Dataset.__repr__``.
+        dataset_repr_max_columns: Maximum number of columns displayed in the repr.
+        dataset_repr_head_columns: Number of leading columns to show before inserting
+            an ellipsis column when column previews are truncated.
+        dataset_repr_max_column_width: Maximum character width of any rendered cell
+            in the tabular repr, including headers and schema rows.
+        dataset_repr_max_string_length: Maximum number of characters to keep when
+            formatting string values in the repr.
+        dataset_repr_max_bytes_length: Maximum preview length for bytes / bytearray
+            columns before truncation is applied.
+        dataset_repr_max_collection_items: Maximum number of list-, tuple-, or
+            dict-items to show when formatting nested values.
+        dataset_repr_max_tensor_elements: Maximum number of tensor or ndarray elements
+            to preview in the repr before showing an ellipsis.
     """
 
     # `None` means the block size is infinite.
@@ -639,6 +677,16 @@ class DataContext:
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
+
+    dataset_repr_max_rows: int = DEFAULT_DATASET_REPR_MAX_ROWS
+    dataset_repr_head_rows: int = DEFAULT_DATASET_REPR_HEAD_ROWS
+    dataset_repr_max_columns: int = DEFAULT_DATASET_REPR_MAX_COLUMNS
+    dataset_repr_head_columns: int = DEFAULT_DATASET_REPR_HEAD_COLUMNS
+    dataset_repr_max_column_width: int = DEFAULT_DATASET_REPR_MAX_COLUMN_WIDTH
+    dataset_repr_max_string_length: int = DEFAULT_DATASET_REPR_MAX_STRING_LENGTH
+    dataset_repr_max_bytes_length: int = DEFAULT_DATASET_REPR_MAX_BYTES_LENGTH
+    dataset_repr_max_collection_items: int = DEFAULT_DATASET_REPR_MAX_COLLECTION_ITEMS
+    dataset_repr_max_tensor_elements: int = DEFAULT_DATASET_REPR_MAX_TENSOR_ELEMENTS
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
