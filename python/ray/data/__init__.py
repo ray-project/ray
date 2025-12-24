@@ -85,6 +85,24 @@ from ray.data.read_api import (  # noqa: F401
 # since it has to be process-global across cloudpickled funcs.
 _map_actor_context = None
 
+# Module-level cached context for callable class readers. Stores a _ReadActorContext
+# instance which encapsulates the reader cache. This is process-global
+# and automatically scoped per-actor.
+_read_actor_context = None
+
+
+class _ReadActorContext:
+    """Context for storing stateful readers in an actor.
+
+    This class is instantiated once per actor and stored in the global
+    `_read_actor_context` variable. It manages a cache of reader instances.
+    """
+
+    def __init__(self):
+        # Cache of reader instances: key -> instance
+        self.readers = {}
+
+
 configure_logging()
 
 try:
