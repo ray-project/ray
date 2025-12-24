@@ -28,11 +28,15 @@ from ray.serve._private.common import (
     TimeStampedValue,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
-from ray.serve._private.constants import RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
+from ray.serve._private.constants import (
+    CONTROL_LOOP_INTERVAL_S,
+    RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+)
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.test_utils import MockKVStore
 from ray.serve._private.utils import get_random_string
+from ray.serve.autoscaling_policy import apply_app_level_autoscaling_config
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
@@ -2596,6 +2600,21 @@ def stateful_app_level_policy(contexts):
     return decisions, new_state
 
 
+@apply_app_level_autoscaling_config
+def app_level_policy_with_decorator(contexts):
+    """App-level policy used to verify that the decorator applies delay logic."""
+    decisions = {}
+    for dep_id, ctx in contexts.items():
+        curr = ctx.target_num_replicas
+        if curr < 5:
+            decisions[dep_id] = 5
+        elif curr > 1:
+            decisions[dep_id] = 1
+        else:
+            decisions[dep_id] = curr
+    return decisions, {}
+
+
 class TestApplicationLevelAutoscaling:
     """Test application-level autoscaling policy registration, execution, and lifecycle."""
 
@@ -2670,18 +2689,14 @@ class TestApplicationLevelAutoscaling:
 
     def _register_deployments(self, app_state_manager, app_config):
         """Helper to register deployments with autoscaling manager."""
+        # Pick autoscaling config from the app config
         asm = app_state_manager._autoscaling_state_manager
         for deployment in app_config.deployments:
             deployment_id = DeploymentID(name=deployment.name, app_name=app_config.name)
             deployment_info_obj = deployment_info(
                 deployment.name,
                 "/hi" if deployment.name == "d1" else None,
-                autoscaling_config={
-                    "target_ongoing_requests": 1,
-                    "min_replicas": 1,
-                    "max_replicas": 5,
-                    "initial_replicas": 1,
-                },
+                autoscaling_config=deployment.autoscaling_config,
             )
             asm.register_deployment(deployment_id, deployment_info_obj, 1)
         return asm
@@ -3288,6 +3303,82 @@ class TestApplicationLevelAutoscaling:
         invalid_value_state = {d1_id: "not a dict"}
         with pytest.raises(AssertionError, match="must be a dictionary"):
             app_autoscaling_state._validate_policy_state(invalid_value_state)
+
+    def test_app_level_autoscaling_with_decorator_applies_delays(
+        self, mocked_application_state_manager
+    ):
+        """Test that apply_app_level_autoscaling_config applies delay logic for an app-level policy."""
+
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+        # Create deployments for the policy
+        deployments = [
+            DeploymentSchema(
+                name="d1",
+                autoscaling_config={
+                    "target_ongoing_requests": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 5,
+                    "initial_replicas": 1,
+                    "upscale_delay_s": 0.4,
+                    "downscale_delay_s": 0.6,
+                    "metrics_interval_s": 0.1,
+                },
+            )
+        ]
+
+        # Create app config but override to use the decorated app-level policy.
+        app_config = self._create_app_config(deployments=deployments)
+        app_config.autoscaling_policy = {
+            "policy_function": "ray.serve.tests.unit.test_application_state:app_level_policy_with_decorator"
+        }
+
+        # Deploy app and register deployments with autoscaling manager.
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+
+        # Get the delay values from the deployment config
+        upscale_delay_s = deployments[0].autoscaling_config["upscale_delay_s"]
+        wait_periods_upscale = int(upscale_delay_s / CONTROL_LOOP_INTERVAL_S)
+        downscale_delay_s = deployments[0].autoscaling_config["downscale_delay_s"]
+        wait_periods_downscale = int(downscale_delay_s / CONTROL_LOOP_INTERVAL_S)
+
+        # Create replicas so autoscaling runs.
+        d1_replicas = [
+            ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id) for i in [1, 2]
+        ]
+        asm.update_running_replica_ids(d1_id, d1_replicas)
+
+        app_state = app_state_manager._application_states["test_app"]
+
+        for _ in range(wait_periods_upscale):
+            app_state.autoscale()
+            current_replicas = deployment_state_manager._scaling_decisions[d1_id]
+            assert current_replicas == 1
+
+        app_state.autoscale()
+        # Count the number of replicas are 5 now
+        assert d1_id in deployment_state_manager._scaling_decisions
+        assert deployment_state_manager._scaling_decisions[d1_id] == 5
+
+        # Set the number of replicas to 5 so the policy can scale down to 1
+        deployment_state_manager.deployment_infos[
+            d1_id
+        ].deployment_config.num_replicas = 5
+
+        # Scale down to 1
+        for _ in range(wait_periods_downscale):
+            app_state.autoscale()
+            current_replicas = deployment_state_manager._scaling_decisions[d1_id]
+            assert current_replicas == 5
+        app_state.autoscale()
+        assert d1_id in deployment_state_manager._scaling_decisions
+        assert deployment_state_manager._scaling_decisions[d1_id] == 1
 
 
 def test_get_external_scaler_enabled(mocked_application_state_manager):

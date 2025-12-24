@@ -36,6 +36,10 @@ from ray.serve._private.test_utils import (
     get_num_alive_replicas,
     tlog,
 )
+from ray.serve.autoscaling_policy import (
+    apply_app_level_autoscaling_config,
+    apply_autoscaling_config,
+)
 from ray.serve.config import AutoscalingConfig, AutoscalingContext, AutoscalingPolicy
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ApplicationStatus, ServeDeploySchema
@@ -1538,16 +1542,28 @@ def custom_autoscaling_policy(ctx: AutoscalingContext):
         return 2, {}
 
 
+@apply_autoscaling_config
+def decorated_custom_autoscaling_policy(ctx: AutoscalingContext):
+    return custom_autoscaling_policy(ctx)
+
+
 @pytest.mark.parametrize(
     "policy",
     [
         {
-            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
+            "policy_function": "ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy",
+        },
+        {
+            "policy_function": "ray.serve.tests.test_autoscaling_policy.decorated_custom_autoscaling_policy",
         },
         AutoscalingPolicy(
             policy_function="ray.serve.tests.test_autoscaling_policy.custom_autoscaling_policy"
         ),
+        AutoscalingPolicy(
+            policy_function="ray.serve.tests.test_autoscaling_policy.decorated_custom_autoscaling_policy"
+        ),
         AutoscalingPolicy(policy_function=custom_autoscaling_policy),
+        AutoscalingPolicy(policy_function=decorated_custom_autoscaling_policy),
     ],
 )
 def test_e2e_scale_up_down_basic_with_custom_policy(serve_instance_with_signal, policy):
@@ -1613,6 +1629,14 @@ def app_level_custom_autoscaling_policy(ctxs: Dict[DeploymentID, AutoscalingCont
     return decisions, {}
 
 
+@apply_app_level_autoscaling_config
+def app_level_custom_autoscaling_policy_with_decorator(
+    ctxs: Dict[DeploymentID, AutoscalingContext]
+):
+    """Wraps the app-level custom autoscaling policy and applies the decorator"""
+    return app_level_custom_autoscaling_policy(ctxs)
+
+
 class TestAppLevelAutoscalingPolicy:
     @pytest.fixture
     def serve_instance_with_two_signal(self, serve_instance):
@@ -1666,10 +1690,19 @@ class TestAppLevelAutoscalingPolicy:
             {
                 "policy_function": "ray.serve.tests.test_autoscaling_policy.app_level_custom_autoscaling_policy"
             },
+            {
+                "policy_function": "ray.serve.tests.test_autoscaling_policy.app_level_custom_autoscaling_policy_with_decorator"
+            },
             AutoscalingPolicy(
                 policy_function="ray.serve.tests.test_autoscaling_policy.app_level_custom_autoscaling_policy"
             ),
+            AutoscalingPolicy(
+                policy_function="ray.serve.tests.test_autoscaling_policy.app_level_custom_autoscaling_policy_with_decorator"
+            ),
             AutoscalingPolicy(policy_function=app_level_custom_autoscaling_policy),
+            AutoscalingPolicy(
+                policy_function=app_level_custom_autoscaling_policy_with_decorator
+            ),
         ],
     )
     def test_application_autoscaling_policy(

@@ -642,6 +642,34 @@ Keep policy functions **fast and lightweight**. Slow logic can block the Serve c
 :::
 
 
+### Applying standard autoscaling parameters to custom policies  
+  
+By default, custom autoscaling policies don't automatically benefit from Ray Serve's standard autoscaling parameters like `upscale_delay_s`, `downscale_delay_s`, `upscaling_factor`, and `downscaling_factor`. These parameters are only enforced by the default autoscaling policy.  
+
+To apply these parameters to your custom policy, use the `@apply_autoscaling_config` decorator. This ensures consistent behavior by automatically handling the following [`AutoscalingConfig`](../api/doc/ray.serve.config.AutoscalingConfig.rst) parameters:
+- `upscale_delay_s`, `downscale_delay_s`, `downscale_to_zero_delay_s`
+- `upscaling_factor`, `downscaling_factor`
+- `min_replicas`, `max_replicas`
+
+The following example shows how to use the decorator:
+
+```{literalinclude} ../doc_code/autoscaling_policy.py
+:language: python
+:start-after: __begin_apply_autoscaling_config_example__
+:end-before: __end_apply_autoscaling_config_example__
+```
+
+```{literalinclude} ../doc_code/autoscaling_policy.py
+:language: python
+:start-after: __begin_apply_autoscaling_config_usage__
+:end-before: __end_apply_autoscaling_config_usage__
+```
+
+::::{note}
+The decorator applies the configuration logic **after** the custom policy function returns. Your policy function should return the "raw" desired number of replicas. The decorator then modifies this value based on the `autoscaling_config` settings.
+::::
+
+
 ### Custom metrics
 
 You can make richer decisions by emitting your own metrics from the deployment. Implement `record_autoscaling_stats()` to return a `dict[str, float]`. Ray Serve will surface these values in the [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst).
@@ -683,7 +711,7 @@ An application-level autoscaling policy is a function that takes a `dict[Deploym
 
 The `policy_state` returned from an application-level policy must be a `dict[DeploymentID, dict]`— a dictionary mapping each deployment ID to its own state dictionary. Serve stores this per-deployment state and on the next control-loop iteration, injects each deployment's state back into that deployment's `AutoscalingContext.policy_state`. 
 
-Serve itself does not interpret the contents of `policy_state`. All the keys in each deployment's state dictionary are user-controlled.
+Serve itself does not interpret the contents of `policy_state`. All the keys in each deployment's state dictionary are user-controlled except for internal keys that are used when default parameters are applied to custom autoscaling policies.
 The following example shows a policy that scales deployments based on their relative load, ensuring that downstream deployments have enough capacity for upstream traffic:
 
 `autoscaling_policy.py` file:
@@ -728,6 +756,25 @@ Programmatic configuration of application-level autoscaling policies through `se
 When you specify both a deployment-level policy and an application-level policy, the application-level policy takes precedence. Ray Serve logs a warning if you configure both.
 :::
 
+
+#### Applying standard autoscaling parameters to application-level policies
+Custom application level policies don't automatically benefit from Ray Serve's standard autoscaling parameters like `upscale_delay_s`, `downscale_delay_s`, `upscaling_factor`, and `downscaling_factor`.
+To apply these parameters to your application level policy, use the `@apply_app_level_autoscaling_config` decorator. This ensures consistent behavior by automatically handling the following [`AutoscalingConfig`](../api/doc/ray.serve.config.AutoscalingConfig.rst) parameters:
+- `upscale_delay_s`, `downscale_delay_s`, `downscale_to_zero_delay_s`
+- `upscaling_factor`, `downscaling_factor`
+- `min_replicas`, `max_replicas`
+
+The following example shows how to add the `@apply_app_level_autoscaling_config` decorator to your application level policy:
+```{literalinclude} ../doc_code/autoscaling_policy.py
+:language: python
+:start-after: __begin app_level_policy_with_decorator_
+:end-before: __end app_level_policy_with_decorator_
+```
+The YAML configuration file shows the default parameters applied to the application level policy.
+```{literalinclude} ../doc_code/application_level_autoscaling_with_defaults.yaml
+:language: yaml
+```
+The decorator ensures that these standard parameters are applied consistently on top of your application level policy's decisions.
 :::{warning}
 ### Gotchas and limitations
 
