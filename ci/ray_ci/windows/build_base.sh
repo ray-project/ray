@@ -8,9 +8,10 @@ export TORCHVISION_VERSION=0.15.2
 # Delete the existing bazel and replace it with bazelisk.
 powershell ci/ray_ci/windows/install_bazelisk.ps1
 
+conda --version
 conda init
-# newer requests version is needed for python 3.9+
-conda install -q -y python="${PYTHON}" requests=2.31.0
+conda install -q -y python="${PYTHON_FULL_VERSION}" requests=2.32.3
+python --version
 
 # Install torch first, as some dependencies (e.g. torch-spline-conv) need torch to be
 # installed for their own install.
