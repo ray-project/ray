@@ -58,7 +58,6 @@ from ray.util.scheduling_strategies import (
 )
 from ray.util.tracing.tracing_helper import (
     _inject_tracing_into_class,
-    _is_tracing_enabled,
     _tracing_actor_creation,
     _tracing_actor_method_invocation,
 )
@@ -928,62 +927,8 @@ class ActorMethod:
         )
 
 
-def _add_trace_ctx_to_signature(
-    method_signature: List[inspect.Parameter],
-) -> List[inspect.Parameter]:
-    """Add _ray_trace_ctx parameter to method signature if tracing is enabled.
-
-    When tracing is enabled, Ray's tracing decorators inject _ray_trace_ctx into
-    actor method calls. This function ensures the signature includes this parameter
-    to pass validation. Although its unclear why this is needed, it is a workaround to
-    ensure the signature is valid.
-
-    Args:
-        method_signature: List of inspect.Parameter objects representing the method signature.
-
-    Returns:
-        List of inspect.Parameter objects with _ray_trace_ctx added if needed.
-        Returns the original signature if tracing is disabled or _ray_trace_ctx is already present.
-    """
-
-    if not _is_tracing_enabled():
-        return method_signature
-
-    param_names = [p.name for p in method_signature]
-    if "_ray_trace_ctx" in param_names:
-        # Already present, user wants to access it
-        return method_signature
-
-    # Add _ray_trace_ctx as a keyword-only parameter with default None
-    new_param = inspect.Parameter(
-        "_ray_trace_ctx",
-        inspect.Parameter.KEYWORD_ONLY,
-        default=None,
-    )
-
-    # Find if there's a VAR_KEYWORD parameter (**kwargs)
-    # We need to insert _ray_trace_ctx before it to maintain valid parameter ordering
-    var_keyword_idx = None
-    for i, param in enumerate(method_signature):
-        if param.kind == inspect.Parameter.VAR_KEYWORD:
-            var_keyword_idx = i
-            break
-
-    if var_keyword_idx is not None:
-        # Insert before VAR_KEYWORD to maintain valid Python parameter ordering
-        method_signature = (
-            method_signature[:var_keyword_idx]
-            + [new_param]
-            + [method_signature[var_keyword_idx]]
-        )
-    else:
-        # No VAR_KEYWORD, just append
-        method_signature = method_signature + [new_param]
-
-    return method_signature
-
-
 class _ActorClassMethodMetadata(object):
+
     """Metadata for all methods in an actor class. This data can be cached.
 
     Attributes:
@@ -1074,9 +1019,6 @@ class _ActorClassMethodMetadata(object):
             method_signature = signature.extract_signature(
                 method, ignore_first=not is_bound
             )
-
-            # If tracing is enabled, add _ray_trace_ctx to the signature
-            method_signature = _add_trace_ctx_to_signature(method_signature)
 
             self.signatures[method_name] = method_signature
             # Set the default number of return values for this method.

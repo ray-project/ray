@@ -534,13 +534,31 @@ def _inject_tracing_into_class(_cls):
         if name == "__del__":
             continue
 
-        # Add _ray_trace_ctx to method signature
-        method.__signature__ = _add_param_to_signature(
-            method,
+        # If the method is already wrapped, we still need to set __signature__
+        # on the deeply unwrapped original. This is because cloudpickle doesn't
+        # preserve __signature__ attributes, and _ActorClassMethodMetadata.create
+        # uses inspect.unwrap which goes all the way to the original method.
+        unwrapped_method = inspect.unwrap(method)
+
+        # Check if this method has already been processed (has _ray_trace_ctx in signature)
+        existing_sig = getattr(unwrapped_method, "__signature__", None)
+        if existing_sig is not None:
+            param_names = [p.name for p in existing_sig.parameters.values()]
+            if "_ray_trace_ctx" in param_names:
+                continue  # Already has tracing signature, skip
+
+        # Add _ray_trace_ctx to the UNWRAPPED method's signature
+        # This ensures inspect.unwrap() will find the signature
+        unwrapped_method.__signature__ = _add_param_to_signature(
+            unwrapped_method,
             inspect.Parameter(
                 "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY, default=None
             ),
         )
+
+        # If method was already wrapped, no need to wrap again
+        if hasattr(method, "__wrapped__"):
+            continue
 
         if inspect.iscoroutinefunction(method):
             # If the method was async, swap out sync wrapper into async
