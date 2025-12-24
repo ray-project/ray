@@ -42,25 +42,31 @@ def _get_log_dir(gcs_client: GcsClient) -> str:
     #         gcs_client, head_node_id
     #     )
 
-    # # No timeout as we want to wait until the head node is ready.
-    # node_infos = gcs_client.get_all_node_info(
-    #     node_selectors=[head_node_selector]
-    # ).values()
+    # No timeout as we want to wait until the head node is ready.
+    node_infos = gcs_client.get_all_node_info(
+        node_selectors=[head_node_selector]
+    ).values()
 
-    # if not node_infos:
-    #     raise Exception(
-    #         "No node info found for head node in GCS. Did the head node or gcs start successfully?"
-    #     )
+    if not node_infos:
+        raise Exception(
+            "No node info found for head node in GCS. Did the head node or gcs start successfully?"
+        )
 
-    # node_info = next(iter(node_infos))
-    # if node_info is not None:
-    #     temp_dir = getattr(node_info, "temp_dir", None)
-    #     if temp_dir is None:
-    #         raise Exception(
-    #             "Node temp_dir was not found in NodeInfo. did the head node's raylet start successfully?"
-    #         )
+    node_info = next(iter(node_infos))
+    temp_dir = None
+    if node_info is not None:
+        temp_dir = getattr(node_info, "temp_dir", None)
+        if temp_dir is None:
+            # raise Exception(
+            #     "Node temp_dir was not found in NodeInfo. did the head node's raylet start successfully?"
+            # )
+            logger.warning(
+                "Node temp_dir was not found in NodeInfo. did the head node's raylet start successfully?"
+            )
+    if temp_dir is None:
+        temp_dir = ray._common.utils.get_default_ray_temp_dir()
     return os.path.join(
-        ray._common.utils.get_default_ray_temp_dir(),
+        temp_dir,
         ray._private.ray_constants.SESSION_LATEST,
         "logs",
     )
