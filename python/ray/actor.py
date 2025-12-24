@@ -1005,11 +1005,9 @@ class _ActorClassMethodMetadata(object):
             # supported. We don't raise an exception because if the actor
             # inherits from a class that has a method whose signature we
             # don't support, there may not be much the user can do about it.
-            method_signature = signature.extract_signature(
+            self.signatures[method_name] = signature.extract_signature(
                 method, ignore_first=not is_bound
             )
-
-            self.signatures[method_name] = method_signature
             # Set the default number of return values for this method.
             if hasattr(method, "__ray_num_returns__"):
                 self.num_returns[method_name] = method.__ray_num_returns__
