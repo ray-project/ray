@@ -61,6 +61,15 @@ The `proxy_location` field configures where to run proxies to handle traffic to 
 - HeadOnly: Only run a single proxy on the head node.
 - Disabled: Don't run proxies at all. Set this value if you are only making calls to your applications using deployment handles.
 
+By default, when `proxy_location` is set to `EveryNode`, Ray Serve always runs a proxy on the head node even if it has no replicas. You can disable this behavior by setting the environment variable `RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE=0`.
+
+You can also configure proxy health checks and lifecycle behavior with the following environment variables:
+
+- `RAY_SERVE_PROXY_HEALTH_CHECK_TIMEOUT_S`: The timeout (in seconds) for each proxy health check. Default is `10.0`.
+- `RAY_SERVE_PROXY_HEALTH_CHECK_PERIOD_S`: The period (in seconds) between proxy health checks. Default is `10.0`.
+- `RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S`: The timeout (in seconds) for checking if a proxy is ready. Default is `5.0`.
+- `RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S`: The minimum time (in seconds) a proxy stays in the draining state before termination. This gives the load balancer time to detect that the proxy is draining and stop sending traffic. Default is `30.0`.
+
 (http-config)=
 
 ## HTTP config 

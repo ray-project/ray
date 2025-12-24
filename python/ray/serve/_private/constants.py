@@ -59,16 +59,12 @@ HTTP_PROXY_TIMEOUT = 60
 #: This constant is deprecated and will be removed in the future.
 #: Please use 'max_constructor_retry_count' instead in configurations.
 MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = get_env_int(
-    "RAY_SERVE_MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT",
-    get_env_int("MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", None),
+    "RAY_SERVE_MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", None
 )
 
 # Max retry on deployment constructor is
 # min(num_replicas * MAX_PER_REPLICA_RETRY_COUNT, MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT)
-MAX_PER_REPLICA_RETRY_COUNT = get_env_int(
-    "RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT",
-    get_env_int("MAX_PER_REPLICA_RETRY_COUNT", 3),
-)
+MAX_PER_REPLICA_RETRY_COUNT = get_env_int("RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT", 3)
 
 
 # If you are wondering why we are using histogram buckets, please refer to
@@ -209,9 +205,7 @@ RECONFIGURE_METHOD = "reconfigure"
 
 #: Limit the number of cached handles because each handle has long poll
 #: overhead. See https://github.com/ray-project/ray/issues/18980
-MAX_CACHED_HANDLES = get_env_int_positive(
-    "RAY_SERVE_MAX_CACHED_HANDLES", get_env_int_positive("MAX_CACHED_HANDLES", 100)
-)
+MAX_CACHED_HANDLES = get_env_int_positive("RAY_SERVE_MAX_CACHED_HANDLES", 100)
 
 #: Because ServeController will accept one long poll request per handle, its
 #: concurrency needs to scale as O(num_handles)
