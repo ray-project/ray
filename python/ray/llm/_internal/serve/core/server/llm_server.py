@@ -589,6 +589,42 @@ class LLMServer(LLMServerProtocol):
             logger.error("Engine stop profile failed in LLMServer.stop_profile: %s", e)
             raise e
 
+    async def collective_rpc(
+        self,
+        method: str,
+        timeout: Optional[float] = None,
+        args: tuple = (),
+        kwargs: Optional[dict] = None,
+    ) -> list:
+        """Execute a collective RPC call on all workers.
+
+        This is used for RLHF workflows where a trainer needs to execute
+        methods on all TP/PP workers (e.g., for weight synchronization).
+
+        Args:
+            method: Name of the worker method to execute.
+            timeout: Maximum time in seconds to wait for execution.
+            args: Positional arguments to pass to the worker method.
+            kwargs: Keyword arguments to pass to the worker method.
+
+        Returns:
+            A list containing the results from each worker.
+        """
+        if self.engine is None:
+            return []
+        try:
+            return await self.engine.collective_rpc(
+                method=method,
+                timeout=timeout,
+                args=args,
+                kwargs=kwargs,
+            )
+        except Exception as e:
+            logger.error(
+                "Engine collective_rpc failed in LLMServer.collective_rpc: %s", e
+            )
+            raise e
+
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config
 

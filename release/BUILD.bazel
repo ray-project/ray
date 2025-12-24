@@ -3,17 +3,6 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
 compile_pip_requirements(
-    name = "requirements_buildkite",
-    data = [":requirements-doc.txt"],
-    requirements_in = "requirements_buildkite.in",
-    requirements_txt = "requirements_buildkite.txt",
-    tags = [
-        "team:ci",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-compile_pip_requirements(
     name = "requirements_py310",
     data = [":requirements-doc.txt"],
     requirements_in = "requirements_py310.in",
@@ -438,6 +427,7 @@ py_library(
     ]) + [
         "ray_release/buildkite/aws_instance_types.csv",
         "ray_release/schema.json",
+        "//doc:asynchronous_inference_example_configs",
         "//doc:deployment_serve_llm_example_configs",
         "//doc:example_configs",
         "//doc/source/data/examples:data_example_configs",
