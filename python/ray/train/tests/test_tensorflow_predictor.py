@@ -98,7 +98,8 @@ def test_init():
 
 def test_tensorflow_checkpoint():
     model = build_model()
-    model.build(input_shape=(1,))
+    model.build(input_shape=(None, 1))
+
     preprocessor = DummyPreprocessor()
 
     checkpoint = TensorflowCheckpoint.from_model(model, preprocessor=preprocessor)

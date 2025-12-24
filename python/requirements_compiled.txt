@@ -443,7 +443,7 @@ decorator==5.1.1
     #   tensorflow-probability
 decord==0.6.0
     # via -r python/requirements/ml/data-test-requirements.txt
-deepspeed==0.12.3
+deepspeed==0.18.3
     # via -r python/requirements/ml/train-requirements.txt
 defusedxml==0.7.1
     # via
@@ -505,6 +505,8 @@ ecdsa==0.18.0
     #   moto
     #   python-jose
     #   sshpubkeys
+einops==0.8.1
+    # via deepspeed
 entrypoints==0.4
     # via nbconvert
 et-xmlfile==1.1.0
@@ -1150,6 +1152,7 @@ msgpack==1.1.2
     #   -r python/requirements.txt
     #   -r python/requirements/ml/rllib-requirements.txt
     #   -r python/requirements/test-requirements.txt
+    #   deepspeed
     #   distributed
     #   msgpack-numpy
     #   ray
@@ -1723,8 +1726,6 @@ pymunk==6.2.1
     # via -r python/requirements/ml/rllib-test-requirements.txt
 pynacl==1.5.0
     # via paramiko
-pynvml==11.5.0
-    # via deepspeed
 pyopengl==3.1.7
     # via
     #   dm-control

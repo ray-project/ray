@@ -1104,8 +1104,8 @@ decord==0.6.0 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.10.in
-deepspeed==0.12.3 \
-    --hash=sha256:dc8a0c261589856743c3b3e7bf9829eded2cc8b2464a40456c3a997ed3a01a08
+deepspeed==0.18.3 \
+    --hash=sha256:0ee0002d8205667ee8463dab8461fb5914dac1583440fe1c48a3a385bb4130ea
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
@@ -1167,6 +1167,13 @@ dm-tree==0.1.9 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   ray
+einops==0.8.1 \
+    --hash=sha256:919387eb55330f5757c6bea9165c5ff5cfe63a642682ea788a6d472576d81737 \
+    --hash=sha256:de5d960a7a761225532e0f1959e5315ebeafc0cd43394732f103ca44b9837e84
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled.txt
+    #   -c release/ray_release/byod/requirements_compiled.txt
+    #   deepspeed
 entrypoints==0.4 \
     --hash=sha256:b706eddaa9218a19ebcd67b56818f05bb27589b1ca9e8d797b74affad4ccacd4 \
     --hash=sha256:f174b5ff827504fd3cd97cc3f8649f3693f51538c7e4bdf3ef002c8429d42f9f
@@ -3236,6 +3243,7 @@ msgpack==1.1.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
+    #   deepspeed
     #   locust
     #   ray
 multidict==6.0.5 \
@@ -4627,13 +4635,6 @@ pyjwt==2.8.0 \
     #   -c /tmp/ray-deps/requirements_compiled.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   msal
-pynvml==11.5.0 \
-    --hash=sha256:5cce014ac01b098d08f06178f86c37be409b80b2e903a5a03ce15eed60f55e25 \
-    --hash=sha256:d027b21b95b1088b9fc278117f9f61b7c67f8e33a787e9f83f735f0f71ac32d0
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled.txt
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   deepspeed
 pyopenssl==25.0.0 \
     --hash=sha256:424c247065e46e76a37411b9ab1782541c23bb658bf003772c3405fbaa128e90 \
     --hash=sha256:cd2cef799efa3936bb08e8ccb9433a575722b9dd986023f1cabc4ae64e9dac16
