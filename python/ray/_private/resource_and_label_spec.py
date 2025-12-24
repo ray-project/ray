@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import sys
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -139,20 +139,24 @@ class ResourceAndLabelSpec:
         self._resolve_resources(is_head=is_head, node_ip_address=node_ip_address)
 
         # Resolve accelerator-specific resources
-        (
-            accelerator_manager,
-            num_accelerators,
-        ) = ResourceAndLabelSpec._get_current_node_accelerator(
+        accelerators_info = ResourceAndLabelSpec._get_current_node_accelerators(
             self.num_gpus, self.resources
         )
-        self._resolve_accelerator_resources(accelerator_manager, num_accelerators)
+
+        if accelerators_info:
+            for accelerator_manager, num_accelerators in accelerators_info:
+                self._resolve_accelerator_resources(accelerator_manager, num_accelerators)
 
         # Default num_gpus value if unset by user and unable to auto-detect.
         if self.num_gpus is None:
             self.num_gpus = 0
 
         # Resolve and merge node labels from all sources (params, env, and default).
-        self._resolve_labels(accelerator_manager)
+        if accelerators_info:
+            accelerator_managers = [m for m, _ in accelerators_info]
+            self._resolve_labels(accelerator_managers)
+        else:
+            self._resolve_labels(None)
 
         # Resolve memory resources
         self._resolve_memory_resources()
@@ -300,32 +304,41 @@ class ResourceAndLabelSpec:
         return default_labels
 
     def _resolve_labels(
-        self, accelerator_manager: Optional[AcceleratorManager]
+        self, accelerator_managers: Optional[List[AcceleratorManager]]
     ) -> None:
-        """Resolve and merge environment override, user-input from params, and Ray default
-        labels in that order of precedence."""
+        """Resolve and merge labels in the following order of precedence:
+        1. Ray default labels from all accelerator managers (merged)
+        2. User-specified labels from Ray params (self.labels)
+        3. Autoscaler override labels from environment variables
+        """
+        merged = {}
+        if accelerator_managers:
+            for mgr in accelerator_managers:
+                default_labels = ResourceAndLabelSpec._get_default_labels(mgr)
+                for key, val in (default_labels or {}).items():
+                    if key in merged and merged[key] != val:
+                        logger.warning(
+                            f"Duplicate default label conflict detected between accelerators: "
+                            f"{key}: {merged[key]} -> {val}"
+                        )
+                    merged[key] = val
+        else:
+            merged = ResourceAndLabelSpec._get_default_labels(None)
 
-        # Start with a dictionary filled out with Ray default labels
-        merged = ResourceAndLabelSpec._get_default_labels(accelerator_manager)
-
-        # Merge user-specified labels from Ray params
         for key, val in (self.labels or {}).items():
             if key in merged and merged[key] != val:
                 logger.warning(
                     f"User label is overriding Ray default label: {key}: "
-                    f"{key}: {merged[key]} to "
-                    f"{key}: {self.labels[key]}."
+                    f"{merged[key]} -> {val}."
                 )
             merged[key] = val
 
-        # Merge autoscaler override labels from environment
         env_labels = ResourceAndLabelSpec._load_env_labels()
         for key, val in (env_labels or {}).items():
             if key in merged and merged[key] != val:
                 logger.warning(
-                    "Autoscaler is overriding your label:"
-                    f"{key}: {merged[key]} to "
-                    f"{key}: {env_labels[key]}."
+                    f"Autoscaler is overriding your label: {key}: "
+                    f"{merged[key]} -> {val}."
                 )
             merged[key] = val
 
@@ -435,50 +448,50 @@ class ResourceAndLabelSpec:
         self.memory = memory
 
     @staticmethod
-    def _get_current_node_accelerator(
-        num_gpus: Optional[int], resources: Dict[str, float]
-    ) -> Tuple[AcceleratorManager, int]:
+    def _get_current_node_accelerators(
+        num_gpus: Optional[int],
+        resources: Dict[str, float]
+    ) -> List[Tuple[AcceleratorManager, int]]:
         """
-        Returns the AcceleratorManager and accelerator count for the accelerator
-        associated with this node. This assumes each node has at most one accelerator type.
-        If no accelerators are present, returns None.
+        Returns a list of (AcceleratorManager, accelerator_count) tuples for all
+        accelerators detected on this node.
 
-        The resolved accelerator count uses num_gpus (for GPUs) or resources if set, and
-        otherwise falls back to the count auto-detected by the AcceleratorManager. The
-        resolved accelerator count is capped by the number of visible accelerators.
+        Each node may have multiple accelerator types (e.g., GPU, NPU, etc.).
+        For each accelerator type, this function determines the available count
+        based on num_gpus, resource dict, or the auto-detected value.
 
         Args:
             num_gpus: GPU count (if provided by user).
             resources: Resource dictionary containing custom resource keys.
 
         Returns:
-            Tuple[Optional[AcceleratorManager], int]: A tuple containing the accelerator
-            manager (or None) the final resolved accelerator count.
+            List[Tuple[AcceleratorManager, int]]: A list containing the accelerator
+            manager and resolved accelerator count for all detected accelerators.
         """
+        accelerator_list: List[Tuple[AcceleratorManager, int]] = []
+
         for resource_name in accelerators.get_all_accelerator_resource_names():
             accelerator_manager = accelerators.get_accelerator_manager_for_resource(
                 resource_name
             )
             if accelerator_manager is None:
                 continue
+
             # Respect configured value for GPUs if set
             if resource_name == "GPU":
                 num_accelerators = num_gpus
             else:
                 num_accelerators = resources.get(resource_name)
+
             if num_accelerators is None:
-                num_accelerators = (
-                    accelerator_manager.get_current_node_num_accelerators()
-                )
+                num_accelerators = accelerator_manager.get_current_node_num_accelerators()
                 visible_accelerator_ids = (
                     accelerator_manager.get_current_process_visible_accelerator_ids()
                 )
                 if visible_accelerator_ids is not None:
-                    num_accelerators = min(
-                        num_accelerators, len(visible_accelerator_ids)
-                    )
+                    num_accelerators = min(num_accelerators, len(visible_accelerator_ids))
 
-            if num_accelerators > 0:
-                return accelerator_manager, num_accelerators
+            if num_accelerators and num_accelerators > 0:
+                accelerator_list.append((accelerator_manager, num_accelerators))
 
-        return None, 0
+        return accelerator_list
