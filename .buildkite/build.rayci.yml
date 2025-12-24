@@ -49,6 +49,7 @@ steps:
       - "3.11"
       - "3.12"
       - "3.13"
+      - "3.14"
     depends_on:
       - manylinux-x86_64
       - forge
