@@ -59,15 +59,28 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
             # TODO: Support dynamic block splitting in
             # all-to-all ops, to avoid having to re-fuse
             # upstream blocks together.
-            upstream_map_iter = upstream_map_fn([block])
-            mapped_block = next(upstream_map_iter)
-            builder = BlockAccessor.for_block(mapped_block).builder()
-            builder.add_block(mapped_block)
-            for mapped_block in upstream_map_iter:
+
+            # Create a TaskContext for the upstream map function
+            # This is needed when expressions like random() require TaskContext
+            from ray.data._internal.execution.interfaces.task_context import TaskContext
+
+            ctx = TaskContext(
+                task_idx=idx,
+                op_name="ShuffleMap",
+            )
+            TaskContext.set_current(ctx)
+            try:
+                upstream_map_iter = upstream_map_fn([block])
+                mapped_block = next(upstream_map_iter)
+                builder = BlockAccessor.for_block(mapped_block).builder()
                 builder.add_block(mapped_block)
-            # Drop the upstream inputs to reduce memory usage.
-            del mapped_block
-            block = builder.build()
+                for mapped_block in upstream_map_iter:
+                    builder.add_block(mapped_block)
+                # Drop the upstream inputs to reduce memory usage.
+                del mapped_block
+                block = builder.build()
+            finally:
+                TaskContext.reset_current()
         block = BlockAccessor.for_block(block)
         if (
             block.size_bytes()

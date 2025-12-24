@@ -21,6 +21,7 @@ from ray.data.expressions import (
     ColumnExpr,
     DownloadExpr,
     LiteralExpr,
+    NullaryExpr,
     Operation,
     StarExpr,
     UDFExpr,
@@ -174,6 +175,14 @@ class _IcebergExpressionVisitor(
         """Star expressions cannot be converted to Iceberg expressions."""
         raise TypeError(
             "Star expressions cannot be converted to Iceberg filter expressions."
+        )
+
+    def visit_nullary(
+        self, expr: "NullaryExpr"
+    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+        """Nullary expressions cannot be converted to Iceberg expressions."""
+        raise TypeError(
+            "Nullary expressions cannot be converted to Iceberg filter expressions."
         )
 
 
