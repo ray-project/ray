@@ -141,15 +141,15 @@ def test_progress_bar_non_interactive_terminal():
         assert pb._bar is not None
 
 
-@patch("ray.data._internal.progress_bar.logger")
+@patch("ray.data._internal.progress.progress_bar.logger")
 def test_progress_bar_logging_in_non_interactive_terminal_with_total(mock_logger):
     """Test that progress is logged in non-interactive terminals with known total."""
     total = 10
 
     # Mock time to ensure logging occurs
-    with patch("ray.data._internal.progress_bar.time.time", side_effect=[0, 10]), patch(
-        "sys.stdout.isatty", return_value=False
-    ):
+    with patch(
+        "ray.data._internal.progress.progress_bar.time.time", side_effect=[0, 10]
+    ), patch("sys.stdout.isatty", return_value=False):
         pb = ProgressBar("test", total, "unit")
         assert pb._bar is None
         assert pb._use_logging is True
@@ -165,14 +165,14 @@ def test_progress_bar_logging_in_non_interactive_terminal_with_total(mock_logger
         mock_logger.info.assert_any_call("test: Progress Completed 5 / 10")
 
 
-@patch("ray.data._internal.progress_bar.logger")
+@patch("ray.data._internal.progress.progress_bar.logger")
 def test_progress_bar_logging_in_non_interactive_terminal_without_total(mock_logger):
     """Test that progress is logged in non-interactive terminals with unknown total."""
 
     # Mock time to ensure logging occurs
-    with patch("ray.data._internal.progress_bar.time.time", side_effect=[0, 10]), patch(
-        "sys.stdout.isatty", return_value=False
-    ):
+    with patch(
+        "ray.data._internal.progress.progress_bar.time.time", side_effect=[0, 10]
+    ), patch("sys.stdout.isatty", return_value=False):
         pb = ProgressBar("test2", None, "unit")
         assert pb._bar is None
         assert pb._use_logging is True
