@@ -2109,14 +2109,14 @@ cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
     with gil:
         object_id = c_object_id.Hex().decode()
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        gpu_object_manager.free_object_primary_copy(object_id)
+        gpu_object_manager.queue_or_free_object_primary_copy(object_id)
 
 cdef void set_direct_transport_metadata(const CObjectID &c_object_id, const c_string &c_direct_transport_metadata) nogil:
     with gil:
         object_id = c_object_id.Hex().decode()
         tensor_transport_meta = ray_pickle.loads(c_direct_transport_metadata)
         gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        gpu_object_manager.set_tensor_transport_metadata_and_trigger_queued_transfers(object_id, tensor_transport_meta)
+        gpu_object_manager.set_tensor_transport_metadata_and_trigger_queued_operations(object_id, tensor_transport_meta)
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()

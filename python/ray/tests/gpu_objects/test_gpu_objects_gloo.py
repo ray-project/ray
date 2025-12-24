@@ -531,7 +531,7 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
         dst_actor, task_args
     )
 
-    gpu_object_manager.set_tensor_transport_metadata_and_trigger_queued_transfers(
+    gpu_object_manager.set_tensor_transport_metadata_and_trigger_queued_operations(
         gpu_obj_id,
         CollectiveTransportMetadata(
             tensor_meta=[(tensor.shape, tensor.dtype)],

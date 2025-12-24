@@ -230,6 +230,12 @@ class SerializationContext:
                     ray._private.worker.global_worker.gpu_object_manager
                 )
                 gpu_object_meta = gpu_object_manager.get_gpu_object_metadata(obj.hex())
+                if gpu_object_meta.tensor_transport_meta is None:
+                    raise NotImplementedError(
+                        f"Tensor transport metadata is not available for object id: {obj.hex()} at the time of borrowing. "
+                        "This is likely because the object you're trying to borrow an object that was not created on the "
+                        "owner (not through ray.put). This is not supported yet, see issue #59644 for more details."
+                    )
                 return _gpu_object_ref_deserializer, (
                     obj.binary(),
                     obj.call_site(),

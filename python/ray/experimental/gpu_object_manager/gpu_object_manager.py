@@ -87,8 +87,8 @@ def wait_tensor_freed(tensor: "torch.Tensor", timeout: Optional[float] = None):
 
 class GPUObjectManager:
     def __init__(self):
-        # This lock protects _managed_gpu_object_metadata and _queued_transfers since they can be
-        # accessed from the user's python thread or the CoreWorker's main io service thread.
+        # This lock protects _managed_gpu_object_metadata, _queued_transfers, and _queued_frees since
+        # they can be accessed from the user's python thread or the CoreWorker's main io service thread.
         self._lock = threading.Lock()
 
         # A dictionary that maps from owned object's ID to GPUObjectMeta.
@@ -103,6 +103,9 @@ class GPUObjectManager:
         self._queued_transfers: Dict[str, List["ray.actor.ActorHandle"]] = defaultdict(
             list
         )
+        # A set of object ids that are queued to be freed. This is used when the object is freed
+        # before the owner knows it's created (the tensor transport metadata is not available yet).
+        self._queued_frees: Set[str] = set()
 
         # This lock makes sure the _gpu_object_store and _monitor_failures_thread are only created once.
         self._init_lock = threading.Lock()
@@ -162,9 +165,9 @@ class GPUObjectManager:
         with self._lock:
             self._managed_gpu_object_metadata[obj_id] = gpu_object_meta
 
-    def get_gpu_object_metadata(self, obj_id: str) -> GPUObjectMeta:
+    def get_gpu_object_metadata(self, obj_id: str) -> Optional[GPUObjectMeta]:
         with self._lock:
-            return self._managed_gpu_object_metadata[obj_id]
+            return self._managed_gpu_object_metadata.get(obj_id, None)
 
     def wait_for_tensor_transport_metadata(
         self, obj_id: str, timeout: float
@@ -336,23 +339,32 @@ class GPUObjectManager:
             ),
         )
 
-    def set_tensor_transport_metadata_and_trigger_queued_transfers(
+    def set_tensor_transport_metadata_and_trigger_queued_operations(
         self, obj_id: str, tensor_transport_meta: "TensorTransportMetadata"
     ):
         """
         Sets the tensor transport metadata for an object and triggers any queued
-        up transfers for that object.
+        up transfers or frees for that object.
         """
         dst_actors = None
+        free_object = False
         with self._tensor_transport_meta_cv:
-            metadata = self._managed_gpu_object_metadata.get(obj_id, None)
-            if metadata is not None:
-                self._managed_gpu_object_metadata[obj_id] = metadata._replace(
-                    tensor_transport_meta=tensor_transport_meta
-                )
-                dst_actors = self._queued_transfers.pop(obj_id, None)
+            self._managed_gpu_object_metadata[
+                obj_id
+            ] = self._managed_gpu_object_metadata[obj_id]._replace(
+                tensor_transport_meta=tensor_transport_meta
+            )
+            dst_actors = self._queued_transfers.pop(obj_id, None)
+            free_object = obj_id in self._queued_frees
+            if free_object:
+                self._queued_frees.remove(obj_id)
+                # There shouldn't be any transfers queued if the free was queued,
+                # since we clear the queued transfers when queueing the free.
+                assert dst_actors is None
             self._tensor_transport_meta_cv.notify_all()
 
+        if free_object:
+            self.free_object_primary_copy(obj_id)
         if dst_actors:
             for dst_actor in dst_actors:
                 # Trigger the transfer now that the metadata is available.
@@ -391,6 +403,7 @@ class GPUObjectManager:
             return
 
         gpu_object_meta = self.get_gpu_object_metadata(obj_id)
+        assert gpu_object_meta is not None
 
         if use_object_store:
             src_actor = gpu_object_meta.src_actor
@@ -618,35 +631,42 @@ class GPUObjectManager:
             )
         return gpu_object
 
-    def free_object_primary_copy(self, object_id: str):
+    def queue_or_free_object_primary_copy(self, object_id: str):
         """
         Free the RDT object on the primary copy holder and free metadata
-        on the owner.
+        if the tensor metadata is available (the object has been created).
+        Otherwise, queue up the free operation until the tensor metadata is available.
         """
+        # NOTE: This may have to change if we support lineage reconstruction for RDT
+        # TODO(#57962): Metadata is currently not removed on borrowers that borrow through
+        # the NIXL ray.put / ray.get
+        with self._lock:
+            self._queued_transfers.pop(object_id, None)
+            gpu_object_meta = self._managed_gpu_object_metadata[object_id]
+            tensor_transport_meta = gpu_object_meta.tensor_transport_meta
+            if tensor_transport_meta is None:
+                # The object hasn't been created at the time of the free.
+                self._queued_frees.add(object_id)
+
+        if tensor_transport_meta is not None:
+            self.free_object_primary_copy(object_id)
+
+    def free_object_primary_copy(self, object_id: str):
         from ray.experimental.gpu_object_manager.gpu_object_store import (
             __ray_free__,
         )
 
-        try:
-            # NOTE: This may have to change if we support lineage reconstruction for RDT
-            # TODO(#57962): Metadata is currently not removed on borrowers that borrow through
-            # the NIXL ray.put / ray.get
-            with self._lock:
-                self._queued_transfers.pop(object_id, None)
-                gpu_object_meta = self._managed_gpu_object_metadata.pop(object_id)
-            src_actor = gpu_object_meta.src_actor
-            tensor_transport_backend = gpu_object_meta.tensor_transport_backend
-            tensor_transport_meta = gpu_object_meta.tensor_transport_meta
-            src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-                __ray_free__,
-                object_id,
-                tensor_transport_backend,
-                tensor_transport_meta,
-            )
-        except Exception as e:
-            logger.error(
-                "Something went wrong while freeing the RDT object!", exc_info=e
-            )
+        with self._lock:
+            gpu_object_meta = self._managed_gpu_object_metadata.pop(object_id)
+        src_actor = gpu_object_meta.src_actor
+        tensor_transport_backend = gpu_object_meta.tensor_transport_backend
+        tensor_transport_meta = gpu_object_meta.tensor_transport_meta
+        src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
+            __ray_free__,
+            object_id,
+            tensor_transport_backend,
+            tensor_transport_meta,
+        )
 
     @staticmethod
     def actor_has_tensor_transport(

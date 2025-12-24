@@ -90,6 +90,9 @@ class GPUTestActor:
     def borrow_and_sum(self, ref_list):
         return ray.get(ref_list[0]).sum().item()
 
+    def block_main_thread(self, signal_actor):
+        ray.get(signal_actor.wait.remote())
+
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_ray_get_gpu_ref_created_by_actor_task(ray_start_regular):
@@ -236,6 +239,32 @@ def test_nixl_abort_sender_dies_before_sending(ray_start_regular):
     ref = new_actor.echo.remote(torch.tensor([4, 5, 6]), "cuda")
     result = actors[1].sum.remote(ref, "cuda")
     assert ray.get(result) == 15
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_del_before_creating(ray_start_regular):
+    """
+    Blocking the main thread until we free the object from the reference counter.
+    Then unblocking the actor's main thread so the object can be created and then
+    asserting that the object was actually freed.
+    """
+    signal_actor = SignalActor.remote()
+    actor = GPUTestActor.remote()
+    actor.block_main_thread.remote(signal_actor)
+    ref = actor.echo.remote(torch.tensor([4, 5, 6]), "cuda")
+    obj_id = ref.hex()
+    del ref
+    ray.get(signal_actor.send.remote())
+
+    wait_for_condition(
+        lambda: ray._private.worker.global_worker.gpu_object_manager.get_gpu_object_metadata(
+            obj_id
+        )
+        is None,
+    )
+    wait_for_condition(
+        lambda: ray.get(actor.get_num_gpu_objects.remote()) == 0,
+    )
 
 
 @pytest.mark.skip(
