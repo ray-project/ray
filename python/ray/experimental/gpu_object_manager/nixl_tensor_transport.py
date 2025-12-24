@@ -1,9 +1,11 @@
 import threading
 import time
+import traceback
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, List, Optional
 
 import ray
+from ray.exceptions import RayDirectTransportError
 from ray.experimental.gpu_object_manager.tensor_transport_manager import (
     TensorTransportManager,
 )
@@ -212,7 +214,7 @@ class NixlTensorTransport(TensorTransportManager):
                     time.sleep(0.001)  # Avoid busy waiting
                 elif state == "DONE":
                     break
-        finally:
+        except Exception:
             # We could raise errors or NIXL could raise errors like NIXL_ERR_REMOTE_DISCONNECT,
             # so doing best effort cleanup.
             with self._aborted_transfer_obj_ids_lock:
@@ -223,6 +225,11 @@ class NixlTensorTransport(TensorTransportManager):
                 nixl_agent.remove_remote_agent(remote_name)
             if local_descs:
                 nixl_agent.deregister_memory(local_descs)
+
+            raise RayDirectTransportError(
+                f"The NIXL recv failed for object id: {obj_id}. The source actor may have died during the transfer. "
+                f"The exception thrown from the nixl recv was:\n {traceback.format_exc()}"
+            ) from None
 
     def send_multiple_tensors(
         self,

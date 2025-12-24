@@ -228,7 +228,8 @@ def test_nixl_abort_sender_dies_before_sending(ray_start_regular):
     with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
         ray.get(result)
 
-    assert "nixlBackendError" in str(excinfo.value)
+    exc_str = str(excinfo.value)
+    assert "nixlBackendError" in exc_str and "The source actor may have died" in exc_str
 
     # Try a transfer with actor[1] receiving again
     new_actor = GPUTestActor.remote()

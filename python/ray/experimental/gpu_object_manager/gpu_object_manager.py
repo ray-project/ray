@@ -168,7 +168,7 @@ class GPUObjectManager:
 
     def wait_for_tensor_transport_metadata(
         self, obj_id: str, timeout: float
-    ) -> Optional[TensorTransportMetadata]:
+    ) -> Optional["TensorTransportMetadata"]:
         with self._tensor_transport_meta_cv:
             if self._tensor_transport_meta_cv.wait_for(
                 lambda: self._managed_gpu_object_metadata[obj_id].tensor_transport_meta
