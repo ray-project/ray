@@ -29,18 +29,18 @@ def _get_log_dir(gcs_client: GcsClient) -> str:
     head_node_selector = GetAllNodeInfoRequest.NodeSelector()
     head_node_selector.is_head_node = True
 
-    # Brute force way to get node info
-    nodes = gcs_client.get_all_node_info()
-    head_node_id = None
-    brute_force_head_node_temp_dir = None
-    for node_id, node_info in nodes.items():
-        if node_info.is_head_node:
-            head_node_id = node_id
-            break
-    if head_node_id is not None:
-        brute_force_head_node_temp_dir = ray._common.utils.resolve_user_ray_temp_dir(
-            gcs_client, head_node_id
-        )
+    # # Brute force way to get node info
+    # nodes = gcs_client.get_all_node_info()
+    # head_node_id = None
+    # brute_force_head_node_temp_dir = None
+    # for node_id, node_info in nodes.items():
+    #     if node_info.is_head_node:
+    #         head_node_id = node_id
+    #         break
+    # if head_node_id is not None:
+    #     brute_force_head_node_temp_dir = ray._common.utils.resolve_user_ray_temp_dir(
+    #         gcs_client, head_node_id
+    #     )
 
     # # No timeout as we want to wait until the head node is ready.
     # node_infos = gcs_client.get_all_node_info(
@@ -60,7 +60,7 @@ def _get_log_dir(gcs_client: GcsClient) -> str:
     #             "Node temp_dir was not found in NodeInfo. did the head node's raylet start successfully?"
     #         )
     return os.path.join(
-        brute_force_head_node_temp_dir,
+        ray._common.utils.get_default_ray_temp_dir(),
         ray._private.ray_constants.SESSION_LATEST,
         "logs",
     )
