@@ -359,7 +359,7 @@ class TPUAcceleratorManager(AcceleratorManager):
                 to be checked for validity
 
         Returns:
-            True if it's valid topology, false othrwise
+            True if it's a valid topology, False otherwise.
         """
         tpu_version_formatted = tpu_accelerator_version.strip().lower().split("-")[0]
         if (
@@ -615,10 +615,10 @@ class TPUAcceleratorManager(AcceleratorManager):
         @ray.remote(resources={"TPU-v4-16-head"})
         def run_jax_fn(executable):
             # Note this will execute on worker 0
-            tpu_name = ray.util.tpu.get_tpu_pod_name()
-            num_workers = ray.util.tpu.get_tpu_num_workers()
+            tpu_name = ray.util.tpu.get_current_pod_name()
+            num_hosts = ray.util.tpu.get_current_pod_worker_count()
             tpu_executable = executable.options(resources={"TPU": 4, tpu_name: 1})
-            return [tpu_executable.remote() for _ in range(num_workers)]
+            return [tpu_executable.remote() for _ in range(num_hosts)]
 
         Returns:
             A dictionary representing additional resources that may be

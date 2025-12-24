@@ -22,7 +22,17 @@ logger = logging.getLogger(__name__)
 
 @PublicAPI(stability="alpha")
 def get_tpu_version_from_type(accelerator_type: str) -> str:
-    """Extracts the version (e.g. "v6e") from the accelerator type (e.g. "TPU-V6E")."""
+    """Extracts the version from the accelerator type.
+
+    Args:
+        accelerator_type: The full accelerator type string (e.g. "TPU-V6E").
+
+    Returns:
+        The version string (e.g. "v6e").
+
+    Raises:
+        ValueError: If the accelerator type is invalid.
+    """
     accel_type_lower = accelerator_type.lower()
 
     if accel_type_lower.startswith("tpu-"):
@@ -85,12 +95,14 @@ def get_tpu_worker_resources(
     """
     Calculates the number of workers and the resources required for each worker
     to run based on a TPU topology.
+
     Args:
         topology: The TPU topology string.
         accelerator_type: The accelerator string.
         resources_per_unit: Optional manual override for resources per unit. If
             unspecified, the number of TPU chips in a host is assumed.
         num_slices: The number of TPU slices.
+
     Returns:
         A tuple containing:
         - num_workers: Total workers required.
@@ -147,6 +159,15 @@ def get_tpu_coordinator_env_vars(
 ) -> Dict[str, str]:
     """
     Returns the environment variables required for JAX multi-slice coordination.
+
+    Args:
+        coordinator_address: The IP address or hostname of the coordinator.
+        num_slices: The total number of slices in the cluster.
+        slice_id: The index of the current slice.
+        coordinator_port: The port the coordinator is listening on.
+
+    Returns:
+        A dictionary mapping environment variable names to their values.
     """
     return {
         "MEGASCALE_COORDINATOR_ADDRESS": coordinator_address,
@@ -225,7 +246,7 @@ class SlicePlacementGroup:
         name: str = "",
         lifetime: Optional[str] = None,
         # default
-        num_slices=1,
+        num_slices: int = 1,
     ):
         self._topology = topology.strip().lower()
         self._accelerator_version = accelerator_version.strip().lower()
