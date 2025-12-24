@@ -1958,3 +1958,17 @@ py_test(
         "//:ray_lib",
     ],
 )
+
+pytest(
+    name = "test_nullary_expression",
+    size = "small",
+    srcs = ["tests/test_nullary_expression.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)

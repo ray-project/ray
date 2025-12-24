@@ -22,6 +22,8 @@ from ray.data.expressions import (
     DownloadExpr,
     Expr,
     LiteralExpr,
+    NullaryExpr,
+    NullaryOperation,
     Operation,
     StarExpr,
     UDFExpr,
@@ -517,8 +519,13 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
         )
 
     def visit_Call(self, node: ast.Call) -> "Expr":
-        """Handle function calls for operations like is_null, is_not_null, is_nan."""
-        from ray.data.expressions import BinaryExpr, Operation, UnaryExpr
+        """Handle function calls for operations like is_null, is_not_null, is_nan, random."""
+        from ray.data.expressions import (
+            BinaryExpr,
+            Operation,
+            UnaryExpr,
+            random as random_func,
+        )
 
         func_name = node.func.id if isinstance(node.func, ast.Name) else str(node.func)
 
@@ -546,6 +553,29 @@ class _ConvertToNativeExpressionVisitor(ast.NodeVisitor):
             left = self.visit(node.args[0])
             right = self.visit(node.args[1])
             return BinaryExpr(Operation.IN, left, right)
+        elif func_name == "random":
+            # Extract and validate positional arguments are constant literals
+            args = []
+            for arg in node.args:
+                if not isinstance(arg, ast.Constant):
+                    raise ValueError("random() arguments must be constant literals")
+                args.append(arg.value)
+
+            # Extract and validate keyword arguments are constant literals
+            kwargs = {}
+            for keyword in node.keywords:
+                if keyword.arg is None:
+                    raise ValueError("random() does not support **kwargs")
+                keyword_expr = self.visit(keyword.value)
+                if not isinstance(keyword_expr, LiteralExpr):
+                    raise ValueError("random() arguments must be constant literals")
+                kwargs[keyword.arg] = keyword_expr.value
+
+            # Call the actual random() function which will validate:
+            # - Too many positional arguments
+            # - Duplicate argument values
+            # - Unknown keyword arguments
+            return random_func(*args, **kwargs)
         else:
             raise ValueError(f"Unsupported function: {func_name}")
 
@@ -688,6 +718,36 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         raise TypeError(
             "DownloadExpr evaluation is not yet implemented in NativeExpressionEvaluator."
         )
+
+    def visit_nullary(self, expr: NullaryExpr) -> Union[BlockColumn, ScalarType]:
+        """Visit a nullary expression and handle based on operation type.
+
+        Args:
+            expr: The nullary expression.
+
+        Returns:
+            The evaluated result based on the nullary operation type.
+        """
+        if expr.op == NullaryOperation.RANDOM:
+            from ray.data._internal.planner.plan_expression.random_impl import (
+                random_impl,
+            )
+
+            return random_impl(
+                self.block_accessor.num_rows(),
+                self.block_accessor.block_type(),
+                seed=expr.kwargs.get("seed"),
+                reseed_after_execution=expr.kwargs.get("reseed_after_execution", True),
+            )
+        elif expr.op == NullaryOperation.UUID:
+            import uuid
+
+            return pa.array(
+                [str(uuid.uuid4()) for _ in range(self.block_accessor.num_rows())],
+                type=pa.string(),
+            )
+        else:
+            raise TypeError(f"Unsupported nullary operation: {expr.op}")
 
 
 def eval_expr(expr: Expr, block: Block) -> Union[BlockColumn, ScalarType]:

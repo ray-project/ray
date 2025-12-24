@@ -26,6 +26,8 @@ from ray.data.datatype import DataType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
+    import pyarrow.compute
+
     from ray.data.namespace_expressions.dt_namespace import _DatetimeNamespace
     from ray.data.namespace_expressions.list_namespace import _ListNamespace
     from ray.data.namespace_expressions.string_namespace import _StringNamespace
@@ -38,7 +40,7 @@ Decorated = Union[UDFCallable, Type[T]]
 
 
 @DeveloperAPI(stability="alpha")
-class Operation(Enum):
+class Operation(str, Enum):
     """Enumeration of supported operations in expressions.
 
     This enum defines all the binary operations that can be performed
@@ -86,6 +88,23 @@ class Operation(Enum):
     NOT_IN = "not_in"
 
 
+@DeveloperAPI(stability="alpha")
+class NullaryOperation(str, Enum):
+    """Enumeration of supported nullary operations in expressions.
+
+    This enum defines all the nullary operations (operations that take zero
+    column arguments) that can be performed. These operations may accept
+    non-column arguments (like seeds, configuration parameters, etc.) but
+    do not operate on column data.
+
+    Attributes:
+        RANDOM: Generate random numbers in [0, 1)
+    """
+
+    RANDOM = "random"
+    UUID = "uuid"
+
+
 class _ExprVisitor(ABC, Generic[T]):
     """Base visitor with generic dispatch for Ray Data expressions."""
 
@@ -106,6 +125,8 @@ class _ExprVisitor(ABC, Generic[T]):
             return self.visit_download(expr)
         elif isinstance(expr, StarExpr):
             return self.visit_star(expr)
+        elif isinstance(expr, NullaryExpr):
+            return self.visit_nullary(expr)
         else:
             raise TypeError(f"Unsupported expression type for conversion: {type(expr)}")
 
@@ -139,6 +160,10 @@ class _ExprVisitor(ABC, Generic[T]):
 
     @abstractmethod
     def visit_download(self, expr: "DownloadExpr") -> T:
+        pass
+
+    @abstractmethod
+    def visit_nullary(self, expr: "NullaryExpr") -> T:
         pass
 
 
@@ -204,6 +229,12 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
 
     def visit_star(self, expr: "StarExpr") -> "pyarrow.compute.Expression":
         raise TypeError("Star expressions cannot be converted to PyArrow expressions")
+
+    def visit_nullary(self, expr: "NullaryExpr") -> "pyarrow.compute.Expression":
+        raise TypeError(
+            "Nullary expressions cannot be converted to PyArrow expressions. "
+            "They must be evaluated directly."
+        )
 
 
 @DeveloperAPI(stability="alpha")
@@ -725,6 +756,40 @@ class LiteralExpr(Expr):
             isinstance(other, LiteralExpr)
             and self.value == other.value
             and type(self.value) is type(other.value)
+        )
+
+
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False, repr=False)
+class NullaryExpr(Expr):
+    """Expression that represents a nullary operation (takes zero column or
+    expression arguments).
+
+    Nullary expression generates values without requiring any input expressions,
+    e.g., random or uuid values. It may accept non-expression arguments for
+    configurations, e.g., random seed.
+
+    Args:
+        op: The nullary operation to perform
+        kwargs: Operation-specific keyword arguments. The valid kwargs depend on the
+                operation type.
+
+    Example:
+        >>> from ray.data.expressions import random
+        >>> # Generate random numbers without seed
+        >>> rand_expr = random(seed=42)
+        >>> # This creates: NullaryExpr(op=NullaryOperation.RANDOM, kwargs={"seed": 42})
+    """
+
+    op: NullaryOperation
+    kwargs: Dict[str, Any] = field(default_factory=dict)
+    data_type: DataType = field(default_factory=lambda: DataType.float64(), init=False)
+
+    def structurally_equals(self, other: Any) -> bool:
+        return (
+            isinstance(other, NullaryExpr)
+            and self.op is other.op
+            and self.kwargs == other.kwargs
         )
 
 
@@ -1466,6 +1531,96 @@ def download(uri_column_name: str) -> DownloadExpr:
     return DownloadExpr(uri_column_name=uri_column_name)
 
 
+@PublicAPI(stability="alpha")
+def random(seed: int | None = None, reseed_after_execution: bool = True) -> NullaryExpr:
+    """
+    Create an expression that generates random numbers.
+
+    This creates an expression that generates random floating-point numbers
+    between 0 (inclusive) and 1 (exclusive) for each row. The generator can
+    be optionally seeded for reproducibility.
+
+    Args:
+        seed: An optional integer seed for the random number generator. If None,
+            uses system randomness (non-deterministic).
+        reseed_after_execution: If False, the random number generator (RNG) will be
+            initialized with the provided ``seed``. Each dataset execution will produce
+            the same set of random values (except for the usual randomness due to task
+            parallelism and ordering of the data). If True, the provided seed is treated
+            as an "initial" seed and each dataset execution will generate new random
+            values. This is useful for reproducibility across multiple epochs in model
+            training. Under the hood, the seed sequence used to initialize the RNG consists
+            of three components: an index of the Ray task, an index of the dataset execution,
+            and the provided ``seed``. Defaults to True.
+
+    Returns:
+        A :class:`NullaryExpr` that generates random numbers
+
+    Example:
+        >>> from ray.data.expressions import random
+        >>> import ray
+        >>> ds = ray.data.range(10)
+        >>> # Add random column without seed
+        >>> ds.with_column("rand", random()).take(3)  # doctest: +SKIP
+        [{'id': 0, 'rand': 0.013528930983987442},
+         {'id': 1, 'rand': 0.7534846535881974},
+         {'id': 4, 'rand': 0.13351018846379803}]
+
+        For reproducibility, we can provide an integer seed.
+
+        >>> ds.with_column("rand", random(seed=42)).take_batch(batch_size=3)  # doctest: +SKIP
+        {'id': array([0, 1, 2]), 'rand': array([0.67791253, 0.48577076, 0.48211206])}
+
+        By default, `reseed_after_execution` is True, so each dataset execution will
+        generate new random values. This is useful for reproducibility across multiple
+        epochs in model training.
+
+        >>> # Same dataset but executed for the second time
+        >>> ds.with_column("rand", random(seed=42)).take_batch(batch_size=3)  # doctest: +SKIP
+        {'id': array([0, 1, 2]), 'rand': array([0.49661147, 0.36291881, 0.8829356 ])}
+
+        When `reseed_after_execution` is False, the random numbers are fully reproducible across
+        executions.
+
+        >>> # 1st execution
+        >>> ds.with_column("rand", random(seed=42, reseed_after_execution=False)).take_batch(batch_size=3)  # doctest: +SKIP
+        {'id': array([0, 1, 2]), 'rand': array([0.23680187, 0.09952025, 0.09413677])}
+        >>> # 2nd execution
+        >>> ds.with_column("rand", random(seed=42, reseed_after_execution=False)).take_batch(batch_size=3)  # doctest: +SKIP
+        {'id': array([0, 1, 2]), 'rand': array([0.23680187, 0.09952025, 0.09413677])}
+    """
+    return NullaryExpr(
+        op=NullaryOperation.RANDOM,
+        kwargs={"seed": seed, "reseed_after_execution": reseed_after_execution},
+    )
+
+
+@PublicAPI(stability="alpha")
+def uuid() -> NullaryExpr:
+    """
+    Create a UUID expression that generates unique identifiers.
+
+    This creates an expression that generates unique identifiers (strings) for each row.
+    The identifiers are generated using the UUID4 algorithm.
+
+    Returns:
+        A :class:`NullaryExpr` that generates unique identifiers
+
+    Example:
+        >>> from ray.data.expressions import uuid
+        >>> import ray
+        >>> ds = ray.data.range(10)
+        >>> ds.with_column("uuid", uuid().str.replace("-", "")).take(5)  # doctest: +SKIP
+        [{'id': 0, 'uuid': '2899f7bd87164b98a774df730a99c8b3'},
+         {'id': 1, 'uuid': 'e398656a73b0475fb6d9d5d4389a23e6'},
+         {'id': 2, 'uuid': '6ef8e2a18c6c4b7e8a4089b3fcfd8094'},
+         {'id': 3, 'uuid': 'c4abbc54bc8947899ed3ab0bf1eaf75a'},
+         {'id': 4, 'uuid': 'b6265f98e2d0431ea86d837e8a16d31c'}]
+
+    """
+    return NullaryExpr(op=NullaryOperation.UUID, kwargs={})
+
+
 # ──────────────────────────────────────
 # Public API for evaluation
 # ──────────────────────────────────────
@@ -1474,11 +1629,13 @@ def download(uri_column_name: str) -> DownloadExpr:
 # Re-export eval_expr for public use
 
 __all__ = [
+    "NullaryOperation",
     "Operation",
     "Expr",
     "ColumnExpr",
     "LiteralExpr",
     "BinaryExpr",
+    "NullaryExpr",
     "UnaryExpr",
     "UDFExpr",
     "DownloadExpr",
@@ -1489,6 +1646,7 @@ __all__ = [
     "col",
     "lit",
     "download",
+    "random",
     "star",
     "_ListNamespace",
     "_StringNamespace",

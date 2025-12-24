@@ -8,6 +8,8 @@ from ray.data.expressions import (
     DownloadExpr,
     Expr,
     LiteralExpr,
+    NullaryExpr,
+    NullaryOperation,
     Operation,
     StarExpr,
     UDFExpr,
@@ -76,6 +78,10 @@ class _ExprVisitorBase(_ExprVisitor[None]):
 
     def visit_download(self, expr: "Expr") -> None:
         """Visit a download expression (no columns to collect)."""
+        pass
+
+    def visit_nullary(self, expr: "NullaryExpr") -> None:
+        """Visit a nullary expression (no columns to collect)."""
         pass
 
 
@@ -275,6 +281,17 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         """
         return expr
 
+    def visit_nullary(self, expr: "NullaryExpr") -> Expr:
+        """Visit a nullary expression (no rewriting needed).
+
+        Args:
+            expr: The nullary expression.
+
+        Returns:
+            The original nullary expression.
+        """
+        return expr
+
     def visit_star(self, expr: StarExpr) -> Expr:
         """Visit a star expression (no rewriting needed).
 
@@ -410,6 +427,10 @@ class _TreeReprVisitor(_ExprVisitor[str]):
     def visit_download(self, expr: "DownloadExpr") -> str:
         return self._make_tree_lines(f"DOWNLOAD({expr.uri_column_name!r})", expr=expr)
 
+    def visit_nullary(self, expr: "NullaryExpr") -> str:
+        """Visit a nullary expression and handle based on operation type."""
+        return self._make_tree_lines(expr.op.name, expr=expr)
+
     def visit_star(self, expr: "StarExpr") -> str:
         return self._make_tree_lines("COL(*)", expr=expr)
 
@@ -497,6 +518,23 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
     def visit_download(self, expr: "DownloadExpr") -> str:
         """Visit a download expression and return its inline representation."""
         return f"download({expr.uri_column_name!r})"
+
+    def visit_nullary(self, expr: "NullaryExpr") -> str:
+        """Visit a nullary expression and return its inline representation."""
+        if expr.op == NullaryOperation.RANDOM:
+            parts = []
+            seed = expr.kwargs.get("seed")
+            if seed is not None:
+                parts.append(f"seed={seed}")
+            reseed_after_execution = expr.kwargs.get("reseed_after_execution", True)
+            if seed is not None and not reseed_after_execution:
+                parts.append("reseed_after_execution=False")
+            if parts:
+                return f"random({', '.join(parts)})"
+            return "random()"
+        else:
+            # For future nullary operations, add handling here
+            return f"{expr.op.value}()"
 
     def visit_star(self, expr: "StarExpr") -> str:
         """Visit a star expression and return its inline representation."""
