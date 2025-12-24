@@ -556,10 +556,6 @@ def _inject_tracing_into_class(_cls):
             ),
         )
 
-        # If method was already wrapped, no need to wrap again
-        if hasattr(method, "__wrapped__"):
-            continue
-
         if inspect.iscoroutinefunction(method):
             # If the method was async, swap out sync wrapper into async
             wrapped_method = wraps(method)(async_span_wrapper(method))

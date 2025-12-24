@@ -917,7 +917,6 @@ class ActorMethod:
 
 
 class _ActorClassMethodMetadata(object):
-
     """Metadata for all methods in an actor class. This data can be cached.
 
     Attributes:
