@@ -13,6 +13,7 @@ FROM rayproject/manylinux2014:${MANYLINUX_VERSION}-jdk-${HOSTTYPE}
 
 # Install Python 3.14 using uv (not yet available in the base manylinux2014 image)
 # TODO(python314): Remove this once rayproject/manylinux2014 is rebuilt with Python 3.14
+USER root
 RUN <<EOF
 #!/bin/bash
 set -euo pipefail
@@ -41,6 +42,7 @@ ln -sf "$PYTHON314_DIR/bin/pip3" /opt/python/cp314-cp314/bin/pip
 /opt/python/cp314-cp314/bin/pip --version
 
 EOF
+USER forge
 
 # Still keep bazelrc updates to allow BUILDKITE_BAZEL_CACHE_URL to be used.
 RUN <<EOF
