@@ -160,30 +160,13 @@ class GPUObjectManager:
         with self._lock:
             self._managed_gpu_object_metadata[obj_id] = gpu_object_meta
 
-    def pop_gpu_object_metadata(self, obj_id: str) -> Optional[GPUObjectMeta]:
+    def pop_gpu_object_metadata(self, obj_id: str) -> GPUObjectMeta:
         with self._lock:
-            return self._managed_gpu_object_metadata.pop(obj_id, None)
+            return self._managed_gpu_object_metadata.pop(obj_id)
 
     def get_gpu_object_metadata(self, obj_id: str) -> GPUObjectMeta:
         with self._lock:
             return self._managed_gpu_object_metadata[obj_id]
-
-    def set_tensor_transport_metadata_and_pop_queued_transfers(
-        self, obj_id: str, tensor_transport_meta: "TensorTransportMetadata"
-    ) -> Optional[List["ray.actor.ActorHandle"]]:
-        """
-        Sets the tensor transport metadata and pops and returns any queued
-        up transfers for the object.
-        """
-        with self._tensor_transport_meta_cv:
-            self._managed_gpu_object_metadata[
-                obj_id
-            ] = self._managed_gpu_object_metadata[obj_id]._replace(
-                tensor_transport_meta=tensor_transport_meta
-            )
-            dst_actors = self._queued_transfers.pop(obj_id, None)
-            self._tensor_transport_meta_cv.notify_all()
-            return dst_actors
 
     def wait_for_tensor_transport_metadata(self, obj_id: str, timeout: float) -> bool:
         with self._tensor_transport_meta_cv:
@@ -192,21 +175,6 @@ class GPUObjectManager:
                 is not None,
                 timeout=timeout,
             )
-
-    def get_tensor_transport_meta_or_queue_transfer(
-        self, obj_id: str, dst_actor: "ray.actor.ActorHandle"
-    ):
-        """
-        Atomically gets the tensor transport metadata for an object and queues up a transfer
-        if the tensor transport metadata is not available.
-        """
-        with self._lock:
-            tensor_transport_meta = self._managed_gpu_object_metadata[
-                obj_id
-            ].tensor_transport_meta
-            if tensor_transport_meta is None:
-                self._queued_transfers[obj_id].append(dst_actor)
-            return tensor_transport_meta
 
     def _monitor_failures(self):
         """
@@ -366,19 +334,25 @@ class GPUObjectManager:
         )
 
     def set_tensor_transport_metadata_and_trigger_queued_transfers(
-        self, object_id: str, tensor_transport_meta: "TensorTransportMetadata"
+        self, obj_id: str, tensor_transport_meta: "TensorTransportMetadata"
     ):
         """
         Sets the tensor transport metadata for an object and triggers any queued
         up transfers for that object.
         """
-        dst_actors = self.set_tensor_transport_metadata_and_pop_queued_transfers(
-            object_id, tensor_transport_meta
-        )
+        with self._tensor_transport_meta_cv:
+            self._managed_gpu_object_metadata[
+                obj_id
+            ] = self._managed_gpu_object_metadata[obj_id]._replace(
+                tensor_transport_meta=tensor_transport_meta
+            )
+            dst_actors = self._queued_transfers.pop(obj_id, None)
+            self._tensor_transport_meta_cv.notify_all()
+
         if dst_actors:
             for dst_actor in dst_actors:
                 # Trigger the transfer now that the metadata is available.
-                self.trigger_out_of_band_tensor_transfer(dst_actor, object_id)
+                self.trigger_out_of_band_tensor_transfer(dst_actor, obj_id)
 
     def _fetch_object(
         self,
@@ -469,11 +443,15 @@ class GPUObjectManager:
             if self.is_managed_object(obj_id):
                 gpu_object_ids.add(obj_id)
         if gpu_object_ids:
-            # Count the number of readers for each GPU object.
             for obj_id in gpu_object_ids:
-                tensor_transport_meta = (
-                    self.get_tensor_transport_meta_or_queue_transfer(obj_id, dst_actor)
-                )
+                # Atomically gets the tensor transport metadata for an object and queues up a transfer
+                # if the tensor transport metadata is not available.
+                with self._lock:
+                    tensor_transport_meta = self._managed_gpu_object_metadata[
+                        obj_id
+                    ].tensor_transport_meta
+                    if tensor_transport_meta is None:
+                        self._queued_transfers[obj_id].append(dst_actor)
                 if tensor_transport_meta is not None:
                     self.trigger_out_of_band_tensor_transfer(dst_actor, obj_id)
 
@@ -648,8 +626,6 @@ class GPUObjectManager:
             # TODO(#57962): Metadata is currently not removed on borrowers that borrow through
             # the NIXL ray.put / ray.get
             gpu_object_meta = self.pop_gpu_object_metadata(object_id)
-            if gpu_object_meta is None:
-                return
             src_actor = gpu_object_meta.src_actor
             tensor_transport_backend = gpu_object_meta.tensor_transport_backend
             tensor_transport_meta = gpu_object_meta.tensor_transport_meta
