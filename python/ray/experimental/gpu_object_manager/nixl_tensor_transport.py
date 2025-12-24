@@ -88,9 +88,7 @@ class NixlTensorTransport(TensorTransportManager):
                     get_tensor_transport_manager,
                 )
 
-                transport_manager = get_tensor_transport_manager("NIXL")
-                assert isinstance(transport_manager, NixlTensorTransport)
-                transport_manager.get_nixl_agent()
+                get_tensor_transport_manager("NIXL").get_nixl_agent()
                 return True
             except Exception:
                 return False
@@ -145,8 +143,8 @@ class NixlTensorTransport(TensorTransportManager):
 
     def get_communicator_metadata(
         self,
-        src_actor: Optional["ray.actor.ActorHandle"],
-        dst_actor: Optional["ray.actor.ActorHandle"],
+        src_actor: "ray.actor.ActorHandle",
+        dst_actor: "ray.actor.ActorHandle",
         backend: Optional[str] = None,
     ) -> NixlCommunicatorMetadata:
         return NixlCommunicatorMetadata()
@@ -155,8 +153,8 @@ class NixlTensorTransport(TensorTransportManager):
         self,
         tensors,
         obj_id: str,
-        tensor_transport_metadata: TensorTransportMetadata,
-        communicator_metadata: CommunicatorMetadata,
+        tensor_transport_metadata: NixlTransportMetadata,
+        communicator_metadata: NixlCommunicatorMetadata,
     ):
         if not tensors:
             return
@@ -229,22 +227,21 @@ class NixlTensorTransport(TensorTransportManager):
     def send_multiple_tensors(
         self,
         tensors: List["torch.Tensor"],
-        tensor_transport_metadata: TensorTransportMetadata,
-        communicator_metadata: CommunicatorMetadata,
+        tensor_transport_metadata: NixlTransportMetadata,
+        communicator_metadata: NixlCommunicatorMetadata,
     ):
         raise NotImplementedError(
             "NIXL transport does not support send_multiple_tensors, since it is a one-sided transport."
         )
 
     def garbage_collect(
-        self, obj_id: str, tensor_transport_meta: TensorTransportMetadata
+        self, obj_id: str, tensor_transport_meta: NixlTransportMetadata
     ):
         from ray._private.worker import global_worker
 
         gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
         count = gpu_object_store.remove_managed_meta_nixl(obj_id)
         if count == 0:
-            assert isinstance(tensor_transport_meta, NixlTransportMetadata)
             descs = tensor_transport_meta.nixl_reg_descs
             if descs is not None:
                 self.get_nixl_agent().deregister_memory(descs)
@@ -252,7 +249,7 @@ class NixlTensorTransport(TensorTransportManager):
     def abort_transport(
         self,
         obj_id: str,
-        communicator_metadata: CommunicatorMetadata,
+        communicator_metadata: NixlCommunicatorMetadata,
     ):
         with self._aborted_transfer_obj_ids_lock:
             self._aborted_transfer_obj_ids.add(obj_id)
