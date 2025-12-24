@@ -132,6 +132,18 @@ class ClusterResourceManager {
     return node.GetLocalView().is_draining;
   }
 
+  /// Set the draining state of a node.
+  /// This is called when the autoscaler commits to draining a node, ensuring
+  /// the scheduler immediately sees the node as unavailable for scheduling.
+  ///
+  /// \param node_id The ID of the node.
+  /// \param is_draining Whether the node is draining.
+  /// \param draining_deadline_timestamp_ms The deadline for the drain operation.
+  /// \return true if the node exists and was updated, false otherwise.
+  bool SetNodeDraining(const scheduling::NodeID &node_id,
+                       bool is_draining,
+                       int64_t draining_deadline_timestamp_ms);
+
   /// @param max_num_nodes_to_include Max number of nodes to include in the debug string.
   ///   If not specified, all nodes will be included.
   std::string DebugString(
