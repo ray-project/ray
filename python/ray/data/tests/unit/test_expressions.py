@@ -26,10 +26,11 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 from ray.data.datatype import DataType
 from ray.data.expressions import (
     BinaryExpr,
+    BinaryOperation,
     Expr,
-    Operation,
     UDFExpr,
     UnaryExpr,
+    UnaryOperation,
     col,
     download,
     lit,
@@ -100,9 +101,6 @@ def test_alias_functionality(expr, alias_name, expected_alias):
     assert aliased_expr.name == expected_alias
     assert aliased_expr.expr.structurally_equals(expr)
 
-    # Test data type preservation
-    assert aliased_expr.data_type == expr.data_type
-
     # Test evaluation equivalence
     test_data = pd.DataFrame(
         {
@@ -155,9 +153,9 @@ class TestUnaryExpressions:
     @pytest.mark.parametrize(
         "expr, expected_op",
         [
-            (col("age").is_null(), Operation.IS_NULL),
-            (col("name").is_not_null(), Operation.IS_NOT_NULL),
-            (~col("active"), Operation.NOT),
+            (col("age").is_null(), UnaryOperation.IS_NULL),
+            (col("name").is_not_null(), UnaryOperation.IS_NOT_NULL),
+            (~col("active"), UnaryOperation.NOT),
         ],
         ids=["is_null", "is_not_null", "not"],
     )
@@ -189,10 +187,10 @@ class TestBinaryExpressions:
     @pytest.mark.parametrize(
         "expr, expected_op",
         [
-            (col("age") != lit(25), Operation.NE),
-            (col("status").is_in(["active", "pending"]), Operation.IN),
-            (col("status").not_in(["inactive", "deleted"]), Operation.NOT_IN),
-            (col("a").is_in(col("b")), Operation.IN),
+            (col("age") != lit(25), BinaryOperation.NE),
+            (col("status").is_in(["active", "pending"]), BinaryOperation.IN),
+            (col("status").not_in(["inactive", "deleted"]), BinaryOperation.NOT_IN),
+            (col("a").is_in(col("b")), BinaryOperation.IN),
         ],
         ids=["not_equal", "is_in", "not_in", "is_in_amongst_cols"],
     )
@@ -205,7 +203,7 @@ class TestBinaryExpressions:
         """Test is_in with list of values."""
         expr = col("status").is_in(["active", "pending", "completed"])
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.IN
+        assert expr.op == BinaryOperation.IN
         # The right operand should be a LiteralExpr containing the list
         assert expr.right.value == ["active", "pending", "completed"]
 
@@ -214,14 +212,14 @@ class TestBinaryExpressions:
         values_expr = lit(["a", "b", "c"])
         expr = col("category").is_in(values_expr)
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.IN
+        assert expr.op == BinaryOperation.IN
         assert expr.right == values_expr
 
     def test_is_in_amongst_cols(self):
         """Test is_in with expression."""
         expr = col("a").is_in(col("b"))
         assert isinstance(expr, BinaryExpr)
-        assert expr.op == Operation.IN
+        assert expr.op == BinaryOperation.IN
         assert expr.right == col("b")
 
 
@@ -242,11 +240,11 @@ class TestBooleanExpressions:
         """Test that boolean expressions work directly."""
         assert isinstance(condition, Expr)
         # Verify the expression structure based on type
-        if condition.op in [Operation.GT, Operation.EQ]:
+        if condition.op in [BinaryOperation.GT, BinaryOperation.EQ]:
             assert isinstance(condition, BinaryExpr)
-        elif condition.op == Operation.IS_NOT_NULL:
+        elif condition.op == UnaryOperation.IS_NOT_NULL:
             assert isinstance(condition, UnaryExpr)
-        elif condition.op == Operation.AND:
+        elif condition.op == BinaryOperation.AND:
             assert isinstance(condition, BinaryExpr)
 
     def test_boolean_combination(self):
@@ -257,17 +255,17 @@ class TestBooleanExpressions:
         # Test AND combination
         combined_and = expr1 & expr2
         assert isinstance(combined_and, BinaryExpr)
-        assert combined_and.op == Operation.AND
+        assert combined_and.op == BinaryOperation.AND
 
         # Test OR combination
         combined_or = expr1 | expr2
         assert isinstance(combined_or, BinaryExpr)
-        assert combined_or.op == Operation.OR
+        assert combined_or.op == BinaryOperation.OR
 
         # Test NOT operation
         negated = ~expr1
         assert isinstance(negated, UnaryExpr)
-        assert negated.op == Operation.NOT
+        assert negated.op == UnaryOperation.NOT
 
     def test_boolean_structural_equality(self):
         """Test structural equality for boolean expressions."""
@@ -283,12 +281,12 @@ class TestBooleanExpressions:
         # Complex boolean expression
         complex_expr = (col("age") >= 21) & (col("country") == "USA")
         assert isinstance(complex_expr, BinaryExpr)
-        assert complex_expr.op == Operation.AND
+        assert complex_expr.op == BinaryOperation.AND
 
         # Even more complex with OR and NOT
         very_complex = ((col("age") > 21) | (col("status") == "VIP")) & ~col("banned")
         assert isinstance(very_complex, BinaryExpr)
-        assert very_complex.op == Operation.AND
+        assert very_complex.op == BinaryOperation.AND
 
 
 class TestToPyArrow:
@@ -438,7 +436,7 @@ class TestToPyArrow:
             fn=dummy_fn,
             args=[col("x")],
             kwargs={},
-            data_type=DataType(int),
+            _data_type=DataType(int),
         )
 
         with pytest.raises(TypeError, match="UDF expressions cannot be converted"):
@@ -647,7 +645,7 @@ class TestIcebergExpressionVisitor:
             fn=dummy_fn,
             args=[col("x")],
             kwargs={},
-            data_type=DataType(int),
+            _data_type=DataType(int),
         )
 
         with pytest.raises(
@@ -683,7 +681,7 @@ class TestIcebergExpressionVisitor:
             ValueError, match="IN operation requires right operand to be a literal list"
         ):
             # Create a BinaryExpr directly to bypass col.is_in() validation
-            invalid_expr = BinaryExpr(Operation.IN, col("a"), col("b"))
+            invalid_expr = BinaryExpr(BinaryOperation.IN, col("a"), col("b"))
             visitor.visit(invalid_expr)
 
 
@@ -712,7 +710,7 @@ def _build_complex_expr():
         fn=custom_udf,
         args=[col("value"), lit(10)],
         kwargs={"z": col("multiplier")},
-        data_type=DataType(int),
+        _data_type=DataType(int),
     )
 
     # Build the mega-complex expression
@@ -749,32 +747,32 @@ def _build_complex_expr():
             │   │   │   │   │   ├── left: DIV
             │   │   │   │   │   │   ├── left: MUL
             │   │   │   │   │   │   │   ├── left: ADD
-            │   │   │   │   │   │   │   │   ├── left: COL('age')
+            │   │   │   │   │   │   │   │   ├── left: UNRESOLVED_COL('age')
             │   │   │   │   │   │   │   │   └── right: LIT(10)
-            │   │   │   │   │   │   │   └── right: COL('rate')
+            │   │   │   │   │   │   │   └── right: UNRESOLVED_COL('rate')
             │   │   │   │   │   │   └── right: LIT(2.5)
             │   │   │   │   │   └── right: LIT(100)
             │   │   │   │   └── right: OR
             │   │   │   │       ├── left: IS_NOT_NULL
-            │   │   │   │       │   └── operand: COL('name')
+            │   │   │   │       │   └── operand: UNRESOLVED_COL('name')
             │   │   │   │       └── right: AND
             │   │   │   │           ├── left: IN
-            │   │   │   │           │   ├── left: COL('status')
+            │   │   │   │           │   ├── left: UNRESOLVED_COL('status')
             │   │   │   │           │   └── right: LIT(['active', 'pending'])
-            │   │   │   │           └── right: COL('verified')
+            │   │   │   │           └── right: UNRESOLVED_COL('verified')
             │   │   │   └── right: LE
             │   │   │       ├── left: FLOORDIV
             │   │   │       │   ├── left: SUB
-            │   │   │       │   │   ├── left: COL('count')
+            │   │   │       │   │   ├── left: UNRESOLVED_COL('count')
             │   │   │       │   │   └── right: LIT(5)
             │   │   │       │   └── right: LIT(2)
-            │   │   │       └── right: COL('limit')
+            │   │   │       └── right: UNRESOLVED_COL('limit')
             │   │   └── right: NOT
             │   │       └── operand: OR
             │   │           ├── left: IS_NULL
-            │   │           │   └── operand: COL('deleted')
+            │   │           │   └── operand: UNRESOLVED_COL('deleted')
             │   │           └── right: NE
-            │   │               ├── left: COL('score')
+            │   │               ├── left: UNRESOLVED_COL('score')
             │   │               └── right: LIT(0)
             │   └── right: LT
             │       ├── left: DOWNLOAD('uri')
@@ -782,9 +780,9 @@ def _build_complex_expr():
             └── right: GT
                 ├── left: ALIAS('udf_result')
                 │   └── UDF(custom_udf)
-                │       ├── arg[0]: COL('value')
+                │       ├── arg[0]: UNRESOLVED_COL('value')
                 │       ├── arg[1]: LIT(10)
-                │       └── kwarg['z']: COL('multiplier')
+                │       └── kwarg['z']: UNRESOLVED_COL('multiplier')
                 └── right: LIT(50)""",
         ),
     ],
