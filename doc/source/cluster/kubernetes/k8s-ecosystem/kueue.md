@@ -678,9 +678,9 @@ stand-alone `RayCluster` name (`raycluster-kueue-autoscaler`).
   `kueue.x-k8s.io/elastic-job: "true"` and configured with
   `enableInTreeAutoscaling: true` when ray image < 2.47.0.
 
-* **RayJob support** – Autoscaling for `RayJob` isn't yet supported.
-  The Kueue maintainers are actively tracking this work and will update
-  their documentation when it becomes available.
+* **RayJob support** – Autoscaling for `RayJob` is planned for the
+  upcoming v0.16 release; check the [Kueue release plan](https://github.com/kubernetes-sigs/kueue/issues/8019) for status
+  updates.
 
 * **Kueue versions prior to v0.13** – If you are using a Kueue version
   earlier than v0.13, restart the Kueue controller once after
