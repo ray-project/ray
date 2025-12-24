@@ -78,8 +78,8 @@ You can also be provide the following labels in the RayCluster metadata:
   - ```shell
     labels:
       ray.io/scheduler-name: volcano
-      volcano.sh/network-topology-mode: hard // use soft or hard
-      volcano.sh/network-topology-highest-tier-allowed: "1" // the tier defined in your HyperNode resource
+      volcano.sh/network-topology-mode: hard # use soft or hard
+      volcano.sh/network-topology-highest-tier-allowed: "1" # the tier defined in your HyperNode resource
     ```
 If autoscaling is enabled, `minReplicas` is used for gang scheduling, otherwise the desired `replicas` is used.
 
