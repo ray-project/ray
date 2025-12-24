@@ -52,18 +52,8 @@ CONTROL_LOOP_INTERVAL_S = get_env_float_non_negative(
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
 
-#: Max retry count for allowing failures in replica constructor.
-#: If no replicas at target version is running by the time we're at
-#: max constructor retry count, deploy() is considered failed.
-#: By default we set threshold as min(num_replicas * 3, this value)
-#: This constant is deprecated and will be removed in the future.
-#: Please use 'max_constructor_retry_count' instead in configurations.
-MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = get_env_int(
-    "RAY_SERVE_MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", None
-)
-
 # Max retry on deployment constructor is
-# min(num_replicas * MAX_PER_REPLICA_RETRY_COUNT, MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT)
+# min(num_replicas * MAX_PER_REPLICA_RETRY_COUNT, max_constructor_retry_count)
 MAX_PER_REPLICA_RETRY_COUNT = get_env_int("RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT", 3)
 
 

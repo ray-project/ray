@@ -49,14 +49,20 @@ In a composable deployment graph, each deployment is responsible for its own hea
 
 ### Replica constructor retries
 
-When a replica's constructor (the `__init__` method) fails, Ray Serve automatically retries creating the replica. You can configure the maximum number of constructor retries per replica using the `RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT` environment variable. The default is `3` retries per replica.
+When a replica's constructor (the `__init__` method) fails, Ray Serve automatically retries creating the replica. You can configure this behavior in two ways:
 
-The total maximum constructor retries for a deployment is calculated as `min(num_replicas * RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT, RAY_SERVE_MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT)`. You can also set `RAY_SERVE_MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT` to control the absolute maximum retries across all replicas (no default limit).
+- **Per-deployment**: Use the `max_constructor_retry_count` option in `@serve.deployment()` to set the maximum retries for that deployment. Default is `20`.
+- **Per-replica**: Use the `RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT` environment variable to limit retries per replica. Default is `3`.
 
-For example, to increase the per-replica retry count:
+The total maximum constructor retries for a deployment is `min(num_replicas * RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT, max_constructor_retry_count)`.
 
-```bash
-export RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT=5
+For example:
+
+```python
+# Set max constructor retries for this deployment
+@serve.deployment(max_constructor_retry_count=10)
+class MyDeployment:
+    ...
 ```
 
 ### Worker node recovery

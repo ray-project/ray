@@ -397,8 +397,8 @@ export RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH="mymodule.callbacks:setup_proxy
 
 Ray Serve logs warnings when replicas take too long to start, helping you identify issues such as slow `__init__` methods, long-running `reconfigure` methods, or resource scheduling delays. You can configure this warning behavior with the following environment variables:
 
-- `SERVE_SLOW_STARTUP_WARNING_S`: The time (in seconds) after which Ray Serve considers a replica to have a slow startup (defaults to `30`). If a replica takes longer than this to be scheduled or initialized, Ray Serve logs a warning.
-- `SERVE_SLOW_STARTUP_WARNING_PERIOD_S`: The minimum interval (in seconds) between slow startup warning messages (defaults to `30`). This prevents log spam when multiple replicas start slowly.
+- `RAY_SERVE_SLOW_STARTUP_WARNING_S`: The time (in seconds) after which Ray Serve considers a replica to have a slow startup (defaults to `30`). If a replica takes longer than this to be scheduled or initialized, Ray Serve logs a warning.
+- `RAY_SERVE_SLOW_STARTUP_WARNING_PERIOD_S`: The minimum interval (in seconds) between slow startup warning messages (defaults to `30`). This prevents log spam when multiple replicas start slowly.
 
 
 ### Set Request ID

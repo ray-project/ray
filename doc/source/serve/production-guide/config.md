@@ -65,10 +65,10 @@ By default, when `proxy_location` is set to `EveryNode`, Ray Serve always runs a
 
 You can also configure proxy health checks and lifecycle behavior with the following environment variables:
 
-- `RAY_SERVE_PROXY_HEALTH_CHECK_TIMEOUT_S`: The timeout (in seconds) for each proxy health check. Default is `10.0`.
-- `RAY_SERVE_PROXY_HEALTH_CHECK_PERIOD_S`: The period (in seconds) between proxy health checks. Default is `10.0`.
-- `RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S`: The timeout (in seconds) for checking if a proxy is ready. Default is `5.0`.
-- `RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S`: The minimum time (in seconds) a proxy stays in the draining state before termination. This gives the load balancer time to detect that the proxy is draining and stop sending traffic. Default is `30.0`.
+- `RAY_SERVE_PROXY_HEALTH_CHECK_PERIOD_S`: How often (in seconds) the Serve controller checks if each proxy is healthy. Default is `10.0`.
+- `RAY_SERVE_PROXY_HEALTH_CHECK_TIMEOUT_S`: How long (in seconds) the controller waits for a proxy to respond to a health check before considering it failed. If a proxy fails 3 consecutive health checks, the controller marks it unhealthy and restarts it. Default is `10.0`.
+- `RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S`: How long (in seconds) to wait for a proxy to become ready during startup. Default is `5.0`.
+- `RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S`: The minimum time (in seconds) a proxy stays in the draining state before termination. During draining: (1) the proxy fails health checks, causing the load balancer to stop routing new traffic(because it sees the unhealthy health checks for that proxy), (2) ongoing requests complete normally, and (3) the proxy waits at least this period before terminating. Default is `30.0`.
 
 (http-config)=
 
