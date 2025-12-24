@@ -29,24 +29,41 @@ def _get_log_dir(gcs_client: GcsClient) -> str:
     head_node_selector = GetAllNodeInfoRequest.NodeSelector()
     head_node_selector.is_head_node = True
 
-    # No timeout as we want to wait until the head node is ready.
-    node_infos = gcs_client.get_all_node_info(
-        node_selectors=[head_node_selector]
-    ).values()
-
-    if not node_infos:
-        raise Exception(
-            "No node info found for head node in GCS. Did the head node or gcs start successfully?"
+    # Brute force way to get node info
+    nodes = gcs_client.get_all_node_info()
+    head_node_id = None
+    brute_force_head_node_temp_dir = None
+    for node_id, node_info in nodes.items():
+        if node_info.is_head_node:
+            head_node_id = node_id
+            break
+    if head_node_id is not None:
+        brute_force_head_node_temp_dir = ray._common.utils.resolve_user_ray_temp_dir(
+            gcs_client, head_node_id
         )
 
-    node_info = next(iter(node_infos))
-    if node_info is not None:
-        temp_dir = getattr(node_info, "temp_dir", None)
-        if temp_dir is None:
-            raise Exception(
-                "Node temp_dir was not found in NodeInfo. did the head node's raylet start successfully?"
-            )
-    return os.path.join(temp_dir, ray._private.ray_constants.SESSION_LATEST, "logs")
+    # # No timeout as we want to wait until the head node is ready.
+    # node_infos = gcs_client.get_all_node_info(
+    #     node_selectors=[head_node_selector]
+    # ).values()
+
+    # if not node_infos:
+    #     raise Exception(
+    #         "No node info found for head node in GCS. Did the head node or gcs start successfully?"
+    #     )
+
+    # node_info = next(iter(node_infos))
+    # if node_info is not None:
+    #     temp_dir = getattr(node_info, "temp_dir", None)
+    #     if temp_dir is None:
+    #         raise Exception(
+    #             "Node temp_dir was not found in NodeInfo. did the head node's raylet start successfully?"
+    #         )
+    return os.path.join(
+        brute_force_head_node_temp_dir,
+        ray._private.ray_constants.SESSION_LATEST,
+        "logs",
+    )
 
 
 def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
