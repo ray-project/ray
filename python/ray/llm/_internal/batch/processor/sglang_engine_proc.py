@@ -158,8 +158,7 @@ def build_sglang_engine_processor(
                 # which initiates enough many overlapping UDF calls per actor, to
                 # saturate `max_concurrency`.
                 compute=ray.data.ActorPoolStrategy(
-                    min_size=config.get_concurrency(autoscaling_enabled=False)[0],
-                    max_size=config.get_concurrency(autoscaling_enabled=False)[1],
+                    **config.get_concurrency(autoscaling_enabled=False),
                     max_tasks_in_flight_per_actor=config.experimental.get(
                         "max_tasks_in_flight_per_actor", DEFAULT_MAX_TASKS_IN_FLIGHT
                     ),

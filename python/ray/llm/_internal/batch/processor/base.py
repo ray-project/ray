@@ -92,39 +92,44 @@ class ProcessorConfig(BaseModelExtended):
             )
         return concurrency
 
-    def get_concurrency(self, autoscaling_enabled: bool = True) -> Tuple[int, int]:
-        """Return a normalized `(min, max)` worker range from `self.concurrency`.
+    def get_concurrency(self, autoscaling_enabled: bool = True) -> Dict[str, int]:
+        """Return a normalized dict of worker pool parameters from `self.concurrency`.
 
         Behavior:
         - If `concurrency` is an int `n`:
-          - `autoscaling_enabled` is True  -> return `(1, n)` (autoscaling).
-          - `autoscaling_enabled` is False -> return `(n, n)` (fixed-size pool).
-        - If `concurrency` is a 2-tuple `(m, n)`, return it unchanged
+          - `autoscaling_enabled` is True  -> return `{"min_size": 1, "max_size": n}` (autoscaling).
+          - `autoscaling_enabled` is False -> return `{"size": n}` (fixed-size pool).
+        - If `concurrency` is a 2-tuple `(m, n)`, return `{"min_size": m, "max_size": n}`
           (the `autoscaling_enabled` flag is ignored).
 
         Args:
-            autoscaling_enabled: When False, treat an integer `concurrency` as fixed `(n, n)`;
-                otherwise treat it as a range `(1, n)`. Defaults to True.
+            autoscaling_enabled: When False, treat an integer `concurrency` as fixed size;
+                otherwise treat it as an autoscaling range from 1 to n. Defaults to True.
 
         Returns:
-            tuple[int, int]: The allowed worker range `(min, max)`.
+            Dict[str, int]: A dictionary with either:
+                - `{"size": n}` for fixed-size pools
+                - `{"min_size": m, "max_size": n}` for autoscaling pools
 
         Examples:
             >>> self.concurrency = (2, 4)
             >>> self.get_concurrency()
-            (2, 4)
+            {'min_size': 2, 'max_size': 4}
             >>> self.concurrency = 4
             >>> self.get_concurrency()
-            (1, 4)
+            {'min_size': 1, 'max_size': 4}
             >>> self.get_concurrency(autoscaling_enabled=False)
-            (4, 4)
+            {'size': 4}
         """
         if isinstance(self.concurrency, int):
             if autoscaling_enabled:
-                return 1, self.concurrency
+                return {"min_size": 1, "max_size": self.concurrency}
             else:
-                return self.concurrency, self.concurrency
-        return self.concurrency
+                return {"size": self.concurrency}
+        return {
+            "min_size": self.concurrency[0],
+            "max_size": self.concurrency[1],
+        }
 
     class Config:
         validate_assignment = True
