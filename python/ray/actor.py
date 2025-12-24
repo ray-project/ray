@@ -1,5 +1,6 @@
 import inspect
 import logging
+from functools import partial
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -819,13 +820,7 @@ class ActorMethod:
             )
         if tensor_transport is None:
             tensor_transport = self._tensor_transport
-
         if tensor_transport is not None:
-            if num_returns != 1:
-                raise ValueError(
-                    f"Currently, methods with tensor_transport={tensor_transport} only support 1 return value. "
-                    "Please make sure the actor method is decorated with `@ray.method(num_returns=1)` (the default)."
-                )
             if not self._actor._ray_enable_tensor_transport:
                 raise ValueError(
                     f'Currently, methods with .options(tensor_transport="{tensor_transport}") are not supported when enable_tensor_transport=False. '
@@ -877,9 +872,9 @@ class ActorMethod:
 
         object_refs = invocation(args, kwargs)
         if tensor_transport is not None:
-            # Currently, we only support RDT when num_returns is 1.
-            assert isinstance(object_refs, ObjectRef)
-            object_ref = object_refs
+            # Currently, we only support transfer tensor out-of-band when
+            # num_returns is 1.
+            object_ref = object_refs if isinstance(object_refs, ObjectRef) else object_refs._generator_ref
             gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
             gpu_object_manager.add_gpu_object_ref(
                 object_ref, self._actor, tensor_transport
@@ -2180,7 +2175,20 @@ class ActorHandle(Generic[T]):
             # that is for the generator task.
             assert len(object_refs) == 1
             generator_ref = object_refs[0]
-            return ObjectRefGenerator(generator_ref, worker)
+
+            if tensor_transport is not None:
+                add_gpu_object_ref = partial(
+                    ray._private.worker.global_worker.gpu_object_manager.add_gpu_object_ref,
+                    src_actor=self,
+                    tensor_transport=tensor_transport
+                )
+            else:
+                add_gpu_object_ref = None
+            return ObjectRefGenerator(
+                generator_ref,
+                worker,
+                add_gpu_object_ref,
+            )
         if len(object_refs) == 1:
             object_refs = object_refs[0]
         elif len(object_refs) == 0:
