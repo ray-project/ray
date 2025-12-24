@@ -267,13 +267,10 @@ class Monitor:
                 new_nodes.append((node_id, msg.node_ip_address))
             self.autoscaler.provider._set_nodes(new_nodes)
 
-        # Parse resource demands once outside the loop since they are global,
-        # not per-node. This avoids redundant computation for each node.
         waiting_bundles, infeasible_bundles = parse_resource_demands(
             resources_batch_data.resource_load_by_shape
         )
 
-        # Pending placement groups are also global, so compute once outside the loop.
         pending_placement_groups = list(
             resources_batch_data.placement_group_load.placement_group_data
         )
