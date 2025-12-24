@@ -584,8 +584,7 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
     // The object is still in scope by the application and it was
     // reconstructable with lineage. Mark that its lineage has been evicted so
     // we can return the right error during reconstruction.
-    if (!ref->second.OutOfScope(lineage_pinning_enabled_) &&
-        ref->second.is_reconstructable_) {
+    if (!ref->second.OutOfScope() && ref->second.is_reconstructable_) {
       ref->second.lineage_evicted = true;
       ref->second.is_reconstructable_ = false;
     }
@@ -603,10 +602,10 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
 
     RAY_LOG(DEBUG) << "Releasing lineage internal for argument " << argument_id;
     arg_it->second.lineage_ref_count--;
-    if (arg_it->second.OutOfScope(lineage_pinning_enabled_)) {
+    if (arg_it->second.OutOfScope()) {
       OnObjectOutOfScopeOrFreed(arg_it);
     }
-    if (arg_it->second.ShouldDelete(lineage_pinning_enabled_)) {
+    if (arg_it->second.ShouldDelete()) {
       RAY_CHECK(!arg_it->second.publish_ref_removed);
       lineage_bytes_evicted += ReleaseLineageReferences(arg_it);
       EraseReference(arg_it);
@@ -759,7 +758,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
   PRINT_REF_COUNT(it);
 
   // Whether it is safe to unpin the value.
-  if (it->second.OutOfScope(lineage_pinning_enabled_)) {
+  if (it->second.OutOfScope()) {
     for (const auto &inner_id : it->second.nested().contains) {
       auto inner_it = object_id_refs_.find(inner_id);
       if (inner_it != object_id_refs_.end()) {
@@ -791,7 +790,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
     }
   }
 
-  if (it->second.ShouldDelete(lineage_pinning_enabled_)) {
+  if (it->second.ShouldDelete()) {
     RAY_LOG(DEBUG) << "Deleting Reference to object " << id;
     // TODO(swang): Update lineage_ref_count for nested objects?
     ReleaseLineageReferences(it);
@@ -805,7 +804,7 @@ void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
   object_info_publisher_->PublishFailure(
       rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, it->first.Binary());
 
-  RAY_CHECK(it->second.ShouldDelete(lineage_pinning_enabled_));
+  RAY_CHECK(it->second.ShouldDelete());
   auto index_it = reconstructable_owned_objects_index_.find(it->first);
   if (index_it != reconstructable_owned_objects_index_.end()) {
     reconstructable_owned_objects_.erase(index_it->second);
@@ -884,8 +883,7 @@ bool ReferenceCounter::AddObjectOutOfScopeOrFreedCallback(
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
-  } else if (it->second.OutOfScope(lineage_pinning_enabled_) &&
-             !it->second.ShouldDelete(lineage_pinning_enabled_)) {
+  } else if (it->second.OutOfScope() && !it->second.ShouldDelete()) {
     // The object has already gone out of scope but cannot be deleted yet. Do
     // not set the deletion callback because it may never get called.
     return false;
@@ -908,7 +906,7 @@ void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &node_id) {
       UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
       UnsetObjectPrimaryCopy(it);
       UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/false);
-      if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
+      if (!it->second.OutOfScope()) {
         objects_to_recover_.push_back(object_id);
       }
     }
@@ -943,7 +941,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
     }
     // Only the owner tracks the location.
     RAY_CHECK(it->second.owned_by_us_);
-    if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
+    if (!it->second.OutOfScope()) {
       // Decrement counter for old state
       UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/true);
       if (!is_node_dead_(node_id)) {
@@ -1518,7 +1516,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
     RAY_LOG(WARNING).WithField(object_id) << "Spilled object already out of scope";
     return false;
   }
-  if (it->second.OutOfScope(lineage_pinning_enabled_) && !spilled_node_id.IsNil()) {
+  if (it->second.OutOfScope() && !spilled_node_id.IsNil()) {
     // NOTE(swang): If the object is out of scope and was spilled locally by
     // its primary raylet, then we should have already sent the "object
     // evicted" notification to delete the copy at this spilled URL. Therefore,
@@ -1641,9 +1639,6 @@ void ReferenceCounter::AddBorrowerAddress(const ObjectID &object_id,
 
 bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id,
                                                bool *lineage_evicted) const {
-  if (!lineage_pinning_enabled_) {
-    return false;
-  }
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {

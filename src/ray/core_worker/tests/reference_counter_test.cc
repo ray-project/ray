@@ -93,8 +93,7 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
         subscriber_.get(),
         [](const NodeID &node_id) { return false; },
         *owned_object_count_metric_,
-        *owned_object_size_metric_,
-        /*lineage_pinning_enabled=*/true);
+        *owned_object_size_metric_);
   }
 
   virtual void TearDown() {
@@ -324,8 +323,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
             subscriber_.get(),
             [](const NodeID &node_id) { return true; },
             *owned_object_count_metric_,
-            *owned_object_size_metric_,
-            /*lineage_pinning_enabled=*/false) {}
+            *owned_object_size_metric_) {}
 
   ~MockWorkerClient() override {
     if (!failed_) {
