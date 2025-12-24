@@ -89,7 +89,6 @@ class GPUObjectManager:
     def __init__(self):
         # This lock protects _managed_gpu_object_metadata and _queued_transfers since they can be
         # accessed from the user's python thread or the CoreWorker's main io service thread.
-        # Also makes sure the _gpu_object_store and _monitor_failures_thread are only created once.
         self._lock = threading.Lock()
 
         # A dictionary that maps from owned object's ID to GPUObjectMeta.
@@ -104,6 +103,9 @@ class GPUObjectManager:
         self._queued_transfers: Dict[str, List["ray.actor.ActorHandle"]] = defaultdict(
             list
         )
+
+        # This lock makes sure the _gpu_object_store and _monitor_failures_thread are only created once.
+        self._init_lock = threading.Lock()
 
         # Per-actor local storage for GPU objects. We create the GPU object
         # store lazily, if a user specifies a non-default tensor_transport, to
@@ -120,7 +122,7 @@ class GPUObjectManager:
 
     @property
     def gpu_object_store(self) -> "ray.experimental.GPUObjectStore":
-        with self._lock:
+        with self._init_lock:
             if self._gpu_object_store is None:
                 from ray.experimental.gpu_object_manager.gpu_object_store import (
                     GPUObjectStore,
@@ -133,7 +135,7 @@ class GPUObjectManager:
         """
         Interrupt and join the _monitor_failures_thread
         """
-        with self._lock:
+        with self._init_lock:
             if self._monitor_failures_thread:
                 self._monitor_failures_shutdown_event.set()
                 self._monitor_failures_thread.join()
@@ -141,7 +143,7 @@ class GPUObjectManager:
                 self._monitor_failures_thread = None
 
     def start_monitor_thread_if_needed(self):
-        with self._lock:
+        with self._init_lock:
             # To make sure _monitor_failures_thread is started only once
             if self._monitor_failures_thread is None:
                 self._monitor_failures_thread = threading.Thread(
@@ -160,21 +162,22 @@ class GPUObjectManager:
         with self._lock:
             self._managed_gpu_object_metadata[obj_id] = gpu_object_meta
 
-    def pop_gpu_object_metadata(self, obj_id: str) -> GPUObjectMeta:
-        with self._lock:
-            return self._managed_gpu_object_metadata.pop(obj_id)
-
     def get_gpu_object_metadata(self, obj_id: str) -> GPUObjectMeta:
         with self._lock:
             return self._managed_gpu_object_metadata[obj_id]
 
-    def wait_for_tensor_transport_metadata(self, obj_id: str, timeout: float) -> bool:
+    def wait_for_tensor_transport_metadata(
+        self, obj_id: str, timeout: float
+    ) -> Optional[TensorTransportMetadata]:
         with self._tensor_transport_meta_cv:
-            return self._tensor_transport_meta_cv.wait_for(
+            if self._tensor_transport_meta_cv.wait_for(
                 lambda: self._managed_gpu_object_metadata[obj_id].tensor_transport_meta
                 is not None,
                 timeout=timeout,
-            )
+            ):
+                return self._managed_gpu_object_metadata[obj_id].tensor_transport_meta
+            else:
+                return None
 
     def _monitor_failures(self):
         """
@@ -340,13 +343,14 @@ class GPUObjectManager:
         Sets the tensor transport metadata for an object and triggers any queued
         up transfers for that object.
         """
+        dst_actors = None
         with self._tensor_transport_meta_cv:
-            self._managed_gpu_object_metadata[
-                obj_id
-            ] = self._managed_gpu_object_metadata[obj_id]._replace(
-                tensor_transport_meta=tensor_transport_meta
-            )
-            dst_actors = self._queued_transfers.pop(obj_id, None)
+            metadata = self._managed_gpu_object_metadata.get(obj_id, None)
+            if metadata is not None:
+                self._managed_gpu_object_metadata[obj_id] = metadata._replace(
+                    tensor_transport_meta=tensor_transport_meta
+                )
+                dst_actors = self._queued_transfers.pop(obj_id, None)
             self._tensor_transport_meta_cv.notify_all()
 
         if dst_actors:
@@ -407,20 +411,22 @@ class GPUObjectManager:
             communicator_meta = tensor_transport_manager.get_communicator_metadata(
                 None, None, tensor_transport
             )
-            if gpu_object_meta.tensor_transport_meta is None:
+            tensor_transport_meta = gpu_object_meta.tensor_transport_meta
+            if tensor_transport_meta is None:
                 # We can't fetch the object until we know the creator has actually created the object.
                 timeout = ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
-                if not self.wait_for_tensor_transport_metadata(obj_id, timeout):
+                tensor_transport_meta = self.wait_for_tensor_transport_metadata(
+                    obj_id, timeout
+                )
+                if tensor_transport_meta is None:
                     raise TimeoutError(
                         f"Timed out after {timeout}s waiting for object {obj_id} to be created while trying to get the object. "
                         "You can increase the timeout by setting RAY_rdt_fetch_fail_timeout_milliseconds."
                     )
-                gpu_object_meta = self.get_gpu_object_metadata(obj_id)
-            assert gpu_object_meta.tensor_transport_meta is not None
             __ray_recv__(
                 None,
                 obj_id,
-                gpu_object_meta.tensor_transport_meta,
+                tensor_transport_meta,
                 communicator_meta,
                 tensor_transport,
             )
@@ -625,7 +631,9 @@ class GPUObjectManager:
             # NOTE: This may have to change if we support lineage reconstruction for RDT
             # TODO(#57962): Metadata is currently not removed on borrowers that borrow through
             # the NIXL ray.put / ray.get
-            gpu_object_meta = self.pop_gpu_object_metadata(object_id)
+            with self._lock:
+                self._queued_transfers.pop(object_id, None)
+                gpu_object_meta = self._managed_gpu_object_metadata.pop(object_id)
             src_actor = gpu_object_meta.src_actor
             tensor_transport_backend = gpu_object_meta.tensor_transport_backend
             tensor_transport_meta = gpu_object_meta.tensor_transport_meta
