@@ -349,21 +349,41 @@ class TestProcessorConfig:
         assert msg_part in str(e.value)
 
     @pytest.mark.parametrize(
-        "n,expected", [(1, (1, 1)), (4, (1, 4)), (10, (1, 10)), ("10", (1, 10))]
+        "n,expected",
+        [
+            (1, {"min_size": 1, "max_size": 1}),
+            (4, {"min_size": 1, "max_size": 4}),
+            (10, {"min_size": 1, "max_size": 10}),
+            ("10", {"min_size": 1, "max_size": 10}),
+        ]
     )
     def test_with_int_concurrency_scaling(self, n, expected):
         conf = ProcessorConfig(concurrency=n)
         assert conf.get_concurrency() == expected
 
-    @pytest.mark.parametrize("n,expected", [(1, (1, 1)), (4, (4, 4)), (10, (10, 10))])
+    @pytest.mark.parametrize(
+        "n,expected",
+        [
+            (1, {"size": 1}),
+            (4, {"size": 4}),
+            (10, {"size": 10}),
+        ]
+    )
     def test_with_int_concurrency_fixed(self, n, expected):
         conf = ProcessorConfig(concurrency=n)
         assert conf.get_concurrency(autoscaling_enabled=False) == expected
 
-    @pytest.mark.parametrize("pair", [(1, 1), (1, 3), (2, 8)])
-    def test_with_tuple_concurrency(self, pair):
+    @pytest.mark.parametrize(
+        "pair,expected",
+        [
+            ((1, 1), {"min_size": 1, "max_size": 1}),
+            ((1, 3), {"min_size": 1, "max_size": 3}),
+            ((2, 8), {"min_size": 2, "max_size": 8}),
+        ]
+    )
+    def test_with_tuple_concurrency(self, pair, expected):
         conf = ProcessorConfig(concurrency=pair)
-        assert conf.get_concurrency() == pair
+        assert conf.get_concurrency() == expected
 
 
 class TestMapKwargs:
