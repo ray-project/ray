@@ -70,7 +70,17 @@ You can also be provide the following labels in the RayCluster metadata:
       ray.io/scheduler-name: volcano
       volcano.sh/queue-name: <replace with correct Queue resource name>
     ```
-
+- `volcano.sh/network-topology-mode` and `volcano.sh/network-topology-highest-tier-allowed`
+  - These labels enable [network topology aware scheduling](https://volcano.sh/en/docs/network_topology_aware_scheduling/). You can use them to schedule all RayCluster pods onto nodes within one network topology group, such as nodes within one GPU InfiniBand network or within one AWS availability zone. This reduces communication costs between Ray workers and speeds up distributed AI/ML workloads.
+  - These labels only work after you create a `HyperNode` resource.
+  - `volcano.sh/network-topology-mode` can be either `soft` (best-effort) or `hard` (enforced).
+  - `volcano.sh/network-topology-highest-tier-allowed` is an integer as a string. This value must match the tier defined in your HyperNode resource.
+  - ```shell
+    labels:
+      ray.io/scheduler-name: volcano
+      volcano.sh/network-topology-mode: hard // use soft or hard
+      volcano.sh/network-topology-highest-tier-allowed: "1" // the tier defined in your HyperNode resource
+    ```
 If autoscaling is enabled, `minReplicas` is used for gang scheduling, otherwise the desired `replicas` is used.
 
 ### Step 5: Use Volcano for batch scheduling
