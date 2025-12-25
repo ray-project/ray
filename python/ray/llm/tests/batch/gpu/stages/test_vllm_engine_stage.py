@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import BaseModel
 
-from ray.llm._internal.batch.constants import vLLMTaskType
 from ray.data import ActorPoolStrategy
+from ray.llm._internal.batch.constants import vLLMTaskType
 from ray.llm._internal.batch.stages.vllm_engine_stage import (
     vLLMEngineStage,
     vLLMEngineStageUDF,
