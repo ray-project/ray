@@ -19,7 +19,6 @@ from ray.autoscaler._private.monitor import Monitor
 from ray.autoscaler.v2.instance_manager.config import KubeRayConfigReader
 from ray.autoscaler.v2.utils import is_autoscaler_v2
 from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
-from ray.exceptions import RpcError
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +32,14 @@ def _get_log_dir(gcs_client: GcsClient) -> str:
     # We need to wait until head node's raylet is registered in GCS.
     node_infos = []
     # TODO(Kunchd): Dummy retry to make sure head node is ready.
-    for _ in range(1e6):
+    # for _ in range(1e6):
+    while not node_infos:
         try:
             node_infos = gcs_client.get_all_node_info(
                 node_selectors=[head_node_selector],
-                timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
+                # timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
             ).values()
-        except RpcError as e:
+        except Exception as e:
             logger.warning(f"RPC error getting node info from GCS: {e}, retrying...")
             node_infos = []
 
@@ -47,18 +47,20 @@ def _get_log_dir(gcs_client: GcsClient) -> str:
             break
         time.sleep(2)
 
-    if not node_infos:
-        raise Exception(
-            "No node info found for head node in GCS. Did the head node or gcs start successfully?"
-        )
+    # if not node_infos:
+    #     raise Exception(
+    #         "No node info found for head node in GCS. Did the head node or gcs start successfully?"
+    #     )
 
     node_info = next(iter(node_infos))
     if node_info is not None:
         temp_dir = getattr(node_info, "temp_dir", None)
-        if temp_dir is None:
-            raise Exception(
-                "Node temp_dir was not found in NodeInfo. did the head node's raylet start successfully?"
-            )
+        # if temp_dir is None:
+        #     raise Exception(
+        #         "Node temp_dir was not found in NodeInfo. did the head node's raylet start successfully?"
+        #     )
+    if not temp_dir:
+        temp_dir = ray._common.utils.get_default_ray_temp_dir()
     return os.path.join(temp_dir, ray._private.ray_constants.SESSION_LATEST, "logs")
 
 
