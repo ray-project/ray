@@ -59,7 +59,7 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
-from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.interfaces import LogicalPlan, SourceOperator
 from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomizeBlocks,
     RandomShuffle,
@@ -7183,7 +7183,7 @@ def _collect_materialized_rows_for_repr(
         block_entries.extend(snapshot.blocks)
     else:
         dag = dataset._logical_plan.dag
-        if isinstance(dag, InputData):
+        if isinstance(dag, SourceOperator):
             input_data = dag.output_data() or []
             for bundle in input_data:
                 block_entries.extend(bundle.blocks)
