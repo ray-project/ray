@@ -48,7 +48,11 @@ def _get_log_dir(gcs_client: GcsClient) -> str:
     ).values()
 
     if not node_infos:
-        raise Exception(
+        # node infos is probably empty here for some reason
+        # raise Exception(
+        #     "No node info found for head node in GCS. Did the head node or gcs start successfully?"
+        # )
+        logger.warning(
             "No node info found for head node in GCS. Did the head node or gcs start successfully?"
         )
 
