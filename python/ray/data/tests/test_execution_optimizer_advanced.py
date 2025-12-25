@@ -34,6 +34,7 @@ from ray.data._internal.logical.rules import (
 )
 from ray.data._internal.planner import create_planner
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+from ray.data._internal.random_config import RandomSeedConfig
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
@@ -49,7 +50,7 @@ def test_random_shuffle_operator(ray_start_regular_shared_2_cpus):
     read_op = get_parquet_read_logical_op()
     op = RandomShuffle(
         read_op,
-        seed=0,
+        seed_config=RandomSeedConfig(seed=0),
     )
     plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
