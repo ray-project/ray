@@ -1504,9 +1504,6 @@ def start_gcs_server(
         f"--node-id={node_id}",
     ]
 
-    if node_id:
-        command += [f"--node-id={node_id}"]
-
     if stdout_filepath:
         command += [f"--stdout_filepath={stdout_filepath}"]
     if stderr_filepath:
