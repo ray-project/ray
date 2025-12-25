@@ -32,8 +32,8 @@ PYTHON314_DIR=$(dirname $(dirname "$PYTHON314_PATH"))
 ln -sf "$PYTHON314_PATH" /opt/python/cp314-cp314/bin/python3
 ln -sf "$PYTHON314_PATH" /opt/python/cp314-cp314/bin/python
 
-# Install pip using uv (ensurepip doesn't work with uv-managed Python due to PEP 668)
-uv pip install pip --python "$PYTHON314_PATH"
+# Install pip using uv (need --break-system-packages due to PEP 668)
+uv pip install pip --python "$PYTHON314_PATH" --break-system-packages
 ln -sf "$PYTHON314_DIR/bin/pip3" /opt/python/cp314-cp314/bin/pip3
 ln -sf "$PYTHON314_DIR/bin/pip3" /opt/python/cp314-cp314/bin/pip
 
