@@ -32,6 +32,8 @@ def _get_log_dir(gcs_client: GcsClient) -> str:
     # We need to wait until head node's raylet is registered in GCS.
     node_infos = []
     # TODO(Kunchd): Dummy retry to make sure head node is ready.
+    # 1. If the current setup passes, it means we managed to get the node info at some point.
+    # 2. The next step is to check if we can still pass without the temp dir None check at the end.
     # for _ in range(1e6):
     while not node_infos:
         try:
@@ -59,8 +61,6 @@ def _get_log_dir(gcs_client: GcsClient) -> str:
         #     raise Exception(
         #         "Node temp_dir was not found in NodeInfo. did the head node's raylet start successfully?"
         #     )
-    if not temp_dir:
-        temp_dir = ray._common.utils.get_default_ray_temp_dir()
     return os.path.join(temp_dir, ray._private.ray_constants.SESSION_LATEST, "logs")
 
 
