@@ -6,13 +6,14 @@ FROM rayproject/manylinux2014:${MANYLINUX_VERSION}-jdk-${HOSTTYPE} AS builder
 
 ARG BUILDKITE_BAZEL_CACHE_URL
 ARG BUILDKITE_CACHE_READONLY
+ARG HOSTTYPE
 
 WORKDIR /home/forge/ray
 
 COPY . .
 
-# Mounting cache dir for faster local rebuilds
-RUN --mount=type=cache,target=/home/forge/.cache,uid=2000,gid=100 \
+# Mounting cache dir for faster local rebuilds (architecture-specific to avoid toolchain conflicts)
+RUN --mount=type=cache,target=/home/forge/.cache,uid=2000,gid=100,id=bazel-cache-${HOSTTYPE} \
     <<EOF
 #!/bin/bash
 
