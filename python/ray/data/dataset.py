@@ -258,12 +258,14 @@ class Dataset:
         999
         >>> # Shuffle this dataset randomly.
         >>> ds.random_shuffle()  # doctest: +ELLIPSIS
-        RandomShuffle
-        +- Dataset(num_rows=1000, schema={id: int64})
+        shape: (1000, 1)
+        ...
+        (Dataset isn't materialized)
         >>> # Sort it back in order.
         >>> ds.sort("id")  # doctest: +ELLIPSIS
-        Sort
-        +- Dataset(num_rows=1000, schema={id: int64})
+        shape: (1000, 1)
+        ...
+        (Dataset isn't materialized)
 
     Both unexecuted and materialized Datasets can be passed between Ray tasks and
     actors without incurring a copy. Dataset supports conversion to/from several
@@ -6263,8 +6265,10 @@ class Dataset:
             >>> import ray
             >>> ds = ray.data.range(10)
             >>> materialized_ds = ds.materialize()
-            >>> materialized_ds
-            MaterializedDataset(num_blocks=..., num_rows=10, schema={id: int64})
+            >>> materialized_ds  # doctest: +ELLIPSIS
+            shape: (10, 1)
+            ...
+            (Showing 10 of 10 rows)
 
         Returns:
             A MaterializedDataset holding the materialized data blocks.

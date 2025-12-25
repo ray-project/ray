@@ -83,8 +83,10 @@ class DataIterator(abc.ABC):
     Examples:
         >>> import ray
         >>> ds = ray.data.range(5)
-        >>> ds
-        Dataset(num_rows=5, schema={id: int64})
+        >>> ds  # doctest: +ELLIPSIS
+        shape: (5, 1)
+        ...
+        (Dataset isn't materialized)
         >>> ds.iterator()
         DataIterator(Dataset(num_rows=5, schema={id: int64}))
     """

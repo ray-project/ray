@@ -394,12 +394,11 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
             print(ds)
 
         .. testoutput::
+            :options: +ELLIPSIS
 
-            MaterializedDataset(
-               num_blocks=3,
-               num_rows=3,
-               schema={food: string, price: double}
-            )
+            shape: (3, 2)
+            ...
+            (Showing 0 of 3 rows)
 
         You can also create a :class:`~ray.data.dataset.Dataset` from a list of regular
         Python objects. In the schema, the column name defaults to "item". 
@@ -413,8 +412,11 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
             print(ds)
 
         .. testoutput::
+            :options: +ELLIPSIS
 
-            MaterializedDataset(num_blocks=5, num_rows=5, schema={item: int64})
+            shape: (5, 1)
+            ...
+            (Showing 0 of 5 rows)
 
     .. tab-item:: NumPy
 
