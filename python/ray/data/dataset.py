@@ -7251,6 +7251,8 @@ def _determine_preview_row_targets(
         return head, 0
 
     head = min(config.head_rows, max_rows)
+    if head < 0:
+        head = 0
     tail = max_rows - head
     if tail < 0:
         tail = 0
