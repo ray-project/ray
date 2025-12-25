@@ -435,12 +435,11 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
             print(ds)
 
         .. testoutput::
+            :options: +ELLIPSIS
 
-            MaterializedDataset(
-               num_blocks=1,
-               num_rows=3,
-               schema={data: ArrowTensorTypeV2(shape=(2, 2), dtype=double)}
-            )
+            shape: (3, 1)
+            ...
+            (Showing 3 of 3 rows)
 
     .. tab-item:: pandas
 
@@ -461,12 +460,11 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
             print(ds)
 
         .. testoutput::
+            :options: +ELLIPSIS
 
-            MaterializedDataset(
-               num_blocks=1,
-               num_rows=3,
-               schema={food: object, price: float64}
-            )
+            shape: (3, 2)
+            ...
+            (Showing 3 of 3 rows)
 
     .. tab-item:: PyArrow
 

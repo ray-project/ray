@@ -1907,7 +1907,8 @@ def test_dataset_name_and_id():
     ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
     ds.set_name("test_ds")
     assert ds.name == "test_ds"
-    assert str(ds) == (
+    plan_str = ds._plan.get_plan_as_string(type(ds))
+    assert plan_str == (
         "MapBatches(<lambda>)\n"
         "+- Dataset(name=test_ds, num_rows=100, schema={id: int64})"
     )
@@ -1944,9 +1945,9 @@ def test_dataset_name_and_id():
 
     ds = ray.data.range(100, override_num_blocks=20)
     ds.set_name("very_loooooooong_name")
-    assert (
-        str(ds)
-        == "Dataset(name=very_loooooooong_name, num_rows=100, schema={id: int64})"
+    plan_str = ds._plan.get_plan_as_string(type(ds))
+    assert plan_str == (
+        "Dataset(name=very_loooooooong_name, num_rows=100, schema={id: int64})"
     )
 
 
