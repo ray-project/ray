@@ -1,3 +1,4 @@
+import fnmatch
 import logging
 import pathlib
 import sys
@@ -98,6 +99,42 @@ def _try_resolve_with_encoding(
         encoded_path, filesystem
     )
     return resolved_filesystem, unquote(resolved_path, errors="ignore")
+
+
+def _contains_glob_pattern(path: str) -> bool:
+    """Check if a path contains glob pattern metacharacters.
+
+    This function identifies paths that contain glob wildcards like *, **, ?, or [...].
+    It's careful to avoid false positives from URL query parameters.
+
+    Examples:
+        >>> _contains_glob_pattern("/data/*.parquet")
+        True
+        >>> _contains_glob_pattern("/data/**/nested/*.csv")
+        True
+        >>> _contains_glob_pattern("/data/file_?.json")
+        True
+        >>> _contains_glob_pattern("/data/file_[0-9].txt")
+        True
+        >>> _contains_glob_pattern("/data/file.parquet")
+        False
+        >>> _contains_glob_pattern("s3://bucket/data.parquet?version=1")
+        False
+
+    Args:
+        path: The path to check for glob patterns.
+
+    Returns:
+        True if the path contains glob metacharacters, False otherwise.
+    """
+    # Parse the URL to separate the path from query parameters
+    parsed = urlparse(path, allow_fragments=False)
+    # Only check the path component, not query parameters or fragments
+    path_component = parsed.path
+
+    # Check for glob metacharacters in the path component only
+    glob_chars = ["*", "?", "[", "]"]
+    return any(char in path_component for char in glob_chars)
 
 
 def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
@@ -272,6 +309,237 @@ def _resolve_single_path_with_fallback(
     return resolved_filesystem, resolved_path
 
 
+def _expand_glob_paths(
+    paths: List[str],
+    filesystem: "pyarrow.fs.FileSystem",
+) -> List[str]:
+    """
+    Expand glob patterns in paths to concrete file paths.
+
+    Supports standard glob patterns:
+    - * : matches any characters except path separator
+    - ** : matches any characters including path separators (recursive)
+    - ? : matches any single character
+    - [...] : matches any character in brackets
+
+    Examples:
+        >>> # Local filesystem
+        >>> _expand_glob_paths(["/data/*.parquet"], local_fs)
+        ['/data/file1.parquet', '/data/file2.parquet']
+        >>> _expand_glob_paths(["/data/**/events.parquet"], s3_fs)
+        ['/data/2024/events.parquet', '/data/2025/events.parquet']
+
+    Args:
+        paths: List of paths that may contain glob patterns.
+        filesystem: PyArrow filesystem to use for matching.
+
+    Returns:
+        List of expanded concrete file paths, sorted for determinism.
+
+    Raises:
+        ValueError: If a glob pattern matches no files.
+        NotImplementedError: If glob patterns are used with unsupported filesystems.
+    """
+    from pyarrow.fs import LocalFileSystem
+
+    # Unwrap RetryingPyFileSystem if present
+    fs = filesystem
+    if isinstance(filesystem, RetryingPyFileSystem):
+        fs = filesystem.unwrap()
+
+    expanded_paths = []
+
+    for path in paths:
+        if not _contains_glob_pattern(path):
+            # Not a glob pattern, return as-is
+            expanded_paths.append(path)
+            continue
+
+        # Check if this is a local filesystem
+        is_local = isinstance(fs, LocalFileSystem)
+
+        if is_local:
+            # For local filesystem, use pathlib.Path.glob() which handles ** correctly
+            expanded = _expand_glob_local(path)
+        else:
+            # For cloud filesystems (S3, GCS, etc.), use custom implementation
+            expanded = _expand_glob_cloud(path, filesystem)
+
+        if not expanded:
+            raise ValueError(
+                f"Glob pattern '{path}' matched no files. "
+                "Please verify:\n"
+                "  1. The pattern syntax is correct\n"
+                "  2. Files exist at the specified location\n"
+                "  3. You have permission to access the files"
+            )
+
+        expanded_paths.extend(expanded)
+
+    return expanded_paths
+
+
+def _expand_glob_local(pattern: str) -> List[str]:
+    """
+    Expand a glob pattern on the local filesystem using pathlib.
+
+    Args:
+        pattern: Glob pattern to expand.
+
+    Returns:
+        Sorted list of matching file paths as strings.
+    """
+    # Handle URL-style paths by unwrapping protocol
+    unwrapped_pattern = _unwrap_protocol(pattern)
+
+    # Find the first glob character to determine base directory
+    glob_chars = ["*", "?", "["]
+    first_glob_pos = len(unwrapped_pattern)
+    for char in glob_chars:
+        pos = unwrapped_pattern.find(char)
+        if pos != -1 and pos < first_glob_pos:
+            first_glob_pos = pos
+
+    if first_glob_pos < len(unwrapped_pattern):
+        # Split at the last '/' before the first glob character
+        base_dir = unwrapped_pattern[:first_glob_pos].rsplit("/", 1)[0]
+        if not base_dir:
+            # Pattern starts with glob at root, e.g., "/*.csv"
+            base_dir = "/"
+        relative_pattern = unwrapped_pattern[len(base_dir) :].lstrip("/")
+    else:
+        # No glob characters found (shouldn't happen, but handle it)
+        base_dir = unwrapped_pattern
+        relative_pattern = "*"
+
+    # Use pathlib.Path.glob() with the relative pattern
+    base_path = pathlib.Path(base_dir)
+    matches = base_path.glob(relative_pattern)
+
+    # Filter to only files (not directories) and convert to strings
+    file_paths = [str(p) for p in matches if p.is_file()]
+
+    # Sort for determinism
+    return sorted(file_paths)
+
+
+def _expand_glob_cloud(pattern: str, filesystem: "pyarrow.fs.FileSystem") -> List[str]:
+    """
+    Expand a glob pattern on cloud filesystems (S3, GCS, etc.).
+
+    This implementation lists files at appropriate prefixes and filters using fnmatch.
+
+    Args:
+        pattern: Glob pattern to expand.
+        filesystem: PyArrow filesystem for cloud storage.
+
+    Returns:
+        Sorted list of matching file paths.
+    """
+    from pyarrow.fs import FileSelector, FileType
+
+    # Parse the pattern to extract base directory and glob pattern
+    # For example: "s3://bucket/data/**/year=2024/*.parquet"
+    # -> base: "s3://bucket/data", pattern: "**/year=2024/*.parquet"
+
+    parsed = urlparse(pattern, allow_fragments=False)
+    scheme = parsed.scheme
+    netloc = parsed.netloc
+    path = parsed.path
+
+    # Find the first glob character to determine base directory
+    glob_chars = ["*", "?", "["]
+    first_glob_pos = len(path)
+    for char in glob_chars:
+        pos = path.find(char)
+        if pos != -1 and pos < first_glob_pos:
+            first_glob_pos = pos
+
+    # Split at the last '/' before the first glob character
+    if first_glob_pos < len(path):
+        base_path = path[:first_glob_pos].rsplit("/", 1)[0]
+        if not base_path:
+            base_path = "/"
+        pattern_part = path[len(base_path) :].lstrip("/")
+    else:
+        # No glob characters found (shouldn't happen, but handle it)
+        base_path = path
+        pattern_part = "*"
+
+    # Reconstruct base directory with scheme
+    if scheme and netloc:
+        base_dir = f"{scheme}://{netloc}{base_path}"
+    else:
+        base_dir = base_path
+
+    # Normalize base_dir using the filesystem
+    normalized_base = filesystem.normalize_path(_unwrap_protocol(base_dir))
+
+    # List all files recursively from the base directory
+    selector = FileSelector(normalized_base, recursive=True, allow_not_found=False)
+
+    try:
+        file_infos = filesystem.get_file_info(selector)
+    except Exception:
+        # If the base directory doesn't exist, return empty list
+        # The caller will raise an appropriate error
+        return []
+
+    # Filter files using fnmatch
+    matched_files = []
+    for file_info in file_infos:
+        if file_info.type != FileType.File:
+            continue
+
+        # Get the relative path from base directory
+        file_path = file_info.path
+        if file_path.startswith(normalized_base):
+            relative_path = file_path[len(normalized_base) :].lstrip("/")
+        else:
+            relative_path = file_path
+
+        # Match against the pattern
+        if fnmatch.fnmatch(relative_path, pattern_part) or _match_recursive_glob(
+            relative_path, pattern_part
+        ):
+            matched_files.append(file_path)
+
+    # Sort for determinism
+    return sorted(matched_files)
+
+
+def _match_recursive_glob(path: str, pattern: str) -> bool:
+    """
+    Match a path against a pattern that may contain **.
+
+    Args:
+        path: The path to match.
+        pattern: The pattern, possibly containing **.
+
+    Returns:
+        True if the path matches the pattern.
+    """
+    # Handle ** in patterns by converting to fnmatch-compatible patterns
+    if "**" not in pattern:
+        return fnmatch.fnmatch(path, pattern)
+
+    # Build a regex-like matching strategy
+    # For simplicity, we'll try multiple fnmatch patterns
+    # This is a simplified implementation; a full implementation would use proper glob matching
+
+    # Try to match by replacing ** with various path depths
+    for depth in range(10):  # Reasonable depth limit
+        if depth == 0:
+            test_pattern = pattern.replace("**/", "").replace("**", "")
+        else:
+            test_pattern = pattern.replace("**", "*/" * depth + "*")
+
+        if fnmatch.fnmatch(path, test_pattern.strip("/")):
+            return True
+
+    return False
+
+
 def _resolve_paths_and_filesystem(
     paths: Union[str, List[str]],
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
@@ -326,6 +594,26 @@ def _resolve_paths_and_filesystem(
 
         resolved_path = resolved_filesystem.normalize_path(resolved_path)
         resolved_paths.append(resolved_path)
+
+    # Expand glob patterns after filesystem inference and path resolution
+    # This allows glob patterns to work uniformly across all filesystems
+    has_glob = any(_contains_glob_pattern(p) for p in resolved_paths)
+    if has_glob:
+        # Check for HTTP filesystem - glob not supported
+        if _is_http_filesystem(filesystem):
+            raise NotImplementedError(
+                "Glob patterns are not supported with HTTP filesystems. "
+                "HTTP does not support directory listing, which is required for glob expansion."
+            )
+
+        resolved_paths = _expand_glob_paths(resolved_paths, filesystem)
+
+        # Re-normalize all expanded paths
+        normalized_paths = []
+        for path in resolved_paths:
+            normalized_path = filesystem.normalize_path(path)
+            normalized_paths.append(normalized_path)
+        resolved_paths = normalized_paths
 
     return resolved_paths, filesystem
 
