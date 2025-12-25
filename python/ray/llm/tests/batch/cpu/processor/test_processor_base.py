@@ -355,7 +355,7 @@ class TestProcessorConfig:
             (4, {"min_size": 1, "max_size": 4}),
             (10, {"min_size": 1, "max_size": 10}),
             ("10", {"min_size": 1, "max_size": 10}),
-        ]
+        ],
     )
     def test_with_int_concurrency_scaling(self, n, expected):
         conf = ProcessorConfig(concurrency=n)
@@ -367,7 +367,7 @@ class TestProcessorConfig:
             (1, {"size": 1}),
             (4, {"size": 4}),
             (10, {"size": 10}),
-        ]
+        ],
     )
     def test_with_int_concurrency_fixed(self, n, expected):
         conf = ProcessorConfig(concurrency=n)
@@ -379,7 +379,7 @@ class TestProcessorConfig:
             ((1, 1), {"min_size": 1, "max_size": 1}),
             ((1, 3), {"min_size": 1, "max_size": 3}),
             ((2, 8), {"min_size": 2, "max_size": 8}),
-        ]
+        ],
     )
     def test_with_tuple_concurrency(self, pair, expected):
         conf = ProcessorConfig(concurrency=pair)
