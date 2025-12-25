@@ -13,13 +13,13 @@
 #   cpp            - Build ray-cpp wheel
 #   all            - Build both ray and ray-cpp wheels
 #
-# Examples (from repo root):
+# Examples (can be run from any directory within the repo):
 #   ci/build/build-wheel-local.sh                      # Build ray wheel for Python 3.10
 #   ci/build/build-wheel-local.sh 3.11                 # Build ray wheel for Python 3.11
 #   ci/build/build-wheel-local.sh 3.10 cpp             # Build ray-cpp wheel
 #   ci/build/build-wheel-local.sh 3.10 all             # Build both ray and ray-cpp wheels
 #
-# Output: Wheels are extracted to .whl/
+# Output: Wheels are extracted to .whl/ (at the repo root)
 #
 # ============================================================================
 # WHEEL BUILD HIERARCHY
@@ -76,6 +76,10 @@ set -euo pipefail
 # Source shared utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/local-build-utils.sh"
+
+# Change to repo root so relative paths work from any directory
+REPO_ROOT="$(get_repo_root)"
+cd "$REPO_ROOT"
 
 # Extract wheel from a docker image to .whl/ directory
 extract_wheel() {

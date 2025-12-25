@@ -76,11 +76,29 @@ check_docker_prerequisites() {
     fi
 }
 
+# Get the repository root directory
+get_repo_root() {
+    git rev-parse --show-toplevel 2>/dev/null || {
+        error "Not in a git repository. Please run from within the Ray repo."
+        exit 1
+    }
+}
+
+# Normalize architecture name (arm64 -> aarch64)
+normalize_arch() {
+    local arch="${1:-$(uname -m)}"
+    if [[ "$arch" == "arm64" ]]; then
+        echo "aarch64"
+    else
+        echo "$arch"
+    fi
+}
+
 # Default environment variables for local builds
 setup_build_env() {
     export PYTHON_VERSION="${PYTHON_VERSION:-3.10}"
     export ARCH_SUFFIX="${ARCH_SUFFIX:-}"
-    export HOSTTYPE="${HOSTTYPE:-x86_64}"
+    export HOSTTYPE="${HOSTTYPE:-$(normalize_arch)}"
     export MANYLINUX_VERSION="${MANYLINUX_VERSION:-251216.3835fc5}"
-    export WANDA_BIN="${WANDA_BIN:-/home/ubuntu/rayci/bin/wanda}"
+    export WANDA_BIN="${WANDA_BIN:-$(command -v wanda || echo /home/ubuntu/rayci/bin/wanda)}"
 }
