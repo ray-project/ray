@@ -356,7 +356,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
       bool was_stored_in_objects = !borrow().stored_in_objects.empty();
 
       bool has_lineage_references = false;
-      if (lineage_pinning_enabled && owned_by_us_ && !is_reconstruction_eligible()) {
+      if (lineage_pinning_enabled && owned_by_us_ &&
+          lineage_eligibility_ != LineageEligibility::ELIGIBLE) {
         has_lineage_references = lineage_ref_count > 0;
       }
 
@@ -444,13 +445,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
     /// The lineage eligibility of this object. This indicates whether the object
     /// is eligible for reconstruction via lineage replay. Being ELIGIBLE does not
-    /// guarantee successful reconstruction - it only means we can attempt it.
+    /// guarantee successful reconstruction - See
+    /// https://github.com/ray-project/ray/pull/59625 for details.
     LineageEligibility lineage_eligibility_ = LineageEligibility::ELIGIBLE;
-
-    /// Helper to check if the object is eligible for reconstruction.
-    bool is_reconstruction_eligible() const {
-      return lineage_eligibility_ == LineageEligibility::ELIGIBLE;
-    }
 
     /// The number of tasks that depend on this object that may be retried in
     /// the future (pending execution or finished but retryable). If the object

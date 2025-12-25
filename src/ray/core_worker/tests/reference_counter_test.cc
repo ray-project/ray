@@ -431,7 +431,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
                        address_,
                        "",
                        0,
-                       LineageEligibility::INELIGIBLE_PUT,
+                       LineageEligibility::INELIGIBLE_NO_RETRIES,
                        /*add_local_ref=*/true);
     return_ids_.push_back(return_id);
     return return_id;

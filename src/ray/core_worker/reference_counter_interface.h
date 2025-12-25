@@ -561,7 +561,6 @@ class ReferenceCounterInterface {
   ///
   /// \param[in] object_id The ID of the object to check.
   /// \param[out] eligibility The lineage eligibility of the object.
-  /// \param[out] lineage_evicted Whether the lineage was evicted.
   /// \return True if lineage pinning is enabled and we own this object.
   virtual bool GetLineageEligibility(const ObjectID &object_id,
                                      LineageEligibility *eligibility) const = 0;

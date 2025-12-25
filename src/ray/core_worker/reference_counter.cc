@@ -585,7 +585,7 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
     // reconstructable with lineage. Mark that its lineage has been evicted so
     // we can return the right error during reconstruction.
     if (!ref->second.OutOfScope(lineage_pinning_enabled_) &&
-        ref->second.is_reconstruction_eligible()) {
+        ref->second.lineage_eligibility_ == LineageEligibility::ELIGIBLE) {
       ref->second.lineage_eligibility_ = LineageEligibility::INELIGIBLE_LINEAGE_EVICTED;
     }
   }

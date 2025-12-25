@@ -3269,7 +3269,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
                                          rpc_address_,
                                          CurrentCallSite(),
                                          -1,
-                                         LineageEligibility::INELIGIBLE_PUT,
+                                         LineageEligibility::INELIGIBLE_LOCAL_MODE,
                                          /*add_local_ref=*/true);
     }
     rpc::ObjectReference ref;

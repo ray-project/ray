@@ -275,9 +275,6 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   for (size_t i = 0; i < num_returns; i++) {
     auto return_id = spec.ReturnId(i);
     if (!spec.IsActorCreationTask()) {
-      // Actor tasks can be reconstructed via actor lineage reconstruction
-      // (restarting the actor and replaying tasks), so they follow the same
-      // eligibility rules as regular tasks.
       LineageEligibility lineage_eligibility;
       if (max_retries == 0) {
         lineage_eligibility = LineageEligibility::INELIGIBLE_NO_RETRIES;

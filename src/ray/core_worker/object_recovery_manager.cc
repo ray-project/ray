@@ -36,14 +36,15 @@ std::optional<rpc::ErrorType> ObjectRecoveryManager::RecoverObject(
       object_id, &owned_by_us, &pinned_at, &spilled);
   if (!ref_exists) {
     // References that have gone out of scope cannot be recovered.
-    RAY_LOG(DEBUG).WithField(object_id)
+    RAY_LOG(INFO).WithField(object_id)
         << "Cannot recover object: reference has gone out of scope";
     return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_OUT_OF_SCOPE;
   }
 
   if (!owned_by_us) {
-    RAY_LOG(DEBUG).WithField(object_id)
-        << "Reconstruction for borrowed object is not supported";
+    RAY_LOG(INFO).WithField(object_id)
+        << "Cannot recover object: "
+        << "borrowed objects cannot be reconstructed by non-owner";
     return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_BORROWED;
   }
 
@@ -148,8 +149,8 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
     // reconstruction.
     auto error_type_opt = ToErrorType(eligibility);
     rpc::ErrorType error_type = error_type_opt.value_or(rpc::ErrorType::OBJECT_LOST);
-    RAY_LOG(DEBUG).WithField(object_id) << "Object is not eligible for reconstruction: "
-                                        << rpc::ErrorType_Name(error_type);
+    RAY_LOG(INFO).WithField(object_id)
+        << "Cannot recover object: " << rpc::ErrorType_Name(error_type);
     recovery_failure_callback_(object_id, error_type, /*pin_object=*/true);
     return;
   }
@@ -173,12 +174,14 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
       auto error = RecoverObject(dep);
       if (error.has_value()) {
         RAY_LOG(INFO).WithField(dep)
-            << "[OBJECT_UNRECONSTRUCTABLE] Cannot recover dependency: "
-            << rpc::ErrorType_Name(*error);
+            << "Cannot recover dependency: " << rpc::ErrorType_Name(*error);
         recovery_failure_callback_(dep, *error, /*pin_object=*/true);
       }
     }
   } else {
+    RAY_LOG(INFO).WithField(object_id)
+        << "Cannot recover object: " << rpc::ErrorType_Name(*error_type_optional);
+    reference_counter_.UpdateObjectPendingCreation(object_id, false);
     recovery_failure_callback_(object_id,
                                *error_type_optional,
                                /*pin_object=*/true);
