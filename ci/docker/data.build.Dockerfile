@@ -23,6 +23,10 @@ if [[ -n "$ARROW_MONGO_VERSION" ]]; then
   pip install numpy==1.23.5
 fi
 
+if [[ "${ARROW_VERSION-}" == "9.*" ]]; then
+  pip install numpy==1.26.4
+fi
+
 # Install MongoDB
 sudo apt-get purge -y mongodb*
 sudo apt-get install -y mongodb

@@ -1,8 +1,6 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 --find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html
 
-about-time==4.2.1
-    # via alive-progress
 absl-py==1.4.0
     # via
     #   array-record
@@ -78,8 +76,6 @@ alembic==1.12.1
     #   aim
     #   mlflow
     #   optuna
-alive-progress==3.3.0
-    # via pymoo
 amqp==5.3.1
     # via kombu
 annotated-doc==0.0.4
@@ -147,13 +143,11 @@ attrs==25.1.0
     #   referencing
     #   sarif-om
     #   semgrep
-autograd==1.8.0
-    # via pymoo
 aws-sam-translator==1.81.0
     # via cfn-lint
 aws-xray-sdk==2.12.1
     # via moto
-ax-platform==1.2.1
+ax-platform==0.3.2
     # via -r python/requirements/ml/tune-requirements.txt
 azure-cli-core==2.62.0
     # via -r python/requirements/test-requirements.txt
@@ -254,7 +248,7 @@ botocore==1.32.7
     #   moto
     #   s3transfer
     #   snowflake-connector-python
-botorch==0.16.1
+botorch==0.8.5
     # via ax-platform
 braceexpand==0.1.7
     # via webdataset
@@ -290,7 +284,6 @@ cffi==1.17.1
     #   argon2-cffi-bindings
     #   azure-datalake-store
     #   cryptography
-    #   moocore
     #   pymunk
     #   pynacl
     #   snowflake-connector-python
@@ -350,9 +343,7 @@ cloudpickle==3.1.1
     #   tensordict
     #   tensorflow-probability
 cma==3.2.2
-    # via
-    #   nevergrad
-    #   pymoo
+    # via nevergrad
 cmdstanpy==1.2.0
     # via prophet
 colorama==0.4.6
@@ -454,8 +445,6 @@ delta-sharing==1.0.5
     # via -r python/requirements/ml/data-test-requirements.txt
 deltalake==0.9.0
     # via -r python/requirements/ml/data-test-requirements.txt
-deprecated==1.3.1
-    # via pymoo
 dill==0.3.7
     # via
     #   datasets
@@ -702,14 +691,12 @@ googleapis-common-protos==1.72.0
     #   -r python/requirements/test-requirements.txt
     #   google-api-core
     #   grpcio-status
-gpytorch==1.14.3
+gpytorch==1.10
     # via botorch
 gradio==5.50.0 ; platform_system != "Windows"
     # via -r python/requirements/test-requirements.txt
 gradio-client==1.14.0
     # via gradio
-graphemeu==0.7.2
-    # via alive-progress
 graphene==3.4.3
     # via mlflow
 graphql-core==3.2.3
@@ -884,10 +871,6 @@ jax==0.4.28 ; python_version < "3.12" and sys_platform != "darwin"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 jaxlib==0.4.28 ; python_version < "3.12" and sys_platform != "darwin"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-jaxtyping==0.3.4
-    # via
-    #   gpytorch
-    #   linear-operator
 jedi==0.19.1
     # via ipython
 jinja2==3.1.6
@@ -1026,7 +1009,7 @@ lightgbm==4.6.0
     # via -r python/requirements/ml/core-requirements.txt
 lightning-utilities==0.11.2
     # via pytorch-lightning
-linear-operator==0.6
+linear-operator==0.4.0
     # via
     #   botorch
     #   gpytorch
@@ -1056,7 +1039,6 @@ mako==1.3.0
     # via alembic
 markdown==3.5.1
     # via
-    #   ax-platform
     #   mlflow
     #   tensorboard
 markdown-it-py==2.2.0
@@ -1081,7 +1063,6 @@ matplotlib==3.10.7
     #   -r python/requirements/test-requirements.txt
     #   mlflow
     #   prophet
-    #   pymoo
     #   zoopt
 matplotlib-inline==0.1.6
     # via
@@ -1122,8 +1103,6 @@ monotonic==1.6
     # via
     #   gsutil
     #   segment-analytics-python
-moocore==0.1.10
-    # via pymoo
 more-itertools==10.7.0
     # via configspace
 mosaicml==0.3.1 ; python_version < "3.12"
@@ -1133,10 +1112,7 @@ moto==4.2.12
 moviepy==0.2.3.1
     # via -r python/requirements/ml/rllib-test-requirements.txt
 mpmath==1.3.0
-    # via
-    #   gpytorch
-    #   linear-operator
-    #   sympy
+    # via sympy
 msal==1.28.1
     # via
     #   azure-cli-core
@@ -1187,7 +1163,6 @@ mypy-extensions==1.0.0
     #   -r python/requirements/lint-requirements.txt
     #   black
     #   mypy
-    #   typing-inspect
 myst-nb==1.1.0
     # via -r python/requirements/test-requirements.txt
 myst-parser==1.0.0
@@ -1252,7 +1227,6 @@ numpy==2.2.6
     #   accelerate
     #   aim
     #   ale-py
-    #   autograd
     #   bayesian-optimization
     #   bokeh
     #   cma
@@ -1286,7 +1260,6 @@ numpy==2.2.6
     #   ml-dtypes
     #   mlflow
     #   modin
-    #   moocore
     #   moviepy
     #   msgpack-numpy
     #   mujoco
@@ -1305,7 +1278,6 @@ numpy==2.2.6
     #   prophet
     #   pylance
     #   pymars
-    #   pymoo
     #   pyro-ppl
     #   raydp
     #   scikit-image
@@ -1549,7 +1521,6 @@ platformdirs==3.11.0
     # via
     #   black
     #   jupyter-core
-    #   moocore
     #   snowflake-connector-python
     #   textual
     #   virtualenv
@@ -1720,8 +1691,6 @@ pymars==0.10.0 ; python_version < "3.12"
     # via -r python/requirements/ml/data-requirements.txt
 pymongo==4.3.2
     # via -r python/requirements/test-requirements.txt
-pymoo==0.6.1.6
-    # via botorch
 pymunk==6.2.1
     # via -r python/requirements/ml/rllib-test-requirements.txt
 pynacl==1.5.0
@@ -1752,10 +1721,6 @@ pyparsing==3.1.1
     #   torch-geometric
 pyproject-hooks==1.2.0
     # via build
-pyre-extensions==0.0.32
-    # via
-    #   ax-platform
-    #   botorch
 pyro-api==0.1.2
     # via pyro-ppl
 pyro-ppl==1.9.1
@@ -2071,7 +2036,6 @@ scipy==1.14.1
     #   configspace
     #   directsearch
     #   dm-control
-    #   gpytorch
     #   hpbandster
     #   hyperopt
     #   jax
@@ -2081,7 +2045,6 @@ scipy==1.14.1
     #   mlflow
     #   open-spiel
     #   pymars
-    #   pymoo
     #   scikit-image
     #   scikit-learn
     #   statsforecast
@@ -2233,7 +2196,6 @@ supersuit==3.9.3
     # via -r python/requirements/ml/rllib-test-requirements.txt
 sympy==1.13.1
     # via
-    #   ax-platform
     #   cfn-lint
     #   onnxruntime
     #   torch
@@ -2295,7 +2257,6 @@ tf-keras==2.20.0
 threadpoolctl==3.1.0
     # via
     #   -r python/requirements/test-requirements.txt
-    #   botorch
     #   scikit-learn
 tifffile==2024.7.21
     # via scikit-image
@@ -2424,6 +2385,8 @@ triad==0.9.8
     #   qpd
 trustme==0.9.0
     # via -r python/requirements/test-requirements.txt
+typeguard==2.13.3
+    # via ax-platform
 typer==0.15.1
     # via
     #   -r python/requirements.txt
@@ -2449,7 +2412,6 @@ typing-extensions==4.15.0
     #   azure-identity
     #   azure-storage-blob
     #   bokeh
-    #   botorch
     #   configspace
     #   etils
     #   fastapi
@@ -2472,7 +2434,6 @@ typing-extensions==4.15.0
     #   pydantic
     #   pydantic-core
     #   pyopenssl
-    #   pyre-extensions
     #   pytorch-lightning
     #   referencing
     #   semgrep
@@ -2484,11 +2445,8 @@ typing-extensions==4.15.0
     #   textual
     #   torch
     #   typer
-    #   typing-inspect
     #   typing-inspection
     #   wandb
-typing-inspect==0.9.0
-    # via pyre-extensions
 typing-inspection==0.4.2
     # via pydantic
 tzdata==2025.2
@@ -2567,8 +2525,6 @@ virtualenv==20.29.1
     # via vsphere-automation-sdk
 vsphere-automation-sdk @ git+https://github.com/vmware/vsphere-automation-sdk-python.git@v8.0.1.0
     # via -r python/requirements/test-requirements.txt
-wadler-lindig==0.1.7
-    # via jaxtyping
 wandb==0.23.1
     # via -r python/requirements/ml/core-requirements.txt
 watchfiles==0.19.0
@@ -2614,7 +2570,6 @@ wrapt==1.14.1
     #   aiobotocore
     #   aws-xray-sdk
     #   comet-ml
-    #   deprecated
     #   dm-tree
     #   opentelemetry-instrumentation
     #   tensorflow
