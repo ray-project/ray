@@ -11,6 +11,13 @@ class RayServeException(Exception):
 
 
 @PublicAPI(stability="alpha")
+class RayServeConfigException(Exception):
+    """Raised when a Serve config failed to be applied."""
+
+    pass
+
+
+@PublicAPI(stability="alpha")
 class BackPressureError(RayServeException):
     """Raised when max_queued_requests is exceeded on a DeploymentHandle."""
 
