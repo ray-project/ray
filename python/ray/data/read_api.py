@@ -176,7 +176,7 @@ def from_items(
         >>> ds  # doctest: +ELLIPSIS
         shape: (5, 1)
         ...
-        (Showing 0 of 5 rows)
+        (Showing 5 of 5 rows)
         >>> ds.schema()
         Column  Type
         ------  ----
@@ -3079,14 +3079,14 @@ def from_pandas(
         >>> ray.data.from_pandas(df)  # doctest: +ELLIPSIS
         shape: (3, 2)
         ...
-        (Showing 0 of 3 rows)
+        (Showing 3 of 3 rows)
 
        Create a Ray Dataset from a list of Pandas DataFrames.
 
         >>> ray.data.from_pandas([df, df])  # doctest: +ELLIPSIS
         shape: (6, 2)
         ...
-        (Showing 0 of 6 rows)
+        (Showing 6 of 6 rows)
 
     Args:
         dfs: A pandas dataframe or a list of pandas dataframes.
@@ -3137,14 +3137,14 @@ def from_pandas_refs(
         >>> ray.data.from_pandas_refs(df_ref)  # doctest: +ELLIPSIS
         shape: (3, 2)
         ...
-        (Showing 0 of 3 rows)
+        (Showing 3 of 3 rows)
 
         Create a Ray Dataset from a list of Pandas Dataframes references.
 
         >>> ray.data.from_pandas_refs([df_ref, df_ref])  # doctest: +ELLIPSIS
         shape: (6, 2)
         ...
-        (Showing 0 of 6 rows)
+        (Showing 6 of 6 rows)
 
     Args:
         dfs: A Ray object reference to a pandas dataframe, or a list of
@@ -3213,14 +3213,14 @@ def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> MaterializedDat
         >>> ray.data.from_numpy(arr)  # doctest: +ELLIPSIS
         shape: (1, 1)
         ...
-        (Showing 0 of 1 rows)
+        (Showing 1 of 1 rows)
 
         Create a Ray Dataset from a list of NumPy arrays.
 
         >>> ray.data.from_numpy([arr, arr])  # doctest: +ELLIPSIS
         shape: (2, 1)
         ...
-        (Showing 0 of 2 rows)
+        (Showing 2 of 2 rows)
 
     Args:
         ndarrays: A NumPy ndarray or a list of NumPy ndarrays.
@@ -3250,14 +3250,14 @@ def from_numpy_refs(
         >>> ray.data.from_numpy_refs(arr_ref)  # doctest: +ELLIPSIS
         shape: (1, 1)
         ...
-        (Showing 0 of 1 rows)
+        (Showing 1 of 1 rows)
 
         Create a Ray Dataset from a list of NumPy array references.
 
         >>> ray.data.from_numpy_refs([arr_ref, arr_ref])  # doctest: +ELLIPSIS
         shape: (2, 1)
         ...
-        (Showing 0 of 2 rows)
+        (Showing 2 of 2 rows)
 
     Args:
         ndarrays: A Ray object reference to a NumPy ndarray or a list of Ray object
@@ -3317,14 +3317,14 @@ def from_arrow(
         >>> ray.data.from_arrow(table)  # doctest: +ELLIPSIS
         shape: (1, 1)
         ...
-        (Showing 0 of 1 rows)
+        (Showing 1 of 1 rows)
 
         Create a Ray Dataset from a list of PyArrow tables.
 
         >>> ray.data.from_arrow([table, table])  # doctest: +ELLIPSIS
         shape: (2, 1)
         ...
-        (Showing 0 of 2 rows)
+        (Showing 2 of 2 rows)
 
 
     Args:
@@ -3394,14 +3394,14 @@ def from_arrow_refs(
         >>> ray.data.from_arrow_refs(table_ref)  # doctest: +ELLIPSIS
         shape: (1, 1)
         ...
-        (Showing 0 of 1 rows)
+        (Showing 1 of 1 rows)
 
         Create a Ray Dataset from a list of PyArrow table references
 
         >>> ray.data.from_arrow_refs([table_ref, table_ref])  # doctest: +ELLIPSIS
         shape: (2, 1)
         ...
-        (Showing 0 of 2 rows)
+        (Showing 2 of 2 rows)
 
 
     Args:

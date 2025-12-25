@@ -87,8 +87,10 @@ class DataIterator(abc.ABC):
         shape: (5, 1)
         ...
         (Dataset isn't materialized)
-        >>> ds.iterator()
-        DataIterator(Dataset(num_rows=5, schema={id: int64}))
+        >>> ds.iterator()  # doctest: +ELLIPSIS
+        DataIterator(shape: (5, 1)
+        ...
+        (Dataset isn't materialized))
     """
 
     @abc.abstractmethod
