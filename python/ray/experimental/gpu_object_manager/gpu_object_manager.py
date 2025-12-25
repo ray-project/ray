@@ -651,3 +651,27 @@ class GPUObjectManager:
             tensor_transport,
             tensor_transport_meta=tensor_transport_meta,
         )
+
+    def get_rdt_object_infos(self) -> List[Dict[str, Any]]:
+        """
+        Get RDT object info for objects in the gpu object store.
+        """
+        result: List[Dict[str, Any]] = []
+
+        if self._gpu_object_store is None:
+            return result
+
+        store_stats = self._gpu_object_store.get_stats()
+
+        for obj_info in store_stats.get("objects", []):
+            obj_id_hex = obj_info["object_id"]
+            devices = obj_info.get("devices", [])
+            result.append(
+                {
+                    "object_id": bytes.fromhex(obj_id_hex),
+                    "device": devices[0] if devices else "cpu",
+                    "object_size": obj_info.get("size_bytes", 0),
+                }
+            )
+
+        return result

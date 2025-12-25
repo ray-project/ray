@@ -26,6 +26,7 @@
 #include "ray/common/status.h"
 #include "ray/common/task/task_common.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/rdt_types.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/util/process.h"
 
@@ -80,6 +81,7 @@ struct CoreWorkerOptions {
         node_manager_port(0),
         task_execution_callback(nullptr),
         free_actor_object_callback(nullptr),
+        get_rdt_object_infos_callback(nullptr),
         check_signals(nullptr),
         initialize_thread_callback(nullptr),
         gc_collect(nullptr),
@@ -129,6 +131,8 @@ struct CoreWorkerOptions {
   TaskExecutionCallback task_execution_callback;
   /// Callback to free GPU object from the in-actor object store.
   std::function<void(const ObjectID &)> free_actor_object_callback;
+  /// Callback to get RDT object info from the local GPUObjectStore.
+  std::function<std::vector<RDTObjectInfo>()> get_rdt_object_infos_callback;
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations. If the function returns anything but StatusOK,
