@@ -35,13 +35,23 @@ public class ObjectSerializer {
       String.valueOf(ErrorType.ACTOR_DIED.getNumber()).getBytes();
   private static final byte[] ACTOR_UNAVAILABLE_EXCEPTION_META =
       String.valueOf(ErrorType.ACTOR_UNAVAILABLE.getNumber()).getBytes();
-  private static final byte[] UNRECONSTRUCTABLE_EXCEPTION_META =
-      String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE.getNumber()).getBytes();
   private static final byte[] UNRECONSTRUCTABLE_LINEAGE_EVICTED_EXCEPTION_META =
       String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED.getNumber()).getBytes();
   private static final byte[] UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED_EXCEPTION_META =
       String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED.getNumber())
           .getBytes();
+  private static final byte[] UNRECONSTRUCTABLE_PUT_EXCEPTION_META =
+      String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE_PUT.getNumber()).getBytes();
+  private static final byte[] UNRECONSTRUCTABLE_RETRIES_DISABLED_EXCEPTION_META =
+      String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE_RETRIES_DISABLED.getNumber()).getBytes();
+  private static final byte[] UNRECONSTRUCTABLE_BORROWED_EXCEPTION_META =
+      String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE_BORROWED.getNumber()).getBytes();
+  private static final byte[] UNRECONSTRUCTABLE_LOCAL_MODE_EXCEPTION_META =
+      String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE.getNumber()).getBytes();
+  private static final byte[] UNRECONSTRUCTABLE_OUT_OF_SCOPE_EXCEPTION_META =
+      String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE_OUT_OF_SCOPE.getNumber()).getBytes();
+  private static final byte[] UNRECONSTRUCTABLE_TASK_CANCELLED_EXCEPTION_META =
+      String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED.getNumber()).getBytes();
   private static final byte[] OBJECT_LOST_META =
       String.valueOf(ErrorType.OBJECT_LOST.getNumber()).getBytes();
   private static final byte[] OWNER_DIED_META =
@@ -96,9 +106,14 @@ public class ObjectSerializer {
         // TODO(ryw): Add a new exception type ActorUnavailableException.
         // Also clean up the indexOf usage, should use equals.
         return new RayActorException();
-      } else if (Bytes.indexOf(meta, UNRECONSTRUCTABLE_EXCEPTION_META) == 0
-          || Bytes.indexOf(meta, UNRECONSTRUCTABLE_LINEAGE_EVICTED_EXCEPTION_META) == 0
+      } else if (Bytes.indexOf(meta, UNRECONSTRUCTABLE_LINEAGE_EVICTED_EXCEPTION_META) == 0
           || Bytes.indexOf(meta, UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED_EXCEPTION_META) == 0
+          || Bytes.indexOf(meta, UNRECONSTRUCTABLE_PUT_EXCEPTION_META) == 0
+          || Bytes.indexOf(meta, UNRECONSTRUCTABLE_RETRIES_DISABLED_EXCEPTION_META) == 0
+          || Bytes.indexOf(meta, UNRECONSTRUCTABLE_BORROWED_EXCEPTION_META) == 0
+          || Bytes.indexOf(meta, UNRECONSTRUCTABLE_LOCAL_MODE_EXCEPTION_META) == 0
+          || Bytes.indexOf(meta, UNRECONSTRUCTABLE_OUT_OF_SCOPE_EXCEPTION_META) == 0
+          || Bytes.indexOf(meta, UNRECONSTRUCTABLE_TASK_CANCELLED_EXCEPTION_META) == 0
           || Bytes.indexOf(meta, OBJECT_LOST_META) == 0
           || Bytes.indexOf(meta, OWNER_DIED_META) == 0
           || Bytes.indexOf(meta, OBJECT_DELETED_META) == 0) {

@@ -30,6 +30,41 @@
 namespace ray {
 namespace core {
 
+/// Lineage eligibility for object reconstruction.
+/// Being ELIGIBLE means we can attempt reconstruction, not that it will succeed.
+/// See https://github.com/ray-project/ray/pull/59625 for details.
+enum class LineageEligibility {
+  /// Eligible - lineage is available for reconstruction attempt.
+  ELIGIBLE,
+  /// Created by ray.put(), no task lineage to replay.
+  INELIGIBLE_PUT,
+  /// Task created with max_retries=0.
+  INELIGIBLE_NO_RETRIES,
+  /// Lineage evicted due to memory pressure.
+  INELIGIBLE_LINEAGE_EVICTED,
+  /// Local mode does not support object reconstruction.
+  INELIGIBLE_LOCAL_MODE,
+};
+
+/// Convert LineageEligibility to the corresponding ErrorType for reporting to users.
+/// Returns std::nullopt if the object is eligible for reconstruction.
+inline std::optional<rpc::ErrorType> ToErrorType(LineageEligibility eligibility) {
+  switch (eligibility) {
+  case LineageEligibility::ELIGIBLE:
+    return std::nullopt;
+  case LineageEligibility::INELIGIBLE_PUT:
+    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_PUT;
+  case LineageEligibility::INELIGIBLE_NO_RETRIES:
+    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_RETRIES_DISABLED;
+  case LineageEligibility::INELIGIBLE_LINEAGE_EVICTED:
+    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED;
+  case LineageEligibility::INELIGIBLE_LOCAL_MODE:
+    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE;
+  default:
+    return rpc::ErrorType::OBJECT_LOST;
+  }
+}
+
 class ReferenceCounterInterface {
  protected:
   // Returns the amount of lineage in bytes released.
@@ -133,8 +168,9 @@ class ReferenceCounterInterface {
   /// \param[in] owner_address The address of the object's owner.
   /// \param[in] call_site Description of the call site where the reference was created.
   /// \param[in] object_size Object size if known, otherwise -1;
-  /// \param[in] is_reconstructable Whether the object can be reconstructed
-  /// through lineage re-execution.
+  /// \param[in] lineage_eligibility The eligibility of this object for lineage-based
+  /// reconstruction. Use LineageEligibility::ELIGIBLE if the object can attempt
+  /// reconstruction (though it may still fail in task resubmission).
   /// \param[in] add_local_ref Whether to initialize the local ref count to 1.
   /// This is used to ensure that the ref is considered in scope before the
   /// corresponding ObjectRef has been returned to the language frontend.
@@ -147,7 +183,7 @@ class ReferenceCounterInterface {
       const rpc::Address &owner_address,
       const std::string &call_site,
       const int64_t object_size,
-      bool is_reconstructable,
+      LineageEligibility lineage_eligibility,
       bool add_local_ref,
       const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>(),
       const std::optional<std::string> &tensor_transport = std::nullopt) = 0;
@@ -521,9 +557,14 @@ class ReferenceCounterInterface {
   virtual void AddBorrowerAddress(const ObjectID &object_id,
                                   const rpc::Address &borrower_address) = 0;
 
-  virtual bool IsObjectReconstructable(const ObjectID &object_id,
-                                       bool *lineage_evicted) const = 0;
-
+  /// Check if an object is eligible for lineage-based reconstruction.
+  ///
+  /// \param[in] object_id The ID of the object to check.
+  /// \param[out] eligibility The lineage eligibility of the object.
+  /// \param[out] lineage_evicted Whether the lineage was evicted.
+  /// \return True if lineage pinning is enabled and we own this object.
+  virtual bool GetLineageEligibility(const ObjectID &object_id,
+                                     LineageEligibility *eligibility) const = 0;
   /// Evict lineage of objects that are still in scope. This evicts lineage in
   /// FIFO order, based on when the ObjectRef was created.
   ///

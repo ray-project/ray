@@ -38,9 +38,14 @@ from ray.exceptions import (
     ObjectFetchTimedOutError,
     ObjectFreedError,
     ObjectLostError,
-    ObjectReconstructionFailedError,
+    ObjectReconstructionFailedBorrowedError,
     ObjectReconstructionFailedLineageEvictedError,
+    ObjectReconstructionFailedLocalModeError,
     ObjectReconstructionFailedMaxAttemptsExceededError,
+    ObjectReconstructionFailedOutOfScopeError,
+    ObjectReconstructionFailedPutError,
+    ObjectReconstructionFailedRetriesDisabledError,
+    ObjectReconstructionFailedTaskCancelledError,
     ObjectRefStreamEndOfStreamError,
     OutOfDiskError,
     OutOfMemoryError,
@@ -516,10 +521,6 @@ class SerializationContext:
                 return OwnerDiedError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
-            elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
-                return ObjectReconstructionFailedError(
-                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
-                )
             elif error_type == ErrorType.Value(
                 "OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED"
             ):
@@ -530,6 +531,34 @@ class SerializationContext:
                 "OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED"
             ):
                 return ObjectReconstructionFailedLineageEvictedError(
+                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
+                )
+            elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE_PUT"):
+                return ObjectReconstructionFailedPutError(
+                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
+                )
+            elif error_type == ErrorType.Value(
+                "OBJECT_UNRECONSTRUCTABLE_RETRIES_DISABLED"
+            ):
+                return ObjectReconstructionFailedRetriesDisabledError(
+                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
+                )
+            elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE_BORROWED"):
+                return ObjectReconstructionFailedBorrowedError(
+                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
+                )
+            elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE"):
+                return ObjectReconstructionFailedLocalModeError(
+                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
+                )
+            elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE_OUT_OF_SCOPE"):
+                return ObjectReconstructionFailedOutOfScopeError(
+                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
+                )
+            elif error_type == ErrorType.Value(
+                "OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED"
+            ):
+                return ObjectReconstructionFailedTaskCancelledError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
             elif error_type == ErrorType.Value("RUNTIME_ENV_SETUP_FAILED"):

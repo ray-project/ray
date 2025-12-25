@@ -963,7 +963,7 @@ Status CoreWorker::Put(const RayObject &object,
                                      rpc_address_,
                                      CurrentCallSite(),
                                      object.GetSize(),
-                                     /*is_reconstructable=*/false,
+                                     LineageEligibility::INELIGIBLE_PUT,
                                      /*add_local_ref=*/true,
                                      NodeID::FromBinary(rpc_address_.node_id()));
   auto status = Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
@@ -1050,7 +1050,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                        rpc_address_,
                                        CurrentCallSite(),
                                        data_size + metadata->Size(),
-                                       /*is_reconstructable=*/false,
+                                       LineageEligibility::INELIGIBLE_PUT,
                                        /*add_local_ref=*/true,
                                        NodeID::FromBinary(rpc_address_.node_id()),
                                        /*tensor_transport=*/tensor_transport);
@@ -3269,7 +3269,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
                                          rpc_address_,
                                          CurrentCallSite(),
                                          -1,
-                                         /*is_reconstructable=*/false,
+                                         LineageEligibility::INELIGIBLE_PUT,
                                          /*add_local_ref=*/true);
     }
     rpc::ObjectReference ref;
@@ -4380,7 +4380,7 @@ void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
       rpc_address_,
       call_site,
       request.object_size(),
-      /*is_reconstructable=*/false,
+      LineageEligibility::INELIGIBLE_PUT,
       /*add_local_ref=*/false,
       /*pinned_at_node_id=*/NodeID::FromBinary(borrower_address.node_id()));
   reference_counter_->AddBorrowerAddress(object_id, borrower_address);

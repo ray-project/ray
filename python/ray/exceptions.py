@@ -752,26 +752,6 @@ class OwnerDiedError(ObjectLostError):
 
 
 @PublicAPI
-class ObjectReconstructionFailedError(ObjectLostError):
-    """Indicates that the object cannot be reconstructed.
-
-    Args:
-        object_ref_hex: Hex ID of the object.
-    """
-
-    def __str__(self):
-        return (
-            self._base_str()
-            + "\n\n"
-            + (
-                "The object cannot be reconstructed "
-                "because it was created by an actor, ray.put() call, or its "
-                "ObjectRef was created by a different worker."
-            )
-        )
-
-
-@PublicAPI
 class ObjectReconstructionFailedMaxAttemptsExceededError(ObjectLostError):
     """Indicates that the object cannot be reconstructed because the maximum
     number of task retries has been exceeded.
@@ -785,6 +765,7 @@ class ObjectReconstructionFailedMaxAttemptsExceededError(ObjectLostError):
             self._base_str()
             + "\n\n"
             + (
+                "[OBJECT_UNRECONSTRUCTABLE:MAX_ATTEMPTS] "
                 "The object cannot be reconstructed "
                 "because the maximum number of task retries has been exceeded. "
                 "To prevent this error, set "
@@ -807,10 +788,141 @@ class ObjectReconstructionFailedLineageEvictedError(ObjectLostError):
             self._base_str()
             + "\n\n"
             + (
+                "[OBJECT_UNRECONSTRUCTABLE:LINEAGE_EVICTED] "
                 "The object cannot be reconstructed because its lineage has been "
                 "evicted to reduce memory pressure. "
                 "To prevent this error, set the environment variable "
                 "RAY_max_lineage_bytes=<bytes> (default 1GB) during `ray start`."
+            )
+        )
+
+
+@PublicAPI
+class ObjectReconstructionFailedPutError(ObjectLostError):
+    """Indicates that the object cannot be reconstructed because it was
+    created by ray.put() and has no task lineage.
+
+    Args:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "[OBJECT_UNRECONSTRUCTABLE:PUT] "
+                "The object cannot be reconstructed because it was created by "
+                "ray.put(), which has no task lineage. "
+                "To prevent this error, return the value from a task instead."
+            )
+        )
+
+
+@PublicAPI
+class ObjectReconstructionFailedRetriesDisabledError(ObjectLostError):
+    """Indicates that the object cannot be reconstructed because the task
+    was created with max_retries=0, so automatic retries are disabled.
+
+    Args:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "[OBJECT_UNRECONSTRUCTABLE:RETRIES_DISABLED] "
+                "The object cannot be reconstructed because the task was created "
+                "with max_retries=0. "
+                "To prevent this error, set `@ray.remote(max_retries=N)`."
+            )
+        )
+
+
+@PublicAPI
+class ObjectReconstructionFailedBorrowedError(ObjectLostError):
+    """Indicates that the object cannot be reconstructed because it was
+    borrowed from another worker and we are not the owner.
+
+    Args:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "[OBJECT_UNRECONSTRUCTABLE:BORROWED] "
+                "The object cannot be reconstructed because it crossed an ownership "
+                "boundary. Only the owner of an object can trigger reconstruction, "
+                "but this worker borrowed the object from another worker."
+            )
+        )
+
+
+@PublicAPI
+class ObjectReconstructionFailedLocalModeError(ObjectLostError):
+    """Indicates that the object cannot be reconstructed because Ray is
+    running in local mode which does not support object reconstruction.
+
+    Args:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "[OBJECT_UNRECONSTRUCTABLE:LOCAL_MODE] "
+                "The object cannot be reconstructed because Ray is running in "
+                "local mode. Local mode does not support object reconstruction."
+            )
+        )
+
+
+@PublicAPI
+class ObjectReconstructionFailedOutOfScopeError(ObjectLostError):
+    """Indicates that the object cannot be reconstructed because the reference
+    has gone out of scope (no longer tracked by the reference counter).
+
+    Args:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "[OBJECT_UNRECONSTRUCTABLE:OUT_OF_SCOPE] "
+                "The object cannot be reconstructed because its reference has "
+                "gone out of scope. The reference counter is no longer tracking "
+                "this object."
+            )
+        )
+
+
+@PublicAPI
+class ObjectReconstructionFailedTaskCancelledError(ObjectLostError):
+    """Indicates that the object cannot be reconstructed because the task
+    that would produce it was cancelled.
+
+    Args:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "[OBJECT_UNRECONSTRUCTABLE:TASK_CANCELLED] "
+                "The object cannot be reconstructed because the task that would "
+                "produce it was cancelled."
             )
         )
 
@@ -1008,9 +1120,14 @@ RAY_EXCEPTION_TYPES = [
     ObjectLostError,
     ObjectFetchTimedOutError,
     ReferenceCountingAssertionError,
-    ObjectReconstructionFailedError,
     ObjectReconstructionFailedMaxAttemptsExceededError,
     ObjectReconstructionFailedLineageEvictedError,
+    ObjectReconstructionFailedPutError,
+    ObjectReconstructionFailedRetriesDisabledError,
+    ObjectReconstructionFailedBorrowedError,
+    ObjectReconstructionFailedLocalModeError,
+    ObjectReconstructionFailedOutOfScopeError,
+    ObjectReconstructionFailedTaskCancelledError,
     OwnerDiedError,
     GetTimeoutError,
     AsyncioActorExit,

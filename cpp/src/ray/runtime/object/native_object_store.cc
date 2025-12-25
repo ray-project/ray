@@ -72,18 +72,29 @@ void NativeObjectStore::CheckException(const std::string &meta_str,
   std::string data_str =
       data_buffer ? std::string((char *)data_buffer->Data(), data_buffer->Size()) : "";
 
-  if (meta_str == std::to_string(ray::rpc::ErrorType::WORKER_DIED)) {
+  int error_type = std::atoi(meta_str.c_str());
+  switch (error_type) {
+  case ray::rpc::ErrorType::WORKER_DIED:
     throw RayWorkerException(std::move(data_str));
-  } else if (meta_str == std::to_string(ray::rpc::ErrorType::ACTOR_DIED)) {
+  case ray::rpc::ErrorType::ACTOR_DIED:
     throw RayActorException(std::move(data_str));
-  } else if (meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE) ||
-             meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_LOST) ||
-             meta_str == std::to_string(ray::rpc::ErrorType::OWNER_DIED) ||
-             meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_DELETED)) {
-    // TODO: Differentiate object errors.
-    throw UnreconstructableException(std::move(data_str));
-  } else if (meta_str == std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION)) {
+  case ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION:
     throw RayTaskException(std::move(data_str));
+  // TODO: Differentiate object error
+  case ray::rpc::ErrorType::OBJECT_LOST:
+  case ray::rpc::ErrorType::OWNER_DIED:
+  case ray::rpc::ErrorType::OBJECT_DELETED:
+  case ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_PUT:
+  case ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_RETRIES_DISABLED:
+  case ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED:
+  case ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED:
+  case ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_BORROWED:
+  case ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE:
+  case ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_OUT_OF_SCOPE:
+  case ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED:
+    throw UnreconstructableException(std::move(data_str));
+  default:
+    break;
   }
 }
 
