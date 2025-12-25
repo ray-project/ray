@@ -768,8 +768,7 @@ class ObjectReconstructionFailedMaxAttemptsExceededError(ObjectLostError):
                 "[OBJECT_UNRECONSTRUCTABLE:MAX_ATTEMPTS] "
                 "The object cannot be reconstructed "
                 "because the maximum number of task retries has been exceeded. "
-                "To prevent this error, set "
-                "`@ray.remote(max_retries=<num retries>)` (default 3)."
+                "To prevent this error, set `@ray.remote(max_retries=N)`."
             )
         )
 

@@ -29,9 +29,14 @@ Exceptions
     ray.exceptions.OwnerDiedError
     ray.exceptions.PendingCallsLimitExceeded
     ray.exceptions.PlasmaObjectNotAvailable
-    ray.exceptions.ObjectReconstructionFailedError
     ray.exceptions.ObjectReconstructionFailedMaxAttemptsExceededError
     ray.exceptions.ObjectReconstructionFailedLineageEvictedError
+    ray.exceptions.ObjectReconstructionFailedPutError
+    ray.exceptions.ObjectReconstructionFailedRetriesDisabledError
+    ray.exceptions.ObjectReconstructionFailedBorrowedError
+    ray.exceptions.ObjectReconstructionFailedLocalModeError
+    ray.exceptions.ObjectReconstructionFailedOutOfScopeError
+    ray.exceptions.ObjectReconstructionFailedTaskCancelledError
     ray.exceptions.RayChannelError
     ray.exceptions.RayChannelTimeoutError
     ray.exceptions.RayCgraphCapacityExceeded
