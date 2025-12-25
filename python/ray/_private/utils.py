@@ -1322,7 +1322,8 @@ def check_version_info(
             logger.warning(f"Python patch version mismatch: {mismatch_msg}")
     else:
         error_message = f"Version mismatch: {mismatch_msg}"
-        if raise_on_mismatch:
+        # Running ray jobs with different Python versions is supported in ant-ray.
+        if not ray_matches and raise_on_mismatch:
             raise RuntimeError(error_message)
         else:
             logger.warning(error_message)

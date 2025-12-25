@@ -4,10 +4,10 @@ import os
 import tempfile
 import shlex
 from typing import List, Optional
-import ray
 import ray._private.runtime_env.constants as runtime_env_constants
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.ray_constants import RAY_NODE_LOGS_DIR
 
 from ray._private.utils import (
     get_ray_site_packages_path,
@@ -153,6 +153,10 @@ def _modify_container_context_impl(
     container_to_host_mount_dict = try_parse_default_mount_points(
         container_to_host_mount_dict
     )
+
+    # Mount user specified ray-logs dir to container
+    if RAY_NODE_LOGS_DIR:
+        container_to_host_mount_dict[RAY_NODE_LOGS_DIR] = RAY_NODE_LOGS_DIR
 
     # `install_ray` and `isolate_pip_installation` are mutually exclusive
     if container_install_ray and container_isolate_pip_installation:
@@ -336,6 +340,10 @@ def _modify_context_impl(
         # https://www.redhat.com/sysadmin/rootless-podman-user-namespace-modes
         "--userns=keep-id",
     ]
+
+    # Mount user specified ray-logs dir to container
+    if RAY_NODE_LOGS_DIR:
+        container_command.extend(("-v", RAY_NODE_LOGS_DIR + ":" + RAY_NODE_LOGS_DIR))
 
     # Environment variables to set in container
     env_vars = dict()
