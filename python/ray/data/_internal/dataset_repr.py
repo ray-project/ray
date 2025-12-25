@@ -134,14 +134,16 @@ def _prepare_columns_for_repr(
     head_target = min(config.head_columns, max_columns - 1)
     if head_target < 0:
         head_target = 0
-    tail_slots = max_columns - head_target - 1
+    gap_needed = head_target > 0
+    tail_slots = max_columns - head_target - (1 if gap_needed else 0)
     if tail_slots < 0:
         tail_slots = 0
 
     for idx in range(head_target):
         display.append(_ColumnDisplaySpec(name=columns[idx], dtype=dtype_strings[idx]))
 
-    display.append(_ColumnDisplaySpec(name=None, dtype=None, is_gap=True))
+    if gap_needed:
+        display.append(_ColumnDisplaySpec(name=None, dtype=None, is_gap=True))
 
     tail_start = max(num_columns - tail_slots, head_target)
     for idx in range(tail_start, num_columns):
@@ -310,7 +312,7 @@ def _collect_materialized_rows_for_repr(
     for part in reversed(tail_parts):
         tail_rows.extend(part)
 
-    show_gap = bool(tail_rows)
+    show_gap = bool(head_rows) and bool(tail_rows)
     return head_rows, tail_rows, show_gap
 
 
