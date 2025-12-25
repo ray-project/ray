@@ -2,9 +2,9 @@ import pandas as pd
 import pytest
 
 import ray
-from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import Chain, LabelEncoder, SimpleImputer, StandardScaler
+from ray.data.util.data_batch_conversion import BatchFormat
 
 
 def test_chain():

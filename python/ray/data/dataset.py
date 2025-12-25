@@ -28,10 +28,6 @@ import ray
 import ray.cloudpickle as pickle
 from ray._common.usage import usage_lib
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.air.util.tensor_extensions.arrow import (
-    ArrowTensorTypeV2,
-    get_arrow_extension_fixed_shape_tensor_types,
-)
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.clickhouse_datasink import (
@@ -89,6 +85,10 @@ from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, _StatsManager
+from ray.data._internal.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    get_arrow_extension_fixed_shape_tensor_types,
+)
 from ray.data._internal.util import (
     AllToAllAPI,
     ConsumptionAPI,
