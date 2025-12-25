@@ -19,6 +19,7 @@ from ray.autoscaler._private.monitor import Monitor
 from ray.autoscaler.v2.instance_manager.config import KubeRayConfigReader
 from ray.autoscaler.v2.utils import is_autoscaler_v2
 from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
+from ray.exceptions import RpcError
 
 logger = logging.getLogger(__name__)
 
@@ -29,56 +30,36 @@ def _get_log_dir(gcs_client: GcsClient) -> str:
     head_node_selector = GetAllNodeInfoRequest.NodeSelector()
     head_node_selector.is_head_node = True
 
-    # # Brute force way to get node info
-    # nodes = gcs_client.get_all_node_info()
-    # head_node_id = None
-    # brute_force_head_node_temp_dir = None
-    # for node_id, node_info in nodes.items():
-    #     if node_info.is_head_node:
-    #         head_node_id = node_id
-    #         break
-    # if head_node_id is not None:
-    #     brute_force_head_node_temp_dir = ray._common.utils.resolve_user_ray_temp_dir(
-    #         gcs_client, head_node_id
-    #     )
-
-    # No timeout as we want to wait until the head node is ready.
-    temp_dir = None
+    # We need to wait until head node's raylet is registered in GCS.
     node_infos = []
-    try:
-        node_infos = gcs_client.get_all_node_info(
-            node_selectors=[head_node_selector]
-        ).values()
-    except Exception as e:
-        logger.warning(f"Failed to get node info for head node in GCS. Error: {e}")
+    # TODO(Kunchd): Dummy retry to make sure head node is ready.
+    for _ in range(1e6):
+        try:
+            node_infos = gcs_client.get_all_node_info(
+                node_selectors=[head_node_selector],
+                timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS,
+            ).values()
+        except RpcError as e:
+            logger.warning(f"RPC error getting node info from GCS: {e}, retrying...")
+            node_infos = []
+
+        if node_infos:
+            break
+        time.sleep(2)
 
     if not node_infos:
-        # node infos is probably empty here for some reason
-        # raise Exception(
-        #     "No node info found for head node in GCS. Did the head node or gcs start successfully?"
-        # )
-        logger.warning(
+        raise Exception(
             "No node info found for head node in GCS. Did the head node or gcs start successfully?"
         )
-    else:
-        node_info = next(iter(node_infos))
-        if node_info is not None:
-            temp_dir = getattr(node_info, "temp_dir", None)
-            if temp_dir is None:
-                # raise Exception(
-                #     "Node temp_dir was not found in NodeInfo. did the head node's raylet start successfully?"
-                # )
-                logger.warning(
-                    "Node temp_dir was not found in NodeInfo. did the head node's raylet start successfully?"
-                )
 
-    if temp_dir is None:
-        temp_dir = ray._common.utils.get_default_ray_temp_dir()
-    return os.path.join(
-        temp_dir,
-        ray._private.ray_constants.SESSION_LATEST,
-        "logs",
-    )
+    node_info = next(iter(node_infos))
+    if node_info is not None:
+        temp_dir = getattr(node_info, "temp_dir", None)
+        if temp_dir is None:
+            raise Exception(
+                "Node temp_dir was not found in NodeInfo. did the head node's raylet start successfully?"
+            )
+    return os.path.join(temp_dir, ray._private.ray_constants.SESSION_LATEST, "logs")
 
 
 def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
