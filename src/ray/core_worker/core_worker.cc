@@ -1033,7 +1033,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
     std::shared_ptr<Buffer> *data,
     const std::unique_ptr<rpc::Address> &owner_address,
     bool inline_small_object,
-    rpc::TensorTransport tensor_transport) {
+    const std::optional<std::string> &tensor_transport) {
   auto status = WaitForActorRegistered(contained_object_ids);
   if (!status.ok()) {
     return status;
@@ -1055,8 +1055,8 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                        NodeID::FromBinary(rpc_address_.node_id()),
                                        /*tensor_transport=*/tensor_transport);
 
-    // Register the callback to free the GPU object when it is out of scope.
-    if (tensor_transport != rpc::TensorTransport::OBJECT_STORE) {
+    // Register the callback to free the RDT object when it is out of scope.
+    if (tensor_transport.has_value()) {
       reference_counter_->AddObjectOutOfScopeOrFreedCallback(*object_id,
                                                              free_actor_object_callback_);
     }
@@ -1884,8 +1884,7 @@ void CoreWorker::BuildCommonTaskSpec(
     bool enable_task_events,
     const std::unordered_map<std::string, std::string> &labels,
     const LabelSelector &label_selector,
-    const std::vector<FallbackOption> &fallback_strategy,
-    const rpc::TensorTransport &tensor_transport) {
+    const std::vector<FallbackOption> &fallback_strategy) {
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -1935,8 +1934,7 @@ void CoreWorker::BuildCommonTaskSpec(
       enable_task_events,
       labels,
       label_selector,
-      fallback_strategy,
-      tensor_transport);
+      fallback_strategy);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -2420,8 +2418,7 @@ Status CoreWorker::SubmitActorTask(
                       /*enable_task_events=*/task_options.enable_task_events,
                       /*labels=*/{},
                       /*label_selector=*/{},
-                      /*fallback_strategy=*/{},
-                      /*tensor_transport=*/task_options.tensor_transport);
+                      /*fallback_strategy=*/{});
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
@@ -2429,7 +2426,8 @@ Status CoreWorker::SubmitActorTask(
                                  ObjectID::Nil(),
                                  max_retries,
                                  retry_exceptions,
-                                 serialized_retry_exception_allowlist);
+                                 serialized_retry_exception_allowlist,
+                                 task_options.tensor_transport);
   // Submit task.
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
@@ -3352,12 +3350,12 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       // Python workers need this copy to pass test case
       // test_inline_arg_memory_corruption.
       bool copy_data = options_.language == Language::PYTHON;
-      rpc::TensorTransport tensor_transport = task.ArgTensorTransport(i);
+      auto tensor_transport = task.ArgTensorTransport(i);
       args->push_back(std::make_shared<RayObject>(std::move(data),
                                                   std::move(metadata),
                                                   task.ArgInlinedRefs(i),
                                                   copy_data,
-                                                  tensor_transport));
+                                                  std::move(tensor_transport)));
       auto &arg_ref = arg_refs->emplace_back();
       arg_ref.set_object_id(task.ArgObjectIdBinary(i));
       // The task borrows all ObjectIDs that were serialized in the inlined
