@@ -98,7 +98,7 @@ normalize_arch() {
 setup_build_env() {
     export PYTHON_VERSION="${PYTHON_VERSION:-3.10}"
     export ARCH_SUFFIX="${ARCH_SUFFIX:-}"
-    export HOSTTYPE="${HOSTTYPE:-$(normalize_arch)}"
+    export HOSTTYPE="$(normalize_arch "${HOSTTYPE:-$(uname -m)}")"
     export MANYLINUX_VERSION="${MANYLINUX_VERSION:-251216.3835fc5}"
     export WANDA_BIN="${WANDA_BIN:-$(command -v wanda || echo /home/ubuntu/rayci/bin/wanda)}"
 }
