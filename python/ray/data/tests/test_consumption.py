@@ -58,21 +58,22 @@ def test_schema(ray_start_regular):
         last_snapshot,
     )
 
-    assert str(ds2) == "Dataset(num_rows=10, schema={id: int64})"
+    ds2_repr = str(ds2)
+    assert "shape: (10, 1)" in ds2_repr
+    assert "Dataset isn't materialized" in ds2_repr
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(task_count={}), last_snapshot
     )
 
-    assert (
-        str(ds3) == "MaterializedDataset(num_blocks=5, num_rows=10, schema={id: int64})"
-    )
+    ds3_repr = str(ds3)
+    assert "shape: (10, 1)" in ds3_repr
+    assert "(Showing" in ds3_repr
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(task_count={}), last_snapshot
     )
-    assert (
-        str(ds4) == "MaterializedDataset(num_blocks=1, num_rows=5, "
-        "schema={a: string, b: double})"
-    )
+    ds4_repr = str(ds4)
+    assert "shape: (5, 2)" in ds4_repr
+    assert "(Showing" in ds4_repr
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(task_count={}), last_snapshot
     )
@@ -527,7 +528,7 @@ def test_dataset_repr_value_truncation(ray_start_regular_shared, restore_data_co
     ).materialize()
     text = repr(ds)
 
-    assert "abcd…" in text
+    assert "abcde…" in text
     assert "[1, 2, …]" in text
     assert "array(shape=(2, 3), dtype" in text
     assert "data=[0, 1, …]" in text

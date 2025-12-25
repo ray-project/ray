@@ -7330,9 +7330,7 @@ def _truncate_text_value(value: str, limit: int) -> str:
         return _DATASET_REPR_ELLIPSIS if value else ""
     if len(value) <= limit:
         return value
-    if limit == 1:
-        return _DATASET_REPR_ELLIPSIS
-    return value[: limit - 1] + _DATASET_REPR_ELLIPSIS
+    return value[:limit] + _DATASET_REPR_ELLIPSIS
 
 
 def _format_binary_value(value: bytes, config: _DatasetReprConfig) -> str:
