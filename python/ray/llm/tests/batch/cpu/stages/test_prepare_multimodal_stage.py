@@ -13,7 +13,7 @@ async def test_prepare_multimodal_udf_image_url(image_asset):
     udf = PrepareMultimodalUDF(
         data_column="__data",
         expected_input_keys=["messages"],
-        model="Qwen/Qwen2.5-VL-3B-Instruct",
+        model_config_kwargs={"model": "Qwen/Qwen2.5-VL-3B-Instruct"},
         chat_template_content_format="string",
     )
 
@@ -65,7 +65,7 @@ async def test_prepare_multimodal_udf_pil_image(image_asset):
     udf = PrepareMultimodalUDF(
         data_column="__data",
         expected_input_keys=["messages"],
-        model="Qwen/Qwen2.5-VL-3B-Instruct",
+        model_config_kwargs={"model": "Qwen/Qwen2.5-VL-3B-Instruct"},
         chat_template_content_format="string",
     )
 
@@ -109,7 +109,7 @@ async def test_prepare_multimodal_udf_no_multimodal_content():
     udf = PrepareMultimodalUDF(
         data_column="__data",
         expected_input_keys=["messages"],
-        model="Qwen/Qwen2.5-VL-3B-Instruct",
+        model_config_kwargs={"model": "Qwen/Qwen2.5-VL-3B-Instruct"},
         chat_template_content_format="string",
     )
 
@@ -138,7 +138,7 @@ def test_prepare_multimodal_udf_expected_keys():
     udf = PrepareMultimodalUDF(
         data_column="__data",
         expected_input_keys=["messages"],
-        model="Qwen/Qwen2.5-VL-3B-Instruct",
+        model_config_kwargs={"model": "Qwen/Qwen2.5-VL-3B-Instruct"},
         chat_template_content_format="string",
     )
     assert udf.expected_input_keys == {"messages"}
