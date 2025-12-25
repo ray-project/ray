@@ -185,8 +185,6 @@ python/ray/_private/services.py
     DOC106: Function `start_reaper`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Function `start_reaper`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC103: Function `start_reaper`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [fate_share: ].
-    DOC102: Function `start_log_monitor`: Docstring contains more arguments than in function signature.
-    DOC103: Function `start_log_monitor`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the docstring but not in the function signature: [redirect_logging: ].
     DOC101: Function `start_api_server`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `start_api_server`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [fate_share: Optional[bool]].
     DOC101: Function `start_gcs_server`: Docstring contains fewer arguments than in function signature.

@@ -127,6 +127,14 @@ class tqdm:
     def total(self, total: int):
         self._total = total
 
+    @property
+    def n(self) -> int:
+        return self._x
+
+    @n.setter
+    def n(self, n: int):
+        self._x = n
+
     def _dump_state(self, force_flush=False) -> None:
         now = time.time()
         if not force_flush and now - self._last_flush_time < self._flush_interval_s:
@@ -178,7 +186,7 @@ class _Bar:
         self.state = state
         self.pos_offset = pos_offset
         self.bar = real_tqdm.tqdm(
-            desc=state["desc"] + " " + str(state["pos"]),
+            desc=state["desc"],
             total=state["total"],
             unit=state["unit"],
             position=pos_offset + state["pos"],
