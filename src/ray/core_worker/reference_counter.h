@@ -244,8 +244,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
                           const rpc::Address &borrower_address) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  bool GetLineageEligibility(const ObjectID &object_id,
-                             LineageEligibility *eligibility) const override;
+  LineageEligibility GetLineageEligibility(const ObjectID &object_id) const override;
   int64_t EvictLineage(int64_t min_bytes_to_evict) override;
 
   void UpdateObjectPendingCreation(const ObjectID &object_id,

@@ -927,6 +927,27 @@ class ObjectReconstructionFailedTaskCancelledError(ObjectLostError):
 
 
 @PublicAPI
+class ObjectReconstructionFailedLineageDisabledError(ObjectLostError):
+    """Indicates that the object cannot be reconstructed because lineage
+    reconstruction is disabled system-wide.
+
+    Args:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "[OBJECT_UNRECONSTRUCTABLE:LINEAGE_DISABLED] "
+                "The object cannot be reconstructed because lineage reconstruction "
+                "is disabled system-wide (object_reconstruction_enabled=False)."
+            )
+        )
+
+
+@PublicAPI
 class GetTimeoutError(RayError, TimeoutError):
     """Indicates that a call to the worker timed out."""
 
@@ -1127,6 +1148,7 @@ RAY_EXCEPTION_TYPES = [
     ObjectReconstructionFailedLocalModeError,
     ObjectReconstructionFailedOutOfScopeError,
     ObjectReconstructionFailedTaskCancelledError,
+    ObjectReconstructionFailedLineageDisabledError,
     OwnerDiedError,
     GetTimeoutError,
     AsyncioActorExit,

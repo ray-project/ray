@@ -457,7 +457,7 @@ def test_basic_reconstruction_actor_constructor(
             ray.get(x)
         exc = str(exc_info.value)
         assert "arguments" in exc
-        assert "ObjectLostError" in exc
+        assert "ObjectReconstructionFailedLineageDisabledError" in exc
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])

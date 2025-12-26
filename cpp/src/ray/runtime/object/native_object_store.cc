@@ -72,29 +72,41 @@ void NativeObjectStore::CheckException(const std::string &meta_str,
   std::string data_str =
       data_buffer ? std::string((char *)data_buffer->Data(), data_buffer->Size()) : "";
 
-  int error_type = std::atoi(meta_str.c_str());
-  switch (error_type) {
-  case ray::rpc::ErrorType::WORKER_DIED:
+  if (meta_str == std::to_string(ray::rpc::ErrorType::WORKER_DIED)) {
     throw RayWorkerException(std::move(data_str));
-  case ray::rpc::ErrorType::ACTOR_DIED:
+  } else if (meta_str == std::to_string(ray::rpc::ErrorType::ACTOR_DIED)) {
     throw RayActorException(std::move(data_str));
-  case ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION:
+  } else if (meta_str == std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION)) {
     throw RayTaskException(std::move(data_str));
-  // TODO: Differentiate object error
-  case ray::rpc::ErrorType::OBJECT_LOST:
-  case ray::rpc::ErrorType::OWNER_DIED:
-  case ray::rpc::ErrorType::OBJECT_DELETED:
-  case ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_PUT:
-  case ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_RETRIES_DISABLED:
-  case ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED:
-  case ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED:
-  case ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_BORROWED:
-  case ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE:
-  case ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_OUT_OF_SCOPE:
-  case ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED:
+  } else if (meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_LOST) ||
+             meta_str == std::to_string(ray::rpc::ErrorType::OWNER_DIED) ||
+             meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_DELETED) ||
+             meta_str ==
+                 std::to_string(ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_PUT) ||
+             meta_str ==
+                 std::to_string(
+                     ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_RETRIES_DISABLED) ||
+             meta_str ==
+                 std::to_string(
+                     ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED) ||
+             meta_str ==
+                 std::to_string(ray::rpc::ErrorType::
+                                    OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED) ||
+             meta_str ==
+                 std::to_string(ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_BORROWED) ||
+             meta_str == std::to_string(
+                             ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE) ||
+             meta_str ==
+                 std::to_string(
+                     ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_OUT_OF_SCOPE) ||
+             meta_str ==
+                 std::to_string(
+                     ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED) ||
+             meta_str ==
+                 std::to_string(
+                     ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED)) {
+    // TODO: Differentiate object error
     throw UnreconstructableException(std::move(data_str));
-  default:
-    break;
   }
 }
 

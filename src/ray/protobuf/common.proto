@@ -276,6 +276,9 @@ enum ErrorType {
   // The object cannot be reconstructed because the task that would produce it
   // was cancelled.
   OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED = 32;
+  // The object cannot be reconstructed because lineage reconstruction is
+  // disabled system-wide (lineage_pinning_enabled=false).
+  OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED = 33;
 }
 
 // The user error information.

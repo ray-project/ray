@@ -96,7 +96,8 @@ different error types:
   ``ObjectReconstructionFailedBorrowedError``,
   ``ObjectReconstructionFailedLocalModeError``,
   ``ObjectReconstructionFailedOutOfScopeError``,
-  ``ObjectReconstructionFailedTaskCancelledError``.
+  ``ObjectReconstructionFailedTaskCancelledError``,
+  ``ObjectReconstructionFailedLineageDisabledError``.
   See :ref:`above <fault-tolerance-objects-reconstruction>` for more details
   on lineage reconstruction limitations.
 - ``ReferenceCountingAssertionError``: The object has already been deleted,

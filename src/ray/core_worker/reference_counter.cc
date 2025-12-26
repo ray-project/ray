@@ -1638,18 +1638,17 @@ void ReferenceCounter::AddBorrowerAddress(const ObjectID &object_id,
   }
 }
 
-bool ReferenceCounter::GetLineageEligibility(const ObjectID &object_id,
-                                             LineageEligibility *eligibility) const {
+LineageEligibility ReferenceCounter::GetLineageEligibility(
+    const ObjectID &object_id) const {
   if (!lineage_pinning_enabled_) {
-    return false;
+    return LineageEligibility::INELIGIBLE_LINEAGE_DISABLED;
   }
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    return false;
+    return LineageEligibility::INELIGIBLE_OUT_OF_SCOPE;
   }
-  *eligibility = it->second.lineage_eligibility_;
-  return true;
+  return it->second.lineage_eligibility_;
 }
 
 void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id,

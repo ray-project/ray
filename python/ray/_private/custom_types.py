@@ -119,6 +119,7 @@ ERROR_TYPE = [
     "OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE",
     "OBJECT_UNRECONSTRUCTABLE_OUT_OF_SCOPE",
     "OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED",
+    "OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED",
 ]
 # The Language enum is used in the export API so it is public
 # and any modifications must be backward compatible.

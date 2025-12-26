@@ -219,8 +219,9 @@ TEST_F(ObjectRecoveryLineageDisabledTest, TestNoReconstruction) {
   ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_EQ(object_directory_->Flush(), 1);
+  // When lineage is disabled, reconstruction fails with LINEAGE_DISABLED error.
   ASSERT_EQ(failed_reconstructions_[object_id],
-            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED);
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED);
   ASSERT_EQ(task_manager_->num_tasks_resubmitted, 0);
 
   // Borrowed object.

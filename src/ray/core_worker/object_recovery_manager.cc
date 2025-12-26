@@ -140,13 +140,9 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
 }
 
 void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
-  LineageEligibility eligibility = LineageEligibility::ELIGIBLE;
-  reference_counter_.GetLineageEligibility(object_id, &eligibility);
+  LineageEligibility eligibility = reference_counter_.GetLineageEligibility(object_id);
 
   if (eligibility != LineageEligibility::ELIGIBLE) {
-    // TODO(swang): We may not report the LINEAGE_EVICTED error (just reports
-    // general OBJECT_UNRECONSTRUCTABLE error) if lineage eviction races with
-    // reconstruction.
     auto error_type_opt = ToErrorType(eligibility);
     rpc::ErrorType error_type = error_type_opt.value_or(rpc::ErrorType::OBJECT_LOST);
     RAY_LOG(INFO).WithField(object_id)

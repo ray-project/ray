@@ -37,6 +37,7 @@ Exceptions
     ray.exceptions.ObjectReconstructionFailedLocalModeError
     ray.exceptions.ObjectReconstructionFailedOutOfScopeError
     ray.exceptions.ObjectReconstructionFailedTaskCancelledError
+    ray.exceptions.ObjectReconstructionFailedLineageDisabledError
     ray.exceptions.RayChannelError
     ray.exceptions.RayChannelTimeoutError
     ray.exceptions.RayCgraphCapacityExceeded

@@ -2673,7 +2673,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestEvictLineage) {
 
   LineageEligibility eligibility;
   for (const auto &id : ids) {
-    ASSERT_TRUE(rc->GetLineageEligibility(id, &eligibility));
+    eligibility = rc->GetLineageEligibility(id);
     ASSERT_EQ(eligibility, LineageEligibility::ELIGIBLE);
   }
 
@@ -2686,9 +2686,9 @@ TEST_F(ReferenceCountLineageEnabledTest, TestEvictLineage) {
   ASSERT_TRUE(rc->HasReference(ids[1]));
   ASSERT_TRUE(rc->HasReference(ids[2]));
   // ID1 is no longer reconstructable due to lineage eviction.
-  ASSERT_TRUE(rc->GetLineageEligibility(ids[1], &eligibility));
+  eligibility = rc->GetLineageEligibility(ids[1]);
   ASSERT_EQ(eligibility, LineageEligibility::INELIGIBLE_LINEAGE_EVICTED);
-  ASSERT_TRUE(rc->GetLineageEligibility(ids[2], &eligibility));
+  eligibility = rc->GetLineageEligibility(ids[2]);
   ASSERT_EQ(eligibility, LineageEligibility::ELIGIBLE);
 }
 

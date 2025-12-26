@@ -39,6 +39,7 @@ from ray.exceptions import (
     ObjectFreedError,
     ObjectLostError,
     ObjectReconstructionFailedBorrowedError,
+    ObjectReconstructionFailedLineageDisabledError,
     ObjectReconstructionFailedLineageEvictedError,
     ObjectReconstructionFailedLocalModeError,
     ObjectReconstructionFailedMaxAttemptsExceededError,
@@ -559,6 +560,12 @@ class SerializationContext:
                 "OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED"
             ):
                 return ObjectReconstructionFailedTaskCancelledError(
+                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
+                )
+            elif error_type == ErrorType.Value(
+                "OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED"
+            ):
+                return ObjectReconstructionFailedLineageDisabledError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
             elif error_type == ErrorType.Value("RUNTIME_ENV_SETUP_FAILED"):

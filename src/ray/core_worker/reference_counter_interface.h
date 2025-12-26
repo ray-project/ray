@@ -40,10 +40,14 @@ enum class LineageEligibility {
   INELIGIBLE_PUT,
   /// Task created with max_retries=0.
   INELIGIBLE_NO_RETRIES,
-  /// Lineage evicted due to memory pressure.
-  INELIGIBLE_LINEAGE_EVICTED,
   /// Local mode does not support object reconstruction.
   INELIGIBLE_LOCAL_MODE,
+  /// Lineage evicted due to memory pressure.
+  INELIGIBLE_LINEAGE_EVICTED,
+  /// Lineage pinning is disabled system-wide, reconstruction not supported.
+  INELIGIBLE_LINEAGE_DISABLED,
+  /// Object reference not found in table (has gone out of scope).
+  INELIGIBLE_OUT_OF_SCOPE,
 };
 
 /// Convert LineageEligibility to the corresponding ErrorType for reporting to users.
@@ -60,9 +64,13 @@ inline std::optional<rpc::ErrorType> ToErrorType(LineageEligibility eligibility)
     return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED;
   case LineageEligibility::INELIGIBLE_LOCAL_MODE:
     return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE;
-  default:
-    return rpc::ErrorType::OBJECT_LOST;
+  case LineageEligibility::INELIGIBLE_LINEAGE_DISABLED:
+    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED;
+  case LineageEligibility::INELIGIBLE_OUT_OF_SCOPE:
+    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_OUT_OF_SCOPE;
   }
+  // Should not reach here, but return OBJECT_LOST as fallback.
+  return rpc::ErrorType::OBJECT_LOST;
 }
 
 class ReferenceCounterInterface {
@@ -560,10 +568,8 @@ class ReferenceCounterInterface {
   /// Check if an object is eligible for lineage-based reconstruction.
   ///
   /// \param[in] object_id The ID of the object to check.
-  /// \param[out] eligibility The lineage eligibility of the object.
-  /// \return True if lineage pinning is enabled and we own this object.
-  virtual bool GetLineageEligibility(const ObjectID &object_id,
-                                     LineageEligibility *eligibility) const = 0;
+  /// \return The lineage eligibility of the object.
+  virtual LineageEligibility GetLineageEligibility(const ObjectID &object_id) const = 0;
   /// Evict lineage of objects that are still in scope. This evicts lineage in
   /// FIFO order, based on when the ObjectRef was created.
   ///
