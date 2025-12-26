@@ -241,6 +241,9 @@ build:macos --copt="-Wno-error=deprecated-declarations"
 # This option controls whether javac checks for missing direct dependencies.
 build --experimental_strict_java_deps=off
 
+# TODO(bazel-cert-expiry): Remove this once https://github.com/bazelbuild/bazel/issues/28101 is resolved.
 # Using GitHub mirror for BCR to work around bcr.bazel.build outages
 # Fix for https://github.com/bazelbuild/bazel/issues/28101
 common --registry=https://raw.githubusercontent.com/bazelbuild/bazel-central-registry/main/
+# Rewrite mirror.bazel.build URLs to original sources (GitHub, golang.org)
+common --experimental_downloader_config=bazel/mirror_fallback.cfg

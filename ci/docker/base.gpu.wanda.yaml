@@ -4,6 +4,7 @@ dockerfile: ci/docker/base.gpu.Dockerfile
 srcs:
   - .bazelrc
   - .bazeliskrc
+  - bazel/mirror_fallback.cfg
   - .bazelversion
   - ci/env/install-dependencies.sh
   - ci/env/install-llvm-binaries.sh
