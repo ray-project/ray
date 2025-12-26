@@ -4239,6 +4239,7 @@ class AlgorithmConfig(_Config):
         If result is a fraction AND `worker_index` is provided, makes
         those workers add additional timesteps, such that the overall batch size (across
         the workers) adds up to exactly the `total_train_batch_size`.
+        Fractions < 1 calculated this way are rounded up to a rollout_fragment_length of 1.
 
         Returns:
             The user-provided `rollout_fragment_length` or a computed one (if user
@@ -4263,10 +4264,10 @@ class AlgorithmConfig(_Config):
                     rollout_fragment_length
                 ) * self.num_envs_per_env_runner * (self.num_env_runners or 1)
                 if ((worker_index - 1) * self.num_envs_per_env_runner) >= diff:
-                    return int(rollout_fragment_length)
+                    return int(rollout_fragment_length) or 1
                 else:
                     return int(rollout_fragment_length) + 1
-            return int(rollout_fragment_length)
+            return int(rollout_fragment_length) or 1
         else:
             return self.rollout_fragment_length
 

@@ -19,6 +19,9 @@
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/metrics.h"
+#include "ray/observability/fake_metric.h"
+#include "ray/raylet/metrics.h"
 #include "ray/raylet/scheduling/internal.h"
 
 namespace ray {
@@ -91,6 +94,8 @@ class LocalLeaseManagerInterface {
   virtual ResourceSet CalcNormalTaskResources() const = 0;
 
   virtual void RecordMetrics() const = 0;
+
+  virtual SchedulerMetrics &GetSchedulerMetrics() const = 0;
 
   virtual void DebugStr(std::stringstream &buffer) const = 0;
 
@@ -188,6 +193,12 @@ class NoopLocalLeaseManager : public LocalLeaseManagerInterface {
 
   void RecordMetrics() const override{};
 
+  SchedulerMetrics &GetSchedulerMetrics() const override {
+    RAY_CHECK(false)
+        << "This function should never be called by gcs' local lease manager.";
+    return scheduler_metrics_;
+  }
+
   void DebugStr(std::stringstream &buffer) const override {}
 
   size_t GetNumLeaseSpilled() const override { return 0; }
@@ -203,6 +214,14 @@ class NoopLocalLeaseManager : public LocalLeaseManagerInterface {
                         rpc::RequestWorkerLeaseReply *reply) override {
     return false;
   }
+  ray::observability::FakeGauge noop_gauge_;
+  mutable SchedulerMetrics scheduler_metrics_{
+      /*scheduler_tasks=*/noop_gauge_,
+      /*scheduler_unscheduleable_tasks=*/noop_gauge_,
+      /*scheduler_failed_worker_startup_total=*/noop_gauge_,
+      /*internal_num_spilled_tasks=*/noop_gauge_,
+      /*internal_num_infeasible_scheduling_classes=*/noop_gauge_,
+  };
 };
 }  // namespace raylet
 }  // namespace ray

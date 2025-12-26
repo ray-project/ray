@@ -439,6 +439,27 @@ more information.
 
     .. grid-item-card::
 
+        .. figure:: ../images/raylight.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/komikndr/raylight?style=social)]
+                :target: https://github.com/komikndr/raylight
+
+            Raylight is an extension for ComfyUI that enables true multi-GPU capability using XDiT XFuser, and FSDP managed by Ray. It is designed to scale diffusion models efficiently across multiple GPUs. Raylight provides sequence parallelism, and optimized VRAM utilization, making it ideal for large video and image generation models.
+
+        +++
+        .. button-link:: https://github.com/komikndr/raylight
+            :color: primary
+            :outline:
+            :expand:
+
+            Raylight Integration
+
+
+    .. grid-item-card::
+
         .. figure:: ../images/scikit.png
             :class: card-figure
 

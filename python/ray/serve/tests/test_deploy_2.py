@@ -355,7 +355,7 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
             autoscaling_config={
                 "metrics_interval_s": 1,
                 "upscale_delay_s": 1,
-                "look_back_period_s": 1,
+                "look_back_period_s": 2,
             },
             graceful_shutdown_timeout_s=1,
         )
@@ -365,7 +365,7 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
             autoscaling_config={
                 "metrics_interval_s": 1,
                 "upscale_delay_s": 1,
-                "look_back_period_s": 1,
+                "look_back_period_s": 2,
             },
             graceful_shutdown_timeout_s=1,
         )(A)
@@ -389,7 +389,7 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
         "metrics_interval_s": 1.0,
         "upscale_delay_s": 1.0,
         # Untouched defaults
-        "look_back_period_s": 1.0,
+        "look_back_period_s": 2.0,
         "downscale_delay_s": 600.0,
         "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
