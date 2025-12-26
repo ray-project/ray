@@ -960,7 +960,7 @@ def get_ineligible_op_usage(
     # filter out downstream ineligible operators since they are omitted from reservation calculations.
     for op in last_completed_ops:
         ops_to_exclude_from_reservation.extend(
-            list(resource_manager.get_downstream_ineligible_ops(op))
+            resource_manager.get_downstream_ineligible_ops(op)
         )
         ops_to_exclude_from_reservation.append(op)
 
