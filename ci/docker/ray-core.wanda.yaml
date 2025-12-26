@@ -20,6 +20,7 @@ srcs:
   - release/BUILD.bazel
   - release/requirements_buildkite.txt
   - release/requirements_py310.txt
+  - ci/build/local-build-utils.sh
 build_args:
   - PYTHON_VERSION
   - ARCH_SUFFIX

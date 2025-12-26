@@ -14,6 +14,7 @@ srcs:
   - release/BUILD.bazel
   - release/requirements_buildkite.txt
   - release/requirements_py310.txt
+  - ci/build/local-build-utils.sh
 build_args:
   - ARCH_SUFFIX
   - BUILDKITE_BAZEL_CACHE_URL

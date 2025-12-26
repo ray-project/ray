@@ -19,28 +19,30 @@ WORKDIR /home/forge/ray
 COPY . .
 
 # Mounting cache dir for faster local rebuilds (architecture-specific to avoid toolchain conflicts)
-RUN --mount=type=cache,target=/home/forge/.cache,uid=2000,gid=100,id=bazel-cache-${HOSTTYPE} \
-    <<EOF
+RUN --mount=type=cache,target=/home/forge/.cache,uid=2000,gid=100,id=bazel-cache-${HOSTTYPE}-${PYTHON_VERSION}-${ARCH_SUFFIX} \
+    <<'EOF'
 #!/bin/bash
-
 set -euo pipefail
 
 PY_CODE="${PYTHON_VERSION//./}"
 PY_BIN="cp${PY_CODE}-cp${PY_CODE}"
-
 export RAY_BUILD_ENV="manylinux_py${PY_BIN}"
 
 sudo ln -sf "/opt/python/${PY_BIN}/bin/python3" /usr/local/bin/python3
 sudo ln -sf /usr/local/bin/python3 /usr/local/bin/python
 
-# Configure remote cache: use provided URL, or disable if not set (overrides base image default)
 echo "build:ci --remote_cache=${BUILDKITE_BAZEL_CACHE_URL:-}" >> "$HOME/.bazelrc"
 if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
   echo "build --remote_upload_local_results=false" >> "$HOME/.bazelrc"
 fi
 
-# Build C++ package (headers, libraries, examples)
-bazelisk build --config=ci //cpp:ray_cpp_pkg_zip
+echo "build --repository_cache=/home/forge/.cache/bazel-repo" >> "$HOME/.bazelrc"
+echo "build --experimental_repository_cache_hardlinks" >> "$HOME/.bazelrc"
+
+source "$HOME/ray/ci/build/local-build-utils.sh"
+BAZEL_FLAGS="$(bazel_container_resource_flags)"
+
+bazelisk build --config=ci ${BAZEL_FLAGS} //cpp:ray_cpp_pkg_zip
 
 cp bazel-bin/cpp/ray_cpp_pkg.zip /home/forge/ray_cpp_pkg.zip
 

@@ -14,7 +14,7 @@ WORKDIR /home/forge/ray
 COPY . .
 
 # Mounting cache dir for faster local rebuilds (architecture-specific to avoid toolchain conflicts)
-RUN --mount=type=cache,target=/home/forge/.cache,uid=2000,gid=100,id=bazel-cache-${HOSTTYPE} \
+RUN --mount=type=cache,target=/home/forge/.cache,uid=2000,gid=100,id=bazel-cache-${HOSTTYPE}-${PYTHON_VERSION}-${ARCH_SUFFIX} \
     <<EOF
 #!/bin/bash
 
@@ -34,7 +34,13 @@ if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
   echo "build --remote_upload_local_results=false" >> "$HOME/.bazelrc"
 fi
 
-bazelisk build --config=ci //:ray_pkg_zip //:ray_py_proto_zip
+echo "build --repository_cache=/home/forge/.cache/bazel-repo" >> "$HOME/.bazelrc"
+echo "build --experimental_repository_cache_hardlinks" >> "$HOME/.bazelrc"
+
+source "$HOME/ray/ci/build/local-build-utils.sh"
+BAZEL_FLAGS="$(bazel_container_resource_flags)"
+
+bazelisk build --config=ci ${BAZEL_FLAGS} //:ray_pkg_zip //:ray_py_proto_zip
 
 cp bazel-bin/ray_pkg.zip /home/forge/ray_pkg.zip
 cp bazel-bin/ray_py_proto.zip /home/forge/ray_py_proto.zip
