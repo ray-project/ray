@@ -5,7 +5,7 @@ Ray for ML Infrastructure
 
 .. tip::
 
-    We'd love to hear from you if you are using Ray to build an ML platform! Fill out `this short form <https://forms.gle/wCCdbaQDtgErYycT6>`__ to get involved.
+    If you're using Ray to build an ML platform, fill out `this short form <https://forms.gle/wCCdbaQDtgErYycT6>`__ to get involved.
 
 Ray and its AI libraries provide a unified compute runtime for teams looking to simplify their ML platform.
 Ray's libraries such as Ray Train, Ray Data, and Ray Serve can be used to compose end-to-end ML workflows, providing features and APIs for
@@ -27,7 +27,7 @@ Ray's AI libraries simplify the ecosystem of machine learning frameworks, platfo
 ..
   https://docs.google.com/drawings/d/1oi_JwNHXVgtR_9iTdbecquesUd4hOk0dWgHaTaFj6gk/edit
 
-**1. Seamless Dev to Prod**: Ray's AI libraries reduce friction going from development to production. With Ray and its libraries, the same Python code scales seamlessly from a laptop to a large cluster.
+**1. Seamless dev to prod**: Ray's AI libraries reduce friction going from development to production. With Ray and its libraries, the same Python code scales seamlessly from a laptop to a large cluster.
 
 **2. Unified ML API and Runtime**: Ray's APIs enable swapping between popular frameworks, such as XGBoost, PyTorch, and Hugging Face, with minimal code changes. Everything from training to serving runs on a single runtime (Ray + KubeRay).
 
