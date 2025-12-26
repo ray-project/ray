@@ -1,7 +1,7 @@
 :orphan:
 
-Distributed fine-tuning of Llama 3.1 8B on AWS Trainium with Ray and PyTorch Lightning
-======================================================================================
+Distributed fine-tuning of Llama 3.1 8 B on AWS Trainium with Ray and PyTorch Lightning
+=======================================================================================
 
 .. raw:: html
 
@@ -14,18 +14,18 @@ This example demonstrates how to fine-tune the `Llama 3.1 8B <https://huggingfac
 Trainium <https://aws.amazon.com/ai/machine-learning/trainium/>`__ instances using Ray Train, PyTorch Lightning, and AWS Neuron SDK.
 
 AWS Trainium is the machine learning (ML) chip that AWS built for deep
-learning (DL) training of 100B+ parameter models. `AWS Neuron
+learning (DL) training of 100 B+ parameter models. `AWS Neuron
 SDK <https://aws.amazon.com/machine-learning/neuron/>`__ helps
 developers train models on Trainium accelerators.
 
 Prepare the environment
 -----------------------
 
-See `Setup EKS cluster and tools <https://github.com/aws-neuron/aws-neuron-eks-samples/tree/master/llama3.1_8B_finetune_ray_ptl_neuron#setupeksclusterandtools>`__ for setting up an Amazon EKS cluster leveraging AWS Trainium instances.
+See `Setup EKS cluster and tools <https://github.com/aws-neuron/aws-neuron-eks-samples/tree/master/llama3.1_8B_finetune_ray_ptl_neuron#setupeksclusterandtools>`__ for setting up an Amazon Elastic Kubernetes Service (EKS) cluster leveraging AWS Trainium instances.
 
 Create a Docker image
 ---------------------
-When the EKS cluster is ready, create an Amazon ECR repository for building and uploading the Docker image containing artifacts for fine-tuning a Llama3.1 8B model:
+When the EKS cluster is ready, create an Amazon Elastic Container Registry (ECR) repository for building and uploading the Docker image containing artifacts for fine-tuning a Llama3.1 8 B model:
 
 1. Clone the repo.
 
@@ -46,14 +46,14 @@ When the EKS cluster is ready, create an Amazon ECR repository for building and 
    chmod +x 0-kuberay-trn1-llama3-finetune-build-image.sh
    ./0-kuberay-trn1-llama3-finetune-build-image.sh
 
-4. Enter the zone your cluster is running in, for example: us-east-2.
+4. Enter the zone your cluster is running in, for example: ``us-east-2``.
 
 5. Verify in the AWS console that the Amazon ECR service has the newly
    created ``kuberay_trn1_llama3.1_pytorch2`` repository.
 
-6. Update the ECR image ARN in the manifest file used for creating the Ray cluster.
+6. Update the ECR image Amazon Resource Name (ARN) in the manifest file used for creating the Ray cluster.
 
-Replace the <AWS_ACCOUNT_ID> and <REGION> placeholders with actual values in the ``1-llama3-finetune-trn1-create-raycluster.yaml`` file using commands below to reflect the ECR image ARN created above:
+Replace the <AWS_ACCOUNT_ID> and <REGION> placeholders with actual values in the ``1-llama3-finetune-trn1-create-raycluster.yaml`` file using commands below to reflect the ECR image ARN created in the preceding steps:
 
 ::
 
@@ -91,7 +91,7 @@ Launching Ray Jobs
 
 The Ray cluster is now ready to handle workloads. Initiate the data preparation and fine-tuning Ray jobs:
 
-1. Launch the Ray job for downloading the dolly-15k dataset and the Llama3.1 8B model artifacts:
+1. Launch the Ray job for downloading the dolly 15k dataset and the Llama3.1 8 B model artifacts:
 
 ::
 
@@ -103,7 +103,7 @@ The Ray cluster is now ready to handle workloads. Initiate the data preparation 
 
    kubectl apply -f 3-llama3-finetune-trn1-rayjob-submit-finetuning-job.yaml
 
-3. Monitor the jobs via the Ray Dashboard
+3. Monitor the jobs through the Ray Dashboard
 
 
-For detailed information on each of the steps above, see the `AWS documentation link <https://github.com/aws-neuron/aws-neuron-eks-samples/blob/master/llama3.1_8B_finetune_ray_ptl_neuron/README.md/>`__.
+For detailed information on each of the steps in the preceding sections, see the `AWS documentation link <https://github.com/aws-neuron/aws-neuron-eks-samples/blob/master/llama3.1_8B_finetune_ray_ptl_neuron/README.md/>`__.

@@ -27,8 +27,8 @@ the :class:`~ray.train.ScalingConfig`:
 Using GPUs
 ----------
 To use GPUs, pass ``use_gpu=True`` to the :class:`~ray.train.ScalingConfig`.
-This will request one GPU per training worker. In the example below, training will
-run on 8 GPUs (8 workers, each using one GPU).
+This requests one GPU per training worker. In the example below, training runs
+on 8 GPUs (8 workers, each using one GPU).
 
 .. testcode::
 
@@ -42,9 +42,9 @@ run on 8 GPUs (8 workers, each using one GPU).
 
 Using GPUs in the training function
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-When ``use_gpu=True`` is set, Ray Train will automatically set up environment variables
+When ``use_gpu=True`` is set, Ray Train automatically sets up environment variables
 in your training function so that the GPUs can be detected and used
-(e.g. ``CUDA_VISIBLE_DEVICES``).
+(for example, ``CUDA_VISIBLE_DEVICES``).
 
 You can get the associated devices with :meth:`ray.train.torch.get_device`.
 
@@ -108,7 +108,7 @@ Setting the GPU type
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Ray Train allows you to specify the accelerator type for each worker.
 This is useful if you want to use a specific accelerator type for model training.
-In a heterogeneous Ray cluster, this means that your training workers will be forced to run on the specified GPU type,
+In a heterogeneous Ray cluster, this means that your training workers are forced to run on the specified GPU type,
 rather than on any arbitrary GPU node. You can get a list of supported `accelerator_type` from
 :ref:`the available accelerator types <accelerator_types>`.
 
@@ -132,7 +132,7 @@ assign each worker a NVIDIA A100 GPU.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 PyTorch Distributed supports multiple `backends <https://pytorch.org/docs/stable/distributed.html#backends>`__
-for communicating tensors across workers. By default Ray Train will use NCCL when ``use_gpu=True`` and Gloo otherwise.
+for communicating tensors across workers. By default Ray Train will use NCCL when ``use_gpu=True`` and GLOO otherwise.
 
 If you explicitly want to override this setting, you can configure a :class:`~ray.train.torch.TorchConfig`
 and pass it into the :class:`~ray.train.torch.TorchTrainer`.
@@ -201,7 +201,7 @@ the ``resources_per_worker`` attribute:
     ``use_gpu=True``.
 
 You can also instruct Ray Train to use fractional GPUs. In that case, multiple workers
-will be assigned the same CUDA device.
+are assigned the same CUDA device.
 
 .. testcode::
 
@@ -225,14 +225,14 @@ will be assigned the same CUDA device.
     This API is deprecated. See `this migration guide <https://github.com/ray-project/ray/issues/49454>`_ for more details.
 
 
-So far we've configured resources for each training worker. Technically, each
+So far, resources were configured for each training worker. Technically, each
 training worker is a :ref:`Ray Actor <actor-guide>`. Ray Train also schedules
 an actor for the trainer object when you call ``trainer.fit()``.
 
 This object often only manages lightweight communication between the training workers.
 Per default, a trainer uses 1 CPU. If you have a cluster with 8 CPUs and want
-to start 4 training workers a 2 CPUs, this will not work, as the total number
-of required CPUs will be 9 (4 * 2 + 1). In that case, you can specify the trainer
+to start 4 training workers a 2 CPUs, this won't work, as the total number
+of required CPUs is 9 (4 * 2 + 1). In that case, you can specify the trainer
 resources to use 0 CPUs:
 
 .. testcode::

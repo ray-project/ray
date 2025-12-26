@@ -293,7 +293,8 @@ CPU offloading reduces GPU memory footprint by storing model components in the C
     <img src="https://raw.githubusercontent.com/ray-project/ray/master/doc/source/train/examples/pytorch/pytorch-fsdp/images/cpu_offload_profile.png" width="600"/>
   </div>
 </div>
-Note: The above images are generated using PyTorch's Memory Profiler, which this tutorial covers later.
+
+Note: PyTorch's Memory Profiler generated these images. This tutorial covers how to use the profiler later.
 
 It can be seen that CPU offloading significantly reduces the amount of GPU memory occupied by model parameters. 
 
@@ -342,7 +343,7 @@ Learn more about mixed precision configuration on the [PyTorch documentation](ht
 
 ### Combining Memory Strategies
 
-The below diagram compares the GPU memory profile of default sharding to when all of the above strategies are enabled (CPU Offloading, Mixed Precision, `reshard_after_forward=True`).
+The following diagram compares the GPU memory profile of default sharding to the scenario where you enable all three strategies: CPU Offloading, Mixed Precision, and `reshard_after_forward=True`.
 
 <div style="display: flex; gap: 40px; align-items: flex-start;">
   <div style="text-align: center;">
@@ -560,9 +561,9 @@ def report_metrics_and_save_fsdp_checkpoint(
 
 ### Save the model for inference
 
-After training, it is often useful to consolidate sharded checkpoints into a single file for convenient sharing or inference. Unlike regular distributed checkpointing, this process produces a large artifact compatible with torch.load. To do so, the `get_model_state_dict` function all-gathers parameter shards to rank 0, reconstructs the full state dict, and then saves the consolidated checkpoint to cluster storage.
+After training, it's often useful to consolidate sharded checkpoints into a single file for convenient sharing or inference. Unlike regular distributed checkpointing, this process produces a large artifact compatible with torch.load. To do so, the `get_model_state_dict` function all-gathers parameter shards to rank 0, reconstructs the full state dict, and then saves the consolidated checkpoint to cluster storage.
 
-Note that a key limitation of this approach is that the entire model must be materialized in memory on rank 0. For large models, this can exceed the available CPU RAM and result in out-of-memory errors. In such cases, it is advised to keep the model in its sharded format and rely on distributed model loading for inference.
+Note that a key limitation of this approach is that the entire model must be materialized in memory on rank 0. For large models, this can exceed the available CPU RAM and result in out-of-memory errors. In such cases, it's advised to keep the model in its sharded format and rely on distributed model loading for inference.
 
 
 ```python

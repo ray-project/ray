@@ -4,7 +4,7 @@ Monitoring and Logging Metrics
 ==============================
 
 Ray Train provides an API for attaching metrics to :ref:`checkpoints <train-checkpointing>` from the training function by calling :func:`ray.train.report(metrics, checkpoint) <ray.train.report>`.
-The results will be collected from the distributed workers and passed to the Ray Train driver process for book-keeping.
+The results are collected from the distributed workers and passed to the Ray Train driver process for book-keeping.
 
 The primary use cases for reporting are:
 
@@ -12,7 +12,7 @@ The primary use cases for reporting are:
 * validating checkpoints on a validation set with a user-defined validation function. See :ref:`train-validating-checkpoints` for usage examples.
 
 Only the result reported by the rank 0 worker is attached to the checkpoint.
-However, in order to ensure consistency, ``train.report()`` acts as a barrier and must be called on each worker.
+However, to ensure consistency, ``train.report()`` acts as a barrier and must be called on each worker.
 To aggregate results from multiple workers, see :ref:`train-aggregating-results`.
 
 
@@ -21,7 +21,7 @@ To aggregate results from multiple workers, see :ref:`train-aggregating-results`
 How to obtain and aggregate results from different workers?
 -----------------------------------------------------------
 
-In real applications, you may want to calculate optimization metrics besides accuracy and loss: recall, precision, Fbeta, etc.
+In real applications, you may want to calculate optimization metrics besides accuracy and loss: recall, precision, F-beta, etc.
 You may also want to collect metrics from multiple workers. While Ray Train currently only reports metrics from the rank 0
 worker, you can use third-party libraries or distributed primitives of your machine learning framework to report
 metrics from multiple workers.
@@ -47,16 +47,16 @@ metrics from multiple workers.
 --------------------------------------------
 
 Reporting metrics with ``ray.train.report(metrics, checkpoint=None)`` from every worker writes the metrics to a Ray Tune log file (``progress.csv``, ``result.json``)
-and is accessible via the ``Result.metrics_dataframe`` on the :class:`~ray.train.Result` returned by ``trainer.fit()``.
+and is accessible through the ``Result.metrics_dataframe`` on the :class:`~ray.train.Result` returned by ``trainer.fit()``.
 
-As of Ray 2.43, this behavior is deprecated and will not be supported in Ray Train V2,
+As of Ray 2.43, this behavior is deprecated and not supported in Ray Train V2,
 which is an overhaul of Ray Train's implementation and select APIs.
 
-Ray Train V2 only keeps a slim set of experiment tracking features that are necessary for fault tolerance, so it does not support reporting free-floating metrics that are not attached to checkpoints.
-The recommendation for metric tracking is to report metrics directly from the workers to experiment tracking tools such as MLFlow and WandB.
+Ray Train V2 only keeps a slim set of experiment tracking features that are necessary for fault tolerance, so it doesn't support reporting free-floating metrics that aren't attached to checkpoints.
+The recommendation for metric tracking is to report metrics directly from the workers to experiment tracking tools such as MLflow and wandb.
 See :ref:`train-experiment-tracking-native` for examples.
 
-In Ray Train V2, reporting only metrics from all workers is a no-op. However, it is still possible to access the results reported by all workers to implement custom metric-handling logic.
+In Ray Train V2, reporting only metrics from all workers is a no-op. However, it's still possible to access the results reported by all workers to implement custom metric-handling logic.
 
 .. literalinclude:: ../doc_code/metric_logging.py
     :language: python

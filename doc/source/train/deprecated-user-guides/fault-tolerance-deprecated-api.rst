@@ -8,16 +8,16 @@ Handling Failures and Node Preemption (Deprecated API)
 .. important::
     This user guide covers deprecated fault tolerance APIs. See :ref:`train-fault-tolerance` for the new API user guide.
 
-    Please see :ref:`here <train-fault-tolerance-deprecation-info>` for information about the deprecation and migration.
+    See :ref:`here <train-fault-tolerance-deprecation-info>` for information about the deprecation and migration.
 
 Automatically Recover from Train Worker Failures
 ------------------------------------------------
 
-Ray Train has built-in fault tolerance to recover from worker failures (i.e.
-``RayActorError``\s). When a failure is detected, the workers will be shut
-down and new workers will be added in.
+Ray Train has built-in fault tolerance to recover from worker failures (that's
+``RayActorError``\s). When a failure is detected, the workers are shut
+down and new workers are added in.
 
-The training function will be restarted, but progress from the previous execution can
+The training function is restarted, but progress from the previous execution can
 be resumed through checkpointing.
 
 .. tip::
@@ -35,12 +35,12 @@ passed to the ``Trainer``:
     :start-after: __failure_config_start__
     :end-before: __failure_config_end__
 
-Which checkpoint will be restored?
+Which checkpoint is restored?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Ray Train will automatically resume training from the latest available
+Ray Train automatically resumes training from the latest available
 :ref:`checkpoint reported to Ray Train <train-checkpointing>`.
 
-This will be the last checkpoint passed to :func:`train.report() <ray.train.report>`.
+This is the last checkpoint passed to :func:`train.report() <ray.train.report>`.
 
 
 Restore a Ray Train Experiment
@@ -51,16 +51,16 @@ allows you to resume a previously interrupted experiment from where it left off.
 
 A Train experiment may be interrupted due to one of the following reasons:
 
-- The experiment was manually interrupted (e.g., Ctrl+C, or pre-empted head node instance).
-- The head node crashed (e.g., OOM or some other runtime error).
-- The entire cluster went down (e.g., network error affecting all nodes).
+- The experiment was manually interrupted (for example, CTRL+C, or pre-empted head node instance).
+- The head node crashed (for example, OOM or some other runtime error).
+- The entire cluster went down (for example, network error affecting all nodes).
 
 Trainer restoration is possible for all of Ray Train's built-in trainers,
-but we use ``TorchTrainer`` in the examples for demonstration.
-We also use ``<Framework>Trainer`` to refer to methods that are shared across all
+but this guide uses ``TorchTrainer`` in the examples for demonstration.
+This guide also uses ``<Framework>Trainer`` to refer to methods that are shared across all
 built-in trainers.
 
-Let's say your initial Train experiment is configured as follows.
+Consider the following initial Train experiment configuration.
 The actual training loop is just for demonstration purposes: the important detail is that
 :ref:`saving <train-dl-saving-checkpoints>` *and* :ref:`loading checkpoints <train-dl-loading-checkpoints>`
 has been implemented.
@@ -71,7 +71,7 @@ has been implemented.
     :end-before: __ft_initial_run_end__
 
 The results and checkpoints of the experiment are saved to the path configured by :class:`~ray.train.RunConfig`.
-If the experiment has been interrupted due to one of the reasons listed above, use this path to resume:
+If the experiment has been interrupted due to one of the reasons listed in the preceding section, use this path to resume:
 
 .. literalinclude:: ../doc_code/dl_guide.py
     :language: python
@@ -80,7 +80,7 @@ If the experiment has been interrupted due to one of the reasons listed above, u
 
 .. tip::
 
-    You can also restore from a remote path (e.g., from an experiment directory stored in a s3 bucket).
+    You can also restore from a remote path (for example, from an experiment directory stored in a s3 bucket).
 
     .. literalinclude:: ../doc_code/dl_guide.py
         :language: python
@@ -103,15 +103,15 @@ If the experiment has been interrupted due to one of the reasons listed above, u
     can take in the same parameters as their parent class's
     :meth:`DataParallelTrainer.restore <ray.train.data_parallel_trainer.DataParallelTrainer.restore>`.
 
-    Unless otherwise specified, other trainers will accept the same parameters as
+    Unless otherwise specified, other trainers accept the same parameters as
     :meth:`BaseTrainer.restore <ray.train.trainer.BaseTrainer.restore>`.
 
 
 Auto-resume
 ~~~~~~~~~~~
 
-Adding the branching logic below will allow you to run the same script after the interrupt,
-picking up training from where you left on the previous run. Notice that we use the
+Adding the branching logic below allows you to run the same script after the interrupt,
+picking up training from where you left on the previous run. Notice that this uses the
 :meth:`<Framework>Trainer.can_restore <ray.train.trainer.BaseTrainer.can_restore>` utility method
 to determine the existence and validity of the given experiment directory.
 
@@ -133,4 +133,4 @@ to determine the existence and validity of the given experiment directory.
     which writes results to a new directory and starts over from iteration 0.
 
     `<Framework>Trainer.restore` is used to continue an existing experiment, where
-    new results will continue to be appended to existing logs.
+    new results continue to be appended to existing logs.

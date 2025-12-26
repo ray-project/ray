@@ -46,7 +46,7 @@ If the collate function is time/compute intensive and you'd like to scale it out
 Creating a custom collate function that runs in Ray Data
 --------------------------------------------------------
 
-To scale out, you'll want to move the ``collate_fn`` into a Ray Data ``map_batches`` operation:
+To scale out, move the ``collate_fn`` into a Ray Data ``map_batches`` operation:
 
 .. code-block:: python
 
@@ -80,12 +80,12 @@ Ensuring batch size alignment
 -----------------------------
 
 Typically, collate functions are used to create complete batches of data with a target batch size.
-However, if you move the collate function to Ray Data using :meth:`ray.data.Dataset.map_batches`, by default, it will not guarantee the batch size for each function call.
+However, if you move the collate function to Ray Data using :meth:`ray.data.Dataset.map_batches`, by default, it won't guarantee the batch size for each function call.
 
 There are two common problems that you may encounter.
 
 1. The collate function requires a certain number of rows provided as an input to work properly.
-2. You want to avoid any reformatting / rebatching of the data on the training worker process.
+2. You want to avoid any reformatting or re-batching of the data on the training worker process.
 
 To solve these problems, you can use :meth:`ray.data.Dataset.repartition` with ``target_num_rows_per_block`` to ensure the batch size alignment.
 
@@ -96,7 +96,7 @@ By calling ``repartition`` before ``map_batches``, you ensure that the input blo
     # Note: If you only use map_batches(batch_size=BATCH_SIZE), you are not guaranteed to get the desired number of rows as an input.
     dataset = dataset.repartition(target_num_rows_per_block=BATCH_SIZE).map_batches(collate_fn, batch_size=BATCH_SIZE)
 
-By calling ``repartition`` after ``map_batches``, you ensure that the output blocks contain the desired number of rows. This avoids any reformatting / rebatching of the data on the training worker process.
+By calling ``repartition`` after ``map_batches``, you ensure that the output blocks contain the desired number of rows. This avoids any reformatting or re-batching of the data on the training worker process.
 
 .. code-block:: python
 
@@ -121,7 +121,7 @@ By calling ``repartition`` after ``map_batches``, you ensure that the output blo
 Putting things together
 -----------------------
 
-Throughout this guide, we use a mock text dataset to demonstrate the optimization. You can find the implementation of the mock dataset in :ref:`random-text-generator`.
+Throughout this guide, a mock text dataset demonstrates the optimization. You can find the implementation of the mock dataset in :ref:`random-text-generator`.
 
 .. tab-set::
     .. tab-item:: Baseline implementation
@@ -245,7 +245,7 @@ The optimized implementation makes these changes:
 - **Preprocessing in Ray Data**: The tokenization logic moves from ``train_func`` to ``CollateFnRayData``, which runs in ``map_batches``.
 - **NumPy output**: The collate function returns ``Dict[str, np.ndarray]`` instead of PyTorch tensors, which Ray Data natively supports.
 - **Batch alignment**: ``repartition(target_num_rows_per_block=BATCH_SIZE)`` after ``map_batches`` ensures the collate function receives exact batch sizes and output blocks align with the batch size.
-- **No collate_fn in iterator**: ``iter_torch_batches`` uses ``collate_fn=None`` because preprocessing already happened in Ray Data.
+- **No ``collate_fn`` in iterator**: ``iter_torch_batches`` uses ``collate_fn=None`` because preprocessing already happened in Ray Data.
 
 Benchmark results
 ~~~~~~~~~~~~~~~~~
@@ -281,7 +281,7 @@ The results show that scaling out the collate function to Ray Data provides a 2x
 Advanced: Handling custom data types
 ------------------------------------
 
-The optimized implementation above returns ``Dict[str, np.ndarray]``, which Ray Data natively supports. However, if your collate function needs to return PyTorch tensors or other custom data types that :meth:`ray.data.Dataset.map_batches` doesn't directly support, you need to serialize them.
+The optimized implementation in the preceding section returns ``Dict[str, np.ndarray]``, which Ray Data natively supports. However, if your collate function needs to return PyTorch tensors or other custom data types that :meth:`ray.data.Dataset.map_batches` doesn't directly support, you need to serialize them.
 
 .. _train-tensor-serialization-utility:
 

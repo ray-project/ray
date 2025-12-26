@@ -30,7 +30,7 @@ For reference, the final code is as follows:
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
 
-1. `train_func` is the Python code that executes on each distributed training worker.
+1. ``train_func`` is the Python code that executes on each distributed training worker.
 2. :class:`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
 3. :class:`~ray.train.torch.TorchTrainer` launches the distributed training job.
 
@@ -355,7 +355,7 @@ Earlier versions aren't prohibited but may result in unexpected issues. If you r
 
 .. note::
 
-    If you are using Lightning 2.x, please use the import path `lightning.pytorch.xxx` instead of `pytorch_lightning.xxx`.
+    If you are using Lightning 2.x, use the import path `lightning.pytorch.xxx` instead of `pytorch_lightning.xxx`.
 
 .. _lightning-trainer-migration-guide:
 
@@ -370,7 +370,7 @@ It then instantiates the model and trainer objects and runs a pre-defined
 training function in a black box.
 
 This version of the LightningTrainer API was constraining and limited
-your ability to manage the training functionality.
+your ability to manage the training capabilities.
 
 Ray 2.7 introduced the newly unified :class:`~ray.train.torch.TorchTrainer` API, which offers
 enhanced transparency, flexibility, and simplicity. This API is more aligned

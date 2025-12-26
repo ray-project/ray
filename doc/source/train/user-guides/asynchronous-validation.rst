@@ -12,7 +12,7 @@ separate Ray task, which has following benefits:
 * Running validation on different hardware than training
 * Leveraging :ref:`autoscaling <vms-autoscaling>` to launch user-specified machines only for the duration of the validation
 * Letting training continue immediately after saving a checkpoint with partial metrics (for example, loss)
-  and then receiving validation metrics (for example, accuracy) as soon as they are available. If the initial
+  and then receiving validation metrics (for example, accuracy) as soon as they're available. If the initial
   and validated metrics share the same key, the validated metrics overwrite the initial metrics.
 
 Tutorial
@@ -21,7 +21,7 @@ Tutorial
 First, define a ``validate_fn`` that takes a :class:`ray.train.Checkpoint` to validate
 and an optional ``validate_config`` dictionary. This dictionary can contain arguments needed
 for validation, such as the validation dataset. Your function should return a dictionary of metrics
-from that validation. The following is a simple example for teaching purposes only. It is impractical
+from that validation. The following is a simple example for teaching purposes only. It's impractical
 because the validation task always runs on cpu; for a more realistic example, see
 :ref:`train-distributed-validate-fn`.
 
@@ -52,7 +52,7 @@ Finally, after training is done, you can access your checkpoints and their assoc
 Write a distributed validation function
 ---------------------------------------
 
-The ``validate_fn`` above runs in a single Ray task, but you can improve its performance by spawning
+The ``validate_fn`` in the preceding section runs in a single Ray task, but you can improve its performance by spawning
 even more Ray tasks or actors. The Ray team recommends doing this with one of the following approaches:
 
 * Creating a :class:`ray.train.torch.TorchTrainer` that only does validation, not training.
@@ -93,8 +93,8 @@ loss on a validation set. Note the following about this example:
     :start-after: __validate_fn_torch_trainer_start__
     :end-before: __validate_fn_torch_trainer_end__
 
-Example: validation with Ray Data map_batches
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Example: validation with Ray Data ``map_batches``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following is a ``validate_fn`` that uses :func:`ray.data.Dataset.map_batches` to
 calculate average accuracy on a validation set. To learn more about how to use

@@ -8,12 +8,12 @@ Handling Failures and Node Preemption
     available starting from Ray 2.43 by enabling the environment variable ``RAY_TRAIN_V2_ENABLED=1``.
     **This user guide assumes that the environment variable has been enabled.**
 
-    Please see :ref:`here <train-fault-tolerance-deprecation-info>` for information about the deprecation and migration.
+    See :ref:`here <train-fault-tolerance-deprecation-info>` for information about the deprecation and migration.
 
 
 Ray Train provides fault tolerance at three levels:
 
-1. **Worker process fault tolerance** handles errors that happen to one or more Train worker processes while they are executing the user defined training function.
+1. **Worker process fault tolerance** handles errors that happen to one or more Train worker processes while they're executing the user defined training function.
 2. **Worker node fault tolerance** handles node failures that may occur during training.
 3. **Job driver fault tolerance** handles the case where Ray Train driver process crashes, and training needs to be kicked off again, possibly from a new cluster.
 
@@ -34,10 +34,10 @@ Ray Train can be configured to automatically recover from worker process and wor
 When a failure is detected, all the workers are shut down, new nodes are added if necessary, and a new set of workers is started.
 The restarted training worker processes can resume training by loading the latest checkpoint.
 
-In order to retain progress upon recovery, your training function
+To retain progress upon recovery, your training function
 should implement logic for both :ref:`saving <train-dl-saving-checkpoints>`
 *and* :ref:`loading checkpoints <train-dl-loading-checkpoints>`.
-Otherwise, the training will just start from scratch.
+Otherwise, the training just starts from scratch.
 
 Each recovery from a worker process or node failure is considered a retry. The
 number of retries is configurable through the ``max_failures`` attribute of the
@@ -57,10 +57,10 @@ Altogether, this is what an example Torch training script with worker fault tole
     :end-before: __worker_fault_tolerance_end__
 
 
-Which checkpoint will be restored?
+Which checkpoint is restored?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Train will populate :func:`ray.train.get_checkpoint() <ray.train.get_checkpoint>` with the latest available
+Ray Train populates :func:`ray.train.get_checkpoint() <ray.train.get_checkpoint>` with the latest available
 :ref:`checkpoint reported to Ray Train <train-checkpointing>`.
 The :class:`~ray.train.Checkpoint` object returned by this method has the
 :meth:`~ray.train.Checkpoint.as_directory` and :meth:`~ray.train.Checkpoint.to_directory` methods
@@ -68,7 +68,7 @@ to download the checkpoint from the :class:`RunConfig(storage_path) <ray.train.R
 
 .. note::
     :meth:`~ray.train.Checkpoint.as_directory` and :meth:`~ray.train.Checkpoint.to_directory`
-    will only download the checkpoint once per node even if there are multiple workers on the node.
+    only download the checkpoint once per node even if there are multiple workers on the node.
     The workers share the same checkpoint directory on local disk.
 
 Illustrated Example
@@ -87,7 +87,7 @@ The :ref:`storage path has been configured <persistent-storage-guide>` to use cl
     :align: left
 
     One of the worker GPU nodes fails due to a hardware fault. Ray Train detects this failure and shuts down all the workers.
-    Since the number of failures detected so far is less than the configured ``max_failures``, Ray Train will attempt to restart training,
+    Since the number of failures detected so far is less than the configured ``max_failures``, Ray Train attempts to restart training,
     rather than exiting and raising an error.
 
 .. figure:: ../images/fault_tolerance/worker_node_replacement.png
@@ -115,24 +115,24 @@ The Ray Train driver process is the process that calls ``trainer.fit()`` and is 
 
 The driver process may be interrupted due to one of the following reasons:
 
-- The run is manually interrupted by a user (e.g., Ctrl+C).
-- The node where the driver process is running (head node) crashes (e.g., out of memory, out of disk).
-- The entire cluster goes down (e.g., network error affecting all nodes).
+- The run is manually interrupted by a user (for example, CTRL+C).
+- The node where the driver process is running (head node) crashes (for example, out of memory, out of disk).
+- The entire cluster goes down (for example, network error affecting all nodes).
 
 In these cases, the Ray Train driver (which calls ``trainer.fit()``) needs to be launched again.
-The relaunched Ray Train driver needs to find a minimal amount of run state in order to pick up where the previous run left off.
+The relaunched Ray Train driver needs to find a minimal amount of run state to pick up where the previous run left off.
 This state includes the latest reported checkpoints, which are located at the :ref:`storage path <persistent-storage-guide>`.
 Ray Train fetches the latest checkpoint information from storage and passes it to the newly launched worker processes to resume training.
 
 To find this run state, Ray Train relies on passing in the **same** :class:`RunConfig(storage_path, name) <ray.train.RunConfig>` pair as the previous run.
-If the ``storage_path`` or ``name`` do not match, Ray Train will not be able to find the previous run state and will start a new run from scratch.
+If the ``storage_path`` or ``name`` don't match, Ray Train can't find the previous run state and starts a new run from scratch.
 
 .. warning::
-    If ``name`` is reused unintentionally, Ray Train will fetch the previous run state, even if the user is trying to start a new run.
+    If ``name`` is reused unintentionally, Ray Train fetches the previous run state, even if the user is trying to start a new run.
     Therefore, always pass a unique run name when launching a new run. In other words, ``name`` should be a unique identifier for a training job.
 
 .. note::
-    Job driver crashes and interrupts do not count toward the ``max_failures`` limit of :ref:`worker fault tolerance <train-worker-fault-tolerance>`.
+    Job driver crashes and interrupts don't count toward the ``max_failures`` limit of :ref:`worker fault tolerance <train-worker-fault-tolerance>`.
 
 
 Here's an example training script that highlights best practices for job driver fault tolerance:
@@ -169,7 +169,7 @@ Consider the following example of a cluster containing a CPU head node and 2 GPU
 .. figure:: ../images/fault_tolerance/head_node_failure.png
     :align: left
 
-    The head node crashes for some reason (e.g., an out-of-memory error), and the Ray Train driver process is interrupted.
+    The head node crashes for some reason (for example, an out-of-memory error), and the Ray Train driver process is interrupted.
 
 .. figure:: ../images/fault_tolerance/cluster_failure.png
     :align: left
@@ -181,7 +181,7 @@ Consider the following example of a cluster containing a CPU head node and 2 GPU
 
     A manual cluster restart or some job submission system brings up a new Ray cluster.
     The Ray Train driver process runs on a new head node.
-    Ray Train fetches the run state information from storage at ``{storage_path}/{name}`` (e.g., ``s3://my_bucket/my_run_name``)
+    Ray Train fetches the run state information from storage at ``{storage_path}/{name}`` (for example, ``s3://my_bucket/my_run_name``)
     and passes the latest checkpoint to the newly launched worker processes to resume training.
 
 
@@ -193,7 +193,7 @@ Fault Tolerance API Deprecations
 ``<Framework>Trainer.restore`` API Deprecation 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``<Framework>Trainer.restore`` and ``<Framework>Trainer.can_restore`` APIs are deprecated as of Ray 2.43 and will be removed in a future release. 
+The ``<Framework>Trainer.restore`` and ``<Framework>Trainer.can_restore`` APIs are deprecated as of Ray 2.43 and scheduled for removal in a future release. 
 
 Motivation
 **********
@@ -214,12 +214,12 @@ To migrate from the old ``<Framework>Trainer.restore`` API to the new pattern:
 ``<Framework>Trainer(restore_from_checkpoint)`` API Deprecation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``<Framework>Trainer(restore_from_checkpoint)`` API is deprecated as of Ray 2.43 and will be removed in a future release.
+The ``<Framework>Trainer(restore_from_checkpoint)`` API is deprecated as of Ray 2.43 and scheduled for removal in a future release.
 
 Motivation
 **********
 
-This API was a common source of confusion that provided minimal value. It was only used to set the initial value of ``ray.train.get_checkpoint()`` but did not load any other run state.
+This API was a common source of confusion that provided minimal value. It was only used to set the initial value of ``ray.train.get_checkpoint()`` but didn't load any other run state.
 
 Migration Steps
 ***************

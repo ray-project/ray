@@ -102,7 +102,7 @@ The training function does the following:
 1. Performs the backward pass and optimizer step with DeepSpeed.
 1. Aggregates average loss and reports metrics, saving a checkpoint at the end of each epoch. (`report_metrics_and_save_checkpoint`)
 
-Later steps define the above helper functions (`setup_model_and_optimizer`, `load_checkpoint`, `setup_dataloader`, `report_metrics_and_save_checkpoint`).
+You define the helper functions (`setup_model_and_optimizer`, `load_checkpoint`, `setup_dataloader`, and `report_metrics_and_save_checkpoint`) in the following steps.
 
 
 ```python

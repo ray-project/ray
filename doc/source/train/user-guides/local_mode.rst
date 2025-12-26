@@ -7,7 +7,7 @@ Local Mode
     This user guide shows how to use local mode with Ray Train V2 only.
     For information about migrating from Ray Train V1 to V2, see the Train V2 migration guide: https://github.com/ray-project/ray/issues/49454
 
-What is local mode?
+What's local mode?
 -------------------
 
 Local mode in Ray Train runs your training function without launching Ray Train worker actors.
@@ -18,7 +18,7 @@ where you can iterate quickly on your training logic.
 Local mode supports two execution modes:
 
 * **Single-process mode**: Runs your training function in a single process, ideal for rapid iteration and debugging.
-* **Multi-process mode with torchrun**: Launches multiple processes for multi-GPU training, useful for debugging distributed training logic with familiar tools.
+* **Multi-process mode with ``torchrun``**: Launches multiple processes for multi-GPU training, useful for debugging distributed training logic with familiar tools.
 
 How to enable local mode
 -------------------------

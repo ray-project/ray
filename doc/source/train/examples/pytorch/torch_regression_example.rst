@@ -1,8 +1,8 @@
 
 :orphan:
 
-torch_regression_example
-========================
+``torch_regression_example``
+============================
 
 .. raw:: html
 

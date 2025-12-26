@@ -3,7 +3,7 @@
 Ray Train Benchmarks
 ====================
 
-Below we document key performance benchmarks for common Ray Train tasks and workflows.
+Below are key performance benchmarks for common Ray Train tasks and workflows.
 
 .. _pytorch_gpu_training_benchmark:
 
@@ -13,7 +13,7 @@ GPU image training
 This task uses the TorchTrainer module to train different amounts of data
 using a PyTorch ResNet model.
 
-We test out the performance across different cluster sizes and data sizes.
+The following tests show the performance across different cluster sizes and data sizes.
 
 - `GPU image training script`_
 - `GPU training small cluster configuration`_
@@ -21,7 +21,7 @@ We test out the performance across different cluster sizes and data sizes.
 
 .. note::
 
-    For multi-host distributed training, on AWS we need to ensure ec2 instances are in the same VPC and
+    For multi-host distributed training, on AWS ensure that ec2 instances are in the same VPC and
     all ports are open in the security group.
 
 
@@ -52,11 +52,11 @@ PyTorch training parity
 This task checks the performance parity between native PyTorch Distributed and
 Ray Train's distributed TorchTrainer.
 
-We demonstrate that the performance is similar (within 2.5\%) between the two frameworks.
+The performance is similar (within 2.5\%) between the two frameworks.
 Performance may vary greatly across different model, hardware, and cluster configurations.
 
 The reported times are for the raw training times. There is an unreported constant setup
-overhead of a few seconds for both methods that is negligible for longer training runs.
+overhead of a few seconds for both methods that's negligible for longer training runs.
 
 - `PyTorch comparison training script`_
 - `PyTorch comparison CPU cluster configuration`_
@@ -90,11 +90,11 @@ TensorFlow training parity
 This task checks the performance parity between native TensorFlow Distributed and
 Ray Train's distributed TensorflowTrainer.
 
-We demonstrate that the performance is similar (within 1\%) between the two frameworks.
+The performance is similar (within 1\%) between the two frameworks.
 Performance may vary greatly across different model, hardware, and cluster configurations.
 
 The reported times are for the raw training times. There is an unreported constant setup
-overhead of a few seconds for both methods that is negligible for longer training runs.
+overhead of a few seconds for both methods that's negligible for longer training runs.
 
 .. note:: The batch size and number of epochs is different for the GPU benchmark, resulting in a longer runtime.
 

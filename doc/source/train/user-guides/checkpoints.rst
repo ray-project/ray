@@ -40,7 +40,7 @@ Here's how you save a checkpoint in the training loop:
 3. Report the checkpoint to Ray Train using :func:`ray.train.report(metrics, checkpoint=...) <ray.train.report>`.
 
    - The metrics reported alongside the checkpoint are used to :ref:`keep track of the best-performing checkpoints <train-dl-configure-checkpoints>`.
-   - This will **upload the checkpoint to persistent storage** if configured. See :ref:`persistent-storage-guide`.
+   - This **uploads the checkpoint to persistent storage** if configured. See :ref:`persistent-storage-guide`.
 
 
 .. figure:: ../images/checkpoint_lifecycle.png
@@ -48,15 +48,15 @@ Here's how you save a checkpoint in the training loop:
     The lifecycle of a :class:`~ray.train.Checkpoint`, from being saved locally
     to disk to being uploaded to persistent storage via ``train.report``.
 
-As shown in the figure above, the best practice for saving checkpoints is to
+As shown in the preceding figure, the best practice for saving checkpoints is to
 first dump the checkpoint to a local temporary directory. Then, the call to ``train.report``
 uploads the checkpoint to its final persistent storage location.
 Then, the local temporary directory can be safely cleaned up to free up disk space
-(e.g., from exiting the ``tempfile.TemporaryDirectory`` context).
+(for example, from exiting the ``tempfile.TemporaryDirectory`` context).
 
 .. tip::
 
-    In standard DDP training, where each worker has a copy of the full-model, you should
+    In standard Distributed Data Parallel (DDP) training, where each worker has a copy of the full-model, you should
     only save and report a checkpoint from a single worker to prevent redundant uploads.
 
     This typically looks like:
@@ -97,8 +97,8 @@ Here are a few examples of saving checkpoints with different training frameworks
         Specifically, on each train epoch end, it
 
         - collects all the logged metrics from ``trainer.callback_metrics``
-        - saves a checkpoint via ``trainer.save_checkpoint``
-        - reports to Ray Train via :func:`ray.train.report(metrics, checkpoint) <ray.train.report>`
+        - saves a checkpoint with ``trainer.save_checkpoint``
+        - reports to Ray Train using :func:`ray.train.report(metrics, checkpoint) <ray.train.report>`
 
         .. literalinclude:: ../doc_code/checkpoints.py
             :language: python
@@ -195,11 +195,11 @@ you can save and report checkpoint shards in parallel from each worker.
     to persistent storage independently.
 
 Distributed checkpointing is the best practice for saving checkpoints
-when doing model-parallel training (e.g., DeepSpeed, FSDP, Megatron-LM).
+when doing model-parallel training (for example, DeepSpeed, FSDP, Megatron-LM).
 
 There are two major benefits:
 
-1. **It is faster, resulting in less idle time.** Faster checkpointing incentivizes more frequent checkpointing!
+1. **It's faster, resulting in less idle time.** Faster checkpointing encourages more frequent checkpointing.
 
    Each worker can upload its checkpoint shard in parallel,
    maximizing the network bandwidth of the cluster. Instead of a single node
@@ -222,15 +222,15 @@ Here is an example of distributed checkpointing with PyTorch:
 
 .. note::
 
-    Checkpoint files with the same name will collide between workers.
+    Checkpoint files with the same name collide between workers.
     You can get around this by adding a rank-specific suffix to checkpoint files.
 
-    Note that having filename collisions does not error, but it will result in the last
-    uploaded version being the one that is persisted. This is fine if the file
+    Note that having filename collisions doesn't error, but it results in the last
+    uploaded version being the one that's persisted. This is fine if the file
     contents are the same across all workers.
 
-    Model shard saving utilities provided by frameworks such as DeepSpeed will create
-    rank-specific filenames already, so you usually do not need to worry about this.
+    Model shard saving utilities provided by frameworks such as DeepSpeed create
+    rank-specific filenames already, so you usually don't need to worry about this.
 
 
 .. _train-checkpoint-upload-modes:
@@ -324,7 +324,7 @@ you have the following options:
         .. note::
 
             Do not pass a ``checkpoint_upload_fn`` with ``checkpoint_upload_mode=ray.train.CheckpointUploadMode.NO_UPLOAD``
-            because Ray Train will simply ignore ``checkpoint_upload_fn``. You can pass a ``checkpoint_upload_fn`` with
+            because Ray Train simply ignores ``checkpoint_upload_fn``. You can pass a ``checkpoint_upload_fn`` with
             ``checkpoint_upload_mode=ray.train.CheckpointUploadMode.SYNC``, but this is equivalent to uploading the
             checkpoint yourself and reporting the checkpoint with ``ray.train.CheckpointUploadMode.NO_UPLOAD``.
 
@@ -333,7 +333,7 @@ you have the following options:
 Configure checkpointing
 -----------------------
 
-Ray Train provides some configuration options for checkpointing via :class:`~ray.train.CheckpointConfig`.
+Ray Train provides some configuration options for checkpointing through :class:`~ray.train.CheckpointConfig`.
 The primary configuration is keeping only the top ``K`` checkpoints with respect to a metric.
 Lower-performing checkpoints are deleted to save storage space. By default, all checkpoints are kept.
 
@@ -345,9 +345,9 @@ Lower-performing checkpoints are deleted to save storage space. By default, all 
 
 .. note::
 
-    If you want to save the top ``num_to_keep`` checkpoints with respect to a metric via
+    If you want to save the top ``num_to_keep`` checkpoints with respect to a metric using
     :py:class:`~ray.train.CheckpointConfig`,
-    please ensure that the metric is always reported together with the checkpoints.
+    ensure that the metric is always reported together with the checkpoints.
 
 Using checkpoints during training
 ----------------------------------
@@ -367,7 +367,7 @@ This function supports two consistency modes:
 - ``CheckpointConsistencyMode.VALIDATED``: Block until the checkpoint from the latest ``ray.train.report``
   has been uploaded to persistent storage, committed, and validated (see :ref:`train-validating-checkpoints`).
   This is the default consistency mode and has the same behavior as ``CheckpointConsistencyMode.COMMITTED``
-  if your report did not kick off validation.
+  if your report didn't kick off validation.
 
 .. literalinclude:: ../doc_code/checkpoints.py
     :language: python
@@ -457,11 +457,11 @@ See :ref:`train-fault-tolerance` for more details on restoration and fault toler
     *If the checkpoint points to a local directory*, this method just returns the
     local directory path without making a copy.
 
-    *If the checkpoint points to a remote directory*, this method will download the
-    checkpoint to a local temporary directory and return the path to the temporary directory.
+    *If the checkpoint points to a remote directory*, this method downloads the
+    checkpoint to a local temporary directory and returns the path to the temporary directory.
 
     **If multiple processes on the same node call this method simultaneously,**
-    only a single process will perform the download, while the others
+    only a single process performs the download, while the others
     wait for the download to finish. Once the download finishes, all processes receive
     the same local (temporary) directory to read from.
 

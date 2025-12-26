@@ -4,7 +4,7 @@
 
 This template profiles PyTorch training code with PyTorch Profiler to identify performance bottlenecks, optimize memory usage, and monitor training efficiency in distributed environments.
 
-In this tutorial, you will:
+In this tutorial, you:
 1. Start with a basic single machine PyTorch example and learn profiling fundamentals.
 2. Distribute it to multiple GPUs on multiple machines with [Ray Train](https://docs.ray.io/en/latest/train/train.html) and profile the distributed training workload.
 3. Explore advanced profiling techniques including memory profiling, performance analysis, and dashboard integration for comprehensive monitoring. 
@@ -432,11 +432,11 @@ After running the profiling examples, you have access to several types of profil
 - **Kernel efficiency**: Analyze which operations are taking the most time and optimize accordingly
 
 
-### Tensorboard plugin with PyTorch Profiler and tracing.
+### Tensorboard plugin with PyTorch Profiler and tracing
 
 After generating the `trace.json` files, you can use Tensorboard, or drag the `trace.json` into Perfetto UI or `chrome://tracing` to visualize your profile.
 
-Use the script below to start the Tensorboard.
+Use the script below to start the Tensorboard:
 ```
 pip install torch_tb_profiler
 

@@ -553,6 +553,7 @@ def train_fn(config):
 import ray.train
 from ray.train import CheckpointConsistencyMode
 
+
 def train_fn():
     for epoch in range(2):
         metrics = {"train/loss": 0.1}
@@ -566,11 +567,13 @@ def train_fn():
 
     # Get committed checkpoints which may still have ongoing validations.
     committed_checkpoints = ray.train.get_all_reported_checkpoints(
-        consistency_mode=CheckpointConsistencyMode.COMMITTED)
+        consistency_mode=CheckpointConsistencyMode.COMMITTED
+    )
 
     # Wait for all pending validations to finish to access reported checkpoints
     # with validation metrics attached.
     validated_checkpoints = ray.train.get_all_reported_checkpoints()
     ...
+
 
 # __get_all_reported_checkpoints_example_end__
