@@ -11,36 +11,43 @@ exclude: |
     rllib/offline/tests/data|
     thirdparty/patches/|
     src/ray/thirdparty/|
-    doc/external/|
-    doc/source/
+    doc/external/
   )
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.4.0
     hooks:
       - id: trailing-whitespace
+        exclude: ^doc/source/
       - id: end-of-file-fixer
+        exclude: ^doc/source/
       - id: check-added-large-files
+        exclude: ^doc/source/
       - id: check-ast
         exclude: |
           (?x)(
-            python/ray/serve/tests/test_config_files/syntax_error\.py
-          )$
+            python/ray/serve/tests/test_config_files/syntax_error\.py$|
+            ^doc/source/
+          )
       - id: check-json
         exclude: |
           (?x)^(
             # Intentionally bad json schema
-            python/ray/tests/unit/test_runtime_env_validation_bad_schema.json
+            python/ray/tests/unit/test_runtime_env_validation_bad_schema.json|
+            doc/source/
           )
       - id: check-toml
+        exclude: ^doc/source/
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.8.4
     hooks:
       - id: ruff
         args: [ --fix, --exit-non-zero-on-fix ]
+        exclude: ^doc/source/
       - id: ruff
         args: [ --select, "I", --fix, --exit-non-zero-on-fix ]
+        exclude: ^doc/source/
 
   - repo: https://github.com/jsh9/pydoclint
     rev: "0.8.3"
@@ -106,6 +113,7 @@ repos:
     hooks:
       - id: prettier
         files: 'doc/'
+        exclude: ^doc/source/
         types_or: [javascript, ts, tsx, html, css]
 
   - repo: https://github.com/pre-commit/mirrors-mypy
@@ -133,9 +141,13 @@ repos:
     rev: v1.10.0
     hooks:
       - id: rst-directive-colons
+        exclude: ^doc/source/
       - id: rst-inline-touching-normal
+        exclude: ^doc/source/
       - id: python-no-log-warn
+        exclude: ^doc/source/
       - id: python-check-mock-methods
+        exclude: ^doc/source/
 
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.9.0.1
@@ -151,6 +163,7 @@ repos:
     rev: v12.0.1
     hooks:
       - id: clang-format
+        exclude: ^doc/source/
 
   - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
     rev: v2.11.0
@@ -162,7 +175,8 @@ repos:
             java/api/src/main/java/io/ray/api/ActorCall.java|
             java/api/src/main/java/io/ray/api/CppActorCall.java|
             java/api/src/main/java/io/ray/api/PyActorCall.java|
-            java/api/src/main/java/io/ray/api/RayCall.java
+            java/api/src/main/java/io/ray/api/RayCall.java|
+            doc/source/
           )
 
   - repo: local
@@ -178,6 +192,7 @@ repos:
     hooks:
       - id: semgrep
         args: [--config=semgrep.yml, --error]
+        exclude: ^doc/source/
 
   - repo: https://github.com/errata-ai/vale
     rev: v3.4.1
@@ -190,6 +205,7 @@ repos:
     hooks:
       - id: cython-lint
         args: [--no-pycodestyle]
+        exclude: ^doc/source/
 
   - repo: local
     hooks:
