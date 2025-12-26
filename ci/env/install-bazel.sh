@@ -101,8 +101,13 @@ if [[ "${CI-}" == "true" && "${BUILDKITE-}" != "" ]]; then
 
   # Ask bazel to anounounce the config it finds in bazelrcs, which makes
   # understanding how to reproduce bazel easier.
-  echo "build --announce_rc" >> ~/.bazelrc
-  echo "build --config=ci" >> ~/.bazelrc
+  {
+    echo "build --announce_rc"
+    echo "build --config=ci"
+    # Using GitHub mirror for BCR to work around bcr.bazel.build outages
+    # Fix for https://github.com/bazelbuild/bazel/issues/28101
+    echo "common --registry=https://raw.githubusercontent.com/bazelbuild/bazel-central-registry/main/"
+  } >> ~/.bazelrc
 
   # In Windows CI we want to use this to avoid long path issue
   # https://docs.bazel.build/versions/main/windows.html#avoid-long-path-issues
