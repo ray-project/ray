@@ -485,11 +485,17 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
         .. testoutput::
 
-            MaterializedDataset(
-               num_blocks=1,
-               num_rows=3,
-               schema={food: string, price: double}
-            )
+            shape: (3, 2)
+            ╭────────┬────────╮
+            │ food   ┆ price  │
+            │ ---    ┆ ---    │
+            │ string ┆ double │
+            ╞════════╪════════╡
+            │ spam   ┆ 9.34   │
+            │ ham    ┆ 5.37   │
+            │ eggs   ┆ 0.94   │
+            ╰────────┴────────╯
+            (Showing 3 of 3 rows)
 
 .. _loading_datasets_from_distributed_df:
 
