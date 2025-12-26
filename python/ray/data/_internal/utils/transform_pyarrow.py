@@ -1,4 +1,4 @@
-from ray.air.util.tensor_extensions.arrow import concat_tensor_arrays
+from ray.data._internal.tensor_extensions.arrow import concat_tensor_arrays
 
 try:
     import pyarrow
@@ -25,8 +25,11 @@ def _concatenate_extension_column(
     Args:
         ca: The chunked array representing the extension column to be concatenated.
         ensure_copy: Skip copying when ensure_copy is False and there is exactly 1 chunk.
+
+    Returns:
+        Array: the concatenate extension column.
     """
-    from ray.air.util.tensor_extensions.arrow import (
+    from ray.data._internal.tensor_extensions.arrow import (
         get_arrow_extension_tensor_types,
     )
 

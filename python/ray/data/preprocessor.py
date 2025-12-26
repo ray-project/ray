@@ -7,7 +7,7 @@ import warnings
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, final
 
-from ray.air.util.data_batch_conversion import BatchFormat
+from ray.data.util.data_batch_conversion import BatchFormat
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -319,7 +319,7 @@ class Preprocessor(abc.ABC):
         import numpy as np
         import pandas as pd
 
-        from ray.air.util.data_batch_conversion import (
+        from ray.data.util.data_batch_conversion import (
             _convert_batch_type_to_numpy,
             _convert_batch_type_to_pandas,
         )

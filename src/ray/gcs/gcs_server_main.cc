@@ -12,13 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <chrono>
+#include <cstdint>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "gflags/gflags.h"
+#include "ray/common/constants.h"
 #include "ray/common/metrics.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server.h"
@@ -28,6 +33,7 @@
 #include "ray/raylet/metrics.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
+#include "ray/util/port_persistence.h"
 #include "ray/util/raii.h"
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
@@ -46,8 +52,10 @@ DEFINE_string(redis_username, "", "The username of Redis.");
 DEFINE_string(redis_password, "", "The password of Redis.");
 DEFINE_bool(retry_redis, false, "Whether to retry to connect to Redis.");
 DEFINE_string(node_ip_address, "", "The IP address of the node.");
+DEFINE_string(node_id, "", "The unique ID of this node.");
 DEFINE_string(session_name, "", "session_name: The current Ray session name.");
 DEFINE_string(ray_commit, "", "The commit hash of Ray.");
+DEFINE_string(session_dir, "", "The path of this ray session directory.");
 
 int main(int argc, char *argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
@@ -104,7 +112,9 @@ int main(int argc, char *argv[]) {
   const std::string redis_username = FLAGS_redis_username;
   const bool retry_redis = FLAGS_retry_redis;
   const std::string node_ip_address = FLAGS_node_ip_address;
+  const std::string node_id_hex = FLAGS_node_id;
   const std::string session_name = FLAGS_session_name;
+  const std::string session_dir = FLAGS_session_dir;
   gflags::ShutDownCommandLineFlags();
 
   RayConfig::instance().initialize(config_list);
@@ -129,7 +139,7 @@ int main(int argc, char *argv[]) {
                                             {ray::stats::VersionKey, kRayVersion},
                                             {ray::stats::NodeAddressKey, node_ip_address},
                                             {ray::stats::SessionNameKey, session_name}};
-  ray::stats::Init(global_tags, metrics_agent_port, ray::WorkerID::Nil());
+  ray::stats::Init(global_tags, ray::WorkerID::Nil());
 
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
@@ -241,7 +251,14 @@ int main(int argc, char *argv[]) {
 #endif
   signals.async_wait(handler);
 
-  gcs_server.Start();
+  gcs_server.SetPortReadyCallback([session_dir, node_id_hex](int bound_port) {
+    if (!session_dir.empty()) {
+      auto node_id = ray::NodeID::FromHex(node_id_hex);
+      RAY_CHECK_OK(
+          ray::PersistPort(session_dir, node_id, kGcsServerPortName, bound_port));
+    }
+  });
 
+  gcs_server.Start();
   main_service.run();
 }

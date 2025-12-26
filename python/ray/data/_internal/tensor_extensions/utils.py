@@ -10,7 +10,7 @@ from typing import (
 
 import numpy as np
 
-from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 

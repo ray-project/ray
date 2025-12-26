@@ -886,6 +886,13 @@ def main():
         default=None,
         help="The port to use for connecting to the runtime_env_agent.",
     )
+    parser.add_argument(
+        "--node-id",
+        required=False,
+        type=str,
+        default=None,
+        help="The hex ID of this node.",
+    )
     args, _ = parser.parse_known_args()
     setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
 
@@ -906,6 +913,7 @@ def main():
             redis_username=args.redis_username,
             redis_password=args.redis_password,
             runtime_env_agent_address=args.runtime_env_agent_address,
+            node_id=args.node_id,
         )
     else:
         server = serve(args.host, args.port, ray_connect_handler)

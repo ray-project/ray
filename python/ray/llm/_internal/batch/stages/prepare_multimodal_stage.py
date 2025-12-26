@@ -11,7 +11,7 @@ class PrepareMultimodalUDF(StatefulStageUDF):
         self,
         data_column: str,
         expected_input_keys: List[str],
-        model: str,
+        model_config_kwargs: Dict[str, Any],
         chat_template_content_format: str,
         apply_sys_msg_formatting: bool = False,
     ):
@@ -21,7 +21,7 @@ class PrepareMultimodalUDF(StatefulStageUDF):
         Args:
             data_column: The data column name.
             expected_input_keys: The expected input keys of the stage.
-            model: The model to use for the multimodal processor.
+            model_config_kwargs: The kwargs to pass to the model config.
             chat_template_content_format: The format to render message content.
             apply_sys_msg_formatting: Whether to skip formatting system messages.
         """
@@ -35,7 +35,7 @@ class PrepareMultimodalUDF(StatefulStageUDF):
                 "`pip install ray[llm]` to install required dependencies."
             ) from e
 
-        self.model_config = ModelConfig(model=model)
+        self.model_config = ModelConfig(**model_config_kwargs)
         self.chat_template_content_format = chat_template_content_format
         self.apply_sys_msg_formatting = apply_sys_msg_formatting
 

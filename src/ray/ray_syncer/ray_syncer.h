@@ -213,7 +213,7 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
  public:
   explicit RaySyncerService(
       RaySyncer &syncer,
-      std::optional<ray::rpc::AuthenticationToken> auth_token = std::nullopt)
+      std::shared_ptr<const ray::rpc::AuthenticationToken> auth_token = nullptr)
       : syncer_(syncer), auth_token_(std::move(auth_token)) {}
 
   grpc::ServerBidiReactor<RaySyncMessageBatch, RaySyncMessageBatch> *StartSync(
@@ -222,9 +222,9 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
  private:
   // The ray syncer this RPC wrappers of.
   RaySyncer &syncer_;
-  // Authentication token for validation, will be empty if token authentication is
+  // Authentication token for validation, will be nullptr if token authentication is
   // disabled
-  std::optional<ray::rpc::AuthenticationToken> auth_token_;
+  std::shared_ptr<const ray::rpc::AuthenticationToken> auth_token_;
 };
 
 }  // namespace ray::syncer

@@ -66,6 +66,30 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "file_persistence",
+    srcs = ["file_persistence.cc"],
+    hdrs = ["file_persistence.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+    ],
+)
+
+ray_cc_library(
+    name = "port_persistence",
+    srcs = ["port_persistence.cc"],
+    hdrs = ["port_persistence.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":file_persistence",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+    ],
+)
+
+ray_cc_library(
     name = "container_util",
     hdrs = ["container_util.h"],
     deps = [

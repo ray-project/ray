@@ -276,11 +276,6 @@ In the replica `Model` log file, you should see the following:
 {"levelname": "INFO", "asctime": "2024-02-27 10:36:10,127", "deployment": "default_Model", "replica": "rdofcrh4", "request_id": "f4f4b3c0-1cca-4424-9002-c887d7858525", "route": "/", "application": "default", "message": "replica.py:373 - __CALL__ OK 0.6ms"}
 ```
 
-:::{note}
-The `RAY_SERVE_ENABLE_JSON_LOGGING=1` environment variable is getting deprecated in the
-next release. To enable JSON logging globally, use `RAY_SERVE_LOG_ENCODING=JSON`.
-:::
-
 #### Disable access log
 
 :::{note}
@@ -350,6 +345,29 @@ You can also update logging configuration similar above to the Serve controller 
 :start-after: __configure_serve_component_start__
 :end-before:  __configure_serve_component_end__
 :language: python
+```
+
+#### Run custom initialization code in the controller
+
+For advanced use cases, you can run custom initialization code when the Serve Controller starts by setting the `RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH` environment variable. This variable should point to a callback function that runs during controller initialization. The function doesn't need to return anything.
+
+For example, to add a custom log handler:
+
+```python
+# mymodule/callbacks.py
+import logging
+
+def setup_custom_logging():
+    logger = logging.getLogger("ray.serve")
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("[CUSTOM] %(message)s"))
+    logger.addHandler(handler)
+```
+
+Then set the environment variable before starting Ray:
+
+```bash
+export RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH="mymodule.callbacks:setup_custom_logging"
 ```
 
 ### Set Request ID

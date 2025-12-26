@@ -46,7 +46,6 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
     OpTask,
-    _create_sub_pb,
     estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
@@ -383,34 +382,6 @@ class HashShuffleProgressBarMixin(SubProgressBarMixin):
     def _validate_sub_progress_bar_names(self):
         assert self.shuffle_name is not None, "shuffle_name should not be None"
         assert self.reduce_name is not None, "reduce_name should not be None"
-
-    def initialize_sub_progress_bars(self, position: int) -> int:
-        """Display all sub progress bars in the termainl, and return the number of bars."""
-        self._validate_sub_progress_bar_names()
-
-        # shuffle
-        progress_bars_created = 0
-        self.shuffle_bar = None
-        self.shuffle_bar, position = _create_sub_pb(
-            self.shuffle_name, self.num_output_rows_total(), position
-        )
-        progress_bars_created += 1
-        self.shuffle_metrics = OpRuntimeMetrics(self)
-
-        # reduce
-        self.reduce_bar = None
-        self.reduce_bar, position = _create_sub_pb(
-            self.reduce_name, self.num_output_rows_total(), position
-        )
-        progress_bars_created += 1
-        self.reduce_metrics = OpRuntimeMetrics(self)
-
-        return progress_bars_created
-
-    def close_sub_progress_bars(self):
-        """Close all internal sub progress bars."""
-        self.shuffle_bar.close()
-        self.reduce_bar.close()
 
     def get_sub_progress_bar_names(self) -> Optional[List[str]]:
         self._validate_sub_progress_bar_names()
