@@ -353,14 +353,19 @@ class vLLMEngineWrapper:
         else:
             tokenized_prompt = None
 
+        multimodal_data = row.pop("multimodal_data", None)
+
         # Extract image data from preprocessing output
         # Note: Field name is 'image' (singular) not 'images' (plural).
-        if "image" in row:
+        if multimodal_data is not None:
+            # When multimodal_data is present, images are handled through multimodal_data,
+            # so we should set image to an empty list.
+            row.pop("image", None)
+            image = []
+        elif "image" in row:
             image = row.pop("image")
         else:
             image = []
-
-        multimodal_data = row.pop("multimodal_data", None)
         # TODO (jeffreywang): As we decouple the multimodal processor from the vLLM engine,
         # these kwargs are not needed in the vLLM engine stage.
         mm_processor_kwargs = row.pop("mm_processor_kwargs", None)

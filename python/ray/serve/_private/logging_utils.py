@@ -11,7 +11,6 @@ from ray._common.formatters import JSONFormatter, TextFormatter
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_JSON_LOGGING,
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
     RAY_SERVE_LOG_TO_STDERR,
     SERVE_LOG_APPLICATION,
@@ -378,13 +377,8 @@ def configure_component_logger(
         target=file_handler,
         flushLevel=logging.ERROR,  # Auto-flush on ERROR/CRITICAL
     )
-    if RAY_SERVE_ENABLE_JSON_LOGGING:
-        logger.warning(
-            "'RAY_SERVE_ENABLE_JSON_LOGGING' is deprecated, please use "
-            "'LoggingConfig' to enable json format."
-        )
     # Add filters directly to the memory handler effective for both buffered and non buffered cases
-    if RAY_SERVE_ENABLE_JSON_LOGGING or logging_config.encoding == EncodingType.JSON:
+    if logging_config.encoding == EncodingType.JSON:
         memory_handler.addFilter(ServeCoreContextFilter())
         memory_handler.addFilter(ServeContextFilter())
         memory_handler.addFilter(

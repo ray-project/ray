@@ -20,6 +20,7 @@ from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.resource_manager import (
     ReservationOpResourceAllocator,
     ResourceManager,
+    get_ineligible_op_usage,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
@@ -1121,36 +1122,39 @@ class TestReservationOpResourceAllocator:
         # With 8 total GPUs and o2 capped at 2, o3 gets 6
         assert allocator._op_budgets[o3].gpu == 6
 
-    def test_get_ineligible_ops_with_usage(self, restore_data_context):
+    def test_get_ineligible_op_usage(self, restore_data_context):
         DataContext.get_current().op_resource_reservation_enabled = True
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
-        o2 = mock_map_op(
-            o1,
-        )
+        o2 = mock_map_op(o1)
         o3 = LimitOperator(1, o2, DataContext.get_current())
-        o4 = mock_map_op(
-            o3,
-        )
-        o5 = mock_map_op(
-            o4,
-        )
+        o4 = mock_map_op(o3)
+        o5 = mock_map_op(o4)
         o1.mark_execution_finished()
         o2.mark_execution_finished()
 
         topo = build_streaming_topology(o5, ExecutionOptions())
 
+        op_usages = {
+            o1: ExecutionResources.zero(),
+            o2: ExecutionResources(cpu=1, object_store_memory=1),
+            o3: ExecutionResources(cpu=2, object_store_memory=2),
+            o4: ExecutionResources(cpu=3, object_store_memory=3),
+            o5: ExecutionResources(cpu=4, object_store_memory=4),
+        }
+
         resource_manager = ResourceManager(
             topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
         )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
 
-        allocator = resource_manager._op_resource_allocator
+        # Ineligible: o1 (finished), o2 (finished), o3 (throttling disabled)
+        ineligible_usage = get_ineligible_op_usage(topo, resource_manager)
 
-        ops_to_exclude = allocator._get_ineligible_ops_with_usage()
-        assert len(ops_to_exclude) == 2
-        assert set(ops_to_exclude) == {o2, o3}
+        # Expected: o1 + o2 + o3 = (0+1+2, 0+10+20)
+        assert ineligible_usage == ExecutionResources(cpu=3, object_store_memory=3)
 
-    def test_get_ineligible_ops_with_usage_complex_graph(self, restore_data_context):
+    def test_get_ineligible_op_usage_complex_graph(self, restore_data_context):
         """
         o1 (InputDataBuffer)
                 |
@@ -1174,14 +1178,10 @@ class TestReservationOpResourceAllocator:
         DataContext.get_current().op_resource_reservation_enabled = True
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
-        o2 = mock_map_op(
-            o1,
-        )
+        o2 = mock_map_op(o1)
         o3 = LimitOperator(1, o2, DataContext.get_current())
         o4 = InputDataBuffer(DataContext.get_current(), [])
-        o5 = mock_map_op(
-            o4,
-        )
+        o5 = mock_map_op(o4)
         o6 = mock_union_op([o3, o5])
         o7 = InputDataBuffer(DataContext.get_current(), [])
         o8 = mock_join_op(o7, o6)
@@ -1194,15 +1194,26 @@ class TestReservationOpResourceAllocator:
 
         topo = build_streaming_topology(o8, ExecutionOptions())
 
+        op_usages = {
+            o1: ExecutionResources.zero(),
+            o2: ExecutionResources(cpu=2, object_store_memory=2),
+            o3: ExecutionResources(cpu=3, object_store_memory=3),
+            o4: ExecutionResources.zero(),
+            o5: ExecutionResources(cpu=5, object_store_memory=5),
+            o6: ExecutionResources(cpu=6, object_store_memory=6),
+            o7: ExecutionResources.zero(),
+            o8: ExecutionResources(cpu=8, object_store_memory=8),
+        }
+
         resource_manager = ResourceManager(
             topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
         )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
 
-        allocator = resource_manager._op_resource_allocator
+        ineligible_usage = get_ineligible_op_usage(topo, resource_manager)
 
-        ops_to_exclude = allocator._get_ineligible_ops_with_usage()
-        assert len(ops_to_exclude) == 4
-        assert set(ops_to_exclude) == {o2, o3, o5, o7}
+        # Ineligible: o1, o2, o3, o4, o5, o7 -> sum = 2+3+5 = 10
+        assert ineligible_usage == ExecutionResources(cpu=10, object_store_memory=10)
 
     def test_reservation_accounts_for_completed_ops(self, restore_data_context):
         """Test that resource reservation properly accounts for completed ops."""
