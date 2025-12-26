@@ -372,7 +372,7 @@ class Experiment:
     @Deprecated("Replaced by `local_path`")
     def local_dir(self):
         # TODO(justinvyu): [Deprecated] Remove in 2.11.
-        raise DeprecationWarning("Use `local_path` instead of `local_dir`.")
+        raise AttributeError("Use `local_path` instead of `local_dir`.")
 
     @property
     def remote_path(self) -> Optional[str]:
@@ -390,7 +390,7 @@ class Experiment:
     @Deprecated("Replaced by `local_path`")
     def checkpoint_dir(self):
         # TODO(justinvyu): [Deprecated] Remove in 2.11.
-        raise DeprecationWarning("Use `local_path` instead of `checkpoint_dir`.")
+        raise AttributeError("Use `local_path` instead of `checkpoint_dir`.")
 
     @property
     def run_identifier(self):
