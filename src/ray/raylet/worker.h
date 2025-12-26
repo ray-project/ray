@@ -25,7 +25,7 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet_ipc_client/client_connection.h"
-#include "ray/util/process.h"
+#include "ray/util/process_interface.h"
 
 namespace ray {
 
@@ -66,10 +66,10 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// Return the worker's ID.
   WorkerID WorkerId() const override;
   /// Return the worker process.
-  Process GetProcess() const override;
+  const std::unique_ptr<ProcessInterface> &GetProcess() const override;
   /// Return the worker process's startup token
   StartupToken GetStartupToken() const override;
-  void SetProcess(Process proc) override;
+  void SetProcess(std::unique_ptr<ProcessInterface> proc) override;
   rpc::Language GetLanguage() const override;
   const std::string IpAddress() const override;
   void AsyncNotifyGCSRestart() override;
@@ -175,7 +175,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// The worker's ID.
   WorkerID worker_id_;
   /// The worker's process.
-  Process proc_;
+  std::unique_ptr<ProcessInterface> proc_;
   /// The worker's process's startup_token
   StartupToken startup_token_;
   /// The language type of this worker.

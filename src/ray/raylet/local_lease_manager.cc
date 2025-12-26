@@ -997,7 +997,7 @@ void LocalLeaseManager::Grant(
 
   // Pass the contact info of the worker to use.
   for (const auto &reply_callback : reply_callbacks) {
-    reply_callback.reply_->set_worker_pid(worker->GetProcess().GetId());
+    reply_callback.reply_->set_worker_pid(worker->GetProcess()->GetId());
     reply_callback.reply_->mutable_worker_address()->set_ip_address(worker->IpAddress());
     reply_callback.reply_->mutable_worker_address()->set_port(worker->Port());
     reply_callback.reply_->mutable_worker_address()->set_worker_id(
@@ -1248,7 +1248,7 @@ void LocalLeaseManager::DebugStr(std::stringstream &buffer) const {
            << rpc::Language_descriptor()->FindValueByNumber(worker->GetLanguage())->name()
            << " "
            << "actor_or_task" << task_or_actor_name << " "
-           << "pid=" << worker->GetProcess().GetId() << " "
+           << "pid=" << worker->GetProcess()->GetId() << " "
            << "worker_id=" << worker->WorkerId() << "): "
            << worker->GetGrantedLease()
                   .GetLeaseSpecification()

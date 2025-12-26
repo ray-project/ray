@@ -147,6 +147,7 @@ STATUS_TYPE(PermissionDenied);
 STATUS_TYPE(InvalidArgument);
 STATUS_TYPE(AlreadyExists);
 STATUS_TYPE(TimedOut);
+STATUS_TYPE(Interrupted);
 
 };  // namespace StatusT
 
@@ -445,6 +446,8 @@ class RAY_EXPORT Status {
   static Status PermissionDenied(const std::string &msg) {
     return Status(StatusCode::PermissionDenied, msg);
   }
+
+  static Status FromError(const std::error_code &error);
 
   static StatusCode StringToCode(const std::string &str);
 

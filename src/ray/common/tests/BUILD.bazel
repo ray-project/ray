@@ -119,6 +119,7 @@ ray_cc_test(
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:memory_monitor",
+        "//src/ray/util:process",
         "@boost//:filesystem",
         "@boost//:thread",
         "@com_google_googletest//:gtest_main",

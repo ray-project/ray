@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "ray/util/logging.h"
+#include "ray/util/process_utils.h"
 
 namespace ray {
 
@@ -75,6 +76,31 @@ TEST(UtilTest, GetAllProcsWithPpid) {
   auto result = GetAllProcsWithPpid(1);
   ASSERT_EQ(result, std::nullopt);
 #endif
+}
+
+TEST(UtilTest, CompareProcessObjects) {
+  // Test the std::equal_to<Process> specialization with actual Process objects
+  Process null1, null2;
+  Process valid1(GetPID()), valid2(GetPID());  // Both reference the current process
+  Process other_valid(1);                      // A different valid process (init/systemd)
+
+  // Null process checks
+  ASSERT_TRUE(null1.IsNull());
+  ASSERT_TRUE(!null1.IsValid());
+  ASSERT_TRUE(std::equal_to<Process>()(null1, null1));
+
+  // Valid process checks
+  ASSERT_TRUE(!valid1.IsNull());
+  ASSERT_TRUE(valid1.IsValid());
+
+  ASSERT_TRUE(std::equal_to<Process>()(null1, null2));
+  ASSERT_TRUE(!std::equal_to<Process>()(null1, valid1));
+
+  ASSERT_TRUE(!std::equal_to<Process>()(valid1, null1));
+  ASSERT_TRUE(std::equal_to<Process>()(valid1, valid2));
+  ASSERT_TRUE(!std::equal_to<Process>()(valid1, other_valid));
+
+  ASSERT_TRUE(std::equal_to<Process>()(valid1, valid1));
 }
 
 }  // namespace ray

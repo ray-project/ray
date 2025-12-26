@@ -20,6 +20,7 @@
 #include <utility>
 
 #include "ray/core_worker/core_worker.h"
+#include "ray/util/process_utils.h"
 
 namespace ray {
 
