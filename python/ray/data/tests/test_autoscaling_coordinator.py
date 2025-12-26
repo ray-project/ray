@@ -396,6 +396,20 @@ def test_request_resources_handles_timeout_error(teardown_autoscaling_coordinato
     )
 
 
+def test_coordinator_accepts_zero_resource_for_missing_resource_type(
+    teardown_autoscaling_coordinator,
+):
+    # This is a regression test for a bug where the coordinator crashes when you request
+    # a resource type (e.g., GPU: 0) that doesn't exist on the cluster.
+    coordinator = DefaultAutoscalingCoordinator()
+
+    coordinator.request_resources(
+        requester_id="spam", resources=[{"CPU": 1, "GPU": 0}], expire_after_s=1
+    )
+
+    assert coordinator.get_allocated_resources("spam") == [{"CPU": 1, "GPU": 0}]
+
+
 if __name__ == "__main__":
     import sys
 

@@ -702,9 +702,9 @@ depyf==0.20.0 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
     #   vllm
-dill==0.4.0 \
-    --hash=sha256:0633f1d2df477324f53a895b02c901fb961bdbf65a17122586ea7019292cbcf0 \
-    --hash=sha256:44f54bf6412c2c8464c14e8243eb163690a9800dbe2c367330883b19c7561049
+dill==0.3.8 \
+    --hash=sha256:3ebe3c479ad625c4553aca177444d89b486b1d84982eeacded644afc0cf797ca \
+    --hash=sha256:c36ca9ffb54365bdd2f8eb3eff7d2a21237f8452b57ace88b1ac615b7e815bd7
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
     #   depyf
