@@ -1,4 +1,5 @@
 import abc
+import typing
 from typing import List, Optional
 
 from ray.data._internal.execution.interfaces import (
@@ -11,6 +12,9 @@ from ray.data._internal.execution.operators.sub_progress import SubProgressBarMi
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
+
+if typing.TYPE_CHECKING:
+    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 
 class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
@@ -219,8 +223,7 @@ class AllToAllOperator(
     def get_sub_progress_bar_names(self) -> Optional[List[str]]:
         return self._sub_progress_bar_names
 
-    def set_sub_progress_bar(self, name, pg):
-        # not type-checking due to circular imports
+    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar"):
         if self._sub_progress_bar_dict is None:
             self._sub_progress_bar_dict = {}
         self._sub_progress_bar_dict[name] = pg
