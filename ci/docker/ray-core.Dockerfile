@@ -29,7 +29,7 @@ if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
   echo "build --remote_upload_local_results=false" >> "$HOME/.bazelrc"
 fi
 
-bazelisk build --config=ci //:ray_pkg_zip //:ray_py_proto_zip
+bazelisk build --config=ci --registry=https://raw.githubusercontent.com/bazelbuild/bazel-central-registry/main/ //:ray_pkg_zip //:ray_py_proto_zip
 
 cp bazel-bin/ray_pkg.zip /home/forge/ray_pkg.zip
 cp bazel-bin/ray_py_proto.zip /home/forge/ray_py_proto.zip
