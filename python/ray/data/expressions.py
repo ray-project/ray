@@ -458,6 +458,72 @@ class Expr(ABC):
             self
         )
 
+    # arithmetic helpers
+    def negate(self) -> "UDFExpr":
+        """Compute the negation of the expression.
+        
+        Returns:
+            A UDFExpr that computes the negation (multiplies values by -1).
+            
+        Example:
+            >>> from ray.data.expressions import col
+            >>> import ray
+            >>> ds = ray.data.from_items([{"x": 5}, {"x": -3}])
+            >>> ds = ds.with_column("neg_x", col("x").negate())
+            >>> # Result: neg_x = [-5, 3]
+        """
+        return _create_pyarrow_compute_udf(pc.negate_checked)(self)
+
+    def sign(self) -> "UDFExpr":
+        """Compute the sign of the expression.
+        
+        Returns:
+            A UDFExpr that returns -1 for negative values, 0 for zero, and 1 for positive values.
+            
+        Example:
+            >>> from ray.data.expressions import col
+            >>> import ray
+            >>> ds = ray.data.from_items([{"x": 5}, {"x": -3}, {"x": 0}])
+            >>> ds = ds.with_column("sign_x", col("x").sign())
+            >>> # Result: sign_x = [1, -1, 0]
+        """
+        return _create_pyarrow_compute_udf(pc.sign)(self)
+
+    def power(self, exponent: Any) -> "UDFExpr":
+        """Raise the expression to the given power.
+        
+        Args:
+            exponent: The exponent to raise the expression to.
+            
+        Returns:
+            A UDFExpr that computes the power operation.
+            
+        Example:
+            >>> from ray.data.expressions import col, lit
+            >>> import ray
+            >>> ds = ray.data.from_items([{"x": 2}, {"x": 3}])
+            >>> ds = ds.with_column("x_squared", col("x").power(2))
+            >>> # Result: x_squared = [4, 9]
+            >>> ds = ds.with_column("x_cubed", col("x").power(3))
+            >>> # Result: x_cubed = [8, 27]
+        """
+        return _create_pyarrow_compute_udf(pc.power)(self, exponent)
+
+    def abs(self) -> "UDFExpr":
+        """Compute the absolute value of the expression.
+        
+        Returns:
+            A UDFExpr that computes the absolute value.
+            
+        Example:
+            >>> from ray.data.expressions import col
+            >>> import ray
+            >>> ds = ray.data.from_items([{"x": 5}, {"x": -3}])
+            >>> ds = ds.with_column("abs_x", col("x").abs())
+            >>> # Result: abs_x = [5, 3]
+        """
+        return _create_pyarrow_compute_udf(pc.abs_checked)(self)
+
     @property
     def list(self) -> "_ListNamespace":
         """Access list operations for this expression.
