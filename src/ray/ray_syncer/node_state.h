@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -31,8 +30,6 @@ namespace ray::syncer {
 struct ReporterInterface;
 struct ReceiverInterface;
 
-using ray::rpc::syncer::CommandsSyncMessage;
-using ray::rpc::syncer::MessageType;
 using ray::rpc::syncer::RaySyncMessage;
 using ray::rpc::syncer::ResourceViewSyncMessage;
 
@@ -42,31 +39,24 @@ using ray::rpc::syncer::ResourceViewSyncMessage;
 class NodeState {
  public:
   /// Constructor of NodeState.
-  NodeState();
+  NodeState() = default;
 
-  /// Set the local component.
+  /// Set the local component for resource view synchronization.
   ///
-  /// \param message_type The type of the message for this component.
   /// \param reporter The reporter is defined to be the local module which wants to
-  /// broadcast its internal status to the whole clsuter. When it's null, it means there
-  /// is no reporter in the local node for this component. This is the place there
-  /// messages are
-  /// generated.
+  /// broadcast its internal status to the whole cluster. When it's null, it means there
+  /// is no reporter in the local node. This is the place where messages are generated.
   /// \param receiver The receiver is defined to be the module which eventually
-  /// will have the view of of the cluster for this component. It's the place where
-  /// received messages are consumed.
+  /// will have the view of the cluster. It's the place where received messages are
+  /// consumed.
   ///
   /// \return true if set successfully.
-  bool SetComponent(MessageType message_type,
-                    const ReporterInterface *reporter,
-                    ReceiverInterface *receiver);
+  bool SetComponent(const ReporterInterface *reporter, ReceiverInterface *receiver);
 
-  /// Get the snapshot of a component for a newer version.
-  ///
-  /// \param message_type The component to take the snapshot.
+  /// Get the snapshot of the resource view for a newer version.
   ///
   /// \return If a snapshot is taken, return the message, otherwise std::nullopt.
-  std::optional<RaySyncMessage> CreateSyncMessage(MessageType message_type);
+  std::optional<RaySyncMessage> CreateSyncMessage();
 
   /// Consume a message. Receiver will consume this message if it doesn't have
   /// this message.
@@ -77,9 +67,7 @@ class NodeState {
   bool ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message);
 
   /// Return the cluster view of this local node.
-  const absl::flat_hash_map<
-      std::string,
-      std::array<std::shared_ptr<const RaySyncMessage>, kComponentArraySize>>
+  const absl::flat_hash_map<std::string, std::shared_ptr<const RaySyncMessage>>
       &GetClusterView() const {
     return cluster_view_;
   }
@@ -88,19 +76,18 @@ class NodeState {
   bool RemoveNode(const std::string &node_id);
 
  private:
-  /// For local nodes
-  std::array<const ReporterInterface *, kComponentArraySize> reporters_ = {nullptr};
-  std::array<ReceiverInterface *, kComponentArraySize> receivers_ = {nullptr};
+  /// Reporter for the local node (generates sync messages).
+  const ReporterInterface *reporter_ = nullptr;
+  /// Receiver for the local node (consumes sync messages from other nodes).
+  ReceiverInterface *receiver_ = nullptr;
 
   /// This field records the version of the sync message that has been taken.
-  std::array<int64_t, kComponentArraySize> sync_message_versions_taken_;
-  /// Keep track of the latest messages received.
+  int64_t sync_message_version_taken_ = -1;
+
+  /// Keep track of the latest messages received from each node.
   /// Use shared pointer for easier liveness management since these messages might be
   /// sending via rpc.
-  absl::flat_hash_map<
-      std::string,
-      std::array<std::shared_ptr<const RaySyncMessage>, kComponentArraySize>>
-      cluster_view_;
+  absl::flat_hash_map<std::string, std::shared_ptr<const RaySyncMessage>> cluster_view_;
 };
 
 }  // namespace ray::syncer

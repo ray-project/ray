@@ -15,16 +15,6 @@
 syntax = "proto3";
 package ray.rpc.syncer;
 
-enum MessageType {
-  RESOURCE_VIEW = 0;
-  COMMANDS = 1;
-}
-
-message CommandsSyncMessage {
-  // Whether this node manager is requesting global GC.
-  bool should_global_gc = 1;
-}
-
 message ResourceViewSyncMessage {
   // Resource capacity currently available on this node manager.
   map<string, double> resources_available = 1;
@@ -50,12 +40,10 @@ message ResourceViewSyncMessage {
 message RaySyncMessage {
   // The version of the message. -1 means the version is not set.
   int64 version = 1;
-  // The type of this message.
-  MessageType message_type = 2;
   // The actual payload.
-  bytes sync_message = 3;
+  bytes sync_message = 2;
   // The node id which initially sent this message.
-  bytes node_id = 4;
+  bytes node_id = 3;
 }
 
 message RaySyncMessageBatch {

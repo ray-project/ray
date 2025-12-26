@@ -71,17 +71,16 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
       return false;
     }
 
-    auto &node_versions = GetNodeComponentVersions(message->node_id());
-    if (node_versions[message->message_type()] >= message->version()) {
+    auto node_version = GetNodeVersion(message->node_id());
+    if (node_version >= message->version()) {
       RAY_LOG(INFO) << "Dropping sync message with stale version. latest version: "
-                    << node_versions[message->message_type()]
+                    << node_version
                     << ", dropped message version: " << message->version();
       return false;
     }
 
-    node_versions[message->message_type()] = message->version();
-    sending_buffer_[std::make_pair(message->node_id(), message->message_type())] =
-        std::move(message);
+    SetNodeVersion(message->node_id(), message->version());
+    sending_buffer_[message->node_id()] = std::move(message);
     // sending_buffer_ size can be greater than max_batch_size_ as previous message batch
     // might be sending in progress, i.e., making sending_ = true.
     if (sending_buffer_.size() >= max_batch_size_ || max_batch_delay_ms_.count() == 0) {
@@ -144,22 +143,18 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
                    << message_batch->messages_size();
 
     for (const auto &message : message_batch->messages()) {
-      auto &node_versions = GetNodeComponentVersions(message.node_id());
+      auto node_version = GetNodeVersion(message.node_id());
       RAY_LOG(DEBUG) << "Receive update: "
-                     << " message_type=" << message.message_type()
                      << ", message_version=" << message.version()
-                     << ", local_message_version="
-                     << node_versions[message.message_type()];
-      if (node_versions[message.message_type()] < message.version()) {
-        node_versions[message.message_type()] = message.version();
+                     << ", local_message_version=" << node_version;
+      if (node_version < message.version()) {
+        SetNodeVersion(message.node_id(), message.version());
         message_processor_(std::make_shared<RaySyncMessage>(message));
       } else {
         RAY_LOG_EVERY_MS(WARNING, 1000)
             << "Drop message received from " << NodeID::FromBinary(message.node_id())
             << " because the message version " << message.version()
-            << " is older than the local version "
-            << node_versions[message.message_type()]
-            << ". Message type: " << message.message_type();
+            << " is older than the local version " << node_version;
       }
     }
   }
@@ -268,15 +263,16 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
 
   friend struct SyncerServerTest;
 
-  std::array<int64_t, kComponentArraySize> &GetNodeComponentVersions(
-      const std::string &node_id) {
+  int64_t GetNodeVersion(const std::string &node_id) const {
     auto iter = node_versions_.find(node_id);
     if (iter == node_versions_.end()) {
-      iter = node_versions_.emplace(node_id, std::array<int64_t, kComponentArraySize>())
-                 .first;
-      iter->second.fill(-1);
+      return -1;
     }
     return iter->second;
+  }
+
+  void SetNodeVersion(const std::string &node_id, int64_t version) {
+    node_versions_[node_id] = version;
   }
 
   /// Handler of a message update.
@@ -284,15 +280,12 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
 
  private:
   /// Buffering all the updates. Sending will be done in an async way.
-  absl::flat_hash_map<std::pair<std::string, MessageType>,
-                      std::shared_ptr<const RaySyncMessage>>
-      sending_buffer_;
+  absl::flat_hash_map<std::string, std::shared_ptr<const RaySyncMessage>> sending_buffer_;
 
-  /// Keep track of the versions of components in the remote node.
+  /// Keep track of the version of resource view messages from each remote node.
   /// This field will be updated when messages are received or sent.
   /// We'll filter the received or sent messages when the message is stale.
-  absl::flat_hash_map<std::string, std::array<int64_t, kComponentArraySize>>
-      node_versions_;
+  absl::flat_hash_map<std::string, int64_t> node_versions_;
 
   bool sending_ = false;
 
