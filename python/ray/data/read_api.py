@@ -3647,7 +3647,7 @@ def from_huggingface(
         return ray_ds
     if isinstance(dataset, (datasets.DatasetDict, datasets.IterableDatasetDict)):
         available_keys = list(dataset.keys())
-        raise DeprecationWarning(
+        raise ValueError(
             "You provided a Hugging Face DatasetDict or IterableDatasetDict, "
             "which contains multiple datasets, but `from_huggingface` now "
             "only accepts a single Hugging Face Dataset. To convert just "
