@@ -386,6 +386,8 @@ if setup_spec.type == SetupType.RAY:
                 "meson",
                 "pybind11",
                 "hf_transfer",
+                # boto3 is needed for S3 filesystem operations in ray.llm
+                "boto3>=1.29.0,<2.0.0",
             ]
             + setup_spec.extras["data"]
             + setup_spec.extras["serve"]

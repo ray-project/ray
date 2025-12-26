@@ -16,3 +16,5 @@ typer
 meson
 pybind11
 hf_transfer
+# boto3 is needed for S3 filesystem operations in ray.llm
+boto3>=1.29.0,<2.0.0
