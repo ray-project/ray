@@ -352,8 +352,8 @@ class TorchWorkerProfiler:
     WORKER_TRACE_DIR_NAME = "pytorch_profiler_worker_traces"
 
     def __init__(self, trace_dir: Optional[str] = None):
-        raise DeprecationWarning(
-            "The `ray.train.torch.TorchWorkerProfiler` API is deprecated in Ray 2.0.",
+        raise RuntimeError(
+            "The `ray.train.torch.TorchWorkerProfiler` API has been removed in Ray 2.0.",
         )
 
 

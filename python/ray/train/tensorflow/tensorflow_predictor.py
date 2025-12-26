@@ -94,8 +94,8 @@ class TensorflowPredictor(DLPredictor):
             use_gpu: Whether GPU should be used during prediction.
         """
         if model_definition:
-            raise DeprecationWarning(
-                "`model_definition` is deprecated. `TensorflowCheckpoint.from_model` "
+            raise ValueError(
+                "`model_definition` has been removed. `TensorflowCheckpoint.from_model` "
                 "now saves the full model definition in .keras format."
             )
 

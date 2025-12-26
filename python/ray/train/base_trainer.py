@@ -541,7 +541,7 @@ class BaseTrainer(abc.ABC):
         from ray.train.v2._internal.constants import V2_ENABLED_ENV_VAR, is_v2_enabled
 
         if is_v2_enabled():
-            raise DeprecationWarning(
+            raise RuntimeError(
                 f"Detected use of a deprecated Trainer import from `{self.__class__.__module__}`. "
                 "This Trainer class is not compatible with Ray Train V2.\n"
                 "To fix this:\n"
@@ -619,7 +619,7 @@ class BaseTrainer(abc.ABC):
 
     def preprocess_datasets(self) -> None:
         """Deprecated."""
-        raise DeprecationWarning(
+        raise RuntimeError(
             "`preprocess_datasets` is no longer used, since preprocessors "
             f"are no longer accepted by Trainers.\n{PREPROCESSOR_DEPRECATION_MESSAGE}"
         )
